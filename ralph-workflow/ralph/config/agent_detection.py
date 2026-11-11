@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import tomllib
+from contextlib import suppress
 from pathlib import Path
 from re import Match
 from typing import TYPE_CHECKING, Literal, cast
@@ -262,18 +263,74 @@ def _agents_config_filename(name: str) -> bool:
     return name in {_GLOBAL_AGENTS_FILENAME, "agents.toml"} or name.endswith("-agents.toml")
 
 
-def _is_agents_config_path(path: Path) -> bool:
-    """Return True if *path* names an agents configuration file.
+def _safe_resolved_path(path: Path) -> Path | None:
+    """Return the canonical identity of *path*, or None when it cannot be resolved."""
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError):
+        return None
 
-    The RESOLVED target counts as well as the requested name: a symlink
-    whose target is an agents configuration file IS an agents
-    configuration file, so the write that lands on that target must go
-    through the validated atomic writer instead of the plain text writer
-    that truncates the target in place.
+
+def _same_file_identity(left: Path, right: Path) -> bool:
+    """Return True when both paths denote ONE file on disk."""
+    try:
+        return left.samefile(right)
+    except (OSError, ValueError):
+        return False
+
+
+def _agents_config_candidate_paths(target: Path) -> list[Path]:
+    """Return candidate active agents configuration paths."""
+    from ralph.config._config_filenames import _GLOBAL_AGENTS_FILENAME
+
+    candidates = [
+        target.parent / _GLOBAL_AGENTS_FILENAME,
+        target.parent / "agents.toml",
+    ]
+    with suppress(OSError, RuntimeError):
+        candidates.append(resolve_global_config_dir() / _GLOBAL_AGENTS_FILENAME)
+
+    with suppress(OSError):
+        if target.parent.is_dir():
+            for sibling in target.parent.iterdir():
+                if _agents_config_filename(sibling.name) and sibling not in candidates:
+                    candidates.append(sibling)
+    return candidates
+
+
+def _find_matching_agents_config(path: Path) -> Path | None:
+    """Return the active agents configuration file *path* aliases, or None."""
+    resolved_path = _safe_resolved_path(path)
+    for candidate in _agents_config_candidate_paths(path):
+        if candidate == path:
+            continue
+        if not candidate.exists():
+            continue
+        resolved_candidate = _safe_resolved_path(candidate)
+        if resolved_candidate is None:
+            continue
+        if resolved_path is not None and resolved_candidate == resolved_path:
+            return candidate
+        if _same_file_identity(path, candidate):
+            return candidate
+        if resolved_path is not None and _same_file_identity(resolved_path, candidate):
+            return candidate
+    return None
+
+
+def _is_agents_config_path(path: Path) -> bool:
+    """Return True if *path* names an agents configuration file or aliases one.
+
+    The RESOLVED target counts as well as the requested name, and identity
+    matching (device and inode) against candidate agents configuration files
+    detects hardlinks and arbitrary symlink aliases to the active agents config.
     """
     if _agents_config_filename(path.name):
         return True
-    return _agents_config_filename(path.resolve().name)
+    resolved = _safe_resolved_path(path)
+    if resolved is not None and _agents_config_filename(resolved.name):
+        return True
+    return _find_matching_agents_config(path) is not None
 
 
 def _agents_write_target(path: Path) -> Path:
@@ -281,17 +338,20 @@ def _agents_write_target(path: Path) -> Path:
 
     Callers reach this only for a path :func:`_is_agents_config_path`
     accepted. A requested name that does NOT name an agents file but
-    whose resolved target does is an alias: the write lands on the
-    resolved target, so the ``.bak`` belongs next to the target that is
-    replaced. Every other path keeps its requested location, so an agents
-    file that is itself a symlink still keeps the backup where the
-    operator configured it.
+    whose resolved target or file identity matches an active agents config
+    is an alias: the write lands on the active agents configuration target,
+    so the ``.bak`` belongs next to that target. Every other path keeps its
+    requested location, so an agents file that is itself a symlink still
+    keeps the backup where the operator configured it.
     """
     if _agents_config_filename(path.name):
         return path
-    resolved = path.resolve()
-    if _agents_config_filename(resolved.name):
+    resolved = _safe_resolved_path(path)
+    if resolved is not None and _agents_config_filename(resolved.name):
         return resolved
+    matched = _find_matching_agents_config(path)
+    if matched is not None:
+        return matched
     return path
 
 
@@ -348,11 +408,21 @@ def autowire_chains_to_detected_agent(
     )
     new_text = text[: match.start()] + rewritten + text[match.end() :]
     if _is_agents_config_path(main_config_path):
+        target = _agents_write_target(main_config_path)
+        is_hardlink_alias = (
+            target != main_config_path
+            and not main_config_path.is_symlink()
+            and _same_file_identity(main_config_path, target)
+        )
         write_agents_toml(
-            _agents_write_target(main_config_path),
+            target,
             new_text,
             trigger=_AUTOWIRE_TRIGGER,
         )
+        if is_hardlink_alias:
+            with suppress(OSError):
+                main_config_path.unlink()
+                os.link(target, main_config_path)
     else:
         # wt-012: route the project-local config write through the shared
         # deterministic auto-commit primitive so a chore commit with the

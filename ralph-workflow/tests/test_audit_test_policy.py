@@ -653,6 +653,7 @@ def test_frozen_baseline_holds_no_all_zero_row() -> None:
     assert all_zero == []
 
 
+@pytest.mark.timeout_seconds(5)
 def test_frozen_baseline_matches_a_fresh_scan_of_the_project_policy_cluster() -> None:
     """A fresh scan of a bounded cluster must not drift from the frozen baseline.
 
