@@ -249,7 +249,7 @@ def _count_tracked_files(repo_root: Path) -> int:
 
 
 def _resolve_policy_thresholds(
-    ctx: PhaseContext,
+    ctx_or_policy: object,
     phase_name: str,
 ) -> tuple[TripwireThresholds, list[str] | None, list[str] | None]:
     """Read tripwire thresholds and path filters from pipeline policy."""
@@ -257,7 +257,7 @@ def _resolve_policy_thresholds(
     allowed_dirs: list[str] | None = None
     protected: list[str] | None = None
 
-    policy: object = ctx.pipeline_policy
+    policy: object = getattr(ctx_or_policy, "pipeline_policy", ctx_or_policy)
     if isinstance(policy, PipelinePolicy):
         cr_policy_obj = cast("object", getattr(policy, "commit_review", None))
         if cr_policy_obj is not None:
@@ -293,8 +293,8 @@ def _resolve_policy_thresholds(
     return thresholds, allowed_dirs, protected
 
 
-def _persist_commit_review_context(
-    ctx: PhaseContext,
+def _persist_commit_review_context_to_root(
+    repo_root: Path,
     seal: Seal,
     soft_findings: tuple[Finding, ...],
     diff_entries: list[DiffEntry],
@@ -318,9 +318,24 @@ def _persist_commit_review_context(
         ],
     }
     try:
-        ctx.workspace.write(_COMMIT_REVIEW_CONTEXT_PATH, json.dumps(payload, indent=2))
+        from ralph.workspace.fs import FsWorkspace
+
+        ws = FsWorkspace(repo_root)
+        ws.write(_COMMIT_REVIEW_CONTEXT_PATH, json.dumps(payload, indent=2))
     except Exception as exc:
         logger.debug("Could not persist commit review context: {}", exc)
+
+
+def _persist_commit_review_context(
+    ctx: PhaseContext,
+    seal: Seal,
+    soft_findings: tuple[Finding, ...],
+    diff_entries: list[DiffEntry],
+) -> None:
+    """Provide proposal ref, soft tripwires, and diff evidence to agent context."""
+    repo_root, _ = _resolve_workspace_root_safe(ctx)
+    if repo_root is not None:
+        _persist_commit_review_context_to_root(repo_root, seal, soft_findings, diff_entries)
 
 
 @dataclass
@@ -447,28 +462,57 @@ def _apply_commit_review_actions(
     return report.declined_delete_paths, report.failed_delete_paths
 
 
-def _run_stage1(
+def run_commit_review_stage1_preflight(
     repo_root: Path,
     run_id: str,
     iteration: str,
-    ctx: PhaseContext,
+    pipeline_policy: object,
     phase_name: str,
-) -> tuple[Seal, list[DiffEntry], TripwireReport, str] | list[Event | CommitReviewEvent]:
+) -> (
+    tuple[Seal, list[DiffEntry], TripwireReport, str]
+    | CommitReviewRejected
+    | CommitReviewGateFailed
+):
+    """Run Stage 1 deterministic tripwires on the sealed proposal tree before agent review."""
+    try:
+        ensure_git_initialized(str(repo_root))
+    except Exception as exc:
+        logger.warning("ensure_git_initialized failed: {}", exc)
+
+    try:
+        untrack_engine_internal_files(repo_root, is_agent_internal_path)
+    except Exception as exc:
+        logger.warning("untrack_engine_internal_files failed: {}", exc)
+
+    try:
+        from ralph.config.bootstrap import auto_seed_default_gitignore
+
+        auto_seed_default_gitignore(repo_root)
+    except Exception as exc:
+        logger.warning("auto_seed_default_gitignore failed: {}", exc)
+
+    try:
+        from ralph.config.bootstrap import auto_seed_default_git_exclude
+
+        auto_seed_default_git_exclude(repo_root)
+    except Exception as exc:
+        logger.warning("auto_seed_default_git_exclude failed: {}", exc)
+
     try:
         seal = seal_pending(repo_root, run_id, iteration)
     except Exception as exc:
         logger.error("{}: failed to seal proposal tree: {}", phase_name, exc)
-        return [CommitReviewGateFailed(detail=f"Failed to seal proposal tree: {exc}")]
+        return CommitReviewGateFailed(detail=f"Failed to seal proposal tree: {exc}")
 
     base = _resolve_diff_base(repo_root)
     try:
         diff_entries = diff_tree(repo_root, seal.ref, base=base)
     except Exception as exc:
         logger.error("{}: failed to compute diff-tree: {}", phase_name, exc)
-        return [CommitReviewGateFailed(detail=f"Failed to compute diff-tree: {exc}")]
+        return CommitReviewGateFailed(detail=f"Failed to compute diff-tree: {exc}")
 
     tracked_count = _count_tracked_files(repo_root)
-    thresholds, allowed_dirs, protected = _resolve_policy_thresholds(ctx, phase_name)
+    thresholds, allowed_dirs, protected = _resolve_policy_thresholds(pipeline_policy, phase_name)
 
     tripwire_entries = [
         e
@@ -485,12 +529,33 @@ def _run_stage1(
         protected=protected,
     )
 
+    _persist_commit_review_context_to_root(repo_root, seal, tripwire_report.soft, diff_entries)
+
     if tripwire_report.has_hard_tripwires:
         reason = "; ".join(f.message for f in tripwire_report.hard)
         logger.warning("{}: Stage 1 hard tripwires triggered: {}", phase_name, reason)
-        return [CommitReviewRejected(reason=reason, ref=seal.ref, hard=True)]
+        return CommitReviewRejected(reason=reason, ref=seal.ref, hard=True)
 
     return seal, diff_entries, tripwire_report, base
+
+
+def _run_stage1(
+    repo_root: Path,
+    run_id: str,
+    iteration: str,
+    ctx: PhaseContext,
+    phase_name: str,
+) -> tuple[Seal, list[DiffEntry], TripwireReport, str] | list[Event | CommitReviewEvent]:
+    res = run_commit_review_stage1_preflight(
+        repo_root,
+        run_id,
+        iteration,
+        ctx.pipeline_policy,
+        phase_name,
+    )
+    if isinstance(res, (CommitReviewRejected, CommitReviewGateFailed)):
+        return [res]
+    return res
 
 
 def _handle_actions_and_reseal(
@@ -853,5 +918,6 @@ __all__ = [
     "build_commit_review_retry_hint",
     "handle_commit_review_phase",
     "is_agent_internal_path",
+    "run_commit_review_stage1_preflight",
     "verify_reject_citations",
 ]

@@ -13,27 +13,35 @@ opt-in lane.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from git import Actor, Repo
 
-from ralph.config.bootstrap import auto_seed_default_git_exclude
+from ralph.config.bootstrap import auto_seed_default_git_exclude, auto_seed_default_gitignore
 from ralph.config.models import UnifiedConfig
 from ralph.git.proposal_seal import ProposalPreflightError, preflight, rollback, seal_pending
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.phases.commit_review import (
     CommitReviewApproved,
     CommitReviewRejected,
 )
 from ralph.phases.required_artifacts import read_validation_retry_hint, retry_hint_path
 from ralph.pipeline.commit_executor import execute_commit_effect
-from ralph.pipeline.effects import CommitEffect
+from ralph.pipeline.effect_router import determine_effect_from_policy
+from ralph.pipeline.effects import CommitEffect, CommitReviewRejectEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.run_loop import resolve_initial_state
+from ralph.pipeline.runner import execute_effect_with_optional_display
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.prompts.commit_review import render_commit_review_prompt
+from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.types import SessionCapabilities
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy, PolicyBundle
@@ -319,3 +327,98 @@ def test_commit_review_resume_handles_pending_rollback(tmp_path: Path) -> None:
     assert not stray_file.exists()
     assert resumed.rollback_pending is False
     assert resumed.rollback_ref is None
+
+
+def _seed_git_repo(repo_path: Path, file_count: int = 60) -> list[str]:
+    repo = Repo.init(repo_path)
+    auto_seed_default_gitignore(repo_path)
+    auto_seed_default_git_exclude(repo_path)
+    tracked: list[str] = []
+    for i in range(file_count):
+        name = f"mod_{i:03d}.py"
+        (repo_path / name).write_text(f"X = {i}\n", encoding="utf-8")
+        tracked.append(name)
+    repo.git.add(A=True)
+    repo.index.commit("initial commit")
+    return tracked
+
+
+def test_whole_repo_deletion_pipeline_preflight_rejects_without_agent(tmp_path: Path) -> None:
+    """Stage 1 mass deletion emits CommitReviewRejectEffect directly before agent review."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    tracked = _seed_git_repo(repo_root, 60)
+
+    for name in tracked:
+        (repo_root / name).unlink()
+
+    policy_bundle = load_policy(_DEFAULTS_DIR)
+    state = PipelineState(phase="development_commit_review")
+    scope = WorkspaceScope(root=repo_root, allowed_roots=(repo_root,))
+
+    effect = determine_effect_from_policy(state, policy_bundle, workspace_scope=scope)
+
+    assert isinstance(effect, CommitReviewRejectEffect)
+    assert effect.hard is True
+    assert "Mass deletion" in effect.reason
+    assert effect.ref.startswith("refs/ralph/proposals/")
+
+    config = UnifiedConfig()
+    event = execute_effect_with_optional_display(effect, config, scope)
+    assert isinstance(event, CommitReviewRejected)
+    assert event.hard is True
+    assert event.ref == effect.ref
+
+    next_state, _ = reduce(state, event, policy_bundle.pipeline)
+    assert next_state.rollback_pending is True
+    assert next_state.rollback_ref == effect.ref
+    assert next_state.phase == "development"
+    assert next_state.commit_review_rejections == 1
+
+
+def test_prompt_materialization_first_pass_carries_stage1_evidence(tmp_path: Path) -> None:
+    """Stage 1 context is persisted before prompt materialization so first pass has real evidence."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _seed_git_repo(repo_root, 5)
+
+    (repo_root / "mod_000.py").write_text("X = 999\n", encoding="utf-8")
+
+    policy_bundle = load_policy(_DEFAULTS_DIR)
+    state = PipelineState(phase="development_commit_review")
+    scope = WorkspaceScope(root=repo_root, allowed_roots=(repo_root,))
+
+    effect = determine_effect_from_policy(state, policy_bundle, workspace_scope=scope)
+    assert isinstance(effect, InvokeAgentEffect)
+
+    context_file = repo_root / ".agent" / "tmp" / "commit_review_context.json"
+    assert context_file.is_file()
+
+    raw_data: object = json.loads(context_file.read_text(encoding="utf-8"))
+    assert isinstance(raw_data, dict)
+    assert "proposal_ref" in raw_data
+    proposal_ref = raw_data["proposal_ref"]
+    assert isinstance(proposal_ref, str)
+    assert proposal_ref.startswith("refs/ralph/proposals/")
+    assert "tree_sha" in raw_data
+    tree_sha = raw_data["tree_sha"]
+    assert isinstance(tree_sha, str)
+    assert len(tree_sha) == 40
+
+    tmpl_ctx = TemplateContext.default(repo_root)
+    prompt = render_commit_review_prompt(
+        workspace_root=repo_root,
+        phase="development_commit_review",
+        worker_namespace=None,
+        prompt_content=None,
+        product_criteria_path=str(repo_root / ".agent" / "PRODUCT_CRITERIA.md"),
+        template_name="commit_review.jinja",
+        tmpl_ctx=tmpl_ctx,
+        session_caps=SessionCapabilities.defaults_for_drain(
+            SessionDrain.COMMIT, tool_name_prefix="ralph"
+        ),
+        pipeline_policy=policy_bundle.pipeline,
+    )
+
+    assert proposal_ref in prompt
+    assert tree_sha in prompt

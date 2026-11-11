@@ -31,6 +31,7 @@ from ralph.prompts.debug_dump import multimodal_sidecar_path, prompt_dump_path
 if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.phases._commit_review_events import CommitReviewEvent
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PipelinePolicy
     from ralph.workspace import FsWorkspace
@@ -284,7 +285,7 @@ def _analysis_decision_transition_context(
 
 def _bypass_resolution_for_transition(
     state: PipelineState,
-    event: Event,
+    event: Event | CommitReviewEvent,
     next_state: PipelineState,
     pipeline_policy: PipelinePolicy,
 ) -> ExhaustedAnalysisBypassResult | None:
@@ -320,7 +321,7 @@ def _bypass_resolution_for_transition(
 def _record_phase_transition_metadata(
     display: ParallelDisplay | None,
     state: PipelineState,
-    event: Event,
+    event: Event | CommitReviewEvent,
     next_state: PipelineState,
     pipeline_policy: PipelinePolicy,
 ) -> tuple[str, ...]:

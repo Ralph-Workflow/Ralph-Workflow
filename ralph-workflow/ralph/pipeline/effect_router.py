@@ -267,6 +267,56 @@ def _current_analysis_phase_advance_effect(
     return ExhaustedAnalysisPhaseAdvanceEffect(phase=state.phase)
 
 
+def _commit_review_phase_effect(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    phase_def: PhaseDefinition,
+    workspace_scope: WorkspaceScope,
+    *,
+    config: UnifiedConfig | None,
+    has_uncommitted_changes_fn: Callable[[Path], bool],
+    recovery: RecoveryController | None,
+) -> Effect:
+    completed_effect = _empty_commit_review_effect(
+        workspace_scope.root,
+        has_uncommitted_changes_fn=has_uncommitted_changes_fn,
+    )
+    if completed_effect is not None:
+        return completed_effect
+
+    from ralph.phases._commit_review_events import (
+        CommitReviewRejected,
+    )
+    from ralph.phases.commit_review import run_commit_review_stage1_preflight
+    from ralph.pipeline.effects.commit_review_reject_effect import CommitReviewRejectEffect
+
+    run_id: str = "run"
+    iteration: str = str(state.commit_review_rejections + 1)
+    preflight_outcome = run_commit_review_stage1_preflight(
+        workspace_scope.root,
+        run_id,
+        iteration,
+        policy_bundle.pipeline,
+        state.phase,
+    )
+    if isinstance(preflight_outcome, CommitReviewRejected):
+        return CommitReviewRejectEffect(
+            phase=state.phase,
+            reason=preflight_outcome.reason,
+            ref=preflight_outcome.ref,
+            hard=preflight_outcome.hard,
+        )
+
+    return _parallel_or_agent_effect(
+        state,
+        phase_def,
+        policy_bundle,
+        config,
+        workspace_scope,
+        recovery=recovery,
+    )
+
+
 def _commit_phase_effect(
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -278,18 +328,13 @@ def _commit_phase_effect(
     recovery: RecoveryController | None = None,
 ) -> Effect:
     if phase_def.role == "commit_review":
-        completed_effect = _empty_commit_review_effect(
-            workspace_scope.root,
-            has_uncommitted_changes_fn=has_uncommitted_changes_fn,
-        )
-        if completed_effect is not None:
-            return completed_effect
-        return _parallel_or_agent_effect(
+        return _commit_review_phase_effect(
             state,
-            phase_def,
             policy_bundle,
-            config,
+            phase_def,
             workspace_scope,
+            config=config,
+            has_uncommitted_changes_fn=has_uncommitted_changes_fn,
             recovery=recovery,
         )
     completed_effect = _empty_commit_effect(

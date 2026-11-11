@@ -331,6 +331,18 @@ to ``KNOWN_ARTIFACT_TYPES`` propagates automatically to the audit — no
 manual sync is needed. ``test_audit_artifact_submission_canonical_types_sync.py``
 pins the equality so drift is caught at test time.
 
+### ``commit_review`` artifact contract
+
+The ``commit_review`` artifact records the Stage 2 verdict and repository cleanup actions of the damage gate (see ``docs/sphinx/artifacts.md``).
+
+- **Frontmatter**:
+  - ``type``: must be ``commit_review``.
+  - ``verdict``: strict closed enum (``approve`` or ``reject``).
+  - ``tree_sha``: 40-character hex SHA of the sealed proposal tree evaluated.
+- **Sections**:
+  - ``## Actions``: required section (may be empty) containing items of the form ``<action> | <value>`` (separator is space-pipe-space), supporting actions ``delete_file``, ``add_to_gitignore``, and ``add_to_git_exclude``. Values must be printable ASCII and adhere to the delete-safety boundary.
+  - ``## Reason``: mandatory when ``verdict: reject``; optional when ``approve``. Rejection reasons must cite concrete paths or counts present in the proposal diff against ``HEAD``.
+
 ## Smoke plumbing
 
 ``artifact_submitted`` in ``SmokeRunResult`` is computed by calling

@@ -45,7 +45,11 @@ from ralph.mcp.server.lifecycle import (
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.onboarding import GITHUB_STAR_CTA
 from ralph.phases import handle_phase, register_role_handlers
-from ralph.phases._commit_review_events import CommitReviewGateFailed
+from ralph.phases._commit_review_events import (
+    CommitReviewEvent,
+    CommitReviewGateFailed,
+    CommitReviewRejected,
+)
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
@@ -129,6 +133,7 @@ from ralph.pipeline.effect_router import (
 )
 from ralph.pipeline.effects import (
     CommitEffect,
+    CommitReviewRejectEffect,
     Effect,
     EmptyCommitEffect,
     ExhaustedAnalysisPhaseAdvanceEffect,
@@ -329,7 +334,7 @@ if TYPE_CHECKING:
             config: UnifiedConfig,
             workspace_scope: WorkspaceScope,
             **kwargs: object,
-        ) -> Event: ...
+        ) -> Event | CommitReviewEvent: ...
 
     class _ConnectivityMonitorLike(Protocol):
         @property
@@ -403,7 +408,7 @@ def _execute_effect(
     policy_bundle: PolicyBundle | None = None,
     pipeline_deps: PipelineDeps | None = None,
     run_id: str | None = None,
-) -> Event:
+) -> Event | CommitReviewEvent:
     resolved_display_context = display_context or (
         display._ctx if display is not None and hasattr(display, "_ctx") else make_display_context()
     )
@@ -430,8 +435,8 @@ def _execute_effect(
         return _execute_commit_effect_from_deps(
             effect, pipeline_deps, workspace_scope, display, verbosity, config=config
         )
-    if isinstance(effect, EmptyCommitEffect):
-        return _execute_empty_commit_effect(effect, workspace_scope)
+    if isinstance(effect, (CommitReviewRejectEffect, EmptyCommitEffect)):
+        return _execute_commit_auxiliary_effect(effect, workspace_scope)
     if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
         if state is not None and policy_bundle is not None:
             bypass = resolve_exhausted_analysis_bypass(state, effect.phase, policy_bundle.pipeline)
@@ -450,6 +455,24 @@ def _execute_effect(
 
     logger.warning("Unknown effect type: {}", type(effect))
     return PipelineEvent.AGENT_FAILURE
+
+
+def _execute_commit_auxiliary_effect(
+    effect: CommitReviewRejectEffect | EmptyCommitEffect,
+    workspace_scope: WorkspaceScope,
+) -> Event | CommitReviewEvent:
+    if isinstance(effect, CommitReviewRejectEffect):
+        logger.warning(
+            "Rejecting proposal for phase '{}' on deterministic Stage 1 tripwire: {}",
+            effect.phase,
+            effect.reason,
+        )
+        return CommitReviewRejected(
+            reason=effect.reason,
+            ref=effect.ref,
+            hard=effect.hard,
+        )
+    return _execute_empty_commit_effect(effect, workspace_scope)
 
 
 def _execute_empty_commit_effect(
@@ -478,7 +501,7 @@ def _execute_effect_with_optional_display(
     policy_bundle: PolicyBundle | None = None,
     pipeline_deps: PipelineDeps | None = None,
     run_id: str | None = None,
-) -> Event:
+) -> Event | CommitReviewEvent:
     fn = execute_effect
     params = signature(fn).parameters
     accepts_kwargs = any(p.kind == p.VAR_KEYWORD for p in params.values())
@@ -509,7 +532,7 @@ def execute_effect_with_optional_display(
     policy_bundle: PolicyBundle | None = None,
     pipeline_deps: PipelineDeps | None = None,
     run_id: str | None = None,
-) -> Event:
+) -> Event | CommitReviewEvent:
     """Execute an effect and return the resulting event, optionally routing output to a display."""
     return _execute_effect_with_optional_display(
         effect,
@@ -532,8 +555,8 @@ def run_visual_capture_lifecycle(
     matrix_key: str,
     design_capture_command: str,
     capture: Callable[[], CaptureSet],
-    invoke_agent: Callable[[], Event],
-) -> tuple[Event, CaptureSet, CaptureSet]:
+    invoke_agent: Callable[[], Event | CommitReviewEvent],
+) -> tuple[Event | CommitReviewEvent, CaptureSet, CaptureSet]:
     """Capture an immutable baseline, invoke the agent, then capture a fresh matrix.
 
     The caller supplies the policy-bound capture operation.  A retained baseline
@@ -594,9 +617,9 @@ def _run_policy_declared_visual_capture(
     workspace_root: Path,
     run_id: str | None,
     cycle_id: str,
-    invoke_agent: Callable[[], Event],
+    invoke_agent: Callable[[], Event | CommitReviewEvent],
     env_getter: EnvGetter = os.environ.get,
-) -> Event:
+) -> Event | CommitReviewEvent:
     """Run policy-declared before/after capture around one development invocation.
 
     An unavailable renderer, absent capture policy, or unsigned session is a
@@ -648,9 +671,9 @@ def _run_policy_declared_visual_capture(
             run_id=capture_run_id,
         )
 
-    agent_result: Event | None = None
+    agent_result: Event | CommitReviewEvent | None = None
 
-    def invoke_and_remember() -> Event:
+    def invoke_and_remember() -> Event | CommitReviewEvent:
         nonlocal agent_result
         agent_result = invoke_agent()
         return agent_result
@@ -687,7 +710,7 @@ def _invoke_execute_effect_with_optional_display(
     pre_phase_role: str | None = None,
     pre_phase_drain: str | None = None,
     run_id: str | None = None,
-) -> Event:
+) -> Event | CommitReviewEvent:
     # Phase 1 lifecycle hooks: bounded changed-file refresh before
     # and after an InvokeAgentEffect. Hooks skip cleanly when the
     # explore index is disabled or missing; they never block the
@@ -723,7 +746,7 @@ def _invoke_execute_effect_with_optional_display(
         except Exception as exc:
             logger.debug("before_agent_refresh skipped: %s", exc)
 
-    def invoke_agent() -> Event:
+    def invoke_agent() -> Event | CommitReviewEvent:
         return execute_effect_with_optional_display(
             effect,
             config,
@@ -849,7 +872,7 @@ _PHASE_SUCCESS_EVENTS: frozenset[PipelineEvent] = frozenset(
 )
 
 
-def _coarse_outcome_for_event(event: Event) -> str:
+def _coarse_outcome_for_event(event: Event | CommitReviewEvent) -> str:
     """Map a post-with-block ``Event`` to a coarse phase-outcome tag.
 
     Returns one of the closed vocabulary strings forwarded to Sentry:
@@ -1489,7 +1512,7 @@ def _integrate_after_fan_out(
 def _finalize_agent_invocation(
     *,
     effect: Effect,
-    event: Event,
+    event: Event | CommitReviewEvent,
     state: PipelineState,
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
@@ -1500,7 +1523,7 @@ def _finalize_agent_invocation(
     verbosity: Verbosity,
     recovery_controller: RecoveryController | None,
     run_id: str | None,
-) -> tuple[PipelineState, Event]:
+) -> tuple[PipelineState, Event | CommitReviewEvent]:
     """Apply session capture and the post-agent-run render/phase-handler call.
 
     A no-op that returns ``(state, event)`` unchanged for every effect type
