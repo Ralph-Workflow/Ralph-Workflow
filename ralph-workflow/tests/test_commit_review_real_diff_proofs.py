@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from git import Repo
+from git.objects.tree import Tree
 
 from ralph.config.bootstrap import auto_seed_default_git_exclude, auto_seed_default_gitignore
 from ralph.git.proposal_seal import DiffEntry, diff_tree, preflight, rollback, seal_pending
@@ -95,15 +96,34 @@ def _module_paths(count: int) -> list[str]:
     return [f"module_{index:02d}.py" for index in range(count)]
 
 
+def _count_tracked_paths(tree: Tree) -> int:
+    """Return the number of non-tree entries under ``tree``."""
+    total = 0
+    for entry in tree:
+        if isinstance(entry, Tree):
+            total += _count_tracked_paths(entry)
+        else:
+            total += 1
+    return total
+
+
 def _tracked_count(repo_root: Path) -> int:
-    """Return the number of tracked paths in HEAD."""
-    result = run_git(
-        ["ls-tree", "-r", "--name-only", "HEAD"],
-        cwd=repo_root,
-        label="test-commit-review-ls-tree",
-    )
-    assert result.returncode == 0, f"git ls-tree failed: {result.stderr}"
-    return len([line for line in result.stdout.splitlines() if line])
+    """Return the number of tracked paths in HEAD.
+
+    The count is read from the HEAD commit's tree inside the test process,
+    so the probe costs no subprocess. ``git ls-tree -r --name-only`` reports
+    every non-tree entry of the commit, and the tree walk yields the same
+    set of paths.
+    """
+    repo = Repo(repo_root)
+    try:
+        # RALPH-TEST-REASON: the in-process tree read replaces the ls-tree
+        # subprocess; an unresolvable HEAD raises instead of returning a
+        # non-zero exit code, so the probe still fails closed.
+        tree = repo.head.commit.tree
+        return _count_tracked_paths(tree)
+    finally:
+        repo.close()
 
 
 def test_a_protected_top_level_directory_deleted_in_its_entirety_is_a_hard_tripwire(

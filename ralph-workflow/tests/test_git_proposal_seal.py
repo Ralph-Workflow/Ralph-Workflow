@@ -57,9 +57,35 @@ def _setup_repo(path: Path) -> Repo:
     return repo
 
 
-def test_seal_pending_leaves_real_index_and_worktree_intact(tmp_path: Path) -> None:
+@pytest.fixture(scope="module")
+def _repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build the template repository once for the whole module.
+
+    The template holds the same identity, the same ``init.txt`` payload and
+    the same ``initial commit`` every proof in this file starts from, so a
+    private copy of it is the starting state each proof needs.
+    """
+    template_root = tmp_path_factory.mktemp("proposal-seal-template")
+    _setup_repo(template_root)
+    return template_root
+
+
+@pytest.fixture
+def setup_repo(_repo_template: Path) -> Callable[[Path], Repo]:
+    """Return a callable that materializes a private copy of the template repo."""
+
+    def _materialize(path: Path) -> Repo:
+        shutil.copytree(_repo_template, path, dirs_exist_ok=True)
+        return Repo(path)
+
+    return _materialize
+
+
+def test_seal_pending_leaves_real_index_and_worktree_intact(
+    tmp_path: Path, setup_repo: Callable[[Path], Repo]
+) -> None:
     """Sealing must leave the real .git/index and working tree byte-identical."""
-    repo = _setup_repo(tmp_path)
+    repo = setup_repo(tmp_path)
     real_index_path = Path(repo.index.path)
     real_index_before = real_index_path.read_bytes()
 
@@ -91,9 +117,11 @@ def test_seal_pending_leaves_real_index_and_worktree_intact(tmp_path: Path) -> N
     assert resolved_tree == seal.tree_sha
 
 
-def test_diff_tree_reports_all_change_types_and_metadata(tmp_path: Path) -> None:
+def test_diff_tree_reports_all_change_types_and_metadata(
+    tmp_path: Path, setup_repo: Callable[[Path], Repo]
+) -> None:
     """diff_tree must accurately reflect additions, deletions, modifications, modes, and binary flags."""
-    repo = _setup_repo(tmp_path)
+    repo = setup_repo(tmp_path)
 
     # Add initial tracked files of various types
     tracked_txt = tmp_path / "tracked.txt"
@@ -157,9 +185,9 @@ def test_diff_tree_reports_all_change_types_and_metadata(tmp_path: Path) -> None
     assert e_new_bin.size == len(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
 
 
-def _setup_source_and_test_trees(path: Path) -> Repo:
+def _setup_source_and_test_trees(path: Path, setup_repo: Callable[[Path], Repo]) -> Repo:
     """Create a repo whose HEAD tracks a ``src/`` and a ``tests/`` directory."""
-    repo = _setup_repo(path)
+    repo = setup_repo(path)
     src_dir = path / "src"
     src_dir.mkdir()
     (src_dir / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
@@ -173,7 +201,9 @@ def _setup_source_and_test_trees(path: Path) -> Repo:
     return repo
 
 
-def test_fully_deleted_protected_top_level_directory_is_a_hard_tripwire(tmp_path: Path) -> None:
+def test_fully_deleted_protected_top_level_directory_is_a_hard_tripwire(
+    tmp_path: Path, setup_repo: Callable[[Path], Repo]
+) -> None:
     """Deleting EVERY tracked file of a protected top-level directory trips the hard gate.
 
     ``git diff-tree -r`` reports blob entries only, so the removal of a whole
@@ -181,7 +211,7 @@ def test_fully_deleted_protected_top_level_directory_is_a_hard_tripwire(tmp_path
     directory entry. The tripwire therefore compares the base-tree membership
     carried by the diff entries against the deleted-path set.
     """
-    _setup_source_and_test_trees(tmp_path)
+    _setup_source_and_test_trees(tmp_path, setup_repo)
     shutil.rmtree(tmp_path / "src")
 
     seal = seal_pending(tmp_path, "run-dir", 1)
@@ -208,9 +238,10 @@ def test_fully_deleted_protected_top_level_directory_is_a_hard_tripwire(tmp_path
 
 def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_deletion(
     tmp_path: Path,
+    setup_repo: Callable[[Path], Repo],
 ) -> None:
     """Deleting SOME tracked files of a protected top-level directory is not an entirety deletion."""
-    _setup_source_and_test_trees(tmp_path)
+    _setup_source_and_test_trees(tmp_path, setup_repo)
     (tmp_path / "tests" / "test_util.py").unlink()
 
     seal = seal_pending(tmp_path, "run-partial", 1)
@@ -227,9 +258,10 @@ def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_dele
 
 def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     tmp_path: Path,
+    setup_repo: Callable[[Path], Repo],
 ) -> None:
     """Rollback restores HEAD exactly, removes proposal additions, and preserves ignored and .agent/ files."""
-    repo = _setup_repo(tmp_path)
+    repo = setup_repo(tmp_path)
 
     # Initial tracked files
     tracked_txt = tmp_path / "tracked.txt"
@@ -322,6 +354,7 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
 
 def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
     tmp_path: Path,
+    setup_repo: Callable[[Path], Repo],
 ) -> None:
     """A crash at ANY rollback step resumes to the same end state.
 
@@ -338,7 +371,7 @@ def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
     """
     # RALPH-TEST-REASON: the two removed sibling crash tests are consolidated
     # into this matrix, which keeps every assertion they made.
-    _setup_repo(tmp_path)
+    setup_repo(tmp_path)
 
     init_file = tmp_path / "init.txt"
     new_file = tmp_path / "proposal_added.txt"
@@ -406,9 +439,11 @@ def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
         preflight(tmp_path, seal.ref)
 
 
-def test_preflight_fails_on_damaged_git_or_missing_refs(tmp_path: Path) -> None:
+def test_preflight_fails_on_damaged_git_or_missing_refs(
+    tmp_path: Path, setup_repo: Callable[[Path], Repo]
+) -> None:
     """Preflight raises ProposalPreflightError on invalid/missing refs or damaged git metadata."""
-    _setup_repo(tmp_path)
+    setup_repo(tmp_path)
 
     # Missing proposal ref
     with pytest.raises(ProposalPreflightError, match="Proposal ref .* does not resolve"):
@@ -427,9 +462,11 @@ def test_preflight_fails_on_damaged_git_or_missing_refs(tmp_path: Path) -> None:
         preflight(tmp_path, "refs/ralph/proposals/dummy/1")
 
 
-def test_seal_baseline_and_rollback_to_baseline(tmp_path: Path) -> None:
+def test_seal_baseline_and_rollback_to_baseline(
+    tmp_path: Path, setup_repo: Callable[[Path], Repo]
+) -> None:
     """Baseline seals uncommitted start state and rollback restores to baseline instead of HEAD."""
-    _setup_repo(tmp_path)
+    setup_repo(tmp_path)
 
     # Clean working tree: seal_baseline should return None
     clean_baseline = seal_baseline(tmp_path, "run-base")
@@ -461,9 +498,11 @@ def test_seal_baseline_and_rollback_to_baseline(tmp_path: Path) -> None:
     assert not pipeline_junk.exists()
 
 
-def test_prune_removes_proposals_honoring_keep_and_retention(tmp_path: Path) -> None:
+def test_prune_removes_proposals_honoring_keep_and_retention(
+    tmp_path: Path, setup_repo: Callable[[Path], Repo]
+) -> None:
     """prune deletes proposal refs according to run_id, keep_refs, and max_retained rules."""
-    repo = _setup_repo(tmp_path)
+    repo = setup_repo(tmp_path)
     head_sha = str(route_git_method(repo, "rev_parse", ("HEAD",))).strip()
 
     # Create several proposal refs across two run IDs
@@ -501,7 +540,9 @@ def test_prune_removes_proposals_honoring_keep_and_retention(tmp_path: Path) -> 
     assert ref_a2 not in remaining
 
 
-def test_prune_keeps_the_rejection_ref_and_bounds_the_retained_refs(tmp_path: Path) -> None:
+def test_prune_keeps_the_rejection_ref_and_bounds_the_retained_refs(
+    tmp_path: Path, setup_repo: Callable[[Path], Repo]
+) -> None:
     """A kept rejection ref is never pruned; the retention limit bounds the rest.
 
     The documented recovery for a wrongly rejected iteration is
@@ -509,7 +550,7 @@ def test_prune_keeps_the_rejection_ref_and_bounds_the_retained_refs(tmp_path: Pa
     survive every sweep. The retention limit bounds how many other
     proposal refs the sweep keeps.
     """
-    repo = _setup_repo(tmp_path)
+    repo = setup_repo(tmp_path)
     head_sha = str(route_git_method(repo, "rev_parse", ("HEAD",))).strip()
 
     rejection_ref = "refs/ralph/proposals/run-a/1"

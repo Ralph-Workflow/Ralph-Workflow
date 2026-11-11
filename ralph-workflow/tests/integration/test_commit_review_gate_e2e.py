@@ -14,6 +14,8 @@ opt-in lane.
 from __future__ import annotations
 
 import json
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -79,6 +81,30 @@ def _init_repo(tmp_path: Path) -> Repo:
     return repo
 
 
+@pytest.fixture(scope="module")
+def _repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build the template repository once for the whole module.
+
+    The template holds the same identity, the same tracked ``app.py`` and the
+    same ``initial commit`` every proof in this file starts from, so a
+    private copy of it is the starting state each proof needs.
+    """
+    template_root = tmp_path_factory.mktemp("commit-review-gate-template")
+    _init_repo(template_root)
+    return template_root
+
+
+@pytest.fixture
+def init_repo(_repo_template: Path) -> Callable[[Path], Repo]:
+    """Return a callable that materializes a private copy of the template repo."""
+
+    def _materialize(path: Path) -> Repo:
+        shutil.copytree(_repo_template, path, dirs_exist_ok=True)
+        return Repo(path)
+
+    return _materialize
+
+
 def _create_commit_message_artifact(repo_root: Path, message: str = "feat: good change") -> Path:
     artifact = repo_root / ".agent" / "artifacts" / "commit_message.md"
     artifact.parent.mkdir(parents=True, exist_ok=True)
@@ -101,10 +127,11 @@ def _bundle_with_retention(retention: int) -> PolicyBundle:
 
 def test_commit_review_gate_approve_creates_sha_bound_commit_and_retains_the_proposal(
     tmp_path: Path,
+    init_repo: Callable[[Path], Repo],
 ) -> None:
     """Approval routes to commit with SHA-bound staging and creates the commit."""
     policy = _policy()
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
 
     # 1. Developer modifies code
     code_file = tmp_path / "app.py"
@@ -155,9 +182,10 @@ def test_commit_review_gate_approve_creates_sha_bound_commit_and_retains_the_pro
 
 def test_commit_review_gate_prunes_the_proposals_outside_the_retention_bound(
     tmp_path: Path,
+    init_repo: Callable[[Path], Repo],
 ) -> None:
     """A successful commit prunes the proposal refs the retention bound excludes."""
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     initial_sha = repo.head.commit.hexsha
 
     # The developer changes the tracked file; the sealed proposal points at
@@ -192,9 +220,11 @@ def test_commit_review_gate_prunes_the_proposals_outside_the_retention_bound(
         preflight(tmp_path, older_ref)
 
 
-def test_commit_review_gate_sha_mismatch_fails_commit(tmp_path: Path) -> None:
+def test_commit_review_gate_sha_mismatch_fails_commit(
+    tmp_path: Path, init_repo: Callable[[Path], Repo]
+) -> None:
     """If working tree / index has changed since approval, commit effect is rejected."""
-    _init_repo(tmp_path)
+    init_repo(tmp_path)
 
     code_file = tmp_path / "app.py"
     code_file.write_text("print('hello, tampered world!')", encoding="utf-8")
@@ -208,10 +238,12 @@ def test_commit_review_gate_sha_mismatch_fails_commit(tmp_path: Path) -> None:
     assert commit_event == PipelineEvent.COMMIT_FAILURE
 
 
-def test_commit_review_gate_reject_executes_rollback_and_preserves_context(tmp_path: Path) -> None:
+def test_commit_review_gate_reject_executes_rollback_and_preserves_context(
+    tmp_path: Path, init_repo: Callable[[Path], Repo]
+) -> None:
     """Rejection rolls back working tree to HEAD, preserves proposal ref, and stores hint."""
     policy = _policy()
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     head_sha = repo.head.commit.hexsha
 
     # Developer creates a good change and a bad file
@@ -271,6 +303,7 @@ def test_commit_review_gate_reject_executes_rollback_and_preserves_context(tmp_p
 
 def test_the_rejection_reason_and_proposal_ref_reach_the_next_developer_prompt(
     tmp_path: Path,
+    init_repo: Callable[[Path], Repo],
 ) -> None:
     """The engine's own rejection context reaches the next developer prompt.
 
@@ -281,7 +314,7 @@ def test_the_rejection_reason_and_proposal_ref_reach_the_next_developer_prompt(
     recorded format that the prompt no longer understands fails here.
     """
     policy = _policy()
-    _init_repo(tmp_path)
+    init_repo(tmp_path)
 
     # The rejected iteration: a modified tracked file and an added file.
     (tmp_path / "app.py").write_text("print('modified')", encoding="utf-8")
@@ -332,10 +365,12 @@ def test_the_rejection_reason_and_proposal_ref_reach_the_next_developer_prompt(
     assert f"git checkout {seal.ref} -- ." in rendered
 
 
-def test_commit_review_gate_counter_exhaustion_routes_to_failure(tmp_path: Path) -> None:
+def test_commit_review_gate_counter_exhaustion_routes_to_failure(
+    tmp_path: Path, init_repo: Callable[[Path], Repo]
+) -> None:
     """When rejection limit is reached, route to failed_terminal and preserve proposal ref."""
     policy = _policy()
-    _init_repo(tmp_path)
+    init_repo(tmp_path)
 
     bad_file = tmp_path / "bad.txt"
     bad_file.write_text("bad", encoding="utf-8")
@@ -361,10 +396,12 @@ def test_commit_review_gate_counter_exhaustion_routes_to_failure(tmp_path: Path)
     preflight(tmp_path, seal.ref)
 
 
-def test_stale_review_loopback_preserves_work_and_rejection_budget(tmp_path: Path) -> None:
+def test_stale_review_loopback_preserves_work_and_rejection_budget(
+    tmp_path: Path, init_repo: Callable[[Path], Repo]
+) -> None:
     """Stale review reroutes to review without rollback or rejection accounting."""
     policy = _policy()
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     head_sha = repo.head.commit.hexsha
     pending = tmp_path / "app.py"
     pending.write_text("print('pending')", encoding="utf-8")
@@ -396,9 +433,11 @@ def test_stale_review_loopback_preserves_work_and_rejection_budget(tmp_path: Pat
     assert pending.read_text(encoding="utf-8") == "print('pending')"
 
 
-def test_commit_review_resume_handles_pending_rollback(tmp_path: Path) -> None:
+def test_commit_review_resume_handles_pending_rollback(
+    tmp_path: Path, init_repo: Callable[[Path], Repo]
+) -> None:
     """On resume, if rollback_pending is True, rollback is executed first and flag cleared."""
-    _ = _init_repo(tmp_path)
+    _ = init_repo(tmp_path)
 
     stray_file = tmp_path / "unwanted.tmp"
     stray_file.write_text("should be rolled back", encoding="utf-8")

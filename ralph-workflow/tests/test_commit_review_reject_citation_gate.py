@@ -33,9 +33,11 @@ _ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 #: Reject reasons whose claims cannot be true for a pending diff that holds
 #: exactly ONE modified, non-binary ``src/app.py`` entry: a fabricated
 #: binary count, a fabricated deleted path, a path outside the diff, a
-#: fabricated added-file count, and an unsupported count category ("999 secret files").
-#: A reviewer that cites any of them has malfunctioned, and the engine must
-#: never treat the verdict as authority for the destructive rollback path.
+#: fabricated added-file count, an unsupported count category ("999 secret
+#: files"), and a fabricated count written with each noun a reviewer may
+#: plausibly use for a diff count.  A reviewer that cites any of them has
+#: malfunctioned, and the engine must never treat the verdict as authority
+#: for the destructive rollback path.
 _FABRICATED_REASONS = (
     "src/app.py and 999 binary files were damaged",
     "src/app.py and README.md were deleted",
@@ -43,6 +45,14 @@ _FABRICATED_REASONS = (
     "src/app.py and 1 added file were damaged",
     "src/app.py was modified and Makefile was deleted",
     "src/app.py and 999 secret files were damaged",
+    "src/app.py and 999 paths were damaged",
+    "src/app.py; 999 deletions",
+    "src/app.py and 999 entries were damaged",
+    "src/app.py, 999 changes",
+    "src/app.py, 999 lines",
+    "src/app.py, 999 items",
+    "src/app.py, 999 paths deleted",
+    "src/app.py and 999 modifications",
 )
 
 
@@ -172,6 +182,7 @@ def test_correctly_cited_reject_is_still_a_rejection(tmp_git_repo: Path) -> None
     for valid_reason in (
         "src/app.py was corrupted by the change",
         "src/app.py and 1 modified file was damaged",
+        "src/app.py and 1 modification was damaged",
     ):
         _write_reject_artifact(workspace, valid_reason)
 

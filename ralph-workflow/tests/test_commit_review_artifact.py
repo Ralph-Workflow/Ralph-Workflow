@@ -621,3 +621,82 @@ def test_citation_verifier_paths_match_the_exact_repository_relative_path() -> N
     assert verify_reject_citations("Changed src/main.py.bak", diff) is False
     assert verify_reject_citations("Changed other/src/main.py", diff) is False
     assert verify_reject_citations("Changed main.py", diff) is False
+
+
+#: Reject reasons whose count claim is false for a proposal diff that holds
+#: exactly ONE deleted ``src/main.py`` entry.  Every reason names a real
+#: path and a fabricated quantity, and every quantity is written with a
+#: noun a reviewer may plausibly use for a diff count.
+_FABRICATED_COUNT_REASONS = (
+    "Deleted src/main.py and 999 paths",
+    "Deleted src/main.py; 999 deletions",
+    "Deleted src/main.py and 999 entries",
+    "Deleted src/main.py, 999 changes",
+    "Deleted src/main.py, 999 lines",
+    "Deleted src/main.py, 999 items",
+    "Deleted src/main.py, 999 paths deleted",
+    "Deleted src/main.py and 999 modifications",
+)
+
+
+@pytest.mark.parametrize("reason", _FABRICATED_COUNT_REASONS)
+def test_citation_verifier_fabricated_count_nouns_fail_closed(reason: str) -> None:
+    """A fabricated count never verifies, whatever noun the reviewer writes.
+
+    The proposal diff holds exactly one deleted ``src/main.py`` entry, so
+    every count above is false.  A count the verifier cannot recognise is a
+    count it cannot check, and an unchecked count must never authorise the
+    destructive rollback path.
+    """
+    diff: list[object] = [_FakeDiffEntry(path="src/main.py", status="D")]
+
+    assert verify_reject_citations(reason, diff) is False
+
+
+def test_citation_verifier_accepted_count_forms_still_verify() -> None:
+    """The accepted count syntax still verifies when the diff backs it.
+
+    The tightening recognises more counts, so it must keep recognising the
+    counts it always recognised: a plain ``N files`` claim, an explicit
+    ``count: N`` claim, and a typed ``N deleted files`` claim.
+    """
+    diff: list[object] = [
+        _FakeDiffEntry(path=f"src/file_{index}.py", status="D") for index in range(999)
+    ]
+
+    assert verify_reject_citations("999 files", diff) is True
+    assert verify_reject_citations("count: 999", diff) is True
+    assert verify_reject_citations("999 deleted files", diff) is True
+
+    modified_diff: list[object] = [
+        _FakeDiffEntry(path="src/main.py", status="M"),
+        _FakeDiffEntry(path="src/other.py", status="M"),
+    ]
+    assert verify_reject_citations("2 modified files were corrupted", modified_diff) is True
+
+
+def test_citation_verifier_count_nouns_the_diff_cannot_back_fail_closed() -> None:
+    """A count the diff cannot back is unverifiable, so it fails closed.
+
+    The diff summary carries paths and statuses, never line counts: a claim
+    about lines has no backing fact, so it can never authorise a rollback.
+    """
+    diff: list[object] = [_FakeDiffEntry(path="src/main.py", status="D")]
+
+    assert verify_reject_citations("Deleted src/main.py and 1 line", diff) is False
+
+
+def test_citation_verifier_non_count_numbers_are_not_count_claims() -> None:
+    """A number that names no diff count never becomes a count claim.
+
+    A path that carries digits, a path with a line suffix, and a bare line
+    number are references to a place in the tree, not quantities of the
+    diff: reading them as counts would make a legitimate reason fail closed.
+    """
+    diff: list[object] = [_FakeDiffEntry(path="src/2024/report.py", status="M")]
+
+    assert verify_reject_citations("Changed src/2024/report.py", diff) is True
+    assert verify_reject_citations("Changed src/2024/report.py:42", diff) is True
+    assert verify_reject_citations("Changed src/2024/report.py at line 42", diff) is True
+    assert verify_reject_citations("Line 42 of src/2024/report.py is broken", diff) is True
+    assert verify_reject_citations("Line 42 of the file src/2024/report.py is broken", diff) is True

@@ -17,6 +17,14 @@ therefore fails closed.
   entries, and ``N modified files`` exactly ``N`` modified entries.  A count
   whose category has no matching entry fails, and so does a count whose
   category cannot be determined.
+* Every count-like noun is a count, not only the noun ``file``: ``N paths``,
+  ``N deletions``, ``N entries``, ``N changes``, ``N lines``, ``N items`` and
+  ``N modifications`` assert quantities of the diff too.  A count the diff
+  cannot back, and a count whose noun or qualifier names a category the
+  verifier does not know, are unverifiable and fail closed.
+* A number that names no count is not a count claim: a path that carries
+  digits, a ``path:line`` suffix, and a bare line number are references to
+  a place in the tree.
 * Every cited path and every cited count of a reason must verify, and a
   reason without a single verified citation fails.
 """
@@ -126,30 +134,107 @@ _COUNT_KIND_BY_WORD: dict[str, str] = {
     "untracked": "added",
 }
 
-# The type words accepted in a count claim, in the order they are matched.
-_COUNT_KIND_PATTERN: str = "deleted|removed|modified|changed|added|new|untracked|binary"
-
-# Filler words that may sit between the counted noun and a trailing type
-# word ("2 files were deleted").
-_COUNT_FILLER_PATTERN: str = "were|was|are|is|been|be|have|has|had|got"
-
 # The category used when a count names no category at all ("3 files").
 _TOTAL_COUNT_KIND: str = "total"
+
+# The nouns a reviewer may write to assert a quantity of the diff, mapped to
+# the diff category the noun asserts.  A noun whose value is None names a
+# quantity the diff summary cannot back at all: such a count is
+# unverifiable, so it fails closed instead of passing unexamined.
+_COUNT_NOUN_CATEGORY: dict[str, str | None] = {
+    "addition": "added",
+    "additions": "added",
+    "change": _TOTAL_COUNT_KIND,
+    "changes": _TOTAL_COUNT_KIND,
+    "deletion": "deleted",
+    "deletions": "deleted",
+    "diff": _TOTAL_COUNT_KIND,
+    "diffs": _TOTAL_COUNT_KIND,
+    "edit": "modified",
+    "edits": "modified",
+    "entry": _TOTAL_COUNT_KIND,
+    "entries": _TOTAL_COUNT_KIND,
+    "file": _TOTAL_COUNT_KIND,
+    "files": _TOTAL_COUNT_KIND,
+    "hunk": None,
+    "hunks": None,
+    "item": _TOTAL_COUNT_KIND,
+    "items": _TOTAL_COUNT_KIND,
+    "line": None,
+    "lines": None,
+    "modification": "modified",
+    "modifications": "modified",
+    "patch": None,
+    "patches": None,
+    "path": _TOTAL_COUNT_KIND,
+    "paths": _TOTAL_COUNT_KIND,
+    "removal": "deleted",
+    "removals": "deleted",
+}
+
+# The words that name a place inside a file rather than a quantity of the
+# diff.  A number that follows one of them is a reference, not a count.
+_COUNT_REFERENCE_WORDS: frozenset[str] = frozenset(
+    {
+        "byte",
+        "bytes",
+        "char",
+        "chars",
+        "character",
+        "characters",
+        "column",
+        "columns",
+        "line",
+        "lines",
+        "page",
+        "pages",
+        "row",
+        "rows",
+        "version",
+        "versions",
+    }
+)
+
+# How many tokens may sit between a number and the noun it counts.
+_COUNT_NOUN_WINDOW: int = 3
+
+# The filler words that may sit between a counted noun and a trailing
+# category word ("2 files were deleted").
+_COUNT_FILLER_WORDS: frozenset[str] = frozenset(
+    {
+        "are",
+        "be",
+        "been",
+        "got",
+        "had",
+        "has",
+        "have",
+        "is",
+        "was",
+        "were",
+    }
+)
 
 _MARKDOWN_LINK_RE: re.Pattern[str] = re.compile(r"\[([^]]*)\]\(([^)]+)\)")
 _INLINE_CODE_RE: re.Pattern[str] = re.compile(r"`([^`]+)`")
 _QUOTED_STR_RE: re.Pattern[str] = re.compile(r"""(?:'([^']+)'|"([^"]+)")""")
-_COUNT_RE: re.Pattern[str] = re.compile(
-    rf"\b(?P<count>\d+)\s+(?:['\"`*~]?(?P<kind>[a-zA-Z_-]+(?:\s+[a-zA-Z_-]+)?)['\"`*~]?\s+)?files?"
-    rf"(?:(?:\s+(?:{_COUNT_FILLER_PATTERN})\s+|\s+)"
-    rf"['\"`*~]?(?P<kind_after>{_COUNT_KIND_PATTERN})['\"`*~]?)?\b",
-    re.IGNORECASE,
-)
 _EXPLICIT_COUNT_RE: re.Pattern[str] = re.compile(r"\bcount:\s*(\d+)\b", re.IGNORECASE)
 _DIGITS_AND_DOTS_RE: re.Pattern[str] = re.compile(r"^\d+(\.\d+)+$")
 _ITEM_ID_PREFIX_RE: re.Pattern[str] = re.compile(r"^\[[A-Za-z0-9_-]+\]\s*")
 _MULTI_SLASH_RE: re.Pattern[str] = re.compile(r"/{2,}")
 _LINE_SUFFIX_RE: re.Pattern[str] = re.compile(r":\d+(?:-\d+)?(?::\d+)?$")
+
+# The characters that are stripped from the edges of a token before it is
+# read as a word.
+_TOKEN_EDGE_RE: re.Pattern[str] = re.compile(r"^[^0-9A-Za-z_-]+|[^0-9A-Za-z_-]+$")
+
+# A token made of word characters only: a plain word a count phrase may
+# span ("999 secret files").  A token that carries a path separator ends
+# the phrase.
+_PLAIN_WORD_RE: re.Pattern[str] = re.compile(r"^[A-Za-z_-]+$")
+
+# A token that is a bare number, optionally grouped with thousands separators.
+_NUMBER_TOKEN_RE: re.Pattern[str] = re.compile(r"^(?:\d+|\d{1,3}(?:,\d{3})+)$")
 
 
 @dataclass(frozen=True)
@@ -464,34 +549,136 @@ def _verify_path_candidates(
     return matched, unmatched
 
 
-def _count_kind(primary: str | None, secondary: str | None) -> str | None:
-    """Resolve the diff category a count claim is typed against.
+def _word_tokens(text: str) -> list[str]:
+    """Split a reason line into the lower-case words it carries.
 
     Args:
-        primary: The category word written before the noun, if any.
-        secondary: The category word written after the noun, if any.
+        text: The reason line.
 
     Returns:
-        The category name, or None when the claim names an unsupported
-        category or conflicting categories and therefore cannot be verified.
+        One token per whitespace-separated word, with the markdown and
+        punctuation wrappers removed from its edges and its letters folded
+        to lower case, so a count claim is recognised whatever case the
+        reviewer wrote it in.
     """
-    primary_clean = (primary or "").strip(_WRAPPER_CHARS).strip().lower()
-    secondary_clean = (secondary or "").strip(_WRAPPER_CHARS).strip().lower()
+    return [_TOKEN_EDGE_RE.sub("", token).lower() for token in text.split()]
 
-    if primary_clean and primary_clean not in _COUNT_KIND_BY_WORD:
-        return None
-    if secondary_clean and secondary_clean not in _COUNT_KIND_BY_WORD:
-        return None
 
-    first = _COUNT_KIND_BY_WORD.get(primary_clean)
-    second = _COUNT_KIND_BY_WORD.get(secondary_clean)
-    if first and second:
-        return first if first == second else None
-    if first:
-        return first
-    if second:
-        return second
-    return _TOTAL_COUNT_KIND
+def _count_noun_index(index: int, tokens: list[str]) -> int | None:
+    """Return the index of the noun a number counts, if it names one.
+
+    The counted noun is the word that follows the number, optionally behind
+    other words ("999 secret files").  The scan stops at a token that is
+    not a plain word, because a path or a symbol ends the phrase.
+
+    Args:
+        index: The index of the number token.
+        tokens: The word tokens of the reason line.
+
+    Returns:
+        The index of the counted noun, or None when the number names none.
+    """
+    for offset in range(1, _COUNT_NOUN_WINDOW + 1):
+        position = index + offset
+        if position >= len(tokens):
+            return None
+        word = tokens[position]
+        if not _PLAIN_WORD_RE.match(word):
+            return None
+        if word in _COUNT_NOUN_CATEGORY:
+            return position
+    return None
+
+
+def _trailing_category(noun_index: int, tokens: list[str]) -> str | None:
+    """Return the category word that follows a counted noun, if any.
+
+    Args:
+        noun_index: The index of the counted noun.
+        tokens: The word tokens of the reason line.
+
+    Returns:
+        The category word, or None when the noun carries no trailing one.
+    """
+    position = noun_index + 1
+    while position < len(tokens) and tokens[position] in _COUNT_FILLER_WORDS:
+        position += 1
+    if position < len(tokens):
+        word = tokens[position]
+        if word in _COUNT_KIND_BY_WORD:
+            return word
+    return None
+
+
+def _count_category(index: int, tokens: list[str]) -> tuple[bool, str | None]:
+    """Return the diff category a number asserts, and whether it asserts one.
+
+    Args:
+        index: The index of the number token.
+        tokens: The word tokens of the reason line.
+
+    Returns:
+        Whether the number asserts a count at all, and the diff category the
+        count must be backed by.  The category is None when the claim cannot
+        be typed: the noun names a quantity the diff cannot back, an unknown
+        word qualifies the noun, or two categories conflict.
+    """
+    noun_index = _count_noun_index(index, tokens)
+    if noun_index is None:
+        return (False, None)
+
+    noun = tokens[noun_index]
+    quantity = _COUNT_NOUN_CATEGORY[noun]
+    if quantity is None:
+        return (True, None)
+
+    typed: list[str] = []
+    for word in tokens[index + 1 : noun_index]:
+        category = _COUNT_KIND_BY_WORD.get(word)
+        if category is None:
+            # An unknown word qualifies the noun, so the claim names a
+            # category the verifier does not know.
+            return (True, None)
+        typed.append(category)
+
+    trailing = _trailing_category(noun_index, tokens)
+    if trailing is not None:
+        typed.append(_COUNT_KIND_BY_WORD[trailing])
+
+    if not typed:
+        return (True, quantity)
+    if len(set(typed)) > 1:
+        return (True, None)
+    return (True, typed[0])
+
+
+def _count_claims(tokens: list[str]) -> list[tuple[int, str | None]]:
+    """Return the count claims one reason line makes.
+
+    A claim is a number that asserts a quantity of the diff: it names a
+    counted noun ("999 paths"), optionally typed by a category word ("999
+    deleted files").  A number that names a place in a file instead of a
+    quantity is a reference, not a claim.
+
+    Args:
+        tokens: The word tokens of the reason line.
+
+    Returns:
+        The count of every claim and the diff category it must be backed
+        by.  The category is None when the claim cannot be typed, which
+        makes the count unverifiable.
+    """
+    claims: list[tuple[int, str | None]] = []
+    for index, token in enumerate(tokens):
+        if not _NUMBER_TOKEN_RE.match(token):
+            continue
+        if index > 0 and tokens[index - 1] in _COUNT_REFERENCE_WORDS:
+            continue
+        claimed, category = _count_category(index, tokens)
+        if not claimed:
+            continue
+        claims.append((int(token.replace(",", "")), category))
+    return claims
 
 
 def _verify_count_citations(
@@ -508,16 +695,11 @@ def _verify_count_citations(
     unmatched: set[int] = set()
 
     for line in lines:
-        for match in _COUNT_RE.finditer(line):
-            count_text = match.group("count")
-            if not isinstance(count_text, str):
-                continue
-            count = int(count_text)
-            kind = _count_kind(match.group("kind"), match.group("kind_after"))
-            if kind is None:
+        for count, category in _count_claims(_word_tokens(line)):
+            if category is None:
                 unmatched.add(count)
                 continue
-            backing = summary.count_for(kind)
+            backing = summary.count_for(category)
             if backing > 0 and count == backing:
                 matched.add(count)
             else:

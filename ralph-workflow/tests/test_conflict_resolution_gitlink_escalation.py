@@ -13,6 +13,7 @@ Contract:
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -121,6 +122,88 @@ def _setup_superproject(tmp_path: Path, sub_origin: Path) -> Path:
     return super_repo
 
 
+#: Files of a superproject that carry the absolute path of the submodule
+#: remote. A copied superproject has to point at the private copy of the
+#: remote that belongs to the test that owns the copy.
+_SUBMODULE_REMOTE_URL_FILES: tuple[str, ...] = (
+    ".gitmodules",
+    ".git/config",
+    ".git/modules/sub/config",
+)
+
+
+def _repoint_submodule_remote(super_repo: Path, old_url: str, new_url: str) -> None:
+    """Point a copied superproject at the private copy of the submodule remote.
+
+    The URL lives in the committed ``.gitmodules`` as well as in the two
+    config files, and a clone of the superproject reads the committed copy,
+    so the commit that carries ``.gitmodules`` is rewritten as well.
+    """
+    for relative in _SUBMODULE_REMOTE_URL_FILES:
+        target = super_repo / relative
+        text = target.read_text(encoding="utf-8")
+        if old_url not in text:
+            raise RuntimeError(f"superproject template records no {old_url} in {relative}")
+        target.write_text(text.replace(old_url, new_url), encoding="utf-8")
+    _git(super_repo, "add", ".gitmodules")
+    _git(super_repo, "commit", "--amend", "--no-edit")
+
+
+@pytest.fixture(scope="module")
+def _remote_template(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, str, str, str]:
+    """Build the submodule remote once for the whole module.
+
+    The remote is an immutable input to every proof in this file: the base,
+    branch_a and branch_b commits are the only things read from it, and the
+    descendant commit a proof adds is added to the private copy the proof
+    owns.
+    """
+    template_root = tmp_path_factory.mktemp("gitlink-remote-template")
+    return _setup_submodule_remote(template_root)
+
+
+@pytest.fixture(scope="module")
+def _superproject_template(
+    tmp_path_factory: pytest.TempPathFactory,
+    _remote_template: tuple[Path, str, str, str],
+) -> Path:
+    """Build the superproject once for the whole module.
+
+    The superproject records the absolute path of the submodule remote, so
+    every private copy is repointed at the private copy of the remote that
+    belongs to the same test.
+    """
+    template_root = tmp_path_factory.mktemp("gitlink-superproject-template")
+    return _setup_superproject(template_root, _remote_template[0])
+
+
+@pytest.fixture
+def submodule_remote(
+    tmp_path: Path,
+    _remote_template: tuple[Path, str, str, str],
+) -> tuple[Path, str, str, str]:
+    """Hand the test a private copy of the module's submodule remote."""
+    template, sha_base, sha_a, sha_b = _remote_template
+    sub_origin = tmp_path / "sub_remote"
+    shutil.copytree(template, sub_origin)
+    return sub_origin, sha_base, sha_a, sha_b
+
+
+@pytest.fixture
+def super_repo(
+    tmp_path: Path,
+    submodule_remote: tuple[Path, str, str, str],
+    _remote_template: tuple[Path, str, str, str],
+    _superproject_template: Path,
+) -> Path:
+    """Hand the test a private superproject wired to its own remote copy."""
+    sub_origin = submodule_remote[0]
+    repo_path = tmp_path / "super"
+    shutil.copytree(_superproject_template, repo_path)
+    _repoint_submodule_remote(repo_path, str(_remote_template[0]), str(sub_origin))
+    return repo_path
+
+
 @pytest.fixture
 def allow_file_transport(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
@@ -134,10 +217,12 @@ def allow_file_transport(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_ancestor_descendant_objects_present_resolved(tmp_path: Path) -> None:
+def test_gitlink_ancestor_descendant_objects_present_resolved(
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
     """When both sides are ancestor/descendant and objects exist, resolve deterministically."""
-    sub_origin, base, sha_a, _sha_b = _setup_submodule_remote(tmp_path)
-    super_repo = _setup_superproject(tmp_path, sub_origin)
+    sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
     # Fetch descendant commit into super/sub so all objects are present
@@ -170,11 +255,13 @@ def test_gitlink_ancestor_descendant_objects_present_resolved(tmp_path: Path) ->
 
 @pytest.mark.timeout_seconds(5)
 def test_gitlink_submodule_absent_objects_fetchable_resolved(
-    tmp_path: Path, allow_file_transport: Path
+    tmp_path: Path,
+    allow_file_transport: Path,
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
 ) -> None:
     """When submodule is absent/uninitialized, fetch/init is attempted and resolves."""
-    sub_origin, base, sha_a, _sha_b = _setup_submodule_remote(tmp_path)
-    super_repo = _setup_superproject(tmp_path, sub_origin)
+    sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
     # Clone super_repo without submodules so clone / sub is uninitialized
@@ -207,10 +294,13 @@ def test_gitlink_submodule_absent_objects_fetchable_resolved(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(tmp_path: Path) -> None:
+def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(
+    tmp_path: Path,
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
     """When file transport is denied, submodule fetch fails closed into actionable escalation without agent."""
-    sub_origin, base, sha_a, _sha_b = _setup_submodule_remote(tmp_path)
-    super_repo = _setup_superproject(tmp_path, sub_origin)
+    sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
     # Clone super_repo without submodules so clone / sub is uninitialized
@@ -298,10 +388,12 @@ def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(tmp_path
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_submodule_present_missing_objects_fetched_and_resolved(tmp_path: Path) -> None:
+def test_gitlink_submodule_present_missing_objects_fetched_and_resolved(
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
     """When submodule exists but a needed descendant object is missing, fetch resolves it."""
-    sub_origin, base, sha_a, _sha_b = _setup_submodule_remote(tmp_path)
-    super_repo = _setup_superproject(tmp_path, sub_origin)
+    sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 
     # Do not fetch descendant into super/sub yet; verify sha_desc is missing
@@ -339,10 +431,12 @@ def test_gitlink_submodule_present_missing_objects_fetched_and_resolved(tmp_path
 
 
 @pytest.mark.timeout_seconds(5)
-def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(tmp_path: Path) -> None:
+def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
     """Diverged gitlink escalates on sight naming path and operator command; no agent invoked."""
-    sub_origin, base, sha_a, sha_b = _setup_submodule_remote(tmp_path)
-    super_repo = _setup_superproject(tmp_path, sub_origin)
+    _sub_origin, base, sha_a, sha_b = submodule_remote
 
     # Fetch branch_b into super/sub so both diverged objects are present locally
     _git(super_repo / "sub", "fetch", "-q", "origin")
@@ -393,10 +487,12 @@ def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(tmp_path: Path) ->
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_unfetchable_objects_escalates_on_sight(tmp_path: Path) -> None:
+def test_gitlink_unfetchable_objects_escalates_on_sight(
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
     """Gitlink with missing objects that cannot be fetched escalates on sight."""
-    sub_origin, base, sha_a, _sha_b = _setup_submodule_remote(tmp_path)
-    super_repo = _setup_superproject(tmp_path, sub_origin)
+    _sub_origin, base, sha_a, _sha_b = submodule_remote
 
     nonexistent_sha = "ffffffffffffffffffffffffffffffffffffffff"
     index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {nonexistent_sha} 3\tsub\n"
@@ -421,7 +517,10 @@ def test_gitlink_unfetchable_objects_escalates_on_sight(tmp_path: Path) -> None:
 
 
 @pytest.mark.timeout_seconds(5)
-def test_diverged_gitlink_production_driver_and_rebase_seam(tmp_path: Path) -> None:
+def test_diverged_gitlink_production_driver_and_rebase_seam(
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
     """Production driver and rebase seam carry operator command for diverged gitlinks on sight."""
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline import resolve_rebase_with_config
@@ -429,8 +528,7 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(tmp_path: Path) -> N
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
     from ralph.policy import load_policy
 
-    sub_origin, base, sha_a, sha_b = _setup_submodule_remote(tmp_path)
-    super_repo = _setup_superproject(tmp_path, sub_origin)
+    _sub_origin, base, sha_a, sha_b = submodule_remote
     _git(super_repo / "sub", "fetch", "-q", "origin")
 
     # Set up paused rebase state in .git
