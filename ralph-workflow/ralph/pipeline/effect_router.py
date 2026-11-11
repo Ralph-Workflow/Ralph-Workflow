@@ -133,6 +133,7 @@ def _parallel_or_agent_effect(
     workspace_scope: WorkspaceScope | None = None,
     *,
     recovery: RecoveryController | None = None,
+    proposal_identity: tuple[str, str] | None = None,
 ) -> Effect:
     work_units = state.work_units
     if not work_units and phase_def.parallelization is not None:
@@ -163,11 +164,14 @@ def _parallel_or_agent_effect(
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
+    run_id, iteration = proposal_identity if proposal_identity is not None else ("", "")
     return InvokeAgentEffect(
         agent_name=agent_name,
         phase=state.phase,
         prompt_file=prompt_file_for_phase(state.phase),
         drain=phase_def.drain,
+        run_id=run_id,
+        iteration=iteration,
     )
 
 
@@ -290,8 +294,7 @@ def _commit_review_phase_effect(
     from ralph.phases.commit_review import run_commit_review_stage1_preflight
     from ralph.pipeline.effects.commit_review_reject_effect import CommitReviewRejectEffect
 
-    run_id: str = "run"
-    iteration: str = str(state.commit_review_rejections + 1)
+    run_id, iteration = commit_review_proposal_identity(state)
     preflight_outcome = run_commit_review_stage1_preflight(
         workspace_scope.root,
         run_id,
@@ -314,7 +317,28 @@ def _commit_review_phase_effect(
         config,
         workspace_scope,
         recovery=recovery,
+        proposal_identity=(run_id, iteration),
     )
+
+
+def commit_review_proposal_identity(state: PipelineState) -> tuple[str, str]:
+    """Return the stable ``(run_id, iteration)`` identity of a commit-review seal.
+
+    The identity must be the SAME in the preflight that seals the proposal and
+    in the phase handler that re-seals it after the reviewer acted, or the two
+    seals land on different refs. It must also be UNIQUE per sealing attempt,
+    so a later attempt never overwrites an earlier proposal ref: the rejected
+    ref of one attempt has to stay resolvable for the whole run.
+
+    The iteration segment therefore combines the pipeline iteration (the
+    completed development-cycle count, which only advances when a cycle
+    commits) with the consecutive-rejection count (which only advances when
+    an attempt is rejected). Both components are monotone, so a segment is
+    never reused.
+    """
+    cycle = state.get_outer_progress("iteration") + 1
+    attempt = state.commit_review_rejections + 1
+    return "run", f"{cycle}-{attempt}"
 
 
 def _commit_phase_effect(

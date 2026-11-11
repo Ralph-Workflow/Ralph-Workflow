@@ -12,10 +12,11 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from git import Repo
 from git.exc import GitCommandError
+from loguru import logger
 
 from ralph.git.diff_entry import DiffEntry
 from ralph.git.git_command_queue import route_git_method
@@ -544,11 +545,46 @@ def rollback(
         if step_hook is not None:
             step_hook("complete")
 
+        _mark_rejected_proposal(root_path, ref)
+
+
+#: Namespace a rolled-back proposal is marked under, mirroring the proposal
+#: namespace segment for segment.
+REJECTED_PROPOSAL_REF_PREFIX = "refs/ralph/rejected-proposals/"
+_PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
+
+
+def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
+    """Record a rolled-back proposal ref so the sweep keeps it for the run.
+
+    A rolled-back proposal is a REJECTED proposal: its tree never became a
+    commit, and ``git checkout <ref> -- .`` is the documented recovery. The
+    mark lives in its own ref namespace, so the ref is protected by NAME and
+    never by the tree it happens to carry: a later iteration that reproduces
+    the same tree must not make the rejected ref prunable.
+    """
+    if not proposal_ref.startswith(_PROPOSAL_REF_PREFIX):
+        return
+    marker_ref = REJECTED_PROPOSAL_REF_PREFIX + proposal_ref[len(_PROPOSAL_REF_PREFIX) :]
+    try:
+        with _open_repo(repo_root) as repo:
+            sha = cast("str", route_git_method(repo, "rev_parse", ("--verify", proposal_ref)))
+            route_git_method(repo, "update_ref", (marker_ref, sha))
+    except Exception as exc:
+        # The mark only protects a ref; a failure here must not fail the
+        # rollback that already restored the tree.
+        logger.warning(
+            "Could not mark the rejected proposal ref {ref}: {err}",
+            ref=proposal_ref,
+            err=exc,
+        )
+
 
 __all__ = [
     "DiffEntry",
     "ProposalPreflightError",
     "ProposalSealError",
+    "REJECTED_PROPOSAL_REF_PREFIX",
     "Seal",
     "diff_tree",
     "preflight",

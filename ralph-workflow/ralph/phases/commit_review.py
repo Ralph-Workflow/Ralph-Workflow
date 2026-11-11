@@ -222,9 +222,9 @@ def _resolve_run_id_and_iteration(
         run_id_val = "run"
 
     iteration_val = cast("object", getattr(effect, "iteration", None))
-    if iteration_val is None:
+    if not isinstance(iteration_val, str) or not iteration_val:
         iteration_val = cast("object", getattr(ctx, "iteration", None))
-    if iteration_val is None:
+    if not isinstance(iteration_val, str) or not iteration_val:
         iteration_val = "1"
 
     return str(run_id_val), str(iteration_val)

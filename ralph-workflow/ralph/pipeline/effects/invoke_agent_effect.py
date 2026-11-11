@@ -23,6 +23,10 @@ class InvokeAgentEffect:
         phase: Current pipeline phase.
         prompt_file: Path to the prompt file for the agent.
         chain_name: Name of the agent chain being used.
+        run_id: Stable run identity of the commit-review proposal seal.
+            Empty for every other phase.
+        iteration: Iteration segment of the commit-review proposal seal.
+            Empty for every other phase.
         requires_completion_evidence: Whether a clean exit must be corroborated
             by durable agent-side evidence. The ``declare_complete`` sentinel
             is always required; a required-artifact phase additionally needs
@@ -39,6 +43,8 @@ class InvokeAgentEffect:
     prompt_file: str
     drain: str | None = None
     chain_name: str = ""
+    run_id: str = ""
+    iteration: str = ""
     requires_completion_evidence: bool = True
     activity_only_supervision: bool = False
     activity_only_operator_cap_seconds: float | None = None

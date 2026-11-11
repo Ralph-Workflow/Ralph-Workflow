@@ -589,3 +589,97 @@ def test_commit_prune_honours_the_policy_proposal_retention_limit(tmp_path: Path
     assert [ref for ref in tight_refs if ref != rejection_ref] == []
     assert [ref for ref in workspace_refs if ref != rejection_ref] == []
     assert "refs/ralph/proposals/run-x/1" in wide_refs
+
+
+def test_a_rejected_proposal_ref_survives_a_later_commit_of_the_same_tree(
+    tmp_path: Path,
+) -> None:
+    """A rejected ref stays protected even when its tree is committed later.
+
+    The REJECTION is what makes the ref recoverable, not the tree it
+    carries: a later iteration that reproduces the same content and gets
+    approved must not make the rejected ref prunable. Without the explicit
+    rejection mark the sweep would prune it, because its tree is now part of
+    the commit history.
+    """
+    _init_test_git_repo(tmp_path, "main")
+    tracked = tmp_path / "initial.txt"
+
+    # --- iteration 1: the commit review rejects the work ------------------
+    tracked.write_text("shared content\n", encoding="utf-8")
+    rejected_seal = seal_pending(tmp_path, "run-reject", 1)
+    rollback(tmp_path, rejected_seal.ref)
+    assert tracked.read_text(encoding="utf-8") == "initial content"
+
+    # --- iteration 2: a later iteration commits the SAME content ----------
+    tracked.write_text("shared content\n", encoding="utf-8")
+    approved_seal = seal_pending(tmp_path, "run-reject", 2)
+    assert approved_seal.tree_sha == rejected_seal.tree_sha
+    message_file = _create_commit_message_artifact(tmp_path, "feat: approved work")
+    event = execute_commit_effect(
+        CommitEffect(
+            message_file=str(message_file),
+            expected_tree_sha=approved_seal.tree_sha,
+        ),
+        tmp_path,
+        branch="main",
+    )
+    assert event == PipelineEvent.COMMIT_SUCCESS
+
+    # The rejected iteration's ref survived even though its tree was
+    # committed by the later iteration.
+    surviving = _proposal_refs(tmp_path)
+    assert "refs/ralph/proposals/run-reject/1" in surviving
+
+    # The documented recovery still restores the rejected tree.
+    repo = Repo(tmp_path)
+    try:
+        repo.git.checkout(rejected_seal.ref, "--", ".")
+    finally:
+        repo.close()
+    assert tracked.read_text(encoding="utf-8") == "shared content\n"
+
+
+def test_the_proposal_identity_advances_with_every_rejection_attempt() -> None:
+    """Two rejections must seal two DIFFERENT proposal refs.
+
+    The iteration segment of a proposal ref must never be reused: a second
+    rejection overwriting the first one's ref would destroy the recovery
+    path (``git checkout <ref> -- .``) of the first rejection.
+    """
+    from ralph.pipeline.effect_router import commit_review_proposal_identity
+    from ralph.pipeline.state import PipelineState
+
+    first = commit_review_proposal_identity(PipelineState(phase="development"))
+    second = commit_review_proposal_identity(
+        PipelineState(phase="development", commit_review_rejections=1)
+    )
+    later_cycle = commit_review_proposal_identity(
+        PipelineState(phase="development", outer_progress={"iteration": 1})
+    )
+
+    assert first[0] == second[0] == later_cycle[0]
+    assert len({first[1], second[1], later_cycle[1]}) == 3
+
+
+def test_two_rejections_seal_two_distinct_restorable_proposal_refs(tmp_path: Path) -> None:
+    """Two rejections seal two refs that both stay resolvable and restorable."""
+    _init_test_git_repo(tmp_path, "main")
+    tracked = tmp_path / "initial.txt"
+
+    tracked.write_text("first attempt\n", encoding="utf-8")
+    first = seal_pending(tmp_path, "run", "1-1")
+    rollback(tmp_path, first.ref)
+
+    tracked.write_text("second attempt\n", encoding="utf-8")
+    second = seal_pending(tmp_path, "run", "1-2")
+
+    assert first.ref != second.ref
+    repo = Repo(tmp_path)
+    try:
+        assert repo.git.rev_parse(first.ref)
+        assert repo.git.rev_parse(second.ref)
+        repo.git.checkout(first.ref, "--", ".")
+    finally:
+        repo.close()
+    assert tracked.read_text(encoding="utf-8") == "first attempt\n"

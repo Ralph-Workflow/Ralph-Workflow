@@ -290,7 +290,6 @@ tests/pipeline/test_terminal_mcp_error_per_entry_path.py|0,4,4
 tests/pipeline/test_terminal_mcp_error_supervisor_ordering.py|0,3,0
 tests/process/monitor/test_dispatch_all_transports.py|0,2,0
 tests/process/test_spawn_env_sanitizer.py|4,0,0
-tests/project_policy/test_agents_md.py|0,0,3
 tests/project_policy/test_analysis.py|0,0,1
 tests/project_policy/test_authentic_v4_consent_flow.py|0,2,4
 tests/project_policy/test_citation_workspace_restore.py|0,0,2
@@ -901,7 +900,6 @@ tests/test_workspace_fs_fs_workspace_read_lines.py|0,0,5
 tests/test_workspace_memory_memory_workspace_init.py|0,0,3
 tests/test_workspace_memory_memory_workspace_normalize.py|0,0,3
 tests/test_workspace_monitor_never_delays_the_agent.py|0,3,0
-tests/testing/test_audit_instruction_integrity.py|0,4,0
 tests/unit/display/_criteria_probes.py|6,35,9
 tests/unit/display/test_brief_criteria_coverage.py|0,2,5
 tests/unit/display/test_crash_output_containment.py|0,0,1

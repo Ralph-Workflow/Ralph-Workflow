@@ -118,6 +118,7 @@ _DEFAULT_ENV_GETTER: _EnvGetter = os.environ.get
 
 #: Namespace the commit-review phase seals a proposal under (``<run_id>/<iteration>``).
 _PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
+_REJECTED_PROPOSAL_REF_PREFIX = "refs/ralph/rejected-proposals/"
 _PROPOSAL_TREE_ARGS = ("for-each-ref", "--format=%(refname) %(tree)", _PROPOSAL_REF_PREFIX)
 _COMMITTED_TREE_ARGS = ("log", "--format=%T", "HEAD", "--branches", "--tags", "--remotes")
 
@@ -140,8 +141,9 @@ def _proposal_sweep(
     becomes a commit. The documented recovery for a wrongly rejected
     iteration is ``git checkout <ref> -- .``, so those refs must survive
     every later commit: the sweep protects every proposal ref whose tree
-    is absent from the commit history, and bounds the rest by the policy's
-    ``commit_review.proposal_retention``.
+    is absent from the commit history, every ref the run explicitly
+    rejected (marked under ``refs/ralph/rejected-proposals/``), and bounds
+    the rest by the policy's ``commit_review.proposal_retention``.
     """
     raw_refs = _git_stdout(repo_root, _PROPOSAL_TREE_ARGS, "commit:proposal-refs")
     raw_committed = _git_stdout(repo_root, _COMMITTED_TREE_ARGS, "commit:committed-trees")
@@ -153,6 +155,18 @@ def _proposal_sweep(
             trees[parts[0]] = parts[2]
     committed = set(raw_committed.splitlines())
     keep_refs = [ref for ref, tree in sorted(trees.items()) if tree not in committed]
+    raw_rejected = _git_stdout(
+        repo_root,
+        ("for-each-ref", "--format=%(refname)", _REJECTED_PROPOSAL_REF_PREFIX),
+        "commit:rejected-proposals",
+    )
+    for raw_marker in raw_rejected.splitlines():
+        marker = raw_marker.strip()
+        if not marker or not marker.startswith(_REJECTED_PROPOSAL_REF_PREFIX):
+            continue
+        proposal_ref = _PROPOSAL_REF_PREFIX + marker[len(_REJECTED_PROPOSAL_REF_PREFIX) :]
+        if proposal_ref not in keep_refs:
+            keep_refs.append(proposal_ref)
     rollback_ref = opts.get("rollback_ref")
     if isinstance(rollback_ref, str) and rollback_ref.strip() not in keep_refs:
         keep_refs.insert(0, rollback_ref.strip())
