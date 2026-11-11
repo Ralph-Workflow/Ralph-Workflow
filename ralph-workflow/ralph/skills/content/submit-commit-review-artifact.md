@@ -19,6 +19,8 @@ Frontmatter:
 - `verdict: approve` or `verdict: reject` (exactly those lowercase words)
 - `tree_sha: <40-hex string>` (the 40-character hex SHA of the sealed proposal tree)
 
+The frontmatter contract is closed: `type`, `verdict`, `tree_sha` and an ignored `reason` are the only accepted keys. Every other key — including the retired `analysis_complete` — is rejected with `SPEC003`.
+
 | Section | Required | Items |
 |---|---|---|
 | `## Actions` | yes (may have zero items) | `<action> \| <path-or-pattern>` per item |
@@ -101,6 +103,7 @@ tree_sha: 0123456789abcdef0123456789abcdef01234567
 
 - `verdict must be 'approve' or 'reject'` (SPEC010) — fix the frontmatter value; no other spellings are accepted.
 - `frontmatter 'tree_sha' must be a 40-character hex string` (SPEC010) — provide the 40-hex SHA of the sealed proposal tree.
+- `unknown frontmatter field '<name>'` (SPEC003) — the frontmatter contract is closed; remove the extra key. Only `type`, `verdict`, `tree_sha` (and an ignored `reason`) are accepted, and `analysis_complete` was replaced by `verdict`.
 - `missing required section 'Reason' when verdict is 'reject'` (SPEC008) or `section 'Reason' requires list items when verdict is 'reject'` (SPEC006) — when rejecting, provide at least one list item in `## Reason` citing concrete evidence (paths or counts).
 - `Actions entries must use '<action> | <path-or-pattern>'` — the item text needs the ` | ` separator with a non-empty action and value.
 - An unknown action word is rejected — the closed set is exactly `delete_file`, `add_to_gitignore`, `add_to_git_exclude`.

@@ -97,8 +97,6 @@ def _write_commit_review_artifact(
     ]
     if tree_sha is not None:
         lines.append(f"tree_sha: {tree_sha}")
-    if "analysis_complete" in content:
-        lines.append(f"analysis_complete: {str(content['analysis_complete']).lower()}")
     lines.append("---")
 
     actions = content.get("actions", [])

@@ -181,26 +181,34 @@ analysis_complete: true
     assert "SPEC002" in error_ids
 
 
-def test_legacy_analysis_complete_never_reaches_the_parsed_content() -> None:
-    """The retired field is never surfaced as verdict content.
+def test_dual_field_commit_review_document_is_rejected() -> None:
+    """A document carrying both ``verdict`` and the retired field is rejected.
 
-    ``analysis_complete`` may sit in the frontmatter as an unknown key, but
-    the closed grammar maps only ``verdict``/``tree_sha``/``actions``/
-    ``reason`` into the artifact payload, so it can never stand in for the
-    verdict.
+    The artifact contract has a single verdict field: ``analysis_complete``
+    was replaced by ``verdict`` and there is no dual-field support. The
+    markdown grammar is a closed contract, so a document that still carries
+    the retired field next to a valid ``verdict`` must fail closed with an
+    unknown-frontmatter diagnostic instead of being silently accepted.
     """
     doc = f"""---
 type: commit_review
 verdict: approve
 tree_sha: {_VALID_TREE_SHA}
-analysis_complete: true
+analysis_complete: false
 ---
 ## Actions
 """
     content, diagnostics = parse_and_validate(doc, get_spec("commit_review"))
-    assert diagnostics == []
-    assert content["verdict"] == "approve"
+
+    # RALPH-TEST-REASON: the commit_review contract declares exactly one verdict
+    # field, so a document that also carries `analysis_complete` has no valid
+    # parse; the assertions below encode that contract.
+    assert content == {}, "a dual-field document must not yield an accepted verdict"
     assert "analysis_complete" not in content
+    errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    assert errors, "a dual-field document must be rejected with an error diagnostic"
+    assert "SPEC003" in {diagnostic.rule_id for diagnostic in errors}
+    assert any("analysis_complete" in diagnostic.message for diagnostic in errors)
 
 
 def test_commit_review_comment_injection_guard_rejects_hash_prefix() -> None:

@@ -69,9 +69,12 @@ key: value
   section, malformed frontmatter, and unsupported heading shapes remain
   errors. Free-form development bodies (see the exemption above) skip
   these checks entirely.
-- Unknown descriptive frontmatter fields and sections are accepted. Typed
-  consumers ignore those extensions; known consumed fields and sections
-  remain subject to the exact per-type rules.
+- Unknown descriptive frontmatter fields and sections are accepted, except
+  where a type closes its frontmatter contract. `commit_review` is closed:
+  only `type`, `verdict`, `tree_sha`, and an ignored `reason` key are
+  accepted, and any other frontmatter field is rejected with `SPEC003`.
+  Typed consumers ignore accepted extensions; known consumed fields and
+  sections remain subject to the exact per-type rules.
 
 ## Errors vs warnings
 

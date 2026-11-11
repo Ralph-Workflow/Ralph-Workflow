@@ -96,6 +96,12 @@ COMMIT_REVIEW_SPEC = MdArtifactSpec(
         "type": FrontmatterVocabulary(("commit_review",), "SPEC010"),
         "verdict": FrontmatterVocabulary(("approve", "reject"), "SPEC010"),
     },
+    # ``reason`` is the payload field the ``## Reason`` section carries. It
+    # stays an explicitly allowed frontmatter key so a rejected review that
+    # only has a frontmatter reason is still diagnosed with the actionable
+    # "missing required section 'Reason'" error instead of being reported as
+    # an unknown field.
+    optional_frontmatter=frozenset({"reason"}),
     sections={
         "Reason": SectionRule(required=False),
         "Actions": SectionRule(required=True),
@@ -103,7 +109,10 @@ COMMIT_REVIEW_SPEC = MdArtifactSpec(
     to_content=_to_content,
     normalize_content=normalize_commit_review_content,
     validate_document=_validate_commit_review_document,
-    allow_unknown_frontmatter=True,
+    # The frontmatter grammar is closed: the contract has a single verdict
+    # field, so the retired ``analysis_complete`` field is rejected as an
+    # unknown frontmatter field instead of being silently discarded.
+    allow_unknown_frontmatter=False,
     allow_unknown_sections=True,
 )
 

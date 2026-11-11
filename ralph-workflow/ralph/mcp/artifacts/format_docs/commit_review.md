@@ -43,9 +43,12 @@ tree_sha: 0123456789abcdef0123456789abcdef01234567
 - `## Reason` — required when `verdict` is `reject` (must contain at least one item
   citing concrete evidence such as paths or counts); optional when `verdict` is `approve`.
 
-Unknown descriptive frontmatter fields and sections are accepted and ignored
-by the typed review consumer. Known fields, action names, and action value
-guards remain strict.
+The frontmatter contract is closed: `type`, `verdict`, and `tree_sha` are the
+only accepted keys. A `reason` key is accepted but ignored — put the
+rejection evidence in the `## Reason` section — and every other
+frontmatter field is rejected with `SPEC003`. Unknown sections are still
+accepted and ignored by the typed review consumer. Known fields, action
+names, and action value guards remain strict.
 
 ## Hard errors vs warnings
 
