@@ -246,7 +246,7 @@ loop_resets = ["development_analysis_iteration"]
 
 The commit review phases (`development_commit_review` and `development_final_commit_review`) precede their respective commit steps (`development_commit` and `development_final_commit`). They have `role = "commit_review"` and use `prompt_template = "commit_review.jinja"`.
 
-Commit review is a **damage gate plus an edit phase**, not a code review. It asks only whether the pending diff looks like accidental damage; code quality and plan adherence stay with `development_analysis`.
+Commit review is a **damage gate plus an edit phase**, not a code review. It asks only whether the pending diff looks like accidental damage; code quality and plan adherence stay with `development_analysis`. The edit half keeps the repository housekeeping of the former cleanup phase: the reviewer may apply `delete_file`, `add_to_gitignore`, and `add_to_git_exclude` actions through the same allowlist and printable-ASCII safety boundary.
 
 Example block configuration (matching the bundled default in `ralph/policy/defaults/pipeline.toml`):
 
@@ -272,11 +272,11 @@ iteration_state_field = "commit_review_iteration"
 
 Before invoking the review agent, the engine seals pending changes into an isolated proposal ref (`refs/ralph/proposals/<run>/<iteration>`) and runs Stage 1 deterministic tripwires. Tripwires protect against accidental repository destruction.
 
-**Hard tripwires** reject the proposal immediately, without consulting an agent:
+**Hard tripwires** reject the proposal immediately, without consulting an agent — no reviewer agent is invoked and no prompt is materialised, so the reviewer cannot talk the gate out of a hard tripwire:
 
 - **Mass deletion threshold (`max_deleted_files`, default: 50):** If the count of deleted tracked files exceeds this limit, the gate triggers a hard rejection.
 - **Mass deletion ratio (`max_deleted_fraction`, default: 0.25):** If the fraction of deleted tracked files exceeds 25% of the repository's total tracked files, the gate triggers a hard rejection.
-- **Protected paths:** Deleting or overwriting `.git` internals, manifest files (`package.json`, `Cargo.toml`, `pyproject.toml`), lockfiles (`uv.lock`, `package-lock.json`, etc.), top-level source/test directories, or core prompts (`PROMPT.md`, `AGENTS.md`) is rejected immediately.
+- **Protected paths:** Deleting or overwriting `.git` internals or a core prompt (`PROMPT.md`, `AGENTS.md`), deleting a manifest file (`package.json`, `Cargo.toml`, `pyproject.toml`) or lockfile (`uv.lock`, `package-lock.json`, etc.), and deleting a top-level source or test directory entry (`src`, `tests`, `test`, `lib`, `ralph`, `app`, `pkg`) are rejected immediately.
 
 **Soft findings** never reject on their own; they are handed to the Stage 2 agent as review evidence:
 

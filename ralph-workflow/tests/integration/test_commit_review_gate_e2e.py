@@ -35,12 +35,18 @@ from ralph.pipeline.effects import CommitEffect, CommitReviewRejectEffect, Invok
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.run_loop import resolve_initial_state
-from ralph.pipeline.runner import execute_effect_with_optional_display
+from ralph.pipeline.runner import execute_effect_with_optional_display, execute_pending_rollback
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.prompts.commit_review import render_commit_review_prompt
+from ralph.prompts.materialize import (
+    PromptPhaseContext,
+    PromptPhaseOptions,
+    materialize_prompt_for_phase,
+)
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.types import SessionCapabilities
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -236,6 +242,7 @@ def test_commit_review_gate_reject_executes_rollback_and_preserves_context(tmp_p
     assert next_state.rollback_ref == seal.ref
 
     # Execute rollback (simulating runner step)
+    assert next_state.rollback_ref is not None
     rollback(tmp_path, next_state.rollback_ref)
 
     # Working tree restored: bad file gone, app.py restored to initial commit
@@ -259,6 +266,69 @@ def test_commit_review_gate_reject_executes_rollback_and_preserves_context(tmp_p
     hint_content = read_validation_retry_hint(tmp_path, "development")
     assert "corrupt_data.bin contains binary payload" in hint_content
     assert seal.ref in hint_content
+
+
+def test_the_rejection_reason_and_proposal_ref_reach_the_next_developer_prompt(
+    tmp_path: Path,
+) -> None:
+    """The engine's own rejection context reaches the next developer prompt.
+
+    The rollback records the rejection context (the reason and the proposal
+    ref) for the next developer iteration. The proof drives the PRODUCTION
+    writer through the public rollback executor and then renders the next
+    developer prompt, so the two halves cannot drift apart: a change to the
+    recorded format that the prompt no longer understands fails here.
+    """
+    policy = _policy()
+    _init_repo(tmp_path)
+
+    # The rejected iteration: a modified tracked file and an added file.
+    (tmp_path / "app.py").write_text("print('modified')", encoding="utf-8")
+    (tmp_path / "corrupt_data.bin").write_bytes(b"\x00\xff" * 100)
+
+    # The rejected state is SEALED under a proposal ref before the rollback.
+    seal = seal_pending(tmp_path, run_id="run-104", iteration="0")
+    rejected_state, _ = reduce(
+        PipelineState(phase="development_commit_review", commit_review_rejections=0),
+        CommitReviewRejected(
+            reason="corrupt_data.bin contains binary payload",
+            ref=seal.ref,
+            hard=True,
+        ),
+        policy,
+    )
+    assert rejected_state.rollback_pending is True
+    assert rejected_state.rollback_ref == seal.ref
+
+    # The engine rolls the tree back and records the rejection context.
+    rolled_back = execute_pending_rollback(rejected_state, tmp_path, policy)
+
+    # The tree is rolled back ...
+    assert rolled_back.rollback_pending is False
+    assert not (tmp_path / "corrupt_data.bin").exists()
+    assert (tmp_path / "app.py").read_text(encoding="utf-8") == "print('hello')"
+    # ... and the proposal ref is KEPT for the rejection.
+    preflight(tmp_path, seal.ref)
+
+    # The next developer prompt carries the reason and the proposal ref.
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Implement the feature")
+    workspace.write(".agent/PLAN.md", "# Plan\n1. Do the work\n")
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=_bundle().artifacts),
+    )
+    rendered = workspace.read(prompt_path)
+    assert "PREVIOUS COMMIT REVIEW REJECTION" in rendered
+    assert "corrupt_data.bin contains binary payload" in rendered
+    assert seal.ref in rendered
+    assert f"git checkout {seal.ref} -- ." in rendered
 
 
 def test_commit_review_gate_counter_exhaustion_routes_to_failure(tmp_path: Path) -> None:

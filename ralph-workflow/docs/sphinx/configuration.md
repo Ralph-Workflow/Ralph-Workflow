@@ -525,6 +525,8 @@ Configured under the commit review policy settings (`[commit_review]` in `pipeli
 | `proposal_retention` | `10` | Number of proposal refs to retain before pruning historical proposals. |
 | `max_rejections` | `2` | The consecutive-rejection count at which the run fails to `failed_terminal`: with the default of `2`, the second consecutive rejection is terminal, without another rollback. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of `2`. |
 
+Stage 1 produces two kinds of finding. A **hard** tripwire rejects the proposal without an agent: mass deletion beyond the thresholds above, and the removal of a protected path (`.git` internals, `PROMPT.md`, `AGENTS.md`, a project manifest or lockfile, or a top-level source/test directory entry; `.git` internals and the two core prompts are also protected when overwritten). A **soft** finding never rejects on its own — out-of-scope paths, staged secrets, and oversized binaries are handed to the review agent as evidence. See [Concepts → Commit review and damage gate](concepts.md#commit-review-and-damage-gate) for the full two-stage model.
+
 #### Transitions and recovery
 
 - **`on_success`**: Advances to the commit phase (`development_commit` or `development_final_commit`).

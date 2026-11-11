@@ -15,14 +15,23 @@ That makes the test portable: it runs from any checkout without a
 hardcoded absolute path. The audit's own internal default still uses
 the module's ``parents[3]`` walk, so the existing structural invariant
 test continues to pin the offset.
+
+The rename-regression checks at the end of this module pin the other
+half of the same contract: the retired ``commit_cleanup`` identifier is
+gone from every path NAME and every skill BODY the packaged bundle and
+the five project skill roots expose, and the renamed
+``submit-commit-review-artifact`` skill is the one they expose.
 """
 
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -39,6 +48,8 @@ from ralph.testing.audit_skill_mirror_freshness import (
 pytestmark = pytest.mark.timeout_seconds(2.0)
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
     from pytest import MonkeyPatch
 
 # The four subprocess CLI cases below spawn ``python -m
@@ -305,3 +316,296 @@ def shutil_rmtree(path: Path) -> None:
     import shutil
 
     shutil.rmtree(path)
+
+
+# Rename regression: the retired ``commit_cleanup`` identifier.
+#
+# The audit above pins that every mirror byte-equals the bundle. These
+# checks pin the other half of the same contract: the retired identifier is
+# gone from every path NAME and every skill BODY the packaged bundle and the
+# five project skill roots expose, and the renamed skill is the one they
+# expose. Without them a half-finished rename could leave a legacy
+# ``submit-commit-cleanup-artifact`` mirror or a stale ``commit_cleanup``
+# mention in a shipped skill body, and the mirror audit would happily keep
+# mirroring it because the audit only compares bytes, never names.
+
+#: The retired identifier, matched case-insensitively in both the underscore
+#: and the hyphen spelling of the legacy token. The space spelling is prose
+#: ("the commit cleanup phase"), not an identifier, so it is not matched.
+_LEGACY_IDENTIFIER = re.compile(r"commit[-_]cleanup", re.IGNORECASE)
+
+#: The five canonical project-scope skill roots, relative to the repository
+#: root: the roots the mirror-freshness audit mirrors the bundle into.
+_PROJECT_SKILL_ROOTS: tuple[str, ...] = (
+    ".opencode/skills",
+    ".agents/skills",
+    ".claude/skills",
+    ".codex/skills",
+    ".gemini/antigravity-cli/skills",
+)
+
+#: The packaged skill bundle relative to the repository root: the source of
+#: truth every mirror mirrors.
+_BUNDLE_CONTENT_DIR = "ralph-workflow/ralph/skills/content"
+
+#: The packaged Python package relative to the repository root.
+_PACKAGE_DIR = "ralph-workflow/ralph"
+
+#: The skill name the rename introduced.
+_RENAMED_SKILL = "submit-commit-review-artifact"
+
+#: Derived or vendored directories. Walking them would cost time without
+#: adding a name or a body the rename could have left behind.
+_SKIPPED_DIRECTORY_NAMES = frozenset(
+    {
+        ".git",
+        ".hypothesis",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        "__pycache__",
+        "_build",
+        "build",
+        "dist",
+    }
+)
+
+
+@dataclass(frozen=True)
+class _RepositoryScan:
+    """The names and bodies the retired identifier could have left behind."""
+
+    #: Entry names found under each project skill root.
+    root_names: dict[str, set[str]]
+    #: File bodies found under each project skill root.
+    root_bodies: dict[str, dict[Path, str]]
+    #: Entry names found under the packaged skill bundle.
+    bundle_names: set[str]
+    #: File bodies found under the packaged skill bundle.
+    bundle_bodies: dict[Path, str]
+    #: Entry names found under the packaged Python package.
+    package_names: set[str]
+    #: The parsed packaged bundle metadata.
+    bundle_metadata: dict[str, Any]
+
+
+def _repository_root() -> Path:
+    """Return the repository root that holds the five project skill roots."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _scan_tree(
+    root: Path,
+    *,
+    read_contents: bool,
+    visited: set[Path] | None = None,
+) -> tuple[set[str], dict[Path, str]]:
+    """Return the entry names and (optionally) the file bodies under ``root``.
+
+    A directory symlink is followed at most once per resolved target, so the
+    four alias roots that point at ``.opencode/skills`` are scanned without
+    reading the same bytes four times and without looping on a cycle. The
+    names of every entry are collected even when the directory it points at
+    was already scanned, because the name of a symlink is what a legacy
+    path would have carried.
+    """
+    names: set[str] = set()
+    bodies: dict[Path, str] = {}
+    seen = visited if visited is not None else set()
+    pending = [root]
+    while pending:
+        current = pending.pop()
+        try:
+            resolved = current.resolve()
+        except OSError:
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        try:
+            entries = sorted(current.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            names.add(entry.name)
+            if entry.is_dir():
+                if entry.name not in _SKIPPED_DIRECTORY_NAMES:
+                    pending.append(entry)
+                continue
+            if not read_contents:
+                continue
+            try:
+                if entry.is_file():
+                    bodies[entry] = entry.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+    return names, bodies
+
+
+def _scan_repository(repo_root: Path | None = None) -> _RepositoryScan:
+    """Scan the repository once for the retired-identifier assertions.
+
+    The five project skill roots share one visited set because four of them
+    are symlink farms onto ``.opencode/skills``; the package tree and the
+    bundle get their own so neither can prune the other.
+    """
+    root = _repository_root() if repo_root is None else repo_root
+    shared: set[Path] = set()
+    root_names: dict[str, set[str]] = {}
+    root_bodies: dict[str, dict[Path, str]] = {}
+    for relative_root in _PROJECT_SKILL_ROOTS:
+        names, bodies = _scan_tree(
+            root / relative_root,
+            read_contents=True,
+            visited=shared,
+        )
+        root_names[relative_root] = names
+        root_bodies[relative_root] = bodies
+    bundle_names, bundle_bodies = _scan_tree(
+        root / _BUNDLE_CONTENT_DIR,
+        read_contents=True,
+    )
+    package_names, _ = _scan_tree(root / _PACKAGE_DIR, read_contents=False)
+    metadata_path = root / _BUNDLE_CONTENT_DIR / "metadata.json"
+    bundle_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    return _RepositoryScan(
+        root_names=root_names,
+        root_bodies=root_bodies,
+        bundle_names=bundle_names,
+        bundle_bodies=bundle_bodies,
+        package_names=package_names,
+        bundle_metadata=bundle_metadata,
+    )
+
+
+def _legacy_names(names: Iterable[str]) -> list[str]:
+    """Return the names that still carry the retired identifier."""
+    return sorted(name for name in names if _LEGACY_IDENTIFIER.search(name))
+
+
+def _legacy_bodies(bodies: Mapping[Path, str]) -> list[Path]:
+    """Return the files whose body still carries the retired identifier."""
+    return sorted(path for path, body in bodies.items() if _LEGACY_IDENTIFIER.search(body))
+
+
+def _legacy_name_offenders(scan: _RepositoryScan) -> dict[str, list[str]]:
+    """Return the scopes whose entry names still carry the retired identifier."""
+    offenders: dict[str, list[str]] = {}
+    for relative_root, names in scan.root_names.items():
+        legacy = _legacy_names(names)
+        if legacy:
+            offenders[relative_root] = legacy
+    for scope, names in (
+        (_BUNDLE_CONTENT_DIR, scan.bundle_names),
+        (_PACKAGE_DIR, scan.package_names),
+    ):
+        legacy = _legacy_names(names)
+        if legacy:
+            offenders[scope] = legacy
+    return offenders
+
+
+def _legacy_body_offenders(scan: _RepositoryScan) -> dict[str, list[str]]:
+    """Return the scopes whose file bodies still carry the retired identifier."""
+    offenders: dict[str, list[str]] = {}
+    for relative_root, bodies in scan.root_bodies.items():
+        legacy = [str(path) for path in _legacy_bodies(bodies)]
+        if legacy:
+            offenders[relative_root] = legacy
+    legacy_bundle = [str(path) for path in _legacy_bodies(scan.bundle_bodies)]
+    if legacy_bundle:
+        offenders[_BUNDLE_CONTENT_DIR] = legacy_bundle
+    return offenders
+
+
+@pytest.fixture(scope="module")
+def repository_scan() -> _RepositoryScan:
+    """Scan the repository once; the rename assertions share the result."""
+    return _scan_repository()
+
+
+def test_scan_tree_reports_a_planted_legacy_identifier(tmp_path: Path) -> None:
+    """The walker is not vacuous: a planted legacy name and body are reported.
+
+    A rename guard that cannot fail is not a guard. This pins the detector
+    itself on an isolated tree: a directory named after the retired skill and
+    a body that mentions the retired identifier must both be reported.
+    """
+    skill_dir = tmp_path / "submit-commit-cleanup-artifact"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("# commit_cleanup\n", encoding="utf-8")
+
+    names, bodies = _scan_tree(tmp_path, read_contents=True)
+
+    assert _legacy_names(names) == ["submit-commit-cleanup-artifact"]
+    assert [path.name for path in _legacy_bodies(bodies)] == ["SKILL.md"]
+
+
+def test_scan_repository_flags_a_planted_legacy_identifier(tmp_path: Path) -> None:
+    """The repository-wide scan reports a legacy mirror planted in a fake tree.
+
+    This is the end-to-end proof that the two repository-level assertions
+    are not vacuous: the same scan and the same offender aggregation that
+    run against the real checkout are driven here against an isolated tree
+    that carries the retired identifier, and they must report it.
+    """
+    for relative_root in _PROJECT_SKILL_ROOTS:
+        legacy_dir = tmp_path / relative_root / "submit-commit-cleanup-artifact"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "SKILL.md").write_text("# commit_cleanup\n", encoding="utf-8")
+    bundle_dir = tmp_path / _BUNDLE_CONTENT_DIR
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "metadata.json").write_text(
+        json.dumps({"skills": [], "bundles": {}, "skill_sources": {}}),
+        encoding="utf-8",
+    )
+
+    scan = _scan_repository(tmp_path)
+
+    assert _legacy_name_offenders(scan)
+    assert _legacy_body_offenders(scan)
+
+
+def test_no_skill_path_name_carries_the_retired_commit_cleanup_identifier(
+    repository_scan: _RepositoryScan,
+) -> None:
+    """No path NAME under the five roots or the package keeps the legacy token."""
+    offenders = _legacy_name_offenders(repository_scan)
+
+    assert not offenders, f"retired identifier still present in path names: {offenders}"
+
+
+def test_no_skill_body_carries_the_retired_commit_cleanup_identifier(
+    repository_scan: _RepositoryScan,
+) -> None:
+    """No skill BODY under the bundle or the five roots keeps the legacy token."""
+    offenders = _legacy_body_offenders(repository_scan)
+
+    assert not offenders, f"retired identifier still present in skill bodies: {offenders}"
+
+
+def test_packaged_bundle_metadata_lists_no_legacy_commit_cleanup_skill(
+    repository_scan: _RepositoryScan,
+) -> None:
+    """The packaged metadata names the renamed skill and carries no legacy entry."""
+    metadata = repository_scan.bundle_metadata
+
+    assert "submit-commit-cleanup-artifact" not in metadata["skills"]
+    assert "submit-commit-cleanup-artifact" not in metadata["bundles"]
+    assert "submit-commit-cleanup-artifact" not in metadata["skill_sources"]
+    assert _RENAMED_SKILL in metadata["skills"]
+
+
+def test_bundle_and_every_project_skill_root_expose_the_renamed_review_skill() -> None:
+    """The bundle and all five roots expose the renamed commit-review skill."""
+    repo_root = _repository_root()
+
+    assert (repo_root / _BUNDLE_CONTENT_DIR / f"{_RENAMED_SKILL}.md").is_file()
+    missing = [
+        relative_root
+        for relative_root in _PROJECT_SKILL_ROOTS
+        if not (repo_root / relative_root / _RENAMED_SKILL / "SKILL.md").is_file()
+    ]
+
+    assert not missing, f"skill roots missing {_RENAMED_SKILL}: {missing}"

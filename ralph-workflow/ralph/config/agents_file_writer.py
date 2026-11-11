@@ -61,6 +61,7 @@ _NEW_FILE_MODE = 0o644
 def _read_existing_bytes(target: Path) -> bytes | None:
     """Return the current bytes of *target*, or ``None`` when it does not exist."""
     try:
+        # filesystem-read-ok: current bytes for the idempotent comparison and the .bak backup
         return target.read_bytes()
     except FileNotFoundError:
         return None

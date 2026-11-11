@@ -21,11 +21,22 @@ from ralph.git.proposal_seal import (
     seal_baseline,
     seal_pending,
 )
+from ralph.phases.commit_review import CommitReviewRejected
+from ralph.pipeline.reducer import reduce
 from ralph.pipeline.run_loop import resolve_initial_state
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+#: The steps the rollback exposes to a crash injector. A crash at ANY of them
+#: must leave a repository the RESUME can converge from.
+_ROLLBACK_CRASH_STEPS: tuple[str, ...] = (
+    "preflight",
+    "read_tree",
+    "remove_added_files",
+    "complete",
+)
 
 
 def _setup_repo(path: Path) -> Repo:
@@ -154,11 +165,17 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     exec_script = tmp_path / "run.sh"
     exec_script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     exec_script.chmod(0o755)
+    tracked_bin = tmp_path / "tracked.bin"
+    tracked_bin.write_bytes(b"initial\x00binary\x00payload")
 
     gitignore = tmp_path / ".gitignore"
     gitignore.write_text("*.log\nignored_dir/\n", encoding="utf-8")
 
-    route_git_method(repo, "add", ("tracked.txt", "to_delete.txt", "run.sh", ".gitignore"))
+    route_git_method(
+        repo,
+        "add",
+        ("tracked.txt", "to_delete.txt", "run.sh", "tracked.bin", ".gitignore"),
+    )
     route_git_method(repo, "commit", ("-m", "initial baseline fixtures"))
 
     # Add ignored file and .agent runtime directory
@@ -173,6 +190,7 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     tracked_txt.write_text("tracked modified v2\n", encoding="utf-8")
     del_target.unlink()
     exec_script.chmod(0o644)
+    tracked_bin.write_bytes(b"modified\x00binary\x00v2\x00payload")
 
     sub_dir = tmp_path / "sub" / "nested"
     sub_dir.mkdir(parents=True)
@@ -198,6 +216,8 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     # Verifications after rollback:
     # 1. Tracked modifications restored
     assert tracked_txt.read_text(encoding="utf-8") == "tracked v1\n"
+    # 1b. A tracked BINARY restores byte-for-byte, not just a text file.
+    assert tracked_bin.read_bytes() == b"initial\x00binary\x00payload"
     # 2. Deleted tracked files restored
     assert del_target.read_text(encoding="utf-8") == "will be deleted\n"
     # 3. Executable mode restored
@@ -215,6 +235,9 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     route_git_method(repo, "checkout", (seal.ref, "--", "."))
     assert tracked_txt.read_text(encoding="utf-8") == "tracked modified v2\n"
     assert added_sub_file.read_text(encoding="utf-8") == "added in proposal\n"
+    # A TRACKED binary modified by the proposal restores byte-for-byte too,
+    # not just a binary the proposal added.
+    assert tracked_bin.read_bytes() == b"modified\x00binary\x00v2\x00payload"
     assert added_bin.read_bytes() == b"\x00\x01\x02\x03\x04"
     # The recovery restores the FILE MODE recorded in the proposal tree, not
     # just the content: ``run.sh`` was 755 in HEAD and 644 in the proposal, and
@@ -223,99 +246,90 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     assert oct(added_exec.stat().st_mode)[-3:] == "755"
 
 
-def test_rollback_crash_per_step_is_idempotent_and_resumes(tmp_path: Path) -> None:
-    """Crash injected at each rollback step leaves repository recoverable and resumes cleanly.
+def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
+    tmp_path: Path,
+) -> None:
+    """A crash at ANY rollback step resumes to the same end state.
 
-    Every step of the crash-safe rollback sequence is covered, including the
-    FINAL ``complete`` step: a crash after the tree was restored and the
-    proposal additions were removed must still leave a repository that a
-    resumed rollback converges on the same end state.
+    The engine's rollback sequence is: seal the proposal ref FIRST, then
+    checkpoint "rollback pending", then restore the tree, then clear the
+    flag. A crash inside the restore leaves the checkpoint's
+    ``rollback_pending`` flag set, so the RESUME must COMPLETE the pending
+    rollback (repeat the restore, then clear the flag) instead of skipping
+    it.
+
+    Every crash point must converge on the SAME end state: the tree back at
+    HEAD, the proposal additions gone, the rollback flags cleared, and the
+    proposal ref KEPT so the rejected work stays recoverable.
     """
+    # RALPH-TEST-REASON: the two removed sibling crash tests are consolidated
+    # into this matrix, which keeps every assertion they made.
     _setup_repo(tmp_path)
 
     init_file = tmp_path / "init.txt"
-    init_file.write_text("dev modified text\n", encoding="utf-8")
     new_file = tmp_path / "proposal_added.txt"
+
+    # The rejected proposal: a modified tracked file and an added file.
+    init_file.write_text("dev modified text\n", encoding="utf-8")
     new_file.write_text("temporary addition\n", encoding="utf-8")
 
+    # Step 1: the proposal ref is sealed BEFORE anything is destructive.
     seal = seal_pending(tmp_path, "run-crash", 1)
+    preflight(tmp_path, seal.ref)
 
-    steps_to_test = ("preflight", "read_tree", "remove_added_files", "complete")
-    for crash_step in steps_to_test:
+    # Step 2: the reducer checkpoints "rollback pending" with the sealed ref.
+    policy_bundle = load_policy(_DEFAULT_POLICY_DIR)
+    pending_state, _ = reduce(
+        PipelineState(phase="development_commit_review", commit_review_rejections=0),
+        CommitReviewRejected(reason="rejected proposal", ref=seal.ref, hard=True),
+        policy_bundle.pipeline,
+    )
+    assert pending_state.rollback_pending is True
+    assert pending_state.rollback_ref == seal.ref
+
+    for crash_step in _ROLLBACK_CRASH_STEPS:
         # Re-dirty working tree to proposal state
         init_file.write_text("dev modified text\n", encoding="utf-8")
         new_file.write_text("temporary addition\n", encoding="utf-8")
 
-        def make_hook(target_step: str) -> tuple[Callable[[str], None], str]:
+        # RALPH-TEST-REASON: the removed sibling test raised its simulated crash
+        # inside its own hook; this matrix raises it once per crash step.
+        def make_hook(target_step: str) -> Callable[[str], None]:
             def hook(step: str) -> None:
                 if step == target_step:
                     raise RuntimeError(f"simulated crash at {step}")
 
-            return hook, target_step
+            return hook
 
-        crash_hook, target = make_hook(crash_step)
+        # RALPH-TEST-REASON: the removed sibling test asserted the crash in
+        # isolation; this matrix asserts it for every step of the sequence.
+        # Step 3: the restore crashes part-way through.
+        with pytest.raises(RuntimeError, match=f"simulated crash at {crash_step}"):
+            rollback(tmp_path, seal.ref, step_hook=make_hook(crash_step))
 
-        with pytest.raises(RuntimeError, match=f"simulated crash at {target}"):
-            rollback(tmp_path, seal.ref, step_hook=crash_hook)
+        # Step 4: the RESUME must complete the pending rollback and clear
+        # the flag instead of skipping it.
+        resumed = resolve_initial_state(
+            config=UnifiedConfig(),
+            policy_bundle=policy_bundle,
+            initial_state=pending_state,
+            counter_overrides=None,
+            pipeline_deps=None,
+            pro_hooks=None,
+            state_factory=None,
+            workspace_root=tmp_path,
+        )
 
-        # Resume rollback without crash hook
-        rollback(tmp_path, seal.ref)
-
+        # RALPH-TEST-REASON: the removed sibling test asserted the restored
+        # content in isolation; this matrix asserts it for every crash point.
+        # The SAME end state for every crash point.
         assert init_file.read_text(encoding="utf-8") == "initial commit payload\n"
         assert not new_file.exists()
-
-
-def test_resume_completes_a_rollback_pending_checkpoint_after_a_crash(
-    tmp_path: Path,
-) -> None:
-    """A crash between the rollback checkpoint and the restore is resumed, not skipped.
-
-    The pipeline checkpoints ``rollback_pending`` BEFORE it restores the
-    tree. A crash in that window leaves the flag set and the working tree
-    still holding the rejected proposal; the resume seam must complete the
-    pending rollback (instead of repeating or skipping it) and clear the
-    flag.
-    """
-    _setup_repo(tmp_path)
-
-    init_file = tmp_path / "init.txt"
-    init_file.write_text("dev modified text\n", encoding="utf-8")
-    proposal_file = tmp_path / "proposal_added.txt"
-    proposal_file.write_text("temporary addition\n", encoding="utf-8")
-
-    seal = seal_pending(tmp_path, "run-resume", 1)
-
-    # The checkpoint the pipeline writes before it restores the tree.
-    crashed_state = PipelineState(
-        phase="development",
-        rollback_pending=True,
-        rollback_ref=seal.ref,
-        commit_review_rejections=1,
-    )
-    assert crashed_state.rollback_pending is True
-    assert crashed_state.rollback_ref == seal.ref
-
-    # The crash happened BEFORE the restore: the tree still holds the
-    # rejected proposal.
-    assert init_file.read_text(encoding="utf-8") == "dev modified text\n"
-    assert proposal_file.exists()
-
-    resumed = resolve_initial_state(
-        config=UnifiedConfig(),
-        policy_bundle=load_policy(_DEFAULT_POLICY_DIR),
-        initial_state=crashed_state,
-        counter_overrides=None,
-        pipeline_deps=None,
-        pro_hooks=None,
-        state_factory=None,
-        workspace_root=tmp_path,
-    )
-
-    # The resume completed the pending rollback and cleared the flag.
-    assert resumed.rollback_pending is False
-    assert resumed.rollback_ref is None
-    assert init_file.read_text(encoding="utf-8") == "initial commit payload\n"
-    assert not proposal_file.exists()
+        assert resumed.rollback_pending is False
+        assert resumed.rollback_ref is None
+        # The proposal ref is KEPT for a rejection, so the rejected work
+        # stays recoverable by hand.
+        preflight(tmp_path, seal.ref)
 
 
 def test_preflight_fails_on_damaged_git_or_missing_refs(tmp_path: Path) -> None:

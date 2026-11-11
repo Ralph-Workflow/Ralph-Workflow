@@ -69,14 +69,32 @@ def _phase_before_cycle_commit(policy: PipelinePolicy) -> str:
     raise AssertionError(msg)
 
 
-def _sample_timing(phase: str, iteration: int = 0) -> PhaseTimingRecord:
+def _analysis_phase_looping_back_to_development(policy: PipelinePolicy) -> str:
+    """Return the analysis phase whose request_changes decision routes to development.
+
+    Resolved from the policy so the characterisation stays name-neutral.
+    """
+    dev_start = policy.development_timebox.start_entry if policy.development_timebox else None
+    for name, phase in policy.phases.items():
+        route = phase.decisions.get("request_changes")
+        if route is not None and route.target == dev_start:
+            return name
+    msg = "no analysis phase routes request_changes back to development"
+    raise AssertionError(msg)
+
+
+def _sample_timing(
+    phase: str,
+    iteration: int = 0,
+    elapsed_seconds: int = 10,
+) -> PhaseTimingRecord:
     """Construct a simple PhaseTimingRecord for testing cycle timing boundaries."""
     return PhaseTimingRecord(
         phase=phase,
         iteration=iteration,
         started_at=100.0,
-        elapsed=timedelta(seconds=10),
-        elapsed_seconds=10,
+        elapsed=timedelta(seconds=elapsed_seconds),
+        elapsed_seconds=elapsed_seconds,
     )
 
 
@@ -91,6 +109,26 @@ def _outer_budget_counter(policy: PipelinePolicy) -> str:
             return name
     msg = "policy declares no tracked budget counter"
     raise AssertionError(msg)
+
+
+def _commit_accounting(
+    state: PipelineState,
+    *,
+    reset_fields: tuple[str, ...],
+    counter_name: str,
+) -> tuple[tuple[int, ...], int, int]:
+    """Return the (loop resets, charged counter, timing window) triple of a state.
+
+    The three values are the whole commit-outcome accounting: the ``loop_resets``
+    counters, the policy ``increments_counter`` and the
+    ``cycle_timing_start_index`` that restarts the cumulative-elapsed window.
+    Comparing two of these tuples compares the accounting of two routes.
+    """
+    return (
+        tuple(state.get_loop_iteration(field) for field in reset_fields),
+        state.get_outer_progress(counter_name),
+        state.cycle_timing_start_index,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +496,90 @@ def test_development_reentry_while_already_active_preserves_consumed_seconds() -
     assert decision.state.dev_timebox_active is True
     assert decision.state.dev_timebox_consumed_seconds == 1800.0
     assert decision.state.dev_timebox_started_at_epoch == 4000.0
+
+
+def test_commit_then_development_route_concludes_and_restarts_the_development_timer() -> None:
+    """The commit-then-development route concludes the timer at the commit entry and restarts it at zero.
+
+    This is the whole route in one test, not two isolated rules: the commit
+    entry concludes the development timer (zeroing the consumed seconds and
+    clearing the start epoch), and the development window that opens after the
+    route therefore starts from zero instead of resuming the pre-commit elapsed
+    time. The cycle timer keeps running: it concludes at its own end_entry.
+    """
+    policy = _policy()
+    assert policy.development_timebox is not None
+    dev_start = policy.development_timebox.start_entry
+    commit_phase = _dev_commit_entry(policy)
+    review_phase = _phase_before_dev_commit(policy)
+    analysis_phase = _analysis_phase_looping_back_to_development(policy)
+
+    # A development timing of 1000s admits the development_analysis invocation
+    # gate (minimum_elapsed_seconds), so the route below is the real one.
+    timings = (_sample_timing("development", iteration=0, elapsed_seconds=1000),)
+    state = PipelineState(
+        phase=review_phase,
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=1500.0,
+        dev_timebox_started_at_epoch=4000.0,
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=2100.0,
+        cycle_timebox_started_at_epoch=1000.0,
+        phase_timings=timings,
+        cycle_timing_start_index=0,
+    )
+
+    committed, _ = reduce(
+        state,
+        PipelineEvent.AGENT_SUCCESS,
+        policy,
+        routing_timing=RoutingTiming(
+            total_elapsed_seconds=1500.0,
+            development_elapsed_seconds=1500.0,
+            current_epoch=5000.0,
+        ),
+    )
+
+    # Entering the commit entry concludes the development timer ...
+    assert committed.phase == commit_phase
+    assert committed.dev_timebox_active is False
+    assert committed.dev_timebox_consumed_seconds == 0.0
+    assert committed.dev_timebox_started_at_epoch is None
+    # ... while the cycle timer keeps running until its own end_entry.
+    assert committed.cycle_timebox_active is True
+    assert committed.cycle_timebox_consumed_seconds == 2100.0
+
+    after_commit, _ = reduce(
+        committed,
+        PipelineEvent.COMMIT_SUCCESS,
+        policy,
+        routing_timing=RoutingTiming(
+            total_elapsed_seconds=1600.0,
+            development_elapsed_seconds=1500.0,
+            current_epoch=5100.0,
+        ),
+    )
+    assert after_commit.phase == analysis_phase
+    assert after_commit.dev_timebox_active is False
+    assert after_commit.dev_timebox_consumed_seconds == 0.0
+
+    looped_back, _ = reduce(
+        after_commit,
+        AnalysisDecisionEvent(phase=analysis_phase, decision="request_changes"),
+        policy,
+        routing_timing=RoutingTiming(
+            total_elapsed_seconds=2000.0,
+            development_elapsed_seconds=0.0,
+            current_epoch=7500.0,
+        ),
+    )
+
+    # The development window after the route starts from zero, not from the
+    # 1500 seconds the pre-commit development had already consumed.
+    assert looped_back.phase == dev_start
+    assert looped_back.dev_timebox_active is True
+    assert looped_back.dev_timebox_consumed_seconds == 0.0
+    assert looped_back.dev_timebox_started_at_epoch == 7500.0
 
 
 # ---------------------------------------------------------------------------

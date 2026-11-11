@@ -31,6 +31,19 @@ _NUMSTAT_MIN_FIELDS: int = 3
 _NUMSTAT_PATH_INDEX: int = 2
 _REF_PARTITION_COUNT: int = 2
 
+#: Upper bound on the blob size whose CONTENT the diff reads for the
+#: staged-secret content scan. Same order as the tripwire binary size
+#: limit: large enough to hold a credential file, small enough that a
+#: multi-megabyte blob never enters the scan. Binary blobs are never
+#: read at all.
+_MAX_CONTENT_SCAN_BYTES: int = 1_000_000
+
+#: The diff statuses whose recorded path exists in the NEW tree: an
+#: addition (``A``), the NEW path of a rename (``R``) and the NEW path
+#: of a copy (``C``). A deletion (``D``) records a path that the new
+#: tree does NOT hold.
+_PROPOSAL_ADDED_STATUSES: frozenset[str] = frozenset({"A", "R", "C"})
+
 
 @dataclass(frozen=True)
 class Seal:

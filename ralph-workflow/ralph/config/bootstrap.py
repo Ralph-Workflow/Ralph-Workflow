@@ -44,6 +44,8 @@ from ralph.config._agent_internal_globs import (
     AGENT_INTERNAL_ROOT_BASENAMES,
     AGENT_INTERNAL_TOP_LEVEL_BASENAMES,
 )
+from ralph.config._bootstrap_result import BootstrapResult
+from ralph.config._bootstrap_writes import _repo_rel_path, _write_agents_with_backup
 from ralph.config._config_filenames import (
     _ADVANCED_LOCAL_POLICY_FILENAMES,
     _GLOBAL_AGENTS_FILENAME,
@@ -76,10 +78,15 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BootstrapResult",
+    "Repo",
+    "ScopedCommitStatus",
     "UnreadableConfigFinding",
     "auto_seed_default_git_exclude",
     "auto_seed_default_gitignore",
+    "classify_target_for_commit",
     "collect_unreadable_config_files",
+    "commit_deterministic_writes",
+    "create_commit",
     "ensure_global_agents_config",
     "ensure_global_config",
     "ensure_global_mcp_config",
@@ -89,6 +96,8 @@ __all__ = [
     "ensure_local_support_configs",
     "regenerate_all",
     "resolve_global_config_dir",
+    "stage_files",
+    "write_agents_toml",
 ]
 
 

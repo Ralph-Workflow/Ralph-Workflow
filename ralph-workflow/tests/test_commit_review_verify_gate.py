@@ -25,6 +25,7 @@ from ralph.phases.commit_review import (
     CommitReviewLoopback,
     CommitReviewRejected,
     handle_commit_review_phase,
+    run_commit_review_stage1_preflight,
 )
 from ralph.pipeline.commit_executor import (
     execute_commit_effect,
@@ -35,7 +36,12 @@ from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.handoffs import resolve_next_phase
 from ralph.policy.loader import load_policy
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    CommitReviewPolicy,
+)
 from ralph.prompts.commit_review import render_commit_review_prompt
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.types import SessionCapabilities
@@ -123,12 +129,13 @@ def _ctx(
     workspace: FsWorkspace,
     *,
     chain_manager: object | None = None,
+    pipeline_policy: object | None = None,
 ) -> PhaseContext:
     return PhaseContext.construct(
         workspace=workspace,
         registry=object(),
         chain_manager=object() if chain_manager is None else chain_manager,
-        pipeline_policy=object(),
+        pipeline_policy=object() if pipeline_policy is None else pipeline_policy,
         artifacts_policy=object(),
         agents_policy=object(),
     )
@@ -143,11 +150,37 @@ def _run(
     phase: str = "development_commit_review",
     *,
     chain_manager: object | None = None,
+    pipeline_policy: object | None = None,
 ) -> list[object]:
     return handle_commit_review_phase(
         _invoke(phase),
-        _ctx(workspace, chain_manager=chain_manager),
+        _ctx(workspace, chain_manager=chain_manager, pipeline_policy=pipeline_policy),
     )
+
+
+def _stage1_soft_finding_categories(
+    repo_root: Path,
+    *,
+    pipeline_policy: object | None = None,
+    phase: str = "development_commit_review",
+) -> tuple[str, ...]:
+    """Return the Stage 1 soft-finding categories raised for the pending diff.
+
+    Stage 1 is a public seam (``run_commit_review_stage1_preflight``), so a
+    proof can read the evidence the reviewer is handed without reaching into
+    the phase's private state.
+    """
+    policy = (
+        pipeline_policy
+        if pipeline_policy is not None
+        else load_policy(_DEFAULT_POLICY_DIR).pipeline
+    )
+    outcome = run_commit_review_stage1_preflight(repo_root, "run", "1", policy, phase)
+    assert not isinstance(outcome, (CommitReviewRejected, CommitReviewGateFailed)), (
+        f"Stage 1 must not reject this diff, got: {outcome!r}"
+    )
+    _seal, _diff_entries, report, _base = outcome
+    return tuple(finding.category for finding in report.soft)
 
 
 def _render_prompt(tmp_git_repo: Path, phase: str = "development_commit_review") -> str:
@@ -730,3 +763,214 @@ def test_invalid_verdict_produces_the_documented_validation_diagnostic(
         diagnostic.rule_id for diagnostic in diagnostics if diagnostic.severity == "error"
     }
     assert "SPEC010" in error_rule_ids
+
+
+# Gap fills for the commit-review acceptance criteria.
+#
+# Every proof below runs in the DEFAULT lane: this module carries NO
+# ``subprocess_e2e`` marker and IS registered in
+# ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES``, so ``make verify``
+# executes it.
+
+
+def test_legitimate_small_deletion_is_approved_not_rejected(
+    tmp_git_repo: Path,
+) -> None:
+    """A small, legitimate deletion is APPROVED -- only mass deletion is hard.
+
+    This is the control for the whole-repo-deletion proof above: the same
+    Stage 1 evaluator sees ONE deleted file and lets the iteration through.
+    The review approves the pending deletion; it neither rolls the tree back
+    nor creates a commit.
+    """
+    tracked: list[str] = []
+    for index in range(10):
+        name = f"module_{index:02d}.py"
+        module_path = tmp_git_repo / name
+        module_path.write_text(f"VALUE = {index}\n", encoding="utf-8")
+        tracked.append(name)
+    _seed_engine_defaults(tmp_git_repo)
+    _track_and_commit(tmp_git_repo, tracked)
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    (tmp_git_repo / "module_00.py").unlink()
+
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_commit_review_artifact(workspace, {"verdict": "approve"})
+
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewApproved), (
+        f"A single small deletion must be approved, got: {event!r}"
+    )
+    # The approved deletion is still pending: the gate approves, it does not
+    # roll back and it does not commit.
+    assert not (tmp_git_repo / "module_00.py").exists()
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+
+def test_reviewer_malfunction_discards_no_pending_work(
+    tmp_git_repo: Path,
+) -> None:
+    """The identity-bound exhaustion of a missing artifact discards NO work.
+
+    A reviewer malfunction is a gate failure: the pending change survives
+    untouched, nothing is rolled back and nothing is committed.
+    """
+    workspace = FsWorkspace(tmp_git_repo)
+    pending = tmp_git_repo / "pending_work.txt"
+    pending.write_text("work in progress\n", encoding="utf-8")
+    _seed_engine_defaults(tmp_git_repo)
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    events = [_run(workspace)[0] for _ in range(4)]
+
+    assert isinstance(events[-1], CommitReviewGateFailed), (
+        f"The identical no-progress bound must fail the gate, got: {events[-1]!r}"
+    )
+    # A malfunction never discards work: no rollback, no commit.
+    assert pending.read_text(encoding="utf-8") == "work in progress\n"
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+
+def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
+    tmp_git_repo: Path,
+) -> None:
+    """A staged secret is EDIT evidence, not a hard rejection.
+
+    The staged secret raises a Stage 1 signal, but that signal is soft: the
+    reviewer is offered the file, the edit step applies the exclusion, and
+    the iteration is approved with the secret kept out of the commit. The
+    working-tree copy is preserved.
+    """
+    secret = tmp_git_repo / ".env"
+    secret.write_text("TOKEN=staged-secret\n", encoding="utf-8")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add([".env"])
+        repo.index.commit("track secret before the ignore seed")
+    finally:
+        repo.close()
+    _seed_engine_defaults(tmp_git_repo)
+
+    # The secret is tracked and modified, so it appears in the pending diff
+    # as a staged secret.
+    secret.write_text("TOKEN=rotated-secret\n", encoding="utf-8")
+
+    categories = _stage1_soft_finding_categories(tmp_git_repo)
+    assert "secret" in categories, (
+        f"The staged secret must reach the reviewer as evidence, got: {categories!r}"
+    )
+
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_commit_review_artifact(
+        workspace,
+        {
+            "verdict": "approve",
+            "actions": [{"action": "add_to_git_exclude", "pattern": ".env"}],
+        },
+    )
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewApproved), (
+        f"A staged secret must not reject the iteration, got: {event!r}"
+    )
+    # The edit step applied the exclusion: the secret is untracked, and the
+    # working-tree copy survives.
+    assert secret.read_text(encoding="utf-8") == "TOKEN=rotated-secret\n"
+    repo = Repo(tmp_git_repo)
+    try:
+        tracked = repo.git.ls_files("--cached").splitlines()
+    finally:
+        repo.close()
+    assert ".env" not in tracked
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+
+def test_oversized_binary_is_evidence_not_a_hard_rejection(
+    tmp_git_repo: Path,
+) -> None:
+    """A binary above the size limit is EDIT evidence, not a hard rejection."""
+    policy = load_policy(_DEFAULT_POLICY_DIR).pipeline.model_copy(
+        update={"commit_review": CommitReviewPolicy(binary_size_limit=1024)}
+    )
+    _seed_engine_defaults(tmp_git_repo)
+    blob = tmp_git_repo / "assets" / "payload.bin"
+    blob.parent.mkdir(parents=True, exist_ok=True)
+    blob.write_bytes(b"\x00" * 4096)
+
+    categories = _stage1_soft_finding_categories(tmp_git_repo, pipeline_policy=policy)
+    assert "binary_size" in categories, (
+        f"The oversized binary must reach the reviewer as evidence, got: {categories!r}"
+    )
+
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_commit_review_artifact(workspace, {"verdict": "approve"})
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    result = _run(workspace, pipeline_policy=policy)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewApproved), (
+        f"An oversized binary must not reject the iteration, got: {event!r}"
+    )
+    assert blob.exists()
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+
+def test_final_commit_review_loops_back_on_an_unsafe_action_and_never_advances(
+    tmp_git_repo: Path,
+) -> None:
+    """The FINAL review phase behaves like the per-iteration one.
+
+    An ``approve`` verdict that carries an unsafe action loops the reviewer
+    back to the review phase; it never advances to the commit phase and it
+    never discards the tracked file the action targeted.
+    """
+    workspace = FsWorkspace(tmp_git_repo)
+    tracked = tmp_git_repo / "app.py"
+    tracked.write_text("print('x')\n", encoding="utf-8")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["app.py"])
+        repo.index.commit("track app")
+    finally:
+        repo.close()
+
+    _write_commit_review_artifact(
+        workspace,
+        {"verdict": "approve", "actions": [{"action": "delete_file", "path": "app.py"}]},
+    )
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    result = _run(workspace, phase="development_final_commit_review")
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewLoopback), (
+        f"An unsafe action must loop the reviewer back, got: {event!r}"
+    )
+    assert tracked.exists()
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before

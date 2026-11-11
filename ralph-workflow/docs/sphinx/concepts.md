@@ -254,9 +254,9 @@ Before any code change is committed, the commit review phase executes as both a 
 ### Two-stage review architecture
 
 1. **Stage 1 — Deterministic tripwires (engine, no agent):**
-   The engine computes diff statistics between `HEAD` and the pending change. **Hard tripwires** reject automatically without consulting an agent:
+   The engine computes diff statistics between `HEAD` and the pending change. **Hard tripwires** reject automatically without consulting an agent: no reviewer agent is invoked and no prompt is materialised, so an agent cannot talk the gate out of a hard tripwire.
    - **Mass deletion:** Deleted tracked files exceed the count limit (`max_deleted_files`, default 50) or fractional limit (`max_deleted_fraction`, default 0.25 / 25%).
-   - **Protected paths:** Deletion or overwrite of `.git` internals, project manifests or lockfiles (`pyproject.toml`, `package.json`, `Cargo.toml`, `uv.lock`, etc.), entire top-level source or test directories (`src`, `tests`, `ralph`, `lib`), or core instructions (`PROMPT.md`, `AGENTS.md`).
+   - **Protected paths:** Deletion or overwrite of `.git` internals and of the core instructions (`PROMPT.md`, `AGENTS.md`); deletion of a project manifest or lockfile (`pyproject.toml`, `package.json`, `Cargo.toml`, `uv.lock`, etc.); and deletion of a top-level source or test directory entry (`src`, `tests`, `test`, `lib`, `ralph`, `app`, `pkg`).
 
    **Soft findings** never reject on their own; they are passed to Stage 2 as structured evidence:
    - **Out-of-scope paths:** Modified or added files outside `allowed_directories` when configured.
@@ -270,6 +270,8 @@ Before any code change is committed, the commit review phase executes as both a 
    - `## Reason`: Mandatory on `reject`. The reviewer must cite concrete paths or counts present in the diff. Unverifiable citations fail as reviewer malfunctions rather than triggering rollbacks.
 
 Commit review is **not** a code quality review—`development_analysis` owns code quality and plan adherence. Commit review answers only: *"does this diff look like accidental damage?"*
+
+Every threshold above is a `[commit_review]` setting in the pipeline policy TOML. The full table with the bundled defaults is in [Configuration → Commit review configuration](configuration.md#commit-review-configuration).
 
 ### Intentional large deletions have no bypass
 

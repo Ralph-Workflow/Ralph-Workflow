@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.config.models import UnifiedConfig
-from ralph.git.proposal_seal import seal_pending
+from ralph.git.proposal_seal import ProposalPreflightError, preflight, seal_pending
 from ralph.phases.commit_review import CommitReviewRejected
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.run_loop import resolve_initial_state
@@ -119,6 +119,36 @@ def test_a_damaged_git_stops_the_resumed_run_the_same_way(tmp_git_repo: Path) ->
     assert readme.read_text(encoding="utf-8") == _DEVELOPER_CHANGE
     proposal_file = _proposal_ref_file(repo_root, "run-damaged-resume")
     assert proposal_file.exists()
+
+
+def test_an_unresolvable_proposal_ref_is_a_gate_failure_not_a_rollback(
+    tmp_git_repo: Path,
+) -> None:
+    """A rejected proposal whose ref does not resolve stops the run, untouched.
+
+    The rejection is only actionable when the proposal ref resolves: the ref
+    is what makes the rejected work recoverable and what the preflight
+    confirms before any restore. When it cannot be resolved the run must
+    fail the gate instead of restoring blindly.
+    """
+    repo_root = Path(tmp_git_repo)
+    rejected_state = _rejected_state(repo_root, run_id="run-missing-proposal")
+    assert rejected_state.rollback_ref is not None
+
+    # The proposal ref is gone: the rejected work is no longer recoverable.
+    _proposal_ref_file(repo_root, "run-missing-proposal").unlink()
+    with pytest.raises(ProposalPreflightError):
+        preflight(repo_root, rejected_state.rollback_ref)
+
+    result = execute_pending_rollback(rejected_state, repo_root, _bundle().pipeline)
+
+    # The run stopped on the policy's failure route instead of rolling back.
+    assert result.phase == "failed_terminal"
+    assert result.rollback_pending is False
+    assert "gate failed" in (result.last_error or "")
+    # The tree is untouched: the restore never started.
+    readme = repo_root / "README.md"
+    assert readme.read_text(encoding="utf-8") == _DEVELOPER_CHANGE
 
 
 def test_an_unresolvable_baseline_is_a_gate_failure_not_a_rollback(tmp_git_repo: Path) -> None:
