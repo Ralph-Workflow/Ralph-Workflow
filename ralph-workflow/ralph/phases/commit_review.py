@@ -99,6 +99,8 @@ from ralph.recovery.classifier import FailureCategory
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.mcp.artifacts.markdown._document import ParsedDocument
+    from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
     from ralph.phases import PhaseContext
 
 COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
@@ -364,22 +366,25 @@ def _parse_action_line(text: str) -> CommitReviewAction | None:
     if line.startswith("[") and "]" in line:
         line = line.split("]", 1)[1].strip()
     action, sep, value = line.partition(" | ")
-    if not sep:
-        action, sep, value = line.partition("|")
+    if not sep or not action or not value:
+        return None
     action = action.strip()
     value = value.strip()
-    if action == "delete_file":
-        return CommitReviewAction(action=action, path=value, pattern=None)
-    if action in ("add_to_gitignore", "add_to_git_exclude"):
-        return CommitReviewAction(action=action, path=None, pattern=value)
-    return None
+    try:
+        if action == "delete_file":
+            return CommitReviewAction.model_validate({"action": action, "path": value})
+        if action in ("add_to_gitignore", "add_to_git_exclude"):
+            return CommitReviewAction.model_validate({"action": action, "pattern": value})
+        return None
+    except Exception:
+        return None
 
 
-def _load_commit_review_artifact(
+def _read_commit_review_document(
     ctx: PhaseContext,
     phase_name: str,
-) -> CommitReviewParsedArtifact | None:
-    """Load and parse the commit_review Markdown artifact."""
+) -> ParsedDocument | None:
+    """Read and validate the basic frontmatter of the commit_review Markdown artifact."""
     if not ctx.workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH):
         logger.warning(
             "{}: missing commit_review artifact at {}",
@@ -403,24 +408,69 @@ def _load_commit_review_artifact(
         )
         return None
 
+    return document
+
+
+def _parse_actions_section(
+    actions_sec: ParsedSection | None,
+    phase_name: str,
+) -> list[CommitReviewAction] | None:
+    if actions_sec is None:
+        return []
+    if any(line.text.strip() for line in actions_sec.lines):
+        logger.warning(
+            "{}: Actions section contains unparseable non-item lines",
+            phase_name,
+        )
+        return None
+    actions: list[CommitReviewAction] = []
+    for item in actions_sec.items:
+        act = _parse_action_line(item.text)
+        if act is None:
+            logger.warning(
+                "{}: Actions section contains unparseable action line: {!r}",
+                phase_name,
+                item.text,
+            )
+            return None
+        actions.append(act)
+    return actions
+
+
+def _load_commit_review_artifact(
+    ctx: PhaseContext,
+    phase_name: str,
+) -> CommitReviewParsedArtifact | None:
+    """Load and parse the commit_review Markdown artifact."""
+    document = _read_commit_review_document(ctx, phase_name)
+    if document is None:
+        return None
+
     verdict_raw = document.frontmatter.get("verdict")
     tree_sha_raw = document.frontmatter.get("tree_sha")
 
     verdict: str | None = None
     if verdict_raw is not None:
-        verdict = str(verdict_raw).strip().lower()
+        verdict_str = str(verdict_raw).strip()
+        if verdict_str.lower() in ("approve", "reject") and verdict_str not in (
+            "approve",
+            "reject",
+        ):
+            logger.warning(
+                "{}: commit_review artifact has invalid casing for verdict {!r} (must be lowercase 'approve' or 'reject')",
+                phase_name,
+                verdict_raw,
+            )
+            return None
+        verdict = verdict_str
 
     tree_sha: str | None = None
     if tree_sha_raw is not None:
         tree_sha = str(tree_sha_raw).strip()
 
-    actions: list[CommitReviewAction] = []
-    actions_sec = document.section("Actions")
-    if actions_sec is not None:
-        for item in actions_sec.items:
-            act = _parse_action_line(item.text)
-            if act is not None:
-                actions.append(act)
+    actions = _parse_actions_section(document.section("Actions"), phase_name)
+    if actions is None:
+        return None
 
     reason_items: list[str] = []
     reason_sec = document.section("Reason")
@@ -434,8 +484,21 @@ def _load_commit_review_artifact(
             ]
 
     reason_str: str | None = "\n".join(reason_items) if reason_items else None
-    if reason_str is None and "reason" in document.frontmatter:
-        reason_str = str(document.frontmatter["reason"]).strip() or None
+
+    # Strict contract: a rejecting artifact bound to a tree requires ## Reason with list items.
+    # Frontmatter reason is never accepted as a substitute for ## Reason.
+    # If tree_sha is absent or invalid, tree binding loopback handles it.
+    is_tree_bound = tree_sha is not None and bool(_TREE_SHA_PATTERN.fullmatch(tree_sha))
+    if (
+        verdict == "reject"
+        and is_tree_bound
+        and (reason_sec is None or not reason_items or not reason_str)
+    ):
+        logger.warning(
+            "{}: rejecting commit_review artifact requires a non-empty '## Reason' section",
+            phase_name,
+        )
+        return None
 
     return CommitReviewParsedArtifact(
         verdict=verdict,

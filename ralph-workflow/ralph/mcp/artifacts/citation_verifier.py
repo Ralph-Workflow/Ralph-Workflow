@@ -122,6 +122,7 @@ _COUNT_KIND_BY_WORD: dict[str, str] = {
     "modified": "modified",
     "new": "added",
     "removed": "deleted",
+    "total": "total",
     "untracked": "added",
 }
 
@@ -139,9 +140,9 @@ _MARKDOWN_LINK_RE: re.Pattern[str] = re.compile(r"\[([^]]*)\]\(([^)]+)\)")
 _INLINE_CODE_RE: re.Pattern[str] = re.compile(r"`([^`]+)`")
 _QUOTED_STR_RE: re.Pattern[str] = re.compile(r"""(?:'([^']+)'|"([^"]+)")""")
 _COUNT_RE: re.Pattern[str] = re.compile(
-    rf"\b(?P<count>\d+)\s+(?:(?P<kind>{_COUNT_KIND_PATTERN})\s+)?files?"
+    rf"\b(?P<count>\d+)\s+(?:['\"`*~]?(?P<kind>[a-zA-Z_-]+(?:\s+[a-zA-Z_-]+)?)['\"`*~]?\s+)?files?"
     rf"(?:(?:\s+(?:{_COUNT_FILLER_PATTERN})\s+|\s+)"
-    rf"(?P<kind_after>{_COUNT_KIND_PATTERN}))?\b",
+    rf"['\"`*~]?(?P<kind_after>{_COUNT_KIND_PATTERN})['\"`*~]?)?\b",
     re.IGNORECASE,
 )
 _EXPLICIT_COUNT_RE: re.Pattern[str] = re.compile(r"\bcount:\s*(\d+)\b", re.IGNORECASE)
@@ -471,11 +472,19 @@ def _count_kind(primary: str | None, secondary: str | None) -> str | None:
         secondary: The category word written after the noun, if any.
 
     Returns:
-        The category name, or None when the claim names two conflicting
-        categories and therefore cannot be verified.
+        The category name, or None when the claim names an unsupported
+        category or conflicting categories and therefore cannot be verified.
     """
-    first = _COUNT_KIND_BY_WORD.get((primary or "").lower())
-    second = _COUNT_KIND_BY_WORD.get((secondary or "").lower())
+    primary_clean = (primary or "").strip(_WRAPPER_CHARS).strip().lower()
+    secondary_clean = (secondary or "").strip(_WRAPPER_CHARS).strip().lower()
+
+    if primary_clean and primary_clean not in _COUNT_KIND_BY_WORD:
+        return None
+    if secondary_clean and secondary_clean not in _COUNT_KIND_BY_WORD:
+        return None
+
+    first = _COUNT_KIND_BY_WORD.get(primary_clean)
+    second = _COUNT_KIND_BY_WORD.get(secondary_clean)
     if first and second:
         return first if first == second else None
     if first:

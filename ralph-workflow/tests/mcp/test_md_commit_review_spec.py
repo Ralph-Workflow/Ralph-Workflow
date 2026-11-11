@@ -227,3 +227,26 @@ tree_sha: {_VALID_TREE_SHA}
 - [A1] delete_file tmp/scratch.log
 """
     )
+
+
+def test_commit_review_uppercase_verdict_is_rejected() -> None:
+    doc = f"""---
+type: commit_review
+verdict: APPROVE
+tree_sha: {_VALID_TREE_SHA}
+---
+## Actions
+"""
+    assert "SPEC010" in _error_ids(doc)
+
+
+def test_reject_with_frontmatter_reason_without_reason_section_is_error() -> None:
+    doc = f"""---
+type: commit_review
+verdict: reject
+tree_sha: {_VALID_TREE_SHA}
+reason: frontmatter reason text
+---
+## Actions
+"""
+    assert "SPEC008" in _error_ids(doc)

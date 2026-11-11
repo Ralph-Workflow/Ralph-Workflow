@@ -2265,11 +2265,16 @@ def execute_pending_rollback(
     # The durable CLEAR belongs in the same file as the durable marker: a
     # resume that reads a pending marker it has already satisfied would
     # restore the working tree a second time.
-    _save_checkpoint_or_log(
+    if not _save_checkpoint_or_log(
         cleared,
         message="Checkpoint save failed after rollback in phase={phase}: {err}",
         path=marker_path,
-    )
+    ):
+        return rollback_gate_failure_state(
+            state,
+            pipeline_policy,
+            "Rollback checkpoint save failed: cleared rollback marker was not persisted",
+        )
     return cleared
 
 

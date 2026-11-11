@@ -32,16 +32,17 @@ _ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 
 #: Reject reasons whose claims cannot be true for a pending diff that holds
 #: exactly ONE modified, non-binary ``src/app.py`` entry: a fabricated
-#: binary count, a fabricated deleted path, a path outside the diff, and a
-#: fabricated added-file count. A reviewer that cites any of them has
-#: malfunctioned, and the engine must never treat the verdict as authority
-#: for the destructive rollback path.
+#: binary count, a fabricated deleted path, a path outside the diff, a
+#: fabricated added-file count, and an unsupported count category ("999 secret files").
+#: A reviewer that cites any of them has malfunctioned, and the engine must
+#: never treat the verdict as authority for the destructive rollback path.
 _FABRICATED_REASONS = (
     "src/app.py and 999 binary files were damaged",
     "src/app.py and README.md were deleted",
     "outside/src/app.py was deleted",
     "src/app.py and 1 added file were damaged",
     "src/app.py was modified and Makefile was deleted",
+    "src/app.py and 999 secret files were damaged",
 )
 
 
@@ -159,7 +160,7 @@ def test_correctly_cited_reject_is_still_a_rejection(tmp_git_repo: Path) -> None
     """The control: a verifiable citation is a rejection, not a malfunction.
 
     This is the positive counterpart of the proofs above: the ONLY
-    difference is whether the cited path appears in the pending diff.
+    difference is whether the cited path and count appear in the pending diff.
     """
     app_file = tmp_git_repo / "src" / "app.py"
     app_file.parent.mkdir(parents=True, exist_ok=True)
@@ -168,12 +169,16 @@ def test_correctly_cited_reject_is_still_a_rejection(tmp_git_repo: Path) -> None
     app_file.write_text("print('changed')\n", encoding="utf-8")
 
     workspace = FsWorkspace(tmp_git_repo)
-    _write_reject_artifact(workspace, "src/app.py was corrupted by the change")
+    for valid_reason in (
+        "src/app.py was corrupted by the change",
+        "src/app.py and 1 modified file was damaged",
+    ):
+        _write_reject_artifact(workspace, valid_reason)
 
-    result = _run_phase(workspace)
+        result = _run_phase(workspace)
 
-    assert len(result) == 1
-    event = result[0]
-    assert isinstance(event, CommitReviewRejected)
-    assert event.hard is False
-    assert "src/app.py" in event.reason
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, CommitReviewRejected)
+        assert event.hard is False
+        assert "src/app.py" in event.reason

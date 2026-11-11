@@ -400,3 +400,85 @@ def test_a_crash_at_every_lifecycle_boundary_resumes_to_the_same_end_state(
         proposal_ref,
         added,
     )
+
+
+def test_cleared_checkpoint_persistence_failure_fails_closed_and_prevents_replay(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When persisting the cleared rollback marker fails, the gate fails closed.
+
+    If persisting the cleared marker after restoration fails, the runner must
+    not return an in-memory cleared state that allows normal continuation
+    (e.g. into development) while the on-disk state is inconsistent. Instead,
+    it must route to gate failure (fail-closed) so subsequent crash/resume
+    cannot replay restoration over later work.
+    """
+    root = Path(tmp_git_repo)
+    bundle = _bundle()
+    checkpoint_path = rollback_checkpoint_path_for_root(root)
+
+    readme, ignored_log, agent_state = _prepare_workspace(root)
+    baseline = _seal_run_start_baseline(root)
+    added = _apply_rejected_proposal(root, readme)
+
+    state = PipelineState(
+        phase=_COMMIT_REVIEW_PHASE,
+        commit_review_rejections=0,
+        rollback_baseline_ref=baseline.ref,
+    )
+    _persist(state, checkpoint_path)
+
+    seal = seal_pending(root, _RUN_ID, _ITERATION)
+    pending = _pending_state(bundle, state, seal.ref)
+
+    restores = _count_restores(monkeypatch)
+
+    # Inject failure specifically when persisting the cleared state.
+    # The pre-rollback pending marker save succeeds; the post-rollback cleared marker save fails.
+    from ralph.pipeline import checkpoint as ckpt_module
+
+    real_save = ckpt_module.save
+
+    def failing_save(save_state: PipelineState, path: Path) -> None:
+        if save_state.rollback_pending is False and save_state.phase != "failed_terminal":
+            raise OSError("Injected I/O failure while persisting cleared rollback marker")
+        real_save(save_state, path)
+
+    monkeypatch.setattr(ckpt_module, "save", failing_save)
+
+    failed_state = execute_pending_rollback(
+        pending,
+        root,
+        bundle.pipeline,
+        checkpoint_path=checkpoint_path,
+    )
+
+    # 1. Gate failure: fails closed, not allowing normal continuation into development.
+    assert failed_state.phase == "failed_terminal"
+    assert failed_state.rollback_pending is False
+    assert failed_state.rollback_ref == seal.ref
+    assert "gate failed" in (failed_state.last_error or "").lower()
+    assert "cleared rollback marker was not persisted" in (failed_state.last_error or "").lower()
+
+    # The restore itself ran exactly once.
+    assert len(restores) == 1
+    # Working tree was restored to baseline.
+    assert readme.read_text(encoding="utf-8") == "test"
+    assert not added.exists()
+    assert ignored_log.read_text(encoding="utf-8") == "runtime log line\n"
+    assert agent_state.read_text(encoding="utf-8") == '{"phase": "development"}\n'
+
+    # 2. Persisting the fail-closed terminal state (as runner step finalization does).
+    _persist(failed_state, checkpoint_path)
+
+    # Subsequent developer / operator work in the workspace must survive without replay.
+    work_file = root / "followup_work.txt"
+    work_file.write_text("developer follow-up work\n", encoding="utf-8")
+
+    # 3. Crash / resume verification: resume must not replay restoration.
+    resumed = _resume(root, bundle, checkpoint_path)
+    assert resumed.phase == "failed_terminal"
+    assert resumed.rollback_pending is False
+    assert len(restores) == 1, "Resume must not replay rollback after cleared checkpoint failure"
+    assert work_file.read_text(encoding="utf-8") == "developer follow-up work\n"

@@ -2720,3 +2720,85 @@ def test_safe_actions_application_and_resealing(tmp_git_repo: Path) -> None:
         "The approve verdict must bind to the seal produced by the edit step: "
         f"approved {event.tree_sha!r} != resealed {resealed.tree_sha!r}"
     )
+
+
+def test_uppercase_verdict_returns_retryable_phase_failure(tmp_git_repo: Path) -> None:
+    """An uppercase verdict ('APPROVE') is malformed and fails as a retryable PhaseFailureEvent."""
+    workspace = FsWorkspace(tmp_git_repo)
+    tree_sha = _resolve_artifact_tree_sha(tmp_git_repo)
+    path = Path(workspace.root) / COMMIT_REVIEW_ARTIFACT_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\ntype: commit_review\nverdict: APPROVE\ntree_sha: {tree_sha}\n---\n## Actions\n",
+        encoding="utf-8",
+    )
+    result = _run_commit_review_phase(workspace)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.recoverable is True
+    assert event.retry_in_session is True
+    assert event.failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert not isinstance(event, CommitReviewApproved)
+
+
+def test_malformed_action_line_returns_retryable_phase_failure(tmp_git_repo: Path) -> None:
+    """An unparseable action line is malformed and fails as a retryable PhaseFailureEvent."""
+    workspace = FsWorkspace(tmp_git_repo)
+    tree_sha = _resolve_artifact_tree_sha(tmp_git_repo)
+    path = Path(workspace.root) / COMMIT_REVIEW_ARTIFACT_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\ntype: commit_review\nverdict: approve\ntree_sha: {tree_sha}\n---\n## Actions\n- [A1] delete_file tmp/scratch.log\n",
+        encoding="utf-8",
+    )
+    result = _run_commit_review_phase(workspace)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.recoverable is True
+    assert event.retry_in_session is True
+    assert event.failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert not isinstance(event, CommitReviewApproved)
+
+
+def test_reject_without_reason_section_returns_retryable_phase_failure(tmp_git_repo: Path) -> None:
+    """A rejecting artifact lacking a '## Reason' section fails as a retryable PhaseFailureEvent."""
+    workspace = FsWorkspace(tmp_git_repo)
+    tree_sha = _resolve_artifact_tree_sha(tmp_git_repo)
+    path = Path(workspace.root) / COMMIT_REVIEW_ARTIFACT_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\ntype: commit_review\nverdict: reject\ntree_sha: {tree_sha}\n---\n## Actions\n",
+        encoding="utf-8",
+    )
+    result = _run_commit_review_phase(workspace)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.recoverable is True
+    assert event.retry_in_session is True
+    assert event.failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert not isinstance(event, CommitReviewRejected)
+
+
+def test_reject_with_frontmatter_reason_without_reason_section_returns_retryable_phase_failure(
+    tmp_git_repo: Path,
+) -> None:
+    """Frontmatter 'reason' does not satisfy the '## Reason' requirement and fails as retryable."""
+    workspace = FsWorkspace(tmp_git_repo)
+    tree_sha = _resolve_artifact_tree_sha(tmp_git_repo)
+    path = Path(workspace.root) / COMMIT_REVIEW_ARTIFACT_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\ntype: commit_review\nverdict: reject\ntree_sha: {tree_sha}\nreason: frontmatter reason text\n---\n## Actions\n",
+        encoding="utf-8",
+    )
+    result = _run_commit_review_phase(workspace)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.recoverable is True
+    assert event.retry_in_session is True
+    assert event.failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert not isinstance(event, CommitReviewRejected)
