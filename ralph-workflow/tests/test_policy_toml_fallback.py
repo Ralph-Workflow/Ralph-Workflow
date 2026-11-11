@@ -22,9 +22,13 @@ from ralph.config import reset_fallback_warning_registry
 from ralph.policy.loader import (
     PolicyValidationError,
     cached_default_agents_policy,
+    cached_default_artifacts_policy,
+    cached_default_pipeline_policy,
     default_dir,
     load_agents_policy,
     load_policy,
+    load_policy_for_config_dir,
+    load_policy_for_workspace_scope,
     load_toml,
     validate_artifacts,
     validate_pipeline,
@@ -35,6 +39,7 @@ from ralph.project_policy.portfolio import (
     load_portfolio_toml,
     parse_portfolio_toml,
 )
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
@@ -445,3 +450,228 @@ def test_fallback_rewarns_when_content_changes(tmp_path: Path) -> None:
     with _capture_warnings() as warnings_2:
         load_policy(tmp_path)
     assert len(warnings_2) == 1
+
+
+def test_global_pipeline_toml_schema_invalid_fallback_attribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid schema in global pipeline.toml attributes warning to global file and falls back."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    global_file = global_dir / "ralph-workflow-pipeline.toml"
+    bad_content = "entry_block = 42\n"
+    global_file.write_text(bad_content, encoding="utf-8")
+    before_bytes = global_file.read_bytes()
+
+    local_dir = tmp_path / "workspace" / ".agent"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "pipeline.toml"
+
+    with _capture_warnings() as warnings:
+        bundle = load_policy_for_config_dir(local_dir)
+
+    default_pipeline = cached_default_pipeline_policy()
+    assert bundle.pipeline.entry_block == default_pipeline.entry_block
+    assert global_file.read_bytes() == before_bytes
+    assert not local_file.exists()
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], global_file, expected_kind="pipeline")
+    assert str(local_file) not in warnings[0]
+
+    # Repeated load emits no new warning (dedup)
+    with _capture_warnings() as warnings_repeat:
+        load_policy_for_config_dir(local_dir)
+    assert len(warnings_repeat) == 0
+
+    # Changing bad content re-warns for global file
+    global_file.write_text("entry_block = [1, 2]\n", encoding="utf-8")
+    with _capture_warnings() as warnings_changed:
+        load_policy_for_config_dir(local_dir)
+    assert len(warnings_changed) == 1
+    _assert_fallback_warning(warnings_changed[0], global_file, expected_kind="pipeline")
+
+
+def test_global_artifacts_toml_schema_invalid_fallback_attribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid schema in global artifacts.toml attributes warning to global file and falls back."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    global_file = global_dir / "ralph-workflow-artifacts.toml"
+    bad_content = "[artifacts.plan]\nartifact_required = 'not-a-bool'\n"
+    global_file.write_text(bad_content, encoding="utf-8")
+    before_bytes = global_file.read_bytes()
+
+    local_dir = tmp_path / "workspace" / ".agent"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "artifacts.toml"
+
+    with _capture_warnings() as warnings:
+        bundle = load_policy_for_config_dir(local_dir)
+
+    default_artifacts = cached_default_artifacts_policy()
+    assert bundle.artifacts.artifacts.keys() == default_artifacts.artifacts.keys()
+    assert global_file.read_bytes() == before_bytes
+    assert not local_file.exists()
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], global_file, expected_kind="artifacts")
+    assert str(local_file) not in warnings[0]
+
+    # Repeated load emits no new warning (dedup)
+    with _capture_warnings() as warnings_repeat:
+        load_policy_for_config_dir(local_dir)
+    assert len(warnings_repeat) == 0
+
+    # Changing bad content re-warns for global file
+    global_file.write_text("[artifacts.plan]\nartifact_required = 12345\n", encoding="utf-8")
+    with _capture_warnings() as warnings_changed:
+        load_policy_for_config_dir(local_dir)
+    assert len(warnings_changed) == 1
+    _assert_fallback_warning(warnings_changed[0], global_file, expected_kind="artifacts")
+
+
+def test_global_pipeline_fallback_preserves_valid_local_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid global pipeline falls back to default while preserving valid local override."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    global_file = global_dir / "ralph-workflow-pipeline.toml"
+    global_file.write_text("entry_block = 42\n", encoding="utf-8")
+
+    local_dir = tmp_path / "workspace" / ".agent"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "pipeline.toml"
+    local_file.write_text(
+        "[development_timebox]\nduration_seconds = 7200\nwarning_seconds = 6000\n",
+        encoding="utf-8",
+    )
+
+    with _capture_warnings() as warnings:
+        bundle = load_policy_for_config_dir(local_dir)
+
+    assert bundle.pipeline.development_timebox is not None
+    assert bundle.pipeline.development_timebox.duration_seconds == 7200
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], global_file, expected_kind="pipeline")
+    assert str(local_file) not in warnings[0]
+
+
+def test_local_pipeline_fallback_preserves_valid_global_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid local pipeline falls back while preserving valid global override."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    global_file = global_dir / "ralph-workflow-pipeline.toml"
+    global_file.write_text(
+        "[development_timebox]\nduration_seconds = 7200\nwarning_seconds = 6000\n",
+        encoding="utf-8",
+    )
+
+    local_dir = tmp_path / "workspace" / ".agent"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "pipeline.toml"
+    local_file.write_text("entry_block = 42\n", encoding="utf-8")
+
+    with _capture_warnings() as warnings:
+        bundle = load_policy_for_config_dir(local_dir)
+
+    assert bundle.pipeline.development_timebox is not None
+    assert bundle.pipeline.development_timebox.duration_seconds == 7200
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], local_file, expected_kind="pipeline")
+    assert str(global_file) not in warnings[0]
+
+
+def test_global_artifacts_fallback_preserves_valid_local_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid global artifacts falls back while preserving valid local override."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    global_file = global_dir / "ralph-workflow-artifacts.toml"
+    global_file.write_text(
+        "[artifacts.planning_output]\nartifact_required = 'not-a-bool'\n", encoding="utf-8"
+    )
+
+    local_dir = tmp_path / "workspace" / ".agent"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "artifacts.toml"
+    local_file.write_text(
+        "[artifacts.planning_output]\nmarkdown_summary_path = '.agent/CUSTOM_PLAN.md'\n",
+        encoding="utf-8",
+    )
+
+    with _capture_warnings() as warnings:
+        bundle = load_policy_for_config_dir(local_dir)
+
+    assert (
+        bundle.artifacts.artifacts["planning_output"].markdown_summary_path
+        == ".agent/CUSTOM_PLAN.md"
+    )
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], global_file, expected_kind="artifacts")
+    assert str(local_file) not in warnings[0]
+
+
+def test_local_artifacts_fallback_preserves_valid_global_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid local artifacts falls back while preserving valid global override."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    global_file = global_dir / "ralph-workflow-artifacts.toml"
+    global_file.write_text(
+        "[artifacts.planning_output]\nmarkdown_summary_path = '.agent/GLOBAL_PLAN.md'\n",
+        encoding="utf-8",
+    )
+
+    local_dir = tmp_path / "workspace" / ".agent"
+    local_dir.mkdir(parents=True)
+    local_file = local_dir / "artifacts.toml"
+    local_file.write_text(
+        "[artifacts.planning_output]\nartifact_required = 'not-a-bool'\n", encoding="utf-8"
+    )
+
+    with _capture_warnings() as warnings:
+        bundle = load_policy_for_config_dir(local_dir)
+
+    assert (
+        bundle.artifacts.artifacts["planning_output"].markdown_summary_path
+        == ".agent/GLOBAL_PLAN.md"
+    )
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], local_file, expected_kind="artifacts")
+    assert str(global_file) not in warnings[0]
+
+
+def test_workspace_scope_global_fallback_attribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """load_policy_for_workspace_scope properly attributes global fallback warning."""
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    global_file = global_dir / "ralph-workflow-pipeline.toml"
+    global_file.write_text("entry_block = 42\n", encoding="utf-8")
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    local_agent_dir = workspace_root / ".agent"
+    local_agent_dir.mkdir()
+
+    with _capture_warnings() as warnings:
+        bundle = load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
+
+    default_pipeline = cached_default_pipeline_policy()
+    assert bundle.pipeline.entry_block == default_pipeline.entry_block
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], global_file, expected_kind="pipeline")
+    assert str(local_agent_dir) not in warnings[0]

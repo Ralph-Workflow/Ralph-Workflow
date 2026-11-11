@@ -206,70 +206,177 @@ def _reject_phase_authored_pipeline_override(*, scope: str, path: Path) -> None:
     )
 
 
+def _handle_phase_authored_pipeline(
+    data: Mapping[str, object],
+    path: Path,
+    *,
+    scope: str,
+    strict: bool,
+) -> bool:
+    """Check for obsolete phase-authored schema; warn or raise if present."""
+    if not (data and _is_phase_authored_pipeline_data(data)):
+        return False
+    if strict:
+        _reject_phase_authored_pipeline_override(scope=scope, path=path)
+    _emit_fallback_warning(
+        path,
+        PolicyValidationError(
+            f"{scope} pipeline.toml at '{path}' uses the obsolete phase-authored schema "
+            "and must not be merged with the bundled block-authored default pipeline. "
+            "Remove the outdated file so Ralph Workflow falls back to the current "
+            "default pipeline template.",
+            source="pipeline",
+        ),
+        kind="pipeline",
+    )
+    return True
+
+
 def _declares_timebox(data: Mapping[str, object]) -> bool:
     return "cycle_timebox" in data or "development_timebox" in data
 
 
-def _resolve_pipeline_data(
+def _resolve_pipeline_policy(
     *,
     default_policy_dir: Path,
     pipeline_path: Path,
     global_pipeline_path: Path | None,
     strict_optional_files: bool = False,
-) -> tuple[dict[str, object], bool]:
-    """Resolve merged pipeline data and whether cycle_timebox was explicit.
-
-    Returns ``(pipeline_data, timeboxes_explicit)``. The flag is True when an
-    override supplies either timebox block; otherwise inherited defaults are
-    disabled when they do not fit a custom graph.
-    """
+) -> PipelinePolicy:
+    """Resolve and validate pipeline policy across default, global, and local layers."""
     default_pipeline_data = cached_default_pipeline_data()
-    local_pipeline_data = load_toml(pipeline_path, kind="pipeline", strict=strict_optional_files)
+    default_pipeline_policy = cached_default_pipeline_policy()
+
     if global_pipeline_path is None:
-        return local_pipeline_data or default_pipeline_data, _declares_timebox(local_pipeline_data)
+        local_pipeline_data = load_toml(
+            pipeline_path, kind="pipeline", strict=strict_optional_files
+        )
+        if not local_pipeline_data:
+            return default_pipeline_policy
+        return validate_or_default(
+            pipeline_path,
+            local_pipeline_data,
+            lambda d: validate_pipeline(
+                d, timeboxes_explicit=_declares_timebox(local_pipeline_data)
+            ),
+            default_pipeline_policy,
+            kind="pipeline",
+            strict=strict_optional_files,
+        )
+
+    active_pipeline_data = default_pipeline_data
+    active_pipeline_policy = default_pipeline_policy
+    active_timeboxes_explicit = False
 
     global_pipeline_data = load_toml(
         global_pipeline_path, kind="pipeline", strict=strict_optional_files
     )
-    if global_pipeline_data and _is_phase_authored_pipeline_data(global_pipeline_data):
-        if strict_optional_files:
-            _reject_phase_authored_pipeline_override(scope="User-global", path=global_pipeline_path)
-        else:
-            _emit_fallback_warning(
-                global_pipeline_path,
-                PolicyValidationError(
-                    f"User-global pipeline.toml at '{global_pipeline_path}' uses the obsolete "
-                    "phase-authored schema and must not be merged with the bundled "
-                    "block-authored default pipeline. Remove the outdated file so "
-                    "Ralph Workflow falls back to the current default pipeline template.",
-                    source="pipeline",
-                ),
-                kind="pipeline",
-            )
-            global_pipeline_data = {}
+    if _handle_phase_authored_pipeline(
+        global_pipeline_data,
+        global_pipeline_path,
+        scope="User-global",
+        strict=strict_optional_files,
+    ):
+        global_pipeline_data = {}
 
-    if local_pipeline_data and _is_phase_authored_pipeline_data(local_pipeline_data):
-        if strict_optional_files:
-            _reject_phase_authored_pipeline_override(scope="Workspace-local", path=pipeline_path)
-        else:
-            _emit_fallback_warning(
-                pipeline_path,
-                PolicyValidationError(
-                    f"Workspace-local pipeline.toml at '{pipeline_path}' uses the obsolete "
-                    "phase-authored schema and must not be merged with the bundled "
-                    "block-authored default pipeline. Remove the outdated file so "
-                    "Ralph Workflow falls back to the current default pipeline template.",
-                    source="pipeline",
-                ),
-                kind="pipeline",
-            )
-            local_pipeline_data = {}
+    if global_pipeline_data:
+        candidate_global_data = _merge_pipeline_defaults(
+            default_pipeline_data, global_pipeline_data
+        )
+        global_timeboxes_explicit = _declares_timebox(global_pipeline_data)
+        validated_global_policy = validate_or_default(
+            global_pipeline_path,
+            candidate_global_data,
+            lambda d: validate_pipeline(d, timeboxes_explicit=global_timeboxes_explicit),
+            default=None,
+            kind="pipeline",
+            strict=strict_optional_files,
+        )
+        if validated_global_policy is not None:
+            active_pipeline_data = candidate_global_data
+            active_pipeline_policy = validated_global_policy
+            active_timeboxes_explicit = global_timeboxes_explicit
 
-    pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
+    local_pipeline_data = load_toml(pipeline_path, kind="pipeline", strict=strict_optional_files)
+    if _handle_phase_authored_pipeline(
+        local_pipeline_data,
+        pipeline_path,
+        scope="Workspace-local",
+        strict=strict_optional_files,
+    ):
+        local_pipeline_data = {}
+
     if local_pipeline_data:
-        pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
-    explicit = _declares_timebox(global_pipeline_data) or _declares_timebox(local_pipeline_data)
-    return pipeline_data, explicit
+        candidate_local_data = _merge_pipeline_defaults(active_pipeline_data, local_pipeline_data)
+        local_timeboxes_explicit = active_timeboxes_explicit or _declares_timebox(
+            local_pipeline_data
+        )
+        validated_local_policy = validate_or_default(
+            pipeline_path,
+            candidate_local_data,
+            lambda d: validate_pipeline(d, timeboxes_explicit=local_timeboxes_explicit),
+            default=None,
+            kind="pipeline",
+            strict=strict_optional_files,
+        )
+        if validated_local_policy is not None:
+            return validated_local_policy
+        return active_pipeline_policy
+
+    return active_pipeline_policy
+
+
+def _resolve_artifacts_policy(
+    *,
+    artifacts_path: Path,
+    global_artifacts_path: Path | None,
+    strict_optional_files: bool = False,
+) -> ArtifactsPolicy:
+    """Resolve and validate artifacts policy across default, global, and local layers."""
+    default_artifacts_data = cached_default_artifacts_data()
+    default_artifacts_policy = cached_default_artifacts_policy()
+
+    active_artifacts_data = default_artifacts_data
+    active_artifacts_policy = default_artifacts_policy
+
+    if global_artifacts_path is not None:
+        global_artifacts_data = load_toml(
+            global_artifacts_path, kind="artifacts", strict=strict_optional_files
+        )
+        if global_artifacts_data:
+            candidate_global_artifacts = _merge_mapping_defaults(
+                default_artifacts_data, global_artifacts_data
+            )
+            validated_global_artifacts = validate_or_default(
+                global_artifacts_path,
+                candidate_global_artifacts,
+                validate_artifacts,
+                default=None,
+                kind="artifacts",
+                strict=strict_optional_files,
+            )
+            if validated_global_artifacts is not None:
+                active_artifacts_data = candidate_global_artifacts
+                active_artifacts_policy = validated_global_artifacts
+
+    local_artifacts_data = load_toml(artifacts_path, kind="artifacts", strict=strict_optional_files)
+    if local_artifacts_data:
+        candidate_local_artifacts = _merge_mapping_defaults(
+            active_artifacts_data, local_artifacts_data
+        )
+        validated_local_artifacts = validate_or_default(
+            artifacts_path,
+            candidate_local_artifacts,
+            validate_artifacts,
+            default=None,
+            kind="artifacts",
+            strict=strict_optional_files,
+        )
+        if validated_local_artifacts is not None:
+            return validated_local_artifacts
+        return active_artifacts_policy
+
+    return active_artifacts_policy
 
 
 def _config_defines_agent_policy(config: object) -> bool:
@@ -654,56 +761,21 @@ def _load_policy_from_paths(
     ):
         return cached_default_policy_bundle()
 
-    pipeline_data, timeboxes_explicit = _resolve_pipeline_data(
+    pipeline_policy = _resolve_pipeline_policy(
         default_policy_dir=default_policy_dir,
         pipeline_path=pipeline_path,
         global_pipeline_path=global_pipeline_path,
         strict_optional_files=strict_optional_files,
     )
 
-    default_pipeline_policy = cached_default_pipeline_policy()
-
-    default_artifacts_data = cached_default_artifacts_data()
-    default_artifacts_policy = cached_default_artifacts_policy()
-
-    local_artifacts_data = load_toml(artifacts_path, kind="artifacts", strict=strict_optional_files)
-    if global_artifacts_path is None:
-        global_artifacts_data = {}
-        if local_artifacts_data:
-            artifacts_data = _merge_mapping_defaults(default_artifacts_data, local_artifacts_data)
-        else:
-            artifacts_data = default_artifacts_data
-    else:
-        global_artifacts_data = load_toml(
-            global_artifacts_path, kind="artifacts", strict=strict_optional_files
-        )
-        artifacts_data = _merge_mapping_defaults(default_artifacts_data, global_artifacts_data)
-        if local_artifacts_data:
-            artifacts_data = _merge_mapping_defaults(artifacts_data, local_artifacts_data)
+    artifacts_policy = _resolve_artifacts_policy(
+        artifacts_path=artifacts_path,
+        global_artifacts_path=global_artifacts_path,
+        strict_optional_files=strict_optional_files,
+    )
 
     agents_policy = _load_agents_policy_from_path(
         agents_path, config=config, strict_optional_files=strict_optional_files
-    )
-
-    def _validate_pipeline_wrapper(data: dict[str, object]) -> PipelinePolicy:
-        return validate_pipeline(data, timeboxes_explicit=timeboxes_explicit)
-
-    pipeline_policy = validate_or_default(
-        pipeline_path,
-        pipeline_data,
-        _validate_pipeline_wrapper,
-        default_pipeline_policy,
-        kind="pipeline",
-        strict=strict_optional_files,
-    )
-
-    artifacts_policy = validate_or_default(
-        artifacts_path,
-        artifacts_data,
-        validate_artifacts,
-        default_artifacts_policy,
-        kind="artifacts",
-        strict=strict_optional_files,
     )
 
     try:

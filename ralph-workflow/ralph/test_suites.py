@@ -695,6 +695,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/pipeline/test_continuation_retry_gate_blackbox.py": 136,
     "tests/pipeline/test_corrupt_agents_toml_repro.py": 11,
     "tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py": 8,
+    "tests/pipeline/test_paused_rebase_config_recovery_blackbox.py": 180,
     "tests/pipeline/test_planning_commit_recovery.py": 11,
     "tests/pipeline/test_planning_requires_target_sync.py": 40,
     "tests/pipeline/test_reducer_lock_retry.py": 21,
