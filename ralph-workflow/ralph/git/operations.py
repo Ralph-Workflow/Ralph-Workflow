@@ -649,6 +649,9 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
 
 def _current_head_sha(repo_root: Path) -> str | None:
     """Return the SHA at HEAD or ``None`` if HEAD cannot be resolved."""
+    direct = _read_head_sha_direct(repo_root)
+    if direct is not None:
+        return direct
     result = run_git(
         ("rev-parse", "--verify", "HEAD"),
         cwd=repo_root,
@@ -738,6 +741,14 @@ def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
 
 def _head_tree_sha(repo_root: Path, head_sha: str) -> str | None:
     """Return the tree SHA at ``head_sha``, or ``None`` if not resolvable."""
+    try:
+        repo = Repo(repo_root)
+        try:
+            return str(repo.commit(head_sha).tree.hexsha)
+        finally:
+            _close_repo(repo)
+    except Exception as exc:
+        logger.debug("Failed reading head tree from GitPython: {}", exc)
     result = run_git(
         ("rev-parse", "--verify", f"{head_sha}^{{tree}}"),
         cwd=repo_root,
@@ -992,6 +1003,15 @@ class CommitTreeMismatchError(GitOperationError):
 
 def _commit_parent_sha(repo_root: Path, commit_sha: str) -> str:
     """Return the first parent of ``commit_sha``, or ``""`` for a root commit."""
+    try:
+        repo = Repo(repo_root)
+        try:
+            parents = repo.commit(commit_sha).parents
+            return str(parents[0].hexsha) if parents else ""
+        finally:
+            _close_repo(repo)
+    except Exception as exc:
+        logger.debug("Failed reading commit parent from GitPython: {}", exc)
     result = run_git(
         ("rev-parse", "--verify", f"{commit_sha}^"),
         cwd=repo_root,

@@ -119,7 +119,7 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
 
         sensitive_patterns = [
             pattern
-            for pattern in patterns
+            for pattern in new_patterns
             if _is_recognized_secret_name(PurePosixPath(pattern.strip().replace("\\", "/")).name)
         ]
         if sensitive_patterns:

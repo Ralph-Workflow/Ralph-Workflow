@@ -232,11 +232,11 @@ def _base_smoke_config() -> UnifiedConfig:
         update={
             "general": cfg.general.model_copy(
                 update={
-                    "agent_idle_drain_window_seconds": 0.05,
-                    "agent_parent_exit_grace_seconds": 0.2,
-                    "agent_descendant_wait_timeout_seconds": 1.0,
+                    "agent_idle_drain_window_seconds": 0.02,
+                    "agent_parent_exit_grace_seconds": 0.05,
+                    "agent_descendant_wait_timeout_seconds": 0.05,
                     "agent_descendant_wait_poll_seconds": 0.01,
-                    "agent_process_exit_wait_seconds": 2.0,
+                    "agent_process_exit_wait_seconds": 0.05,
                 }
             )
         }

@@ -12,7 +12,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from git import Repo
 from git.exc import GitCommandError
@@ -568,7 +568,8 @@ def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
     marker_ref = REJECTED_PROPOSAL_REF_PREFIX + proposal_ref[len(_PROPOSAL_REF_PREFIX) :]
     try:
         with _open_repo(repo_root) as repo:
-            sha = cast("str", route_git_method(repo, "rev_parse", ("--verify", proposal_ref)))
+            sha_obj = route_git_method(repo, "rev_parse", ("--verify", proposal_ref))
+            sha = str(sha_obj).strip()
             route_git_method(repo, "update_ref", (marker_ref, sha))
     except Exception as exc:
         # The mark only protects a ref; a failure here must not fail the

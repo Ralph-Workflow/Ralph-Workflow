@@ -386,9 +386,14 @@ def _seed_large_synthetic(
     """
     workspace = parent / "ws_large"
     workspace.mkdir(parents=True, exist_ok=True)
+    last_bucket_idx: int = -1
+    bucket = workspace / "src"
     for i in range(file_count):
-        bucket = workspace / "src" / f"b{i // 250}"
-        bucket.mkdir(parents=True, exist_ok=True)
+        bucket_idx = i // 250
+        if bucket_idx != last_bucket_idx:
+            bucket = workspace / "src" / f"b{bucket_idx}"
+            bucket.mkdir(parents=True, exist_ok=True)
+            last_bucket_idx = bucket_idx
         # filesystem-write-ok: transient scratch workspace synthetic file seeding
         (bucket / f"f{i:05d}.py").write_text(f"def fn_{i}():\n    return {i}\n")
     # filesystem-write-ok: transient binary and deep-path fixtures

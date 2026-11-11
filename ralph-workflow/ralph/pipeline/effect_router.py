@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -428,16 +429,27 @@ def _is_empty_commit_phase(
     has_staged_changes_fn: Callable[[Path], bool] = has_staged_changes,
 ) -> bool | None:
     try:
-        if not has_uncommitted_changes_fn(workspace_root):
+        fast_path = (
+            has_uncommitted_changes_fn is has_uncommitted_changes
+            and has_staged_changes_fn is has_staged_changes
+        )
+        changed_paths = list_changed_paths(workspace_root) if fast_path else None
+        if changed_paths is not None:
+            if not changed_paths:
+                return True
+        elif not has_uncommitted_changes_fn(workspace_root):
             return True
-        try:
+
+        with suppress(Exception):
             if has_staged_changes_fn(workspace_root):
                 return False
-        except Exception:
-            pass
+
+        effective_changed = (
+            changed_paths if changed_paths is not None else list_changed_paths(workspace_root)
+        )
         return not any(
             not is_recognized_secret_path(path) and not is_agent_internal_path(path)
-            for path in list_changed_paths(workspace_root)
+            for path in effective_changed
         )
     except Exception:
         return None

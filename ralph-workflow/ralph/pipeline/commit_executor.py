@@ -29,6 +29,7 @@ from ralph.git.operations import (
     create_commit_with_hooks,
     get_head_sha,
     has_uncommitted_changes,
+    list_changed_paths,
     stage_all,
     write_tree,
 )
@@ -56,7 +57,6 @@ from ralph.pipeline._commit_executor_branch import (
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
 from ralph.policy.models import PolicyBundle
-from ralph.prompts.commit_evidence import build_commit_evidence_bundle
 from ralph.workspace.scope import CONFIG_DIR_NAME
 
 
@@ -442,7 +442,7 @@ def _perform_commit_creation(
         # orphaned index.lock is first hit, so it must reach the same repair.
         head = get_head_sha(repo_root)
         _stage_commit_scope(repo_root, payload, stage_all_fn)
-        if approved_tree_sha is not None:
+        if approved_tree_sha is not None and write_tree_fn is not None:
             _verify_approved_tree(repo_root, approved_tree_sha, write_tree_fn)
         return _create(repo_root, message, expected_head=head)
 
@@ -463,7 +463,7 @@ def _perform_commit_creation(
             logger.info("Retrying commit creation after git state repair")
             expected_head = get_head_sha(repo_root)
             _stage_commit_scope(repo_root, payload, stage_all_fn)
-            if approved_tree_sha is not None:
+            if approved_tree_sha is not None and write_tree_fn is not None:
                 _verify_approved_tree(repo_root, approved_tree_sha, write_tree_fn)
             with suppress(Exception):
                 result = _create(repo_root, message, expected_head=expected_head)
@@ -646,7 +646,7 @@ def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[s
 
 def _changed_commit_paths(repo_root: Path) -> list[str]:
     """Compatibility seam for callers that need a fresh evidence snapshot."""
-    return list(build_commit_evidence_bundle(repo_root).changed_files)
+    return sorted(set(list_changed_paths(repo_root)))
 
 
 def _repo_has_commit_work(repo_root: Path) -> bool:

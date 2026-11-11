@@ -626,11 +626,23 @@ def _load_policy_from_paths(
 ) -> PolicyBundle:
     """Load a policy bundle from explicit file paths."""
     default_policy_dir = default_dir()
+    global_pipeline_path, global_artifacts_path = (
+        global_policy_paths if global_policy_paths is not None else (None, None)
+    )
+    has_global = bool(
+        (global_pipeline_path is not None and global_pipeline_path.exists())
+        or (global_artifacts_path is not None and global_artifacts_path.exists())
+    )
+    can_use_default_agents = config is None or (
+        not _config_defines_agent_policy(config)
+        and config.developer_agent is None
+        and config.developer_model is None
+    )
     if (
         not _bypass_bundle_cache
-        and config is None
+        and can_use_default_agents
         and not strict_optional_files
-        and global_policy_paths is None
+        and not has_global
         and (
             (
                 agents_path == default_policy_dir / "agents.toml"
@@ -642,9 +654,6 @@ def _load_policy_from_paths(
     ):
         return cached_default_policy_bundle()
 
-    global_pipeline_path, global_artifacts_path = (
-        global_policy_paths if global_policy_paths is not None else (None, None)
-    )
     pipeline_data, timeboxes_explicit = _resolve_pipeline_data(
         default_policy_dir=default_policy_dir,
         pipeline_path=pipeline_path,
