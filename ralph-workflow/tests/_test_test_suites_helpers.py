@@ -56,6 +56,20 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_commit_review_invariants.py",
     "tests/test_commit_review_verify_gate.py",
     "tests/integration/test_pipeline_commit_review_to_commit_e2e.py",
+    # wt-03 WU-2: the commit-review PHASE's own gate proofs (hard
+    # tripwire, agent approval, reject citations, the stale-tree
+    # re-review and the edit-step reseal) drive the real git boundary,
+    # so the module carries the module-level ``subprocess_e2e`` marker.
+    # Unregistered, static discovery DROPS the file and the default
+    # marker expression deselects every item, so the proposal-seal
+    # contracts (a stale verdict is re-reviewed; the verdict is
+    # evaluated against the NEW seal the edit step produces) would rot
+    # in the opt-in lane while ``make verify`` stayed green. The
+    # dedicated real-git shard's in-shard xdist fan-out absorbs the
+    # file's measured cost (82 tests, ~20 CPU core-seconds serial,
+    # ~5.9 s wall under the shard's 10-worker profile) inside the
+    # pinned 60 s combined budget.
+    "tests/test_phases_commit_review.py",
     "tests/test_explore_crash_safety.py",
     "tests/test_explore_concurrency.py",
     "tests/test_explore_cold_start_lifecycle.py",
@@ -235,8 +249,6 @@ EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_gates.py",
     "tests/test_bootstrap_auto_seed_git_exclude.py",
     "tests/test_bootstrap_auto_seed_gitignore.py",
-    "tests/config/test_agents_file_immutable.py",
-    "tests/config/test_init_agents_autowire.py",
     "tests/test_commit_review_diff.py",
     "tests/test_commit_review_real_diff_proofs.py",
     "tests/test_commit_review_reject_citation_gate.py",

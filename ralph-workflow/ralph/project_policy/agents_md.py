@@ -404,10 +404,7 @@ def _has_any_managed_marker(content: str) -> bool:
     "append one managed block" (clean state) and "leave for remediation"
     (any malformed state).
     """
-    return (
-        _AGENTS_BLOCK_BEGIN_RE.search(content) is not None
-        or markers.AGENTS_BLOCK_END in content
-    )
+    return _AGENTS_BLOCK_BEGIN_RE.search(content) is not None or markers.AGENTS_BLOCK_END in content
 
 
 def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
@@ -534,9 +531,7 @@ def check_agents_md_line_budgets(content: str) -> list[PolicyFinding]:
         )
     block = _locate_managed_block(content)
     if block is not None:
-        block_content = content[
-            block.begin_index : block.end_index + len(markers.AGENTS_BLOCK_END)
-        ]
+        block_content = content[block.begin_index : block.end_index + len(markers.AGENTS_BLOCK_END)]
         block_lines = block_content.splitlines()
         if len(block_lines) > MANAGED_BLOCK_LINE_BUDGET:
             findings.append(

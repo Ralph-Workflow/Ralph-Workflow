@@ -415,9 +415,7 @@ def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
         raw_command = entry_map.get("command")
         command = raw_command if isinstance(raw_command, str) else None
 
-        fields: dict[str, str] = {
-            str(k): v for k, v in entry_map.items() if isinstance(v, str)
-        }
+        fields: dict[str, str] = {str(k): v for k, v in entry_map.items() if isinstance(v, str)}
         keys = frozenset(k for k, v in fields.items() if v.strip())
         if args:
             keys = keys | frozenset({"args"})
@@ -463,9 +461,7 @@ def _json_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
         raw_command = entry_map.get("command")
         command = raw_command if isinstance(raw_command, str) else None
 
-        fields: dict[str, str] = {
-            str(k): v for k, v in entry_map.items() if isinstance(v, str)
-        }
+        fields: dict[str, str] = {str(k): v for k, v in entry_map.items() if isinstance(v, str)}
         keys = frozenset(k for k, v in fields.items() if v.strip())
         if args:
             keys = keys | frozenset({"args"})
@@ -493,7 +489,8 @@ def _has_exact_version_pin(args: tuple[str, ...], command: str | None = None) ->
     if command:
         candidates.append(command)
     return any(
-        _NPM_EXACT_VERSION_RE.match(cand) is not None or _PIP_EXACT_VERSION_RE.match(cand) is not None
+        _NPM_EXACT_VERSION_RE.match(cand) is not None
+        or _PIP_EXACT_VERSION_RE.match(cand) is not None
         for cand in candidates
     )
 

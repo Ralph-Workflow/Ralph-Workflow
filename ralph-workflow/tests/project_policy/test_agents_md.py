@@ -485,4 +485,3 @@ def test_bootstrap_and_condense_preserve_user_authored_block() -> None:
 
     assert agents_md.condense_placeholder_block(ws) == []
     assert ws.read(markers.AGENTS_MD) == user_block
-

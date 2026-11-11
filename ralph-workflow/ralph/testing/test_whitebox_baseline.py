@@ -290,6 +290,7 @@ tests/pipeline/test_terminal_mcp_error_per_entry_path.py|0,4,4
 tests/pipeline/test_terminal_mcp_error_supervisor_ordering.py|0,3,0
 tests/process/monitor/test_dispatch_all_transports.py|0,2,0
 tests/process/test_spawn_env_sanitizer.py|4,0,0
+tests/project_policy/test_agents_md.py|0,0,3
 tests/project_policy/test_analysis.py|0,0,1
 tests/project_policy/test_authentic_v4_consent_flow.py|0,2,4
 tests/project_policy/test_citation_workspace_restore.py|0,0,2
@@ -460,11 +461,6 @@ tests/test_cli_workspace_health.py|0,0,1
 tests/test_codex_inline_image_roundtrip.py|0,1,0
 tests/test_codex_transport_reaches_the_session.py|0,1,0
 tests/test_commit_attempt_clears_receipt.py|0,1,0
-tests/test_commit_review_artifact.py|0,3,0
-tests/test_commit_review_diff.py|0,2,0
-tests/test_commit_review_invariants.py|0,2,0
-tests/test_commit_review_tripwires.py|0,1,0
-tests/test_commit_review_verify_gate.py|0,2,0
 tests/test_commit_completion_authority.py|0,1,0
 tests/test_commit_detached_head_recovery.py|0,2,0
 tests/test_commit_executor.py|2,0,0
@@ -472,6 +468,11 @@ tests/test_commit_message_pipeline.py|3,0,0
 tests/test_commit_plumbing_transport_tools.py|0,2,0
 tests/test_commit_plumbing_uses_canonical_submit.py|0,1,4
 tests/test_commit_retry_cooldown.py|0,2,0
+tests/test_commit_review_artifact.py|0,3,0
+tests/test_commit_review_diff.py|0,2,0
+tests/test_commit_review_invariants.py|0,2,0
+tests/test_commit_review_tripwires.py|0,1,0
+tests/test_commit_review_verify_gate.py|0,2,0
 tests/test_completion_invocation_exit_logging.py|0,3,0
 tests/test_completion_receipts.py|14,1,0
 tests/test_completion_run_id_from_env.py|0,1,0
@@ -606,9 +607,9 @@ tests/test_integration_owner_config.py|0,4,0
 tests/test_integration_phase_proof.py|0,1,3
 tests/test_integration_planning_sync_seam.py|0,2,0
 tests/test_integration_public_entry_trace.py|6,1,0
- tests/test_integration_record_legacy_migration.py|0,2,0
- tests/test_integration_record_rewrite_back.py|0,0,2
- tests/test_integration_remote_ops.py|0,2,0
+tests/test_integration_record_legacy_migration.py|0,2,0
+tests/test_integration_record_rewrite_back.py|0,0,2
+tests/test_integration_remote_ops.py|0,2,0
 tests/test_integration_resolution.py|0,0,1
 tests/test_integration_success_state.py|0,1,0
 tests/test_internal_skills_mcp_prompts.py|0,2,0
@@ -691,8 +692,8 @@ tests/test_phase_and_commit_sessions_are_wired.py|0,1,0
 tests/test_phase_process_cleanup.py|0,0,15
 tests/test_phase_raw_log_break_reporting.py|3,0,0
 tests/test_phase_transport_failure_reporting.py|1,0,0
-tests/test_phases_commit_review.py|0,6,0
 tests/test_phases_commit_planning_fix.py|0,1,0
+tests/test_phases_commit_review.py|0,6,0
 tests/test_phases_retry_on_stale_session.py|1,1,0
 tests/test_pipeline_core.py|0,3,0
 tests/test_pipeline_development_timebox.py|0,0,5
@@ -900,6 +901,7 @@ tests/test_workspace_fs_fs_workspace_read_lines.py|0,0,5
 tests/test_workspace_memory_memory_workspace_init.py|0,0,3
 tests/test_workspace_memory_memory_workspace_normalize.py|0,0,3
 tests/test_workspace_monitor_never_delays_the_agent.py|0,3,0
+tests/testing/test_audit_instruction_integrity.py|0,4,0
 tests/unit/display/_criteria_probes.py|6,35,9
 tests/unit/display/test_brief_criteria_coverage.py|0,2,5
 tests/unit/display/test_crash_output_containment.py|0,0,1

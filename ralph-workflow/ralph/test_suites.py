@@ -189,6 +189,20 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_commit_review_invariants.py",
     "tests/test_commit_review_verify_gate.py",
     "tests/integration/test_pipeline_commit_review_to_commit_e2e.py",
+    # wt-03 WU-2: the commit-review PHASE's own gate proofs (hard
+    # tripwire, agent approval, reject citations, the stale-tree
+    # re-review and the edit-step reseal) drive the real git boundary,
+    # so the module carries the module-level ``subprocess_e2e`` marker.
+    # Unregistered, static discovery DROPS the file and the default
+    # marker expression deselects every item, so the proposal-seal
+    # contracts (a stale verdict is re-reviewed; the verdict is
+    # evaluated against the NEW seal the edit step produces) would rot
+    # in the opt-in lane while ``make verify`` stayed green. The
+    # dedicated real-git shard's in-shard xdist fan-out absorbs the
+    # file's measured cost (82 tests, ~20 CPU core-seconds serial,
+    # ~5.9 s wall under the shard's 10-worker profile) inside the
+    # pinned 60 s combined budget.
+    "tests/test_phases_commit_review.py",
     # wt-11: crash-safety and concurrency proofs for the indexed
     # exploration substrate (S-5). subprocess_e2e so the cross-process
     # boundary and atomic promotion are exercised; in-budget on the
@@ -408,8 +422,6 @@ SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_gates.py",
     "tests/test_bootstrap_auto_seed_git_exclude.py",
     "tests/test_bootstrap_auto_seed_gitignore.py",
-    "tests/config/test_agents_file_immutable.py",
-    "tests/config/test_init_agents_autowire.py",
     "tests/test_commit_review_diff.py",
     "tests/test_commit_review_real_diff_proofs.py",
     "tests/test_commit_review_reject_citation_gate.py",
@@ -631,6 +643,14 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_timing_safety_transports.py": 30,
     "tests/test_retained_resolution_handoff.py": 580,
     "tests/test_commit_executor.py": 500,
+    # wt-03 WU-2: the newly registered commit-review phase gate module.
+    # Calibrated from the default-lane profile (83 tests, 18.61 s measured
+    # serial wall clock, 22.06 CPU core-seconds) with the same
+    # ``round(measured_seconds * 17)`` rule the other real-git entries use.
+    # The weight decides the file's position in the required real-git
+    # shard's manifest order, so its 83 real-git cases start early and
+    # fill the shard's worker slack instead of extending the shard's tail.
+    "tests/test_phases_commit_review.py": 316,
     "tests/test_liveness_termination.py": 30,
     "tests/test_mcp_capability_mapping.py": 25,
     "tests/test_policy_validation.py": 180,

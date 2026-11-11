@@ -2608,6 +2608,51 @@ def test_stale_tree_sha_mismatch_loops_back_for_rereview(tmp_git_repo: Path) -> 
     assert not (tmp_git_repo / ".agent" / "artifacts" / "commit_review.md").exists()
 
 
+def test_stale_tree_sha_does_not_apply_actions_before_rereview(tmp_git_repo: Path) -> None:
+    """A stale verdict is re-reviewed BEFORE its edit step runs, so no action lands.
+
+    The proposal-seal contract says a verdict whose SHA no longer matches the
+    current sealed tree is stale and is re-reviewed. Re-reviewing means the
+    stale artifact's edit step never runs: its actions are discarded together
+    with the stale artifact, so a delete action cannot mutate the tree while
+    the reviewer is being sent back for a fresh look at the sealed tree.
+    """
+    temp_file = tmp_git_repo / "temp.log"
+    temp_file.write_text("temporary log")
+
+    workspace = FsWorkspace(tmp_git_repo)
+    stale_sha = "0000000000000000000000000000000000000000"
+    _write_commit_review_artifact(
+        workspace,
+        {
+            "verdict": "approve",
+            "tree_sha": stale_sha,
+            "actions": [
+                {"action": "delete_file", "path": "temp.log"},
+            ],
+        },
+    )
+    ctx = _make_cleanup_ctx(workspace)
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_review_phase(effect, ctx)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewLoopback), (
+        f"A stale review must be re-reviewed, not failed: got {type(event).__name__}: {event!r}"
+    )
+    # The edit step never ran, so the stale verdict's delete action did not
+    # touch the tree: the same artifact with a MATCHING SHA deletes the file
+    # (see test_safe_actions_application_and_resealing).
+    assert temp_file.exists(), (
+        "A stale verdict must be re-reviewed before any action executes; "
+        "the stale artifact's delete action must not touch the tree"
+    )
+    assert stale_sha in event.hint
+
+
 def test_safe_actions_application_and_resealing(tmp_git_repo: Path) -> None:
     """Safe actions are applied, the proposal tree is resealed, and new SHA is approved."""
     temp_file = tmp_git_repo / "temp.log"
@@ -2640,3 +2685,11 @@ def test_safe_actions_application_and_resealing(tmp_git_repo: Path) -> None:
     event = result[0]
     assert isinstance(event, CommitReviewApproved)
     assert event.tree_sha != initial_seal.tree_sha
+    # The verdict is evaluated against the NEW seal the edit step produced:
+    # the approved SHA is the SHA of the tree as it stands after the edit,
+    # not the SHA the reviewer judged before the edit.
+    resealed = seal_pending(tmp_git_repo, "run", 1)
+    assert event.tree_sha == resealed.tree_sha, (
+        "The approve verdict must bind to the seal produced by the edit step: "
+        f"approved {event.tree_sha!r} != resealed {resealed.tree_sha!r}"
+    )
