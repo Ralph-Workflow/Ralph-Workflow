@@ -218,6 +218,116 @@ def test_a_weakened_assertion_is_reported() -> None:
     assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
 
 
+def test_tautological_replacement_assert_result_to_one_equals_one_is_reported() -> None:
+    """Replacing an assertion with 'assert 1 == 1' is a weakening."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk("     result = run()", "-    assert result", "+    assert 1 == 1"),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+    assert "assert result" in findings[0].detail
+
+
+def test_tautological_replacement_assert_is_not_none_to_true_equals_true_is_reported() -> None:
+    """Replacing 'assert result is not None' with 'assert True == True' is a weakening."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()", "-    assert result is not None", "+    assert True == True"
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+    assert "assert result is not None" in findings[0].detail
+
+
+def test_tautological_replacement_assert_true_is_reported() -> None:
+    """Replacing an assertion with 'assert True' is a weakening."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk("     result = run()", "-    assert result", "+    assert True"),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+
+
+def test_tautological_replacement_reflexive_comparison_is_reported() -> None:
+    """Replacing an assertion with 'assert result == result' is a weakening."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()", "-    assert result == 1", "+    assert result == result"
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+
+
+def test_replacement_with_unrelated_expression_is_reported() -> None:
+    """Replacing a bare assertion with a check on an unrelated variable is a weakening."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk("     result = run()", "-    assert result", "+    assert other == 2"),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+
+
+def test_empty_recorded_reason_does_not_suppress_finding() -> None:
+    """An empty recorded-reason marker does not suppress the finding."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()",
+            "-    assert result == 1",
+            f"+    # {TEST_REASON_MARKER}",
+            "+    assert result == 2",
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+
+
+def test_whitespace_only_recorded_reason_does_not_suppress_finding() -> None:
+    """A recorded-reason marker with only whitespace does not suppress the finding."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()",
+            "-    assert result == 1",
+            f"+    # {TEST_REASON_MARKER}    ",
+            "+    assert result == 2",
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+
+
+def test_strengthened_assertion_with_is_not_none_is_not_reported() -> None:
+    """A bare assertion replaced by 'is not None' on the same subject is accepted."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk("     result = run()", "-    assert result", "+    assert result is not None"),
+    )
+
+    assert audit_test_integrity_diff(diff) == []
+
+
 # --- the detection half: production code must not sniff the test runner ----
 
 

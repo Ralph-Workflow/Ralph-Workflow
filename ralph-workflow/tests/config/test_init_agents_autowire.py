@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import logging
 import tomllib
-from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
 import pytest
 from git import Actor, Repo
@@ -27,7 +25,7 @@ commit = ["claude/haiku"]
 
 def _init_repo_with_initial_commit(repo_root: Path) -> None:
     """Create a fresh git repo with one initial empty commit so HEAD exists."""
-    repo = cast("Repo", Repo.init(repo_root))
+    repo = Repo.init(repo_root)
     try:
         repo.config_writer().set_value("user", "name", "Test Author").release()
         repo.config_writer().set_value("user", "email", "test@example.com").release()
@@ -63,7 +61,7 @@ def test_autowire_agents_toml_routes_through_write_agents_toml_with_backup_and_l
 
     monkeypatch.setattr(
         "ralph.config.agent_detection.shutil.which",
-        cast("Callable[[str], str | None]", _mock_no_binary),
+        _mock_no_binary,
     )
 
     with caplog.at_level(logging.INFO):
@@ -74,9 +72,9 @@ def test_autowire_agents_toml_routes_through_write_agents_toml_with_backup_and_l
     assert bak_path.read_text(encoding="utf-8") == _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML
 
     new_content = agents_path.read_text(encoding="utf-8")
-    parsed = cast("dict[str, object]", tomllib.loads(new_content))
+    parsed = tomllib.loads(new_content)
     assert isinstance(parsed, dict)
-    chains = cast("dict[str, object]", parsed.get("agent_chains"))
+    chains = parsed.get("agent_chains")
     assert isinstance(chains, dict)
     assert chains["planning"] == ["codex"]
     assert chains["development"] == ["codex"]
@@ -111,7 +109,7 @@ def test_autowire_agents_toml_in_git_repo_creates_no_chore_commit(
 
     monkeypatch.setattr(
         "ralph.config.agent_detection.shutil.which",
-        cast("Callable[[str], str | None]", _mock_no_binary),
+        _mock_no_binary,
     )
 
     result = autowire_chains_to_detected_agent(agents_path, detected=["codex"])
@@ -152,7 +150,7 @@ def test_autowire_main_config_in_git_repo_still_creates_chore_commit(
 
     monkeypatch.setattr(
         "ralph.config.agent_detection.shutil.which",
-        cast("Callable[[str], str | None]", _mock_no_binary),
+        _mock_no_binary,
     )
 
     result = autowire_chains_to_detected_agent(main_config, detected=["codex"])
@@ -183,7 +181,7 @@ def test_autowire_agents_filename_variants_route_through_safe_writer(
 
     monkeypatch.setattr(
         "ralph.config.agent_detection.shutil.which",
-        cast("Callable[[str], str | None]", _mock_no_binary),
+        _mock_no_binary,
     )
 
     result = autowire_chains_to_detected_agent(agents_path, detected=["codex"])

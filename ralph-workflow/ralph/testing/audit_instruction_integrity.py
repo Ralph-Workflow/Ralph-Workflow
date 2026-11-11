@@ -25,15 +25,17 @@ DETERMINISTIC RULES
     missing review trigger is a finding that names the file, the line, and
     the fix.
 
-    A declaration is pinned when it carries EITHER
+    A declaration is pinned when:
 
-    * an exact-version reference inside ``args`` (npm ``pkg@1.2.3`` /
+    * for executable command runners (stdio transport, command, or args),
+      an exact-version reference inside ``args`` or ``command`` (npm ``pkg@1.2.3`` /
       ``@scope/pkg@1.2.3``, pip ``pkg==1.2.3``), which is the pin the
-      runtime actually honours, OR
-    * an explicit ``version`` / ``revision`` / ``pin`` key, which is the
-      declaration-level pin record (the ``mcp.toml`` schema ignores
-      unknown keys, so this key documents the pin rather than enforcing
-      it -- an ``args``-level exact spec is the enforcing form).
+      runtime actually honours; declaration metadata without an execution
+      pin is metadata-only and rejected;
+    * for unsupported runtime forms (e.g. HTTP / URL transports where runtime
+      package pinning is not supported), an explicit, non-empty ``version`` /
+      ``revision`` / ``pin`` key is accepted as advisory declaration-level
+      provenance.
 
     A declaration carries a review trigger when it carries a
     ``review`` / ``review_trigger`` / ``review_on`` key with a non-empty
@@ -77,14 +79,16 @@ from __future__ import annotations
 import json
 import re
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 from ralph.project_policy.instruction_surface import find_hidden_unicode
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
 __all__ = [
     "CATEGORY_HIDDEN_UNICODE",
@@ -269,6 +273,9 @@ class InstructionIntegrityFinding:
         return f"{self.file_path}:{self.line}: [{self.category}] {self.detail}"
 
 
+_EMPTY_FIELDS: Mapping[str, str] = MappingProxyType({})
+
+
 @dataclass(frozen=True)
 class _McpServerDeclaration:
     """One third-party MCP server declaration found in a config file."""
@@ -279,6 +286,8 @@ class _McpServerDeclaration:
     keys: frozenset[str]
     args: tuple[str, ...]
     comments: tuple[str, ...]
+    command: str | None = None
+    fields: Mapping[str, str] = _EMPTY_FIELDS
 
 
 def advisory_rules() -> tuple[tuple[str, str], ...]:
@@ -346,69 +355,86 @@ def _matched_text(match: re.Match[str]) -> str:
     return match.group(0)
 
 
+def _find_toml_table_location(
+    lines: list[str],
+    server_name: str,
+) -> tuple[int, tuple[str, ...]]:
+    """Return the 1-based start line and comments for ``[mcp_servers.<name>]``."""
+    header_re = re.compile(
+        rf"""^\s*\[\s*{re.escape(MCP_SERVERS_TABLE)}\.(?:{re.escape(server_name)}|"{re.escape(server_name)}"|'{re.escape(server_name)}')\s*\]"""
+    )
+    line_number = 1
+    start_index = -1
+    for idx, line in enumerate(lines):
+        if header_re.match(line):
+            line_number = idx + 1
+            start_index = idx
+            break
+
+    comments: list[str] = []
+    if start_index >= 0:
+        for line in lines[start_index + 1 :]:
+            if re.match(r"^\s*\[", line):
+                break
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                comments.append(stripped)
+
+    return line_number, tuple(comments)
+
+
 def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDeclaration]:
     """Return every ``[mcp_servers.<name>]`` declaration found in *text*."""
-    declarations: list[_McpServerDeclaration] = []
-    current_name: str | None = None
-    current_line = 0
-    current_keys: set[str] = set()
-    current_args: tuple[str, ...] = ()
-    current_comments: list[str] = []
-
-    def close() -> None:
-        nonlocal current_name, current_keys, current_args, current_comments
-        if current_name is not None:
-            declarations.append(
-                _McpServerDeclaration(
-                    file_path=file_path,
-                    line=current_line,
-                    name=current_name,
-                    keys=frozenset(current_keys),
-                    args=current_args,
-                    comments=tuple(current_comments),
-                )
-            )
-        current_name = None
-        current_keys = set()
-        current_args = ()
-        current_comments = []
+    try:
+        parsed_obj: object = tomllib.loads(text)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(parsed_obj, dict):
+        return []
+    data = cast("dict[str, object]", parsed_obj)
+    servers = data.get(MCP_SERVERS_TABLE)
+    if not isinstance(servers, dict):
+        return []
+    servers_map = cast("dict[str, object]", servers)
 
     lines = text.splitlines()
-    for index, raw_line in enumerate(lines):
-        header = _TOML_TABLE_HEADER_RE.match(raw_line)
-        if header is not None:
-            table_name = _captured_group(header, 1)
-            parts = table_name.split(".")
-            if parts[0] == MCP_SERVERS_TABLE and len(parts) == _SERVER_NAME_PART_COUNT:
-                close()
-                current_name = parts[1]
-                current_line = index + 1
-                current_keys = set()
-                current_args = ()
-                current_comments = []
-                continue
-            if parts[0] == MCP_SERVERS_TABLE and len(parts) > _SERVER_NAME_PART_COUNT:
-                # A sub-table of the current server (e.g. ``[mcp_servers.x.env]``):
-                # the declaration stays open, but the sub-table's keys are not
-                # the server's own keys.
-                continue
-            close()
+    declarations: list[_McpServerDeclaration] = []
+
+    for name, entry in servers_map.items():
+        if not isinstance(name, str) or not isinstance(entry, dict):
             continue
-        if current_name is None:
-            continue
-        stripped = raw_line.strip()
-        if stripped.startswith("#"):
-            current_comments.append(stripped)
-            continue
-        assignment = _TOML_KEY_VALUE_RE.match(raw_line)
-        if assignment is None:
-            continue
-        key = _captured_group(assignment, 1)
-        value = _captured_group(assignment, 2)
-        current_keys.add(key)
-        if key == "args":
-            current_args = _parse_toml_value(value)
-    close()
+        entry_map = cast("dict[str, object]", entry)
+
+        line_number, comments = _find_toml_table_location(lines, name)
+
+        raw_args = entry_map.get("args")
+        args: tuple[str, ...] = ()
+        if isinstance(raw_args, list):
+            args = tuple(arg for arg in raw_args if isinstance(arg, str))
+
+        raw_command = entry_map.get("command")
+        command = raw_command if isinstance(raw_command, str) else None
+
+        fields: dict[str, str] = {
+            str(k): v for k, v in entry_map.items() if isinstance(v, str)
+        }
+        keys = frozenset(k for k, v in fields.items() if v.strip())
+        if args:
+            keys = keys | frozenset({"args"})
+
+        declarations.append(
+            _McpServerDeclaration(
+                file_path=file_path,
+                line=line_number,
+                name=name,
+                keys=keys,
+                args=args,
+                comments=comments,
+                command=command,
+                fields=fields,
+            )
+        )
+
     return declarations
 
 
@@ -420,18 +446,30 @@ def _json_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
         return []
     if not isinstance(payload, dict):
         return []
-    servers = payload.get("mcpServers")
+    payload_map = cast("dict[str, object]", payload)
+    servers = payload_map.get("mcpServers")
     if not isinstance(servers, dict):
         return []
+    servers_map = cast("dict[str, object]", servers)
     declarations: list[_McpServerDeclaration] = []
-    for name, entry in servers.items():
+    for name, entry in servers_map.items():
         if not isinstance(name, str) or not isinstance(entry, dict):
             continue
-        keys = {str(key) for key in entry}
-        raw_args = entry.get("args")
+        entry_map = cast("dict[str, object]", entry)
+        raw_args = entry_map.get("args")
         args: tuple[str, ...] = ()
         if isinstance(raw_args, list):
             args = tuple(arg for arg in raw_args if isinstance(arg, str))
+        raw_command = entry_map.get("command")
+        command = raw_command if isinstance(raw_command, str) else None
+
+        fields: dict[str, str] = {
+            str(k): v for k, v in entry_map.items() if isinstance(v, str)
+        }
+        keys = frozenset(k for k, v in fields.items() if v.strip())
+        if args:
+            keys = keys | frozenset({"args"})
+
         line = text.find(f'"{name}"')
         line_number = text.count("\n", 0, line) + 1 if line >= 0 else 1
         declarations.append(
@@ -439,33 +477,69 @@ def _json_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
                 file_path=file_path,
                 line=line_number,
                 name=name,
-                keys=frozenset(keys),
+                keys=keys,
                 args=args,
                 comments=(),
+                command=command,
+                fields=fields,
             )
         )
     return declarations
 
 
-def _has_exact_version_pin(args: tuple[str, ...]) -> bool:
-    """Return True when one argument pins an exact upstream version."""
+def _has_exact_version_pin(args: tuple[str, ...], command: str | None = None) -> bool:
+    """Return True when arguments or command pin an exact upstream version."""
+    candidates = list(args)
+    if command:
+        candidates.append(command)
     return any(
-        _NPM_EXACT_VERSION_RE.match(arg) is not None or _PIP_EXACT_VERSION_RE.match(arg) is not None
-        for arg in args
+        _NPM_EXACT_VERSION_RE.match(cand) is not None or _PIP_EXACT_VERSION_RE.match(cand) is not None
+        for cand in candidates
     )
 
 
 def _has_pin(declaration: _McpServerDeclaration) -> bool:
-    """Return True when the declaration carries a pinned version reference."""
-    if _has_exact_version_pin(declaration.args):
+    """Return True when the declaration carries a pinned version reference.
+
+    For executable runtime forms (command runners using stdio transport, command,
+    or args), deterministic status requires an execution-honoured exact pin in
+    args or command (e.g. npm 'pkg@1.2.3' or pip 'pkg==1.2.3'). Declaration-level
+    metadata keys without an execution pin are metadata-only and do not satisfy
+    the requirement.
+
+    For unsupported runtime forms (e.g. HTTP / URL transports where runtime package
+    pinning is not supported), an explicit, non-empty version/revision key is accepted
+    as advisory declaration-level provenance.
+    """
+    if _has_exact_version_pin(declaration.args, declaration.command):
         return True
-    return bool(_PIN_KEYS & declaration.keys)
+
+    is_command_runner = (
+        bool(declaration.command)
+        or bool(declaration.args)
+        or declaration.fields.get("transport") == "stdio"
+    )
+    if is_command_runner:
+        return False
+
+    for pin_key in _PIN_KEYS:
+        val = declaration.fields.get(pin_key)
+        if isinstance(val, str) and bool(val.strip()):
+            return True
+        if pin_key in declaration.keys and not declaration.fields:
+            return True
+
+    return False
 
 
 def _has_review_trigger(declaration: _McpServerDeclaration, text: str) -> bool:
     """Return True when the declaration carries a review trigger."""
-    if bool(_REVIEW_TRIGGER_KEYS & declaration.keys):
-        return True
+    for review_key in _REVIEW_TRIGGER_KEYS:
+        val = declaration.fields.get(review_key)
+        if isinstance(val, str) and bool(val.strip()):
+            return True
+        if review_key in declaration.keys and not declaration.fields:
+            return True
     if any(_REVIEW_TRIGGER_COMMENT_RE.search(comment) for comment in declaration.comments):
         return True
     lines = text.splitlines()

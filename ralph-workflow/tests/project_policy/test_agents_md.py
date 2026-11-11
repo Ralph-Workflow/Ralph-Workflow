@@ -356,3 +356,133 @@ def test_managed_block_routing_satisfies_idempotency_and_readiness() -> None:
     condense_changed = agents_md.condense_placeholder_block(ws)
     assert markers.AGENTS_MD not in condense_changed
     assert ws.read(markers.AGENTS_MD) == routing_content
+
+
+def test_bootstrap_output_directs_v6_loading_order() -> None:
+    """Bootstrap placeholder directs kernel first, role slice second, triggered domains third."""
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+    content = ws.read(markers.AGENTS_MD)
+    assert (
+        "All agent roles MUST\n"
+        "load policies in this order: execution-kernel.md first, then their role slice,\n"
+        "then any triggered domain policy before changing the project."
+    ) in content or (
+        "load policies in this order: execution-kernel.md first, then their role slice, then any triggered domain policy"
+        in " ".join(content.split())
+    )
+
+
+def test_condense_output_directs_v6_loading_order() -> None:
+    """Condensed ready block directs kernel first, role slice second, triggered domains third."""
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+    agents_md.condense_placeholder_block(ws)
+    content = ws.read(markers.AGENTS_MD)
+    normalized = " ".join(content.split())
+    assert (
+        "load policies in this order: execution-kernel.md first, then their role slice, then any triggered domain policy before changing the project"
+        in normalized
+    )
+
+
+def test_bootstrap_migrates_outdated_ralph_placeholder_idempotently() -> None:
+    """An outdated Ralph placeholder is migrated to v6 loading order while preserving user content outside."""
+    ws = MemoryWorkspace()
+    ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
+    user_header = "# Project Title\n\nCustom user rules above.\n\n"
+    user_footer = "\n\nCustom user rules below.\n"
+    outdated_placeholder = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"This project participates in Ralph Workflow's project-policy-readiness\n"
+        f"preflight. Before ordinary planning or development begins, the canonical\n"
+        f"quality-policy files under {markers.CANONICAL_DIR} must exist...\n"
+        f"{agents_md._PLACEHOLDER_SENTINEL}\n"
+        f"1. Inspect the project.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, user_header + outdated_placeholder + user_footer)
+
+    # First bootstrap call migrates the placeholder in place
+    changed = agents_md.bootstrap(ws)
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert content.startswith(user_header)
+    assert content.endswith(user_footer.lstrip("\n") if content.endswith("\n") else user_footer)
+    assert "execution-kernel.md first" in content
+
+    # Second bootstrap call is idempotent
+    second_changed = agents_md.bootstrap(ws)
+    assert second_changed == []
+    assert ws.read(markers.AGENTS_MD) == content
+
+
+def test_bootstrap_migrates_outdated_ralph_ready_block_idempotently() -> None:
+    """An outdated Ralph ready block is migrated to v6 loading order, preserving readiness dimensions."""
+    ws = MemoryWorkspace()
+    ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
+    user_header = "# Project Title\n\n"
+    outdated_ready = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"This project follows Ralph Workflow quality policies. Before any change, read {markers.CANONICAL_DIR}...\n"
+        f"{agents_md._RALPH_MANAGED_SIGNATURE} "
+        f"structure complete=true, implementation verified=false, outcome evidence reviewed=true.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, user_header + outdated_ready)
+
+    changed = agents_md.bootstrap(ws)
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert content.startswith(user_header)
+    assert "execution-kernel.md first" in content
+    assert "structure complete=true" in content
+    assert "implementation verified=false" in content
+    assert "outcome evidence reviewed=true" in content
+
+    # Second run is idempotent
+    assert agents_md.bootstrap(ws) == []
+    assert ws.read(markers.AGENTS_MD) == content
+
+
+def test_condense_migrates_outdated_ralph_ready_block_idempotently() -> None:
+    """Condense updates an outdated Ralph ready block to include v6 loading order."""
+    ws = MemoryWorkspace()
+    outdated_ready = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"This project follows Ralph Workflow quality policies. Before any change, read {markers.CANONICAL_DIR}...\n"
+        f"{agents_md._RALPH_MANAGED_SIGNATURE} "
+        f"structure complete=true, implementation verified=true, outcome evidence reviewed=true.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, outdated_ready)
+
+    changed = agents_md.condense_placeholder_block(ws)
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert "execution-kernel.md first" in content
+
+    # Repeated condense is idempotent
+    assert agents_md.condense_placeholder_block(ws) == []
+    assert ws.read(markers.AGENTS_MD) == content
+
+
+def test_bootstrap_and_condense_preserve_user_authored_block() -> None:
+    """User-authored managed blocks (neither placeholder nor Ralph signature) are never altered."""
+    ws = MemoryWorkspace()
+    ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
+    user_block = (
+        f"# AGENTS.md\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"Custom team policy routing under {markers.CANONICAL_DIR}.\n"
+        f"Do not overwrite this custom text.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, user_block)
+
+    assert agents_md.bootstrap(ws) == []
+    assert ws.read(markers.AGENTS_MD) == user_block
+
+    assert agents_md.condense_placeholder_block(ws) == []
+    assert ws.read(markers.AGENTS_MD) == user_block
+

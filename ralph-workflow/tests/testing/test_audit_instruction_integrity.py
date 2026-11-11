@@ -25,6 +25,10 @@ from ralph.testing.audit_instruction_integrity import (
     RULE_MCP_SERVER_PIN,
     RULE_REVIEWED_COMMIT_ONLY,
     RULE_TOOL_DESCRIPTION_REREVIEW,
+    _has_pin,
+    _has_review_trigger,
+    _json_server_declarations,
+    _toml_server_declarations,
     advisory_rules,
     audit_instruction_integrity,
     main,
@@ -372,3 +376,184 @@ def test_advisory_rules_are_declared_and_not_enforced(tmp_path: Path) -> None:
 
     assert rules == {RULE_REVIEWED_COMMIT_ONLY, RULE_TOOL_DESCRIPTION_REREVIEW}
     assert audit_instruction_integrity(tmp_path) == []
+
+
+# --- MCP server pin and review trigger regressions (TOML & JSON) ---
+
+
+def test_toml_floating_declaration_reports_missing_pin(tmp_path: Path) -> None:
+    """A floating argument list without an exact version pin is rejected."""
+    _write(
+        tmp_path,
+        "mcp.toml",
+        '[mcp_servers.github]\ntransport = "stdio"\ncommand = "npx"\n'
+        'args = ["-y", "@modelcontextprotocol/server-github"]\n'
+        'review = "quarterly"\n',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER not in categories
+
+
+def test_toml_empty_fields_report_missing_pin_and_review_trigger(tmp_path: Path) -> None:
+    """Empty string pin and review fields are rejected as missing."""
+    _write(
+        tmp_path,
+        "mcp.toml",
+        '[mcp_servers.foo]\nversion = ""\nreview = ""\n',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER in categories
+
+
+def test_toml_metadata_only_pin_rejected_for_command_server(tmp_path: Path) -> None:
+    """A declaration-level version key on a command runner does not satisfy the pin."""
+    _write(
+        tmp_path,
+        "mcp.toml",
+        '[mcp_servers.github]\ntransport = "stdio"\ncommand = "npx"\n'
+        'args = ["-y", "@modelcontextprotocol/server-github"]\n'
+        'version = "1.2.3"\nreview = "quarterly"\n',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER not in categories
+
+
+def test_toml_subtable_env_metadata_not_collected_as_server_keys(tmp_path: Path) -> None:
+    """Subtable keys such as [mcp_servers.x.env] do not bleed into the server."""
+    _write(
+        tmp_path,
+        "mcp.toml",
+        '[mcp_servers.foo]\ntransport = "stdio"\n\n'
+        '[mcp_servers.foo.env]\nversion = "1.0.0"\nreview = "trigger"\n',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER in categories
+
+
+def test_toml_unsupported_runtime_form_preserves_advisory_pin(tmp_path: Path) -> None:
+    """HTTP/remote declarations preserve advisory treatment via explicit version key."""
+    _write(
+        tmp_path,
+        "mcp.toml",
+        '[mcp_servers.remote]\ntransport = "http"\nurl = "https://example.invalid/mcp"\n'
+        'version = "1.0.0"\nreview = "quarterly"\n',
+    )
+    assert audit_instruction_integrity(tmp_path) == []
+
+
+def test_json_floating_declaration_reports_missing_pin(tmp_path: Path) -> None:
+    """A floating JSON server declaration is rejected."""
+    _write(
+        tmp_path,
+        "servers.mcp.json",
+        '{"mcpServers": {"github": {"command": "npx", '
+        '"args": ["-y", "@modelcontextprotocol/server-github"], "review": "quarterly"}}}',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER not in categories
+
+
+def test_json_empty_and_null_fields_report_missing_pin_and_review(tmp_path: Path) -> None:
+    """Empty string and null pin and review fields in JSON are rejected."""
+    _write(
+        tmp_path,
+        "servers.mcp.json",
+        '{"mcpServers": {"empty": {"version": "", "review": ""}, '
+        '"nullable": {"version": null, "review": null}}}',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER in categories
+
+
+def test_json_metadata_only_pin_rejected_for_command_server(tmp_path: Path) -> None:
+    """Metadata-only version key on a command runner in JSON is rejected."""
+    _write(
+        tmp_path,
+        "servers.mcp.json",
+        '{"mcpServers": {"github": {"command": "npx", '
+        '"args": ["-y", "@modelcontextprotocol/server-github"], '
+        '"version": "1.2.3", "review": "quarterly"}}}',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER not in categories
+
+
+def test_json_nested_env_metadata_not_collected_as_server_keys(tmp_path: Path) -> None:
+    """Nested env dictionary keys in JSON do not satisfy server pin or review."""
+    _write(
+        tmp_path,
+        "servers.mcp.json",
+        '{"mcpServers": {"foo": {"command": "npx", "args": ["-y", "floating"], '
+        '"env": {"version": "1.0.0", "review": "trigger"}}}}',
+    )
+    categories = _categories(tmp_path)
+    assert CATEGORY_MISSING_PIN in categories
+    assert CATEGORY_MISSING_REVIEW_TRIGGER in categories
+
+
+def test_json_unsupported_runtime_form_preserves_advisory_pin(tmp_path: Path) -> None:
+    """HTTP/remote declarations in JSON preserve advisory treatment via version key."""
+    _write(
+        tmp_path,
+        "servers.mcp.json",
+        '{"mcpServers": {"remote": {"url": "https://example.invalid/mcp", '
+        '"version": "1.0.0", "review": "quarterly"}}}',
+    )
+    assert audit_instruction_integrity(tmp_path) == []
+
+
+def test_reproduction_probes_reject_empty_fields_and_subtables() -> None:
+    """Direct probe functions return False for empty fields and subtable keys."""
+    t1 = """
+[mcp_servers.foo]
+version = ''
+review = ''
+"""
+    d1 = _toml_server_declarations("mcp.toml", t1)[0]
+    assert not _has_pin(d1)
+    assert not _has_review_trigger(d1, t1)
+
+    t2 = """
+[mcp_servers.foo]
+transport = 'stdio'
+
+[mcp_servers.foo.env]
+version = '1.0.0'
+review = 'trigger'
+"""
+    d2 = _toml_server_declarations("mcp.toml", t2)[0]
+    assert not _has_pin(d2)
+    assert not _has_review_trigger(d2, t2)
+
+    j1 = """
+{
+  "mcpServers": {
+    "foo": {
+      "version": "",
+      "review": ""
+    }
+  }
+}
+"""
+    jd1 = _json_server_declarations("mcp.json", j1)[0]
+    assert not _has_pin(jd1)
+    assert not _has_review_trigger(jd1, j1)
+
+
+def test_main_cli_fails_on_metadata_only_or_subtable_configurations(tmp_path: Path) -> None:
+    """CLI exits 1 when tree contains metadata-only command runner or subtable keys."""
+    _write(
+        tmp_path,
+        "mcp.toml",
+        '[mcp_servers.github]\ntransport = "stdio"\ncommand = "npx"\n'
+        'args = ["-y", "@modelcontextprotocol/server-github"]\n'
+        'version = "1.2.3"\nreview = "quarterly"\n',
+    )
+    assert main([str(tmp_path)]) == 1

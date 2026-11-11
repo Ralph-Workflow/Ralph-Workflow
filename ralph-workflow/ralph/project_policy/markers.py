@@ -133,8 +133,13 @@ SIGNIFICANT_NONEMPTY_LINE_THRESHOLD: Final[int] = 10
 
 # Managed instruction block in AGENTS.md, bracketed by these two markers
 # so repeated preflights can detect a pre-existing block without
-# re-appending it (idempotent bootstrap). The managed block text is unchanged
-# in schema v6, so the marker version remains v1.
+# re-appending it (idempotent bootstrap).
+#
+# In schema v6, the managed block directs agents to load policies in order:
+# execution-kernel.md first, then their role slice, then triggered domains.
+# The marker version remains v1 while recognized Ralph-owned blocks
+# (placeholder or ready) are version-migrated idempotently in place without
+# altering user text.
 AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v1 -->"
 AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 

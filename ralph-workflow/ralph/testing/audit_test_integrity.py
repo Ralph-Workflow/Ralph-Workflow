@@ -139,10 +139,26 @@ _FIXTURE_RE = re.compile(r"^@\s*(?:pytest\s*\.\s*)?fixture\b")
 _RAISES_RE = re.compile(r"\bpytest\s*\.\s*(?:raises|warns)\s*\(")
 
 #: The first comparison operator of an assertion expression.
-_COMPARISON_RE = re.compile(r"^(?P<lhs>.*?)(?P<op>==|!=|<=|>=|<|>)(?P<rhs>.*)$")
+_COMPARISON_RE = re.compile(
+    r"^(?P<lhs>.*?)\s*(?P<op>==|!=|<=|>=|<|>|\bis\s+not\b|\bis\b|\bnot\s+in\b|\bin\b)\s*(?P<rhs>.*)$"
+)
 
 #: Every constraint an assertion expression carries.
-_CONSTRAINT_RE = re.compile(r"==|!=|<=|>=|<|>|\bis\b|\bin\b")
+_CONSTRAINT_RE = re.compile(r"==|!=|<=|>=|<|>|\bis\s+not\b|\bis\b|\bnot\s+in\b|\bin\b")
+
+#: Mapping from AST comparison operator types to their canonical string representations.
+_OP_MAP: dict[type[ast.cmpop], str] = {
+    ast.Eq: "==",
+    ast.NotEq: "!=",
+    ast.Lt: "<",
+    ast.LtE: "<=",
+    ast.Gt: ">",
+    ast.GtE: ">=",
+    ast.Is: "is",
+    ast.IsNot: "is not",
+    ast.In: "in",
+    ast.NotIn: "not in",
+}
 
 #: A module-level constant assignment (``NAME = value`` / ``NAME: T = value``).
 _CONST_ASSIGN_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=")
@@ -331,8 +347,80 @@ def _count_constraints(expression: str) -> int:
     return sum(1 for _ in _CONSTRAINT_RE.finditer(expression))
 
 
+def _assertion_test_node(text: str) -> ast.expr | None:
+    """Return the AST test expression of an assertion statement, or None."""
+    stripped = text.strip()
+    if not stripped.startswith("assert"):
+        return None
+    try:
+        mod = ast.parse(stripped)
+    except SyntaxError:
+        return None
+    if mod.body and isinstance(mod.body[0], ast.Assert):
+        return mod.body[0].test
+    return None
+
+
+def _compare_ordered_numeric(op: ast.cmpop, left: int | float, right: int | float) -> bool:
+    """Evaluate an ordering comparison between two numeric constants."""
+    if isinstance(op, ast.Lt):
+        return left < right
+    if isinstance(op, ast.LtE):
+        return left <= right
+    if isinstance(op, ast.Gt):
+        return left > right
+    if isinstance(op, ast.GtE):
+        return left >= right
+    return False
+
+
+def _compare_ordered_str(op: ast.cmpop, left: str, right: str) -> bool:
+    """Evaluate an ordering comparison between two string constants."""
+    if isinstance(op, ast.Lt):
+        return left < right
+    if isinstance(op, ast.LtE):
+        return left <= right
+    if isinstance(op, ast.Gt):
+        return left > right
+    if isinstance(op, ast.GtE):
+        return left >= right
+    return False
+
+
+def _evaluate_ordered_compare(op: ast.cmpop, left: object, right: object) -> bool:
+    """Evaluate an ordering comparison between two constants."""
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return _compare_ordered_numeric(op, left, right)
+    if isinstance(left, str) and isinstance(right, str):
+        return _compare_ordered_str(op, left, right)
+    return False
+
+
+def _evaluate_constant_compare(op: ast.cmpop, left: object, right: object) -> bool:
+    """Evaluate a comparison between two constant values."""
+    if isinstance(op, ast.Eq):
+        return left == right
+    if isinstance(op, ast.NotEq):
+        return left != right
+    if isinstance(op, ast.Is):
+        return left is right
+    if isinstance(op, ast.IsNot):
+        return left is not right
+    return _evaluate_ordered_compare(op, left, right)
+
+
 def _split_comparison(expression: str) -> tuple[str, str | None, str | None]:
     """Return ``(lhs, operator, expected)`` of an assertion expression."""
+    test = _assertion_test_node(f"assert {expression}")
+    if test is not None:
+        if isinstance(test, ast.Compare) and len(test.ops) >= 1:
+            op_type = type(test.ops[0])
+            if op_type in _OP_MAP:
+                lhs = ast.unparse(test.left).strip()
+                op = _OP_MAP[op_type]
+                expected = ast.unparse(test.comparators[0]).strip()
+                return lhs, op, expected
+        return ast.unparse(test).strip(), None, None
     match = _COMPARISON_RE.match(expression)
     if match is None:
         return expression, None, None
@@ -418,6 +506,25 @@ def _classify_check(text: str) -> _Check | None:
     return None
 
 
+def _is_tautological(text: str) -> bool:
+    """Return True when an assertion is tautological (always passes unconditionally)."""
+    test = _assertion_test_node(text)
+    if test is None:
+        return False
+    if isinstance(test, ast.Constant):
+        return bool(test.value)
+    if isinstance(test, ast.Compare) and len(test.ops) == 1 and len(test.comparators) == 1:
+        op = test.ops[0]
+        comparator = test.comparators[0]
+        if isinstance(op, (ast.Eq, ast.Is, ast.LtE, ast.GtE)) and ast.dump(test.left) == ast.dump(
+            comparator
+        ):
+            return True
+        if isinstance(test.left, ast.Constant) and isinstance(comparator, ast.Constant):
+            return _evaluate_constant_compare(op, test.left.value, comparator.value)
+    return False
+
+
 def _replacement_is_allowed(removed: _Check, added: Sequence[_Check]) -> bool:
     """Return True when the hunk replaces *removed* with an equal-or-stronger check.
 
@@ -430,6 +537,8 @@ def _replacement_is_allowed(removed: _Check, added: Sequence[_Check]) -> bool:
     for candidate in added:
         if candidate.kind != removed.kind:
             continue
+        if candidate.kind == _KIND_ASSERTION and _is_tautological(candidate.text):
+            continue
         if candidate.text == removed.text:
             return True
         if candidate.constraints < removed.constraints:
@@ -438,7 +547,7 @@ def _replacement_is_allowed(removed: _Check, added: Sequence[_Check]) -> bool:
             continue
         if removed.operator is not None and candidate.operator != removed.operator:
             continue
-        if removed.operator is not None and candidate.lhs != removed.lhs:
+        if candidate.lhs != removed.lhs:
             continue
         if (
             removed.operator is None
@@ -451,8 +560,13 @@ def _replacement_is_allowed(removed: _Check, added: Sequence[_Check]) -> bool:
 
 
 def _hunk_has_reason(hunk: _Hunk) -> bool:
-    """Return True when the hunk carries the recorded-reason marker."""
-    return any(TEST_REASON_MARKER in text for _, text in hunk.all_lines())
+    """Return True when the hunk carries a nonempty recorded-reason marker."""
+    for _, text in hunk.all_lines():
+        if TEST_REASON_MARKER in text:
+            reason = text.split(TEST_REASON_MARKER, 1)[1].strip()
+            if reason:
+                return True
+    return False
 
 
 def _summarize_paths(paths: Sequence[str]) -> str:
