@@ -35,6 +35,7 @@ from ralph.phases._commit_review_events import (
     CommitReviewRejected,
 )
 from ralph.pipeline import progress
+from ralph.pipeline._commit_failure_pending import PendingCommitFailure, consume_failure
 from ralph.pipeline._failure_formatting import (
     classified_failure_reason_for_event,
     commit_failure_reason,
@@ -1924,6 +1925,34 @@ def _route_lock_contention_in_place(
     return advanced.copy_with(**updates), []
 
 
+def _pending_commit_failure_belongs_to_state(
+    pending: PendingCommitFailure,
+    state: PipelineState,
+) -> bool:
+    """Return whether a pending commit diagnostic describes THIS state's attempt.
+
+    A pending diagnostic is a handoff from the commit attempt that failed, so it
+    may only route the failure it describes. Two independent checks keep a
+    diagnostic another attempt left behind out of this routing decision:
+
+    1. The state must corroborate the diagnostic. It does so when it invoked a
+       commit attempt (``commit.agent_invoked`` -- the flag the effect router
+       requires before it emits a commit effect), when it has recorded no
+       failure of its own (``last_error is None``), or when the failure it
+       recorded IS this diagnostic. A state that recorded a DIFFERENT failure
+       and never invoked a commit attempt has no claim on this diagnostic.
+    2. The diagnostic is bound to the approval the attempt was committed
+       against, so it applies only to a state whose current approval matches.
+       Without this binding a diagnostic from another run (or another approval)
+       would re-route a failure that has nothing to do with it.
+    """
+    if pending.approved_tree_sha != state.approved_tree_sha:
+        return False
+    if state.commit.agent_invoked:
+        return True
+    return state.last_error is None or state.last_error == pending.reason
+
+
 def _handle_commit_failure(
     state: PipelineState,
     policy: PipelinePolicy | None,
@@ -1943,9 +1972,13 @@ def _handle_commit_failure(
        attempts.
     3. Exhausting the recovery budget routes to the policy's terminal failure
        phase with the original Git diagnostic preserved.
-    """
-    from ralph.pipeline.commit_executor import get_last_commit_error, set_last_commit_error
 
+    The diagnostic of the failed attempt reaches the reducer through the commit
+    executor's pending slot. It is consumed only when it belongs to the attempt
+    being routed (see :func:`_pending_commit_failure_belongs_to_state`); a
+    diagnostic left behind by another attempt is discarded, and the failure is
+    routed from the canonical commit-failure reason instead.
+    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit failure routing", policy)
 
@@ -1953,8 +1986,12 @@ def _handle_commit_failure(
         pending_cycle_outcome=None,
         last_execution_result_status="failed",
     )
-    last_error = get_last_commit_error()
-    set_last_commit_error(None)
+    pending = consume_failure()
+    last_error = (
+        pending.reason
+        if pending is not None and _pending_commit_failure_belongs_to_state(pending, state)
+        else None
+    )
     if last_error is None and _is_repairable_git_failure(state.last_error):
         last_error = state.last_error
 

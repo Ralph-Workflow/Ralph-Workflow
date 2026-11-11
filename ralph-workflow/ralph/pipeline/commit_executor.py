@@ -42,7 +42,7 @@ from ralph.mcp.artifacts.commit_message import (
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline import _commit_executor_artifacts, _commit_scope
+from ralph.pipeline import _commit_executor_artifacts, _commit_failure_pending, _commit_scope
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_git_dir,
     detached_branch_name,
@@ -280,21 +280,14 @@ if TYPE_CHECKING:
         def __call__(self, repo_root: Path, display_context: object) -> None: ...
 
 
-class _CommitExecutionRecord:
-    last_error: str | None = None
-
-
-_execution_record = _CommitExecutionRecord()
-
-
 def get_last_commit_error() -> str | None:
     """Return the error message from the most recent failed commit execution."""
-    return _execution_record.last_error
+    return _commit_failure_pending.pending_reason()
 
 
 def set_last_commit_error(error: str | None) -> None:
-    """Record the error message from a commit execution failure."""
-    _execution_record.last_error = error
+    """Record (or clear) the pending commit-failure diagnostic."""
+    _commit_failure_pending.record_failure(error)
 
 
 def _is_git_worktree(repo_root: Path) -> bool:
@@ -862,7 +855,10 @@ def execute_commit_effect(
         logger.info("Created commit: {}", sha[:8])
     except Exception as exc:
         err_msg = f"{type(exc).__name__}: {exc}"
-        set_last_commit_error(err_msg)
+        # The diagnostic belongs to THIS attempt: it carries the approval the
+        # attempt was committed against, so the reducer can tell it apart from
+        # a diagnostic another attempt left behind.
+        _commit_failure_pending.record_failure(err_msg, effect.expected_tree_sha)
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
         _record_display_outcome(display, "failed", **opts)
         return PipelineEvent.COMMIT_FAILURE
