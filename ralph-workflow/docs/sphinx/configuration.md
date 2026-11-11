@@ -126,7 +126,7 @@ When an optional configuration file contains syntax errors, invalid UTF-8 bytes,
 
 - **Agent configuration and policy files**: optional user-global `~/.config/ralph-workflow-agents.toml` (the agent CLI definitions) and the project-local `.agent/agents.toml` (the agent-chains / drain-bindings policy file).
 - **Policy TOML files**: pipeline configurations (`.agent/pipeline.toml`, `~/.config/ralph-workflow-pipeline.toml`), artifact schemas (`.agent/artifacts.toml`, `~/.config/ralph-workflow-artifacts.toml`), phase policy files, and other user policy TOMLs.
-- **MCP configurations**: global `~/.config/ralph-workflow-mcp.toml` and project-local `.agent/mcp.toml`. Under Ralph Workflow's section-level fallback ruling, MCP configuration employs section-level fallback (such as for `[web_visit]`): if an individual section fails schema validation, that invalid section reverts to built-in defaults while preserving valid server definitions in `[mcp_servers]` within the same file.
+- **MCP configurations**: global `~/.config/ralph-workflow-mcp.toml` and project-local `.agent/mcp.toml` (including the `[web_visit]` section). Consistent with all optional configuration files, a partially valid MCP configuration file is entirely replaced by built-in defaults rather than piecemeal merged.
 - **User portfolio TOML**: `docs/ralph-workflow-policy/policy-portfolio.toml` and user project-policy portfolio settings.
 
 Fallback warnings are deduplicated per file content fingerprint (SHA-256) so running workflows do not flood logs while still alerting when an edited file introduces a new error.

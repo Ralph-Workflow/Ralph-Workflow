@@ -540,9 +540,11 @@ def test_extract_read_path_ignores_write_modes_and_non_guarded(
     assert _extract_read_path((str(target), "rb+", os.O_RDWR)) is None
     assert _extract_read_path((str(target), "rb", os.O_WRONLY)) is None
 
-    # Paths without 'ralph-workflow' in name are ignored
-    other_file = guarded_dir / "other.toml"
-    assert _extract_read_path((str(other_file), "r")) is None
+    # For default real config dirs, files without 'ralph-workflow' in name are ignored
+    # RALPH-TEST-REASON: synthetic roots guard all files; default config roots ignore unprefixed files
+    monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+    assert _extract_read_path((str(tmp_path / "other.toml"), "r")) is None
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
 
     # Files outside guarded directories are ignored even if named ralph-workflow
     outside_dir = tmp_path / "outside"
@@ -604,3 +606,68 @@ def test_default_guard_snapshot_includes_bundled_agents_template() -> None:
     guarded = snapshot[_BUNDLED_AGENTS_TEMPLATE.resolve()]
     assert guarded.sha256
     assert not guarded.is_dir
+
+
+def test_real_config_guard_catches_symlink_unprefixed_and_transient_in_pytester(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A test accessing via symlink, unprefixed file, or transient mutation in guarded root fails loudly."""
+    guarded_dir = tmp_path / "guarded_config"
+    guarded_dir.mkdir(parents=True)
+    real_file = guarded_dir / "target.toml"
+    real_file.write_text("key = 'secret'\n", encoding="utf-8")
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir(parents=True)
+    symlink_file = outside_dir / "symlink_to_target.toml"
+    symlink_file.symlink_to(real_file)
+
+    unprefixed_file = guarded_dir / "other_settings.json"
+    unprefixed_file.write_text("{}", encoding="utf-8")
+
+    transient_file = guarded_dir / "transient.toml"
+
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
+
+    pytester.makeconftest(
+        textwrap.dedent(
+            """
+            from tests.conftest import _guard_real_config_files
+            """
+        )
+    )
+    pytester.makepyfile(
+        test_cases=textwrap.dedent(
+            f"""
+            from pathlib import Path
+
+            def test_access_via_symlink():
+                link = Path({str(symlink_file)!r})
+                _ = link.read_text(encoding="utf-8")
+
+            def test_access_unprefixed():
+                target = Path({str(unprefixed_file)!r})
+                _ = target.read_text(encoding="utf-8")
+
+            def test_transient_write_and_delete():
+                target = Path({str(transient_file)!r})
+                target.write_text("transient = true\\n", encoding="utf-8")
+                target.unlink()
+            """
+        )
+    )
+
+    result = pytester.runpytest_inprocess("-q")
+    result.assert_outcomes(passed=3, errors=1)
+    output = result.stdout.str()
+    assert (
+        "Test suite touched real user configuration files in violation of isolation rules:"
+        in output
+    )
+    assert "READ:" in output
+    assert "target.toml" in output
+    assert "other_settings.json" in output
+    assert "TRANSIENT MUTATION:" in output
+    assert "transient.toml" in output

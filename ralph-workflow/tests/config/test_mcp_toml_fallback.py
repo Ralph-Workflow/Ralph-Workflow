@@ -309,8 +309,9 @@ def test_local_mcp_web_visit_schema_invalid_fallback(
     # web_visit is restored to default
     assert config.web_visit == WebVisitConfig()
     assert config.web_visit.timeout_ms == 15000
-    # Other valid sections in the file are preserved
-    assert "test_server" in config.mcp_servers
+    # Whole-file fallback: invalid optional config file is entirely replaced by defaults,
+    # never piecemeal merged
+    assert config.mcp_servers == {}
     assert local_file.read_bytes() == initial_bytes
     assert len(records) == 1
     assert str(local_file) in records[0]
@@ -348,7 +349,8 @@ def test_global_mcp_web_visit_schema_invalid_fallback(
 
     assert config.web_visit == WebVisitConfig()
     assert config.web_visit.timeout_ms == 15000
-    assert "test_server" in config.mcp_servers
+    # Whole-file fallback: invalid optional config file is entirely replaced by defaults
+    assert config.mcp_servers == {}
     assert global_file.read_bytes() == initial_bytes
     assert len(records) == 1
     assert str(global_file) in records[0]

@@ -20,7 +20,6 @@ from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     parse_record_payload,
@@ -60,10 +59,13 @@ def _setup_repo_and_config(tmp_path: Path) -> tuple[Path, Path]:
     cfg_dir.mkdir(parents=True, exist_ok=True)
     cfg_file = cfg_dir / "ralph-workflow.toml"
     cfg_file.write_text("[general]\nmodel = 'test'\n", encoding="utf-8")
-    run_git(["init", "-q", "-b", "main"], cwd=tmp_path, label="setup-init")
-    run_git(["config", "user.name", "test"], cwd=tmp_path, label="setup-config-user")
-    run_git(["config", "user.email", "test@test.com"], cwd=tmp_path, label="setup-config-email")
-    run_git(["commit", "--allow-empty", "-m", "init"], cwd=tmp_path, label="setup-commit")
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir(parents=True, exist_ok=True)
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git_dir / "config").write_text("[core]\n\trepositoryformatversion = 0\n", encoding="utf-8")
+    (git_dir / "objects").mkdir(parents=True, exist_ok=True)
+    (git_dir / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+    (git_dir / "refs" / "heads" / "main").write_text("0" * 40 + "\n", encoding="utf-8")
     return tmp_path, cfg_file
 
 
@@ -281,7 +283,33 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
         waiting_logs = [r for r in captured if "WAITING" in r["message"]]
         critical_logs = [r for r in captured if r["level"].name == "CRITICAL"]
         assert len(waiting_logs) == 1
+        assert "Operator action: run 'ralph --retry'" in waiting_logs[0]["message"]
+        assert "ralph --check-config" in waiting_logs[0]["message"]
         assert len(critical_logs) == 0
+
+        # Process 3 verifies cross-process deduplication from the persisted record
+        p2_persisted = read_record(root)
+        assert p2_persisted is not None
+        assert p2_persisted.waiting_notification_key is not None
+
+        reset_continuation_gate_state()
+        ctrl3 = RecoveryController(options=RecoveryControllerOptions(clock=clock))
+        ctrl3.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
+        ctrl3.unavailability_store.mark_unavailable(
+            "rebase_conflict_resolution", "agent1", "cooldown"
+        )
+
+        outcome_p3 = recover_pending_merge(
+            root,
+            p2_persisted,
+            config=None,
+            rebase_stop_resolver=fake_resolve,
+            recovery_controller=ctrl3,
+        )
+        assert outcome_p3.recovery_record_retained is True
+        # Process 3 emits zero additional WAITING logs across processes
+        waiting_logs_after = [r for r in captured if "WAITING" in r["message"]]
+        assert len(waiting_logs_after) == 1
     finally:
         logger.remove(sink_id)
 
@@ -514,7 +542,7 @@ def test_merge_continuation_retry_gate(
     root, _cfg = _setup_repo_and_config(tmp_path)
     ctrl, _clk = _setup_controller()
 
-    feat_sha = run_git(["rev-parse", "HEAD"], cwd=root, label="test-head").stdout.strip()
+    feat_sha = "0" * 40
     target_sha = "a" * 40
     (root / ".git" / "MERGE_HEAD").write_text(f"{target_sha}\n", encoding="utf-8")
 
@@ -563,3 +591,126 @@ def test_merge_continuation_retry_gate(
     assert merge_resolve_invocations[0] == 1  # Resolver not re-entered!
     assert isinstance(res2, str)
     assert "WAITING" in res2
+
+
+def test_production_entry_recovery_retries_on_eligibility_and_command(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Production entry recover_incomplete_integration gates, retries on eligibility change, and supports force_retry."""
+    from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
+    from ralph.pipeline.auto_integrate import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    root, _cfg = _setup_repo_and_config(tmp_path)
+    ctrl, clock = _setup_controller()
+    ctrl.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
+    _setup_rebase_state(root, "feat1", "target1", "stop_sha_prod")
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+    write_record(root, record)
+
+    resolve_calls = [0]
+
+    def fake_resolve_in_progress(
+        root: Path, target: str, resolver: object, *, session: object = None
+    ) -> bool:
+        resolve_calls[0] += 1
+        return False
+
+    monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", fake_resolve_in_progress)
+
+    def dummy_resolver(*_args: Any, **_kwargs: Any) -> bool:
+        return False
+
+    scope = WorkspaceScope(root=root)
+
+    # 1. First call enters resolution
+    outcome1 = recover_incomplete_integration(
+        scope,
+        config=None,
+        rebase_stop_resolver=dummy_resolver,
+        recovery_controller=ctrl,
+    )
+    assert resolve_calls[0] == 1
+    assert outcome1 is not None and outcome1.recovery_record_retained is True
+
+    # 2. Second call with unchanged inputs is gated (resolver not called)
+    outcome2 = recover_incomplete_integration(
+        scope,
+        config=None,
+        rebase_stop_resolver=dummy_resolver,
+        recovery_controller=ctrl,
+    )
+    assert resolve_calls[0] == 1
+    assert outcome2 is not None and "WAITING" in outcome2.last_reason
+
+    # 3. Agent eligibility changes (cooldown expires) -> retried exactly once
+    clock.advance(60.0)
+    outcome3 = recover_incomplete_integration(
+        scope,
+        config=None,
+        rebase_stop_resolver=dummy_resolver,
+        recovery_controller=ctrl,
+    )
+    assert resolve_calls[0] == 2
+    assert outcome3 is not None and outcome3.recovery_record_retained is True
+
+    # 4. Immediate call after retry is gated again
+    outcome4 = recover_incomplete_integration(
+        scope,
+        config=None,
+        rebase_stop_resolver=dummy_resolver,
+        recovery_controller=ctrl,
+    )
+    assert resolve_calls[0] == 2
+    assert outcome4 is not None and "WAITING" in outcome4.last_reason
+
+    # 5. Operator explicit force_retry (--retry command) -> retried immediately
+    outcome5 = recover_incomplete_integration(
+        scope,
+        config=None,
+        rebase_stop_resolver=dummy_resolver,
+        recovery_controller=ctrl,
+        force_retry=True,
+    )
+    assert resolve_calls[0] == 3
+    assert outcome5 is not None and outcome5.recovery_record_retained is True
+
+
+def test_cli_retry_integration_invokes_recovery_with_force_retry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """CLI --retry and --retry-integration invoke recover_incomplete_integration with force_retry=True."""
+    from typer.testing import CliRunner
+
+    from ralph.cli import main as main_module
+
+    recovered_called: list[bool] = []
+
+    def fake_recover(
+        scope: Any, *, config: Any = None, force_retry: bool = False, **kwargs: Any
+    ) -> Any:
+        recovered_called.append(force_retry)
+        return None
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.recover_incomplete_integration", fake_recover
+    )
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    res = runner.invoke(main_module.app, ["--retry"])
+    assert res.exit_code == 0
+    assert recovered_called == [True]
+
+    recovered_called.clear()
+    res2 = runner.invoke(main_module.app, ["--retry-integration"])
+    assert res2.exit_code == 0
+    assert recovered_called == [True]

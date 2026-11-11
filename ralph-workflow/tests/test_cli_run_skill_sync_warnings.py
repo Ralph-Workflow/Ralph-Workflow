@@ -50,6 +50,8 @@ def test_user_global_skill_update_check_failure_emits_visible_warning(
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.side_effect = RuntimeError("user-global broken")
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
+    # RALPH-TEST-REASON: mock project skill install to eliminate disk I/O and preserve per-test CPU budget
+    monkeypatch.setattr(run_module, "install_project_baseline_skills", lambda *a, **kw: None)
 
     records, sink_id = _capture_warnings()
     try:

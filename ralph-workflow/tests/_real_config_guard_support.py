@@ -23,6 +23,10 @@ _BUNDLED_AGENTS_TEMPLATE = (
     / "defaults"
     / "ralph-workflow-agents.toml"
 )
+_RESOLVED_BUNDLED_AGENTS_TEMPLATE: Path | None = (
+    _BUNDLED_AGENTS_TEMPLATE.resolve() if _BUNDLED_AGENTS_TEMPLATE.exists() else None
+)
+_REPO_DIR_STR: str = str(Path(__file__).resolve().parents[1])
 
 _WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | getattr(os, "O_APPEND", 0)
 
@@ -52,6 +56,7 @@ class _GuardState:
             (),
         )
         self.recorded_reads: list[tuple[str | None, Path]] = []
+        self.recorded_writes: list[tuple[str | None, Path]] = []
 
 
 _STATE = _GuardState()
@@ -115,10 +120,12 @@ def _scan_guarded_config_files(
         if guarded_dirs is None:
             guarded_dirs = _resolve_guarded_config_dirs()
         snapshot: dict[Path, _ConfigPathSnapshot] = {}
+        is_synthetic = bool(os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS"))
         for base_dir in guarded_dirs:
             if not base_dir.exists():
                 continue
-            for pattern in ("ralph-workflow*", ".ralph-workflow*"):
+            patterns = ("*", ".*") if is_synthetic else ("ralph-workflow*", ".ralph-workflow*")
+            for pattern in patterns:
                 try:
                     matches = list(base_dir.glob(pattern))
                 except OSError:
@@ -232,37 +239,70 @@ def _parse_raw_path_string(arg0: object) -> str | None:
     return None
 
 
-def _extract_read_path(args: tuple[object, ...]) -> Path | None:
-    """Extract and validate target path if open event is a read on a ralph-workflow file."""
-    if not args:
-        return None
-    s_str = _parse_raw_path_string(args[0])
-    if s_str is None or "ralph-workflow" not in s_str:
+def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
+    """Extract and validate target path if event touches a guarded configuration file."""
+    s_str = _parse_raw_path_string(args[0]) if args else None
+    if s_str is None or s_str.startswith(("/proc/", "/sys/", "/dev/", "/usr/", "/lib/")):
         return None
 
-    mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""
-    flags = args[2] if len(args) > 2 and isinstance(args[2], int) else 0
-    if any(c in mode for c in ("w", "a", "x", "+")) or (flags & _WRITE_FLAGS):
+    is_synthetic = bool(os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS"))
+    if not is_synthetic and (
+        (s_str.startswith(_REPO_DIR_STR) and not s_str.endswith("agents.toml"))
+        or s_str.startswith((str(_REAL_HOME / ".local"), str(_REAL_HOME / ".cache")))
+        or ("ralph-workflow" not in s_str and "agents.toml" not in s_str)
+        or (s_str.startswith(("/tmp/", "/var/tmp/")) and not Path(s_str).is_symlink())
+    ):
         return None
-
-    dirs, prefixes = _get_guarded_dirs_and_prefixes()
     target_str = s_str if s_str.startswith("/") else f"{Path.cwd()}/{s_str}"
-
-    if not any(target_str.startswith(prefix) for prefix in prefixes):
+    try:
+        p = Path(target_str).resolve()
+    except Exception:
         return None
 
-    path = Path(target_str)
-    p = path.resolve()
+    dirs = _get_guarded_config_dirs_cached()
     for gdir in dirs:
         try:
             rel = p.relative_to(gdir)
         except ValueError:
             continue
-        if rel.parts and (
-            rel.parts[0].startswith("ralph-workflow") or rel.parts[0].startswith(".ralph-workflow")
+        if (
+            is_synthetic
+            or (
+                rel.parts
+                and (
+                    rel.parts[0].startswith("ralph-workflow")
+                    or rel.parts[0].startswith(".ralph-workflow")
+                )
+            )
+            or (
+                _RESOLVED_BUNDLED_AGENTS_TEMPLATE is not None
+                and p == _RESOLVED_BUNDLED_AGENTS_TEMPLATE
+            )
         ):
             return p
     return None
+
+
+def _extract_read_path(args: tuple[object, ...]) -> Path | None:
+    """Extract and validate target path if open event is a read on a guarded file."""
+    if not args:
+        return None
+    mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""
+    flags = args[2] if len(args) > 2 and isinstance(args[2], int) else 0
+    if any(c in mode for c in ("w", "a", "x", "+")) or (flags & _WRITE_FLAGS):
+        return None
+    return _extract_guarded_path("open", args)
+
+
+def _extract_write_path(args: tuple[object, ...]) -> Path | None:
+    """Extract and validate target path if open event is a write/mutation on a guarded file."""
+    if not args:
+        return None
+    mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""
+    flags = args[2] if len(args) > 2 and isinstance(args[2], int) else 0
+    if not (any(c in mode for c in ("w", "a", "x", "+")) or (flags & _WRITE_FLAGS)):
+        return None
+    return _extract_guarded_path("open", args)
 
 
 def _install_config_guard_audit_hook() -> None:
@@ -271,20 +311,26 @@ def _install_config_guard_audit_hook() -> None:
     _STATE.audit_hook_installed = True
 
     def _hook(event: str, args: tuple[object, ...]) -> None:
-        if event != "open" or _STATE.scanning or not args:
+        if event != "open" and not event.startswith("os."):
             return
-        arg0 = args[0]
-        if isinstance(arg0, str):
-            if "ralph-workflow" not in arg0:
-                return
-        elif hasattr(arg0, "__fspath__"):
-            if "ralph-workflow" not in str(arg0.__fspath__()):
-                return
-        else:
+        if _STATE.scanning or not args:
             return
-        p = _extract_read_path(args)
-        if p is not None:
-            _STATE.recorded_reads.append((_STATE.current_test_node, p))
+        if event == "open":
+            p = _extract_guarded_path("open", args)
+            if p is not None:
+                mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""
+                flags = args[2] if len(args) > 2 and isinstance(args[2], int) else 0
+                is_write = any(c in mode for c in ("w", "a", "x", "+")) or bool(
+                    flags & _WRITE_FLAGS
+                )
+                if is_write:
+                    _STATE.recorded_writes.append((_STATE.current_test_node, p))
+                else:
+                    _STATE.recorded_reads.append((_STATE.current_test_node, p))
+        elif event in ("os.remove", "os.unlink", "os.mkdir", "os.rmdir", "os.rename"):
+            p = _extract_guarded_path(event, args)
+            if p is not None:
+                _STATE.recorded_writes.append((_STATE.current_test_node, p))
 
     sys.addaudithook(_hook)
 
@@ -305,3 +351,9 @@ def _clear_recorded_read_violations() -> list[tuple[str | None, Path]]:
     reads = list(_STATE.recorded_reads)
     _STATE.recorded_reads.clear()
     return reads
+
+
+def _clear_recorded_write_violations() -> list[tuple[str | None, Path]]:
+    writes = list(_STATE.recorded_writes)
+    _STATE.recorded_writes.clear()
+    return writes

@@ -929,6 +929,7 @@ def _run_auto_integrate_recovery_preamble(
     config: UnifiedConfig | None = None,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    force_retry: bool = False,
 ) -> RebaseState | None:
     """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
 
@@ -953,7 +954,12 @@ def _run_auto_integrate_recovery_preamble(
     try:
         from ralph.pipeline.auto_integrate import recover_incomplete_integration
 
-        recovered = recover_incomplete_integration(workspace_scope, config=config, backend=backend)
+        recovered = recover_incomplete_integration(
+            workspace_scope,
+            config=config,
+            backend=backend,
+            force_retry=force_retry,
+        )
     except Exception as recover_exc:  # pragma: no cover -- defensive
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
         return None

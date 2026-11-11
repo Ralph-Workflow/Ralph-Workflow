@@ -13,8 +13,9 @@ Contract:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -420,3 +421,73 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(tmp_path: Path) -> N
     assert rebase_resolution_result.reason is not None
     assert "git add -- sub" in rebase_resolution_result.reason
     assert agent_invocations == [], "agent invoker must not be called during rebase seam either"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_gitlink_deterministic_staging_command_failure_preserves_index(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A command failure during deterministic staging fails closed without losing index entries."""
+    from ralph.git.git_run_result import GitRunResult
+
+    super_repo = tmp_path / "super"
+    super_repo.mkdir()
+    _git(super_repo, "init", "-q")
+    _git(super_repo, "config", "user.name", "Tester")
+    _git(super_repo, "config", "user.email", "tester@example.com")
+    (super_repo / "root.txt").write_text("root\n", encoding="utf-8")
+    _git(super_repo, "add", "root.txt")
+    _git(super_repo, "commit", "-q", "-m", "initial")
+
+    base = "1" * 40
+    sha_a = "2" * 40
+    sha_desc = "3" * 40
+
+    # Conflicted stages: stage 1 = base, stage 2 = sha_a, stage 3 = sha_desc
+    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
+    _git(super_repo, "update-index", "--index-info", input_text=index_info)
+
+    # Injected failure on git-gitlink-resolve-readd to verify restore path
+    orig_run_git = run_git
+
+    def fake_run_git(
+        args: Sequence[str],
+        *,
+        cwd: Path | None,
+        label: str,
+        options: Any = None,
+        call_class: Any = None,
+    ) -> GitRunResult:
+        if label == "git-gitlink-object":
+            return GitRunResult(args=("cat-file",), returncode=0, stdout="", stderr="")
+        if label == "git-gitlink-ancestor":
+            # ours (sha_a) is ancestor of theirs (sha_desc)
+            return GitRunResult(args=("merge-base",), returncode=0, stdout="", stderr="")
+        if label == "git-gitlink-resolve-readd":
+            return GitRunResult(
+                args=("update-index",), returncode=1, stdout="", stderr="injected readd error"
+            )
+        return orig_run_git(args, cwd=cwd, label=label, options=options, call_class=call_class)
+
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.deterministic_resolution.run_git",
+        fake_run_git,
+    )
+
+    stop = RebaseStop(
+        sha=sha_desc,
+        subject="test",
+        conflicted_files=("sub",),
+        stop_index=1,
+        stop_cap=1,
+    )
+    resolved = try_deterministic_resolution(super_repo, stop)
+    assert resolved is False
+
+    # Fail closed: index entries for 'sub' must not be deleted or lost
+    unmerged = _git(super_repo, "ls-files", "-u", "sub").stdout.strip()
+    assert f"160000 {base} 1\tsub" in unmerged
+    assert f"160000 {sha_a} 2\tsub" in unmerged
+    assert f"160000 {sha_desc} 3\tsub" in unmerged
+    stage0 = _git(super_repo, "ls-files", "-s", "sub").stdout.strip()
+    assert " 0\tsub" not in stage0

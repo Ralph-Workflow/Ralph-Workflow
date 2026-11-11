@@ -116,6 +116,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -251,6 +252,8 @@ def recover_incomplete_integration(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    recovery_controller: RecoveryController | None = None,
+    force_retry: bool = False,
 ) -> RebaseState | None:
     """Recover owned Git operations under an exclusive worktree lease.
 
@@ -317,6 +320,8 @@ def recover_incomplete_integration(
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
             backend=backend,
+            recovery_controller=recovery_controller,
+            force_retry=force_retry,
         )
         if (
             recovered is None
@@ -341,6 +346,8 @@ def _recover_incomplete_integration_owned(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    recovery_controller: RecoveryController | None = None,
+    force_retry: bool = False,
 ) -> RebaseState | None:
     """Recover from an interrupted integration at run-loop startup.
 
@@ -453,7 +460,15 @@ def _recover_incomplete_integration_owned(
         # mean the integration is still owed; the pending-merge recovery
         # path performs it, including the stale-intent replay that drops
         # flags Git disproves and re-enters at the automatic rebase.
-        return _recover_pending_merge(root, record, config, conflict_resolver, rebase_stop_resolver)
+        return _recover_pending_merge(
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
+            recovery_controller=recovery_controller,
+            force_retry=force_retry,
+        )
 
     except Exception as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)

@@ -15,6 +15,7 @@ from git import Repo
 
 from ralph.config.bootstrap import auto_seed_default_git_exclude, auto_seed_default_gitignore
 from ralph.git.proposal_seal import DiffEntry, diff_tree, rollback, seal_pending
+from ralph.git.subprocess_runner import run_git
 from ralph.phases.commit_review import (
     CommitReviewGateFailed,
     CommitReviewRejected,
@@ -29,22 +30,10 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 _SRC_FILES = ("src/app.py", "src/util.py")
 
 
-def _git_output(repo_root: Path, *args: str) -> str:
-    """Run a git command in ``repo_root`` and return its standard output."""
-    if not (repo_root / ".git").exists():
-        repo = Repo.init(repo_root, initial_branch="main")
-    else:
-        repo = Repo(repo_root)
-    try:
-        git_cmd = getattr(repo.git, args[0].replace("-", "_"))
-        return str(git_cmd(*args[1:]))
-    finally:
-        repo.close()
-
-
 def _git(repo_root: Path, *args: str) -> None:
     """Run a git command in ``repo_root`` and fail the test when it errors."""
-    _git_output(repo_root, *args)
+    res = run_git(args, cwd=repo_root, label="test-commit-review-real-diff")
+    assert res.returncode == 0, f"git command failed: {res.stderr}"
 
 
 def _git_rm(repo_root: Path, *paths: str) -> None:
@@ -91,11 +80,13 @@ def _module_paths(count: int) -> list[str]:
 
 def _tracked_count(repo_root: Path) -> int:
     """Return the number of tracked paths in HEAD."""
-    repo = Repo(repo_root)
-    try:
-        return sum(1 for item in repo.head.commit.tree.traverse() if item.type == "blob")
-    finally:
-        repo.close()
+    result = run_git(
+        ["ls-tree", "-r", "--name-only", "HEAD"],
+        cwd=repo_root,
+        label="test-commit-review-ls-tree",
+    )
+    assert result.returncode == 0, f"git ls-tree failed: {result.stderr}"
+    return len([line for line in result.stdout.splitlines() if line])
 
 
 def test_a_protected_top_level_directory_deleted_in_its_entirety_is_a_hard_tripwire(

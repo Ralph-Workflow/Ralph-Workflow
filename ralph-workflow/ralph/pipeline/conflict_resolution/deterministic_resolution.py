@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import conflict_stage_entries
-from ralph.git.subprocess_runner import run_git
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline.conflict_resolution.sight import escalate_on_sight
 
 if TYPE_CHECKING:
@@ -177,10 +177,17 @@ def _resolve_gitlinks(
         )
         return False
 
+    restore_lines: list[str] = []
+    for p, stg in zip(paths, stages, strict=True):
+        for stg_num, (m, h) in stg.items():
+            restore_lines.append(f"{m} {h} {stg_num}\t{p}\n")
+    restore_info = "".join(restore_lines)
+
     return _stage_deterministic_entries(
         root,
         (("160000", sha, path) for path, sha in chosen),
         label="git-gitlink-resolve",
+        restore_info=restore_info,
     )
 
 
@@ -212,15 +219,18 @@ def _stage_deterministic_entries(
     entries: Iterable[tuple[str, str, str]],
     *,
     label: str,
+    restore_info: str | None = None,
 ) -> bool:
-    """Stage an entire deterministic stop through one atomic index update.
+    """Stage an entire deterministic stop through atomic/fail-closed index updates.
 
-    ``git update-index`` holds its lock until all cacheinfo records validate,
-    so a non-zero exit leaves every conflicted path untouched for the normal
-    resolver. Issuing one command prevents a later failure from partially
-    resolving a stop.
+    ``git update-index`` holds its lock until all records validate. For gitlinks,
+    each step checks the command returncode and restores the original unmerged
+    index stages if re-adding fails, ensuring no index entry is lost or left deleted.
     """
     entries_list = list(entries)
+    if not entries_list:
+        return True
+
     args: list[str] = ["update-index"]
     for mode, blob, path in entries_list:
         args.extend(("--cacheinfo", f"{mode},{blob},{path}"))
@@ -231,14 +241,34 @@ def _stage_deterministic_entries(
     gitlinks = [(mode, blob, path) for mode, blob, path in entries_list if mode == "160000"]
     if gitlinks:
         for mode, blob, path in gitlinks:
-            run_git(
+            rc_clear = run_git(
                 ("update-index", "--force-remove", path),
                 cwd=root,
                 label=f"{label}-clear",
-            )
-            run_git(
+            ).returncode
+            if rc_clear != 0:
+                if restore_info:
+                    run_git(
+                        ("update-index", "--index-info"),
+                        cwd=root,
+                        label=f"{label}-restore",
+                        options=GitRunOptions(input_data=restore_info),
+                    )
+                return False
+
+            rc_add = run_git(
                 ("update-index", "--add", "--cacheinfo", f"{mode},{blob},{path}"),
                 cwd=root,
                 label=f"{label}-readd",
-            )
+            ).returncode
+            if rc_add != 0:
+                if restore_info:
+                    run_git(
+                        ("update-index", "--index-info"),
+                        cwd=root,
+                        label=f"{label}-restore",
+                        options=GitRunOptions(input_data=restore_info),
+                    )
+                return False
+
     return True

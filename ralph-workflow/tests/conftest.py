@@ -18,6 +18,7 @@ from tests._real_config_guard_support import (
     _REAL_HOME,
     _REAL_XDG_CONFIG_HOME,
     _clear_recorded_read_violations,
+    _clear_recorded_write_violations,
     _compute_file_sha256,
     _ConfigPathSnapshot,
     _diff_config_snapshots,
@@ -255,6 +256,7 @@ def _guard_real_config_files() -> Generator[None, None, None]:
     """
     _install_config_guard_audit_hook()
     _clear_recorded_read_violations()
+    _clear_recorded_write_violations()
     before = _scan_guarded_config_files()
     yield
     after = _scan_guarded_config_files()
@@ -264,6 +266,11 @@ def _guard_real_config_files() -> Generator[None, None, None]:
             violations.append(f"READ: {p} (by {node})")
         else:
             violations.append(f"READ: {p}")
+    for node, p in _clear_recorded_write_violations():
+        if node:
+            violations.append(f"TRANSIENT MUTATION: {p} (by {node})")
+        else:
+            violations.append(f"TRANSIENT MUTATION: {p}")
     if violations:
         msg = (
             "Test suite touched real user configuration files in violation of isolation rules:\n"

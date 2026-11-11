@@ -31,7 +31,6 @@ from ralph.config._toml_fallback import load_optional_toml, validate_or_default
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.config.loader import deep_merge as _deep_merge
 from ralph.config.mcp_models import McpConfig
-from ralph.config.web_service_configs import WebVisitConfig
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pydantic_validation_errors import format_validation_error_messages
 
@@ -120,42 +119,6 @@ def _load_mcp_toml(
         raise McpConfigError(message) from exc
 
 
-def _validate_web_visit_section(
-    path: Path,
-    layer_data: dict[str, object],
-    *,
-    strict: bool,
-) -> None:
-    """Validate [web_visit] section independently with section-level fallback.
-
-    Architectural ruling: MCP configuration uses section-level fallback to preserve
-    independent server configurations in [mcp_servers] when [web_visit] is schema-invalid.
-    """
-    if "web_visit" not in layer_data or layer_data["web_visit"] is None:
-        return
-    raw_val = layer_data["web_visit"]
-
-    def _validator(val: object) -> dict[str, object]:
-        if not isinstance(val, dict):
-            raise ValueError("[web_visit] section must be a table")
-        try:
-            return WebVisitConfig.model_validate(val).model_dump()
-        except ValidationError as exc:
-            if strict:
-                _raise_mcp_validation_error(exc, path)
-            raise
-
-    validated = validate_or_default(
-        path,
-        raw_val,
-        validator=_validator,
-        default=WebVisitConfig().model_dump(),
-        kind="mcp",
-        strict=strict,
-    )
-    layer_data["web_visit"] = validated
-
-
 def _validate_fallback_backends(config: McpConfig) -> None:
     for entry in config.web_search.fallback:
         if entry != "ddgs" and entry not in config.web_search.backends:
@@ -176,9 +139,6 @@ def _validate_mcp_layer(
 ) -> dict[str, object]:
     if not layer_data:
         return {}
-
-    # Validate [web_visit] section if present; schema-invalid falls back to default + WARN
-    _validate_web_visit_section(path, layer_data, strict=strict)
 
     def _layer_validator(data: dict[str, object]) -> dict[str, object]:
         copied = copy.deepcopy(data)

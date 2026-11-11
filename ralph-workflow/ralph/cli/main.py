@@ -530,6 +530,61 @@ def _handle_force_init_skills(*, workspace_root: RuntimePath) -> None:
         resolve_active_display(None, display_context).emit_skill_failure_warning(failures)
 
 
+def _handle_retry_integration(
+    config: RuntimePath | None = None,
+    *,
+    display_context: DisplayContext | None = None,
+) -> int:
+    """Handle explicit operator retry of retained integration conflict resolution."""
+    from ralph.pipeline.auto_integrate import recover_incomplete_integration
+    from ralph.workspace.scope import WorkspaceScope
+
+    scope = WorkspaceScope(root=RuntimePath.cwd())
+    cfg = None
+    try:
+        from ralph.config.loader import load_config
+
+        cfg = load_config(config_path=config, workspace_scope=scope)
+    except Exception as exc:
+        logger.debug("Config load during explicit retry: {}", exc)
+
+    outcome = recover_incomplete_integration(
+        scope,
+        config=cfg,
+        force_retry=True,
+    )
+    if outcome is not None:
+        logger.bind(recovery=True).info(
+            "Explicit integration retry: outcome={}", outcome.last_outcome
+        )
+        return 0 if (outcome.fast_forwarded or outcome.last_outcome == "recovered") else 1
+    return 0
+
+
+def _dispatch_maintenance_flags(
+    *,
+    regenerate_config: bool,
+    force_init_skills: bool,
+    retry_integration: bool,
+    config: str | None,
+    display_context: DisplayContext,
+) -> None:
+    """Handle standalone maintenance flags that exit immediately."""
+    if regenerate_config:
+        _handle_regenerate_config(display_context=display_context)
+        raise typer.Exit()
+
+    if force_init_skills:
+        _handle_force_init_skills(workspace_root=RuntimePath.cwd())
+        raise typer.Exit()
+
+    if retry_integration:
+        exit_code = _handle_retry_integration(
+            config=_config_path(config), display_context=display_context
+        )
+        raise typer.Exit(code=exit_code)
+
+
 """Typer callback for the ``ralph`` CLI entry point.
 
 The handler is the console-script entry point declared in
@@ -856,6 +911,14 @@ def main(
         bool,
         typer.Option("--generate-commit-msg", help="Generate commit message"),
     ] = False,
+    retry_integration: Annotated[
+        bool,
+        typer.Option(
+            "--retry",
+            "--retry-integration",
+            help="Force retry of retained integration conflict resolution, bypassing the continuation gate",
+        ),
+    ] = False,
     generate_commit: Annotated[
         bool,
         typer.Option("--generate-commit", help="Generate and apply commit"),
@@ -1147,15 +1210,13 @@ def main(
         _handle_init(template=init, config=config, display_context=_cli_ctx)
         raise typer.Exit()
 
-    if regenerate_config:
-        _handle_regenerate_config(display_context=_cli_ctx)
-        raise typer.Exit()
-
-    if force_init_skills:
-        _handle_force_init_skills(
-            workspace_root=RuntimePath.cwd(),
-        )
-        raise typer.Exit()
+    _dispatch_maintenance_flags(
+        regenerate_config=regenerate_config,
+        force_init_skills=force_init_skills,
+        retry_integration=retry_integration,
+        config=config,
+        display_context=_cli_ctx,
+    )
 
     if generate_local_config:
         if scope_name not in {None, WORKTREE_SCOPE_LABEL, PROJECT_SCOPE_LABEL}:

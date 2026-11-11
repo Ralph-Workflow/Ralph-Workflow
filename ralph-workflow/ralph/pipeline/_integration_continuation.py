@@ -85,16 +85,37 @@ def compute_continuation_retry_gate_key(
     stop_id = stop_identity if stop_identity is not None else _current_stop_identity(root, record)
 
     eligible_agents: tuple[str, ...] = ()
-    if recovery_controller is not None:
+    effective_controller = recovery_controller
+    if effective_controller is None:
+        try:
+            from ralph.pipeline.runner import load_policy_bundle_for_run
+            from ralph.recovery.controller import (
+                RecoveryController,
+                RecoveryControllerOptions,
+            )
+            from ralph.workspace.scope import WorkspaceScope
+
+            scope = WorkspaceScope(root=root)
+            policy_bundle = (
+                load_policy_bundle_for_run(scope, config) if config is not None else None
+            )
+            effective_controller = RecoveryController(
+                options=RecoveryControllerOptions(policy_bundle=policy_bundle)
+            )
+        except Exception as exc:
+            logger.debug("compute_continuation_retry_gate_key: fallback controller init: {}", exc)
+            effective_controller = None
+
+    if effective_controller is not None:
         candidates: list[str] = []
         if chain_agents is not None:
             candidates = list(chain_agents)
         else:
             candidates_set: set[str] = set()
-            chain_tuple = recovery_controller._get_chain_agents(phase)
+            chain_tuple = effective_controller._get_chain_agents(phase)
             if chain_tuple is not None:
                 candidates_set.update(chain_tuple)
-            snap = recovery_controller.snapshot()
+            snap = effective_controller.snapshot()
             timeouts = snap.get("unavailable_timeouts")
             if isinstance(timeouts, dict):
                 candidates_set.update(str(k) for k in timeouts)
@@ -102,7 +123,7 @@ def compute_continuation_retry_gate_key(
             if isinstance(attempts, dict):
                 candidates_set.update(str(k) for k in attempts)
             candidates = sorted(candidates_set)
-        available = recovery_controller.agents_now_available(phase, candidates)
+        available = effective_controller.agents_now_available(phase, candidates)
         eligible_agents = tuple(sorted(available))
 
     cfg_fp = compute_config_fingerprint_for_workspace(root, config_path)
@@ -142,11 +163,16 @@ def _continue_merge_resolution(
         if disk_record is not None:
             effective_gate_key = disk_record.resolution_gate_key
 
+    actionable_waiting_msg = (
+        "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged. "
+        "Operator action: run 'ralph --retry' to retry resolution, reset agent backoff, or fix configuration and run 'ralph --check-config'."
+    )
+
     if not force_retry and effective_gate_key is not None and effective_gate_key == gate_key:
-        _emit_waiting_line(
-            "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged",
-            key=gate_key,
-        )
+        disk_rec = read_record(root) or record
+        if disk_rec.waiting_notification_key != gate_key:
+            _emit_waiting_line(actionable_waiting_msg, key=gate_key)
+            write_record(root, disk_rec.with_waiting_notification_key(gate_key))
         return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
 
     reset_continuation_gate_state()
@@ -198,11 +224,16 @@ def _continue_rebase_resolution(
         if disk_record is not None:
             effective_gate_key = disk_record.resolution_gate_key
 
+    actionable_waiting_msg = (
+        "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged. "
+        "Operator action: run 'ralph --retry' to retry resolution, reset agent backoff, or fix configuration and run 'ralph --check-config'."
+    )
+
     if not force_retry and effective_gate_key is not None and effective_gate_key == gate_key:
-        _emit_waiting_line(
-            "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged",
-            key=gate_key,
-        )
+        disk_rec = read_record(root) or record
+        if disk_rec.waiting_notification_key != gate_key:
+            _emit_waiting_line(actionable_waiting_msg, key=gate_key)
+            write_record(root, disk_rec.with_waiting_notification_key(gate_key))
         return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
 
     reset_continuation_gate_state()

@@ -175,6 +175,7 @@ class IntegrationRecord(RalphBaseModel):
     initiating_feature_sha: str | None = None
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     resolution_gate_key: tuple[str | None, tuple[str, ...], str | None] | None = None
+    waiting_notification_key: tuple[str | None, tuple[str, ...], str | None] | None = None
 
     @property
     def is_integrated(self) -> bool:
@@ -211,6 +212,13 @@ class IntegrationRecord(RalphBaseModel):
     ) -> IntegrationRecord:
         """Return a copy of this record with ``resolution_gate_key`` updated."""
         return self.model_copy(update={"resolution_gate_key": gate_key})
+
+    def with_waiting_notification_key(
+        self,
+        notification_key: tuple[str | None, tuple[str, ...], str | None] | None,
+    ) -> IntegrationRecord:
+        """Return a copy of this record with ``waiting_notification_key`` updated."""
+        return self.model_copy(update={"waiting_notification_key": notification_key})
 
 
 # ---------------------------------------------------------------------------
