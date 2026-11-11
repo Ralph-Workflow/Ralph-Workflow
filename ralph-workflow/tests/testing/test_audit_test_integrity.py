@@ -328,6 +328,199 @@ def test_strengthened_assertion_with_is_not_none_is_not_reported() -> None:
     assert audit_test_integrity_diff(diff) == []
 
 
+def test_multiline_assertion_changed_expected_value_is_reported() -> None:
+    """Changing an expected value across lines in a multiline assertion is a finding."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()",
+            "     assert (",
+            "-        result == 1",
+            "+        result == 2",
+            "     )",
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+    finding = findings[0]
+    assert finding.file_path == "tests/test_core.py"
+    assert finding.line == 12
+    assert "assert (" in finding.detail
+    assert "ralph/core.py" in finding.detail
+    assert "fix:" in finding.detail
+
+
+def test_multiline_assertion_recorded_reason_suppresses_finding() -> None:
+    """A recorded reason marker inside a multiline assertion hunk suppresses the finding."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()",
+            "     assert (",
+            "-        result == 1",
+            f"+        # {TEST_REASON_MARKER} updated contract for new core behavior",
+            "+        result == 2",
+            "     )",
+        ),
+    )
+
+    assert audit_test_integrity_diff(diff) == []
+
+
+def test_multiline_assertion_backslash_changed_expected_value_is_reported() -> None:
+    """Changing an expected value across a backslash continuation is reported."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()",
+            "     assert result \\",
+            "-        == 1",
+            "+        == 2",
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+    finding = findings[0]
+    assert finding.file_path == "tests/test_core.py"
+    assert finding.line == 12
+    assert "ralph/core.py" in finding.detail
+
+
+def test_multiline_assertion_reformatted_same_value_is_not_reported() -> None:
+    """Reformatting a multiline assertion to single-line without changing value is accepted."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            "     result = run()",
+            "-    assert (",
+            "-        result == 1",
+            "-    )",
+            "+    assert result == 1",
+        ),
+    )
+
+    assert audit_test_integrity_diff(diff) == []
+
+
+def test_fixture_body_return_changed_expected_value_is_reported() -> None:
+    """Changing a return value in a pytest fixture body without reason is reported."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            " @pytest.fixture",
+            " def sample():",
+            "-    return 1",
+            "+    return 2",
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+    finding = findings[0]
+    assert finding.file_path == "tests/test_core.py"
+    assert finding.line == 12
+    assert "pytest fixture" in finding.detail
+    assert "return 1" in finding.detail
+    assert "ralph/core.py" in finding.detail
+    assert "fix:" in finding.detail
+
+
+def test_fixture_body_return_recorded_reason_suppresses_finding() -> None:
+    """A recorded reason marker inside a fixture return hunk suppresses the finding."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            " @pytest.fixture",
+            " def sample():",
+            "-    return 1",
+            f"+    # {TEST_REASON_MARKER} updated fixture value for new core behavior",
+            "+    return 2",
+        ),
+    )
+
+    assert audit_test_integrity_diff(diff) == []
+
+
+def test_fixture_body_yield_changed_expected_value_is_reported() -> None:
+    """Changing a yield value in a pytest fixture body without reason is reported."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            " @pytest.fixture",
+            " def sample():",
+            "-    yield 1",
+            "+    yield 2",
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+    finding = findings[0]
+    assert finding.file_path == "tests/test_core.py"
+    assert finding.line == 12
+    assert "pytest fixture" in finding.detail
+    assert "yield 1" in finding.detail
+
+
+def test_fixture_body_yield_recorded_reason_suppresses_finding() -> None:
+    """A recorded reason marker inside a fixture yield hunk suppresses the finding."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            " @pytest.fixture",
+            " def sample():",
+            "-    yield 1",
+            f"+    # {TEST_REASON_MARKER} updated fixture yield for new core behavior",
+            "+    yield 2",
+        ),
+    )
+
+    assert audit_test_integrity_diff(diff) == []
+
+
+def test_multiline_fixture_body_return_changed_is_reported() -> None:
+    """Changing a return value in a multiline fixture body is reported."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            " @pytest.fixture",
+            " def sample():",
+            "     return (",
+            "-        1",
+            "+        2",
+            "     )",
+        ),
+    )
+
+    findings = audit_test_integrity_diff(diff)
+
+    assert _categories(findings) == {CATEGORY_TEST_WEAKENING}
+    finding = findings[0]
+    assert finding.file_path == "tests/test_core.py"
+    assert finding.line == 13
+    assert "pytest fixture" in finding.detail
+
+
+def test_unrelated_helper_return_in_test_file_is_not_reported() -> None:
+    """A return statement in an ordinary non-fixture helper is not reported."""
+    diff = _diff(
+        _PRODUCTION_DIFF,
+        _test_hunk(
+            " def helper():",
+            "-    return 1",
+            "+    return 2",
+        ),
+    )
+
+    assert audit_test_integrity_diff(diff) == []
+
+
 # --- the detection half: production code must not sniff the test runner ----
 
 

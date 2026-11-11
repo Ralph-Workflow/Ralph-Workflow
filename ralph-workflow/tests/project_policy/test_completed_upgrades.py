@@ -1,14 +1,15 @@
-"""Tests proving completed v4 and v5 policy pack upgrades to schema v6.
+"""Tests proving completed v4 and v5 policy pack upgrades to schema v6 under simulated remediation.
 
 Proves:
-1. An authentic v4 policy pack upgrades fully to v6 (marker, 7-column header,
-   execution-kernel.md, and portfolio v3).
-2. An authentic v5 policy pack upgrades fully to v6 (marker, 7-column header,
-   and portfolio v3).
-3. The upgrade happens exactly once: subsequent preflight or upgrade checks
+1. An authentic v4 policy pack upgrades to v6 invariants (marker, 7-column header,
+   execution-kernel.md, and portfolio v3) under simulated remediation.
+2. An authentic v5 policy pack upgrades to v6 invariants (marker, 7-column header,
+   and portfolio v3) under simulated remediation.
+3. The upgrade consent flow executes exactly once: subsequent preflight or upgrade checks
    detect no outdated files, prompt zero times, and leave the workspace unchanged.
-4. End-to-end CLI integration runs through upgrade consent, remediation upgrade,
-   and analysis completion, and subsequent runs never re-prompt.
+4. Simulated-remediation scope: verifies interactive upgrade consent, simulates
+   completed remediation agent output on disk, validates post-remediation READY
+   status, and confirms subsequent runs never re-prompt.
 """
 
 from __future__ import annotations
@@ -153,7 +154,7 @@ def _clean_v6_starter_prose(body: str) -> str:
 
 
 def _apply_v6_upgrade(ws: MemoryWorkspace) -> None:
-    """Apply the full v6 upgrade across all core files and the portfolio."""
+    """Simulate completed remediation agent output on disk across core files and portfolio."""
     for name in markers.CORE_POLICY_FILES:
         body = starters.read_starter(name)
         cleaned = _clean_v6_starter_prose(body)
@@ -200,13 +201,13 @@ def _assert_pack_is_fully_v6(ws: MemoryWorkspace) -> None:
 
 
 def test_v4_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> None:
-    """Proves v4 upgrade consent and structural v6 readiness after remediation.
+    """Proves v4 upgrade consent and structural v6 readiness under simulated remediation.
 
     Demonstrates:
     1. An unmodified v4 pack requires remediation before upgrade.
     2. Interactive consent via maybe_resolve_schema_upgrade confirms upgrade (returns True).
     3. Preflight produces remediation-required status targeting outdated schema/portfolio.
-    4. Once upgraded to v6 format (simulating the completed remediation agent outcome),
+    4. Once upgraded to v6 format (simulating completed remediation agent output on disk),
        all v6 structural invariants hold and readiness validates cleanly.
     5. A subsequent preflight check never re-prompts (selector is never invoked),
        proving the upgrade consent flow executes exactly once.
@@ -256,13 +257,13 @@ def test_v4_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> 
 
 
 def test_v5_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> None:
-    """Proves v5 upgrade consent and structural v6 readiness after remediation.
+    """Proves v5 upgrade consent and structural v6 readiness under simulated remediation.
 
     Demonstrates:
     1. An unmodified v5 pack requires remediation before upgrade (6-column header, portfolio v2).
     2. Interactive consent via maybe_resolve_schema_upgrade confirms upgrade (returns True).
     3. Preflight produces remediation-required status targeting v5-to-v6 differences.
-    4. Once upgraded to v6 format (simulating completed remediation outcome),
+    4. Once upgraded to v6 format (simulating completed remediation agent output on disk),
        all v6 structural invariants hold and readiness validates cleanly.
     5. A subsequent preflight check never re-prompts (selector is never invoked),
        proving the upgrade consent flow executes exactly once.
