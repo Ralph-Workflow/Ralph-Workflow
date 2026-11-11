@@ -97,23 +97,15 @@ class _PopenConstructor(Protocol):
     def __call__(
         self,
         args: Sequence[str],
-        bufsize: int = ...,
-        executable: str | None = ...,
+        *,
+        cwd: str | None = ...,
+        env: dict[str, str] | None = ...,
         stdin: int | None = ...,
         stdout: int | None = ...,
         stderr: int | None = ...,
-        preexec_fn: Callable[[], None] | None = ...,
-        close_fds: bool = ...,
-        shell: bool = ...,
-        cwd: str | None = ...,
-        env: dict[str, str] | None = ...,
-        universal_newlines: bool | None = ...,
-        startupinfo: object = ...,
-        creationflags: int = ...,
-        restore_signals: bool = ...,
         start_new_session: bool = ...,
         pass_fds: tuple[int, ...] = ...,
-        *,
+        preexec_fn: Callable[[], None] | None = ...,
         text: bool | None = ...,
         errors: str | None = ...,
     ) -> subprocess.Popen[bytes]: ...
@@ -265,7 +257,7 @@ def _default_sync_process_factory(
             errors=opts.errors if opts.text else None,
             pass_fds=opts.pass_fds,
         )
-    preexec: Callable[[], None] | None = (
+    preexec_fn: Callable[[], None] | None = (
         death_preexec(command) if on_linux and on_main_thread else None
     )
     popen_ctor: _PopenConstructor = subprocess.Popen
@@ -280,7 +272,7 @@ def _default_sync_process_factory(
         text=opts.text,
         errors=opts.errors if opts.text else None,
         pass_fds=opts.pass_fds,
-        preexec_fn=preexec,
+        preexec_fn=preexec_fn,
     )
 
 

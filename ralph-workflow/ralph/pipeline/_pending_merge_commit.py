@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -25,8 +25,38 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 
+_HEX_LEN: Final[int] = 40
+
+
+def _is_valid_oid(val: str) -> bool:
+    return len(val) == _HEX_LEN and all(c in "0123456789abcdefABCDEF" for c in val)
+
+
+def _direct_git_value(root: Path, args: tuple[str, ...]) -> str | None:
+    if args in (("rev-parse", "--verify", "HEAD"), ("rev-parse", "HEAD")):
+        try:
+            from ralph.git.operations import get_head_sha
+
+            return get_head_sha(root)
+        except Exception:
+            return None
+    if args in (("rev-parse", "--verify", "MERGE_HEAD"), ("rev-parse", "MERGE_HEAD")):
+        try:
+            gitdir = root / ".git"
+            merge_head = (gitdir if gitdir.is_dir() else root) / "MERGE_HEAD"
+            if merge_head.is_file():
+                sha = merge_head.read_text(encoding="utf-8", errors="replace").strip()
+                if _is_valid_oid(sha):
+                    return sha
+        except OSError:
+            return None
+    return None
+
 
 def _git_value(root: Path, *args: str) -> str | None:
+    direct = _direct_git_value(root, args)
+    if direct is not None:
+        return direct
     result = subprocess_runner.run_git(args, cwd=root, label="pending-merge:identity")
     return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
 

@@ -403,6 +403,8 @@ def observe_branch_sha(repo_root: Path | str, name: str) -> tuple[str | None, bo
             direct_sha = _read_ref_from_disk(ref_spec, search_dirs)
             if direct_sha is not None:
                 return direct_sha, True
+            if ref_spec.startswith("refs/heads/"):
+                return None, True
     except (OSError, ValueError) as exc:
         logger.debug("direct branch sha lookup failed: {}", exc)
     result = run_git(
@@ -440,6 +442,8 @@ def is_ancestor(repo_root: Path | str, ancestor: str, descendant: str) -> bool:
     to ``feature_sha``; if False, the target has diverged and we
     must skip with a recorded reason.
     """
+    if ancestor and ancestor == descendant:
+        return True
     repo_root_path = Path(repo_root)
     result = run_git(
         ("merge-base", "--is-ancestor", ancestor, descendant),

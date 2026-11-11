@@ -632,7 +632,7 @@ def test_start_mcp_server_seeds_baseline_from_served_endpoint(tmp_path: pathlib.
 
     deps = lifecycle.LifecycleDeps(
         reserve_listening_socket=lambda: ("127.0.0.1", 39411, _FakeListeningSocket()),
-        create_session_file=lambda root, sess: tmp_path / "baseline-session.json",
+        create_session_file=lambda _root, _sess: tmp_path / "baseline-session.json",
         subprocess_env=lambda session_file: {"SESSION": str(session_file)},
         spawn_process=_fake_spawn,
         preflight=lambda endpoint, tools, timeout: None,

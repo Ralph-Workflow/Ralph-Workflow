@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 import threading
 from collections import deque
 from dataclasses import dataclass, field, replace
@@ -634,7 +635,9 @@ def route_run_git(
         The result of the call, carrying the closed typed outcome of the
         call in :attr:`GitRunResult.outcome`.
     """
-    spawn_module: object = importlib.import_module("ralph.git.subprocess_runner")
+    spawn_module: object = sys.modules.get("ralph.git.subprocess_runner")
+    if spawn_module is None:
+        spawn_module = importlib.import_module("ralph.git.subprocess_runner")
     if not _is_spawn_module(spawn_module):
         raise TypeError("ralph.git.subprocess_runner has no _spawn_git")
     spawn_git: object = spawn_module._spawn_git

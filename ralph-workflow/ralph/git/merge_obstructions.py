@@ -33,6 +33,8 @@ def ancestry_state(repo_root: Path | str, ancestor: str, descendant: str) -> boo
     on "the branch already contains the target" must treat ``None`` as
     "not proven", never as either answer.
     """
+    if ancestor and ancestor == descendant:
+        return True
     try:
         result = run_git(
             ("merge-base", "--is-ancestor", ancestor, descendant),

@@ -19,6 +19,7 @@ import os
 import tarfile
 import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     )
 
 _HOOKS_DISABLED: Final[tuple[str, ...]] = ("-c", "core.hooksPath=/dev/null")
+_HEX_LEN: Final[int] = 40
 
 
 #: Top-level locks of a PRIVATE git dir: they guard this checkout's own
@@ -184,6 +186,10 @@ class _ProductionGitPlumbing:
         return tuple(paths)
 
     def head_sha(self, root: Path) -> str | None:
+        with suppress(Exception):
+            from ralph.git.operations import get_head_sha
+
+            return get_head_sha(root)
         from ralph.git.subprocess_runner import run_git
 
         result = run_git(
@@ -195,10 +201,26 @@ class _ProductionGitPlumbing:
         return sha if result.returncode == 0 and sha else None
 
     def target_sha(self, root: Path, target: str) -> str | None:
+        clean = target.strip() if target else ""
+        if not clean:
+            return None
+        with suppress(OSError):
+            from ralph.pipeline._auto_integrate_recovery_git_state import (
+                common_git_dir,
+                rebase_bookkeeping_dir,
+            )
+
+            common = common_git_dir(root) or rebase_bookkeeping_dir(root)
+            if common is not None:
+                ref_file = common / "refs" / "heads" / clean
+                if ref_file.is_file():
+                    sha = ref_file.read_text(encoding="utf-8", errors="replace").strip()
+                    if len(sha) == _HEX_LEN and all(c in "0123456789abcdefABCDEF" for c in sha):
+                        return sha
         from ralph.git.subprocess_runner import run_git
 
         result = run_git(
-            ("rev-parse", "--verify", f"refs/heads/{target}"),
+            ("rev-parse", "--verify", f"refs/heads/{clean}"),
             cwd=root,
             label="integration-ladder:target-sha",
         )
@@ -413,14 +435,20 @@ class _ProductionGitPlumbing:
         """
         from ralph.git.subprocess_runner import run_git
 
-        tip = run_git(
-            ("rev-parse", "HEAD"),
-            cwd=path,
-            label="integration-ladder:fresh-tip",
-        )
-        sha = tip.stdout.strip()
-        if tip.returncode != 0 or not sha:
-            return "tip-unreadable"
+        sha: str | None = None
+        with suppress(Exception):
+            from ralph.git.operations import get_head_sha
+
+            sha = get_head_sha(path)
+        if not sha:
+            tip = run_git(
+                ("rev-parse", "HEAD"),
+                cwd=path,
+                label="integration-ladder:fresh-tip",
+            )
+            sha = tip.stdout.strip()
+            if tip.returncode != 0 or not sha:
+                return "tip-unreadable"
         if sha == expected_sha:
             return "landed-already"
         current = self.target_sha(root, target)
@@ -452,14 +480,20 @@ class _ProductionGitPlumbing:
         """
         from ralph.git.subprocess_runner import run_git
 
-        tip = run_git(
-            ("rev-parse", "HEAD"),
-            cwd=path,
-            label="integration-ladder:fresh-tip-for-repoint",
-        )
-        sha = tip.stdout.strip()
-        if tip.returncode != 0 or not sha:
-            return "tip-unreadable"
+        sha: str | None = None
+        with suppress(Exception):
+            from ralph.git.operations import get_head_sha
+
+            sha = get_head_sha(path)
+        if not sha:
+            tip = run_git(
+                ("rev-parse", "HEAD"),
+                cwd=path,
+                label="integration-ladder:fresh-tip-for-repoint",
+            )
+            sha = tip.stdout.strip()
+            if tip.returncode != 0 or not sha:
+                return "tip-unreadable"
         # Fail closed: without the observed sha, "is it where we left it"
         # cannot be answered, and an unanswered question is never a yes.
         if observed_sha is None:

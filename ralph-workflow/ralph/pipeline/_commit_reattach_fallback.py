@@ -37,7 +37,9 @@ from loguru import logger
 
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_recovery_git_state import (
+    common_git_dir,
     reattach_head_to_branch,
+    rebase_bookkeeping_dir,
 )
 
 if TYPE_CHECKING:
@@ -132,6 +134,16 @@ def occupied_worktree_branches(repo_root: Path, **opts: object) -> WorktreeOccup
     if isinstance(raw_occupied, (set, frozenset, list, tuple)):
         occupied.update(str(name) for name in raw_occupied)
     try:
+        common = common_git_dir(repo_root) or rebase_bookkeeping_dir(repo_root)
+        if (
+            common is not None
+            and not (common / "worktrees").is_dir()
+            and (repo_root / ".git").is_dir()
+        ):
+            return WorktreeOccupancy(frozenset(occupied))
+    except OSError:
+        pass
+    try:
         res = run_git(
             ("worktree", "list", "--porcelain"),
             cwd=repo_root,
@@ -166,8 +178,31 @@ def occupied_worktree_branches(repo_root: Path, **opts: object) -> WorktreeOccup
     return WorktreeOccupancy(frozenset(occupied))
 
 
+_HEX_LEN: int = 40
+
+
+def _direct_branch_tip_sha(repo_root: Path, branch: str) -> str | None:
+    clean = branch.strip() if branch else ""
+    if not clean:
+        return None
+    try:
+        common = common_git_dir(repo_root) or rebase_bookkeeping_dir(repo_root)
+        if common is not None:
+            ref_file = common / "refs" / "heads" / clean
+            if ref_file.is_file():
+                sha = ref_file.read_text(encoding="utf-8", errors="replace").strip()
+                if len(sha) == _HEX_LEN and all(c in "0123456789abcdefABCDEF" for c in sha):
+                    return sha
+    except OSError:
+        pass
+    return None
+
+
 def branch_tip_sha(repo_root: Path, branch: str) -> str | None:
     """Return the SHA of ``refs/heads/<branch>``, or ``None`` if unreadable."""
+    direct = _direct_branch_tip_sha(repo_root, branch)
+    if direct is not None:
+        return direct
     try:
         result = run_git(
             ("rev-parse", "--verify", f"refs/heads/{branch}"),

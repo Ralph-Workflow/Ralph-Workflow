@@ -6,7 +6,7 @@ import hashlib
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 #: ``git ls-tree`` rows are ``<mode> <type> <object>``.
 _LS_TREE_META_FIELDS = 3
+_REFS_SPLIT_PARTS: Final[int] = 2
 
 
 def qualified_backup_ref(owning_worktree: str | None, pre_feature_sha: str) -> str:
@@ -47,6 +48,22 @@ def create_rebase_backup_ref(
     backup_name = qualified_backup_ref(
         owning_worktree if owning_worktree is not None else str(root), pre_feature_sha
     )
+    try:
+        from ralph.pipeline._auto_integrate_recovery_git_state import (
+            common_git_dir,
+            rebase_bookkeeping_dir,
+        )
+
+        common = common_git_dir(root) or rebase_bookkeeping_dir(root)
+        if common is not None:
+            ref_file = common / backup_name
+            ref_file.parent.mkdir(parents=True, exist_ok=True)
+            ref_file.write_text(  # filesystem-write-ok: direct git loose ref file write for auto-integrate backup
+                f"{pre_feature_sha}\n", encoding="utf-8"
+            )
+            return backup_name
+    except OSError:
+        pass
     try:
         result = run_git(
             ("update-ref", backup_name, pre_feature_sha),
@@ -411,6 +428,32 @@ def preserve_dirt_commit(
     return backup_ref
 
 
+def _direct_list_ralph_backup_refs(common: Path) -> tuple[str, ...]:
+    refs: list[str] = []
+    for prefix in ("refs/rebase-backup", "refs/ralph-backup"):
+        base = common / prefix
+        if base.is_dir():
+            refs.extend(
+                f"{prefix}/{p.relative_to(base).as_posix()}" for p in base.rglob("*") if p.is_file()
+            )
+    packed = common / "packed-refs"
+    if packed.is_file():
+        for line in packed.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("#") or line.startswith("^"):
+                continue
+            parts = line.split(maxsplit=1)
+            if (
+                len(parts) == _REFS_SPLIT_PARTS
+                and (
+                    parts[1].startswith("refs/rebase-backup/")
+                    or parts[1].startswith("refs/ralph-backup/")
+                )
+                and parts[1] not in refs
+            ):
+                refs.append(parts[1])
+    return tuple(sorted(refs))
+
+
 def list_ralph_backup_refs(root: Path) -> tuple[str, ...]:
     """Return every Ralph-owned backup ref under ``refs/rebase-backup/`` and ``refs/ralph-backup/``.
 
@@ -418,6 +461,17 @@ def list_ralph_backup_refs(root: Path) -> tuple[str, ...]:
     intact. A failed read yields an empty tuple: ref listing is
     best-effort and never blocks the ladder.
     """
+    try:
+        from ralph.pipeline._auto_integrate_recovery_git_state import (
+            common_git_dir,
+            rebase_bookkeeping_dir,
+        )
+
+        common = common_git_dir(root) or rebase_bookkeeping_dir(root)
+        if common is not None:
+            return _direct_list_ralph_backup_refs(common)
+    except Exception as exc:
+        logger.debug("Direct backup ref listing failed; falling back to git: {}", exc)
     result = run_git(
         ("for-each-ref", "--format=%(refname)", "-z", "refs/rebase-backup/", "refs/ralph-backup/"),
         cwd=root,
@@ -454,6 +508,20 @@ def delete_rebase_backup_ref(root: Path, backup_ref: str | None) -> None:
     """Best-effort delete of a verified attempt's backup ref."""
     if backup_ref is None:
         return
+    try:
+        from ralph.pipeline._auto_integrate_recovery_git_state import (
+            common_git_dir,
+            rebase_bookkeeping_dir,
+        )
+
+        common = common_git_dir(root) or rebase_bookkeeping_dir(root)
+        if common is not None:
+            ref_file = common / backup_ref
+            if ref_file.is_file():
+                ref_file.unlink(missing_ok=True)
+                return
+    except OSError:
+        pass
     try:
         result = run_git(
             ("update-ref", "-d", backup_ref),

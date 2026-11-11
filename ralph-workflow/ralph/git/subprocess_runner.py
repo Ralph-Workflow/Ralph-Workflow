@@ -6,6 +6,7 @@ import contextlib
 import importlib
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -191,10 +192,10 @@ def run_git(
     Raises subprocess.TimeoutExpired if timeout is exceeded.
     Raises subprocess.CalledProcessError if options.check is True and returncode != 0.
     """
-    queued_run_git = cast(
-        "_QueuedRunGit",
-        importlib.import_module("ralph.git.git_command_queue").route_run_git,
-    )
+    queued_mod = sys.modules.get("ralph.git.git_command_queue")
+    if queued_mod is None:
+        queued_mod = importlib.import_module("ralph.git.git_command_queue")
+    queued_run_git = cast("_QueuedRunGit", queued_mod.route_run_git)
 
     return queued_run_git(
         args,

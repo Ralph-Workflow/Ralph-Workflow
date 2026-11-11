@@ -19,7 +19,9 @@ test suite reference still resolve.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
+from typing import Final
 
 from loguru import logger
 
@@ -204,6 +206,44 @@ def detached_head_no_state(root: Path, git_dir: Path) -> bool:
     return result.returncode != 0
 
 
+_HEX_SHA_LEN: Final[int] = 40
+_REF_SPLIT_PARTS: Final[int] = 2
+
+
+def _resolve_reflog_candidate_direct(common: Path, git_dir: Path, candidate: str) -> str | None:
+    clean = candidate.strip()
+    ref_file = common / "refs" / "heads" / clean
+    candidate_tip: str | None = None
+    if ref_file.is_file():
+        with contextlib.suppress(OSError):
+            candidate_tip = ref_file.read_text(encoding="utf-8", errors="replace").strip()
+    if not candidate_tip:
+        packed = common / "packed-refs"
+        if packed.is_file():
+            with contextlib.suppress(OSError):
+                for line in packed.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if line.startswith("#") or line.startswith("^"):
+                        continue
+                    parts = line.split(maxsplit=1)
+                    if len(parts) == _REF_SPLIT_PARTS and parts[1] == f"refs/heads/{clean}":
+                        candidate_tip = parts[0].strip()
+                        break
+    head_file = git_dir / "HEAD"
+    head_tip: str | None = None
+    if head_file.is_file():
+        with contextlib.suppress(OSError):
+            c = head_file.read_text(encoding="utf-8", errors="replace").strip()
+            if (
+                not c.startswith("ref:")
+                and len(c) == _HEX_SHA_LEN
+                and all(ch in "0123456789abcdefABCDEF" for ch in c)
+            ):
+                head_tip = c.lower()
+    if candidate_tip and head_tip and candidate_tip.lower() == head_tip.lower():
+        return candidate
+    return None
+
+
 def _resolve_reflog_candidate(root: Path, candidate: str | None) -> str | None:
     """Verify a reflog-derived branch candidate against the exact-tip invariant.
 
@@ -226,6 +266,12 @@ def _resolve_reflog_candidate(root: Path, candidate: str | None) -> str | None:
     """
     if not candidate:
         return None
+    common = common_git_dir(root) or rebase_bookkeeping_dir(root)
+    git_dir = rebase_bookkeeping_dir(root) or (root / ".git")
+    if common is not None and git_dir is not None:
+        direct = _resolve_reflog_candidate_direct(common, git_dir, candidate)
+        if direct is not None:
+            return direct
     branch_check = run_git(
         ("show-ref", "--verify", f"refs/heads/{candidate}"),
         cwd=root,
@@ -252,9 +298,7 @@ def _resolve_reflog_candidate(root: Path, candidate: str | None) -> str | None:
     if head_check.returncode != 0 or not head_check.stdout.strip():
         return None
     detached_head_oid = head_check.stdout.strip()
-    if candidate_tip != detached_head_oid:
-        return None
-    return candidate
+    return candidate if candidate_tip == detached_head_oid else None
 
 
 def _is_checkout_or_switch_subject(subject: str) -> bool:
@@ -303,6 +347,22 @@ def _parse_checkout_destination(subject: str) -> str | None:
     return None
 
 
+def _read_reflog_checkout_subject(git_dir: Path) -> str | None:
+    reflog_path = git_dir / "logs" / "HEAD"
+    if not reflog_path.is_file():
+        return None
+    with contextlib.suppress(OSError):
+        lines = reflog_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        for line in reversed(lines[-50:]):
+            parts = line.split("\t", 1)
+            if len(parts) == _REF_SPLIT_PARTS:
+                subject = parts[1].strip()
+                if not _is_checkout_or_switch_subject(subject):
+                    continue
+                return _parse_checkout_destination(subject)
+    return None
+
+
 def detached_branch_name(root: Path) -> str | None:
     """Return the original branch name from the reflog when detached.
 
@@ -313,6 +373,13 @@ def detached_branch_name(root: Path) -> str | None:
     ``refs/heads/<name>`` is the branch the agent was on before
     the residue.
     """
+    git_dir = rebase_bookkeeping_dir(root)
+    if git_dir is not None:
+        candidate = _read_reflog_checkout_subject(git_dir)
+        if candidate is not None:
+            resolved = _resolve_reflog_candidate(root, candidate)
+            if resolved is not None:
+                return resolved
     try:
         # Distinct reflog contract #2 (worktree-private reflog): this reads
         # the worktree-private <git-dir>/logs/HEAD -- NOT the commondir; in a

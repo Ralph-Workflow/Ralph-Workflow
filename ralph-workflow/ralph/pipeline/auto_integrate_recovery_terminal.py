@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
 
 from loguru import logger
@@ -54,6 +55,10 @@ def post_attempt_verify(
 
 
 def _read_head_sha(root: Path) -> str | None:
+    with suppress(Exception):
+        from ralph.git.operations import get_head_sha
+
+        return get_head_sha(root)
     try:
         result = run_git(
             ("rev-parse", "--verify", "HEAD"), cwd=root, label="git-rev-parse-head-verify"
@@ -66,6 +71,12 @@ def _read_head_sha(root: Path) -> str | None:
 
 
 def _rebase_bookkeeping_dir(root: Path) -> Path | None:
+    with suppress(Exception):
+        from ralph.pipeline._auto_integrate_recovery_git_state import rebase_bookkeeping_dir
+
+        direct = rebase_bookkeeping_dir(root)
+        if direct is not None:
+            return direct
     try:
         result = run_git(("rev-parse", "--git-dir"), cwd=root, label="git-recovery-git-dir")
     except Exception:
