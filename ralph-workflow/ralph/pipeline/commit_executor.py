@@ -146,7 +146,11 @@ def _proposal_sweep(
     the rest by the policy's ``commit_review.proposal_retention``.
     """
     raw_refs = _git_stdout(repo_root, _PROPOSAL_TREE_ARGS, "commit:proposal-refs")
-    raw_committed = _git_stdout(repo_root, _COMMITTED_TREE_ARGS, "commit:committed-trees")
+    raw_committed = (
+        _git_stdout(repo_root, _COMMITTED_TREE_ARGS, "commit:committed-trees")
+        if raw_refs.strip()
+        else ""
+    )
     # ``partition(" ")`` splits a ref line into the ref name and the sealed tree SHA.
     trees: dict[str, str] = {}
     for line in raw_refs.splitlines():

@@ -148,6 +148,22 @@ def create_stale_resolution_snapshot(
         worktree_tree=snapshot_worktree_tree,
         owning_worktree=owning_worktree or str(root),
     )
+    try:
+        from ralph.pipeline._auto_integrate_recovery_git_state import (
+            common_git_dir,
+            rebase_bookkeeping_dir,
+        )
+
+        common = common_git_dir(root) or rebase_bookkeeping_dir(root)
+        if common is not None:
+            ref_file = common / backup_ref
+            ref_file.parent.mkdir(parents=True, exist_ok=True)
+            ref_file.write_text(  # filesystem-write-ok: direct git loose ref file write for auto-integrate backup
+                f"{snapshot_sha}\n", encoding="utf-8"
+            )
+            return backup_ref, feature_sha
+    except OSError:
+        pass
     created = run_git(
         ("update-ref", backup_ref, snapshot_sha),
         cwd=root,

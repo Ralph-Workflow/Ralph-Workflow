@@ -4,7 +4,9 @@ Covers:
 1. --retry invokes resolver once for retained rebase; unchanged identity invokes none;
 2. config repair or newly eligible agent invokes once for retained rebase;
 3. --retry invokes resolver once for retained merge; unchanged identity invokes none;
-4. config repair or newly eligible agent invokes once for retained merge.
+4. config repair or newly eligible agent invokes once for retained merge;
+5. optional config (e.g. agents.toml) or global config repair triggers retry once and gates subsequent attempts;
+6. legacy records lacking a retry gate key continue to work as ungated.
 """
 
 from __future__ import annotations
@@ -379,3 +381,197 @@ def test_blackbox_retained_merge_config_repair_and_eligibility(
     finally:
         with contextlib.suppress(Exception):
             logger.remove(sink_id)
+
+
+def test_blackbox_retained_rebase_optional_config_repair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Black-box retained rebase: repairing an optional config triggers retry once and gates repeat."""
+    root, _cfg_file = _setup_repo_and_config(tmp_path)
+    _setup_rebase_state(root, "feat1", "target1", "stop1")
+
+    rec = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+    write_record(root, rec)
+
+    resolve_calls = [0]
+
+    def fake_resolve(root: Path, target: str, resolver: object, session: object = None) -> bool:
+        resolve_calls[0] += 1
+        return False
+
+    monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", fake_resolve)
+    monkeypatch.chdir(root)
+
+    scope = WorkspaceScope(root)
+    cfg = load_config(workspace_scope=scope)
+
+    # 1. Initial attempt to establish gated state
+    outcome1 = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 1
+    assert outcome1 is not None and outcome1.recovery_record_retained is True
+
+    # 2. Repeated attempt with unchanged configuration is gated
+    outcome1_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 1
+    assert outcome1_repeat is not None and "WAITING" in outcome1_repeat.last_reason
+
+    # 3. Repairing optional config (.agent/agents.toml) triggers retry once
+    (root / ".agent" / "agents.toml").write_text(
+        "[agents.test]\nmodel = 'test-opt'\n", encoding="utf-8"
+    )
+    outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 2
+    assert outcome2 is not None and outcome2.recovery_record_retained is True
+
+    # 4. Gated again immediately after optional config repair
+    outcome2_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 2
+    assert outcome2_repeat is not None and "WAITING" in outcome2_repeat.last_reason
+
+
+def test_blackbox_retained_rebase_global_config_repair_and_legacy_ungated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Black-box retained rebase: repairing global config triggers retry once; legacy record ungated."""
+    root, _cfg_file = _setup_repo_and_config(tmp_path)
+    _setup_rebase_state(root, "feat1", "target1", "stop1")
+
+    global_dir = tmp_path / "global_config"
+    global_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+
+    rec = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+    write_record(root, rec)
+
+    resolve_calls = [0]
+
+    def fake_resolve(root: Path, target: str, resolver: object, session: object = None) -> bool:
+        resolve_calls[0] += 1
+        return False
+
+    monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", fake_resolve)
+    monkeypatch.chdir(root)
+
+    scope = WorkspaceScope(root)
+    cfg = load_config(workspace_scope=scope)
+
+    # 1. Initial attempt to establish gated state
+    outcome1 = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 1
+    assert outcome1 is not None and outcome1.recovery_record_retained is True
+
+    # 2. Repeated attempt with unchanged configuration is gated
+    outcome1_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 1
+    assert outcome1_repeat is not None and "WAITING" in outcome1_repeat.last_reason
+
+    # 3. Repairing global config triggers retry once
+    (global_dir / "ralph-workflow.toml").write_text(
+        "[general]\nmodel = 'global-test'\n", encoding="utf-8"
+    )
+    cfg_global = load_config(workspace_scope=scope)
+    outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
+    assert resolve_calls[0] == 2
+    assert outcome2 is not None and outcome2.recovery_record_retained is True
+
+    # 4. Gated again immediately after global config repair
+    outcome2_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
+    assert resolve_calls[0] == 2
+    assert outcome2_repeat is not None and "WAITING" in outcome2_repeat.last_reason
+
+    # 5. Legacy records lacking resolution_gate_key continue to run as ungated
+    rec_disk = read_record(root)
+    assert rec_disk is not None and rec_disk.resolution_gate_key is not None
+    write_record(root, rec_disk.with_resolution_gate_key(None))
+    outcome3 = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
+    assert resolve_calls[0] == 3
+    assert outcome3 is not None and outcome3.recovery_record_retained is True
+
+
+def test_blackbox_retained_merge_optional_and_global_config_repair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Black-box retained merge: repairing optional or global config triggers retry once."""
+    root, _cfg_file = _setup_repo_and_config(tmp_path)
+    feat_sha = "0" * 40
+    target_sha = "a" * 40
+    _setup_merge_state(root, feat_sha, target_sha)
+
+    global_dir = tmp_path / "global_config"
+    global_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+
+    rec = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feat_sha,
+        pre_target_sha=target_sha,
+        resolving_merge=True,
+        conflicted_files=("f.py",),
+    )
+    write_record(root, rec)
+
+    resolve_calls = [0]
+
+    def fake_merge_resolve(root: Path, target: str, resolver: object) -> MergeResult:
+        resolve_calls[0] += 1
+        return MergeResult(
+            MERGE_COMMIT_PENDING,
+            "unresolved merge",
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+
+    monkeypatch.setattr(air_mod, "resolve_and_commit_with_reason", fake_merge_resolve)
+    monkeypatch.chdir(root)
+
+    scope = WorkspaceScope(root)
+    cfg = load_config(workspace_scope=scope)
+
+    # 1. Initial attempt
+    outcome1 = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 1
+    assert outcome1 is not None and outcome1.recovery_record_retained is True
+
+    # 2. Repeated attempt with unchanged configuration is gated
+    outcome1_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 1
+    assert outcome1_repeat is not None and "WAITING" in outcome1_repeat.last_reason
+
+    # 3. Repairing optional config (agents.toml) triggers retry once
+    (root / ".agent" / "agents.toml").write_text(
+        "[agents.test]\nmodel = 'test-opt'\n", encoding="utf-8"
+    )
+    outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 2
+    assert outcome2 is not None and outcome2.recovery_record_retained is True
+
+    # 4. Gated again immediately
+    outcome2_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    assert resolve_calls[0] == 2
+    assert outcome2_repeat is not None and "WAITING" in outcome2_repeat.last_reason
+
+    # 5. Repairing global config triggers retry once
+    (global_dir / "ralph-workflow.toml").write_text(
+        "[general]\nmodel = 'global-test'\n", encoding="utf-8"
+    )
+    cfg_global = load_config(workspace_scope=scope)
+    outcome3 = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
+    assert resolve_calls[0] == 3
+    assert outcome3 is not None and outcome3.recovery_record_retained is True
+
+    # 6. Gated again immediately
+    outcome3_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
+    assert resolve_calls[0] == 3
+    assert outcome3_repeat is not None and "WAITING" in outcome3_repeat.last_reason

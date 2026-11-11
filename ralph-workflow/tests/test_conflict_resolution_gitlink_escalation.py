@@ -121,6 +121,18 @@ def _setup_superproject(tmp_path: Path, sub_origin: Path) -> Path:
     return super_repo
 
 
+@pytest.fixture
+def allow_file_transport(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Configure a temporary gitconfig permitting file:// transport for local submodules."""
+    cfg_dir = tmp_path_factory.mktemp("git_file_proto")
+    cfg_file = cfg_dir / "gitconfig"
+    cfg_file.write_text('[protocol "file"]\n\tallow = always\n', encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(cfg_file))
+    return cfg_file
+
+
 @pytest.mark.timeout_seconds(5)
 def test_gitlink_ancestor_descendant_objects_present_resolved(tmp_path: Path) -> None:
     """When both sides are ancestor/descendant and objects exist, resolve deterministically."""
@@ -157,7 +169,9 @@ def test_gitlink_ancestor_descendant_objects_present_resolved(tmp_path: Path) ->
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_submodule_absent_objects_fetchable_resolved(tmp_path: Path) -> None:
+def test_gitlink_submodule_absent_objects_fetchable_resolved(
+    tmp_path: Path, allow_file_transport: Path
+) -> None:
     """When submodule is absent/uninitialized, fetch/init is attempted and resolves."""
     sub_origin, base, sha_a, _sha_b = _setup_submodule_remote(tmp_path)
     super_repo = _setup_superproject(tmp_path, sub_origin)
@@ -190,6 +204,97 @@ def test_gitlink_submodule_absent_objects_fetchable_resolved(tmp_path: Path) -> 
 
     staged = _git(clone_repo, "ls-files", "-s", "sub").stdout.strip()
     assert staged.startswith(f"160000 {sha_desc} 0")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(tmp_path: Path) -> None:
+    """When file transport is denied, submodule fetch fails closed into actionable escalation without agent."""
+    sub_origin, base, sha_a, _sha_b = _setup_submodule_remote(tmp_path)
+    super_repo = _setup_superproject(tmp_path, sub_origin)
+    sha_desc = _add_descendant_commit(sub_origin)
+
+    # Clone super_repo without submodules so clone / sub is uninitialized
+    clone_repo = tmp_path / "super_clone"
+    _git(tmp_path, "clone", "-q", str(super_repo), str(clone_repo))
+
+    # Verify submodule in clone is indeed uninitialized
+    assert not (clone_repo / "sub" / ".git").exists()
+
+    # Set up conflicted stages with ancestor/descendant commits (sha_a -> sha_desc)
+    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
+    _git(clone_repo, "update-index", "--index-info", input_text=index_info)
+
+    stop = RebaseStop(
+        stop_index=1,
+        stop_cap=1,
+        conflicted_files=("sub",),
+        sha="testsha_denied",
+        subject="rebase stop denied file transport",
+    )
+
+    agent_calls: list[str] = []
+    session = ResolutionSession()
+    with bind_active_rebase_resolution_session(session):
+        resolved = try_deterministic_resolution(clone_repo, stop)
+
+    # 1. Deterministic resolution declines because transport remains denied
+    assert resolved is False
+
+    # 2. Submodule remains uninitialized (transport was denied, not bypassed)
+    assert not (clone_repo / "sub" / ".git").exists()
+
+    # 3. Yields one existing actionable gitlink escalation on sight without an agent invocation
+    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert session.last_failure_cause is ResolutionFailureCause.AGENT_FAILURE
+    assert session.unresolved_paths == ("sub",)
+
+    expected_cmd = operator_command_for_paths(("sub",))
+    assert expected_cmd == "git add -- sub"
+    assert session.exhaustion_reason is not None
+    assert "sub" in session.exhaustion_reason
+    assert expected_cmd in session.exhaustion_reason
+    assert agent_calls == []
+
+    # 4. Confirm unmerged index entries remain intact (fail-closed, not half-resolved)
+    unmerged = _git(clone_repo, "ls-files", "-u", "sub").stdout.strip()
+    assert f"160000 {base} 1\tsub" in unmerged
+    assert f"160000 {sha_a} 2\tsub" in unmerged
+    assert f"160000 {sha_desc} 3\tsub" in unmerged
+
+    # 5. Production driver verifies no agent is invoked and yields actionable escalation
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
+    from ralph.policy import load_policy
+
+    agent_invocations: list[str] = []
+
+    def mock_invoker(agent_name: str, _repo_root: Path, _round_index: int) -> bool:
+        agent_invocations.append(agent_name)
+        return True
+
+    repo_root = Path(__file__).resolve().parents[1]
+    policy_bundle = load_policy(repo_root / "ralph" / "policy" / "defaults")
+    config = UnifiedConfig.model_validate({"general": {}})
+
+    driver_session = ResolutionSession()
+    outcome = run_rebase_conflict_resolution_outcome(
+        root=clone_repo,
+        target="main",
+        stop=stop,
+        config=config,
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=policy_bundle,
+        display=None,
+        display_context=None,
+        invoke=mock_invoker,
+        session=driver_session,
+    )
+    assert outcome.succeeded is False
+    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert outcome.exhaustion_message is not None
+    assert "git add -- sub" in outcome.exhaustion_message
+    assert agent_invocations == []
 
 
 @pytest.mark.timeout_seconds(5)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from loguru import logger
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -32,6 +34,23 @@ def _is_valid_oid(val: str) -> bool:
     return len(val) == _HEX_LEN and all(c in "0123456789abcdefABCDEF" for c in val)
 
 
+def _read_gitdir_ref_file(root: Path, filename: str) -> str | None:
+    try:
+        from ralph.git.operations import _resolve_gitdir_paths
+
+        gitdir, _ = _resolve_gitdir_paths(root)
+        if gitdir is None:
+            return None
+        target_file = gitdir / filename
+        if target_file.is_file():
+            sha = target_file.read_text(encoding="utf-8", errors="replace").strip()
+            if _is_valid_oid(sha):
+                return sha
+    except Exception as exc:
+        logger.debug("Failed reading direct gitdir ref {}: {}", filename, exc)
+    return None
+
+
 def _direct_git_value(root: Path, args: tuple[str, ...]) -> str | None:
     if args in (("rev-parse", "--verify", "HEAD"), ("rev-parse", "HEAD")):
         try:
@@ -41,15 +60,11 @@ def _direct_git_value(root: Path, args: tuple[str, ...]) -> str | None:
         except Exception:
             return None
     if args in (("rev-parse", "--verify", "MERGE_HEAD"), ("rev-parse", "MERGE_HEAD")):
-        try:
-            gitdir = root / ".git"
-            merge_head = (gitdir if gitdir.is_dir() else root) / "MERGE_HEAD"
-            if merge_head.is_file():
-                sha = merge_head.read_text(encoding="utf-8", errors="replace").strip()
-                if _is_valid_oid(sha):
-                    return sha
-        except OSError:
-            return None
+        return _read_gitdir_ref_file(root, "MERGE_HEAD")
+    if args in (("rev-parse", "--verify", "REBASE_HEAD"), ("rev-parse", "REBASE_HEAD")):
+        return _read_gitdir_ref_file(root, "REBASE_HEAD") or _read_gitdir_ref_file(
+            root, "rebase-merge/stopped-sha"
+        )
     return None
 
 

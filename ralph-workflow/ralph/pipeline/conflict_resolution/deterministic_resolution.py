@@ -79,7 +79,7 @@ def _ensure_submodule_objects(
         return True
 
     run_git(
-        ("-c", "protocol.file.allow=always", "submodule", "update", "--init", "--", path),
+        ("submodule", "update", "--init", "--", path),
         cwd=root,
         label="git-submodule-init",
     )

@@ -11,8 +11,10 @@ The pure fingerprint helpers it consumes live in
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
+from ralph.config.loader import _global_agents_config_path, _global_config_path
 from ralph.pipeline.config_file_fingerprint import compute_config_file_fingerprint
 
 
@@ -137,7 +139,7 @@ class ConfigFileFingerprintWatcher:
 
 
 def resolve_config_path_for_workspace(
-    root: Path,
+    root: Path | str,
     config_path: Path | str | None = None,
 ) -> Path:
     """Return the configuration file path for a workspace root.
@@ -147,26 +149,105 @@ def resolve_config_path_for_workspace(
     """
     if config_path is not None:
         return Path(config_path).resolve()
+    resolved_root = Path(root).resolve()
     for candidate in (
-        root / ".agent" / "ralph-workflow.toml",
-        root / "ralph-workflow.toml",
+        resolved_root / ".agent" / "ralph-workflow.toml",
+        resolved_root / "ralph-workflow.toml",
     ):
         if candidate.is_file():
             return candidate.resolve()
-    return (root / ".agent" / "ralph-workflow.toml").resolve()
+    return (resolved_root / ".agent" / "ralph-workflow.toml").resolve()
+
+
+def resolve_optional_config_path_for_workspace(
+    root: Path | str,
+    filename: str,
+) -> Path:
+    """Return the resolved path for an optional configuration file in a workspace.
+
+    Checks ``root / '.agent' / filename`` first, then ``root / filename``
+    if it exists, falling back to ``root / '.agent' / filename``.
+    """
+    resolved_root = Path(root).resolve()
+    for candidate in (
+        resolved_root / ".agent" / filename,
+        resolved_root / filename,
+    ):
+        if candidate.is_file():
+            return candidate.resolve()
+    return (resolved_root / ".agent" / filename).resolve()
+
+
+def resolve_all_config_sources_for_workspace(
+    root: Path | str,
+    config_path: Path | str | None = None,
+) -> list[tuple[str, Path]]:
+    """Return all relevant loaded repairable configuration sources for a workspace.
+
+    Collects:
+      1. Primary config: explicit config_path, or .agent/ralph-workflow.toml / ralph-workflow.toml
+      2. Optional configs: .agent/agents.toml, .agent/mcp.toml, .agent/policy.toml, or root equivalents
+      3. Global configs: _global_config_path(), _global_agents_config_path()
+
+    Returns:
+        List of ``(label, path)`` tuples identifying each configuration source.
+    """
+    resolved_root = Path(root).resolve()
+    sources: list[tuple[str, Path]] = [
+        ("primary", resolve_config_path_for_workspace(resolved_root, config_path)),
+    ]
+    sources.extend(
+        (
+            f"optional:{opt_name}",
+            resolve_optional_config_path_for_workspace(resolved_root, opt_name),
+        )
+        for opt_name in ("agents.toml", "mcp.toml", "policy.toml")
+    )
+    sources.append(("global:config", _global_config_path().resolve()))
+    sources.append(("global:agents", _global_agents_config_path().resolve()))
+    return sources
+
+
+def resolve_all_config_paths_for_workspace(
+    root: Path | str,
+    config_path: Path | str | None = None,
+) -> list[Path]:
+    """Return all relevant loaded repairable configuration file paths for a workspace."""
+    return [path for _, path in resolve_all_config_sources_for_workspace(root, config_path)]
 
 
 def compute_config_fingerprint_for_workspace(
     root: Path,
     config_path: Path | str | None = None,
 ) -> str | None:
-    """Compute the config file SHA-256 fingerprint for a workspace."""
-    resolved = resolve_config_path_for_workspace(root, config_path)
-    return compute_config_file_fingerprint(resolved)
+    """Compute the composite config SHA-256 fingerprint for a workspace.
+
+    Fingerprints every relevant loaded repairable configuration source:
+    primary config (.agent/ralph-workflow.toml or ralph-workflow.toml),
+    optional configs (.agent/agents.toml, .agent/mcp.toml, .agent/policy.toml,
+    or root equivalents), and global configs (_global_config_path(),
+    _global_agents_config_path()).
+
+    Returns None if no tracked configuration file exists on disk.
+    """
+    sources = resolve_all_config_sources_for_workspace(root, config_path)
+    has_any = False
+    hasher = hashlib.sha256()
+    for label, path in sources:
+        fp = compute_config_file_fingerprint(path)
+        if fp is not None:
+            has_any = True
+        hasher.update(f"{label}:{fp or ''}\n".encode())
+    if not has_any:
+        return None
+    return hasher.hexdigest()
 
 
 __all__ = [
     "ConfigFileFingerprintWatcher",
     "compute_config_fingerprint_for_workspace",
+    "resolve_all_config_paths_for_workspace",
+    "resolve_all_config_sources_for_workspace",
     "resolve_config_path_for_workspace",
+    "resolve_optional_config_path_for_workspace",
 ]
