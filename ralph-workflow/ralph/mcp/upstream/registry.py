@@ -404,12 +404,13 @@ class UpstreamRegistry:
         try:
             while pending:
                 remaining = max(0.0, deadline - _clock())
-                if remaining <= 0.0 and not any(f.done() for f in pending):
-                    collector_expired = True
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    break
+                drain_timeout = (
+                    remaining
+                    if remaining > 0.0
+                    else (0.0 if any(f.done() for f in pending) else 0.05)
+                )
                 try:
-                    future = next(concurrent.futures.as_completed(pending, timeout=remaining))
+                    future = next(concurrent.futures.as_completed(pending, timeout=drain_timeout))
                 except StopIteration:
                     break
                 except concurrent.futures.TimeoutError:
