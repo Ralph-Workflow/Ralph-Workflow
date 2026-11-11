@@ -350,7 +350,10 @@ def _validate_control_enforcement(
             raise _error(
                 f"control {control_id} enforcement advisory requires '; review: <trigger>'"
             )
-        _, review_part = enforcement.split("; review:", 1)
+        reason_part, review_part = enforcement.split("; review:", 1)
+        reason = reason_part[len("advisory:") :].strip()
+        if not reason:
+            raise _error(f"control {control_id} enforcement advisory requires a non-empty reason")
         if not review_part.strip():
             raise _error(
                 f"control {control_id} enforcement advisory requires a non-empty review trigger"

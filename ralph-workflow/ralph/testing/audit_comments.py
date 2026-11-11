@@ -88,9 +88,9 @@ of findings the committed baseline tree still carries.
 Usage:
     python -m ralph.testing.audit_comments [baseline_root] [current_root]
 
-With no arguments the gate scans the repository root against an EMPTY
-baseline (every line counts as new). With two roots it reports only NEW
-or CHANGED lines.
+With no arguments the gate scans default root vs committed HEAD baseline.
+With one argument ([current_root]) it scans against an empty baseline.
+With two arguments it reports only NEW or CHANGED lines vs baseline_root.
 
 Exit 0 = no blocking finding, 1 = blocking findings, 2 = a root was not
 found or the arguments were wrong.
@@ -200,7 +200,7 @@ SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-#: Accepted root-argument counts for the CLI: baseline-only, or baseline
+#: Accepted root-argument counts for the CLI: current-only, or baseline
 #: plus current.
 MAX_CLI_ROOT_ARGUMENTS = 2
 

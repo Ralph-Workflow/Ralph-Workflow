@@ -63,16 +63,30 @@ _MOVED_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "docs/agents/verification.md",
         (
-            # each row carries its invariant, its error message and its purpose
+            # each of the 12 rows in the invariant table: invariant, error message, purpose
             "`_TOTAL_TEST_BUDGET_SECONDS > 0`",
+            "`must be positive`",
+            "`abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9`",
             "`must be 60.0`",
+            "`abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 700.0) < 1e-9`",
             "`must be 700.0`",
+            "`_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS`",
             "`must be 3 x _TOTAL_TEST_BUDGET_SECONDS`",
+            "`_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS`",
             "`indices must be valid`",
+            "Every budget-tracked step has a positive timeout",
             "`must have a positive timeout`",
-            "`must not be empty`",
-            "`must contain 'make test'`",
+            "`_VERIFY_STEP_TIMEOUT_SECONDS > 0`",
+            "`_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0`",
             "`must be at least 5.0`",
+            "`_KNOWN_TEST_STEP_LABELS` non-empty",
+            "`must not be empty`",
+            "`_BUDGET_TRACKED_STEPS` non-empty",
+            "`'make test'` present in `_KNOWN_TEST_STEP_LABELS`",
+            "`must contain 'make test'`",
+            "Labels/steps sync enforced",
+            "`must be` / `must NOT be`",
+            "Every label in `_KNOWN_TEST_STEP_LABELS` is tracked",
             # budget non-circumvention list
             "`_KNOWN_TEST_STEP_LABELS`",
             "`_BUDGET_TRACKED_STEPS`",
@@ -105,8 +119,14 @@ _MOVED_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "docs/agents/fabrication-guard.md",
         (
             "## Mandatory protocol",
+            # substantive 4-step protocol
+            "Before editing",
             "./scripts/fabrication_guard.py --level 1 <file>",
+            "Adding NEW external references",
             "./scripts/fabrication_guard.py --level 2 <file>",
+            "After editing",
+            "re-run Level 1",
+            "If ANY level fails",
             "do **not** weaken the",
             "do **not** use `--no-verify` to bypass it",
         ),

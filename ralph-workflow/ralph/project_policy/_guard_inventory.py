@@ -405,7 +405,22 @@ def _check_enforcement_cell(
                 )
             )
         else:
-            _, review_trigger = enforcement.split("; review:", 1)
+            reason_part, review_trigger = enforcement.split("; review:", 1)
+            reason = reason_part[len("advisory:") :].strip()
+            if not reason:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=markers.ENFORCEMENT_MISSING_FINDING_ID,
+                        path=path,
+                        missing_evidence=(
+                            f"{markers.GUARD_INVENTORY_HEADING} row {index} "
+                            "advisory enforcement has an empty reason"
+                        ),
+                        required_outcome=(
+                            f"provide a non-empty reason after 'advisory:' for row {index}"
+                        ),
+                    )
+                )
             if not review_trigger.strip():
                 findings.append(
                     PolicyFinding(

@@ -110,6 +110,16 @@ def test_enforcement_advisory_no_trigger_fires_finding() -> None:
     )
 
 
+def test_enforcement_advisory_blank_reason_fires_finding() -> None:
+    ws = _make_enforcement_workspace("advisory: ; review: every release")
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert any(
+        f.requirement_id == markers.ENFORCEMENT_MISSING_FINDING_ID
+        and "empty reason" in f.missing_evidence
+        for f in findings
+    )
+
+
 def test_enforcement_advisory_valid_accepted() -> None:
     ws = _make_enforcement_workspace("advisory: subjective check; review: on every API release")
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
@@ -170,6 +180,21 @@ disposition = "KEEP"
         base_toml + 'enforcement = "advisory: reason; review: on trigger"\n'
     )
     assert valid_adv.controls[0].enforcement == "advisory: reason; review: on trigger"
+
+    # Blank advisory reason
+    with pytest.raises(PortfolioError) as exc_blank_reason:
+        parse_portfolio_toml(base_toml + 'enforcement = "advisory: ; review: on trigger"\n')
+    assert "reason" in str(exc_blank_reason.value).lower()
+
+    # Blank advisory review trigger
+    with pytest.raises(PortfolioError) as exc_blank_trigger:
+        parse_portfolio_toml(base_toml + 'enforcement = "advisory: reason; review: "\n')
+    assert "review trigger" in str(exc_blank_trigger.value).lower()
+
+    # Advisory missing review trigger
+    with pytest.raises(PortfolioError) as exc_no_trigger:
+        parse_portfolio_toml(base_toml + 'enforcement = "advisory: reason"\n')
+    assert "review" in str(exc_no_trigger.value).lower()
 
     # Placeholder enforcement
     with pytest.raises(PortfolioError) as exc_placeholder:
