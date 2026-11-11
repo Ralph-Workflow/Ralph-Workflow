@@ -63,6 +63,7 @@ Only obvious build artifacts in the diff and Ralph runtime artifacts
 (e.g. `checkpoint.json`, `.agent/PLAN.md`, `.agent/tmp/*.log`,
 `.agent/artifacts/*.md`). Never delete source code, tests, docs, or
 intentionally modified configuration, and never recommend deleting whole
-directories — the runtime safety boundary silently drops unsafe deletes.
-Use `add_to_gitignore` for project-wide patterns and `add_to_git_exclude`
-for machine-local ones.
+directories — the runtime safety boundary declines unsafe deletes, logs the
+decline, and loops the run back to commit review with a retry hint instead
+of advancing to commit. Use `add_to_gitignore` for project-wide patterns
+and `add_to_git_exclude` for machine-local ones.
