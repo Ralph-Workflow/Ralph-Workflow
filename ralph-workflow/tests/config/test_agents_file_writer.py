@@ -263,21 +263,24 @@ def test_write_emits_operator_visible_loguru_line(tmp_path: Path) -> None:
     assert str(bak_path) in line
 
 
-def test_failed_write_leaves_no_backup_and_no_temp_file(
+def test_failed_write_retains_pre_write_backup_and_cleans_temp_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed replace propagates unchanged and leaves neither a .bak nor a temp file."""
+    """A failed target replace retains the pre-write backup and cleans scratch temp files."""
     target_path = tmp_path / "ralph-workflow-agents.toml"
     original_content = '[agents.claude]\nmodel = "old"\n'
     target_path.write_text(original_content, encoding="utf-8")
     bak_path = target_path.with_name(f"{target_path.name}.bak")
+    real_replace = os.replace
 
     def failing_replace(
         src: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         dst: str | bytes | os.PathLike[str] | os.PathLike[bytes],
     ) -> None:
-        raise OSError("Simulated replace failure")
+        if str(dst) == str(target_path):
+            raise OSError("Simulated replace failure")
+        real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", failing_replace)
 
@@ -285,9 +288,12 @@ def test_failed_write_leaves_no_backup_and_no_temp_file(
         write_agents_toml(target_path, '[agents.claude]\nmodel = "new"\n', trigger="failed_write")
 
     assert excinfo.value.args == ("Simulated replace failure",)
-    assert not bak_path.exists()
+    # RALPH-TEST-REASON: pre-write backup is retained as safe recovery data on failure
+    assert bak_path.read_text(encoding="utf-8") == original_content
     assert target_path.read_text(encoding="utf-8") == original_content
-    assert [entry.name for entry in tmp_path.iterdir()] == [target_path.name]
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted(
+        [target_path.name, bak_path.name]
+    )
 
 
 def test_backup_exists_before_the_replace_overwrites_the_target(

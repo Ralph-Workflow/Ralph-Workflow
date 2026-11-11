@@ -267,9 +267,8 @@ def test_failed_writer_interleaved_at_backup_publication_preserves_concurrent_ba
 
     Even if a concurrent writer B publishes a backup to ``bak_path`` immediately
     after writer A's backup replace (before writer A executes target replacement),
-    writer A's ownership token captured before the replace ensures writer A
-    never identifies writer B's backup as its own and leaves writer B's backup
-    untouched when writer A fails.
+    writer A's failure handling does not mutate or unlink ``bak_path``, leaving
+    writer B's backup untouched when writer A fails.
     """
     target = tmp_path / _AGENTS_FILENAME
     original = '[agents.claude]\nmodel = "operator"\n'
@@ -280,7 +279,7 @@ def test_failed_writer_interleaved_at_backup_publication_preserves_concurrent_ba
     real_replace = Path.replace
 
     def interleaving_replace(
-        self: Path, target_path: object, *args: object, **kwargs: object
+        self: Path, target_path: str | os.PathLike[str], *args: object, **kwargs: object
     ) -> Path:
         nonlocal writer_b_backup_identity
         if threading.current_thread().name == "writer-a" and str(target_path) == str(target):
@@ -327,6 +326,94 @@ def test_failed_writer_interleaved_at_backup_publication_preserves_concurrent_ba
     assert (bak_path.stat().st_dev, bak_path.stat().st_ino) == writer_b_backup_identity
 
     # No scratch file survives the race.
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted(
+        [target.name, bak_path.name]
+    )
+
+
+def test_deterministic_post_identity_check_interleave_preserves_concurrent_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When Writer A fails post backup publication, Writer B's backup is preserved.
+
+    Deterministic post-identity-check interleave: Writer A publishes its backup
+    and encounters a failure on target replacement. Concurrently, Writer B publishes
+    a new backup to ``bak_path`` with distinct content and identity. Writer A's
+    failure handling must not delete or overwrite Writer B's backup, leaving
+    Writer B's backup as valid TOML with bytes and identity intact.
+    """
+    target = tmp_path / _AGENTS_FILENAME
+    target.write_text('[agents.claude]\nmodel = "v0"\n', encoding="utf-8")
+    bak_path = target.with_name(f"{target.name}.bak")
+
+    writer_b_backup_bytes: bytes | None = None
+    writer_b_backup_identity: tuple[int, int] | None = None
+    real_replace = Path.replace
+
+    def interleaving_replace(
+        self: Path, target_path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> Path:
+        nonlocal writer_b_backup_bytes, writer_b_backup_identity
+        if threading.current_thread().name == "writer-a" and str(target_path) == str(target):
+            # Writer A has published its backup and reached the target replace step.
+            # Concurrently, Writer B updates target so a new backup with distinct bytes
+            # is published to bak_path.
+            def run_writer_b() -> None:
+                nonlocal writer_b_backup_bytes, writer_b_backup_identity
+                write_agents_toml(
+                    target, '[agents.claude]\nmodel = "writer-b-v1"\n', trigger="writer-b-v1"
+                )
+                write_agents_toml(
+                    target, '[agents.claude]\nmodel = "writer-b-v2"\n', trigger="writer-b-v2"
+                )
+                writer_b_backup_bytes = bak_path.read_bytes()
+                writer_b_backup_identity = (bak_path.stat().st_dev, bak_path.stat().st_ino)
+
+            thread_b = threading.Thread(target=run_writer_b, name="writer-b")
+            thread_b.start()
+            thread_b.join(timeout=5)
+            assert not thread_b.is_alive(), "writer B failed to complete"
+
+            # Simulate target replacement failure to exercise Writer A's failure path.
+            raise OSError("simulated target replace failure for writer A")
+
+        return real_replace(self, target_path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    outcome: dict[str, object] = {}
+
+    def run_writer_a() -> None:
+        try:
+            write_agents_toml(target, '[agents.claude]\nmodel = "writer-a"\n', trigger="writer-a")
+        except OSError as exc:
+            outcome["error"] = exc
+
+    thread_a = threading.Thread(target=run_writer_a, name="writer-a")
+    thread_a.start()
+    thread_a.join(timeout=5)
+    assert not thread_a.is_alive()
+    assert isinstance(outcome.get("error"), OSError)
+
+    # RALPH-TEST-REASON: Writer A's failure handling cleans its temp file without
+    # deleting or overwriting the concurrent writer's backup.
+    assert bak_path.is_file()
+    assert writer_b_backup_bytes is not None
+    assert bak_path.read_bytes() == writer_b_backup_bytes
+    assert tomllib.loads(bak_path.read_text(encoding="utf-8")) == {
+        "agents": {"claude": {"model": "writer-b-v1"}}
+    }
+    assert writer_b_backup_identity is not None
+    assert (bak_path.stat().st_dev, bak_path.stat().st_ino) == writer_b_backup_identity
+
+    # Writer B succeeded and owns the target file.
+    assert target.read_text(encoding="utf-8") == '[agents.claude]\nmodel = "writer-b-v2"\n'
+    assert tomllib.loads(target.read_text(encoding="utf-8")) == {
+        "agents": {"claude": {"model": "writer-b-v2"}}
+    }
+
+    # Only target and backup remain; no scratch temp file survived.
     assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted(
         [target.name, bak_path.name]
     )

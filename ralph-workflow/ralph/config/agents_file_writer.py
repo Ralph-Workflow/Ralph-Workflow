@@ -35,19 +35,17 @@ replaced file, symlinks resolved). A newly created file gets mode
 operator's content is never overwritten without a recoverable copy on
 disk. A failed write removes the temporary file under
 ``contextlib.suppress(OSError)`` so the original exception is never
-masked and no stray temporary file survives, and it removes (or restores)
-the backup it created, so a failed write leaves the original file
-byte-identical and no stray backup behind.
+masked and no stray temporary file survives. Any backup published prior
+to failure is retained as safe recovery data; the canonical ``.bak`` is
+never mutated or removed on failure.
 
 **Concurrent writers.** The backup is staged under a writer-unique name
 and published with an atomic replace, so a reader never observes a
 half-written backup and two writers never write the same backup file.
-Each publication gets its own file identity, which the writer records as
-an ownership token: a failed write only removes (or restores) the backup
-while the canonical ``.bak`` still carries the identity this writer
-published. A concurrent writer that published a newer recovery copy
-therefore keeps its backup, and the failing writer never destroys
-another writer's only recoverable copy of the operator's bytes.
+Because published backups are retained as safe recovery data on failure
+and canonical ``.bak`` is never rolled back or deleted, a concurrent
+writer's recovery copy is preserved without token comparison or rollback
+races.
 """
 
 from __future__ import annotations
@@ -85,27 +83,8 @@ def _resolve_mode(target: Path) -> int:
         return _NEW_FILE_MODE
 
 
-def _file_identity(path: Path) -> tuple[int, int] | None:
-    """Return an ownership token for *path*, or ``None`` when it has none.
-
-    The token is the device and inode of the published file. A writer
-    records the token of the backup it publishes and may only remove or
-    restore that backup while the canonical path still carries the same
-    token, which proves no other writer republished it meanwhile.
-    """
-    try:
-        status = path.stat()
-    except OSError:
-        return None
-    if status.st_ino == 0:
-        return None
-    return (status.st_dev, status.st_ino)
-
-
-def _publish_backup(
-    bak_path: Path, previous_bytes: bytes, directory: Path
-) -> tuple[int, int] | None:
-    """Publish *previous_bytes* as the canonical backup and return its ownership token.
+def _publish_backup(bak_path: Path, previous_bytes: bytes, directory: Path) -> None:
+    """Publish *previous_bytes* as the canonical backup.
 
     The bytes are staged under a writer-unique name in *directory* and
     then published with an atomic replace, so the canonical backup is
@@ -127,7 +106,6 @@ def _publish_backup(
         with staged:
             staged.write(previous_bytes)
             staged.flush()
-        identity = _file_identity(staging)
         staging.replace(bak_path)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -135,33 +113,6 @@ def _publish_backup(
                 missing_ok=True
             )
         raise
-    return identity
-
-
-def _release_backup(
-    bak_path: Path,
-    previous_backup: bytes | None,
-    published_identity: tuple[int, int] | None,
-) -> None:
-    """Undo the backup publication of a failed write, but only when it is still ours.
-
-    A concurrent writer that republished the canonical backup owns it now;
-    removing it would destroy the only recoverable copy of the operator's
-    bytes, so the cleanup leaves it untouched.
-    """
-    if published_identity is None:
-        return
-    if _file_identity(bak_path) != published_identity:
-        return
-    with contextlib.suppress(OSError):
-        if previous_backup is None:
-            bak_path.unlink(  # filesystem-write-ok: removing the backup created by the failed write
-                missing_ok=True
-            )
-        else:
-            bak_path.write_bytes(  # filesystem-write-ok: restoring the pre-existing backup after a failed write
-                previous_backup
-            )
 
 
 def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
@@ -208,8 +159,6 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
     write_target.parent.mkdir(  # filesystem-write-ok: ensuring target directory exists before writing agents config
         parents=True, exist_ok=True
     )
-    previous_backup: bytes | None = None
-    published_backup: tuple[int, int] | None = None
     tmp_path: Path | None = None
     try:
         fd, tmp_path_str = tempfile.mkstemp(
@@ -226,10 +175,9 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
             file_mode
         )
         if existing_bytes is not None:
-            previous_backup = bak_path.read_bytes() if bak_path.is_file() else None
             # The backup lands BEFORE the replace: an overwrite never happens
             # without a recoverable copy of the previous bytes on disk.
-            published_backup = _publish_backup(bak_path, existing_bytes, write_target.parent)
+            _publish_backup(bak_path, existing_bytes, write_target.parent)
         # filesystem-write-ok: atomic-replace boundary for agents config file
         tmp_path.replace(write_target)
     except BaseException:
@@ -238,7 +186,6 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
                 tmp_path.unlink(  # filesystem-write-ok: removing transient scratch file on failure
                     missing_ok=True
                 )
-        _release_backup(bak_path, previous_backup, published_backup)
         raise
 
     logger.info("Wrote {} (trigger: {}, backup: {})", path, trigger, bak_path)
