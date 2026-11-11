@@ -19,7 +19,7 @@ quality. Plans have no structural errors or advisories; extraction is best
 effort. The two free-form development artifacts validate only the closed
 `status` enum in the frontmatter; the body is the next agent's reading
 matter. Non-plan artifacts retain their per-type contracts: the remaining
-artifact types (`commit_message`, `commit_review`, `fix_result`, `issues`,
+artifact types (`commit_message`, `commit_cleanup`, `fix_result`, `issues`,
 `smoke_test_result`, `product_spec`, `planning_analysis_decision`,
 `review_analysis_decision`, `policy_remediation_analysis_decision`) keep
 the closed grammar below.
@@ -33,16 +33,16 @@ Two MCP tools operate on every artifact type:
     receive no receipt; their staged draft remains available for revision.
 
 Supported `artifact_type` values: `plan`, `development_result`,
-`development_analysis_decision`, `commit_message`, `commit_review`,
+`development_analysis_decision`, `commit_message`, `commit_cleanup`,
 `fix_result`, `issues`, `smoke_test_result`, `product_spec`,
 `planning_analysis_decision`, `review_analysis_decision`,
 `policy_remediation_analysis_decision`.
 
 For `plan`, `development_result`, `development_analysis_decision`,
-`commit_message`, and `commit_review`, use the dedicated companion skills
+`commit_message`, and `commit_cleanup`, use the dedicated companion skills
 (`submit-plan-artifact`, `submit-development-result-artifact`,
 `submit-development-analysis-decision-artifact`,
-`submit-commit-message-artifact`, `submit-commit-review-artifact`). This
+`submit-commit-message-artifact`, `submit-commit-cleanup-artifact`). This
 skill teaches the shared grammar for the structured non-plan artifacts;
 the per-type skills teach the free-form contract where it applies.
 
