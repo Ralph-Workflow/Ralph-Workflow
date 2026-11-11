@@ -1,5 +1,7 @@
 """Unit tests for priority agent selection and its controller surface."""
 
+from loguru import logger
+
 from ralph.agents.timeout_clock import FakeClock
 from ralph.recovery.agent_selection import (
     agent_availability,
@@ -299,3 +301,89 @@ def test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable() -> No
         ("claude", "unavailable"),
         ("opencode", "unavailable"),
     )
+
+
+def test_preferred_agent_index_deduplicates_unchanged_all_unavailable_logs() -> None:
+    """Repeated calls with an unchanged all-unavailable chain emit selection logs at most once."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            unavailability_entries={
+                "claude": UnavailabilityEntry(
+                    unavailable_until_ms=5_000,
+                    reason=UnavailabilityReason.AUTH_CONFIG,
+                    attempt=0,
+                    base_backoff_ms=5_000,
+                    max_backoff_ms=60_000,
+                ),
+                "opencode": UnavailabilityEntry(
+                    unavailable_until_ms=8_000,
+                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+                    attempt=0,
+                    base_backoff_ms=5_000,
+                    max_backoff_ms=60_000,
+                ),
+            },
+        )
+    )
+
+    logs: list[str] = []
+    sink_id = logger.add(logs.append, level="INFO", format="{message}")
+    try:
+        # First call: all unavailable, logs selection evidence
+        sel1 = controller.preferred_agent_index("development", ["claude", "opencode"])
+        assert sel1.agent is None
+        assert len(logs) == 1
+        assert "Phase development: No selectable agent" in logs[0]
+        assert "claude" in logs[0]
+        assert "opencode" in logs[0]
+
+        # Second call: unchanged state, log must be suppressed
+        sel2 = controller.preferred_agent_index("development", ["claude", "opencode"])
+        assert sel2.agent is None
+        assert len(logs) == 1
+
+        # Third call: clock advances but both are still on cooldown (unchanged eligibility state)
+        clock.advance(2.0)
+        sel3 = controller.preferred_agent_index("development", ["claude", "opencode"])
+        assert sel3.agent is None
+        assert len(logs) == 1
+
+        # Fourth call: clock advances past claude's cooldown (eligibility state changes)
+        clock.advance(5.0)  # advance past cooldown period to restore agent eligibility
+        sel4 = controller.preferred_agent_index("development", ["claude", "opencode"])
+        assert sel4.agent == "claude"
+        assert len(logs) == 2
+        assert "Phase development: Selected agent claude" in logs[1]
+
+        # Fifth call: unchanged state with claude still selected
+        sel5 = controller.preferred_agent_index("development", ["claude", "opencode"])
+        assert sel5.agent == "claude"
+        assert len(logs) == 2
+    finally:
+        logger.remove(sink_id)
+
+
+def test_preferred_agent_index_deduplicates_unchanged_spent_chain() -> None:
+    """Repeated calls with spent agents emit selection evidence at most once."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
+    controller.note_retry_exhaustion("development", "agent_a")
+    controller.note_retry_exhaustion("development", "agent_b")
+
+    logs: list[str] = []
+    sink_id = logger.add(logs.append, level="INFO", format="{message}")
+    try:
+        sel1 = controller.preferred_agent_index("development", ["agent_a", "agent_b"])
+        assert sel1.agent is None
+        assert len(logs) == 1
+        assert "Phase development: No selectable agent" in logs[0]
+
+        # Repeated calls without changes do not emit duplicate logs
+        for _ in range(5):
+            sel = controller.preferred_agent_index("development", ["agent_a", "agent_b"])
+            assert sel.agent is None
+        assert len(logs) == 1
+    finally:
+        logger.remove(sink_id)

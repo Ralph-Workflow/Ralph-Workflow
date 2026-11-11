@@ -63,6 +63,7 @@ from ralph.config._config_filenames import (
     _LOCAL_MCP_FILENAME,
     _LOCAL_POLICY_FILENAMES,
 )
+from ralph.config._default_gitignore_patterns import _DEFAULT_GITIGNORE_PATTERNS
 from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
 from ralph.config.agents_bootstrap import (
     BootstrapResult,
@@ -112,151 +113,6 @@ def resolve_global_config_dir(env: Mapping[str, str] | None = None) -> Path:
     return _resolve_global_config_dir(env)
 
 
-_DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
-    # Ralph Workflow local artifacts (existing — DO NOT REORDER).
-    # The first entry ``.agent/`` already covers the
-    # ``.agent/ralph-explore/`` disposable cache by virtue of its
-    # trailing slash. The explicit child rule below is added to
-    # satisfy the prompt's "managed gitignore child entry"
-    # requirement (AC-05) without reordering the protected entries
-    # above: ``auto_seed_default_gitignore`` only appends missing
-    # patterns, so the parent ``.agent/`` rule is preserved and
-    # the explicit child rule is added next to the parent.
-    ".agent/",
-    ".agent/ralph-explore/",
-    "/PROMPT*",
-    "wt-*/",
-    "/checkpoint.json",
-    # Python
-    "__pycache__/",
-    "*.py[codz]",
-    "*$py.class",
-    ".venv/",
-    "venv/",
-    ".pytest_cache/",
-    ".mypy_cache/",
-    ".ruff_cache/",
-    ".coverage",
-    "htmlcov/",
-    "dist/",
-    "build/*",
-    "!build/.gitkeep",
-    "*.egg-info/",
-    # Python extras
-    ".tox/",
-    ".nox/",
-    ".pdm-build/",
-    "*.pyo",
-    ".ipynb_checkpoints/",
-    "pip-wheel-metadata/",
-    # Node
-    "node_modules/",
-    ".next/",
-    ".nuxt/",
-    # Node extras
-    "coverage/",
-    "*.tsbuildinfo",
-    ".parcel-cache/",
-    ".cache/",
-    ".env",
-    ".env.local",
-    ".env.*.local",
-    # Rust (Cargo.lock intentionally NOT ignored — Rust apps check it in)
-    "target/*",
-    "!target/.gitkeep",
-    "**/*.rs.bk",
-    # Go (vendor/ is opt-in; go.sum intentionally NOT ignored)
-    "vendor/*",
-    # Ruby (note: vendor/bundle/.gitkeep cannot be allowlisted here because
-    # the vendor/* pattern above also matches it. A user who tracks
-    # vendor/bundle/.gitkeep can add a one-line !vendor/bundle/.gitkeep
-    # to their project-local gitignore — the appended default cannot honor
-    # both the Go "ignore all of vendor/" and the Ruby "track this
-    # marker in vendor/bundle/" semantics simultaneously).
-    "vendor/bundle/*",
-    ".bundle/",
-    "log/",
-    "tmp/",
-    "*.gem",
-    # PHP
-    ".phpunit.cache/",
-    "/storage/*.key",
-    "composer.phar",
-    # Java/Kotlin extras (paired with existing .idea/ below)
-    ".gradle/*",
-    "!.gradle/.gitkeep",
-    "*.class",
-    "*.jar",
-    # .NET / Visual Studio
-    "bin/*",
-    "!bin/.gitkeep",
-    "obj/*",
-    "!obj/.gitkeep",
-    "*.user",
-    "*.suo",
-    "*.userosscache",
-    "*.sln.docstates",
-    "[Dd]ebug/",
-    "[Rr]elease/",
-    "x64/",
-    "x86/",
-    "*.dll",
-    "*.exe",
-    "*.pdb",
-    # Dart / Flutter
-    ".dart_tool/",
-    ".flutter-plugins",
-    ".flutter-plugins-dependencies",
-    ".packages",
-    ".pub-cache/",
-    ".pub/",
-    # Elixir
-    "_build/*",
-    "!_build/.gitkeep",
-    "deps/*",
-    "!deps/.gitkeep",
-    ".elixir_ls/",
-    "cover/",
-    "doc/",
-    "fetch.*.exs",
-    # Scala / Metals / BSP
-    ".bsp/",
-    ".metals/",
-    "project/target/",
-    "project/project/",
-    # Terraform (note: *.tfvars is in the positive list; *.tfvars.example
-    # is intentionally NOT allowlisted — the user must explicitly add
-    # tracked example files).
-    ".terraform/",
-    "*.tfstate",
-    "*.tfstate.*",
-    ".terraform.lock.hcl",
-    "terraform.tfvars",
-    "crash.log",
-    "crash.*.log",
-    "*.tfvars",
-    # Editors / IDEs extra
-    ".fleet/",
-    ".cursor/",
-    ".windsurf/",
-    ".idea_modules/",
-    "*.iml",
-    # Editors / IDEs (NOTE: .vscode/ intentionally NOT included —
-    # the upstream repository has tracked files under .vscode/ that
-    # a blanket ignore would hide.)
-    ".idea/",
-    "*.swp",
-    "*.swo",
-    # OS metadata
-    ".DS_Store",
-    "Thumbs.db",
-    # OS metadata extras
-    "Desktop.ini",
-    "ehthumbs.db",
-    "$RECYCLE.BIN/",
-)
-
-
 # Machine-local exclude patterns for ``.git/info/exclude``. These never enter
 # the repo -- they keep the user-level state out of every clone.
 #
@@ -264,7 +120,7 @@ _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
 # identifier). The completion-sentinel glob is ``completion_seen_*.json``
 # (the canonical on-disk filename pattern -- confirmed against
 # ``COMPLETION_SENTINEL_RELPATHFMT`` in ``ralph.mcp.tools.coordination``).
-# Root-anchored ``/checkpoint.json`` is used (NOT bare ``checkpoint.json``
+# Root-anchored "/checkpoint.json" is used (NOT bare checkpoint.json
 # which would silently match every nested directory).
 #
 # The engine-internal globs come from ``ralph.config._agent_internal_globs``,

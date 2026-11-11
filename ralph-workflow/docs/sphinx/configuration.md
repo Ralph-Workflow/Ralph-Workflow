@@ -118,15 +118,15 @@ The bundled defaults live in `ralph/policy/defaults/`. When in doubt, the files 
 
 ## Configuration resilience: fallback versus fail-loud
 
-Ralph Workflow distinguishes between optional configuration layers that safely degrade to built-in defaults and authoritative files that fail loudly on syntax or validation errors.
+Ralph Workflow distinguishes between optional configuration layers that safely degrade to built-in defaults and authoritative files that fail loudly on syntax or validation errors. Fallback applies exclusively to optional configuration files (`ralph-workflow-agents.toml`, `.agent/agents.toml`, etc.); by contrast, the main configuration file `ralph-workflow.toml` (and all tables defined inside it) is strictly required and fails loudly without fallback.
 
 ### Resilient fallback files
 
 When an optional configuration file contains syntax errors, invalid UTF-8 bytes, schema validation issues, or cannot be read due to filesystem permissions, Ralph Workflow emits a deduplicated warning naming the file, error details (including line and column numbers when available), and remediation advice (`ralph --check-config`), then safely falls back to built-in defaults:
 
-- **Agent configuration and policy files**: user-global `~/.config/ralph-workflow-agents.toml` (the agent CLI definitions) and the project-local `.agent/agents.toml` (the agent-chains / drain-bindings policy file).
+- **Agent configuration and policy files**: optional user-global `~/.config/ralph-workflow-agents.toml` (the agent CLI definitions) and the project-local `.agent/agents.toml` (the agent-chains / drain-bindings policy file).
 - **Policy TOML files**: pipeline configurations (`.agent/pipeline.toml`, `~/.config/ralph-workflow-pipeline.toml`), artifact schemas (`.agent/artifacts.toml`, `~/.config/ralph-workflow-artifacts.toml`), phase policy files, and other user policy TOMLs.
-- **MCP configurations**: global `~/.config/ralph-workflow-mcp.toml` and project-local `.agent/mcp.toml` (including the `[web_visit]` section).
+- **MCP configurations**: global `~/.config/ralph-workflow-mcp.toml` and project-local `.agent/mcp.toml`. Under Ralph Workflow's section-level fallback ruling, MCP configuration employs section-level fallback (such as for `[web_visit]`): if an individual section fails schema validation, that invalid section reverts to built-in defaults while preserving valid server definitions in `[mcp_servers]` within the same file.
 - **User portfolio TOML**: `docs/ralph-workflow-policy/policy-portfolio.toml` and user project-policy portfolio settings.
 
 Fallback warnings are deduplicated per file content fingerprint (SHA-256) so running workflows do not flood logs while still alerting when an edited file introduces a new error.
@@ -149,7 +149,7 @@ This backs up the invalid file to `ralph-workflow-agents.toml.bak` and restores 
 
 Authoritative files never fall back to defaults and fail immediately upon syntax or schema errors:
 
-- **`ralph-workflow.toml`**: The main configuration file across all scopes (global `~/.config/ralph-workflow.toml`, project-local `.agent/ralph-workflow.toml`, and worktree-propagated copies) remains strict. Any malformed TOML syntax or schema violation raises `ConfigTomlError` with structured What/Why/Fix diagnostics. Strict configuration behaviour remains in effect: this file has no built-in default fallback.
+- **`ralph-workflow.toml`**: The main configuration file across all scopes (global `~/.config/ralph-workflow.toml`, project-local `.agent/ralph-workflow.toml`, and worktree-propagated copies) remains strictly required with no built-in default fallback. TOML syntax errors, invalid UTF-8 byte decoding issues, and filesystem I/O errors raise `ConfigTomlError` with structured What/Why/Fix diagnostics, whereas schema validation errors encountered during merged configuration loading exit with `SystemExit` (via CLI error exit) after logging the formatted validation failure.
 - **Shipped bundled package data**: Default configuration templates shipped inside the package (`ralph/policy/defaults/mcp.toml`, bundled `artifacts.toml`, bundled `pipeline.toml`, and bundled `ralph-workflow.toml`) are internal code and distribution assets, not user configuration. Corruption in shipped package data indicates a packaging defect and fails loudly.
 - **Third-party tool configurations**: External configuration files such as `~/.codex/config.toml` belong to third-party tools rather than Ralph Workflow. Ralph Workflow does not silently replace corrupted third-party configurations with defaults; it fails loudly (`CodexConfigError`) to avoid executing with unintended providers or credentials.
 

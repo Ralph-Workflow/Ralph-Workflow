@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
@@ -33,7 +34,7 @@ _GITLINK_MODE = "160000"
 _TREE_MODE_PREFIX = "040000"
 
 
-def gitlink_escalation_message(paths: tuple[str, ...]) -> str:
+def gitlink_escalation_message(paths: Sequence[str]) -> str:
     """Format the escalation message naming unresolved gitlink paths and the operator command."""
     command = operator_command_for_paths(paths)
     joined = ", ".join(paths)
@@ -43,12 +44,13 @@ def gitlink_escalation_message(paths: tuple[str, ...]) -> str:
 
 
 def escalate_on_sight(
-    paths: tuple[str, ...],
+    paths: Sequence[str],
     *,
     session: ResolutionSession | None = None,
 ) -> str:
     """Escalate unresolvable paths on sight without spending or consulting the resolver chain."""
-    message = gitlink_escalation_message(paths)
+    paths_tuple = tuple(paths)
+    message = gitlink_escalation_message(paths_tuple)
     target_session = session
     if target_session is None:
         try:
@@ -68,8 +70,9 @@ def escalate_on_sight(
 
         target_session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         target_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        target_session.unresolved_paths = paths
+        target_session.unresolved_paths = paths_tuple
         target_session.exhaustion_reason = message
+        target_session.operator_action_message = message
     return message
 
 

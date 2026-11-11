@@ -98,6 +98,7 @@ from ralph.pipeline.conflict_resolution.session import (
 from ralph.pipeline.conflict_resolution.sight import (
     classify_unmerged_conflicts,
     declared_decision_paths,
+    gitlink_escalation_message,
     out_of_reach_paths,
     stage_mechanical_conflicts,
 )
@@ -311,11 +312,22 @@ def _prepare_conflicted_paths(
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         session.unresolved_paths = unreachable
-        session.exhaustion_reason = _resolution_exhaustion_reason(session, unreachable)
+        msg = (
+            session.operator_action_message
+            if session.operator_action_message
+            and "needs operator action:" in session.operator_action_message
+            else (
+                session.exhaustion_reason
+                if session.exhaustion_reason
+                and "needs operator action:" in session.exhaustion_reason
+                else gitlink_escalation_message(unreachable)
+            )
+        )
+        session.exhaustion_reason = msg
+        session.operator_action_message = msg
         emit_conflict_phase_line(
             display,
-            "OUT_OF_REACH: escalating on sight without spending the chain; unresolved_paths="
-            + ", ".join(unreachable),
+            "OUT_OF_REACH: escalating on sight without spending the chain; " + msg,
         )
         return (), False, ()
     if unreachable:
@@ -768,6 +780,18 @@ def _escalate_unreachable_remainder(
     session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
     session.unresolved_paths = session.out_of_reach_paths
     paths = ", ".join(session.out_of_reach_paths)
+    msg = (
+        session.operator_action_message
+        if session.operator_action_message
+        and "needs operator action:" in session.operator_action_message
+        else (
+            session.exhaustion_reason
+            if session.exhaustion_reason and "needs operator action:" in session.exhaustion_reason
+            else gitlink_escalation_message(session.out_of_reach_paths)
+        )
+    )
+    session.exhaustion_reason = msg
+    session.operator_action_message = msg
     emit_conflict_phase_line(
         display,
         f"the resolvable conflicts are repaired, but no resolver can repair {paths}",

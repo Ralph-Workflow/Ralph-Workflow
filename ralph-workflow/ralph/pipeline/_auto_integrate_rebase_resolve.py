@@ -307,17 +307,18 @@ def resolve_rebase_with_config(
             target,
             session.terminal_reason.value if session.terminal_reason else "no terminal evidence",
         )
-        carried_reason = (
-            session.exhaustion_reason
-            if carried_cause == ResolutionFailureCause.CONFIG_FAILURE
-            else None
-        )
-        if (
-            carried_reason is None
-            and session.terminal_reason is not None
-            and carried_cause == ResolutionFailureCause.CONFIG_FAILURE
-        ):
-            carried_reason = session.terminal_reason.value
+        if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH:
+            carried_reason = session.operator_action_message or session.exhaustion_reason
+            if not carried_reason and session.unresolved_paths:
+                from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
+
+                carried_reason = gitlink_escalation_message(session.unresolved_paths)
+        elif carried_cause == ResolutionFailureCause.CONFIG_FAILURE:
+            carried_reason = session.exhaustion_reason or (
+                session.terminal_reason.value if session.terminal_reason is not None else None
+            )
+        else:
+            carried_reason = None
         return RebaseResolutionResult(False, carried_reason, carried_cause)
     return RebaseResolutionResult(
         False,

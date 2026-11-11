@@ -117,15 +117,18 @@ def load_toml(path: Path) -> dict[str, object]:
     Returns:
         Parsed TOML content as a dictionary, or empty dict if file doesn't exist.
     """
-    if not path.exists():
-        logger.debug("Config file not found, skipping: {}", path)
-        return {}
     try:
+        if not path.exists():
+            logger.debug("Config file not found, skipping: {}", path)
+            return {}
+        if path.is_dir():
+            raise IsADirectoryError(f"{path} is a directory, not a regular file")
         source = path.read_text(encoding="utf-8")
         data: dict[str, object] = tomllib.loads(source)
     except (
         cast("type[ValueError]", tomllib.TOMLDecodeError),
         UnicodeDecodeError,
+        OSError,
     ) as exc:  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         raise ConfigTomlError(
             f"What failed: Ralph could not read {path}: {exc}.\n"

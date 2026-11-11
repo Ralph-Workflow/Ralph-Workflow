@@ -441,7 +441,7 @@ Continuation attempts often run in fresh supervisor processes where in-memory st
    - When a subsequent process starts, `_integration_continuation` re-reads the durable record.
 2. **Gate evaluation**:
    - If the stop identity, eligible resolver agents, and configuration fingerprints are unchanged, continuation resolution is refused. Exactly one actionable `WAITING` status line is emitted instead of repeated `CRITICAL` log floods and busy process respawns.
-   - Resolution is re-entered only when the gate key changes (such as when an operator repairs a defective configuration file, an agent cooldown expires, or an explicit operator command resets state).
+   - Resolution is re-entered only when the gate key changes (such as when conflict identity, eligible agents, or configuration change, or when backoff is reset).
    - Pre-existing integration records lacking the gate key field deserialize safely and operate in ungated mode for backward compatibility.
 
 ### Gitlink conflict resolution and escalation on sight
@@ -456,7 +456,7 @@ Submodule gitlink conflicts (`160000` mode in git index) occur when two branches
 2. **Immediate escalation on sight**:
    - If gitlink commits have diverged (neither commit is an ancestor of the other) or objects cannot be fetched, resolving the gitlink is beyond the capability of code-editing agents.
    - `classify_unmerged_conflicts` classifies the gitlink as `ConflictSight.OUT_OF_REACH`.
-   - The engine immediately escalates on sight with `ResolutionTerminationReason.OUT_OF_REACH` and `ResolutionFailureCause.AGENT_FAILURE`, naming the path and exact operator command (`git add -- <path>`), without spending candidate agent attempts.
+   - The engine immediately escalates on sight with `ResolutionTerminationReason.OUT_OF_REACH` and `ResolutionFailureCause.AGENT_FAILURE`, naming the path and exact operator command `git add -- <path>` (`"OUT_OF_REACH: gitlink conflict on <path> needs operator action: git add -- <path>"`), without spending candidate agent attempts.
 
 ### Real-configuration isolation guard and audit trail
 

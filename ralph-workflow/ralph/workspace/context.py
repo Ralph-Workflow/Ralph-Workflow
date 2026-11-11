@@ -146,7 +146,7 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
         policy_bundle = load_policy_for_workspace_scope(target_scope, config=config)
         registry = AgentRegistry.from_config(config)
         effective_mcp_plan = resolve_effective_session_mcp_plan(target_scope.root)
-    except ConfigTomlError as exc:
+    except (ConfigTomlError, OSError) as exc:
         msg = str(exc)
         m = re.search(r"Ralph could not read (.*?):", msg)
         matched_path = ""

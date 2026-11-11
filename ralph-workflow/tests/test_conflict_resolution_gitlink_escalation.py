@@ -14,10 +14,16 @@ Contract:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
+if TYPE_CHECKING:
+    from ralph.git.git_run_result import GitRunResult
+    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline.conflict_resolution import (
     operator_command_for_paths,
 )
@@ -29,7 +35,6 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
     bind_active_rebase_resolution_session,
 )
 from ralph.pipeline.conflict_resolution.session import (
-    ResolutionFailureCause,
     ResolutionSession,
     ResolutionTerminationReason,
 )
@@ -307,3 +312,111 @@ def test_gitlink_unfetchable_objects_escalates_on_sight(tmp_path: Path) -> None:
     assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
     assert session.unresolved_paths == ("sub",)
     assert "git add -- sub" in (session.exhaustion_reason or "")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_diverged_gitlink_production_driver_and_rebase_seam(tmp_path: Path) -> None:
+    """Production driver and rebase seam carry operator command for diverged gitlinks on sight."""
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline import resolve_rebase_with_config
+    from ralph.pipeline.auto_integrate_resolve import handle_unsuccessful_resolution
+    from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
+    from ralph.policy import load_policy
+
+    sub_origin, base, sha_a, sha_b = _setup_submodule_remote(tmp_path)
+    super_repo = _setup_superproject(tmp_path, sub_origin)
+    _git(super_repo / "sub", "fetch", "-q", "origin")
+
+    # Set up paused rebase state in .git
+    rebase_dir = super_repo / ".git" / "rebase-merge"
+    rebase_dir.mkdir()
+    (rebase_dir / "onto").write_text(base + "\n")
+    (rebase_dir / "orig-head").write_text(sha_a + "\n")
+    (rebase_dir / "msgnum").write_text("1\n")
+    (rebase_dir / "end").write_text("1\n")
+    (rebase_dir / "head-name").write_text("refs/heads/feature\n")
+    _git(super_repo, "update-ref", "REBASE_HEAD", "HEAD")
+
+    # Conflicted gitlink stage entries: base, sha_a (ours), sha_b (theirs)
+    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_b} 3\tsub\n"
+    _git(super_repo, "update-index", "--index-info", input_text=index_info)
+
+    stop = RebaseStop(
+        stop_index=1,
+        stop_cap=10,
+        conflicted_files=("sub",),
+        sha=sha_b,
+        subject="rebase stop diverged production",
+    )
+
+    agent_invocations: list[str] = []
+
+    def mock_invoker(agent_name: str, _repo_root: Path, _round_index: int) -> bool:
+        agent_invocations.append(agent_name)
+        return True
+
+    repo_root = Path(__file__).resolve().parents[1]
+    policy_bundle = load_policy(repo_root / "ralph" / "policy" / "defaults")
+    config = UnifiedConfig.model_validate({"general": {}})
+
+    # 1. Drive production driver directly: escalates on sight without invoking agent
+    session = ResolutionSession()
+    outcome = run_rebase_conflict_resolution_outcome(
+        root=super_repo,
+        target="main",
+        stop=stop,
+        config=config,
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=policy_bundle,
+        display=None,
+        display_context=None,
+        invoke=mock_invoker,
+        session=session,
+    )
+
+    assert outcome.succeeded is False
+    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert outcome.exhaustion_message is not None
+    assert "git add -- sub" in outcome.exhaustion_message
+    assert agent_invocations == [], (
+        "agent invoker must not be called during driver on-sight escalation"
+    )
+
+    # 2. Assert handle_unsuccessful_resolution carries path and operator command
+    merge_result = handle_unsuccessful_resolution(
+        outcome,
+        outcome.exhaustion_message,
+        conflicted=("sub",),
+    )
+    assert merge_result.reason is not None
+    assert "git add -- sub" in merge_result.reason
+
+    # 3. Drive rebase seam: verify carried reason preserves git add -- sub
+    def stop_resolver(root: Path, target: str, rebase_stop: RebaseStop) -> ResolutionOutcome | bool:
+        return run_rebase_conflict_resolution_outcome(
+            root=root,
+            target=target,
+            stop=rebase_stop,
+            config=config,
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=policy_bundle,
+            display=None,
+            display_context=None,
+            invoke=mock_invoker,
+        )
+
+    # Re-apply conflicted index state for rebase resolution loop
+    _git(super_repo, "update-index", "--index-info", input_text=index_info)
+    rebase_resolution_result = resolve_rebase_with_config(
+        super_repo,
+        "main",
+        stop_resolver,
+        None,
+    )
+
+    assert rebase_resolution_result.succeeded is False
+    assert rebase_resolution_result.reason is not None
+    assert "git add -- sub" in rebase_resolution_result.reason
+    assert agent_invocations == [], "agent invoker must not be called during rebase seam either"

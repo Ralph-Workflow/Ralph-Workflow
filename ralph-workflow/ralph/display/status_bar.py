@@ -1303,10 +1303,10 @@ def render_status_bar(
     widths (below ``14 cols``) so the bar still fits ``ctx.width``.
 
     The phase and path labels are tail/middle truncated to fit the
-    remaining budget. ``len(text.plain) <= ctx.width`` always holds
-    (a final ``Text.truncate`` clamp covers the 1-2 col edge case
-    where the phase|path separator alone exceeds the budget), and the
-    rendered text never contains a newline.
+    remaining budget. In standard single-line layouts, the rendered text
+    fits within ``ctx.width`` without newlines. However, status bar width
+    finalization wraps long alerts across lines when an integration alert
+    or remediation guidance exceeds ``ctx.width``.
 
     Args:
         model: Immutable view-model describing the bar contents.
@@ -1316,12 +1316,9 @@ def render_status_bar(
             home-relative.
 
     Returns:
-        A single-line ``rich.text.Text`` carrying the bar contents. The
-        rendered text never contains ``\\n`` so the bar cannot wrap into
-        the working area, and ``len(text.plain) <= ctx.width`` so the
-        bar fits any terminal width (including widths below 14 cols
-        where iteration segments drop entirely to honor the
-        ``len(text.plain) <= ctx.width`` invariant).
+        A ``rich.text.Text`` carrying the bar contents. Standard layouts
+        fit within ``ctx.width`` without newlines, while status bar width
+        wrapping can wrap long alerts across lines.
     """
     separator = _field_separator(ctx)
     # Neutralise hostile input in the user-facing labels BEFORE any

@@ -167,6 +167,22 @@ def resolution_exhaustion_reason(
     unresolved_paths: tuple[str, ...],
 ) -> str:
     """Build durable terminal evidence when the resolver cannot finish."""
+    if (
+        session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH
+        and session.operator_action_message
+        and "needs operator action:" in session.operator_action_message
+    ):
+        return session.operator_action_message
+    if (
+        session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH
+        and session.exhaustion_reason
+        and "needs operator action:" in session.exhaustion_reason
+    ):
+        return session.exhaustion_reason
+    if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH and unresolved_paths:
+        from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
+
+        return gitlink_escalation_message(unresolved_paths)
     reason = (
         session.terminal_reason.value
         if session.terminal_reason is not None

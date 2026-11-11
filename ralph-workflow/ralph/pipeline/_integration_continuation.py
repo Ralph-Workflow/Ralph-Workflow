@@ -124,12 +124,8 @@ def _continue_merge_resolution(
     stop_identity: str | None,
 ) -> str | None:
     matches = active_operation_matches(root, record)
-    if conflict_resolver is None or not matches:
-        return (
-            "merge resolution retained; continuation resolver required"
-            if matches
-            else "active merge identity differs from retained ownership; operator work preserved"
-        )
+    if not matches:
+        return "active merge identity differs from retained ownership; operator work preserved"
     gate_key = compute_continuation_retry_gate_key(
         root,
         record,
@@ -140,11 +136,13 @@ def _continue_merge_resolution(
         config_path=config_path,
         stop_identity=stop_identity,
     )
-    if (
-        not force_retry
-        and record.resolution_gate_key is not None
-        and record.resolution_gate_key == gate_key
-    ):
+    effective_gate_key = record.resolution_gate_key
+    if effective_gate_key is None:
+        disk_record = read_record(root)
+        if disk_record is not None:
+            effective_gate_key = disk_record.resolution_gate_key
+
+    if not force_retry and effective_gate_key is not None and effective_gate_key == gate_key:
         _emit_waiting_line(
             "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged",
             key=gate_key,
@@ -152,6 +150,11 @@ def _continue_merge_resolution(
         return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
 
     reset_continuation_gate_state()
+    if conflict_resolver is None:
+        latest_record = read_record(root) or record
+        write_record(root, latest_record.with_resolution_gate_key(gate_key))
+        return "merge resolution retained; continuation resolver required"
+
     from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit_with_reason
 
     result = _resolve_and_commit_with_reason(root, target, conflict_resolver)
@@ -177,12 +180,8 @@ def _continue_rebase_resolution(
     stop_identity: str | None,
 ) -> str | None:
     matches = active_operation_matches(root, record)
-    if rebase_stop_resolver is None or not matches:
-        return (
-            "rebase resolution retained; continuation resolver required"
-            if matches
-            else "active rebase identity differs from retained ownership; operator work preserved"
-        )
+    if not matches:
+        return "active rebase identity differs from retained ownership; operator work preserved"
     gate_key = compute_continuation_retry_gate_key(
         root,
         record,
@@ -193,11 +192,13 @@ def _continue_rebase_resolution(
         config_path=config_path,
         stop_identity=stop_identity,
     )
-    if (
-        not force_retry
-        and record.resolution_gate_key is not None
-        and record.resolution_gate_key == gate_key
-    ):
+    effective_gate_key = record.resolution_gate_key
+    if effective_gate_key is None:
+        disk_record = read_record(root)
+        if disk_record is not None:
+            effective_gate_key = disk_record.resolution_gate_key
+
+    if not force_retry and effective_gate_key is not None and effective_gate_key == gate_key:
         _emit_waiting_line(
             "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged",
             key=gate_key,
@@ -205,6 +206,11 @@ def _continue_rebase_resolution(
         return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
 
     reset_continuation_gate_state()
+    if rebase_stop_resolver is None:
+        latest_record = read_record(root) or record
+        write_record(root, latest_record.with_resolution_gate_key(gate_key))
+        return "rebase resolution retained; continuation resolver required"
+
     from ralph.pipeline._auto_integrate_rebase_resolve import resolve_rebase_with_config
 
     resolved, reason, failure_cause = resolve_rebase_with_config(

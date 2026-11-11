@@ -557,6 +557,9 @@ class RecoveryController:
         self._phase_chains: dict[
             str, tuple[str, ...]
         ] = {}  # bounded-accumulator-ok: bounded by pipeline phase count
+        self._last_selection_state: dict[
+            str, tuple[str | None, tuple[tuple[str, bool, bool, bool, str | None], ...]]
+        ] = {}  # bounded-accumulator-ok: bounded by pipeline phase count
         self._cap = CycleCap(cap=opts.cycle_cap)
         self._classifier = opts.classifier or FailureClassifier()
         self._bus = opts.event_bus or FailureEventBus()
@@ -1133,6 +1136,7 @@ class RecoveryController:
         key = f"{phase}:{agent}" if agent else phase
         self._backoff_attempts.pop(key, None)
         self._spent_agents.pop(phase, None)
+        self._last_selection_state.pop(phase, None)
         if agent is not None:
             self._unavailability_tracker.reset_backoff(phase, agent)
 
@@ -1251,7 +1255,22 @@ class RecoveryController:
             )
 
         selection = select_preferred_agent(rows)
-        logger.bind(recovery=True).info(format_selection_evidence(phase, selection))
+        candidate_state = (
+            selection.agent,
+            tuple(
+                (
+                    agent,
+                    avail,
+                    cooldown_ms > 0,
+                    is_spent,
+                    cooldown_reason if cooldown_ms > 0 else None,
+                )
+                for agent, avail, cooldown_ms, is_spent, cooldown_reason in rows
+            ),
+        )
+        if self._last_selection_state.get(phase) != candidate_state:
+            self._last_selection_state[phase] = candidate_state
+            logger.bind(recovery=True).info(format_selection_evidence(phase, selection))
         return selection
 
     def _write_session_reset_hint(

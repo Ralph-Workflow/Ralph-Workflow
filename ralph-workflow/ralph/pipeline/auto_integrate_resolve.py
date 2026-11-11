@@ -237,6 +237,30 @@ def handle_unsuccessful_resolution(
     """
     if (
         isinstance(result, ResolutionOutcome)
+        and result.reason == ResolutionTerminationReason.OUT_OF_REACH
+    ) or (isinstance(reason, str) and ResolutionTerminationReason.OUT_OF_REACH.value in reason):
+        from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
+
+        paths = (
+            tuple(result.unresolved_paths)
+            if (isinstance(result, ResolutionOutcome) and result.unresolved_paths)
+            else conflicted
+        )
+        out_of_reach_msg: str | None = (
+            result.exhaustion_message if isinstance(result, ResolutionOutcome) else None
+        )
+        if not out_of_reach_msg or "needs operator action:" not in out_of_reach_msg:
+            if reason and "needs operator action:" in reason:
+                out_of_reach_msg = reason
+            else:
+                out_of_reach_msg = gitlink_escalation_message(paths)
+        return MergeResult(
+            outcome=MERGE_COMMIT_PENDING,
+            reason=out_of_reach_msg,
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+    if (
+        isinstance(result, ResolutionOutcome)
         and result.reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
     ):
         return MergeResult(

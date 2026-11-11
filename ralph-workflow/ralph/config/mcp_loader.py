@@ -10,6 +10,11 @@ Bundled default fails loudly on any error (packaging defect).
 User-global and project-local files fall back to built-in defaults on syntax,
 encoding, permission, or schema validation errors (including schema-invalid
 [web_visit]), emitting deduplicated warnings. Strict mode re-raises errors.
+
+Architectural ruling:
+  MCP configuration preserves independent server configurations by employing
+  section-level fallback (e.g. for [web_visit]) rather than dropping the whole
+  configuration file when a single section has schema validation errors.
 """
 
 from __future__ import annotations
@@ -121,6 +126,11 @@ def _validate_web_visit_section(
     *,
     strict: bool,
 ) -> None:
+    """Validate [web_visit] section independently with section-level fallback.
+
+    Architectural ruling: MCP configuration uses section-level fallback to preserve
+    independent server configurations in [mcp_servers] when [web_visit] is schema-invalid.
+    """
     if "web_visit" not in layer_data or layer_data["web_visit"] is None:
         return
     raw_val = layer_data["web_visit"]
