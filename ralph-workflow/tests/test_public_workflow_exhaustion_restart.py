@@ -1,8 +1,27 @@
+"""Restart behavior of an exhausted integration-diagnostic repair budget.
+
+The diagnostic-repair budget is a REPOSITORY-state bound: once the
+durable record reaches the cap it carries the typed "diagnostic repair
+budget spent" outcome, and a restart must NOT replenish the counter --
+the restarted pass offers no agent either.
+
+The inspected root is a plain directory that is not a Git repository, so
+every Git query the diagnostic makes already answers "not a repository".
+This unit keeps that premise but stops paying for it in process
+spawns: the Git queries are answered by a deterministic double and the
+evidence collector is the in-memory one, so the unit's cost no longer
+scales with the host's CPU contention (it used to spawn 29 ``git``
+processes, which is what pushed it past the per-test CPU budget).
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
+from ralph.git.git_run_result import GitRunResult
 from ralph.pipeline._integration_diagnostic import handoff_integration_diagnostic
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline.auto_integrate_record import (
@@ -11,11 +30,60 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.operation_evidence import InMemoryOperationEvidenceCollector
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from tests._resolver_controller import make_resolver_controller
+
+#: The exit status ``git`` reports when it cannot answer at all because the
+#: directory it was pointed at is not a repository. The diagnostic's
+#: completion proof reads it as "HEAD is unreadable" / "marker status is
+#: UNKNOWN", so the proof refuses to verify and the attempt is charged.
+_GIT_NOT_A_REPOSITORY_RETURNCODE = 128
+
+#: The modules whose ``run_git`` binding the diagnostic's Git queries go
+#: through. The bound runner is looked up per module (some import it at
+#: module level, some inside the function), so every binding the
+#: diagnostic reaches is replaced.
+_GIT_RUNNER_MODULES = (
+    "ralph.git.subprocess_runner",
+    "ralph.git.merge",
+    "ralph.pipeline.integration_observation",
+)
+
+
+def _not_a_git_repository(
+    args: tuple[str, ...] | list[str],
+    **_kwargs: object,
+) -> GitRunResult:
+    """Answer every Git query the way a non-repository directory does.
+
+    The double replaces the real ``git`` subprocess so a unit that only
+    asserts what the diagnostic DOES with an unverifiable repository keeps
+    that premise without spawning a process. The answers are the ones the
+    inspected root already produced, so no observation the unit relies on
+    changes -- only the process spawn is gone.
+    """
+    return GitRunResult(
+        args=tuple(args),
+        returncode=_GIT_NOT_A_REPOSITORY_RETURNCODE,
+        stdout="",
+        stderr="fatal: not a git repository (or any of the parent directories): .git",
+    )
+
+
+def _evidence_collector() -> InMemoryOperationEvidenceCollector:
+    """Return the evidence collector used instead of the subprocess one.
+
+    The default collector reads the operation-scoped evidence through
+    ``git``; the injected one answers from memory. The diagnostic reads
+    the snapshot only to detect an unreachable marker object, and the
+    collected evidence of a non-repository root never carries one, so the
+    injected collector leaves the pre-pass on the same branch.
+    """
+    return InMemoryOperationEvidenceCollector()
 
 
 def _policy() -> PipelinePolicy:
@@ -34,7 +102,18 @@ def _policy() -> PipelinePolicy:
     )
 
 
-def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> None:
+def test_exhaustion_restart_prevents_budget_replenishment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The handoff consults live Git three times -- the evidence snapshot,
+    # the owner's observation and the operation-completion proof. All
+    # three are replaced here by deterministic doubles that answer the
+    # way this non-repository root already answered, so the unit spawns
+    # no process and its cost does not scale with the host.
+    for module in _GIT_RUNNER_MODULES:
+        monkeypatch.setattr(f"{module}.run_git", _not_a_git_repository)
+
     # 1. Create a record that has reached max diagnostic repairs (3 attempts)
     record = IntegrationRecord(
         phase="integrating",
@@ -60,6 +139,7 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
         agents=["test-diagnostic-agent"],
         invoke=lambda *_: True,
         repair_attempt_cap=3,
+        collector=_evidence_collector(),
     )
     assert handoff_success is False
 
@@ -86,6 +166,7 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
         agents=["test-diagnostic-agent"],
         invoke=mock_invoke,
         repair_attempt_cap=3,
+        collector=_evidence_collector(),
     )
     assert handoff_restart is False
     mock_invoke.assert_not_called()

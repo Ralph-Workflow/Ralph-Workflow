@@ -284,6 +284,14 @@ __marimo__/
 # The directory contents are ignored, but the directory itself ships with a
 # tracked placeholder so the scratch path cited in AGENTS.md exists in every
 # clone (the project-policy readiness audit validates cited paths).
+# The bare "tmp/" rule is kept above the negations on purpose: the Ralph
+# auto-seed appends any missing default ignore pattern to the END of this
+# file, where a trailing "tmp/" would re-exclude the whole directory and
+# kill the "!/tmp/.gitkeep" negation. "!/tmp/" re-includes the root scratch
+# directory so the tracked placeholder can ship, while every scratch file
+# inside it stays ignored.
+tmp/
+!/tmp/
 tmp/*
 **/tmp/*
 !/tmp/.gitkeep
@@ -389,4 +397,3 @@ ralph-workflow/.opencode/
 ralph-workflow/pytest-of-*/
 .omo/*
 ralph-workflow/ralph/project_policy/agents_md.py
-tmp/

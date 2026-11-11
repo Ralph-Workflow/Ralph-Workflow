@@ -1,24 +1,34 @@
 from __future__ import annotations
 
-from dataclasses import replace
+import shutil
+from dataclasses import dataclass, replace
 from functools import cache
 from io import StringIO
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
+from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.pipeline import run_loop, runner
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.commit_state import CommitState
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.state import PipelineState
+from ralph.recovery.controller import RecoveryController
+from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
-from tests.test_pending_merge_commit_recovery import _commit, _git
+from tests.test_pending_merge_commit_recovery import _git
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
@@ -49,29 +59,159 @@ def _get_default_policy():
     return load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
 
 
+# ---------------------------------------------------------------------------
+# Shared scenario setup.
+#
+# Every test in this module starts from the same repository shape: a
+# ``main`` branch carrying the base commit and a ``feature`` branch
+# carrying the feature commit, with ``feature`` checked out. Building
+# that shape costs eight git subprocess spawns, and this module used to
+# pay them once per test -- six times for two scenarios. The shapes are
+# built ONCE per session below and copied per test instead, so the
+# per-test setup is a filesystem copy rather than repeated spawns.
+# ---------------------------------------------------------------------------
+
+#: The feature-branch content each scenario starts from.
+_SCENARIO_FEATURE_CONTENT: dict[str, str] = {
+    "completed_commit": "completed feature\n",
+    "durable_ownership": "feature\n",
+}
+
+
+def _current_branch(root: Path) -> str:
+    """Read the checked-out branch straight from the worktree's HEAD file.
+
+    ``git branch --show-current`` answers the same question, but it costs
+    a subprocess spawn per call; the HEAD file is the answer itself.
+    """
+    head = (root / ".git" / "HEAD").read_text(encoding="utf-8").strip()
+    prefix = "ref: refs/heads/"
+    assert head.startswith(prefix), f"expected an attached HEAD, got: {head}"
+    return head[len(prefix) :]
+
+
+def _branch_sha(root: Path, branch: str) -> str:
+    """Read a branch tip from the worktree's loose ref.
+
+    Same answer as ``git rev-parse <branch>`` for the fresh repositories
+    these scenarios build, without the subprocess spawn.
+    """
+    ref = root / ".git" / "refs" / "heads" / branch
+    if not ref.is_file():
+        return _git(root, "rev-parse", branch).stdout.strip()
+    return ref.read_text(encoding="utf-8").strip()
+
+
+def _commit(root: Path, path: str, content: str) -> str:
+    """Commit a file and return the new tip's SHA."""
+    FsWorkspace(root).write(path, content)
+    assert _git(root, "add", path).returncode == 0
+    assert _git(root, "commit", "-m", path).returncode == 0
+    return _branch_sha(root, _current_branch(root))
+
+
+def _seed_commit(root: Path, path: str, content: str) -> str:
+    """Write and commit a file with GitPython -- NO subprocess spawn.
+
+    Used to build the shared scenario templates: the commits only have
+    to exist as ordinary git objects, so writing them with GitPython
+    costs no process spawn at all.
+    """
+    from git import Repo
+
+    FsWorkspace(root).write(path, content)
+    repo = Repo(root)
+    try:
+        repo.index.add([path])
+        return repo.index.commit(path).hexsha
+    finally:
+        repo.close()
+
+
+@dataclass(frozen=True)
+class _Scenario:
+    """One prepared scenario worktree plus the SHAs it starts from.
+
+    The SHAs are the same in every copy of the scenario: a copy carries
+    the same objects and the same refs.
+    """
+
+    root: Path
+    target: str
+    base: str
+    feature: str
+
+
+@pytest.fixture(scope="session")
+def _scenario_templates(
+    tmp_path_factory: pytest.TempPathFactory,
+    _git_repo_template: Path,
+) -> dict[str, _Scenario]:
+    """Build each scenario's git worktree ONCE per test session."""
+    from git import Repo
+
+    scenarios: dict[str, _Scenario] = {}
+    for scenario, feature_content in _SCENARIO_FEATURE_CONTENT.items():
+        root = tmp_path_factory.mktemp(f"retained-resolution-{scenario}")
+        shutil.copytree(_git_repo_template, root, dirs_exist_ok=True)
+        target = _current_branch(root)
+        base = _seed_commit(root, "shared.txt", "base\n")
+        repo = Repo(root)
+        try:
+            repo.create_head("feature", base)
+            repo.head.set_reference(repo.heads.feature)
+        finally:
+            repo.close()
+        # The feature branch exists and is checked out, exactly as the
+        # per-test `git switch -c feature` used to guarantee.
+        assert _current_branch(root) == "feature"
+        assert _branch_sha(root, "feature") == base
+        feature = _seed_commit(root, "shared.txt", feature_content)
+        scenarios[scenario] = _Scenario(
+            root=root,
+            target=target,
+            base=base,
+            feature=feature,
+        )
+    return scenarios
+
+
+def _scenario_repo(tmp_path: Path, scenarios: dict[str, _Scenario], scenario: str) -> _Scenario:
+    """Copy a prepared scenario worktree into this test's own directory."""
+    prepared = scenarios[scenario]
+    root = tmp_path / "repo"
+    shutil.copytree(prepared.root, root)
+    return _Scenario(
+        root=root,
+        target=prepared.target,
+        base=prepared.base,
+        feature=prepared.feature,
+    )
+
+
+@pytest.fixture
+def completed_commit_repo(tmp_path: Path, _scenario_templates: dict[str, _Scenario]) -> _Scenario:
+    """A worktree with the base and feature commits the commit test starts from."""
+    return _scenario_repo(tmp_path, _scenario_templates, "completed_commit")
+
+
+@pytest.fixture
+def durable_ownership_repo(tmp_path: Path, _scenario_templates: dict[str, _Scenario]) -> _Scenario:
+    """A worktree with the base and feature commits the receipt test starts from."""
+    return _scenario_repo(tmp_path, _scenario_templates, "durable_ownership")
+
+
 @pytest.mark.parametrize("empty", [False, True])
 def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
-    tmp_git_repo: Path,
+    completed_commit_repo: _Scenario,
     monkeypatch: pytest.MonkeyPatch,
     empty: bool,
 ) -> None:
-    from rich.console import Console
-
-    from ralph.config.enums import Verbosity
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline import run_loop, runner
-    from ralph.pipeline.commit_state import CommitState
-    from ralph.pipeline.events import PipelineEvent
-    from ralph.pipeline.state import PipelineState
-    from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.testing import FakeConnectivityMonitor
-
-    root = tmp_git_repo
+    root = completed_commit_repo.root
     workspace = FsWorkspace(root)
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "shared.txt", "completed feature\n")
+    target = completed_commit_repo.target
+    base = completed_commit_repo.base
+    feature = completed_commit_repo.feature
     if not empty:
         workspace.write("shared.txt", "new committed work\n")
     context = make_display_context(console=Console(file=StringIO(), width=120))
@@ -183,7 +323,7 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
 
 @pytest.mark.parametrize("receipt", ["integrating", "integrated", "malformed", "missing_sha"])
 def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
-    tmp_git_repo: Path,
+    durable_ownership_repo: _Scenario,
     receipt: str,
 ) -> None:
     from ralph.pipeline.auto_integrate_record import (
@@ -192,11 +332,10 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
         record_path,
     )
 
-    root = tmp_git_repo
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "shared.txt", "feature\n")
+    root = durable_ownership_repo.root
+    target = durable_ownership_repo.target
+    base = durable_ownership_repo.base
+    feature = durable_ownership_repo.feature
     write_record(
         root,
         IntegrationRecord(
@@ -214,7 +353,6 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
     config = UnifiedConfig.model_validate(
         {
             "general": {
-                "auto_integrate_enabled": False,
                 "auto_integrate_target": target,
                 "auto_integrate_remote_enabled": False,
             }

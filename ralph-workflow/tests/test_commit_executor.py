@@ -29,29 +29,96 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+#: Branch the shared template repository is created on.
+_TEMPLATE_BRANCH = "main"
+
+#: Settings applied once, while the shared template is built. ``gc.auto=0``
+#: keeps git from packing refs behind the tests' back, ``core.fsync=none``
+#: takes the per-write fsync out of the commit path, and
+#: ``commit.gpgSign=false`` keeps the commit path free of a signing prompt.
+_TEMPLATE_CONFIG: tuple[tuple[str, str, str], ...] = (
+    ("user", "name", "Test User"),
+    ("user", "email", "test@example.com"),
+    ("gc", "auto", "0"),
+    ("core", "fsync", "none"),
+    ("commit", "gpgSign", "false"),
+)
+
+#: Entries that never need to travel with a repository copy. ``git init``
+#: writes a directory of inert sample hooks plus a description file; none of
+#: them take part in the behaviour under test, and dropping them keeps the
+#: per-test copy small.
+_COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
+
+
+@pytest.fixture(autouse=True)
+def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the unobserved commit-evidence snapshot out of every test.
+
+    ``execute_commit_effect`` snapshots the changed paths through
+    ``build_commit_evidence_bundle``. That snapshot exists to feed the
+    residual-work comparison, which runs only when a caller supplies
+    ``has_residual_work_fn`` -- no test in this module does -- and it also
+    renders the pending diff, which no assertion here reads. Replacing the
+    two snapshot helpers therefore removes six ``git`` subprocesses per
+    commit without changing any observable outcome.
+    """
+    from ralph.prompts import commit_evidence
+
+    monkeypatch.setattr(commit_evidence, "commit_generation_diff", lambda _root: "")
+    monkeypatch.setattr(commit_evidence, "list_changed_paths", lambda _root: [])
+
 
 @functools.lru_cache(maxsize=1)
 def _get_commit_executor_template() -> Path:
+    """Build the shared template repository once per session.
+
+    The template already carries the commit identity, the ``.agent/`` ignore
+    rule every Ralph workspace has, and the initial commit, so a test pays
+    for a copy instead of for ``git init`` plus a fresh commit.
+    """
     base = Path(tempfile.mkdtemp(prefix="commit-executor-template-"))
-    repo = Repo.init(base)
-    repo.config_writer().set_value("user", "name", "Test User").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    repo = Repo.init(base, initial_branch=_TEMPLATE_BRANCH)
+    writer = repo.config_writer()
+    for section, option, value in _TEMPLATE_CONFIG:
+        writer.set_value(section, option, value)
+    writer.release()
     actor = Actor("Test User", "test@example.com")
-    init_file = base / "initial.txt"
-    init_file.write_text("initial content", encoding="utf-8")
-    repo.index.add(["initial.txt"])
+    (base / "initial.txt").write_text("initial content", encoding="utf-8")
+    # ``.agent/`` is gitignored in every Ralph workspace: the pipeline's
+    # runtime state enters neither the sealed tree nor the commit, so the
+    # sealed tree and the committed tree stay comparable.
+    (base / ".gitignore").write_text(".agent/\n", encoding="utf-8")
+    repo.index.add(["initial.txt", ".gitignore"])
     repo.index.commit("initial commit", author=actor, committer=actor)
     repo.close()
     return base
 
 
+@functools.cache
+def _template_for_branch(branch: str) -> Path:
+    """Return a template repository whose only branch is ``branch``.
+
+    The branch rename is paid once per distinct branch name for the whole
+    session instead of once per test.
+    """
+    base = _get_commit_executor_template()
+    if branch == _TEMPLATE_BRANCH:
+        return base
+    variant = Path(tempfile.mkdtemp(prefix=f"commit-executor-template-{branch}-"))
+    shutil.rmtree(variant)
+    shutil.copytree(base, variant)
+    repo = Repo(variant)
+    repo.git.branch("-M", branch)
+    repo.close()
+    return variant
+
+
 def _init_test_git_repo(repo_root: Path, branch: str = "main") -> Repo:
-    template = _get_commit_executor_template()
-    shutil.copytree(template, repo_root, dirs_exist_ok=True)
-    repo = Repo(repo_root)
-    if repo.active_branch.name != branch:
-        repo.git.branch("-M", branch)
-    return repo
+    """Copy the shared template for ``branch`` into ``repo_root`` and open it."""
+    template = _template_for_branch(branch)
+    shutil.copytree(template, repo_root, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+    return Repo(repo_root)
 
 
 def _create_commit_message_artifact(repo_root: Path, message: str = "fix: update file") -> Path:
@@ -65,10 +132,41 @@ def _create_commit_message_artifact(repo_root: Path, message: str = "fix: update
 
 
 def _proposal_refs(repo_root: Path) -> list[str]:
-    """Return the proposal refs that exist in ``repo_root``."""
-    repo = Repo(repo_root)
-    raw = str(repo.git.for_each_ref("refs/ralph/proposals", "--format=%(refname)"))
-    return [line.strip() for line in raw.splitlines() if line.strip()]
+    """Return the proposal refs that exist in ``repo_root``.
+
+    The proposal namespace is written by the commit sweep and by the
+    proposal seal, and both keep their refs loose, so the refs are read
+    straight from the repository instead of paying for a
+    ``git for-each-ref`` subprocess on every observation.
+    """
+    git_dir = repo_root / ".git"
+    proposals = git_dir / "refs" / "ralph" / "proposals"
+    refs: set[str] = set()
+    if proposals.is_dir():
+        for path in proposals.rglob("*"):
+            if path.is_file():
+                refs.add(f"refs/ralph/proposals/{path.relative_to(proposals).as_posix()}")
+    packed = git_dir / "packed-refs"
+    if packed.is_file():
+        for raw_line in packed.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith(("#", "^")):
+                continue
+            parts = line.split()
+            if len(parts) == 2 and parts[1].startswith("refs/ralph/proposals/"):
+                refs.add(parts[1])
+    return sorted(refs)
+
+
+def _write_proposal_ref(repo_root: Path, ref: str, sha: str) -> None:
+    """Create the loose ref ``ref`` pointing at ``sha``.
+
+    Equivalent to ``git update-ref`` for this namespace: git keeps such
+    refs loose and records no reflog for them.
+    """
+    path = repo_root / ".git" / ref
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{sha}\n", encoding="utf-8")
 
 
 def _policy_bundle_with_retention(retention: int) -> PolicyBundle:
@@ -397,14 +495,11 @@ def test_rejected_proposal_ref_survives_a_later_successful_commit(tmp_path: Path
     ``git checkout <ref> -- .``. The post-commit proposal sweep must
     therefore never delete the ref that recovery depends on.
     """
-    repo = _init_test_git_repo(tmp_path, "main")
-    # ``.agent/`` is gitignored in every Ralph workspace: the pipeline's
-    # runtime state enters neither the sealed tree nor the commit, so the
-    # sealed tree and the committed tree stay comparable.
-    (tmp_path / ".gitignore").write_text(".agent/\n", encoding="utf-8")
-    repo.index.add([".gitignore"])
-    repo.index.commit("chore: ignore agent runtime state")
-
+    _init_test_git_repo(tmp_path, "main")
+    # ``.agent/`` is gitignored in every Ralph workspace (the shared
+    # template carries the rule): the pipeline's runtime state enters
+    # neither the sealed tree nor the commit, so the sealed tree and the
+    # committed tree stay comparable.
     tracked = tmp_path / "initial.txt"
     rejected_extra = tmp_path / "rejected_extra.bin"
 
@@ -447,16 +542,12 @@ def test_commit_prune_honours_the_policy_proposal_retention_limit(tmp_path: Path
     _init_test_git_repo(repo_root, "main")
 
     repo = Repo(repo_root)
-    (repo_root / ".gitignore").write_text(".agent/\n", encoding="utf-8")
-    repo.index.add([".gitignore"])
-    repo.index.commit("chore: ignore agent runtime state")
-
     head_sha = repo.head.commit.hexsha
     rejection_ref = "refs/ralph/proposals/run-x/4"
 
     def _setup_proposals() -> None:
         for iteration in (1, 2, 3):
-            repo.git.update_ref(f"refs/ralph/proposals/run-x/{iteration}", head_sha)
+            _write_proposal_ref(repo_root, f"refs/ralph/proposals/run-x/{iteration}", head_sha)
         if rejection_ref not in _proposal_refs(repo_root):
             tracked = repo_root / "initial.txt"
             tracked.write_text("rejected content\n", encoding="utf-8")

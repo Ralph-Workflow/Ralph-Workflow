@@ -100,7 +100,7 @@ re-opens the question instead of silently missing it.
     or `yaml.CSafeLoader`); XML external-entity expansion (parse XML
     with `defusedxml`).
   - Boundary: subprocess NDJSON lines are parsed by stream parsers
-    under `ralph/parsers/`; the parser boundary validates the JSON
+    under `ralph/agents/parsers/`; the parser boundary validates the JSON
     envelope shape before construction.
 
 * Subprocess and shell execution: ACTIVE.
@@ -152,7 +152,7 @@ re-opens the question instead of silently missing it.
   - The watchdog contract — `IdleWatchdog` +
     `PostExitWatchdog` (`ralph/agents/idle_watchdog/`) — owns every
     wall-clock decision; ad-hoc `time.sleep()` loops in
-    `ralph/agents/invoke.py` are forbidden and detected by
+    `ralph/agents/invoke/` are forbidden and detected by
     `ralph/testing/audit_di_seam.py`.
 
 ## Project facts to resolve
@@ -182,13 +182,15 @@ RALPH-FACT: test_integrity_command: uv run python -m ralph.testing.audit_test_in
 | Static analysis coverage | Security owner | the shipped runtime carries no static-analysis finding that the change introduces | the Bandit baseline-diff scan of the shipped runtime names every finding the change introduces | the Bandit baseline-diff scan of the shipped runtime names every finding the change introduces | deterministic: sast baseline-diff audit (audit_sast) | when a real static analyzer replaces Bandit as the shipped Python scanner |
 | Threat surface inventory | Security owner | every project's threat surfaces are enumerated in the security policy's Threat surfaces section | Threat surfaces section names each surface; the surface list is reviewed on every policy bump | Threat surfaces section names each surface | advisory: threat surface review; review: on every policy bump or surface change | when the project is single-purpose and the surfaces are constant |
 | Instruction and MCP-config integrity | Security owner | instruction files do not promote file, tool-output, or MCP-response content to instruction status and carry no hidden or bidirectional characters, and every third-party MCP server declaration carries a pin and a review trigger | a third-party MCP server declaration has no pinned version or revision reference or no review trigger, an instruction file promotes file, tool-output, or MCP-response content to instruction status, or an instruction surface file carries a hidden or bidirectional character | the unpinned third-party MCP declaration, the promotion imperative, or the hidden character the instruction integrity audit reports | deterministic: instruction integrity audit (audit_instruction_integrity) | when the instruction-integrity gate is retired |
+| Audit log of agent actions | Security owner | the agent's actions leave a record that names the session, the capability, and the outcome | the reviewer reads the audit sink and finds the session id, the mapped capability, and the access outcome | the session id, the capability, and the outcome the audit sink records | advisory: the audit sink buffers records in memory and persists nothing, so no offline check can decide it; review: when the audit sink gains a durable sink, or when its record fields change | when the project stops recording agent actions |
 
 ## Advisory rules
 
 Two rules are advisory: no offline gate measures them, so each one
 carries the reason it cannot be gated and the trigger that reopens its
-review. The rows use the same seven-column grammar as the Guard
-inventory above.
+review. Each rule's guard row lives in the `## Guard inventory` table
+above, so the readiness validator reads it with the same seven-column
+grammar as every other row.
 
 Prompts are not controls. A prompt that asks an agent not to perform a
 destructive action is a request, not a boundary; only the tooling that
@@ -197,12 +199,10 @@ rules that own those controls — the workspace-confinement rule, the
 scoped-commit rule, and the trunk-based branch rule in `AGENTS.md` —
 instead of restating them: it names them as the controls, adds no
 prompt-level ban that could be mistaken for a control, and defers to the
-rules that own them.
+rules that own them. (evidence: anecdotal)
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
-|---|---|---|---|---|---|---|
-| Destructive actions are blocked by tooling | Security owner | a destructive operation is blocked by the tooling that runs the agent, not by prompt prose | the reviewer names the tooling boundary that blocks the operation — workspace confinement, the scoped commit path, or the trunk-based branch rule in `AGENTS.md` | the tooling boundary the reviewer names | advisory: no gate measures prompt prose, so the tooling boundary is the control; review: when the workspace-confinement, scoped-commit, or branch rules change | when the project has no destructive operation left to block |
-| Audit log of agent actions | Security owner | the agent's actions leave a record that names the session, the capability, and the outcome | the reviewer reads the audit sink and finds the session id, the mapped capability, and the access outcome | the session id, the capability, and the outcome the audit sink records | advisory: the audit sink buffers records in memory and persists nothing, so no offline check can decide it; review: when the audit sink gains a durable sink, or when its record fields change | when the project stops recording agent actions |
+Audit log of agent actions. The agent's actions leave a record that
+names the session, the capability, and the outcome. (evidence: moderate)
 
 Ralph's audit sink is `RalphAuditSinkAdapter`
 (`ralph/mcp/artifacts/audit_adapter.py:125`). It buffers records in

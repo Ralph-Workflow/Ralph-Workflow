@@ -35,17 +35,38 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 _MODULE_REPO_TEMPLATE: list[Path] = []
 
+#: Entries that never need to travel with a repository copy. ``git init``
+#: writes a directory of inert sample hooks plus a description file; none of
+#: them take part in the behaviour under test, and dropping them keeps the
+#: per-test copy small.
+_COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
+
+
+@pytest.fixture(autouse=True)
+def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the unobserved commit-evidence snapshot out of every test.
+
+    ``execute_commit_effect`` snapshots the changed paths through
+    ``build_commit_evidence_bundle``. That snapshot exists to feed the
+    residual-work comparison, which runs only when a caller supplies
+    ``has_residual_work_fn`` -- no test in this module does -- and it also
+    renders the pending diff, which no assertion here reads. Replacing the
+    two snapshot helpers therefore removes six ``git`` subprocesses per
+    commit without changing any observable outcome.
+    """
+    from ralph.prompts import commit_evidence
+
+    monkeypatch.setattr(commit_evidence, "commit_generation_diff", lambda _root: "")
+    monkeypatch.setattr(commit_evidence, "list_changed_paths", lambda _root: [])
+
 
 @pytest.fixture(scope="module", autouse=True)
 def _init_repo_template(tmp_path_factory: pytest.TempPathFactory) -> None:
     td = tmp_path_factory.mktemp("dhead_template")
-    from ralph.git.subprocess_runner import run_git
-
-    run_git(("init",), cwd=td, label="test-repo-init")
-    repo = Repo(td)
-    repo.config_writer().set_value("user", "name", "Test Committer").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    repo = Repo.init(td, initial_branch="main")
     writer = repo.config_writer()
+    writer.set_value("user", "name", "Test Committer")
+    writer.set_value("user", "email", "test@example.com")
     writer.set_value("gc", "auto", "0")
     writer.set_value("core", "fsync", "none")
     writer.set_value("core", "logAllRefUpdates", "false")
@@ -60,7 +81,6 @@ def _init_repo_template(tmp_path_factory: pytest.TempPathFactory) -> None:
     gitignore_file.write_text(".agent/\n", encoding="utf-8")
     repo.index.add(["README.md", ".gitignore"])
     repo.index.commit("initial commit", author=actor, committer=actor)
-    repo.git.branch("-M", "main")
 
     # Create feature branch
     repo.git.checkout("-b", "feature/work")
@@ -94,7 +114,7 @@ def _make_test_repo(repo_root: Path, feature_branch: str = "feature/work") -> Re
         "must run before any test in this module calls _make_test_repo."
     )
     repo_root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(_MODULE_REPO_TEMPLATE[0], repo_root, dirs_exist_ok=True)
+    shutil.copytree(_MODULE_REPO_TEMPLATE[0], repo_root, dirs_exist_ok=True, ignore=_COPY_IGNORE)
     repo = Repo(repo_root)
     if feature_branch != "feature/work":
         repo.git.checkout("-B", feature_branch)

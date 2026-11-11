@@ -41,7 +41,9 @@ sleep, which ends each loop deterministically without a real wait.
 from __future__ import annotations
 
 import contextlib
+import shutil
 from collections.abc import Callable, Generator
+from functools import cache
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -155,25 +157,63 @@ def _seed_unreadable_record(workspace_root: Path, cause: str) -> bytes:
     return payload
 
 
-@pytest.fixture(autouse=True)
-def workspace_root(tmp_path: Path) -> Generator[Path, None, None]:
-    """A real git worktree: the entry-point seams run real git commands."""
-    from ralph.git.subprocess_runner import GitRunOptions, run_git
+def _ignore_inert_git_samples(directory: str, names: list[str]) -> set[str]:
+    """Skip git's inert ``*.sample`` hooks when copying a worktree.
 
-    for args in (
-        ["init", "-q", "-b", "main"],
-        ["config", "user.email", "test@example.com"],
-        ["config", "user.name", "test"],
-    ):
-        assert (
-            run_git(
-                args,
-                cwd=tmp_path,
-                label="unreadable-record-test",
-                options=GitRunOptions(timeout=5),
-            ).returncode
-            == 0
-        )
+    Nothing ever runs a ``*.sample`` file, so copying the fourteen of
+    them into every test's worktree only costs filesystem time.
+    """
+    del names
+    return {"hooks"} if Path(directory).name == ".git" else set()
+
+
+@pytest.fixture(scope="session")
+def _git_worktree_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build the shared git worktree template ONCE per test session.
+
+    Every entry point in this module needs a real git worktree, and
+    building one from scratch costs three git subprocess spawns per test
+    (init + two config writes). The template is built once and copied
+    per test, so the per-test setup becomes a filesystem copy instead of
+    repeated spawns.
+
+    The template is an EMPTY repository (no commits), exactly like the
+    worktree this module used to build per test: an empty repo keeps the
+    recovery seams on their fail-closed branch instead of letting them
+    walk into the landing/publication path.
+
+    The repository itself is written by GitPython (the same builder the
+    shared ``tests/conftest.py`` template uses), so preparing it costs
+    NO subprocess spawns at all.
+    """
+    from git import Repo
+
+    root = tmp_path_factory.mktemp("unreadable-record-template")
+    repo = Repo.init(root, initial_branch="main")
+    try:
+        writer = repo.config_writer()
+        try:
+            writer.set_value("user", "name", "test")
+            writer.set_value("user", "email", "test@example.com")
+        finally:
+            writer.release()
+    finally:
+        repo.close()
+    return root
+
+
+@pytest.fixture
+def workspace_root(
+    tmp_path: Path,
+    _git_worktree_template: Path,
+) -> Generator[Path, None, None]:
+    """A real git worktree: the entry-point seams run real git commands."""
+    shutil.copytree(
+        _git_worktree_template,
+        tmp_path,
+        dirs_exist_ok=True,
+        ignore=_ignore_inert_git_samples,
+    )
     yield tmp_path
 
 
@@ -208,6 +248,32 @@ def _as_mock(value: object) -> MagicMock:
     return value
 
 
+@cache
+def _config() -> UnifiedConfig:
+    """The configuration every entry point in this module runs under.
+
+    Configured-remote synchronization is OFF. These entry points own
+    the LOCAL durable-record contract: the record file, the escalation
+    decision, the dispatch gate and the operator label. A configured
+    remote adds a remote-publication observation to every seam -- each
+    one a real git subprocess against ``refs/remotes/origin/<target>`` --
+    without changing what any assertion here checks.
+    """
+    return UnifiedConfig.model_validate({"general": {"auto_integrate_remote_enabled": False}})
+
+
+@cache
+def _default_policy_bundle() -> PolicyBundle:
+    """Load the repository's default policy bundle once per process.
+
+    The bundle on disk is immutable for the lifetime of the test
+    session, so re-reading and re-validating it on every helper call
+    only bought repeated file I/O.
+    """
+    repo_defaults = Path(__file__).parents[1] / "ralph" / "policy" / "defaults"
+    return load_policy(repo_defaults)
+
+
 def _policy_bundle() -> PolicyBundle:
     policy = PipelinePolicy(
         phases={
@@ -224,8 +290,7 @@ def _policy_bundle() -> PolicyBundle:
         entry_phase="development",
         terminal_phase="complete",
     )
-    repo_defaults = Path(__file__).parents[1] / "ralph" / "policy" / "defaults"
-    return load_policy(repo_defaults).model_copy(update={"pipeline": policy})
+    return _default_policy_bundle().model_copy(update={"pipeline": policy})
 
 
 def _loop_context(
@@ -236,7 +301,7 @@ def _loop_context(
     return run_loop._LoopContext(
         policy_bundle=_policy_bundle(),
         workspace_scope=WorkspaceScope(workspace_root),
-        config=UnifiedConfig(),
+        config=_config(),
         active_display=MagicMock(),
         display_context=MagicMock(),
         effective_verbosity=MagicMock(),
@@ -352,7 +417,7 @@ def test_startup_entry_point_escalates_to_the_ladder(workspace_root: Path) -> No
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
         recovered = run_loop._run_auto_integrate_recovery_preamble(
-            WorkspaceScope(workspace_root), UnifiedConfig()
+            WorkspaceScope(workspace_root), _config()
         )
         assert recovered is not None
         assert recovered.last_outcome.value == ESCALATION_OUTCOME
@@ -370,7 +435,7 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
         recovered = run_loop._run_auto_integrate_recovery_preamble(
-            WorkspaceScope(workspace_root), UnifiedConfig()
+            WorkspaceScope(workspace_root), _config()
         )
         assert recovered is not None
         state = PipelineState(phase="development", rebase=recovered)
@@ -414,7 +479,7 @@ def test_commit_entry_point_escalates_to_the_ladder(workspace_root: Path) -> Non
         deps.policy_bundle_factory = None
         verdict = prepare_commit_integration(
             workspace_root,
-            UnifiedConfig(),
+            _config(),
             deps,
             MagicMock(),
             MagicMock(),
@@ -428,7 +493,7 @@ def test_commit_entry_point_escalates_to_the_ladder(workspace_root: Path) -> Non
             effect=CommitEffect(message_file="msg.txt"),
             event=PipelineEvent.COMMIT_SUCCESS,
             commit_phase_def=phase_def,
-            config=UnifiedConfig(),
+            config=_config(),
             workspace_scope=WorkspaceScope(workspace_root),
             state=PipelineState(phase="development", rebase=RebaseState()),
             display=MagicMock(),
@@ -450,7 +515,7 @@ def test_cooldown_entry_point_escalates_to_the_ladder(workspace_root: Path) -> N
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
         recovered = run_loop._run_auto_integrate_recovery_preamble(
-            WorkspaceScope(workspace_root), UnifiedConfig()
+            WorkspaceScope(workspace_root), _config()
         )
         assert recovered is not None
         state = PipelineState(phase="development", rebase=recovered)
@@ -485,7 +550,7 @@ def test_parallel_join_entry_point_escalates_to_the_ladder(workspace_root: Path)
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
         joined = run_worker_auto_integration(
-            config=UnifiedConfig(),
+            config=_config(),
             workspace_scope=WorkspaceScope(workspace_root),
             policy_bundle=_policy_bundle(),
             registry=MagicMock(),
@@ -510,7 +575,7 @@ def test_terminal_entry_point_escalates_to_the_ladder(workspace_root: Path) -> N
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
         recovered = run_loop._run_auto_integrate_recovery_preamble(
-            WorkspaceScope(workspace_root), UnifiedConfig()
+            WorkspaceScope(workspace_root), _config()
         )
         assert recovered is not None
         terminal_state = PipelineState(phase="complete", rebase=recovered)
@@ -685,7 +750,7 @@ def test_operator_label_names_the_next_autonomous_action(workspace_root: Path) -
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
         recovered = run_loop._run_auto_integrate_recovery_preamble(
-            WorkspaceScope(workspace_root), UnifiedConfig()
+            WorkspaceScope(workspace_root), _config()
         )
         assert recovered is not None
         label = format_integration_label(recovered)
@@ -711,7 +776,7 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         # the bounded retry, so the injected fake clock ends the loop
         # deterministically at that first paced sleep.
         recovered = run_loop._run_auto_integrate_recovery_preamble(
-            WorkspaceScope(workspace_root), UnifiedConfig()
+            WorkspaceScope(workspace_root), _config()
         )
         assert recovered is not None
         state = PipelineState(phase="development", rebase=recovered)
@@ -744,7 +809,7 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         fresh_sleep = _bounded_clock()
         fresh_ctx = _loop_context(workspace_root, fresh_latest, fresh_sleep)
         recovered_restart = run_loop._run_auto_integrate_recovery_preamble(
-            WorkspaceScope(workspace_root), UnifiedConfig()
+            WorkspaceScope(workspace_root), _config()
         )
         assert recovered_restart is not None
         with contextlib.suppress(_LoopBudgetExhausted):
@@ -782,7 +847,7 @@ def test_absent_record_is_the_proceeding_control(workspace_root: Path) -> None:
     assert outcome.record is None
     assert outcome.unreadable_reason is None
     recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
+        WorkspaceScope(workspace_root), _config()
     )
     # No record: the startup seam has nothing to recover.
     assert recovered is None or not recovered.is_intervention_required

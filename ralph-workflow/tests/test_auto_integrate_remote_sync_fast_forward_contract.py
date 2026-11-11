@@ -62,6 +62,22 @@ it either. Root causes (see ``docs/agents/remote-sync.md``):
 
 Every remote here is a local bare repository: no test reaches the network,
 and no coding agent is ever started.
+
+Scenario setup
+==============
+
+Every scenario needs the same topology -- a bare origin, a clone holding
+``main``, a linked worktree on ``feature`` and a writer clone -- and the
+scenarios differ only in the remote's name and in whether the feature branch
+owns a commit. The three topologies are therefore built ONCE per session and
+copied per test: a copy is a filesystem copy plus a rewrite of the absolute
+paths git records for the remote URL and for the linked worktree, so the
+objects, refs and index come with it. The commits and the repository
+metadata are written by GitPython, which needs no process spawn at all; the
+copies themselves cost no git invocation either. The remote advances are
+published the same way: the writer clone makes the commit and the objects it
+introduced are copied into the remote, which is the state a ``git push``
+leaves the remote in.
 """
 
 from __future__ import annotations
@@ -69,9 +85,10 @@ from __future__ import annotations
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
+from git import Commit, Repo, Tree
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
@@ -85,9 +102,6 @@ from ralph.pipeline.auto_integrate_remote_constants import RemoteSyncStatus
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 # Each scenario builds a bare origin and three checkouts with real git; on a
 # loaded xdist host that takes several seconds, so the per-test budget is
 # raised for these real-Git proofs only.
@@ -95,12 +109,22 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 _TARGET = "main"
 _FEATURE = "feature"
+#: Name of the linked worktree the agent runs in (Ralph's agent layout).
+_WORKTREE = "wt-001-feature"
 
-#: Session-scoped pristine seed repository, populated by the
-#: ``_seed_repo_template`` session fixture. The container is empty only
-#: before the fixture has run (the fixture is autouse, so every test sees
-#: a populated template).
-_SEED_TEMPLATE: list[Path] = []
+#: The scenario topologies, built once per session by the
+#: ``_scenario_templates`` fixture: variant name -> template root. The
+#: container is empty only before the fixture has run (the fixture is
+#: autouse, so every test sees a populated template).
+_TEMPLATES: dict[str, Path] = {}
+
+#: The topology variants the scenarios need: variant name -> (remote name,
+#: whether the feature branch owns a commit).
+_VARIANTS: dict[str, tuple[str, bool]] = {
+    "origin-plain": ("origin", False),
+    "origin-feature": ("origin", True),
+    "tacos-feature": ("tacos", True),
+}
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -118,15 +142,110 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 def _commit(repo: Path, filename: str, content: str, message: str) -> str:
+    """Commit a file and return the new tip's SHA.
+
+    GitPython writes the blob, the tree and the commit object itself, so a
+    commit costs no process spawn; ``git add`` + ``git commit`` answered the
+    same question for a spawn each.
+    """
     (repo / filename).write_text(content, encoding="utf-8")
-    _git(repo, "add", filename)
-    _git(repo, "commit", "-q", "-m", message)
-    return _git(repo, "rev-parse", "HEAD")
+    git_repo = Repo(repo)
+    try:
+        git_repo.index.add([filename])
+        return git_repo.index.commit(message).hexsha
+    finally:
+        git_repo.close()
 
 
 def _identify(repo: Path) -> None:
-    _git(repo, "config", "user.email", "test@example.com")
-    _git(repo, "config", "user.name", "Test User")
+    """Give the repository a committer identity, without a process spawn."""
+    git_repo = Repo(repo)
+    try:
+        writer = git_repo.config_writer()
+        try:
+            writer.set_value("user", "email", "test@example.com")
+            writer.set_value("user", "name", "Test User")
+        finally:
+            writer.release()
+    finally:
+        git_repo.close()
+
+
+def _publish_commit(writer: Path, bare: Path, filename: str, content: str, message: str) -> str:
+    """Commit a file in the writer clone and publish it to the bare remote.
+
+    The commit is a real git commit, made by GitPython in the writer; the
+    publication copies the objects it introduced into the remote's object
+    database and moves the remote's ref. That is what ``git push`` does to
+    the remote's state, without the transport's process spawns -- a push
+    costs a receive-pack per advance, and every scenario pays for one.
+    """
+    (writer / filename).write_text(content, encoding="utf-8")
+    git_repo = Repo(writer)
+    try:
+        git_repo.index.add([filename])
+        commit = git_repo.index.commit(message)
+        _copy_objects(git_repo, Repo(bare), commit)
+    finally:
+        git_repo.close()
+    _set_ref(bare, f"refs/heads/{_TARGET}", commit.hexsha)
+    return commit.hexsha
+
+
+def _copy_objects(source: Repo, target: Repo, commit: Commit) -> None:
+    """Copy the objects a commit introduced into the target's object database.
+
+    Git objects are immutable, so the loose files are copied verbatim; the
+    objects the target already holds are left alone.
+    """
+    source_objects = Path(source.git_dir) / "objects"
+    target_objects = Path(target.git_dir) / "objects"
+    for sha in [commit.hexsha, *_tree_shas(commit.tree)]:
+        name = f"{sha[:2]}/{sha[2:]}"
+        destination = target_objects / name
+        if destination.exists():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_objects / name, destination)
+
+
+def _tree_shas(tree: Tree) -> list[str]:
+    """The SHAs of a tree and of everything below it."""
+    shas = [tree.hexsha]
+    for entry in tree:
+        if isinstance(entry, Tree):
+            shas.extend(_tree_shas(entry))
+        else:
+            shas.append(entry.hexsha)
+    return shas
+
+
+def _set_ref(git_dir: Path, ref: str, sha: str) -> None:
+    """Write a loose ref, exactly as git does when a ref is updated."""
+    path = git_dir / ref
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{sha}\n", encoding="utf-8")
+
+
+def _ref_sha(git_dir: Path, name: str) -> str:
+    """Read a branch tip from the repository's own ref files.
+
+    ``git rev-parse`` answers the same question, but it costs a process spawn
+    per call; the loose ref (or its packed form) is the answer itself.
+    """
+    ref = f"refs/heads/{name}"
+    loose = git_dir / "refs" / "heads" / name
+    if loose.is_file():
+        return loose.read_text(encoding="utf-8").strip()
+    packed = git_dir / "packed-refs"
+    if packed.is_file():
+        for line in packed.read_text(encoding="utf-8").splitlines():
+            if not line or line.startswith(("#", "^")):
+                continue
+            sha, _, ref_name = line.partition(" ")
+            if ref_name == ref:
+                return sha
+    return _git(git_dir, "rev-parse", ref)
 
 
 def _is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
@@ -144,10 +263,9 @@ def _is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
 class _Topology:
     """A clone with local ``main`` + ``feature`` and a second writer clone.
 
-    ``clone`` is the primary checkout (``main`` checked out there unless the
-    scenario says otherwise); ``feature`` is the checkout Ralph runs in (a
-    linked worktree on ``feature``, or the clone itself); ``writer`` pushes
-    the remote advance to ``bare``.
+    ``clone`` is the primary checkout (``main`` checked out there);
+    ``feature`` is the checkout Ralph runs in (a linked worktree on
+    ``feature``); ``writer`` makes the remote advance that ``bare`` publishes.
     """
 
     bare: Path
@@ -157,80 +275,127 @@ class _Topology:
     remote: str
 
     def ref(self, name: str) -> str:
-        return _git(self.clone, "rev-parse", f"refs/heads/{name}")
+        """The local tip of ``name``."""
+        return _ref_sha(self.clone / ".git", name)
 
     def origin_tip(self) -> str:
-        return _git(self.bare, "rev-parse", f"refs/heads/{_TARGET}")
+        """The tip of ``<remote>/main``."""
+        return _ref_sha(self.bare, _TARGET)
 
     def push_remote_advance(self, filename: str = "remote.txt") -> str:
-        """Push one new commit to ``<remote>/main`` from the writer clone."""
-        _git(self.writer, "pull", "-q", "--ff-only", self.remote, _TARGET)
-        sha = _commit(self.writer, filename, f"{filename}\n", f"remote advance {filename}")
-        _git(self.writer, "push", "-q", self.remote, _TARGET)
-        return sha
+        """Advance ``<remote>/main`` by one commit, made in the writer clone."""
+        if _ref_sha(self.writer / ".git", _TARGET) != _ref_sha(self.bare, _TARGET):
+            # The writer trails the remote (the publication reconciler moved
+            # it); catch up before committing on top of it.
+            _git(self.writer, "pull", "-q", "--ff-only", self.remote, _TARGET)
+        return _publish_commit(
+            self.writer, self.bare, filename, f"{filename}\n", f"remote advance {filename}"
+        )
+
+
+def _ignore_inert_git_samples(directory: str, names: list[str]) -> set[str]:
+    """Skip git's inert ``*.sample`` hooks when copying a scenario.
+
+    Nothing ever runs a ``*.sample`` file, so copying the fourteen of them
+    into every test's repository only costs filesystem time.
+    """
+    del names
+    name = Path(directory).name
+    return {"hooks"} if name == ".git" or name.endswith(".git") else set()
+
+
+def _rebase_paths(source: Path, target: Path) -> None:
+    """Point the copied repository at the copy's own location.
+
+    ``git`` records absolute paths for the remote URL and for a linked
+    worktree's administrative files; a copy carries the template's paths
+    until they are rewritten.
+    """
+    old = str(source).encode()
+    new = str(target).encode()
+    candidates = [
+        target / "clone" / ".git" / "config",
+        target / "writer" / ".git" / "config",
+        target / "origin.git" / "config",
+        target / _WORKTREE / ".git",
+        *(target / "clone" / ".git" / "worktrees").glob("*/gitdir"),
+    ]
+    for path in candidates:
+        data = path.read_bytes()
+        patched = data.replace(old, new)
+        if patched != data:
+            path.write_bytes(patched)
+
+
+def _build_template(root: Path, *, remote: str, feature_commit: bool) -> None:
+    """Build one scenario topology under ``root``.
+
+    ``root`` holds a bare origin, a clone with ``main``, a linked worktree
+    on ``feature`` and a writer clone -- the copy source for the tests.
+    """
+    seed = root / "seed"
+    seed_repo = Repo.init(seed, initial_branch=_TARGET)
+    try:
+        _identify(seed)
+        (seed / "seed.txt").write_text("seed\n", encoding="utf-8")
+        seed_repo.index.add(["seed.txt"])
+        seed_repo.index.commit("seed")
+    finally:
+        seed_repo.close()
+    bare = root / "origin.git"
+    _git(root, "clone", "-q", "--bare", str(seed), str(bare))
+    clone = root / "clone"
+    _git(root, "clone", "-q", "-o", remote, str(bare), str(clone))
+    _identify(clone)
+    (clone / ".git" / "info" / "exclude").write_text(".agent/\n", encoding="utf-8")
+    feature = root / _WORKTREE
+    _git(clone, "worktree", "add", "-q", "-b", _FEATURE, str(feature), _TARGET)
+    if feature_commit:
+        _commit(feature, "feature.txt", "feature\n", "feature work")
+    writer = root / "writer"
+    _git(root, "clone", "-q", "-o", remote, str(bare), str(writer))
+    _identify(writer)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _seed_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Create the pristine seed repository once per session.
+def _scenario_templates(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Create the scenario topologies once per session.
 
-    Every scenario needs a seed repository holding exactly one commit on
-    ``main``. Building it per test costs a real ``git init`` plus a real
-    ``git commit`` (object write, index refresh, zlib compression) on every
-    call, and none of that work varies between tests. The template is built
-    once; each test copies the directory, so every scenario still starts from
-    its own pristine, independently mutable repository.
+    Building a topology costs a real ``git clone``, a real ``git worktree
+    add`` and a real ``git commit``, and none of that work varies between
+    tests. The templates are built once; each test copies the directory it
+    needs, so every scenario still starts from its own pristine,
+    independently mutable repositories.
     """
-    template_root = tmp_path_factory.mktemp("remote-sync-seed")
-    _git(template_root, "init", "-q", "-b", _TARGET)
-    _identify(template_root)
-    _commit(template_root, "seed.txt", "seed\n", "seed")
-    _SEED_TEMPLATE.append(template_root)
-    return template_root
+    for variant, (remote, feature_commit) in _VARIANTS.items():
+        root = tmp_path_factory.mktemp(f"remote-sync-{variant}")
+        _build_template(root, remote=remote, feature_commit=feature_commit)
+        _TEMPLATES[variant] = root
 
 
 def _build(
     tmp_path: Path,
     *,
     remote: str = "origin",
-    linked: bool = True,
     feature_commit: bool = True,
 ) -> _Topology:
-    """Bare origin, a clone with ``main`` + ``feature``, and a writer clone.
+    """Copy the prepared topology into this test's own directory.
 
-    ``linked=True`` puts ``feature`` in a linked worktree (Ralph's agent
-    layout) with ``main`` checked out in the primary clone; ``linked=False``
-    checks ``feature`` out in the clone itself so ``main`` has no checkout.
+    The copy carries the objects, refs and index of the template, so the
+    scenario starts from the same pristine state a freshly built topology
+    would give -- without paying for the git invocations that build one.
     """
-    seed = tmp_path / "seed"
-    template = _SEED_TEMPLATE[0] if _SEED_TEMPLATE else None
-    if template is not None:
-        # Copy the session template instead of paying a fresh
-        # ``git init`` + ``git commit`` per scenario.
-        shutil.copytree(template, seed)
-    else:
-        seed.mkdir()
-        _git(seed, "init", "-q", "-b", _TARGET)
-        _identify(seed)
-        _commit(seed, "seed.txt", "seed\n", "seed")
-    bare = tmp_path / "origin.git"
-    _git(tmp_path, "clone", "-q", "--bare", str(seed), str(bare))
-    clone = tmp_path / "clone"
-    _git(tmp_path, "clone", "-q", "-o", remote, str(bare), str(clone))
-    _identify(clone)
-    (clone / ".git" / "info" / "exclude").write_text(".agent/\n", encoding="utf-8")
-    if linked:
-        feature = tmp_path / "wt-001-feature"
-        _git(clone, "worktree", "add", "-q", "-b", _FEATURE, str(feature), _TARGET)
-    else:
-        _git(clone, "checkout", "-q", "-b", _FEATURE)
-        feature = clone
-    if feature_commit:
-        _commit(feature, "feature.txt", "feature\n", "feature work")
-    writer = tmp_path / "writer"
-    _git(tmp_path, "clone", "-q", "-o", remote, str(bare), str(writer))
-    _identify(writer)
-    return _Topology(bare=bare, clone=clone, feature=feature, writer=writer, remote=remote)
+    variant = f"{remote}-{'feature' if feature_commit else 'plain'}"
+    template = _TEMPLATES[variant]
+    shutil.copytree(template, tmp_path, dirs_exist_ok=True, ignore=_ignore_inert_git_samples)
+    _rebase_paths(template, tmp_path)
+    return _Topology(
+        bare=tmp_path / "origin.git",
+        clone=tmp_path / "clone",
+        feature=tmp_path / _WORKTREE,
+        writer=tmp_path / "writer",
+        remote=remote,
+    )
 
 
 def _config(*, remote: str = "origin", remote_enabled: bool = True) -> UnifiedConfig:
