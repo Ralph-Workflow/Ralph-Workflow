@@ -323,22 +323,22 @@ def test_something_timing_sensitive() -> None: ...
 
 ## TDD discipline
 
-**Write the failing test first.** No production code without a red test.
+**Name the check before you implement.** Write down the runnable
+pass/fail check that decides the change is done, and keep it green.
 
-1. **Red** — write a test that describes the new behavior and watch it fail.
-2. **Green** — implement the minimal production change to make the test pass.
-3. **Refactor** — clean up duplication and structure, keeping tests green.
+* The red / green / refactor cycle is taught by the
+  `test-driven-development` skill; use it when that skill is available.
+* A bug-fix test takes its expected value from the spec — or, for a
+  third-party library, from that library's own documentation — not from
+  a run of the code under test.
 
 ```python
-# Red: write the failing test first — it will fail
+# The check that decides the change: one test, one observable outcome
 def test_pipeline_rejects_empty_agent_chain() -> None:
     state = PipelineState(phase="planning", dev_chain=AgentChainState(agents=[]))
     agents_policy, pipeline_policy, _ = load_default_policy()
     effect = determine_next_effect(state, pipeline_policy, agents_policy)
     assert isinstance(effect, ExitFailureEffect)
-
-# Green: add minimal production logic
-# Refactor: simplify / extract helpers
 ```
 
 ---
@@ -831,7 +831,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_audit_parallelization_dormant.py` | 2 | 0 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_audit_resource_lifecycle.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_audit_skill_auto_commit.py` | 5 | 0 | 10 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
-| `tests/test_audit_skill_mirror_freshness.py` | 3 | 3 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_audit_template_render_integrity.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_audit_terminal_escape_containment.py` | 11 | 0 | 5 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_audit_typecheck_bypass.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

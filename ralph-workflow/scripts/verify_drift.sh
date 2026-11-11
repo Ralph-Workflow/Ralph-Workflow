@@ -55,7 +55,7 @@ fi
 if grep -RIn --include="*.py" -E "os\.environ\.(get|__getitem__)\(\"RALPH_" ralph/ \
   --exclude-dir=__pycache__ --exclude-dir=.venv --exclude-dir=.pytest_cache --exclude-dir=.mypy_cache \
   | grep -v -E "RALPH_(WORKFLOW_PRO|WORKSPACE|PROMPT_PATH)\b" \
-  | grep -v -E "ralph/pro_support/(env|__init__)\.py|ralph/mcp/server/_fallback_standalone_server\.py|ralph/cli/main\.py|ralph/testing/audit_skill_mirror_freshness\.py|tests/(test_pro_support|test_audit_mcp_timeout|test_run_loop_pro_integration|test_audit_lint_bypass|test_audit_test_policy|test_audit_typecheck_bypass|test_audit_di_seam|test_pro_support_contract|test_pro_support_cross_repo_marker|test_no_dead_code|test_opencode_mcp_config_drift)" \
+  | grep -v -E "ralph/pro_support/(env|__init__)\.py|ralph/mcp/server/_fallback_standalone_server\.py|ralph/cli/main\.py|tests/(test_pro_support|test_audit_mcp_timeout|test_run_loop_pro_integration|test_audit_lint_bypass|test_audit_test_policy|test_audit_typecheck_bypass|test_audit_di_seam|test_pro_support_contract|test_pro_support_cross_repo_marker|test_no_dead_code|test_opencode_mcp_config_drift)" \
   ; then
   echo "drift: ralph/ uses a RALPH_* env var outside the canonical three" >&2
   echo "Use the canonical environment boundary. Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements." >&2

@@ -17,7 +17,7 @@ from ralph.prompts import template_variables
 from ralph.prompts.template_context import TemplateContext
 from ralph.skills import get_skill_content
 
-PLANNING_SKILLS = ("submit-plan-artifact.md", "writing-plans.md")
+PLANNING_SKILLS = ("submit-plan-artifact.md",)
 
 ARTIFACT_SKILLS = (
     "submit-artifact.md",

@@ -31,9 +31,9 @@ def test_has_machine_global_skills_false_when_partial_install(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    skills_dir = tmp_path / ".claude" / "skills" / "using-superpowers"
+    skills_dir = tmp_path / ".claude" / "skills" / "submit-plan-artifact"
     skills_dir.mkdir(parents=True)
-    (skills_dir / "SKILL.md").write_text("# using-superpowers\n", encoding="utf-8")
+    (skills_dir / "SKILL.md").write_text("# submit-plan-artifact\n", encoding="utf-8")
     assert has_machine_global_skills() is False
 
 
@@ -69,7 +69,7 @@ def test_has_machine_global_skills_false_when_conflicting_user_skill_present(
         skill_dir = skills_dir / name
         skill_dir.mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text(get_skill_content(name), encoding="utf-8")
-    (skills_dir / "using-superpowers" / "SKILL.md").write_text(
+    (skills_dir / "submit-plan-artifact" / "SKILL.md").write_text(
         "# user override\n",
         encoding="utf-8",
     )

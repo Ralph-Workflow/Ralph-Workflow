@@ -59,7 +59,7 @@ User-global agent definitions in `~/.config/ralph-workflow-agents.toml` change *
 | `<main-checkout>/.agent/ralph-workflow.toml` | Optional project overrides for agents, chains, drains, and main settings |
 | `<linked-worktree>/.agent/ralph-workflow.toml` | Optional worktree-specific override that wins over the project config |
 
-Use a worktree-local set when a branch needs settings that should not affect the main checkout or other linked worktrees. `ralph --init` creates `PROMPT.md`, installs bundled skills, and prepares `.gitignore`; it does not create local config files. `ralph --init-local-config` (alias: `ralph --generate-local-config`) automatically targets a linked worktree, or accepts `--scope project` to target the main checkout.
+Use a worktree-local set when a branch needs settings that should not affect the main checkout or other linked worktrees. `ralph --init` creates `PROMPT.md`, installs the artifact skills into the project scope, and prepares `.gitignore`; it does not create local config files. `ralph --init-local-config` (alias: `ralph --generate-local-config`) automatically targets a linked worktree, or accepts `--scope project` to target the main checkout.
 
 ## Advanced config map
 
@@ -183,7 +183,8 @@ The Pro↔Ralph Workflow contract uses exactly three engine-facing variables (se
 |----------|---------|
 | `RALPH_AGY_BINARY` | Path to a custom `agy` executable, or to the deterministic mock at `tests/_support/mock_agy.sh` for CI. See [CLI Reference](cli.md) and [Agent Compatibility](agent-compatibility.md). |
 | `RALPH_CURSOR_BINARY` | Path to a custom `agent` executable (Cursor Agent CLI). The override points at a real wrapper, alternate live binary, or an operator-wired test stub. There is no bundled mock for Cursor (unlike AGY). See [CLI Reference](cli.md) and [Agent Compatibility](agent-compatibility.md). |
-| `RALPH_INLINE_SKILLS_DIR` | Directory whose skill files are inlined into prompts through `SKILLS_INLINE_CONTENT` instead of relying on the shipped skill bundle. See [Getting Started](getting-started.md). |
+| `RALPH_INLINE_SKILLS_DIR` | Directory whose skill files are inlined into prompts through `SKILLS_INLINE_CONTENT` instead of relying on the installed artifact skills. See [Getting Started](getting-started.md). |
+| `RALPH_DISABLE_SKILL_UPDATES` | Turns off every skill-update network request. Set it to `1`, `true`, `yes`, or `on` to disable the once-daily universal-skill release check; see [Skills](#skills). |
 | `XDG_CONFIG_HOME` | When set, Ralph Workflow places the user-global config at `$XDG_CONFIG_HOME/ralph-workflow.toml` instead of `~/.config/ralph-workflow.toml`. |
 
 ### Test-only timeout variables
@@ -284,6 +285,91 @@ The `rebase_conflict_resolution` drain binds the `rebase_conflict_resolution` ch
 If your configuration declares its own agent chains but no `rebase_conflict_resolution` chain, the resolver follows your `development` chain rather than the bundled default; declare `[agent_chains.rebase_conflict_resolution]` to choose resolvers explicitly. Every path that invokes a resolver (conflict resolution, retained-integration diagnosis, pending-commit repair) shares one cooldown ledger for the run. A resolver that exits without a verified result is benched with an exponentially growing cooldown, longer when the failure is a recognised quota or auth error, and is not called again until the cooldown elapses. While every resolver is cooling down, Ralph Workflow waits and spends no repair attempt.
 
 Rebase, endpoint merge, and remote reconciliation share one conflict identity and repeat contract, keyed by feature tip, target tip, conflicted paths, stage OIDs, and a `scope` of `feature` or `remote`. An exhausted feature budget does not suppress a distinct remote conflict. After an unchanged failed identity, Ralph Workflow suppresses repeated resolution instead of starting another rebase or silently re-invoking the same resolver; the terminal record names the suppression and operator action.
+
+## Skills
+
+Ralph Workflow installs two kinds of skills.
+
+**Artifact skills** describe how to produce one of the pipeline's artifact
+types. They ship with Ralph Workflow, are installed into the **project
+scope**, and follow the pipeline's artifact types automatically: adding an
+artifact type adds its skill, so adding a skill now means adding an artifact
+type.
+
+**Universal skills** are exactly three — `test-driven-development`,
+`systematic-debugging`, and `verification-before-completion` — fetched from
+the single upstream `obra/superpowers` at **release versions** (never a moving
+branch) and installed **user-global**. They are never committed into your
+project, so upstream changes never dirty your git tree.
+
+### `[skills]`
+
+```toml
+# ~/.config/ralph-workflow.toml
+[skills]
+universal_updates_enabled = true
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `universal_updates_enabled` | `true` | Set to `false` to disable every skill-update network request. |
+
+### Update cadence
+
+The release check runs at the start of a run, at most once per day, as a
+background attempt, so it never fails a run or noticeably slows one. An
+offline, rate-limited, slow, or malformed upstream leaves the installed skills
+exactly as they are and is retried later. There is no bundled copy of the
+universal skills, so nothing can go stale; a machine that is never online
+simply has no universal skills, while the artifact skills still work.
+
+### Kill switches
+
+Two independent switches disable **all** skill-update network activity. When
+either one is off, Ralph Workflow makes no skill-related network requests.
+
+| Switch | Where | Default |
+|--------|-------|---------|
+| `universal_updates_enabled = false` | `[skills]` in `~/.config/ralph-workflow.toml` (or `$XDG_CONFIG_HOME/ralph-workflow.toml`) | `true` |
+| `RALPH_DISABLE_SKILL_UPDATES` | Environment variable, set to `1`, `true`, `yes`, or `on` | unset |
+
+Either switch alone is enough — they do not depend on each other. An
+unreadable or malformed config file never silences the updater: the config
+side fails open, so the updates stay enabled unless the key is explicitly
+`false`.
+
+### Update safety
+
+The updater has exactly one hard-coded allowed origin and fetches release
+tags only:
+
+| Purpose | URL |
+|---------|-----|
+| Release check | `https://api.github.com/repos/obra/superpowers/releases/latest` |
+| Archive | `https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/<tag>` |
+
+Downloads are size-limited and restricted to an allowlist of file types, and
+the updater never writes outside the skill directory.
+
+### Trust
+
+The upstream's skill text enters the agent's context, so Ralph Workflow
+fetches from exactly one reputable, actively maintained, MIT-licensed
+upstream and never from arbitrary sources. A skill the user has edited is
+preserved and reported, never overwritten.
+
+### Policy versus skills
+
+Policy states the rules; skills hold the technique. When they conflict,
+policy wins.
+
+### Migration from the retired default skills
+
+On the first run after upgrading, Ralph Workflow removes the retired default
+skills it previously installed — in the project scope, in sibling agent
+locations, and user-global — and only those it manages. User-owned and
+user-edited skills are untouched. Project-level removals land in the usual
+single automatic skill-sync commit.
 
 ## Auto-integration
 

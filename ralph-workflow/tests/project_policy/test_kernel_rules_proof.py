@@ -90,7 +90,7 @@ BRIEF_EVIDENCE_TAGS: dict[str, str] = {
 # the tags decide which enforcements are allowed.
 DETERMINISTIC_TAG_ANCHOR = "Only a rule tagged `strong` or `moderate` may carry a `deterministic`"
 
-# The thirteen agent rules, in shipped order, with the number the
+# The twelve agent rules, in shipped order, with the number the
 # rule-to-phase table and the rule-to-enforcer ladder use.
 AGENT_RULES: tuple[tuple[int, str], ...] = (
     (1, "Check first"),
@@ -99,13 +99,12 @@ AGENT_RULES: tuple[tuple[int, str], ...] = (
     (4, "Regression tests from the spec"),
     (5, "Independent review"),
     (6, "Handoff by artifact"),
-    (7, "Premise check"),
-    (8, "Smallest change"),
-    (9, "Context hygiene"),
-    (10, "Plan scaling"),
-    (11, "Commit-level hygiene"),
-    (12, "Human checkpoints"),
-    (13, "Rule-to-enforcer ladder"),
+    (7, "Smallest change"),
+    (8, "Context hygiene"),
+    (9, "Plan scaling"),
+    (10, "Commit-level hygiene"),
+    (11, "Human checkpoints"),
+    (12, "Rule-to-enforcer ladder"),
 )
 
 # The instruction-audit requirement: on a model or harness generation
@@ -595,7 +594,7 @@ def test_kernel_starter_and_root_step_3_names() -> None:
 
 
 def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules() -> None:
-    """The rule-to-phase table in both starter and root must cover all 13 numbered rules (1 through 13)."""
+    """The rule-to-phase table in both starter and root must cover all 12 numbered rules (1 through 12)."""
     table_heading = "## Rule-to-phase table"
     for source_name, content in (("starter", _kernel()), ("root", _root_kernel())):
         assert table_heading in content, f"{source_name} missing {table_heading!r}"
@@ -604,14 +603,14 @@ def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules()
         next_heading = rest.find("\n## ")
         section = rest[:next_heading] if next_heading != -1 else rest
 
-        # Look for parenthesized rule numbers (1) through (13) in table cells
+        # Look for parenthesized rule numbers (1) through (12) in table cells
         found_rules: set[int] = set()
-        for num in range(1, 14):
+        for num in range(1, 13):
             pattern = re.compile(rf"\({num}\)")
             if pattern.search(section):
                 found_rules.add(num)
 
-        missing = set(range(1, 14)) - found_rules
+        missing = set(range(1, 13)) - found_rules
         assert not missing, (
             f"{source_name} rule-to-phase table is missing numbered rule(s): {sorted(missing)}"
         )
@@ -785,7 +784,7 @@ def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
 
 
 def test_every_agent_rule_has_a_research_basis_supports_line() -> None:
-    """Every one of the thirteen agent rules is named by a research-basis supports line.
+    """Every one of the twelve agent rules is named by a research-basis supports line.
 
     A rule with no source behind it cannot carry an evidence tag that means
     anything, so the research basis must name every rule.
@@ -822,3 +821,53 @@ def test_instruction_audit_requirement_is_stated_once_in_both_kernels() -> None:
             assert requirement in normalized, (
                 f"{source_name} kernel instruction-audit requirement is missing {requirement!r}"
             )
+
+
+#: The clause that resolves a conflict between a shipped skill's technique
+#: and the kernel's policy: the kernel wins.
+SKILL_TECHNIQUE_PRECEDENCE = "the kernel (policy) wins"
+
+#: The clause that points a third-party behaviour at its own documentation.
+LIBRARY_DOCUMENTATION_CLAUSE = "that library's own documentation"
+
+
+def test_kernels_declare_exactly_the_twelve_agent_rules() -> None:
+    """Both kernel files declare the twelve shipped agent rules and no more."""
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        statements = _agent_rule_statements(content)
+        assert len(statements) == len(AGENT_RULES), (
+            f"{source_name} kernel declares {len(statements)} agent rules; the "
+            f"shipped contract is {len(AGENT_RULES)}"
+        )
+        for number, rule in AGENT_RULES:
+            assert rule.lower() in statements, (
+                f"{source_name} kernel is missing agent rule {number} ({rule!r})"
+            )
+
+
+def test_kernels_do_not_state_the_retired_premise_check_rule() -> None:
+    """Neither kernel file states the retired premise-check rule."""
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        assert "premise" not in content.lower(), (
+            f"{source_name} kernel still states the retired premise-check rule"
+        )
+
+
+def test_kernels_state_that_a_shipped_skill_technique_wins_on_conflict() -> None:
+    """Both kernel files resolve a skill-versus-kernel conflict once."""
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        normalized = _normalized(content)
+        assert normalized.count(SKILL_TECHNIQUE_PRECEDENCE) == 1, (
+            f"{source_name} kernel must state the shipped-skill precedence line exactly "
+            f"once; found {normalized.count(SKILL_TECHNIQUE_PRECEDENCE)}"
+        )
+
+
+def test_kernels_point_a_third_party_behaviour_at_its_own_documentation() -> None:
+    """Both kernel files tell the agent to check a library's own documentation."""
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        normalized = _normalized(content)
+        assert normalized.count(LIBRARY_DOCUMENTATION_CLAUSE) == 1, (
+            f"{source_name} kernel must state the library-documentation clause exactly "
+            f"once; found {normalized.count(LIBRARY_DOCUMENTATION_CLAUSE)}"
+        )

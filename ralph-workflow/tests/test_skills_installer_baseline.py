@@ -75,46 +75,49 @@ def test_install_baseline_skills_writes_claude_discoverable_skill_directories(
 ) -> None:
     """Each baseline skill lands as a Claude-discoverable directory."""
     entry, failures = install_baseline_skills(target_dir=tmp_path)
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 
     assert entry.status == _INSTALLED_HEALTHY, failures
     assert failures == []
-    skill_file = tmp_path / "using-superpowers" / "SKILL.md"
+    skill_file = tmp_path / "submit-artifact" / "SKILL.md"
     assert skill_file.exists()
-    assert skill_file.read_text(encoding="utf-8").startswith("---\nname: using-superpowers")
+    assert skill_file.read_text(encoding="utf-8").startswith("---\nname: submit-artifact")
 
 
 def test_install_baseline_skills_preserves_conflicting_user_skill(tmp_path: Path) -> None:
     """A user-authored skill is never overwritten; the conflict is reported."""
     target_dir = tmp_path / "skills"
-    user_skill_dir = target_dir / "using-superpowers"
+    user_skill_dir = target_dir / "submit-artifact"
     user_skill_dir.mkdir(parents=True)
     skill_file = user_skill_dir / "SKILL.md"
     skill_file.write_text("# user version\n", encoding="utf-8")
 
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
     entry, failures = install_baseline_skills(target_dir=target_dir)
 
     assert entry.status == _NEEDS_REPAIR
-    assert failures == ["skills-conflict-using-superpowers"]
+    assert failures == ["skills-conflict-submit-artifact"]
     assert skill_file.read_text(encoding="utf-8") == "# user version\n"
 
 
 def test_install_baseline_skills_updates_ralph_managed_skill_in_place(tmp_path: Path) -> None:
     """A ralph-managed skill is refreshed to the current baseline content."""
     target_dir = tmp_path / "skills"
-    managed_skill_dir = target_dir / "using-superpowers"
+    managed_skill_dir = target_dir / "submit-artifact"
     managed_skill_dir.mkdir(parents=True)
     skill_file = managed_skill_dir / "SKILL.md"
     skill_file.write_text("# old ralph version\n", encoding="utf-8")
     (managed_skill_dir / ".ralph-managed.json").write_text(
-        '{"managed_by": "ralph-workflow", "skill": "using-superpowers"}\n',
+        '{"managed_by": "ralph-workflow", "skill": "submit-artifact"}\n',
         encoding="utf-8",
     )
 
     entry, failures = install_baseline_skills(target_dir=target_dir)
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 
     assert entry.status == _INSTALLED_HEALTHY
     assert failures == []
-    assert skill_file.read_text(encoding="utf-8").startswith("---\nname: using-superpowers")
+    assert skill_file.read_text(encoding="utf-8").startswith("---\nname: submit-artifact")
 
 
 def test_install_baseline_skills_preserves_manually_edited_managed_skill(
@@ -122,7 +125,7 @@ def test_install_baseline_skills_preserves_manually_edited_managed_skill(
 ) -> None:
     """A manually edited managed skill keeps the operator's content."""
     target_dir = tmp_path / "skills"
-    managed_skill_dir = target_dir / "using-superpowers"
+    managed_skill_dir = target_dir / "submit-artifact"
     managed_skill_dir.mkdir(parents=True)
     original_content = "# original ralph-installed content\n"
     original_sha = hashlib.sha256(original_content.encode("utf-8")).hexdigest()
@@ -132,7 +135,7 @@ def test_install_baseline_skills_preserves_manually_edited_managed_skill(
         json.dumps(
             {
                 "managed_by": "ralph-workflow",
-                "skill": "using-superpowers",
+                "skill": "submit-artifact",
                 "installed_content_sha256": original_sha,
             },
             indent=2,
@@ -156,9 +159,9 @@ def test_install_baseline_skills_preserves_manually_edited_managed_skill(
 def test_install_baseline_skills_adopts_unmarked_identical_skill(tmp_path: Path) -> None:
     """An identical but unmarked skill is adopted instead of reported as conflict."""
     target_dir = tmp_path / "skills"
-    skill_dir = target_dir / "using-superpowers"
+    skill_dir = target_dir / "submit-artifact"
     skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(get_skill_content("using-superpowers"), encoding="utf-8")
+    (skill_dir / "SKILL.md").write_text(get_skill_content("submit-artifact"), encoding="utf-8")
 
     entry, failures = install_baseline_skills(target_dir=target_dir)
 

@@ -63,6 +63,18 @@ def sync_shipped_skills(  # noqa: PLR0912
         update_available = False
     if update_available:
         dependencies.print_user_global_update_hint()
+    # The user-global retired-skill migration and the universal-skill update
+    # run BEFORE the project-scope install stage, so a project install
+    # failure can never suppress them. Each stage owns its own
+    # try/except: one failure can neither skip the other nor abort the run.
+    try:
+        _run_user_global_skill_migration(dependencies.emit_warning)
+    except Exception as exc:
+        logger.debug("User-global skill migration failed (non-fatal): {}", exc)
+    try:
+        _run_universal_skill_update(dependencies.emit_warning)
+    except Exception as exc:
+        logger.debug("Universal skill update failed (non-fatal): {}", exc)
     # wt-012 DA-001/DA-008: capture the pre-write snapshot BEFORE the
     # first install runs, then route the install through the
     # ``with_diff`` wrapper so the byte-exact set of paths the install
@@ -163,6 +175,94 @@ def sync_shipped_skills(  # noqa: PLR0912
     dependencies.run_retention_sweep(
         target_root, keep_run_id=keep_run_id, retention_max_age_seconds=retention_max_age_seconds
     )
+
+
+#: Name of the daemon thread that carries the universal-skill update.
+_UNIVERSAL_SKILL_UPDATE_THREAD_NAME = "ralph-universal-skill-update"
+
+
+def _run_user_global_skill_migration(emit_warning: Callable[[str], None]) -> None:
+    """Migrate the user-global skill roots: prune retired managed skills.
+
+    The migration runs on EVERY ordinary run: a retired Ralph-managed skill
+    directory is removed only when its ``.ralph-managed.json`` marker proves
+    Ralph owns it AND the recorded digest still matches the on-disk content.
+    Every entry the prune cannot prove pristine is REPORTED, never deleted.
+    """
+    try:
+        from ralph.skills._prune import _prune_user_global_skill_roots
+
+        failures = _prune_user_global_skill_roots()
+    except Exception as exc:
+        logger.debug("User-global skill migration failed (non-fatal): {}", exc)
+        emit_warning(
+            f"User-global skill migration failed (non-fatal): {exc}. "
+            "The run continues; re-run `ralph --force-init-skills` to repair the user-global skill tree."
+        )
+        return
+    for code in failures:
+        emit_warning(f"User-global skill migration: {code}")
+
+
+def _run_universal_skill_update(emit_warning: Callable[[str], None]) -> None:
+    """Start the universal-skill update, honouring the kill switches.
+
+    The kill switch is evaluated FIRST: when the user disabled the updates
+    the helper returns immediately, so it makes ZERO calls into the updater
+    and NEVER constructs an HTTP client (no network request at all).
+    When the updates are enabled the updater runs on a DAEMON THREAD, so the
+    run is never delayed by the network round trip.
+    """
+    try:
+        import os
+        import threading
+
+        from ralph.skills.gating import universal_skill_updates_enabled
+
+        enabled = universal_skill_updates_enabled(os.environ)
+    except Exception as exc:
+        logger.debug("Universal skill update gate failed (non-fatal): {}", exc)
+        return
+    if not enabled:
+        return
+    try:
+        thread = threading.Thread(
+            target=_universal_skill_update_worker,
+            args=(emit_warning,),
+            name=_UNIVERSAL_SKILL_UPDATE_THREAD_NAME,
+            daemon=True,
+        )
+        thread.start()
+    except Exception as exc:
+        logger.debug("Universal skill update could not start (non-fatal): {}", exc)
+        emit_warning(f"Universal skill update could not start (non-fatal): {exc}.")
+
+
+def _universal_skill_update_worker(emit_warning: Callable[[str], None]) -> None:
+    """Run the upstream updater and report its outcome to the operator.
+
+    The thread never leaks an exception.
+    """
+    try:
+        from datetime import UTC, datetime
+
+        from ralph.skills import upstream
+
+        outcome = upstream.maybe_update_universal_skills(
+            enabled=True,
+            now=datetime.now(UTC),
+            http=upstream.default_http_client(),
+        )
+    except Exception as exc:
+        logger.debug("Universal skill update failed (non-fatal): {}", exc)
+        emit_warning(f"Universal skill update failed (non-fatal): {exc}.")
+        return
+    for message in outcome.messages:
+        emit_warning(f"Universal skill update: {message}")
+    for name in outcome.preserved:
+        if any(name in message for message in outcome.messages):
+            continue
+        emit_warning(f"Universal skill update: {name} was preserved (local edits kept).")
 
 
 def run_start_retention_sweep(

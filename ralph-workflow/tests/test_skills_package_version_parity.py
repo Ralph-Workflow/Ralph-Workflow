@@ -1,14 +1,17 @@
-"""Test that skills-package/package.json version matches ralph.__version__."""
+"""The separate skills package is gone, so it has no version to track.
 
-from __future__ import annotations
+The shipped skill set is derived from the pipeline's artifact-type registry and
+the upstream-sourced universal skills arrive through the runtime updater, so no
+npm package with its own version is published any more.
 
-import json
+# RALPH-TEST-REASON: the separate skills package is removed by this change; there is no packaged artifact whose version must track the package version.
+"""
+
 from pathlib import Path
 
-import ralph
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_skills_package_version_matches_ralph_version() -> None:
-    package_json = Path(__file__).parent.parent / "skills-package" / "package.json"
-    data = json.loads(package_json.read_text(encoding="utf-8"))
-    assert data["version"] == ralph.__version__
+def test_skills_package_is_not_shipped() -> None:
+    """The retired npm skills package must not come back."""
+    assert not (PACKAGE_ROOT / "skills-package").exists()

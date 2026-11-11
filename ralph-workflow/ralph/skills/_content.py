@@ -23,16 +23,19 @@ if TYPE_CHECKING:
 
 
 class SkillMetadata(TypedDict):
-    """JSON shape of ``metadata.json`` shipped with the bundled skills."""
+    """JSON shape of ``metadata.json`` shipped with the bundled skills.
 
-    source_repo: str
-    source_commit: str
-    source_version: str
-    source_repos: list[str]
-    mirrored_at: str
+    The bundle metadata is a MACHINE-EXTENSIBLE manifest: ``skills`` is
+    the ordered list of the shipped skill names and the single source of
+    truth for :data:`BASELINE_SKILL_NAMES`. The manifest deliberately
+    carries NO upstream provenance (no source repository, no source ref,
+    no mirror timestamp): the shipped skills are first-party Ralph
+    Workflow artifacts, so a per-skill upstream dict would be stale
+    provenance the bundle no longer has. A future bundle revision only
+    has to APPEND its names to ``skills``.
+    """
+
     skills: list[str]
-    bundles: dict[str, str]
-    skill_sources: dict[str, dict[str, object]]
 
 
 _MANAGED_MARKER = ".ralph-managed.json"

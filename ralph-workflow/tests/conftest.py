@@ -134,6 +134,7 @@ def _isolate_test_environment_and_globals(
     queue it found, exactly as when the restore had its own fixture.
     """
     _apply_placeholder_hosted_provider_credentials(monkeypatch)
+    _apply_disable_universal_skill_updates(monkeypatch)
     _apply_disable_explore_recovery_drain_thread(monkeypatch)
     with _isolate_explore_recovery_globals():
         _apply_fake_claude_cli_mcp_probe(monkeypatch)
@@ -161,6 +162,24 @@ def _apply_placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPat
     ):
         if var in os.environ:
             del os.environ[var]
+
+
+def _apply_disable_universal_skill_updates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the universal-skill updater out of the default test lane.
+
+    The run-start seam starts the updater on a daemon thread, and the
+    updater reaches the REAL upstream. The default lane must never make a
+    real network request (the network path is covered by the dedicated
+    fixture suite with an injected fake client), and the daemon thread's
+    asynchronous warnings must not land in another test's console capture.
+
+    The production kill switch is the honest lever: with
+    ``RALPH_DISABLE_SKILL_UPDATES`` set, the seam never calls the updater
+    at all, so no request is made and no thread is started. The dedicated
+    runtime-integration suite deletes the variable again in the cases that
+    assert the ENABLED path.
+    """
+    monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
 
 
 def _apply_disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch) -> None:

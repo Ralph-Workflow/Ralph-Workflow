@@ -17,6 +17,26 @@ separate ``AgentSkillRoot`` entry is required. The current entry for
 ``opencode`` below symlinks into ``~/.config/opencode/skills/`` and the
 ``~/.claude/skills/`` portion is satisfied by the Claude install.
 
+ADDITIONAL USER-GLOBAL ROOTS
+============================
+Two registered agents resolve their user-global skills from a SECOND
+location besides the one above, so each gets its own sibling entry:
+
+- ``codex-agents`` -> ``~/.agents/skills/``. Codex's current user-global
+  skill root is the shared ``.agents`` convention directory
+  (``https://learn.chatgpt.com/docs/build-skills``), which is distinct
+  from the older ``~/.codex/skills/`` root kept by the ``codex`` entry.
+- ``agy-config`` -> ``~/.gemini/config/skills/``. Antigravity's
+  all-surfaces skill root (``https://antigravity.google/docs/skills/``)
+  is distinct from the Antigravity CLI root
+  ``~/.gemini/antigravity-cli/skills/`` kept by the ``agy`` entry.
+
+Both entries carry DISTINCT ``agent`` names because ``agent`` is the
+lookup key of the ``by_agent`` mapping that
+``project_sibling_skill_roots`` builds: a repeated name would collapse
+the two roots into one entry and would re-point the project-scope
+``codex``/``agy`` siblings at the wrong upstream document.
+
 OUT OF SCOPE
 ============
 - Nanocoder: no skill system; uses commands under
@@ -96,7 +116,10 @@ fallback for opencode at ``./.agents/skills/`` mentioned in the
 opencode docs is still satisfied by the canonical claude install at
 ``~/.claude/skills/`` per the OPENCODE CLAUDE-SKILLS FALLBACK section
 above.  The 4 project siblings (claude, codex, agy, pi) are the
-right mirror set.
+right mirror set.  The additional user-global roots documented in the
+ADDITIONAL USER-GLOBAL ROOTS section (``codex-agents``,
+``agy-config``) have NO project-scope sibling: they are user-global
+install targets only.
 """
 
 from __future__ import annotations
@@ -119,6 +142,21 @@ from ralph.skills._project_paths import ProjectAgentSkillRoot
 #                     (OUT OF SCOPE for this registry).
 #   - AGY (Antigravity CLI): ~/.gemini/antigravity-cli/skills/<name>/SKILL.md
 #                     https://medium.com/google-cloud/configuring-mcp-servers-and-skills-for-antigravity-cli-and-ide-a938c7eebb78
+#   - Codex (current user-global): ~/.agents/skills/<name>/SKILL.md
+#                     https://learn.chatgpt.com/docs/build-skills
+#   - Antigravity (all surfaces): ~/.gemini/config/skills/<name>/SKILL.md
+#                     https://antigravity.google/docs/skills/
+#
+# The last two entries are ADDITIONAL roots for agents that are already
+# registered: Codex resolves its user-global skills from
+# ``~/.agents/skills`` (the shared ``.agents`` convention) and Antigravity
+# resolves its all-surfaces skills from ``~/.gemini/config/skills``. They
+# are registered as SEPARATE entries with their OWN ``agent`` names
+# (``codex-agents`` / ``agy-config``) because ``agent`` is the key of the
+# ``by_agent`` lookup that ``project_sibling_skill_roots`` builds; a
+# duplicated name would silently collapse the two roots into one and
+# would re-point the project-scope ``codex``/``agy`` siblings at the
+# wrong upstream document.
 
 
 @dataclass(frozen=True)
@@ -152,7 +190,7 @@ class AgentSkillRoot:
         return Path.home().joinpath(*self.path_segments)
 
 
-# Re-verified source URLs (2026-06-09, see _AGENT_PATH_LAST_VERIFIED):
+# Re-verified source URLs (2026-11-11, see _AGENT_PATH_LAST_VERIFIED):
 #   - claude:   https://code.claude.com/docs/en/skills
 #               (formerly https://docs.claude.com/claude-code; updated to the
 #                canonical Claude Code skills page)
@@ -162,13 +200,19 @@ class AgentSkillRoot:
 #               (re-verified; documents ~/.config/opencode/skills/ + Claude-compatible fallback)
 #   - agy:      https://medium.com/google-cloud/configuring-mcp-servers-and-skills-for-antigravity-cli-and-ide-a938c7eebb78
 #               (re-verified; documents ~/.gemini/antigravity-cli/skills/ as the CLI global path)
+#   - codex-agents: https://learn.chatgpt.com/docs/build-skills
+#               (re-verified; documents ~/.agents/skills/ as Codex's current
+#                user-global skill root)
+#   - agy-config: https://antigravity.google/docs/skills/
+#               (re-verified; documents ~/.gemini/config/skills/ as the
+#                Antigravity all-surfaces skill root)
 #
 # Canonical (materialize-here) root must come first so installers can use it as the
 # symlink target. Sibling roots after it.
 #
 # last_verified_iso: set to the date the upstream documentation was last
 # confirmed for this entry. Bump on every path or source_url change.
-_AGENT_PATH_LAST_VERIFIED = "2026-06-09"
+_AGENT_PATH_LAST_VERIFIED = "2026-11-11"
 
 AGENT_SKILL_ROOTS: tuple[AgentSkillRoot, ...] = (
     AgentSkillRoot(
@@ -201,6 +245,20 @@ AGENT_SKILL_ROOTS: tuple[AgentSkillRoot, ...] = (
             "https://medium.com/google-cloud/"
             "configuring-mcp-servers-and-skills-for-antigravity-cli-and-ide-a938c7eebb78"
         ),
+        is_canonical=False,
+        last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
+    ),
+    AgentSkillRoot(
+        agent="codex-agents",
+        path_segments=(".agents", "skills"),
+        source_url="https://learn.chatgpt.com/docs/build-skills",
+        is_canonical=False,
+        last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
+    ),
+    AgentSkillRoot(
+        agent="agy-config",
+        path_segments=(".gemini", "config", "skills"),
+        source_url="https://antigravity.google/docs/skills/",
         is_canonical=False,
         last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
     ),
@@ -291,6 +349,9 @@ def project_sibling_skill_roots(
     onto the project workspace, plus the one project-scope-only entry
     that the upstream pi.dev documentation proves is documented:
     ``./.agents/skills/`` for pi.
+
+    The additional user-global roots (``codex-agents``, ``agy-config``)
+    are user-global install targets only and are NOT mirrored here.
 
     The opencode project sibling is intentionally absent: it would be a
     self-symlink to ``./.opencode/skills/`` which is the project

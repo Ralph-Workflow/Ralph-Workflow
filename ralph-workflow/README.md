@@ -159,7 +159,7 @@ concepts, troubleshooting, diagnostics, and developer internals.
 ## Engine-owned writes are auto-committed
 
 Ralph Workflow's own code writes a small set of tracked files in
-the background: the project-scope skill bundle (across all three
+the background: the project-scope artifact skills (across all three
 installer routes — run start, `ralph --init`, and
 `ralph --force-init-skills`), the project's `.gitignore` (seeded
 with the batteries-included defaults on first run), and the
@@ -174,6 +174,35 @@ paths (or to any other file) are never swept in. The full contract
 lives in
 [`../docs/agents/deterministic-auto-commit.md`](../docs/agents/deterministic-auto-commit.md)
 and is pinned by the `audit_skill_auto_commit` gate step.
+
+## Skills
+
+Ralph Workflow installs two kinds of skills.
+
+**Artifact skills** ship with Ralph Workflow and are installed into the
+project scope. The set follows the pipeline's artifact types automatically:
+adding an artifact type adds its skill, so adding a skill now means adding
+an artifact type.
+
+**Universal skills** are exactly three — `test-driven-development`,
+`systematic-debugging`, and `verification-before-completion` — fetched from
+the single upstream `obra/superpowers` at release versions and installed
+user-global, never committed into your project, so upstream changes never
+dirty your git tree. Ralph Workflow checks for a newer release at the start
+of a run, at most once per day, as a background attempt: the check never
+fails a run or noticeably slows one, and an offline, rate-limited, slow, or
+malformed upstream leaves the installed skills exactly as they are and is
+retried later. No upstream copy is bundled, so there is nothing that can go
+stale; a machine that is never online simply has no universal skills, while
+the artifact skills still work.
+
+Two independent switches turn every skill-update network request off:
+`universal_updates_enabled = false` under `[skills]` in
+`~/.config/ralph-workflow.toml`, and the `RALPH_DISABLE_SKILL_UPDATES`
+environment variable. See the
+[configuration reference](docs/sphinx/configuration.md#skills) for both, the
+update safety rules, the trust statement, and the migration behavior after
+upgrading.
 
 ## Shipped policy pack and readiness (v6)
 

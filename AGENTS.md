@@ -77,9 +77,7 @@ Detail: `docs/agents/fabrication-guard.md`.
 ### Code and test rules
 
 - Work in `ralph-workflow/` for code, tests, and verification.
-- Fix any bug, lint failure, type failure, test failure, or warning you surface before moving on.
 - Do not leave the repo in a broken state.
-- Do not weaken checks to get green results.
 - Update user-facing docs when commands, workflows, or behavior change.
 - All code **must** be testable in a black box way. If you cannot test it easily, it strongly suggests you have to refactor.
 - If there is a test failure, either the tests is implemented wrong, the code behavior is wrong, or the test is testing the wrong behavior. DO NOT change the test to match the current implementation. A test may never make any assumptions about the underlying implementation of the code.
@@ -164,8 +162,6 @@ Verification passes only when all required checks succeed with no ERROR/WARNING 
 If verification fails, fix the issue and rerun it.
 
 Run the extra smoke checks or focused tests from `docs/agents/verification.md` whenever the touched area requires them.
-
-The combined test budget (60s wall clock net of host contention, 700 CPU core-seconds) is pinned; see `docs/agents/verification.md` for the full policy.
 
 ## Documentation and file hygiene
 

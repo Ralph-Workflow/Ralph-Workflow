@@ -1785,12 +1785,24 @@ ralph.pipeline.worker_status
 Skills
 ------
 
-This group owns the shipped skill bundle and the helpers that sync it
-with each agent's skill tree. The mirrored baseline skill content lives
-under ``ralph/skills/content/`` and is listed in ``BASELINE_SKILL_NAMES``
-in ``ralph/skills/_content.py``. The manager (``ralph/skills/manager.py``)
-handles install, adoption, and the deterministic auto-commit contract
-enforced by ``ralph/testing/audit_skill_auto_commit.py`` (verify step 18).
+This group owns the shipped default skills and the helpers that install and
+update them. The artifact skill content lives under
+``ralph/skills/content/`` and is listed in ``BASELINE_SKILL_NAMES`` in
+``ralph/skills/_content.py``; the set is DERIVED from the pipeline's
+canonical artifact-type registry, and the ``audit_artifact_skill_types``
+verify step fails the gate when the two drift apart. The manager
+(``ralph/skills/manager.py``) handles install, adoption, and the
+deterministic auto-commit contract enforced by
+``ralph/testing/audit_skill_auto_commit.py`` (verify step 18).
+
+``ralph/skills/upstream.py`` refreshes the three universal engineering
+skills (``test-driven-development``, ``systematic-debugging``,
+``verification-before-completion``) from the single upstream
+``obra/superpowers`` at release tags, into the user-global skill roots. It
+is fail-soft, rate-limited to one attempt per day, and preserves a skill
+the user has edited. ``ralph/skills/gating.py`` owns the kill switches that
+silence it: the ``RALPH_DISABLE_SKILL_UPDATES`` environment variable and
+the ``[skills] universal_updates_enabled`` config key.
 
 ralph.skills
 ~~~~~~~~~~~~
@@ -1803,6 +1815,20 @@ ralph.skills.manager
 ~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.skills.manager
+   :members:
+   :show-inheritance:
+
+ralph.skills.upstream
+~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.skills.upstream
+   :members:
+   :show-inheritance:
+
+ralph.skills.gating
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.skills.gating
    :members:
    :show-inheritance:
 

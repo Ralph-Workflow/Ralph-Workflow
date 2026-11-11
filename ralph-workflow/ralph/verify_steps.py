@@ -189,26 +189,19 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
-        # wt-013 free-form skill contract: AST + literal-string audit
-        # that pins the project-scope skill-mirror freshness invariant
-        # so a future skill-content edit that updates the bundled
-        # ``ralph/skills/content/<name>.md`` but forgets to re-run the
-        # project-scope installer cannot silently leave a divergent
-        # mirror and reintroduce the removed structured contract.
-        # Walks every (root, skill) pair across the FIVE canonical
-        # project-scope skill-root prefixes and asserts the mirrored
-        # ``SKILL.md`` byte-equals ``ralph.skills.content.get_skill_content(name)``.
-        # The audit derives the repository root from its own module
-        # location (``Path(__file__).resolve().parents[3]``); it is an
-        # audit, NOT a test suite: NOT added to ``_BUDGET_TRACKED_STEPS``
-        # or ``_KNOWN_TEST_STEP_LABELS`` (does NOT count against the
-        # immutable 60-second combined test budget). Inserted BESIDE the
-        # existing skill auto-commit audit step so the smoke-budget
-        # index ``len(_VERIFY_STEPS) - 2`` (the position of
-        # ``make test-verification-smoke``) remains valid.
-        "skill mirror freshness audit (audit_skill_mirror_freshness)",
+        # Artifact-skill/types drift audit: the shipped artifact skills are
+        # DERIVED from the pipeline's canonical artifact-type registry, so
+        # adding an artifact type without its skill (or keeping a skill for a
+        # removed type) fails the gate in BOTH directions. The audit also
+        # pins the submission-vs-reference-only classification (the
+        # runtime-generated ``run_time_report`` must never be submitted) and
+        # the existence of every referenced artifact format doc. It is an
+        # audit, NOT a test suite: NOT added to ``_BUDGET_TRACKED_STEPS`` or
+        # ``_KNOWN_TEST_STEP_LABELS`` (does NOT count against the immutable
+        # 60-second combined test budget).
+        "artifact skill types audit (audit_artifact_skill_types)",
         "uv",
-        ("run", "python", "-m", "ralph.testing.audit_skill_mirror_freshness"),
+        ("run", "python", "-m", "ralph.testing.audit_artifact_skill_types"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (

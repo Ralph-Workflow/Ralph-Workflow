@@ -204,11 +204,11 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="skill auto-commit audit ok\n",
         ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_mirror_freshness")): _result(
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_artifact_skill_types")): _result(
             command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_skill_mirror_freshness"),
+            args=("run", "python", "-m", "ralph.testing.audit_artifact_skill_types"),
             returncode=0,
-            stdout="skill mirror freshness audit ok\n",
+            stdout="artifact skill types audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")): _result(
             command="uv",
@@ -437,7 +437,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("python3", _SOCIAL_PROOF_ARGS),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_mirror_freshness")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_artifact_skill_types")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")),

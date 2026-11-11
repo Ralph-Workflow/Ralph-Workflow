@@ -66,6 +66,5 @@ docs/
 sorbet/
 
 # Misc
-skills-package/
 run_verify_internal.sh
 stubs/

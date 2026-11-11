@@ -147,17 +147,18 @@ def test_install_baseline_skills_falls_back_to_copy_when_symlink_fails(
 
 def test_install_baseline_skills_preserves_user_owned_sibling_skill(
     fake_roots: tuple[Path, tuple[AgentSkillRoot, ...]],
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 ) -> None:
     _, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
-    user_skill = codex_dir / "using-superpowers"
+    user_skill = codex_dir / "submit-plan-artifact"
     user_skill.mkdir(parents=True)
     user_md = user_skill / "SKILL.md"
     user_md.write_text("# user override\n", encoding="utf-8")
 
     entry, failures = install_baseline_skills()
     assert entry.status.value == "needs_repair"
-    assert "sibling-conflict-using-superpowers" in failures
+    assert "sibling-conflict-submit-plan-artifact" in failures
     # The user file is preserved.
     assert user_md.read_text(encoding="utf-8") == "# user override\n"
 
@@ -168,41 +169,43 @@ def test_install_baseline_skills_replaces_existing_managed_symlink(
 ) -> None:
     canonical_dir, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
     stale_target = tmp_path / "stale-canonical"
     stale_target.mkdir(parents=True)
     # Pre-create a stale symlink that points nowhere useful.
-    (codex_dir / "using-superpowers").symlink_to(stale_target, target_is_directory=True)
+    (codex_dir / "submit-plan-artifact").symlink_to(stale_target, target_is_directory=True)
 
     entry, failures = install_baseline_skills()
     assert entry.status.value == "installed_healthy"
     assert failures == []
-    entry_path = codex_dir / "using-superpowers"
+    entry_path = codex_dir / "submit-plan-artifact"
     assert entry_path.is_symlink()
-    assert entry_path.resolve() == (canonical_dir / "using-superpowers").resolve()
+    assert entry_path.resolve() == (canonical_dir / "submit-plan-artifact").resolve()
 
 
 def test_install_baseline_skills_replaces_existing_real_directory_at_sibling(
     fake_roots: tuple[Path, tuple[AgentSkillRoot, ...]],
 ) -> None:
     """Regression guard: a real (non-symlink) directory at the sibling path must
-    be rmtree'd and replaced with a fresh symlink.
+        be rmtree'd and replaced with a fresh symlink.
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
     """
     canonical_dir, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
-    user_skill = codex_dir / "using-superpowers"
+    user_skill = codex_dir / "submit-plan-artifact"
     user_skill.mkdir(parents=True)
     (user_skill / "stale.txt").write_text("old", encoding="utf-8")
 
     entry, failures = install_baseline_skills()
     assert entry.status.value == "installed_healthy"
     assert failures == []
-    entry_path = codex_dir / "using-superpowers"
+    entry_path = codex_dir / "submit-plan-artifact"
     # The directory was replaced — it is now a symlink, not a real dir.
     assert entry_path.is_symlink()
     # Resolves into the canonical copy.
-    assert entry_path.resolve() == (canonical_dir / "using-superpowers").resolve()
+    assert entry_path.resolve() == (canonical_dir / "submit-plan-artifact").resolve()
     # The stale file is gone (replaced by the symlink target, not a leftover real dir).
-    assert not (canonical_dir / "using-superpowers" / "stale.txt").exists()
+    assert not (canonical_dir / "submit-plan-artifact" / "stale.txt").exists()
 
 
 def test_install_baseline_skills_check_update_iterates_all_roots(

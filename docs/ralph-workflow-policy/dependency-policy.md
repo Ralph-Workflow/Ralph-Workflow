@@ -8,12 +8,10 @@
 This policy governs how every AI agent adds, updates, replaces, or
 removes a runtime, development, or build-time dependency. It applies to
 every change that modifies the package manager manifest
-(`ralph-workflow/pyproject.toml`, `ralph-workflow/skills-package/package.json`)
-or the lockfile (`ralph-workflow/uv.lock`).
+(`ralph-workflow/pyproject.toml`) or the lockfile
+(`ralph-workflow/uv.lock`).
 
-The maintained runtime is a Python package; the bundled Node.js artefact
-under `ralph-workflow/skills-package/` is a thin distribution wrapper for
-the mirrored Superpowers skills content and is pinned in source control.
+The maintained runtime is a Python package, pinned in source control.
 
 ## Default requirements
 
@@ -48,8 +46,8 @@ The `RALPH-FACT:` lines below record verified project facts. Agents
 rely on them when enforcing this policy and MUST keep them current as
 the project evolves.
 
-RALPH-FACT: package_manager: uv (primary; `[project]` dependencies and `[project.optional-dependencies]` for dev/docs/web-search/bundle extras in ralph-workflow/pyproject.toml). npm is used only inside ralph-workflow/skills-package/ for the bundled skills distribution artefact (one CLI bin at ralph-workflow/skills-package/bin/skills.js and one sync helper at ralph-workflow/skills-package/bin/sync-upstream-skills.js; no runtime dependencies, no test/lint toolchain).
-RALPH-FACT: lockfile_path: ralph-workflow/uv.lock (uv-managed; checkout installation requires `uv` >= 0.7.0 and validates this lock with `uv lock --check`, then uses `uv sync --locked --extra dev` followed by `uv sync --locked --check` in the staged snapshot). The skills-package artefact does not produce a package-lock.json because it ships zero runtime dependencies.
+RALPH-FACT: package_manager: uv (primary; `[project]` dependencies and `[project.optional-dependencies]` for dev/docs/web-search/bundle extras in ralph-workflow/pyproject.toml). No other package manager is used by a first-party artefact.
+RALPH-FACT: lockfile_path: ralph-workflow/uv.lock (uv-managed; checkout installation requires `uv` >= 0.7.0 and validates this lock with `uv lock --check`, then uses `uv sync --locked --extra dev` followed by `uv sync --locked --check` in the staged snapshot).
 RALPH-FACT: license_allowlist: project distribution license is `AGPL-3.0-or-later` (per ralph-workflow/pyproject.toml `[project].license`). Dependencies MUST use OSI-approved permissive or copyleft licenses compatible with AGPL-3.0-or-later distribution: MIT, BSD-2/3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1-or-later, LGPL-3.0-or-later, PSF-2.0, and similar. Non-OSI / source-available licenses (BSL, SSPL, Elastic, BUSL) MUST NOT be merged without a documented exception naming the license, the scope, the owner, and the review date. GPL-family (other than LGPL) is incompatible with downstream proprietary linking without an explicit dual-license strategy.
 RALPH-FACT: security_audit_command: Bandit (the Python-best-practice static analyzer; it is the language-scoped scanner called out in security-policy.md). Bandit IS pinned as a dev dependency in `ralph-workflow/pyproject.toml` (`bandit>=1.9.4`), IS installed by `make dev`, and IS wired into `make -C ralph-workflow verify` as the `sast baseline-diff audit (audit_sast)` step, which runs `uv run python -m ralph.testing.audit_sast` and fails on every finding the change introduces. A broader CVE audit depends on the GitHub Advisory Database (Dependabot) and is wired through CODEOWNERS + Renovate rather than a CLI command.
 RALPH-FACT: dependency_integrity_command: uv run python -m ralph.testing.audit_dependency_integrity (the dependency-integrity gate, wired into `make -C ralph-workflow verify` as the `dependency integrity audit (audit_dependency_integrity)` step). It diffs the manifests against the committed HEAD baseline and fails when a new package lacks a resolvable source or a publisher, introduces an install script, or lands in the lockfile without an artifact hash. (evidence: strong)

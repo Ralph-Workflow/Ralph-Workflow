@@ -75,7 +75,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
             "ralph/testing/audit_resource_lifecycle.py",
             "ralph/testing/audit_secret_scan.py",
             "ralph/testing/audit_skill_auto_commit.py",
-            "ralph/testing/audit_skill_mirror_freshness.py",
+            "ralph/testing/audit_artifact_skill_types.py",
             "ralph/testing/audit_template_render_integrity.py",
             "ralph/testing/audit_terminal_escape_containment.py",
             "ralph/testing/audit_test_integrity.py",

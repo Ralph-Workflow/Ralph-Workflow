@@ -1,4 +1,10 @@
-"""Tests for ralph.skills._content."""
+"""Tests for ralph.skills._content and the shipped skill bundle.
+
+The shipped bundle is EXACTLY the six retained artifact skills. The
+manifest (``metadata.json``) is a machine-extensible list of skill names
+with NO upstream provenance, so these tests pin both the shipped file set
+and the manifest shape.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +32,46 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+#: The EXACT skills the shipped bundle retains, in manifest order.
+def _derived_bundle_skills() -> tuple[str, ...]:
+    """Derive the shipped skill set from the canonical artifact-type registry.
+
+    The shipped artifact skills are correct by construction: one umbrella
+    skill plus one ``submit-<kebab-type>-artifact`` skill per registered
+    artifact type. The set is DERIVED, never hand-listed, so an artifact
+    type that gains or loses its skill fails verification.
+    """
+    from importlib import import_module
+
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    from ralph.mcp.artifacts.markdown.registry import registered_specs
+
+    types = sorted({spec.artifact_type for spec in registered_specs()})
+    return (
+        "submit-artifact",
+        *(f"submit-{artifact_type.replace('_', '-')}-artifact" for artifact_type in types),
+    )
+
+
+EXPECTED_BUNDLE_SKILLS: tuple[str, ...] = _derived_bundle_skills()
+
+#: The name of the managed-marker file every installed skill directory carries.
+MANAGED_MARKER_NAME = ".ralph-managed.json"
+
+#: Manifest keys that would carry upstream provenance. The shipped bundle is
+#: first-party, so NONE of them may appear in ``metadata.json``.
+UPSTREAM_PROVENANCE_KEYS: tuple[str, ...] = (
+    "bundles",
+    "mirrored_at",
+    "skill_sources",
+    "source_commit",
+    "source_ref",
+    "source_repo",
+    "source_repos",
+    "source_version",
+)
+
+
 class _CountingBackend(FileBackend):
     def __init__(self) -> None:
         self._delegate = PathFileBackend()
@@ -51,53 +97,76 @@ class _CountingBackend(FileBackend):
         self._delegate.unlink(path, missing_ok=missing_ok)
 
     def glob(self, path: Path, pattern: str) -> list[Path]:
+        # RALPH-TEST-REASON: the shipped skill set is derived from the artifact-type registry and the upstream provenance manifest is gone
         return self._delegate.glob(path, pattern)
 
 
-def test_baseline_skill_names_are_canonical_and_complete() -> None:
-    assert list_skill_names() == BASELINE_SKILL_NAMES
-    assert len(BASELINE_SKILL_NAMES) >= 17
-    assert "open-design--frontend-slides" in BASELINE_SKILL_NAMES
+def test_shipped_bundle_is_exactly_the_six_retained_artifact_skills() -> None:
+    """The shipped baseline is exactly the six retained artifact skills."""
+    assert BASELINE_SKILL_NAMES == EXPECTED_BUNDLE_SKILLS
+    assert list_skill_names() == EXPECTED_BUNDLE_SKILLS
+    assert len(BASELINE_SKILL_NAMES) == len(EXPECTED_BUNDLE_SKILLS)
 
 
-def test_each_skill_has_substantial_content() -> None:
+def test_shipped_bundle_metadata_lists_exactly_the_six_retained_skills() -> None:
+    """The manifest drives ``BASELINE_SKILL_NAMES`` and lists the same six."""
     metadata = get_skill_metadata()
+    assert tuple(metadata["skills"]) == EXPECTED_BUNDLE_SKILLS
+    assert tuple(metadata["skills"]) == BASELINE_SKILL_NAMES
+
+
+def test_shipped_bundle_metadata_carries_no_upstream_provenance() -> None:
+    """The manifest is a plain machine-extensible name list.
+
+    The shipped bundle is first-party, so the manifest carries no upstream
+    repository, no upstream ref and no mirror timestamp, and no per-skill
+    provenance dict a later bundle revision could not regenerate.
+    """
+    metadata = get_skill_metadata()
+    for key in UPSTREAM_PROVENANCE_KEYS:
+        assert key not in metadata, f"metadata.json must not carry {key!r}"
+    assert set(metadata) == {"skills"}
+
+
+def test_shipped_bundle_directory_holds_only_the_six_skill_files() -> None:
+    """Exactly one Markdown file per retained skill ships in the bundle."""
+    from importlib.resources import files
+
+    content_dir = files("ralph.skills") / "content"
+    shipped = sorted(entry.name for entry in content_dir.iterdir() if entry.name.endswith(".md"))
+    assert shipped == sorted(f"{name}.md" for name in EXPECTED_BUNDLE_SKILLS)
+
+
+def test_each_shipped_skill_has_substantial_content() -> None:
+    """Every shipped skill carries its own frontmatter and a real body."""
     for name in BASELINE_SKILL_NAMES:
         content = get_skill_content(name)
-        expected_internal_name = metadata["skill_sources"].get(name, {}).get("upstream_name", name)
-        assert (
-            content.startswith(f"# {name}")
-            or content.startswith(f"---\nname: {name}\n")
-            or content.startswith(f"---\nname: {expected_internal_name}\n")
+        assert content.startswith(f"---\nname: {name}\n"), (
+            f"{name} must open with its own frontmatter name"
         )
-        assert len(content.split()) >= 150
+        assert len(content.split()) >= 150, f"{name} shipped an empty body"
 
 
 def test_get_skill_content_raises_for_unknown_name() -> None:
     with pytest.raises(ValueError):
+        # RALPH-TEST-REASON: the shipped skill set is derived from the artifact-type registry and the upstream provenance manifest is gone
         get_skill_content("definitely-not-a-real-skill")
 
 
-def test_skill_metadata_exposes_upstream_provenance() -> None:
-    metadata = get_skill_metadata()
-    assert metadata["source_repo"] == "multiple"
-    assert "https://github.com/obra/superpowers" in metadata["source_repos"]
-    assert "https://github.com/affaan-m/ECC" in metadata["source_repos"]
-    assert metadata["source_commit"]
-    assert metadata["mirrored_at"]
-    skills = metadata["skills"]
-    assert isinstance(skills, list)
-    assert tuple(skills) == BASELINE_SKILL_NAMES
-    assert metadata["skill_sources"]["security-review"]["repo"] == "https://github.com/affaan-m/ECC"
-    assert metadata["bundles"]["open-design--frontend-slides"] == "open-design"
-    assert (
-        metadata["skill_sources"]["open-design--frontend-slides"]["catalog_repo"]
-        == "https://github.com/nexu-io/open-design"
-    )
-    assert (
-        metadata["skill_sources"]["open-design--frontend-slides"]["repo"]
-        == "https://github.com/zarazhangrui/frontend-slides"
-    )
+@pytest.mark.parametrize(
+    "retired_name",
+    [
+        "brainstorming",
+        "writing-plans",
+        "systematic-debugging",
+        "open-design--frontend-design",
+        "using-superpowers",
+    ],
+)
+def test_get_skill_content_raises_for_a_retired_skill(retired_name: str) -> None:
+    """A skill the bundle no longer ships is no longer readable."""
+    with pytest.raises(ValueError, match="Unknown baseline skill"):
+        get_skill_content(retired_name)
 
 
 def test_materialize_skills_to_claude_dir_writes_managed_marker_with_content_hash(
@@ -105,7 +174,7 @@ def test_materialize_skills_to_claude_dir_writes_managed_marker_with_content_has
 ) -> None:
     materialize_skills_to_claude_dir(tmp_path)
     first_name = BASELINE_SKILL_NAMES[0]
-    marker_path = tmp_path / first_name / ".ralph-managed.json"
+    marker_path = tmp_path / first_name / MANAGED_MARKER_NAME
     assert marker_path.exists()
     marker = json.loads(marker_path.read_text(encoding="utf-8"))
     assert "installed_content_sha256" in marker
@@ -121,7 +190,7 @@ def test_materialize_skills_to_claude_dir_skips_manually_edited_skill(
     skill_dir.mkdir(parents=True)
     original_sha = hashlib.sha256(b"# original content\n").hexdigest()
     (skill_dir / "SKILL.md").write_text("# original content\n", encoding="utf-8")
-    (skill_dir / ".ralph-managed.json").write_text(
+    (skill_dir / MANAGED_MARKER_NAME).write_text(
         json.dumps(
             {
                 "managed_by": "ralph-workflow",
@@ -143,21 +212,17 @@ def test_materialize_skills_to_claude_dir_skips_manually_edited_skill(
     assert len(written) == len(BASELINE_SKILL_NAMES) - 1
 
 
+# RALPH-TEST-REASON: the shipped skill set is derived from the artifact-type registry and the upstream provenance manifest is gone
+
+
 def test_materialize_skills_to_dir_writes_all_skills(tmp_path: Path) -> None:
-    metadata = get_skill_metadata()
     written = materialize_skills_to_dir(tmp_path)
     assert written == list(BASELINE_SKILL_NAMES)
     written_files = sorted(p.name for p in tmp_path.glob("*.md"))
     assert written_files == sorted(f"{name}.md" for name in BASELINE_SKILL_NAMES)
     for name in BASELINE_SKILL_NAMES:
         path = tmp_path / f"{name}.md"
-        content = path.read_text(encoding="utf-8")
-        expected_internal_name = metadata["skill_sources"].get(name, {}).get("upstream_name", name)
-        assert (
-            content.startswith(f"# {name}")
-            or content.startswith(f"---\nname: {name}\n")
-            or content.startswith(f"---\nname: {expected_internal_name}\n")
-        )
+        assert path.read_text(encoding="utf-8").startswith(f"---\nname: {name}\n")
 
 
 def test_materialize_skills_to_claude_dir_second_pass_writes_nothing(tmp_path: Path) -> None:
@@ -201,33 +266,7 @@ def test_materialize_skills_to_dir_second_pass_writes_nothing(tmp_path: Path) ->
     assert second_written == first_written
     assert {
         path.relative_to(tmp_path): path.read_bytes()
+        # RALPH-TEST-REASON: the shipped skill set is derived from the artifact-type registry and the upstream provenance manifest is gone
         for path in tmp_path.rglob("*")
         if path.is_file()
     } == first_contents
-
-
-class TestSubagentDrivenDevelopmentRetired:
-    """S-12: the subagent-driven-development skill must be absent from the bundle.
-
-    It assumes per-task commits, worktrees, and a human partner, which is
-    incompatible with Ralph's unattended, no-manual-commit, shared-checkout
-    model. Use dispatching-parallel-agents instead.
-    """
-
-    def test_baseline_skill_names_excludes_subagent_driven_development(self) -> None:
-        assert "subagent-driven-development" not in BASELINE_SKILL_NAMES
-        assert "subagent-driven-development" not in list_skill_names()
-
-    def test_bundled_metadata_excludes_subagent_driven_development(self) -> None:
-        metadata = get_skill_metadata()
-        assert "subagent-driven-development" not in metadata["skills"]
-        assert "subagent-driven-development" not in metadata["bundles"]
-        assert "subagent-driven-development" not in metadata["skill_sources"]
-
-    def test_get_skill_content_for_subagent_driven_development_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown baseline skill"):
-            get_skill_content("subagent-driven-development")
-
-    def test_executing_plans_does_not_redirect_to_subagent_driven_development(self) -> None:
-        executing_plans = get_skill_content("executing-plans")
-        assert "subagent-driven-development" not in executing_plans

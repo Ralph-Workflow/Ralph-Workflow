@@ -42,6 +42,15 @@ def _fake_user_global_home(tmp_path: Path) -> Path:
     return home
 
 
+def _project_skill_roots(workspace: Path) -> list[Path]:
+    """Return the project canonical root plus EVERY project sibling root."""
+    roots = [workspace / ".opencode" / "skills"]
+    roots.extend(
+        sibling.resolve(workspace) for sibling in project_sibling_skill_roots_top(workspace)
+    )
+    return roots
+
+
 @pytest.mark.timeout_seconds(3)
 def test_install_project_baseline_skills_materializes_canonical_root(tmp_path: Path) -> None:
     """Canonical .opencode/skills/<name>/SKILL.md exists for every baseline skill after install.
@@ -104,17 +113,18 @@ def test_install_project_baseline_skills_preserves_user_edited_canonical_skill(
     """A canonical SKILL.md without a managed marker is preserved (NEEDS_REPAIR)."""
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
-    user_skill = canonical / "using-superpowers"
+    user_skill = canonical / "submit-artifact"
     user_skill.mkdir(parents=True, exist_ok=True)
     user_marker = user_skill / "SKILL.md"
     user_marker.write_text("# my custom override\n", encoding="utf-8")
 
     with patch("pathlib.Path.home", return_value=home):
+        # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
         result = install_project_baseline_skills(tmp_path)
 
     assert result[1], "Expected at least one failure for the user-edited canonical"
-    assert any(code == "skills-conflict-using-superpowers" for code in result[1]), (
-        f"Expected skills-conflict-using-superpowers, got {result[1]}"
+    assert any(code == "skills-conflict-submit-artifact" for code in result[1]), (
+        f"Expected skills-conflict-submit-artifact, got {result[1]}"
     )
     assert user_marker.read_text(encoding="utf-8") == "# my custom override\n", (
         "User-edited canonical SKILL.md must be preserved"
@@ -127,17 +137,18 @@ def test_install_project_baseline_skills_preserves_user_edited_sibling_skill(
 ) -> None:
     """A sibling SKILL.md that diverges from canonical must be preserved (NEEDS_REPAIR)."""
     home = _fake_user_global_home(tmp_path)
-    sibling = tmp_path / ".claude" / "skills" / "using-superpowers"
+    sibling = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling.mkdir(parents=True, exist_ok=True)
     sibling_skill = sibling / "SKILL.md"
     sibling_skill.write_text("# sibling override\n", encoding="utf-8")
 
     with patch("pathlib.Path.home", return_value=home):
+        # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
         result = install_project_baseline_skills(tmp_path)
 
     assert result[1], "Expected at least one failure for the user-edited sibling"
-    assert any(code == "sibling-conflict-using-superpowers" for code in result[1]), (
-        f"Expected sibling-conflict-using-superpowers, got {result[1]}"
+    assert any(code == "sibling-conflict-submit-artifact" for code in result[1]), (
+        f"Expected sibling-conflict-submit-artifact, got {result[1]}"
     )
     assert sibling_skill.read_text(encoding="utf-8") == "# sibling override\n", (
         "User-edited sibling SKILL.md must be preserved"
@@ -191,11 +202,11 @@ def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
         assert _project_skills_need_install(tmp_path) is False
 
     # Make one sibling a real directory (not a symlink) to force a re-install.
-    stale = tmp_path / ".claude" / "skills" / "using-superpowers"
+    stale = tmp_path / ".claude" / "skills" / "submit-artifact"
     if stale.is_symlink():
         stale.unlink()
     stale.mkdir(parents=True, exist_ok=True)
-    (stale / "SKILL.md").write_text(get_skill_content("using-superpowers"), encoding="utf-8")
+    (stale / "SKILL.md").write_text(get_skill_content("submit-artifact"), encoding="utf-8")
     assert _project_skills_need_install(tmp_path) is True
 
 
@@ -209,7 +220,7 @@ def test_project_skills_need_install_detects_stale_managed_canonical_content(
         install_project_baseline_skills(tmp_path)
         assert _project_skills_need_install(tmp_path) is False
 
-    skill_file = tmp_path / ".opencode" / "skills" / "using-superpowers" / "SKILL.md"
+    skill_file = tmp_path / ".opencode" / "skills" / "submit-artifact" / "SKILL.md"
     skill_file.write_text("# stale managed skill copy\n", encoding="utf-8")
 
     assert _project_skills_need_install(tmp_path) is True
@@ -281,7 +292,7 @@ def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_co
     """
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
-    user_skill = canonical / "using-superpowers"
+    user_skill = canonical / "submit-artifact"
     user_skill.mkdir(parents=True, exist_ok=True)
     (user_skill / "SKILL.md").write_text(
         "# my custom override\n",
@@ -292,11 +303,12 @@ def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_co
         patch("pathlib.Path.home", return_value=home),
         patch("ralph.skills._installer.self_improving_skills_hook") as hook_mock,
     ):
+        # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
         result = install_project_baseline_skills(tmp_path)
 
     assert result[0].status == CapabilityStatus.NEEDS_REPAIR
-    assert any(code == "skills-conflict-using-superpowers" for code in result[1]), (
-        f"Expected skills-conflict-using-superpowers, got {result[1]}"
+    assert any(code == "skills-conflict-submit-artifact" for code in result[1]), (
+        f"Expected skills-conflict-submit-artifact, got {result[1]}"
     )
     hook_mock.assert_not_called()
 
@@ -724,13 +736,12 @@ def test_project_sibling_symlinks_survive_workspace_relocation(tmp_path: Path) -
 def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> None:
     """Project-scope install removes managed skills that the baseline no longer ships.
 
-    The ``submit-plan-step-edits`` skill was retired (the per-step edit
-    endpoint was removed in the wt-044 redesign) and is no longer in
-    ``BASELINE_SKILL_NAMES``. After install, no managed entry by that
-    name should remain on disk in the canonical nor in any sibling root.
-    The user-edit preservation contract is honoured: a user-added skill
-    directory without ``_MANAGED_MARKER`` MUST NOT be pruned even if its
-    name happens to coincide with a removed baseline skill.
+    A retired skill directory is removed ONLY when its managed marker proves
+    Ralph manages it AND its complete content still matches the digest the
+    marker recorded. The user-edit preservation contract is honoured: a
+    user-added skill directory without ``_MANAGED_MARKER`` MUST NOT be
+    pruned even if its name happens to coincide with a removed baseline
+    skill.
     """
     from ralph.skills._content import _MANAGED_MARKER
     from ralph.skills._installer import _prune_removed_baseline_skills
@@ -746,17 +757,28 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
 
     # Step 2: plant a managed skill that is NOT in the baseline (mimics
     # a stale `submit-plan-step-edits` from a prior release). The marker
-    # makes it look like Ralph-managed content so the prune can identify
-    # it as eligible for removal.
+    # carries the REAL prior shape -- ``managed_by`` plus a recorded
+    # ``installed_content_sha256`` digest of the installed content -- so
+    # the prune can prove the directory is pristine and prunable.
     stale_name = "submit-plan-step-edits"
     assert stale_name not in BASELINE_SKILL_NAMES, (
         "this test assumes the retired skill is no longer in the baseline"
     )
     stale_dir = canonical / stale_name
     stale_dir.mkdir(parents=True, exist_ok=True)
-    (stale_dir / "SKILL.md").write_text("stale", encoding="utf-8")
+    stale_content = "stale"
+    (stale_dir / "SKILL.md").write_text(stale_content, encoding="utf-8")
     (stale_dir / _MANAGED_MARKER).write_text(
-        json.dumps({"managed_by": "ralph-workflow", "skill": stale_name}), encoding="utf-8"
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": stale_name,
+                "installed_content_sha256": hashlib.sha256(
+                    stale_content.encode("utf-8")
+                ).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
     )
     assert stale_dir.is_dir()
 
@@ -768,12 +790,15 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
         user_owned = sibling_root / user_owned_target
         user_owned.mkdir(parents=True, exist_ok=True)
         (user_owned / "SKILL.md").write_text("user content", encoding="utf-8")
-        # Deliberately do NOT plant a managed marker.
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
+    # Deliberately do NOT plant a managed marker.
 
     # Step 4: the prune helper removes managed entries whose name is no
-    # longer in the baseline.
+    # longer in the baseline AND whose content still matches its digest.
     pruned = _prune_removed_baseline_skills(canonical)
-    assert stale_name in pruned, f"expected the stale managed skill to be pruned; got {pruned!r}"
+    assert stale_name in pruned.pruned, (
+        f"expected the stale managed skill to be pruned; got {pruned!r}"
+    )
     assert not stale_dir.exists(), "stale managed skill must be removed from the canonical"
 
     # Step 5: the user-owned entry (no marker) is preserved in every sibling root.
@@ -799,6 +824,93 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
         assert (sibling_root / user_owned_target).is_dir(), (
             f"{sibling.agent}: user-owned skill must survive the full install"
         )
+
+
+@pytest.mark.timeout_seconds(3)
+def test_install_preserves_user_edited_retired_managed_skill(tmp_path: Path) -> None:
+    """A retired managed skill the user edited survives the project install.
+
+    The marker's recorded digest no longer matches the on-disk content, so
+    the prune cannot prove the directory is pristine: it is preserved and
+    REPORTED through the installer's failure list. The fixture is planted
+    at EVERY project root (the canonical and all four siblings).
+    """
+    home = _fake_user_global_home(tmp_path)
+    retired_name = "submit-plan-step-edits"
+    assert retired_name not in BASELINE_SKILL_NAMES
+
+    retired_dirs: list[Path] = []
+    for root in _project_skill_roots(tmp_path):
+        retired_dir = root / retired_name
+        retired_dir.mkdir(parents=True)
+        (retired_dir / "SKILL.md").write_text("stale\n", encoding="utf-8")
+        (retired_dir / ".ralph-managed.json").write_text(
+            json.dumps(
+                {
+                    "managed_by": "ralph-workflow",
+                    "skill": retired_name,
+                    "installed_content_sha256": hashlib.sha256(b"stale\n").hexdigest(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        retired_dirs.append(retired_dir)
+    # The user edits the installed content: the digest no longer matches.
+    for retired_dir in retired_dirs:
+        (retired_dir / "SKILL.md").write_text("# my edited retired skill\n", encoding="utf-8")
+
+    with patch("pathlib.Path.home", return_value=home):
+        result = install_project_baseline_skills(tmp_path)
+
+    for retired_dir in retired_dirs:
+        assert retired_dir.is_dir(), "a user-edited retired skill must never be deleted"
+        assert (retired_dir / "SKILL.md").read_text(encoding="utf-8") == (
+            "# my edited retired skill\n"
+        )
+    assert f"skills-prune-preserved-{retired_name}" in result[1], (
+        f"the preserved retired skill must be reported; got {result[1]!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(3)
+def test_install_preserves_retired_managed_skill_with_companion_file(tmp_path: Path) -> None:
+    """A retired managed skill carrying a user-added companion file survives.
+
+    The legacy marker owns exactly ``SKILL.md``; the extra file on disk is
+    a user-added companion, so the prune preserves the directory and
+    REPORTS it. The fixture is planted at EVERY project root.
+    """
+    home = _fake_user_global_home(tmp_path)
+    retired_name = "submit-plan-step-edits"
+    assert retired_name not in BASELINE_SKILL_NAMES
+
+    retired_dirs: list[Path] = []
+    for root in _project_skill_roots(tmp_path):
+        retired_dir = root / retired_name
+        retired_dir.mkdir(parents=True)
+        (retired_dir / "SKILL.md").write_text("stale\n", encoding="utf-8")
+        (retired_dir / ".ralph-managed.json").write_text(
+            json.dumps(
+                {
+                    "managed_by": "ralph-workflow",
+                    "skill": retired_name,
+                    "installed_content_sha256": hashlib.sha256(b"stale\n").hexdigest(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        (retired_dir / "notes.md").write_text("# my notes\n", encoding="utf-8")
+        retired_dirs.append(retired_dir)
+
+    with patch("pathlib.Path.home", return_value=home):
+        result = install_project_baseline_skills(tmp_path)
+
+    for retired_dir in retired_dirs:
+        assert retired_dir.is_dir(), "a managed directory with a companion file must survive"
+        assert (retired_dir / "notes.md").read_text(encoding="utf-8") == "# my notes\n"
+    assert f"skills-prune-preserved-{retired_name}" in result[1], (
+        f"the preserved retired skill must be reported; got {result[1]!r}"
+    )
 
 
 @pytest.mark.timeout_seconds(3)
@@ -845,10 +957,13 @@ def test_prune_removes_broken_symlinks_to_retired_baseline_skills(tmp_path: Path
     # alone, not about its content).
     (root / alive_baseline_name).mkdir()
     (root / alive_baseline_name / "SKILL.md").write_text("body", encoding="utf-8")
+    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 
     pruned = _prune_removed_baseline_skills(root)
 
-    assert retired_name in pruned, f"broken symlink to retired skill must be pruned; got {pruned!r}"
+    assert retired_name in pruned.pruned, (
+        f"broken symlink to retired skill must be pruned; got {pruned!r}"
+    )
     assert not (root / retired_name).exists(), (
         "broken symlink must be unlinked even when no marker is reachable"
     )

@@ -119,16 +119,6 @@ IO_ALLOWLIST: set[str] = {
     # This cannot be tested from the same process because -O is a
     # per-process flag; a subprocess is the only way to test this.
     "test_timing_safety_transports",
-    # Black-box CLI entry-point verification for the wt-013 skill-mirror
-    # freshness audit. The test spawns ``python -m
-    # ralph.testing.audit_skill_mirror_freshness`` to prove the audit's
-    # ``main()`` is reachable as a module CLI (the path the verify
-    # step uses), not just as an imported function. MockProcessExecutor
-    # cannot replace this: the verification step runs the audit as a
-    # subprocess, and the test's job is to mirror that path so a
-    # packaging regression that breaks ``python -m ...`` invocation
-    # cannot slip past the unit test.
-    "test_audit_skill_mirror_freshness",
     # Git integration tests using the tmp_git_repo fixture (which wraps
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",
@@ -194,6 +184,14 @@ SOURCE_READ_ALLOWLIST: set[str] = {
     # decision. A tmp_path copy would assert against the fixture, not the
     # shipped file, so the guard would stop detecting drift entirely. Reading
     # those files is the ONLY thing the test needs exempted.
+    # Shipped skill-manifest shape guard. Reads the shipped
+    # ``ralph/skills/content/metadata.json`` because the manifest's literal
+    # shape (names only, no upstream provenance) IS the regression contract:
+    # the test detects any per-skill upstream bookkeeping returning to the
+    # manifest. A fixture copy would assert the fixture's shape, not the
+    # shipped file's. Reading that one manifest is the ONLY thing the test
+    # needs exempted.
+    "test_skills_package_skill_names_parity",
     "test_visual_verdict_policy_alignment",
     # Parallel-execution guidance regression guard. Reads the shipped
     # ``ralph/prompts/templates/shared/_parallel_execution.jinja`` partial

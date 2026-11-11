@@ -19,10 +19,12 @@ quality. Plans have no structural errors or advisories; extraction is best
 effort. The two free-form development artifacts validate only the closed
 `status` enum in the frontmatter; the body is the next agent's reading
 matter. Non-plan artifacts retain their per-type contracts: the remaining
-artifact types (`commit_message`, `commit_review`, `fix_result`, `issues`,
-`smoke_test_result`, `product_spec`, `planning_analysis_decision`,
-`review_analysis_decision`, `policy_remediation_analysis_decision`) keep
-the closed grammar below.
+artifact types (`commit_message`, `commit_review`, `design_verdict`,
+`fix_result`, `issues`, `smoke_test_result`, `product_spec`,
+`planning_analysis_decision`, `review_analysis_decision`,
+`policy_remediation_analysis_decision`) keep the closed grammar below.
+The runtime-generated `run_time_report` is not submitted by agents at all;
+the runtime writes it to `.agent/artifacts/run_time_report.md`.
 
 Two MCP tools operate on every artifact type:
 
@@ -34,17 +36,17 @@ Two MCP tools operate on every artifact type:
 
 Supported `artifact_type` values: `plan`, `development_result`,
 `development_analysis_decision`, `commit_message`, `commit_review`,
-`fix_result`, `issues`, `smoke_test_result`, `product_spec`,
-`planning_analysis_decision`, `review_analysis_decision`,
-`policy_remediation_analysis_decision`.
+`design_verdict`, `fix_result`, `issues`, `smoke_test_result`,
+`product_spec`, `planning_analysis_decision`, `review_analysis_decision`,
+`policy_remediation_analysis_decision`. The runtime-generated
+`run_time_report` is not an agent-submitted type.
 
-For `plan`, `development_result`, `development_analysis_decision`,
-`commit_message`, and `commit_review`, use the dedicated companion skills
-(`submit-plan-artifact`, `submit-development-result-artifact`,
-`submit-development-analysis-decision-artifact`,
-`submit-commit-message-artifact`, `submit-commit-review-artifact`). This
-skill teaches the shared grammar for the structured non-plan artifacts;
-the per-type skills teach the free-form contract where it applies.
+Every artifact type has a dedicated companion skill named
+`submit-<type>-artifact` (for example `submit-plan-artifact`,
+`submit-design-verdict-artifact`, `submit-smoke-test-result-artifact`).
+The umbrella skill teaches the shared grammar for the structured non-plan
+artifacts; each companion skill teaches its own type's contract, including
+the free-form contract where it applies.
 
 ## The Closed Grammar
 

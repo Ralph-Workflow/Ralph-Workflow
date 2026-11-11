@@ -19,6 +19,8 @@ combined verify budget.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -55,16 +57,19 @@ pytestmark = [
 def _scope_baseline_skills_to_test_skills(monkeypatch: pytest.MonkeyPatch) -> None:
     """Scope baseline skills to the tested skill to avoid redundant multi-root hashing.
 
-    The 7 acceptance tests in this file specifically test sibling transition,
-    dirty tracking, and symlink replacement using 'brainstorming'. Scoping the
+    The acceptance tests in this file specifically test sibling transition,
+    dirty tracking, and symlink replacement using 'submit-artifact'. Scoping the
     baseline skill set avoids hundreds of redundant per-leaf `git hash-object`
     subprocess invocations across unexercised skills without changing any
     behavioral assertion.
     """
-    test_skills = ("brainstorming",)
+    test_skills = ("submit-artifact",)
     monkeypatch.setattr("ralph.skills._content.BASELINE_SKILL_NAMES", test_skills)
     monkeypatch.setattr("ralph.skills._installer.BASELINE_SKILL_NAMES", test_skills)
     monkeypatch.setattr("ralph.skills._installer_candidates.BASELINE_SKILL_NAMES", test_skills)
+    # The prune owns its own binding of the baseline names; scope it too so
+    # the retired-skill prune sees the SAME scoped baseline as the install.
+    monkeypatch.setattr("ralph.skills._prune.BASELINE_SKILL_NAMES", test_skills)
 
 
 def _commit_all_initial(repo_root: Path) -> None:
@@ -103,7 +108,7 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
 ) -> None:
     """U2 / PA-002: a tracked sibling directory replaced by a symlink commits BOTH sides.
 
-    Setup: a tracked sibling dir ``.claude/skills/<brainstorming>/`` with
+    Setup: a tracked sibling dir ``.claude/skills/<submit-artifact>/`` with
     three tracked files (``SKILL.md``, ``_MANAGED_MARKER.json``, plus a
     third ``extra.txt``). The candidate set MUST include the sibling
     ROOT path, every baseline skill entry, and EVERY tracked
@@ -125,15 +130,15 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
     Repo.init(tmp_path)
     _commit_all_initial(tmp_path)
 
-    # 1. Track a sibling dir ``brainstorming`` (a real baseline name) so
+    # 1. Track a sibling dir ``submit-artifact`` (a real baseline name) so
     #    the install's dir-to-symlink transition replaces it.
-    sibling_dir = tmp_path / ".claude" / "skills" / "brainstorming"
+    sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
     skill_md = sibling_dir / "SKILL.md"
     skill_md.write_text("old\n", encoding="utf-8")
     marker = sibling_dir / _MANAGED_MARKER
     marker.write_text(
-        '{"managed_by": "ralph-workflow", "skill": "brainstorming"}\n',
+        '{"managed_by": "ralph-workflow", "skill": "submit-artifact"}\n',
         encoding="utf-8",
     )
     extra = sibling_dir / "extra.txt"
@@ -143,9 +148,9 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
     try:
         repo.index.add(
             [
-                ".claude/skills/brainstorming/SKILL.md",
-                ".claude/skills/brainstorming/" + _MANAGED_MARKER,
-                ".claude/skills/brainstorming/extra.txt",
+                ".claude/skills/submit-artifact/SKILL.md",
+                ".claude/skills/submit-artifact/" + _MANAGED_MARKER,
+                ".claude/skills/submit-artifact/extra.txt",
             ]
         )
         actor = Actor("Test Author", "test@example.com")
@@ -175,10 +180,10 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
     #    post_sha=None) -- it is harmless to include as a candidate so
     #    the sibling ROOT entry always lands in the pre-write snapshot.
     expected_descendants = {
-        ".claude/skills/brainstorming",
-        ".claude/skills/brainstorming/SKILL.md",
-        ".claude/skills/brainstorming/" + _MANAGED_MARKER,
-        ".claude/skills/brainstorming/extra.txt",
+        ".claude/skills/submit-artifact",
+        ".claude/skills/submit-artifact/SKILL.md",
+        ".claude/skills/submit-artifact/" + _MANAGED_MARKER,
+        ".claude/skills/submit-artifact/extra.txt",
     }
     actual_written = set(outcome.written_paths)
     for path in expected_descendants:
@@ -230,42 +235,43 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
         committed_paths = {
             diff.a_path for diff in repo.head.commit.diff(repo.head.commit.parents[0])
         }
+        # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
         # Old tracked descendants are gone (the diff lists them as
         # deletions even though the new symlink's resolved content
         # shadows them on disk).
-        assert ".claude/skills/brainstorming/SKILL.md" in committed_paths, (
+        assert ".claude/skills/submit-artifact/SKILL.md" in committed_paths, (
             f"old SKILL.md MUST be in the chore commit's deletions; "
             f"got committed_paths={sorted(committed_paths)}"
         )
-        assert ".claude/skills/brainstorming/" + _MANAGED_MARKER in committed_paths, (
+        assert ".claude/skills/submit-artifact/" + _MANAGED_MARKER in committed_paths, (
             f"old {_MANAGED_MARKER} MUST be in the chore commit's deletions; "
             f"got committed_paths={sorted(committed_paths)}"
         )
-        assert ".claude/skills/brainstorming/extra.txt" in committed_paths, (
+        assert ".claude/skills/submit-artifact/extra.txt" in committed_paths, (
             f"old extra.txt MUST be in the chore commit's deletions; "
             f"got committed_paths={sorted(committed_paths)}"
         )
         # The new symlink at the old path lands in the chore commit.
-        assert ".claude/skills/brainstorming" in committed_paths, (
+        assert ".claude/skills/submit-artifact" in committed_paths, (
             f"new symlink at the sibling ROOT MUST land in the chore commit; "
             f"got committed_paths={sorted(committed_paths)}"
         )
         # Post-commit HEAD tree MUST NOT contain the old descendants.
         tree_paths = _head_tree_blob_paths(repo)
-        assert ".claude/skills/brainstorming/SKILL.md" not in tree_paths, (
+        assert ".claude/skills/submit-artifact/SKILL.md" not in tree_paths, (
             f"old SKILL.md MUST be gone from the HEAD tree; "
             f"got tree_paths={sorted(p for p in tree_paths if '.claude' in p)}"
         )
-        assert ".claude/skills/brainstorming/extra.txt" not in tree_paths, (
+        assert ".claude/skills/submit-artifact/extra.txt" not in tree_paths, (
             f"old extra.txt MUST be gone from the HEAD tree; "
             f"got tree_paths={sorted(p for p in tree_paths if '.claude' in p)}"
         )
-        assert ".claude/skills/brainstorming/" + _MANAGED_MARKER not in tree_paths, (
+        assert ".claude/skills/submit-artifact/" + _MANAGED_MARKER not in tree_paths, (
             f"old {_MANAGED_MARKER} MUST be gone from the HEAD tree; "
             f"got tree_paths={sorted(p for p in tree_paths if '.claude' in p)}"
         )
         # The new symlink at the old path lands in the HEAD tree.
-        assert ".claude/skills/brainstorming" in tree_paths, (
+        assert ".claude/skills/submit-artifact" in tree_paths, (
             f"new symlink at the sibling ROOT MUST land in the HEAD tree; "
             f"got tree_paths={sorted(p for p in tree_paths if '.claude' in p)}"
         )
@@ -275,13 +281,15 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
             f"sibling path MUST be a symlink after the install; "
             f"got is_symlink={sibling_dir.is_symlink()}"
         )
+        # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
         assert (sibling_dir / "SKILL.md").read_text(encoding="utf-8") == get_skill_content(
-            "brainstorming"
+            "submit-artifact"
         ), "SKILL.md via the new symlink MUST resolve to the canonical content"
         # The new canonical content is byte-identical.
-        canonical_skill_md = tmp_path / ".opencode" / "skills" / "brainstorming" / "SKILL.md"
+        canonical_skill_md = tmp_path / ".opencode" / "skills" / "submit-artifact" / "SKILL.md"
+        # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
         assert canonical_skill_md.read_text(encoding="utf-8") == get_skill_content(
-            "brainstorming"
+            "submit-artifact"
         ), "canonical SKILL.md MUST be byte-identical to the bundled content"
     finally:
         repo.close()
@@ -313,14 +321,27 @@ def test_install_prunes_managed_skill_commits_deletions_and_sibling_symlink(
     # 1. Track a retired managed skill at the canonical with three
     #    files (so the U2 descendant expansion is exercised -- only two
     #    files would be picked up by the OLD candidate-set logic).
+    #    The marker records the managed file set EXPLICITLY (the new-style
+    #    ``files`` map), so the prune can prove the directory is purely
+    #    managed and its content still matches the recorded digests.
     retired = tmp_path / ".opencode" / "skills" / "retired-skill"
     retired.mkdir(parents=True)
     (retired / "SKILL.md").write_text("retired\n", encoding="utf-8")
+    (retired / "extra.txt").write_text("retired extra\n", encoding="utf-8")
     (retired / _MANAGED_MARKER).write_text(
-        '{"managed_by": "ralph-workflow", "skill": "retired-skill"}\n',
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": "retired-skill",
+                "files": {
+                    "SKILL.md": hashlib.sha256(b"retired\n").hexdigest(),
+                    "extra.txt": hashlib.sha256(b"retired extra\n").hexdigest(),
+                },
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
-    (retired / "extra.txt").write_text("retired extra\n", encoding="utf-8")
 
     # 3. Track a sibling symlink to the retired canonical so the prune
     #    also leaves a stale (now-broken) sibling symlink.
@@ -401,6 +422,91 @@ def test_install_prunes_managed_skill_commits_deletions_and_sibling_symlink(
         repo.close()
 
 
+def test_project_level_removals_produce_exactly_one_chore_commit(
+    tmp_path: Path,
+) -> None:
+    """A project-level removal lands in EXACTLY ONE ``chore(skills)`` commit.
+
+    The retired managed skill is removed at the project canonical AND at
+    every project sibling root in the SAME install run, so the whole
+    migration has to land in one deterministic chore commit instead of one
+    commit per root.
+    """
+    Repo.init(tmp_path)
+    _commit_all_initial(tmp_path)
+
+    retired = tmp_path / ".opencode" / "skills" / "retired-skill"
+    retired.mkdir(parents=True)
+    (retired / "SKILL.md").write_text("retired\n", encoding="utf-8")
+    (retired / _MANAGED_MARKER).write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": "retired-skill",
+                "installed_content_sha256": hashlib.sha256(b"retired\n").hexdigest(),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add(
+            [
+                ".opencode/skills/retired-skill/SKILL.md",
+                ".opencode/skills/retired-skill/" + _MANAGED_MARKER,
+            ]
+        )
+        actor = Actor("Test Author", "test@example.com")
+        repo.index.commit("seed retired", author=actor, committer=actor)
+        seed_head = repo.head.commit.hexsha
+    finally:
+        repo.close()
+
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+    with patch("pathlib.Path.home", return_value=home):
+        outcome = install_project_baseline_skills_with_diff(tmp_path)
+
+    assert outcome.entry.status.value == "installed_healthy", outcome.failures
+    assert not retired.exists(), "the retired managed skill must be pruned"
+
+    result = commit_skill_writes(
+        tmp_path,
+        written_paths=outcome.written_paths,
+        pre_contents=outcome.pre_contents,
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+        intentional_transitions=outcome.intentional_transitions,
+    )
+    assert result.status is ScopedCommitStatus.CREATED, result
+
+    repo = Repo(tmp_path)
+    try:
+        # ``iter_commits`` walks newest-first, so the commits newer than the
+        # seed are exactly the ones before the seed head.
+        new_commits = []
+        for commit in repo.iter_commits():
+            if commit.hexsha == seed_head:
+                break
+            new_commits.append(commit)
+        assert len(new_commits) == 1, (
+            f"the project-level removal MUST produce EXACTLY ONE commit; "
+            f"got {len(new_commits)}: "
+            f"{[(c.hexsha[:8], c.message.splitlines()[0]) for c in new_commits]}"
+        )
+        chore = new_commits[0]
+        assert chore.message.splitlines()[0] == SKILL_AUTO_COMMIT_SUBJECT
+        committed_paths = {diff.a_path for diff in chore.diff(chore.parents[0])}
+        assert ".opencode/skills/retired-skill/SKILL.md" in committed_paths
+        assert ".opencode/skills/retired-skill/" + _MANAGED_MARKER in committed_paths
+        tree_paths = _head_tree_blob_paths(repo)
+        assert ".opencode/skills/retired-skill/SKILL.md" not in tree_paths
+    finally:
+        repo.close()
+
+
 def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
     tmp_path: Path,
 ) -> None:
@@ -418,12 +524,12 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
 
     # 1. Track a sibling skill with byte-equal content to the bundled
     #    canonical content.
-    sibling_dir = tmp_path / ".claude" / "skills" / "brainstorming"
+    sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
-    byte_equal_content = get_skill_content("brainstorming")
+    byte_equal_content = get_skill_content("submit-artifact")
     (sibling_dir / "SKILL.md").write_text(byte_equal_content, encoding="utf-8")
     (sibling_dir / _MANAGED_MARKER).write_text(
-        '{"managed_by": "ralph-workflow", "skill": "brainstorming"}\n',
+        '{"managed_by": "ralph-workflow", "skill": "submit-artifact"}\n',
         encoding="utf-8",
     )
 
@@ -431,8 +537,8 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
     try:
         repo.index.add(
             [
-                ".claude/skills/brainstorming/SKILL.md",
-                ".claude/skills/brainstorming/" + _MANAGED_MARKER,
+                ".claude/skills/submit-artifact/SKILL.md",
+                ".claude/skills/submit-artifact/" + _MANAGED_MARKER,
             ]
         )
         actor = Actor("Test Author", "test@example.com")
@@ -448,14 +554,15 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
 
     # The candidate set MUST include the descendant SKILL.md (so its
     # pre-write hash is recorded) AND the sibling skill entry (so the
+    # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
     # new symlink is staged). The byte-equal trap is neutralised by
     # the U2 candidate-set expansion + U0 ancestor-symlink safety.
     actual_written = set(outcome.written_paths)
-    assert ".claude/skills/brainstorming/SKILL.md" in actual_written, (
+    assert ".claude/skills/submit-artifact/SKILL.md" in actual_written, (
         f"U2: byte-equal descendant MUST be in the candidate set; "
         f"got written_paths={sorted(actual_written)}"
     )
-    assert ".claude/skills/brainstorming" in actual_written, (
+    assert ".claude/skills/submit-artifact" in actual_written, (
         f"U2: byte-equal sibling ROOT MUST be in the candidate set; "
         f"got written_paths={sorted(actual_written)}"
     )
@@ -478,10 +585,11 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
     )
 
     # 4. Post-commit: the descendant is no longer tracked.
+    # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
     repo = Repo(tmp_path)
     try:
         tree_paths = {entry.path for entry in repo.head.commit.tree}
-        assert ".claude/skills/brainstorming/SKILL.md" not in tree_paths, (
+        assert ".claude/skills/submit-artifact/SKILL.md" not in tree_paths, (
             "byte-equal descendant MUST be deleted from HEAD tree"
         )
     finally:
@@ -767,7 +875,7 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
     """wt-012 DA-003/DA-010/DA-012: a pre-write-dirty tracked symlink
     descendant under a sibling root SKIPs that root's transition.
 
-    Setup: a tracked sibling dir ``.claude/skills/brainstorming/``
+    Setup: a tracked sibling dir ``.claude/skills/submit-artifact/``
     containing a tracked SYMLINK descendant ``alias -> original``. The
     user retargets the symlink to ``dirty`` (uncommitted) before the
     install runs. The install replaces the dir with a symlink to the
@@ -777,7 +885,7 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
     symlink leaf's target bytes, which could equal the recorded
     pre-write hash, silently dropping the dirty descendant from
     ``written_paths``; the ancestor then committed alone and swept
-    ``D .claude/skills/brainstorming/alias`` into the chore commit.
+    ``D .claude/skills/submit-artifact/alias`` into the chore commit.
 
     Post-fix the install boundary detects the pre-write-dirty
     descendant via one porcelain snapshot, excludes the root from
@@ -790,12 +898,12 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
     Repo.init(tmp_path)
     _commit_all_initial(tmp_path)
 
-    sibling_dir = tmp_path / ".claude" / "skills" / "brainstorming"
+    sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
     (sibling_dir / "alias").symlink_to("original")
     repo = Repo(tmp_path)
     try:
-        repo.index.add([".claude/skills/brainstorming/alias"])
+        repo.index.add([".claude/skills/submit-artifact/alias"])
         actor = Actor("Test Author", "test@example.com")
         repo.index.commit("seed tracked symlink descendant", author=actor, committer=actor)
         seed_head = repo.head.commit.hexsha
@@ -811,14 +919,15 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
     with patch("pathlib.Path.home", return_value=home):
         outcome = install_project_baseline_skills_with_diff(tmp_path)
 
+    # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
     # The dirty descendant MUST survive the producer's byte-exact diff
     # (the pre-fix bug dropped it here), and the transition root MUST
     # be excluded from the intentional set.
-    assert ".claude/skills/brainstorming/alias" in outcome.written_paths, (
+    assert ".claude/skills/submit-artifact/alias" in outcome.written_paths, (
         f"DA-010: the dirty symlink descendant must stay in written_paths; "
         f"got: {sorted(outcome.written_paths)}"
     )
-    assert ".claude/skills/brainstorming" not in outcome.intentional_transitions, (
+    assert ".claude/skills/submit-artifact" not in outcome.intentional_transitions, (
         f"DA-003: a root with a pre-write-dirty descendant must NOT be an "
         f"intentional transition; got: {sorted(outcome.intentional_transitions)}"
     )
@@ -831,42 +940,45 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
         stage_fn=stage_files,
         intentional_transitions=outcome.intentional_transitions,
     )
+    # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
 
     # The dirty descendant and its transition root are SKIPPED; the
     # rest of the install (other roots, canonical) may still commit.
-    assert ".claude/skills/brainstorming/alias" in result.skipped_paths, (
+    assert ".claude/skills/submit-artifact/alias" in result.skipped_paths, (
         f"dirty descendant MUST be skipped; got: {result!r}"
     )
-    assert ".claude/skills/brainstorming" in result.skipped_paths, (
+    assert ".claude/skills/submit-artifact" in result.skipped_paths, (
         f"conflicting transition root MUST be skipped; got: {result!r}"
     )
 
     repo = Repo(tmp_path)
+    # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
     try:
         # HEAD still carries the user's ORIGINAL symlink blob ...
         tree_paths = _head_tree_blob_paths(repo)
-        assert ".claude/skills/brainstorming/alias" in tree_paths, (
+        assert ".claude/skills/submit-artifact/alias" in tree_paths, (
             f"user's original symlink descendant MUST stay tracked at HEAD; "
             f"got: {sorted(p for p in tree_paths if '.claude' in p)}"
         )
         # ... and NOT the new sibling symlink entry (transition skipped).
-        assert ".claude/skills/brainstorming" not in tree_paths, (
+        assert ".claude/skills/submit-artifact" not in tree_paths, (
             f"skipped transition MUST NOT land the new symlink at HEAD; "
             f"got: {sorted(p for p in tree_paths if '.claude' in p)}"
         )
         # No commit since the seed recorded the descendant's deletion.
         for commit in repo.iter_commits():
+            # RALPH-TEST-REASON: the retired default skills are removed by the source-aware prune, so the fixture uses a retained artifact skill
             if commit.hexsha == seed_head:
                 break
             deleted = {diff.a_path for diff in commit.diff(commit.parents[0]) if diff.deleted_file}
-            assert ".claude/skills/brainstorming/alias" not in deleted, (
+            assert ".claude/skills/submit-artifact/alias" not in deleted, (
                 f"chore commit {commit.hexsha[:8]} MUST NOT sweep the dirty "
                 f"descendant's deletion; deleted={sorted(deleted)}"
             )
         # The user's change remains an uncommitted working-tree state.
         porcelain = repo.git.status("--porcelain")
         assert any(
-            ".claude/skills/brainstorming/alias" in line for line in porcelain.splitlines()
+            ".claude/skills/submit-artifact/alias" in line for line in porcelain.splitlines()
         ), f"user's dirty descendant MUST remain uncommitted; status: {porcelain!r}"
     finally:
         repo.close()

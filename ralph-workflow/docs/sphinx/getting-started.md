@@ -33,7 +33,7 @@ from a human-operated shell **outside any Ralph-managed agent session**.
 
 ### 1. Install Ralph Workflow
 
-Install the bundled command and its baseline skills in one step:
+Install the bundled command in one step:
 
 ```bash
 pipx install ralph-workflow
@@ -77,6 +77,8 @@ From inside the git repo you want Ralph Workflow to operate on, run
    and the policy defaults.
 3. Writes a starter `PROMPT.md` (with a sentinel comment marking it as
    the starter template — Ralph Workflow refuses to run until you replace it).
+4. Installs the artifact skills into the project scope. The set follows the
+   pipeline's artifact types, so adding an artifact type adds its skill.
 
 ```bash
 ralph --init
@@ -134,6 +136,18 @@ the terminal for live progress; when the run finishes, Ralph Workflow
 leaves a short summary of what changed, which checks ran, and what to
 review. Durable run records also land under `.agent/` — see
 [Artifacts reference](artifacts.md) if you need the full layout.
+
+At the start of the run, Ralph Workflow also checks whether the three
+universal skills — `test-driven-development`, `systematic-debugging`, and
+`verification-before-completion` — have a newer release upstream. They are
+fetched from the single upstream `obra/superpowers` at release versions and
+installed user-global, never inside your project. The check runs at most once
+per day, in the background, and fails soft: a machine that is never online
+simply has no universal skills while the artifact skills still work. Set
+`RALPH_DISABLE_SKILL_UPDATES=1` — or `universal_updates_enabled = false`
+under `[skills]` in `~/.config/ralph-workflow.toml` — to turn every
+skill-update network request off; see
+[Configuration Reference → Skills](configuration.md#skills).
 
 For deeper operator configuration, open
 [Configuration Reference](configuration.md). For per-agent CLI, transport,
@@ -296,9 +310,9 @@ without guessing.
 
 ## Project-local configuration overrides
 
-The default `ralph --init` flow installs the bundled skill bundle and
-seeds `.gitignore` coverage without creating `.agent/`. Project-local
-configuration is advanced and optional. To create the complete local override
+The default `ralph --init` flow installs the artifact skills into the
+project scope and seeds `.gitignore` coverage without creating `.agent/`.
+Project-local configuration is advanced and optional. To create the complete local override
 set explicitly, run `ralph --init-local-config` (alias:
 `ralph --generate-local-config`), then edit `.agent/ralph-workflow.toml` in the
 repo. `ralph --regenerate-config` refreshes local TOMLs only when they already

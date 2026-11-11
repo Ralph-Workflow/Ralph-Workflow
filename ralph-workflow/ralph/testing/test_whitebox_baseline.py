@@ -379,7 +379,6 @@ tests/test_audit_opts_key_drift.py|0,0,1
 tests/test_audit_parallelization_dormant.py|2,0,2
 tests/test_audit_resource_lifecycle.py|0,1,0
 tests/test_audit_skill_auto_commit.py|5,0,10
-tests/test_audit_skill_mirror_freshness.py|3,3,4
 tests/test_audit_template_render_integrity.py|0,4,0
 tests/test_audit_terminal_escape_containment.py|11,0,5
 tests/test_audit_typecheck_bypass.py|0,4,0
@@ -826,8 +825,6 @@ tests/test_skills_installer_project.py|0,15,0
 tests/test_skills_installer_sibling_symlinks.py|0,3,0
 tests/test_skills_installer_update.py|6,2,0
 tests/test_skills_manager.py|0,3,0
-tests/test_skills_package_skill_names_parity.py|0,1,0
-tests/test_skills_package_sync_script.py|0,1,0
 tests/test_skills_process_view.py|0,2,0
 tests/test_skills_project_paths_research.py|0,2,0
 tests/test_skills_recheck_policy.py|0,3,0

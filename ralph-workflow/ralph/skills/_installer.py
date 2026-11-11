@@ -37,6 +37,11 @@ from ralph.skills._installer_candidates import (
     _candidate_skill_paths,
     _diff_written_paths,
 )
+from ralph.skills._prune import (
+    _prune_failure_codes,
+    _prune_removed_baseline_skills,
+    _prune_user_global_skill_roots,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -180,6 +185,20 @@ def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
+def _dedupe_failure_codes(codes: list[str]) -> list[str]:
+    """Return ``codes`` with duplicates removed, preserving the first order.
+
+    The same retired skill can be reported by more than one root (the
+    canonical root and a sibling that still holds a materialized copy), so
+    the installer collapses the repeats into one reportable code.
+    """
+    unique: list[str] = []
+    for code in codes:
+        if code not in unique:
+            unique.append(code)
+    return unique
+
+
 def _installed_skills_dir() -> Path:
     return canonical_agent_skill_root().resolve()
 
@@ -285,8 +304,14 @@ def install_baseline_skills(
           (``sibling-conflict-*`` / ``sibling-materialize-failed-*``) is
           appended to a flat ``failures`` list.
 
+      (4) Prune every REGISTERED user-global skill root: a retired
+          Ralph-managed skill whose content still matches its recorded
+          digest is removed; a user-owned, user-edited, universal-marked or
+          malformed entry is preserved and reported through
+          ``skills-prune-preserved-*`` / ``skills-prune-unknown-*``.
+
     The returned ``failures`` list is therefore NEVER a mix of canonical and
-    sibling codes — canonical is all-or-nothing.
+    sibling codes -- canonical is all-or-nothing.
     """
     resolved_target_dir = _installed_skills_dir() if target_dir is None else target_dir
     canonical_failures = _find_conflicts(resolved_target_dir)
@@ -309,6 +334,15 @@ def install_baseline_skills(
             ["skills-materialize-failed"],
         )
     if target_dir is not None:
+        prune_failures = _prune_failure_codes(_prune_removed_baseline_skills(resolved_target_dir))
+        if prune_failures:
+            return (
+                CapabilityEntry(
+                    status=CapabilityStatus.NEEDS_REPAIR,
+                    last_check_fail_iso=_now_iso(),
+                ),
+                prune_failures,
+            )
         return (
             CapabilityEntry(
                 status=CapabilityStatus.INSTALLED_HEALTHY,
@@ -317,13 +351,15 @@ def install_baseline_skills(
             [],
         )
     sibling_failures = _mirror_baseline_skills_to_siblings(resolved_target_dir)
-    if sibling_failures:
+    prune_failures = _prune_user_global_skill_roots()
+    failures = _dedupe_failure_codes([*sibling_failures, *prune_failures])
+    if failures:
         return (
             CapabilityEntry(
                 status=CapabilityStatus.NEEDS_REPAIR,
                 last_check_fail_iso=_now_iso(),
             ),
-            sibling_failures,
+            failures,
         )
     return (
         CapabilityEntry(
@@ -459,69 +495,6 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         return False
 
 
-def _prune_removed_baseline_skills(root: Path) -> list[str]:
-    """Remove managed skill directories that the baseline no longer ships.
-
-    Walks ``root`` and deletes every immediate subdirectory whose name is
-    not in ``BASELINE_SKILL_NAMES``. The user-edit preservation contract
-    is preserved: only managed entries (those carrying ``_MANAGED_MARKER``)
-    are deleted; user-owned skill directories without the marker are left
-    untouched so a user-added skill that happens to share a name with a
-    removed baseline skill is never destroyed.
-
-    Broken symlinks are also pruned: a sibling root that points at a
-    now-removed canonical entry never resolves, so the marker check would
-    otherwise skip it. The same-name guard against ``BASELINE_SKILL_NAMES``
-    keeps a baseline symlink intact. Without this branch a stale
-    ``submit-plan-step-edits`` symlink (the per-step edit skill retired in
-    the wt-044 redesign) would survive forever in every sibling root.
-
-    Args:
-        root: Project-canonical skills root (e.g. ``.opencode/skills``).
-
-    Returns:
-        The list of pruned skill names. The list is empty when the
-        baseline matches the on-disk state.
-
-    The helper is fail-closed: any ``OSError`` during the walk or the
-    delete is swallowed and the prune continues (best-effort) so the
-    surrounding install can still finish cleanly even if one entry's
-    permissions are wrong.
-    """
-    pruned: list[str] = []
-    if not root.is_dir() and not root.is_symlink():
-        return pruned
-    try:
-        for entry in list(root.iterdir()):
-            if entry.name in BASELINE_SKILL_NAMES:
-                continue
-            # A broken symlink fails both ``is_dir()`` and ``marker.exists()``,
-            # so the managed-entry heuristic below would skip it. The name
-            # is no longer in the baseline, so the link is dead and the
-            # sibling fan-out will never recreate it; unlink unconditionally.
-            if entry.is_symlink() and not entry.exists():
-                try:
-                    entry.unlink()
-                except OSError:
-                    continue
-                pruned.append(entry.name)
-                continue
-            if not entry.is_dir():
-                continue
-            marker = entry / _MANAGED_MARKER
-            if not marker.exists():
-                continue
-            try:
-                # filesystem-write-ok: bounded pruning of a managed skill removed from the shipped baseline
-                shutil.rmtree(entry)
-            except OSError:
-                continue
-            pruned.append(entry.name)
-    except OSError:
-        return pruned
-    return pruned
-
-
 def install_project_baseline_skills(
     workspace_root: Path,
 ) -> tuple[CapabilityEntry, list[str]]:
@@ -613,13 +586,16 @@ def install_project_baseline_skills(
     # Prune any managed skill directory that the baseline no longer
     # ships. The materialize loop only touches BASELINE_SKILL_NAMES, so a
     # retired bundled skill (one whose name is no longer in the baseline)
-    # stays on disk otherwise. Without this step, a stale `submit-plan-step-edits`
+    # stays on disk otherwise. Without this step, a stale retired skill
     # directory from a prior release would persist in the canonical and
     # every sibling symlink would continue to point at it. The prune is
-    # scoped to managed entries (marked with `_MANAGED_MARKER`) so a
-    # user-added skill that happens to share a name with a removed
-    # baseline skill is never destroyed.
-    _prune_removed_baseline_skills(canonical)
+    # source-aware and hash-aware: it removes a retired directory ONLY
+    # when the directory's managed marker proves Ralph manages it AND its
+    # content still matches the digest the marker recorded. A user-owned,
+    # user-edited, universal-marked or malformed entry is preserved and
+    # reported through ``skills-prune-preserved-*`` /
+    # ``skills-prune-unknown-*``.
+    prune_failures = _prune_failure_codes(_prune_removed_baseline_skills(canonical))
     sibling_failures: list[str] = []
     siblings: tuple[ProjectAgentSkillRoot, ...] = project_sibling_skill_roots(workspace_root)
     for sibling in siblings:
@@ -628,7 +604,7 @@ def install_project_baseline_skills(
         # The sibling fan-out runs the same prune so a stale symlink
         # pointing at a now-removed canonical entry does not reappear
         # after the canonical prune.
-        _prune_removed_baseline_skills(sibling_root)
+        sibling_failures.extend(_prune_failure_codes(_prune_removed_baseline_skills(sibling_root)))
         for skill_name in BASELINE_SKILL_NAMES:
             failure = _materialize_project_sibling_dir(
                 sibling_dir=sibling_root / skill_name,
@@ -637,13 +613,14 @@ def install_project_baseline_skills(
             )
             if failure is not None:
                 sibling_failures.append(failure)
-    if sibling_failures:
+    failures = _dedupe_failure_codes([*prune_failures, *sibling_failures])
+    if failures:
         return (
             CapabilityEntry(
                 status=CapabilityStatus.NEEDS_REPAIR,
                 last_check_fail_iso=_now_iso(),
             ),
-            sibling_failures,
+            failures,
         )
     # FUTURE: self-improving skills hook goes here — see docs/sphinx/agents.md
     # §'Self-improving skills (future)'. The hook will fire after every

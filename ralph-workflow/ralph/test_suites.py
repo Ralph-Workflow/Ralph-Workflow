@@ -727,7 +727,6 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_agents_invoke.py": 31,
     "tests/test_analysis_prompt_payload_contract_retry_hint_guard_in_templates.py": 12,
     "tests/test_audit_opts_key_drift.py": 280,
-    "tests/test_audit_skill_mirror_freshness.py": 24,
     "tests/test_audit_terminal_escape_containment.py": 29,
     "tests/test_audit_test_policy.py": 22,
     "tests/test_authority_audit_scenario_3_4_9_restart_retry.py": 43,

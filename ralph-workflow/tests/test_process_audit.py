@@ -104,7 +104,6 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_test_policy.py",  # contains subprocess.run literals as test-fixture code strings
     "test_audit_mcp_timeout.py",  # subprocess.run/Popen literals as audit-fixture code strings
     "test_audit_filesystem_polling_invocation.py",  # subprocess.run literal in an audit-fixture source string
-    "test_audit_skill_mirror_freshness.py",  # invokes the audit module as a subprocess to verify the CLI entry point end-to-end
     "test_audit_resource_lifecycle.py",  # subprocess/asyncio spawn literals as audit-fixture code strings
     "e72_descendant_helper.py",  # E7.2 footprint tree fixture: parent-side spawn goes through ProcessManager; the subprocess.Popen literal lives in a real child launcher script that must create the upstream grandchild the acceptance criterion requires, and os.killpg appears only in its explanatory docstring
     "test_audit_parallelization_dormant.py",

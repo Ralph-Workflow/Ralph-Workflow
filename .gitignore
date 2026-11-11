@@ -296,8 +296,6 @@ tmp/*
 **/tmp/*
 !/tmp/.gitkeep
 
-ralph-workflow/skills-package/content/
-ralph-workflow/skills-package/*.tgz
 .antigravitycli/
 
 checkpoint.json

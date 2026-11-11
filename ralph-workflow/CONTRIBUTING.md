@@ -621,13 +621,48 @@ Required invariants:
    (`ResolutionAction`) and `classify_attempt_fault` (`AttemptFault`); do not introduce
    prose `if evidence` checks.
 
-## Skill bundle maintenance
+## Skill maintenance
 
-- Add or adopt a mirrored default skill by updating the mirrored content under `ralph/skills/content/`, adding the name to `BASELINE_SKILL_NAMES` in `ralph/skills/_content.py`, updating the provenance metadata, and mirroring it in `skills-package/bin/skills.js` as `SKILL_NAMES`.
-- Rename a mirrored default skill by updating both lists together, renaming the mirrored content file, and updating provenance metadata accordingly.
-- Keep `skills-package/` in sync through its `prepack` script, which copies `ralph/skills/content/` into the npm package before publish.
-- Run `uv run pytest -q tests/test_skills_package_skill_names_parity.py` after every skill-list change.
-- Update `docs/sphinx/modules.rst` whenever you add a new public module under `ralph/skills/`; `tests/test_sphinx_modules_coverage.py` enforces that rule.
+Ralph Workflow installs two kinds of skills, and they have different owners.
+
+- **Artifact skills** describe how to produce one of the pipeline's artifact
+  types. They ship with Ralph Workflow, are installed into the project
+  scope, and are derived from the pipeline's artifact types: the set follows
+  the artifact contract automatically, so there is no separate hand-maintained
+  skill list to keep in parity. Adding an artifact type adds its skill —
+  adding a skill now means adding an artifact type.
+- **Universal skills** are exactly three — `test-driven-development`,
+  `systematic-debugging`, and `verification-before-completion` — and are
+  **not vendored in this repository**. They are fetched at runtime from the
+  single upstream `obra/superpowers` at release versions (never a moving
+  branch) and installed user-global, so upstream changes never dirty a user's
+  git tree. Do not add copies of them to the tree, do not add a second
+  upstream, and do not add a new fetch path: the updater keeps exactly one
+  hard-coded allowed origin, fetches release tags only, applies size limits
+  and a file-type allowlist, and never writes outside the skill directory.
+
+Policy states the rules, skills hold the technique, and policy wins on
+conflict — a skill change never overrides the shipped policy pack.
+
+The default skill set is therefore the three universal skills named above
+plus the artifact skills derived from the pipeline's artifact types.
+
+### Choosing a universal skill
+
+A universal skill must be **language- and framework-agnostic**, must **work
+unattended**, must **not conflict with Ralph Workflow's own phases**, must be
+**actively maintained**, and must be **redistributable**. Everything else is
+out of the default set. Keep the set at three unless a new skill clearly
+passes the rule.
+
+- Update `docs/sphinx/modules.rst` whenever you add a new public module
+  under `ralph/skills/`; `tests/test_sphinx_modules_coverage.py` enforces
+  that rule.
+- The user-facing contract for both kinds — update cadence, the
+  `universal_updates_enabled` and `RALPH_DISABLE_SKILL_UPDATES` kill
+  switches, the trust statement, and the post-upgrade migration — lives in
+  [Configuration Reference → Skills](docs/sphinx/configuration.md#skills).
+  Change that page in the same change that moves the behavior.
 
 ## Release and versioning
 

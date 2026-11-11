@@ -127,18 +127,6 @@ No Open Design-derived skill should be exported into the flat runtime view witho
 
 ## File-Level Change Set
 
-### Bundle manifest and sync pipeline
-
-- `skills-package/upstream-skills.json`
-  - add a second bundle section for Open Design-derived skills
-  - record both catalog and resolved content source
-
-- `skills-package/bin/sync-upstream-skills.js`
-  - add resolution logic for Open Design catalog entries
-  - parse declared upstream metadata from catalog skills when required
-  - materialize exported namespaced filenames
-  - emit metadata proving both catalog source and true content source
-
 ### Python-side shipped metadata
 
 - `ralph/skills/content/metadata.json`
@@ -154,7 +142,6 @@ This should keep the existing merge order but naturally accept the larger namesp
 
 ### Tests
 
-- new or updated sync-script tests for Open Design two-hop fetch behavior
 - metadata tests proving namespaced bundle presence and per-skill provenance
 - runtime-view tests proving namespaced design skills coexist with existing workflow skills and external personal/project skills
 

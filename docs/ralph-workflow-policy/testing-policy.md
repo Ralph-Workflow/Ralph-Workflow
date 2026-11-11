@@ -13,9 +13,9 @@ checks performed by humans, or third-party hosted service reliability.
 
 The Ralph Workflow Python package (`ralph-workflow/ralph/`) ships
 pure-Python automated tests under `ralph-workflow/tests/`; the
-`ralph-workflow/skills-package/` Node.js bundle ships no automated
-tests of its own and is excluded from the testing gate (the bundle is
-treated as a distribution artefact, not a behaviour surface).
+`ralph-workflow/Formula/` Homebrew formula is a build-distribution
+artefact, is syntax-checked rather than unit-tested, and is excluded
+from the testing gate.
 
 ## Default requirements
 

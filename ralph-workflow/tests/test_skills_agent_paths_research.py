@@ -53,6 +53,30 @@ def test_agent_skill_roots_have_last_verified_iso() -> None:
         )
 
 
+def test_agent_skill_roots_include_codex_current_user_global_root() -> None:
+    """Codex reads its CURRENT user-global skills from ``~/.agents/skills``."""
+    entry = next(e for e in agent_skill_roots() if e.agent == "codex-agents")
+    assert entry.path_segments == (".agents", "skills")
+    assert entry.source_url == "https://learn.chatgpt.com/docs/build-skills"
+    assert entry.last_verified_iso == "2026-11-11"
+    assert entry.is_canonical is False
+
+
+def test_agent_skill_roots_include_antigravity_all_surfaces_root() -> None:
+    """Antigravity reads its user-global skills from ``~/.gemini/config/skills``."""
+    entry = next(e for e in agent_skill_roots() if e.agent == "agy-config")
+    assert entry.path_segments == (".gemini", "config", "skills")
+    assert entry.source_url == "https://antigravity.google/docs/skills/"
+    assert entry.last_verified_iso == "2026-11-11"
+    assert entry.is_canonical is False
+
+
+def test_agent_skill_root_agent_names_are_unique() -> None:
+    """``agent`` is a lookup key, so two roots may never share one."""
+    names = [entry.agent for entry in agent_skill_roots()]
+    assert len(names) == len(set(names))
+
+
 def test_agent_skill_roots_cover_documented_supported_agents() -> None:
     """Live registry must cover the documented supported-agent set."""
     expected_agents = {
@@ -60,6 +84,8 @@ def test_agent_skill_roots_cover_documented_supported_agents() -> None:
         "codex",
         "opencode",
         "agy",
+        "codex-agents",
+        "agy-config",
     }
     live = {entry.agent for entry in _live_roots()}
     assert expected_agents.issubset(live), (
