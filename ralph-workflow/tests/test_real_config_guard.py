@@ -466,6 +466,53 @@ def test_real_config_guard_attributes_read_violation_to_node_in_pytester(
     assert "(by test_read.py::test_attributed_read)" in output
 
 
+def test_real_config_guard_catches_write_agents_toml_in_pytester(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """write_agents_toml targeting a guarded config directory is caught by the guard."""
+    guarded_dir = tmp_path / "guarded_config"
+    guarded_dir.mkdir(parents=True)
+    existing_file = guarded_dir / "ralph-workflow-agents.toml"
+    existing_file.write_text("[agents.claude]\ncmd = 'claude'\n", encoding="utf-8")
+
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
+
+    pytester.makeconftest(
+        textwrap.dedent(
+            """
+            from tests.conftest import _guard_real_config_files
+            """
+        )
+    )
+    pytester.makepyfile(
+        test_write_agents=textwrap.dedent(
+            f"""
+            from pathlib import Path
+            from ralph.config.agents_file_writer import write_agents_toml
+
+            def test_deliberate_write_agents_toml():
+                target = Path({str(existing_file)!r})
+                write_agents_toml(
+                    target,
+                    "[agents.claude]\\ncmd = 'claude'\\n[agents.opencode]\\ncmd = 'opencode'\\n",
+                    trigger="test",
+                )
+            """
+        )
+    )
+
+    result = pytester.runpytest_inprocess("-q")
+    result.assert_outcomes(passed=1, errors=1)
+    output = result.stdout.str()
+    assert (
+        "Test suite touched real user configuration files in violation of isolation rules:"
+        in output
+    )
+    assert "ralph-workflow-agents.toml" in output
+
+
 def test_extract_read_path_ignores_write_modes_and_non_guarded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -525,3 +572,17 @@ def test_extract_read_path_handles_dotfile_and_nested_prefixes(
 
     assert _extract_read_path((str(dot_file), "r")) == dot_file.resolve()
     assert _extract_read_path((str(nested_file), "r")) == nested_file.resolve()
+
+
+def test_bundled_defaults_agents_toml_is_protected_and_valid() -> None:
+    """Bundled ralph-workflow-agents.toml defaults template exists and is valid TOML."""
+    from ralph.policy.loader import default_dir
+
+    bundled_dir = default_dir()
+    bundled_agents = bundled_dir / "ralph-workflow-agents.toml"
+    assert bundled_agents.exists()
+    assert bundled_agents.is_file()
+
+    content = bundled_agents.read_text(encoding="utf-8")
+    assert "[agents.claude]" in content
+    assert "# @AGENT-BLOCK-START: codex" in content

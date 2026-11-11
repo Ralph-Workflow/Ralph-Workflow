@@ -9,6 +9,7 @@ When strict_optional_files=True is passed, errors are re-raised.
 
 from __future__ import annotations
 
+import io
 import tomllib
 from pathlib import Path
 
@@ -60,6 +61,9 @@ def test_agents_toml_invalid_toml_fallback_and_dedup(
     assert "agents" in warning_text
     assert "using built-in default" in warning_text
     assert "ralph --check-config" in warning_text
+    assert "ralph --regenerate-config" in warning_text
+    assert "line" in warning_text.lower()
+    assert "column" in warning_text.lower()
     first_warning_count = len([r for r in records if "using built-in default" in r])
     assert first_warning_count == 1
 
@@ -117,6 +121,7 @@ def test_agents_toml_bad_encoding_fallback_and_dedup(
     assert str(agents_path) in warning_text
     assert "using built-in default" in warning_text
     assert "ralph --check-config" in warning_text
+    assert "ralph --regenerate-config" in warning_text
 
     # Second load: deduped
     records2, sink_id2 = _capture_warnings()
@@ -170,6 +175,7 @@ def test_agents_toml_chmod_000_fallback_and_dedup(
         assert str(agents_path) in warning_text
         assert "using built-in default" in warning_text
         assert "ralph --check-config" in warning_text
+        assert "ralph --regenerate-config" in warning_text
 
         # Second load: deduped
         records2, sink_id2 = _capture_warnings()
@@ -209,6 +215,7 @@ def test_agents_toml_schema_invalid_fallback_and_dedup(
     assert str(agents_path) in warning_text
     assert "using built-in default" in warning_text
     assert "ralph --check-config" in warning_text
+    assert "ralph --regenerate-config" in warning_text
 
     # Second load: deduped
     records2, sink_id2 = _capture_warnings()
@@ -281,3 +288,97 @@ def test_agents_toml_valid_loads_successfully_without_warning(
     assert "custom" in config.agents
     assert config.agents["custom"].cmd == "custom-agent"
     assert len([r for r in records if "using built-in default" in r]) == 0
+
+
+def test_corrupt_agents_toml_load_config_and_diagnose_contain_path_line_col_and_recovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """load_config and collect_unreadable_config_files (diagnose entry) warn with path, line/col, and regenerate fix."""
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir(parents=True)
+    agents_path = config_home / "ralph-workflow-agents.toml"
+    # syntax error at line 2, column 5
+    invalid_content = "[agents]\ninvalid = = =\n"
+    agents_path.write_text(invalid_content, encoding="utf-8")
+
+    local_path = tmp_path / "ralph-workflow.toml"
+    local_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+
+    # Test load_config: returns fallback defaults without crashing
+    records, sink_id = _capture_warnings()
+    try:
+        cfg = load_config(config_path=local_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert cfg.agents == {}
+    warn = "\n".join(records)
+    assert str(agents_path) in warn
+    assert "line 2" in warn
+    assert "column" in warn
+    assert "ralph --regenerate-config" in warn
+    assert "using built-in default" in warn
+
+    # Test diagnose loader entry: collect_unreadable_config_files returns fallback findings without crashing
+    reset_fallback_warning_registry()
+    from ralph.config.bootstrap import collect_unreadable_config_files
+
+    records_diag, sink_id_diag = _capture_warnings()
+    try:
+        findings = collect_unreadable_config_files(
+            config_path=local_path,
+            workspace_scope=None,
+        )
+    finally:
+        logger.remove(sink_id_diag)
+
+    assert len(findings) == 1
+    assert findings[0].path == agents_path
+    assert findings[0].kind == "agents"
+    diag_warn = "\n".join(records_diag)
+    assert str(agents_path) in diag_warn
+    assert "line 2" in diag_warn
+    assert "column" in diag_warn
+    assert "ralph --regenerate-config" in diag_warn
+
+
+def test_corrupt_agents_toml_diagnose_command_warns_with_recovery_instructions(
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """diagnose_command warns with path, line/column, and ralph --regenerate-config for corrupt agents file."""
+    monkeypatch.chdir(tmp_git_repo)
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir(parents=True)
+    agents_path = config_home / "ralph-workflow-agents.toml"
+    agents_path.write_text("[agents]\nbad syntax = = =\n", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+
+    agent_dir = tmp_git_repo / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / "ralph-workflow.toml").write_text("[general]\n", encoding="utf-8")
+
+    from rich.console import Console
+
+    from ralph.cli.commands.diagnose import diagnose_command
+    from ralph.display.context import make_display_context
+
+    console = Console(file=io.StringIO(), force_terminal=False)
+    display_ctx = make_display_context(console=console)
+
+    records, sink_id = _capture_warnings()
+    try:
+        exit_code = diagnose_command(
+            config_path=None,
+            cli_overrides={},
+            display_context=display_ctx,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert exit_code != 0
+    warn = "\n".join(records)
+    assert str(agents_path) in warn
+    assert "line 2" in warn
+    assert "column" in warn
+    assert "ralph --regenerate-config" in warn

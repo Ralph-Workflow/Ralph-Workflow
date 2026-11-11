@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 from loguru import logger
 
-from ralph.config.loader import ConfigTomlError, load_config, load_toml
+from ralph.config.loader import (
+    ConfigTomlError,
+    load_config,
+    load_toml,
+    reset_retired_agent_key_warnings,
+)
 
 
 def test_load_config_removes_retired_agent_key_from_explicit_source(
@@ -55,23 +60,47 @@ def test_load_config_rejects_near_miss_agent_key_without_rewriting_source(
 def test_load_config_migrates_retired_agent_key_from_global_agents_source(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    reset_retired_agent_key_warnings()
     config_home = tmp_path / "xdg-config"
     config_home.mkdir()
     agents_path = config_home / "ralph-workflow-agents.toml"
-    agents_path.write_text(
-        '# Keep this agent note.\n[agents."claude"]\ncmd = "claude"\ncan_commit = true\n',
-        encoding="utf-8",
+    original_text = (
+        '# Keep this agent note.\n[agents."claude"]\ncmd = "claude"\ncan_commit = true\n'
     )
+    agents_path.write_text(original_text, encoding="utf-8")
     local_path = tmp_path / "ralph-workflow.toml"
     local_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
 
-    config = load_config(config_path=local_path)
+    def _fail_commit(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("git create_commit must not be called")
+
+    monkeypatch.setattr(
+        "ralph.git.operations.create_commit",
+        _fail_commit,
+    )
+
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        config = load_config(config_path=local_path)
+    finally:
+        logger.remove(sink_id)
 
     assert config.agents["claude"].cmd == "claude"
-    assert agents_path.read_text(encoding="utf-8") == (
-        '# Keep this agent note.\n[agents."claude"]\ncmd = "claude"\n'
-    )
+    assert not hasattr(config.agents["claude"], "can_commit")
+    # Leaves the disk file byte-identical
+    assert (
+        agents_path.read_text(encoding="utf-8") == original_text
+    )  # RALPH-TEST-REASON: loader migration is in-memory only to guarantee agents file immutability per Req 2
+    # Does not create .migration or .bak
+    assert not (config_home / ".ralph-workflow-agents.toml.migration").exists()
+    assert not (config_home / "ralph-workflow-agents.toml.bak").exists()
+    assert list(config_home.glob("*.migration")) == []
+    assert list(config_home.glob("*.bak")) == []
+    # Does NOT make any git commit (create_commit not called)
+    # Deduplicated warning emitted
+    assert any("regenerate-config" in r and "agent_can_commit" in r for r in records)
 
 
 def test_load_toml_preserves_comments_and_strings_during_retired_agent_key_migration(

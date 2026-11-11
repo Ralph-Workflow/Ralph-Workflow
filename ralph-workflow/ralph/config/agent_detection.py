@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -14,6 +15,7 @@ from loguru import logger
 
 from ralph.agents.builtin import builtin_supports
 from ralph.config._agent_overrides import opencode_binary_override
+from ralph.config.agents_file_writer import write_agents_toml
 from ralph.config.bootstrap import resolve_global_config_dir
 from ralph.git.errors import GitOperationError
 from ralph.git.operations import create_commit, find_repo_root, stage_files
@@ -39,6 +41,8 @@ if TYPE_CHECKING:
 
 
 __all__ = ["detect_installed_agents", "opencode_binary_override"]
+
+_std_logger = logging.getLogger(__name__)
 
 
 def _commit_deterministic_config_write(
@@ -340,26 +344,20 @@ def enable_detected_agents(config_path: Path | None = None) -> list[str]:
             line[2:] if line.startswith("# ") else line[1:] if line.startswith("#") else line
             for line in content.splitlines()
         )
+        try:
+            tomllib.loads(uncommented)
+        except ValueError as exc:
+            msg = f"Skipping invalid agent block for {name}: {exc}"
+            logger.warning(msg)
+            _std_logger.warning(msg)
+            continue
         text = text[: match.start()] + uncommented + "\n" + text[match.end() :]
         enabled.append(name)
 
     if enabled:
-        # wt-012: route the project-local config write through the
-        # shared deterministic auto-commit primitive so a chore
-        # commit with the fixed
-        # ``chore(config): update agent configuration`` subject
-        # captures the agent-block activation, never leaking it
-        # into a later agent's commit. A path outside a git repo
-        # (e.g. the default ``~/.config/ralph-workflow-agents.toml``
-        # when no project-local config exists) is the documented
-        # silent-NOOP path -- the write still lands on disk and
-        # no commit is attempted, so a global config update never
-        # creates an unexpected repo or commit.
-        _commit_deterministic_config_write(
+        write_agents_toml(
             path,
-            subject="chore(config): update agent configuration",
-            write_fn=lambda: write_text_if_changed(
-                DEFAULT_FILE_BACKEND, path, text, encoding="utf-8"
-            ),
+            text,
+            trigger="ralph --init: enable detected agents",
         )
     return enabled

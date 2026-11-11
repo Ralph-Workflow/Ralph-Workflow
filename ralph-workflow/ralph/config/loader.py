@@ -477,8 +477,35 @@ def _validate_agents_layer(data: dict[str, object]) -> dict[str, object]:
     return data
 
 
+_MAX_RETIRED_AGENT_KEY_WARNINGS = 256
+_WARNED_RETIRED_AGENT_KEYS: dict[
+    Path, None
+] = {}  # bounded-accumulator-ok: FIFO cap _MAX_RETIRED_AGENT_KEY_WARNINGS
+
+
+def reset_retired_agent_key_warnings() -> None:
+    """Clear the deduplication registry for retired agent key warnings."""
+    _WARNED_RETIRED_AGENT_KEYS.clear()
+
+
+def _warn_retired_agent_keys(agents_path: Path) -> None:
+    """Emit a deduplicated warning when retired agent keys are found in an agents file."""
+    resolved = agents_path.resolve()
+    if resolved in _WARNED_RETIRED_AGENT_KEYS:
+        return
+    _WARNED_RETIRED_AGENT_KEYS[resolved] = None
+    while len(_WARNED_RETIRED_AGENT_KEYS) > _MAX_RETIRED_AGENT_KEY_WARNINGS:
+        oldest = next(iter(_WARNED_RETIRED_AGENT_KEYS))
+        del _WARNED_RETIRED_AGENT_KEYS[oldest]
+    logger.warning(
+        "Retired `agent_can_commit` key found in {}; "
+        "run `ralph --regenerate-config` or edit the file to remove it.",
+        agents_path,
+    )
+
+
 def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
-    """Load, optionally migrate, and validate the agents configuration layer."""
+    """Load, optionally migrate in memory, and validate the agents configuration layer."""
     agents_raw = load_optional_toml(
         agents_path,
         kind="agents",
@@ -491,22 +518,7 @@ def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
             if migrated_source != source:
                 migrated_data: dict[str, object] = tomllib.loads(migrated_source)
                 _validate_agents_layer(migrated_data)
-                from ralph.config.agent_detection import (
-                    _commit_deterministic_config_write,
-                )
-
-                _commit_deterministic_config_write(
-                    agents_path,
-                    subject="chore(config): migrate retired agent_can_commit assignments",
-                    write_fn=lambda: atomic_write_text_if_changed(
-                        DEFAULT_FILE_BACKEND,
-                        agents_path,
-                        migrated_source,
-                        tmp_path=agents_path.with_name(f".{agents_path.name}.migration"),
-                        encoding="utf-8",
-                        sync_directory=True,
-                    ),
-                )
+                _warn_retired_agent_keys(agents_path)
                 agents_raw = migrated_data
         except (OSError, UnicodeDecodeError, ValidationError, ValueError):
             pass

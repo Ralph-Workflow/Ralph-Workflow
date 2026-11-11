@@ -22,6 +22,7 @@ def _run_cli(
     expected_process_dir: Path | None,
 ) -> tuple[int, list[str | None]]:
     """Run the public CLI command with only its public collaborators replaced."""
+    monkeypatch.delenv(_PROCESS_VIEW_ENV, raising=False)
     observed_process_dirs: list[str | None] = []
 
     def _fake_load_config(*_args: object, **_kwargs: object) -> UnifiedConfig:

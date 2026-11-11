@@ -126,6 +126,9 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
     assert str(agents_file) in warn_text
     assert "using built-in default" in warn_text
     assert "ralph --check-config" in warn_text
+    assert "ralph --regenerate-config" in warn_text
+    assert "line" in warn_text.lower()
+    assert "column" in warn_text.lower()
 
     # 4. Target context in the launched pipeline used default agents
     target_config = launched_pipeline_kwargs[0]["config"]
@@ -354,3 +357,103 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
         OperationDisplayState.WAITING
     )
     assert waiting_state.operation_display_state == OperationDisplayState.WAITING
+
+
+def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_instructions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """load_config, diagnose collection, and pipeline runner warn with path, line/col, and regenerate instructions."""
+    repo_root = tmp_path / "repo"
+    _seed_workspace(repo_root)
+    agents_file, _ = _setup_corrupt_agents_toml(
+        monkeypatch,
+        tmp_path,
+        content="[agents]\ninvalid toml = = =\n",
+    )
+
+    # 1. load_config returns fallback defaults without crashing, warns with line/col & recovery
+    warnings: list[str] = []
+    sink_id = logger.add(warnings.append, level="WARNING", format="{message}")
+    try:
+        cfg = load_config(config_path=repo_root / ".agent" / "ralph-workflow.toml")
+    finally:
+        logger.remove(sink_id)
+
+    assert cfg.agents == {}
+    warn_text = "\n".join(warnings)
+    assert str(agents_file) in warn_text
+    assert "line 2" in warn_text
+    assert "column" in warn_text
+    assert "ralph --regenerate-config" in warn_text
+    assert "using built-in default" in warn_text
+
+    # 2. Diagnose collection returns fallback finding without crashing, warns with line/col & recovery
+    from ralph.config.bootstrap import collect_unreadable_config_files
+
+    reset_fallback_warning_registry()
+    warnings.clear()
+    sink_id = logger.add(warnings.append, level="WARNING", format="{message}")
+    try:
+        findings = collect_unreadable_config_files(
+            config_path=repo_root / ".agent" / "ralph-workflow.toml",
+            workspace_scope=WorkspaceScope(repo_root),
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert len(findings) == 1
+    assert findings[0].path == agents_file
+    diag_warn = "\n".join(warnings)
+    assert str(agents_file) in diag_warn
+    assert "line 2" in diag_warn
+    assert "column" in diag_warn
+    assert "ralph --regenerate-config" in diag_warn
+
+    # 3. Pipeline runner launches with fallback defaults and warns without crashing
+    reset_fallback_warning_registry()
+    warnings.clear()
+    policy = load_policy(default_dir())
+    reg = AgentRegistry.from_config(cfg)
+    mock_display = MagicMock()
+    resolver = build_agent_rebase_stop_resolver(
+        policy_bundle=policy,
+        registry=reg,
+        display=mock_display,
+        config=cfg,
+        pipeline_deps=MagicMock(),
+        workspace_scope=WorkspaceScope(repo_root),
+    )
+
+    launched_kwargs: list[dict[str, Any]] = []
+
+    def _fake_run_pipeline(**kwargs: Any) -> bool:
+        launched_kwargs.append(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_pipeline",
+        _fake_run_pipeline,
+    )
+
+    sink_id = logger.add(warnings.append, level="WARNING", format="{message}")
+    try:
+        stop = RebaseStop(
+            sha="abcdef1",
+            subject="feat: conflict commit",
+            conflicted_files=("src/main.py",),
+            stop_index=1,
+            stop_cap=5,
+        )
+        outcome = resolver(repo_root, "main", stop)
+    finally:
+        logger.remove(sink_id)
+
+    assert outcome is True
+    assert len(launched_kwargs) == 1
+    assert launched_kwargs[0]["config"].agents == {}
+    runner_warn = "\n".join(warnings)
+    assert str(agents_file) in runner_warn
+    assert "line 2" in runner_warn
+    assert "column" in runner_warn
+    assert "ralph --regenerate-config" in runner_warn

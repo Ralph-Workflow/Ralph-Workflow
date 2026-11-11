@@ -522,6 +522,13 @@ ralph.config.agent_detection
    :members:
    :show-inheritance:
 
+ralph.config.agents_file_writer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.agents_file_writer
+   :members:
+   :show-inheritance:
+
 ralph.config.config_error_messages
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

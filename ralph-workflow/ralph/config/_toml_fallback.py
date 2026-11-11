@@ -53,11 +53,25 @@ def _format_error_detail(exc: BaseException) -> str:
     lineno: object = getattr(exc, "lineno", None)
     colno: object = getattr(exc, "colno", None)
     if isinstance(lineno, int) and isinstance(colno, int):
-        if "line" not in exc_msg.lower():
+        has_line = "line" in exc_msg.lower()
+        has_col = "column" in exc_msg.lower() or "col" in exc_msg.lower()
+        if not has_line and not has_col:
             return f"{exc_msg} (line {lineno}, column {colno})"
+        if not has_line:
+            return f"{exc_msg} (line {lineno})"
+        if not has_col:
+            return f"{exc_msg} (column {colno})"
     elif isinstance(lineno, int) and "line" not in exc_msg.lower():
         return f"{exc_msg} (line {lineno})"
     return exc_msg
+
+
+def _is_agents_config(path: Path | str, kind: str) -> bool:
+    """Return True if the target is an agents configuration file."""
+    if kind == "agents":
+        return True
+    path_name = Path(path).name.lower()
+    return "agents" in path_name
 
 
 def _compute_file_fingerprint(
@@ -145,6 +159,16 @@ def emit_config_failure_warning(
     """
     path_obj = Path(path)
     resolved = path_obj.resolve()
+    effective_fix_hint = fix_hint
+    if _is_agents_config(path_obj, kind) and "ralph --regenerate-config" not in effective_fix_hint:
+        if "`ralph --check-config`" in effective_fix_hint:
+            effective_fix_hint = effective_fix_hint.replace(
+                "`ralph --check-config`",
+                "`ralph --regenerate-config` or `ralph --check-config`",
+            )
+        else:
+            effective_fix_hint = f"{effective_fix_hint} Fix: run `ralph --regenerate-config`."
+
     fingerprint = _compute_file_fingerprint(resolved, exc, raw_bytes=raw_bytes)
     key = (resolved, fingerprint)
     if key in _FALLBACK_WARNING_REGISTRY:
@@ -156,7 +180,7 @@ def emit_config_failure_warning(
 
     logger.warning(
         f"Failed to load {kind} configuration from {path_obj}: {error_detail}; "
-        f"{behaviour}. {fix_hint}"
+        f"{behaviour}. {effective_fix_hint}"
     )
     return True
 
@@ -168,12 +192,16 @@ def _emit_fallback_warning(
     raw_bytes: bytes | None = None,
 ) -> None:
     """Emit a deduped loguru warning for a fallback to built-in default."""
+    if _is_agents_config(path, kind):
+        fix_hint = "Fix: run `ralph --regenerate-config` or `ralph --check-config`."
+    else:
+        fix_hint = "Fix: run `ralph --check-config`."
     emit_config_failure_warning(
         path,
         kind=kind,
         error_detail=_format_error_detail(exc),
         behaviour="using built-in default",
-        fix_hint="Fix: run `ralph --check-config`.",
+        fix_hint=fix_hint,
         exc=exc,
         raw_bytes=raw_bytes,
     )
@@ -212,7 +240,8 @@ def load_optional_toml[T](
     When strict=True, errors (TOMLDecodeError, UnicodeDecodeError, OSError) are re-raised.
     When strict=False, errors return the default (e.g. {} or default_factory())
     and emit a loguru warning mentioning the path, parse error (with line/col
-    if available), default in use, and fix command (`ralph --check-config`).
+    if available), default in use, and fix command (`ralph --regenerate-config`
+    for agents, `ralph --check-config`).
     Warnings are deduplicated per process by (resolved path, sha256 | error_class).
     """
     path_obj = Path(path)
