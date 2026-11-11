@@ -93,6 +93,16 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # rot silently. In-budget on the 60s combined verify budget.
     "tests/test_config_bootstrap_git_isolation.py",
     "tests/test_deterministic_writers_clean_tree.py",
+    # wt-04 (U5-REPAIR-A): the config-read immutability proofs assert on
+    # the real repo HEAD sha (and the agents file's sha256) after a config
+    # load and after a ``--diagnose --config`` run, and the autowire proofs
+    # assert on the real git log subjects (an agents file creates NO chore
+    # commit; a main config DOES create one). Real-git boundary is the
+    # subject under test, so both files are ``subprocess_e2e`` and MUST stay
+    # on the default ``make test`` profile -- behind an opt-in gate the
+    # "a config read never writes or commits" contract would rot silently.
+    "tests/config/test_agents_file_immutable.py",
+    "tests/config/test_init_agents_autowire.py",
     # wt-15-policy (U1): the 460-test parametrized display module is too
     # heavy for the 16-shard LPT partition (it lands on the slowest
     # low-file-count shard, costing ~5s of wall clock on a 40-core host).

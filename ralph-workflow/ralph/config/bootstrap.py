@@ -71,7 +71,6 @@ from ralph.config.agents_bootstrap import (
     _prepare_config_commit,
     write_agents_with_backup,
 )
-from ralph.config.agents_file_writer import write_agents_toml
 from ralph.config.unreadable_config_finding import (
     UnreadableConfigFinding,
     collect_unreadable_config_files,
@@ -104,7 +103,6 @@ __all__ = [
     "regenerate_all",
     "resolve_global_config_dir",
     "stage_files",
-    "write_agents_toml",
 ]
 
 

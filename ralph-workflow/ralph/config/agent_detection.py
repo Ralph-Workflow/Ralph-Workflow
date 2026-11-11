@@ -57,11 +57,15 @@ def _commit_deterministic_config_write(
 
     This is the shared producer-side wiring the Ralph-owned config write
     sites that AUTO-COMMIT their change route through after wt-012
-    (``load_toml`` migration, ``autowire_chains_to_detected_agent``, and the
-    ``ralph --init`` starter-prompt creation). Write sites that publish
+    (the ``ralph --init`` chain autowire
+    ``autowire_chains_to_detected_agent`` and the ``ralph --init``
+    starter-prompt creation). Write sites that publish
     WITHOUT a commit do not route through this helper: ``enable_detected_agents``
     publishes the agents file through ``write_agents_toml`` (atomic replace plus
-    ``.bak`` backup) and deliberately creates no chore commit. The contract
+    ``.bak`` backup) and deliberately creates no chore commit. Read paths
+    are not write sites at all: ``load_toml`` migrates the retired
+    ``agent_can_commit`` keys in memory only, so it never writes and
+    never routes through this helper. The contract
     mirrors the skill / policy ``commit_deterministic_writes`` callers:
 
     * the pre-write content hash of ``config_path`` is captured BEFORE
@@ -145,8 +149,7 @@ def _commit_deterministic_config_write(
         return None
     # wt-012 DA-001/DA-008/DA-011: when ``config_path`` is a symlink, the
     # actual file the write mutates depends on the backend primitive:
-    # ``atomic_write_text_if_changed`` (loader migration) uses
-    # ``Path.replace`` to swap the symlink for a regular file, so the
+    # a ``Path.replace`` swaps the symlink for a regular file, so the
     # change lands at the LEXICAL ``rel_path``; ``write_text_if_changed``
     # (autowire) opens the path with
     # ``path.open("w")`` which FOLLOWS the symlink and writes through

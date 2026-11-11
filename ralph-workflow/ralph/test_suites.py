@@ -229,8 +229,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # cannot rot silently.
     "tests/test_scoped_auto_commit.py",
     # wt-12: the deterministic auto-commit acceptance cases for the
-    # config write sites (migration, autowire, enable, init starter
-    # prompt). subprocess_e2e (real-git boundary exercised end-to-end)
+    # config write sites (autowire, enable, init starter prompt). subprocess_e2e (real-git boundary exercised end-to-end)
     # but must stay on the default ``make test`` profile so the
     # config-write isolation / rollback contract cannot rot silently.
     # In-budget on the 60s combined verify budget.
@@ -244,6 +243,16 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # rot silently. In-budget on the 60s combined verify budget.
     "tests/test_config_bootstrap_git_isolation.py",
     "tests/test_deterministic_writers_clean_tree.py",
+    # wt-04 (U5-REPAIR-A): the config-read immutability proofs assert on
+    # the real repo HEAD sha (and the agents file's sha256) after a config
+    # load and after a ``--diagnose --config`` run, and the autowire proofs
+    # assert on the real git log subjects (an agents file creates NO chore
+    # commit; a main config DOES create one). Real-git boundary is the
+    # subject under test, so both files are ``subprocess_e2e`` and MUST stay
+    # on the default ``make test`` profile -- behind an opt-in gate the
+    # "a config read never writes or commits" contract would rot silently.
+    "tests/config/test_agents_file_immutable.py",
+    "tests/config/test_init_agents_autowire.py",
     # wt-15-policy (U1): the parametrized display module was previously
     # 460 tests and wall-clock bottleneck; split into three coherent files
     # (catalog/surface, renderer/output, salience/idle-burst) to keep each

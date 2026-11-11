@@ -40,6 +40,14 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
+# This module crosses the real Git boundary on purpose: the agents-file
+# immutability proofs assert on the repo HEAD sha after a config load. It is
+# registered in ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` so the real-Git proof
+# stays on the default ``make test`` lane instead of rotting behind an
+# opt-in gate.
+pytestmark = pytest.mark.subprocess_e2e
+
+
 def test_loader_leaves_agents_file_immutable_when_migrating_retired_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -181,6 +189,59 @@ def test_diagnose_leaves_agents_file_byte_identical(
     assert not any(
         p.name.startswith(".ralph-workflow-agents.toml.tmp") for p in config_home.iterdir()
     )
+
+
+def test_diagnose_with_explicit_config_leaves_user_global_agents_file_byte_identical(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`ralph --diagnose --config <path>` leaves the user-global agents file byte-identical.
+
+    The explicit config path selects the project-local main config, while the
+    user-global agents file is still read. Its retired ``agent_can_commit``
+    key is migrated in memory only, so the file keeps its exact bytes and no
+    backup, temp, or migration scratch artifact appears next to it.
+    """
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir(parents=True, exist_ok=True)
+    home_dir = tmp_path / "home"
+    home_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.setenv("HOME", str(home_dir))
+
+    agents_path = config_home / "ralph-workflow-agents.toml"
+    content = (
+        "# Custom agent configuration\n"
+        "[agents.claude]\n"
+        'cmd = "claude"\n'
+        "can_commit = true\n"
+        'display_name = "Claude Code"\n'
+    )
+    agents_path.write_text(content, encoding="utf-8")
+    initial_bytes = agents_path.read_bytes()
+    initial_sha256 = hashlib.sha256(initial_bytes).hexdigest()
+
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(workspace_dir)
+
+    local_path = tmp_path / "ralph-workflow.toml"
+    local_path.write_text("[general]\nverbosity = 0\n", encoding="utf-8")
+
+    reset_retired_agent_key_warnings()
+    result = CliRunner().invoke(app, ["--diagnose", "--config", str(local_path)])
+    assert result.exit_code in (0, 1)
+
+    # The file on disk is untouched: same bytes, same digest, and no
+    # backup, temp, or migration scratch artifact next to it.
+    final_bytes = agents_path.read_bytes()
+    final_sha256 = hashlib.sha256(final_bytes).hexdigest()
+    assert final_bytes == initial_bytes
+    assert final_sha256 == initial_sha256
+    assert not (config_home / "ralph-workflow-agents.toml.bak").exists()
+    assert not any(
+        p.name.startswith(".ralph-workflow-agents.toml.tmp") for p in config_home.iterdir()
+    )
+    assert not any(".migration" in p.name for p in config_home.iterdir())
 
 
 def test_pipeline_run_leaves_agents_file_byte_identical(

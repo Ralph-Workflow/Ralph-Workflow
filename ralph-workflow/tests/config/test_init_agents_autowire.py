@@ -11,6 +11,13 @@ from git import Actor, Repo
 
 from ralph.config.agent_detection import autowire_chains_to_detected_agent
 
+# This module crosses the real Git boundary on purpose: the autowire proofs
+# assert on the git log subjects (no chore commit for an agents file, a
+# chore commit for a main config). It is registered in
+# ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` so the real-Git proof stays on the
+# default ``make test`` lane instead of rotting behind an opt-in gate.
+pytestmark = pytest.mark.subprocess_e2e
+
 _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML = """\
 [agents.claude]
 cmd = "claude"

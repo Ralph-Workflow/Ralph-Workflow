@@ -1,11 +1,8 @@
 """Black-box tests for the config-write auto-commit contract (wt-012 U1).
 
-Wires the shared ``commit_deterministic_writes`` primitive into the three
+Wires the shared ``commit_deterministic_writes`` primitive into the two
 config write sites after wt-012 U0:
 
-* ``ralph.config.loader.load_toml`` -- the retired
-  ``agent_can_commit`` key migration (migrates in memory only; non-writing
-  and non-committing);
 * ``ralph.config.agent_detection.autowire_chains_to_detected_agent`` --
   the detected-CLI agent-configuration updates
   (subject: ``chore(config): update agent configuration``);
@@ -14,6 +11,11 @@ config write sites after wt-012 U0:
 * ``ralph.cli.commands.init`` -- the project-local ``PROMPT.md``
   creation on ``ralph --init``
   (subject: ``chore(config): update agent configuration``).
+
+``ralph.config.loader.load_toml`` is a READ path, not a write site: the
+retired ``agent_can_commit`` key migration happens in memory only, so
+``load_toml`` never writes and never commits. The tests below pin that
+non-writing behavior instead of a chore commit.
 
 The contract:
 
@@ -104,11 +106,11 @@ def _git_status_clean(repo_root: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 1. Migration commits with the fixed subject
+# 1. Read path: the retired-key migration never writes
 # ---------------------------------------------------------------------------
 
 
-def test_load_toml_migration_lands_in_deterministic_chore_commit(
+def test_load_toml_migration_does_not_create_a_deterministic_chore_commit(
     tmp_path: Path,
 ) -> None:
     """A TOML with a retired ``agent_can_commit`` key migrates in memory only.
@@ -149,7 +151,7 @@ def test_load_toml_migration_lands_in_deterministic_chore_commit(
     assert _git_status_clean(tmp_path), "tree must be clean after load_toml"
 
 
-def test_load_toml_migration_commits_via_symlinked_config_path(
+def test_load_toml_migration_via_symlinked_config_path_creates_no_commit(
     tmp_path: Path,
 ) -> None:
     """A symlinked config entry migrates in memory only and does not replace symlink."""
@@ -217,31 +219,6 @@ def repo_head_tree_mode(repo_root: Path, path: str) -> str:
         repo.close()
 
 
-def _head_commit_paths(repo_root: Path) -> set[str]:
-    """Return every blob/symlink path in the HEAD commit tree.
-
-    Walks the tree depth-first and collects the lexical path of every
-    non-tree entry. Used by the symlink test to assert the chore
-    commit's HEAD tree includes the lexical ``config.toml`` entry.
-    """
-    from git import Repo as _Repo  # local import keeps the top-level imports narrow
-
-    repo = _Repo(repo_root)
-    try:
-        paths: set[str] = set()
-        stack = [repo.head.commit.tree]
-        while stack:
-            subtree = stack.pop()
-            for entry in subtree:
-                if entry.type == "tree":
-                    stack.append(entry)
-                else:
-                    paths.add(entry.path)
-        return paths
-    finally:
-        repo.close()
-
-
 # ---------------------------------------------------------------------------
 # 2. Autowire commits
 # ---------------------------------------------------------------------------
@@ -297,7 +274,7 @@ def test_autowire_chains_commits_in_repo_with_fixed_subject(
 # ---------------------------------------------------------------------------
 
 
-def test_enable_detected_agents_commits_in_repo_with_fixed_subject(
+def test_enable_detected_agents_creates_no_auto_commit_in_repo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -365,7 +342,7 @@ def test_enable_detected_agents_commits_in_repo_with_fixed_subject(
 # ---------------------------------------------------------------------------
 
 
-def test_enable_detected_agents_commits_via_symlinked_config_path(
+def test_enable_detected_agents_via_symlinked_config_path_creates_no_auto_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -509,9 +486,9 @@ def test_load_toml_unmigrated_file_produces_no_commit(
 ) -> None:
     """A TOML with no retired ``can_commit`` key MUST NOT trigger a commit.
 
-    The migration helper is a no-op when the source has no retired
-    assignments, so ``commit_deterministic_writes`` is not even called
-    -- HEAD remains the initial commit and no chore commit lands.
+    ``load_toml`` is a read path: it never calls
+    ``commit_deterministic_writes`` -- HEAD remains the initial commit and
+    no chore commit lands.
     """
     _init_repo_with_initial_commit(tmp_path)
     config_path = tmp_path / "ralph-workflow.toml"
@@ -691,6 +668,8 @@ def test_failed_create_commit_injection_preserves_head_and_index(
     try:
         result = _commit_deterministic_config_write(
             config_path,
+            # Test-local subject: this test pins the FAILED-rollback
+            # behavior of a deterministic config write, not the subject text.
             subject="chore(config): migrate retired agent_can_commit assignments",
             write_fn=lambda: config_path.write_text(
                 '[agents.claude]\ncmd = "claude"\n',

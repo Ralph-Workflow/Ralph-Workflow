@@ -21,7 +21,6 @@ __all__ = [
     "_get_bundled_defaults_dir",
     "_global_policy_target_name",
     "_migrate_legacy_global_config",
-    "_repo_rel_path",
     "_resolve_global_policy_source",
 ]
 
@@ -134,21 +133,3 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
         encoding="utf-8",
     )
     return BootstrapResult(target, "regenerated", backup)
-
-
-def _repo_rel_path(target: Path, working_dir: Path) -> str:
-    """Return the repo-relative POSIX path of ``target`` inside ``working_dir``.
-
-    wt-12: uses the LEXICAL path (``target`` as-is), NOT
-    ``target.resolve(...)``. A tracked symlink (e.g. ``.agent/ralph-workflow.toml
-    -> ../real.toml``) is tracked at its lexical path; ``resolve`` would
-    swap the path for the symlink target and the deterministic commit
-    helper would stage/commit the wrong blob (or warn
-    "already dirty at HEAD" when the target file differs from HEAD),
-    leaving the symlink's lexical entry dirty for the agent flow
-    (DA-001 / DA-007 / DA-008 / DA-010).
-
-    The caller is responsible for passing a target whose lexical path is
-    inside ``working_dir``; bootstrap only writes paths inside the repo.
-    """
-    return target.relative_to(working_dir).as_posix()
