@@ -636,6 +636,25 @@ def test_hang_cap_matches_suite_timeout_policy() -> None:
 # ---------------------------------------------------------------------------
 
 
+class _NoOpOrphanTracker:
+    """Deterministic orphan-tracker stand-in for tests that script the clock.
+
+    The production ``orphaned_cpu_tracker`` spawns a daemon thread whose
+    ``threading.Event.wait`` calls the real ``time.monotonic``; when a test
+    monkeypatches ``time.monotonic`` that background thread races the scripted
+    timeline. This stand-in spawns nothing and reports zero orphaned CPU, so
+    the only consumer of a scripted clock is the code under test.
+    """
+
+    orphaned_cpu_seconds = 0.0
+
+    def __enter__(self) -> _NoOpOrphanTracker:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
 def test_run_verify_single_step_within_budget(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -650,7 +669,9 @@ def test_run_verify_single_step_within_budget(
     times[5:] = [1.0] * (len(times) - 5)
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
-    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 0, f"expected exit 0, got {exit_code}"
@@ -689,7 +710,9 @@ def test_run_verify_single_step_exceeds_budget(
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 65.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
-    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
+    )
 
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE, f"expected 124, got {exit_code}"
@@ -734,7 +757,9 @@ def test_run_verify_multiple_steps_combined_exceeds(
     times = [0.0, 55.0, 55.0, 65.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
-    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
+    )
 
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE, f"expected 124, got {exit_code}"
@@ -776,7 +801,9 @@ def test_run_verify_multiple_steps_combined_within(
     times = [0.0, 10.0, 10.0, 20.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
-    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 0, f"expected exit 0, got {exit_code}"
@@ -802,7 +829,9 @@ def test_run_verify_non_test_steps_not_counted(
     times = [100.0 * (index // 2) for index in range(2 * len(verify_module._VERIFY_STEPS))]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
-    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 0, f"expected exit 0, got {exit_code}"
@@ -842,7 +871,9 @@ def test_run_verify_cumulative_equals_budget_boundary(
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 60.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 60.0)
 
-    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
+    )
 
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE, f"expected 124, got {exit_code}"
@@ -882,7 +913,9 @@ def test_run_verify_policy_message_correctness(
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 70.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 70.0)
 
-    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
+    )
 
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE

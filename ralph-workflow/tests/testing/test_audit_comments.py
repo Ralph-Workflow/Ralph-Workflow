@@ -50,6 +50,9 @@ _CLEAN_WORKAROUND = "# Workaround for the 3.11 bug; remove when 3.12 lands."
 #: A comment that records intent.
 _CLEAN_INTENT = "# We retry once so a transient transport blip does not fail the run."
 
+#: The mandated type-ignore marker, split so this file does not flag itself.
+_TYPE_IGNORE_MARKER = "# type:" + " ignore[arg-type]"
+
 
 def _rules(findings: list[CommentFinding]) -> set[str]:
     return {finding.rule_id for finding in findings}
@@ -176,7 +179,7 @@ def test_a_hash_inside_a_string_is_not_a_comment() -> None:
 
 def test_a_type_ignore_with_a_reason_is_not_commented_out_code() -> None:
     """The mandated type-ignore form is a suppression, not commented-out code."""
-    text = "x = 1  # type:" + " ignore[arg-type]  # reason: external library has no type support\n"
+    text = f"x = 1  {_TYPE_IGNORE_MARKER}  # reason: external library has no type support\n"
 
     assert RULE_COMMENTED_OUT_CODE not in _rules(_scan(text))
 
@@ -191,7 +194,7 @@ def test_a_noqa_with_a_reason_is_not_commented_out_code() -> None:
 def test_a_suppression_with_a_reason_is_not_reported_at_all() -> None:
     """A documented suppression passes every comment rule."""
     text = (
-        "x = 1  # type:" + " ignore[arg-type]  # reason: external library has no type support\n"
+        f"x = 1  {_TYPE_IGNORE_MARKER}  # reason: external library has no type support\n"
         "y = 2  # noqa: RUF022  # reason: intentional per-file order\n"
     )
 

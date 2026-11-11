@@ -1854,8 +1854,14 @@ def test_apply_time_delete_failure_triggers_commit_review_loopback(
     one (``build_unapplied_retry_hint``), so it names the path that was
     accepted by the classifier but could not be applied -- it must NOT
     claim the path "looks like source code", which is the classifier
-    rejection wording. The binary artifact MUST still exist on disk (the
-    delete was attempted and failed).
+    rejection wording. The target path is an untracked ``.exe`` artifact:
+    ``.exe`` is not in ``UNSAFE_EXTENSIONS`` and is not a
+    protected/lockfile basename, so ``_is_safe_to_delete`` accepts it and
+    the delete is attempted. A ``calls`` recorder on the patched
+    ``delete_file_from_repo`` pins the apply path was actually driven (so
+    the test can never silently pass via the classifier-decline path
+    instead). The binary artifact MUST still exist on disk (the delete
+    was attempted and failed).
     """
     workspace = FsWorkspace(tmp_git_repo)
     binary = tmp_git_repo / "binary.exe"
@@ -1868,7 +1874,10 @@ def test_apply_time_delete_failure_triggers_commit_review_loopback(
     }
     _write_commit_review_artifact(workspace, cleanup_artifact)
 
+    calls: list[str] = []
+
     def _raise_on_delete(repo_root: Path, file_path: str) -> None:
+        calls.append(file_path)
         raise OSError(f"simulated apply-time failure for {file_path}")
 
     monkeypatch.setattr(
@@ -1892,17 +1901,22 @@ def test_apply_time_delete_failure_triggers_commit_review_loopback(
     events = handle_commit_review_phase(effect, ctx)
 
     assert len(events) == 1, f"Expected exactly one event, got {len(events)}: {events!r}"
-    assert isinstance(events[0], CommitReviewLoopback), (
+    event = events[0]
+    assert isinstance(event, CommitReviewLoopback), (
         f"Expected CommitReviewLoopback when all attempted deletes failed at "
-        f"apply time, got {type(events[0]).__name__}: {events[0]!r}"
+        f"apply time, got {type(event).__name__}: {event!r}"
     )
-    assert "binary.exe" in events[0].hint
-    assert "failed while applying" in events[0].hint, (
-        f"The hint must name the apply-time failure, got: {events[0].hint!r}"
+    assert calls == ["binary.exe"], (
+        f"delete_file_from_repo must have been invoked exactly once for the "
+        f"apply-time-failure path (classifier must ACCEPT the untracked .exe "
+        f"artifact); got calls={calls!r}"
     )
-    assert "look like source code" not in events[0].hint, (
-        f"An apply-time failure must NOT reuse the safety-classifier wording, "
-        f"got: {events[0].hint!r}"
+    assert "binary.exe" in event.hint
+    assert "failed while applying" in event.hint, (
+        f"The hint must name the apply-time failure, got: {event.hint!r}"
+    )
+    assert "look like source code" not in event.hint, (
+        f"An apply-time failure must NOT reuse the safety-classifier wording, got: {event.hint!r}"
     )
     assert binary.exists(), (
         "Binary artifact must still exist -- the delete was attempted and "
