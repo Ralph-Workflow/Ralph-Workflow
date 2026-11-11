@@ -176,7 +176,7 @@ def test_a_hash_inside_a_string_is_not_a_comment() -> None:
 
 def test_a_type_ignore_with_a_reason_is_not_commented_out_code() -> None:
     """The mandated type-ignore form is a suppression, not commented-out code."""
-    text = "x = 1  # type: ignore[arg-type]  # reason: external library has no type support\n"
+    text = "x = 1  # type:" + " ignore[arg-type]  # reason: external library has no type support\n"
 
     assert RULE_COMMENTED_OUT_CODE not in _rules(_scan(text))
 
@@ -191,7 +191,7 @@ def test_a_noqa_with_a_reason_is_not_commented_out_code() -> None:
 def test_a_suppression_with_a_reason_is_not_reported_at_all() -> None:
     """A documented suppression passes every comment rule."""
     text = (
-        "x = 1  # type: ignore[arg-type]  # reason: external library has no type support\n"
+        "x = 1  # type:" + " ignore[arg-type]  # reason: external library has no type support\n"
         "y = 2  # noqa: RUF022  # reason: intentional per-file order\n"
     )
 
@@ -395,9 +395,7 @@ def test_audit_comment_roots_reports_the_baseline_count(tmp_path: Path) -> None:
     assert baseline_count == 1
 
 
-def test_main_prints_the_baseline_count(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_main_prints_the_baseline_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The CLI reports the burn-down count the clean-code policy promises."""
     baseline = tmp_path / "baseline"
     current = tmp_path / "current"

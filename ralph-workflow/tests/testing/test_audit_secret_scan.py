@@ -46,10 +46,7 @@ _SECOND_ASSIGNMENT_KEY = "to" + "ken"
 
 #: A source file whose findings belong to the Bandit gate, not to this one.
 _BANDIT_OWNED_SOURCE = (
-    "import subprocess\n"
-    "subprocess.run('ls', shell=True)\n"
-    "def run(value):\n"
-    "    return eval(value)\n"
+    "import subprocess\nsubprocess.run('ls', shell=True)\ndef run(value):\n    return eval(value)\n"
 )
 
 

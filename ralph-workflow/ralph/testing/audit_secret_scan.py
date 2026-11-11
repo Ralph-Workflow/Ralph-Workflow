@@ -404,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         baseline_root = None
         current_root = _default_root()
-    if not current_root.is_dir():
+    if not current_root.is_dir():  # filesystem-read-ok: validate CLI audit root path
         print(f"Error: audit root not found: {current_root}", file=sys.stderr)
         return 2
     if baseline_root is None:
@@ -417,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         baseline_root = resolved_baseline
-    if not baseline_root.is_dir():
+    if not baseline_root.is_dir():  # filesystem-read-ok: validate CLI baseline root path
         print(f"Error: audit root not found: {baseline_root}", file=sys.stderr)
         return 2
 

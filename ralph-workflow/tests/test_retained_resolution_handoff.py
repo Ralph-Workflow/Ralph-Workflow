@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import shutil
+import tempfile
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -385,15 +386,25 @@ def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_
     assert _git(root, "rev-parse", "HEAD").stdout.strip() == base
 
 
+_INTERRUPTED_CACHE: dict[str, tuple[Path, str, str, str]] = {}
+
+
 def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "shared.txt", "feature\n")
-    assert _git(root, "switch", target).returncode == 0
-    main = _commit(root, "shared.txt", "main\n")
-    assert _git(root, "switch", "feature").returncode == 0
-    assert _git(root, operation, target).returncode != 0
+    # RALPH-TEST-REASON: cache template git fixtures to preserve test budget without changing assertions
+    if operation not in _INTERRUPTED_CACHE:
+        d = Path(tempfile.mkdtemp(prefix=f"it-{operation}-"))
+        shutil.copytree(root, d, dirs_exist_ok=True)
+        _commit(d, "shared.txt", "base\n")
+        assert _git(d, "switch", "-c", "feature").returncode == 0
+        f = _commit(d, "shared.txt", "feature\n")
+        assert _git(d, "switch", "main").returncode == 0
+        m = _commit(d, "shared.txt", "main\n")
+        assert _git(d, "switch", "feature").returncode == 0
+        assert _git(d, operation, "main").returncode != 0
+        _INTERRUPTED_CACHE[operation] = (d, "main", f, m)
+    template, target, feature, main = _INTERRUPTED_CACHE[operation]
+    shutil.rmtree(root)
+    shutil.copytree(template, root)
     write_record(
         root,
         IntegrationRecord(

@@ -588,7 +588,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_integration_diagnostic_intervention_cap.py": 160,
     "tests/pipeline/test_reducer_lock_retry.py": 120,
     "tests/test_recovery_release_uses_record_store.py": 80,
-    "tests/test_commit_detached_head_recovery.py": 700,
+    "tests/test_commit_detached_head_recovery.py": 187,
     "tests/test_branch_relation_matrix.py": 150,
     "tests/test_conflict_resolution_pipeline.py": 150,
     "tests/test_conflict_resolution_outcome_judging.py": 100,

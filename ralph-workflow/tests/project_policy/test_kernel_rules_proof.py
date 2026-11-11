@@ -820,6 +820,5 @@ def test_instruction_audit_requirement_is_stated_once_in_both_kernels() -> None:
         normalized = _normalized(content).lower()
         for requirement in INSTRUCTION_AUDIT_REQUIREMENTS:
             assert requirement in normalized, (
-                f"{source_name} kernel instruction-audit requirement is missing "
-                f"{requirement!r}"
+                f"{source_name} kernel instruction-audit requirement is missing {requirement!r}"
             )

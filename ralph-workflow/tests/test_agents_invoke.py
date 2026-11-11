@@ -552,9 +552,7 @@ class _IdleTimeoutProcess:
 
 
 # === consolidated from test_agents_invoke_1.py ===
-def _run_idle_stream_timeout_scenario(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def _run_idle_stream_timeout_scenario(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Run the idle-stream timeout and assert it surfaces as an inactivity error."""
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
@@ -612,9 +610,7 @@ def test_idle_stream_timeout_scenario_never_scans_the_host_process_table(
     """
     scans = 0
 
-    def counting_children(
-        self: psutil.Process, recursive: bool = False
-    ) -> list[psutil.Process]:
+    def counting_children(self: psutil.Process, recursive: bool = False) -> list[psutil.Process]:
         nonlocal scans
         scans += 1
         return []

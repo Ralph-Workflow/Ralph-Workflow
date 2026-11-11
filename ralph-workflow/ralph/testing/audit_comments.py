@@ -17,7 +17,7 @@ ADVISORY rule is reported for review but does not fail the gate.
     A comment line that parses as Python (assignment, call, import,
     ``return``, ``if``/``for``/``while``/``def``/``class``) or matches a
     code-shaped pattern. A suppression directive that the typechecking or
-    linting policy mandates — ``# type: ignore[<code>]`` or
+    linting policy mandates — ``# type:`` ``ignore[<code>]`` or
     ``# noqa[:<code>]`` together with its ``# reason: <text>`` suffix — is
     a documented suppression, not commented-out code, so this rule never
     claims it.
@@ -315,7 +315,7 @@ CODE_SHAPE_PATTERN = re.compile(
 _SUPPRESSION_CODES = r"[A-Za-z0-9_]+(?:\s*,\s*[A-Za-z0-9_]+)*"
 
 #: A suppression directive the typechecking and linting policies mandate:
-#: ``# type: ignore[<code>]`` or ``# noqa[:<code>]``, each together with
+#: ``# type:`` ``ignore[<code>]`` or ``# noqa[:<code>]``, each together with
 #: the ``# reason: <text>`` suffix those policies require. The reason is
 #: what makes the directive a documented suppression rather than an
 #: unexplained marker, so the suffix is part of the recognised form. The

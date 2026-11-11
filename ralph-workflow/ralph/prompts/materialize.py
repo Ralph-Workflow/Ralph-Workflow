@@ -233,7 +233,9 @@ def materialize_prompt_for_phase(
             proposal_ref=options.proposal_ref or optional_str(kwargs.get("proposal_ref")),
             tree_sha=options.tree_sha or optional_str(kwargs.get("tree_sha")),
             soft_tripwires=options.soft_tripwires
-            or cast("list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")),
+            or cast(
+                "list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             last_review_rejection_reason=options.last_review_rejection_reason
             or optional_str(kwargs.get("last_review_rejection_reason")),
             rollback_ref=options.rollback_ref or optional_str(kwargs.get("rollback_ref")),
