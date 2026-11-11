@@ -24,7 +24,18 @@ from ralph.phases.commit_review import (
     run_commit_review_stage1_preflight,
 )
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
+# The module carries the module-level ``subprocess_e2e`` marker because every
+# proof drives the REAL git boundary (``Repo.init``, ``git diff-tree -r``, the
+# real proposal seal and the real rollback). It is registered in
+# ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES`` and additionally
+# declares ``required_auto_integrate_e2e`` here, so the default
+# ``make test`` profile selects these proofs instead of deselecting them
+# behind the opt-in subprocess gate (where they would rot silently).
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.timeout_seconds(20),
+    pytest.mark.required_auto_integrate_e2e,
+]
 
 #: A protected top-level source directory and the files it holds.
 _SRC_FILES = ("src/app.py", "src/util.py")

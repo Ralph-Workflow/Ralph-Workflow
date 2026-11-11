@@ -46,7 +46,17 @@ from ralph.phases.commit_review import CommitReviewApproved, handle_commit_revie
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.workspace.fs import FsWorkspace
 
-pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
+# The module carries the module-level ``subprocess_e2e`` marker because the
+# proof drives the REAL git boundary (a real repository, the real phase). It
+# is registered in ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES`` and
+# additionally declares ``required_auto_integrate_e2e`` here, so the default
+# ``make test`` profile selects these proofs instead of deselecting them
+# behind the opt-in subprocess gate (where they would rot silently).
+pytestmark = [
+    pytest.mark.timeout_seconds(10),
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+]
 
 # Five originally-failing TRACKED files (PA-005: distinct from the
 # preserved-symlink path). These were the exact paths that the legacy

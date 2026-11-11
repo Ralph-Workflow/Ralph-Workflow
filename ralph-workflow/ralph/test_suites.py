@@ -203,6 +203,28 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # ~5.9 s wall under the shard's 10-worker profile) inside the
     # pinned 60 s combined budget.
     "tests/test_phases_commit_review.py",
+    # wt-03-commit-review-flow: the commit-review REAL-GIT proof modules.
+    # Both drive the real ``git`` boundary (a real tmp-path repository, the
+    # real proposal seal, the real ``git diff-tree`` diff and the real
+    # rollback), so they carry the module-level ``subprocess_e2e`` marker.
+    # Unregistered, static discovery DROPS the file and the default marker
+    # expression deselects every item, so the "a behaviour a recursive diff
+    # never produces cannot pass vacuously" contract (the real-diff proofs)
+    # and the rock-solid phase contract would rot in the opt-in lane while
+    # ``make verify`` stayed green. Registering them keeps both proofs on
+    # the default ``make test`` profile, where the dedicated real-git
+    # shard's in-shard xdist fan-out absorbs their measured cost.
+    "tests/test_commit_review_real_diff_proofs.py",
+    "tests/integration/test_commit_review_rock_solid.py",
+    # wt-03-commit-review-flow: the remaining commit-review modules that
+    # carry the module-level ``subprocess_e2e`` marker. The final-commit
+    # review -> final commit transition has no other dedicated test in the
+    # suite, and the git commit-review operation proofs drive the real
+    # ``Repo``/``git`` boundary. Both were dropped by static discovery and
+    # deselected by the default marker expression, so their coverage rotted
+    # in the opt-in lane while ``make verify`` stayed green.
+    "tests/integration/test_pipeline_final_commit_review_to_final_commit_e2e.py",
+    "tests/test_git_commit_review.py",
     # wt-11: crash-safety and concurrency proofs for the indexed
     # exploration substrate (S-5). subprocess_e2e so the cross-process
     # boundary and atomic promotion are exercised; in-budget on the
@@ -426,6 +448,14 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
 #: ``tests/config/test_init_agents_autowire.py``) in the SELECTION
 #: registry only -- their real-Git crossings stay sanctioned through it,
 #: and their proofs stay on the default ``make test`` profile.
+#:
+#: wt-03-commit-review-flow applies the same rule to
+#: ``tests/test_commit_review_real_diff_proofs.py``: it carries the
+#: module-level ``subprocess_e2e`` marker, so it is not a default-lane
+#: file, and the AUDIT-exception registry would sanction a real-Git
+#: crossing whose proofs do not run on the default profile. It lives in the
+#: SELECTION registry only, where the registration both sanctions the
+#: crossing and admits the proofs to the default ``make test`` profile.
 SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/conftest.py",
     "tests/pipeline/test_reducer_lock_retry.py",
@@ -433,7 +463,6 @@ SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_bootstrap_auto_seed_git_exclude.py",
     "tests/test_bootstrap_auto_seed_gitignore.py",
     "tests/test_commit_review_diff.py",
-    "tests/test_commit_review_real_diff_proofs.py",
     "tests/test_commit_review_reject_citation_gate.py",
     "tests/test_commit_review_tripwires.py",
     "tests/test_commit_detached_head_recovery.py",

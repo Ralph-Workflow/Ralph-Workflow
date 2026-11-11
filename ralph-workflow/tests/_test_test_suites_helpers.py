@@ -70,6 +70,27 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # ~5.9 s wall under the shard's 10-worker profile) inside the
     # pinned 60 s combined budget.
     "tests/test_phases_commit_review.py",
+    # wt-03-commit-review-flow: the commit-review REAL-GIT proof modules.
+    # Both drive the real ``git`` boundary (a real tmp-path repository, the
+    # real proposal seal, the real ``git diff-tree`` diff and the real
+    # rollback), so they carry the module-level ``subprocess_e2e`` marker.
+    # Unregistered, static discovery DROPS the file and the default marker
+    # expression deselects every item, so the "a behaviour a recursive diff
+    # never produces cannot pass vacuously" contract (the real-diff proofs)
+    # and the rock-solid phase contract would rot in the opt-in lane while
+    # ``make verify`` stayed green. Registering them keeps both proofs on
+    # the default ``make test`` profile.
+    "tests/test_commit_review_real_diff_proofs.py",
+    "tests/integration/test_commit_review_rock_solid.py",
+    # wt-03-commit-review-flow: the remaining commit-review modules that
+    # carry the module-level ``subprocess_e2e`` marker. The final-commit
+    # review -> final commit transition has no other dedicated test in the
+    # suite, and the git commit-review operation proofs drive the real
+    # ``Repo``/``git`` boundary. Both were dropped by static discovery and
+    # deselected by the default marker expression, so their coverage rotted
+    # in the opt-in lane while ``make verify`` stayed green.
+    "tests/integration/test_pipeline_final_commit_review_to_final_commit_e2e.py",
+    "tests/test_git_commit_review.py",
     "tests/test_explore_crash_safety.py",
     "tests/test_explore_concurrency.py",
     "tests/test_explore_cold_start_lifecycle.py",
@@ -255,7 +276,6 @@ EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_bootstrap_auto_seed_git_exclude.py",
     "tests/test_bootstrap_auto_seed_gitignore.py",
     "tests/test_commit_review_diff.py",
-    "tests/test_commit_review_real_diff_proofs.py",
     "tests/test_commit_review_reject_citation_gate.py",
     "tests/test_commit_review_tripwires.py",
     "tests/test_commit_detached_head_recovery.py",

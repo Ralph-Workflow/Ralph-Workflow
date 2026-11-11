@@ -298,6 +298,148 @@ def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_dele
     assert report.hard == ()
 
 
+#: A source tree whose NAME is not in DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS.
+_UNLISTED_SOURCE_DIR = "ralph-workflow"
+
+#: A top-level directory that holds no source file at all.
+_NON_SOURCE_DIR = "docs-old"
+
+
+def _base_tree_with_filler(members: frozenset[str], filler: int = 20) -> frozenset[str]:
+    """Return ``members`` plus ``filler`` documentation paths outside them.
+
+    The filler keeps the deleted fraction below the mass-deletion threshold,
+    so a finding the assertion reads can ONLY come from the directory rule.
+    """
+    return members | frozenset(f"notes/note_{index}.md" for index in range(filler))
+
+
+def test_a_top_level_source_directory_with_an_unlisted_name_is_protected() -> None:
+    """A source directory whose NAME is not in the fixed list is protected.
+
+    The fixed name set cannot cover every repository: this tree keeps its
+    sources under ``ralph-workflow/``, so the content-based rule is the only
+    thing that can protect it. The base tree is the evidence: it holds source
+    files, and the pending diff deletes every one of them.
+    """
+    base_paths = _base_tree_with_filler(
+        frozenset(
+            {
+                f"{_UNLISTED_SOURCE_DIR}/ralph/app.py",
+                f"{_UNLISTED_SOURCE_DIR}/ralph/util.py",
+                f"{_UNLISTED_SOURCE_DIR}/tests/test_app.py",
+            }
+        )
+    )
+    diff = [
+        DiffEntry(path=path, status="D", base_tree_paths=base_paths)
+        for path in sorted(base_paths)
+        if path.startswith(f"{_UNLISTED_SOURCE_DIR}/")
+    ]
+
+    report = evaluate_tripwires(diff, len(base_paths), TripwireThresholds())
+
+    assert len(report.hard) == 1, report.hard
+    assert report.hard[0].category == "protected_deletion"
+    assert report.hard[0].path == _UNLISTED_SOURCE_DIR
+    assert "in its entirety" in report.hard[0].message
+
+
+def test_a_deleted_directory_entry_with_an_unlisted_source_name_is_protected() -> None:
+    """A diff that reports the directory entry itself is protected too."""
+    base_paths = _base_tree_with_filler(frozenset({f"{_UNLISTED_SOURCE_DIR}/ralph/app.py"}))
+    diff = [
+        DiffEntry(
+            path=_UNLISTED_SOURCE_DIR,
+            status="D",
+            old_mode="040000",
+            base_tree_paths=base_paths,
+        )
+    ]
+
+    report = evaluate_tripwires(diff, len(base_paths), TripwireThresholds())
+
+    assert len(report.hard) == 1, report.hard
+    assert report.hard[0].category == "protected_deletion"
+    assert report.hard[0].path == _UNLISTED_SOURCE_DIR
+
+
+def test_a_partial_deletion_of_a_source_directory_with_an_unlisted_name_is_not_a_tripwire() -> None:
+    """Deleting SOME files of an unlisted source directory stays silent."""
+    base_paths = _base_tree_with_filler(
+        frozenset(
+            {
+                f"{_UNLISTED_SOURCE_DIR}/ralph/app.py",
+                f"{_UNLISTED_SOURCE_DIR}/ralph/util.py",
+            }
+        )
+    )
+    diff = [
+        DiffEntry(
+            path=f"{_UNLISTED_SOURCE_DIR}/ralph/app.py",
+            status="D",
+            base_tree_paths=base_paths,
+        )
+    ]
+
+    report = evaluate_tripwires(diff, len(base_paths), TripwireThresholds())
+
+    assert report.is_clean is True
+    assert report.hard == ()
+
+
+def test_a_top_level_directory_without_source_files_is_not_protected() -> None:
+    """A whole directory that holds NO source file may be deleted."""
+    base_paths = _base_tree_with_filler(frozenset({f"{_NON_SOURCE_DIR}/guide.md"}))
+    diff = [
+        DiffEntry(
+            path=f"{_NON_SOURCE_DIR}/guide.md",
+            status="D",
+            base_tree_paths=base_paths,
+        )
+    ]
+
+    report = evaluate_tripwires(diff, len(base_paths), TripwireThresholds())
+
+    assert report.is_clean is True
+    assert report.hard == ()
+
+
+def test_a_top_level_directory_holding_a_tests_subdirectory_is_protected() -> None:
+    """A ``tests`` subdirectory marks its top-level directory as test code."""
+    base_paths = _base_tree_with_filler(
+        frozenset(
+            {
+                "package/service/readme.md",
+                "package/tests/case.json",
+            }
+        )
+    )
+    diff = [
+        DiffEntry(path=path, status="D", base_tree_paths=base_paths)
+        for path in sorted(base_paths)
+        if path.startswith("package/")
+    ]
+
+    report = evaluate_tripwires(diff, len(base_paths), TripwireThresholds())
+
+    assert len(report.hard) == 1, report.hard
+    assert report.hard[0].category == "protected_deletion"
+    assert report.hard[0].path == "package"
+
+
+def test_a_fixed_name_directory_stays_protected_without_source_files() -> None:
+    """The fixed name set protects its directories regardless of their content."""
+    base_paths = _base_tree_with_filler(frozenset({"src/notes.md"}))
+    diff = [DiffEntry(path="src/notes.md", status="D", base_tree_paths=base_paths)]
+
+    report = evaluate_tripwires(diff, len(base_paths), TripwireThresholds())
+
+    assert len(report.hard) == 1, report.hard
+    assert report.hard[0].category == "protected_deletion"
+    assert report.hard[0].path == "src"
+
+
 def test_custom_protected_paths() -> None:
     """Custom protected paths passed to evaluator trigger hard tripwires."""
     protected_rules = ["config/production.json", "licenses/*"]

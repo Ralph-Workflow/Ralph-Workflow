@@ -581,10 +581,10 @@ def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
 
 
 __all__ = [
+    "REJECTED_PROPOSAL_REF_PREFIX",
     "DiffEntry",
     "ProposalPreflightError",
     "ProposalSealError",
-    "REJECTED_PROPOSAL_REF_PREFIX",
     "Seal",
     "diff_tree",
     "preflight",

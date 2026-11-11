@@ -10,6 +10,9 @@ Tripwire categories:
   - Mass deletion: deleted tracked file count or fraction exceeds policy thresholds.
   - Protected deletion / overwrite: deletion or modification of .git content,
     project manifests/lockfiles, specification prompt, AGENTS.md, or top-level source/test directories.
+    A top-level directory is a source or test directory when the base tree
+    holds source code, test code or a ``tests``/``test`` subdirectory under it,
+    so the protection does not depend on the directory being named ``src``.
 - Soft:
   - Out of scope: modified/added files outside configured allowed_directories.
   - Staged secrets / recognized secret files: credentials, keys, or secret files.
@@ -89,6 +92,120 @@ DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS: Final[frozenset[str]] = frozenset(
         "pkg",
     }
 )
+
+#: File extensions that mark a tracked file as SOURCE CODE. A top-level
+#: directory that holds at least one tracked file with one of these
+#: extensions is a source directory, whatever its NAME is.
+SOURCE_CODE_EXTENSIONS: Final[frozenset[str]] = frozenset(
+    {
+        ".asm",
+        ".astro",
+        ".bash",
+        ".c",
+        ".cc",
+        ".clj",
+        ".cljs",
+        ".cljc",
+        ".coffee",
+        ".cpp",
+        ".cr",
+        ".cs",
+        ".cxx",
+        ".dart",
+        ".def",
+        ".edn",
+        ".elm",
+        ".erl",
+        ".ex",
+        ".exs",
+        ".f03",
+        ".f90",
+        ".f95",
+        ".fish",
+        ".fs",
+        ".fsx",
+        ".go",
+        ".gleam",
+        ".groovy",
+        ".h",
+        ".hh",
+        ".hpp",
+        ".hrl",
+        ".hs",
+        ".hxx",
+        ".inc",
+        ".java",
+        ".jl",
+        ".js",
+        ".jsx",
+        ".kt",
+        ".kts",
+        ".less",
+        ".lhs",
+        ".lua",
+        ".m",
+        ".mjs",
+        ".ml",
+        ".mli",
+        ".mm",
+        ".mts",
+        ".nim",
+        ".pas",
+        ".php",
+        ".pl",
+        ".pm",
+        ".pp",
+        ".proto",
+        ".ps1",
+        ".psm1",
+        ".py",
+        ".pyx",
+        ".pyi",
+        ".r",
+        ".rb",
+        ".rs",
+        ".s",
+        ".sass",
+        ".scala",
+        ".scss",
+        ".sh",
+        ".sql",
+        ".sv",
+        ".swift",
+        ".svelte",
+        ".ts",
+        ".tsx",
+        ".v",
+        ".vb",
+        ".vue",
+        ".zsh",
+    }
+)
+
+#: File extensions that only TEST code carries. They mark a top-level
+#: directory as a test directory even when it holds no source file.
+TEST_CODE_EXTENSIONS: Final[frozenset[str]] = frozenset(
+    {
+        ".approved",
+        ".expected",
+        ".feature",
+        ".snap",
+        ".stories",
+    }
+)
+
+#: Directory names that mark the tree below them as TEST code. A top-level
+#: directory that holds such a subdirectory is a test directory.
+TEST_DIRECTORY_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "test",
+        "tests",
+    }
+)
+
+#: The number of path segments a repository-relative path needs before it
+#: can name a file INSIDE a top-level directory.
+_MIN_PATH_PARTS_IN_A_DIRECTORY: Final[int] = 2
 
 RECOGNIZED_SECRET_PATTERNS: Final[tuple[str, ...]] = (
     ".env",
@@ -393,7 +510,64 @@ def _collect_deleted_paths(entries: list[object]) -> set[str]:
     return deleted
 
 
-def _evaluate_protected_directory_deletions(entries: list[object]) -> list[Finding]:
+def _path_suffix(path: str) -> str:
+    """Return the lower-cased extension of a repository-relative path.
+
+    A dotfile such as ``.gitignore`` carries no extension, and an extension
+    that starts at the first character of the file name never does.
+    """
+    name = path.rsplit("/", 1)[-1]
+    dot = name.rfind(".")
+    if dot <= 0:
+        return ""
+    return name[dot:].lower()
+
+
+def _source_test_top_level_dirs(base_paths: Iterable[str]) -> set[str]:
+    """Return the top-level directories that hold source or test code.
+
+    The classification is decided by the BASE TREE (HEAD) alone, never by
+    the name of the top-level directory: a directory qualifies when it holds
+    at least one tracked file with a source-code or test-code extension, or
+    when it holds a ``tests``/``test`` subdirectory. A repository whose
+    sources live under ``ralph-workflow/`` therefore classifies exactly like
+    one whose sources live under ``src/``.
+    """
+    directories: set[str] = set()
+    for path in base_paths:
+        parts = path.split("/")
+        if len(parts) < _MIN_PATH_PARTS_IN_A_DIRECTORY or not parts[0]:
+            continue
+        top = parts[0]
+        if top in directories:
+            continue
+        suffix = _path_suffix(path)
+        if suffix in SOURCE_CODE_EXTENSIONS or suffix in TEST_CODE_EXTENSIONS:
+            directories.add(top)
+            continue
+        if any(part.lower() in TEST_DIRECTORY_NAMES for part in parts[1:-1]):
+            directories.add(top)
+    return directories
+
+
+def _protected_top_level_dirs(base_paths: frozenset[str] | None) -> frozenset[str]:
+    """Return the top-level directories whose wholesale deletion is damage.
+
+    The fixed name set stays protected REGARDLESS of the tree content, so a
+    repository that keeps a listed name keeps its existing protection. A
+    directory outside that set is protected when the base tree shows it holds
+    source or test code.
+    """
+    if not base_paths:
+        return frozenset(DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS)
+    return frozenset(DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS | _source_test_top_level_dirs(base_paths))
+
+
+def _evaluate_protected_directory_deletions(
+    base_paths: frozenset[str] | None,
+    deleted_paths: set[str],
+    protected_dirs: frozenset[str],
+) -> list[Finding]:
     """Fire when a protected top-level directory is deleted in its entirety.
 
     A recursive ``git diff-tree`` reports BLOB entries only: the removal of a
@@ -403,13 +577,11 @@ def _evaluate_protected_directory_deletions(entries: list[object]) -> list[Findi
     is not an entirety deletion and stays silent here; it remains subject to
     the mass-deletion thresholds.
     """
-    base_paths = _collect_base_tree_paths(entries)
     if not base_paths:
         return []
 
-    deleted_paths = _collect_deleted_paths(entries)
     findings: list[Finding] = []
-    for directory in sorted(DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS):
+    for directory in sorted(protected_dirs):
         prefix = f"{directory}/"
         tracked_under = {path for path in base_paths if path.startswith(prefix)}
         if not tracked_under:
@@ -431,6 +603,7 @@ def _evaluate_hard_entry(
     deleted: bool,
     old_mode: object,
     custom_protected: set[str],
+    protected_top_level_dirs: frozenset[str],
 ) -> Finding | None:
     """Evaluate hard protected tripwires for a single entry."""
     # Protected: .git content
@@ -473,10 +646,8 @@ def _evaluate_hard_entry(
         )
 
     # Protected: top-level source or test directory deletion
-    is_top_level_dir = norm_str in DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS or (
-        old_mode == "040000"
-        and len(norm.parts) == 1
-        and norm.parts[0] in DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS
+    is_top_level_dir = norm_str in protected_top_level_dirs or (
+        old_mode == "040000" and len(norm.parts) == 1 and norm.parts[0] in protected_top_level_dirs
     )
     if is_top_level_dir and deleted:
         return Finding(
@@ -565,8 +736,14 @@ def evaluate_tripwires(
         TripwireReport containing tuples of hard findings and soft findings.
     """
     entries = list(diff_entries)
+    base_paths = _collect_base_tree_paths(entries)
+    deleted_paths = _collect_deleted_paths(entries)
+    protected_dirs = _protected_top_level_dirs(base_paths)
+
     hard_findings = _evaluate_mass_deletion(entries, tracked_count, thresholds)
-    hard_findings.extend(_evaluate_protected_directory_deletions(entries))
+    hard_findings.extend(
+        _evaluate_protected_directory_deletions(base_paths, deleted_paths, protected_dirs)
+    )
     soft_findings: list[Finding] = []
 
     custom_protected: set[str] = set()
@@ -590,6 +767,7 @@ def evaluate_tripwires(
             deleted,
             old_mode,
             custom_protected,
+            protected_dirs,
         )
         if hard_finding is not None:
             hard_findings.append(hard_finding)
@@ -621,6 +799,9 @@ __all__ = [
     "DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS",
     "RECOGNIZED_SECRET_PATTERNS",
     "SECRET_CONTENT_PATTERNS",
+    "SOURCE_CODE_EXTENSIONS",
+    "TEST_CODE_EXTENSIONS",
+    "TEST_DIRECTORY_NAMES",
     "DiffEntry",
     "DiffEntryProtocol",
     "Finding",
