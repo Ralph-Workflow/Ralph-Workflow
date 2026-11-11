@@ -325,7 +325,7 @@ def _poll_endpoint(endpoint: str, deadline: float) -> bool:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5):
                 return True
         except OSError:
-            time.sleep(0.01)
+            time.sleep(0.02)
     return False
 
 
@@ -544,7 +544,7 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
             while time.monotonic() < deadline:
                 if catalog_path.exists() and fake_server.tools_list_count >= 1:
                     break
-                time.sleep(0.01)
+                time.sleep(0.02)
             assert catalog_path.exists(), (
                 "first start must publish parent_catalog.json (runtime.py first-start call site)"
             )

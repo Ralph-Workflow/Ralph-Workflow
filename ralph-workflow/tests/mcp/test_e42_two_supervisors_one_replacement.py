@@ -61,7 +61,7 @@ def _spawn_real_process(
             "                    pathlib.Path(str(f) + '.ack').touch()\n"
             "                except Exception:\n"
             "                    pass\n"
-            "    time.sleep(0.01)\n",
+            "    time.sleep(0.03)\n",
             encoding="utf-8",
         )
     target_snap = str(snap_dir if snap_dir is not None else tmp_path)

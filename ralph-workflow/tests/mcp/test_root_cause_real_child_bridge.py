@@ -934,7 +934,7 @@ while True:
         ack_file = pause_file.with_name(pause_file.name + ".ack")
         ack_file.write_text("ACK\\n", encoding="utf-8")
         break
-    time.sleep(0.01)
+    time.sleep(0.02)
 while True:
     time.sleep(0.1)
 """,
@@ -965,7 +965,7 @@ resume_file = pathlib.Path(sys.argv[1])
 while True:
     if resume_file.exists():
         break
-    time.sleep(0.01)
+    time.sleep(0.02)
 while True:
     time.sleep(0.1)
 """,

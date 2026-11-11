@@ -114,7 +114,7 @@ def _repeated_connects_during_respawn(
         and not restart_done.is_set()
         and time.monotonic() < spin_deadline
     ):
-        time.sleep(0.001)
+        time.sleep(0.01)
 
     # Repeated connect attempts during the respawn window.
     # Short timeout (0.1 s) so we sample frequently; the connect itself may

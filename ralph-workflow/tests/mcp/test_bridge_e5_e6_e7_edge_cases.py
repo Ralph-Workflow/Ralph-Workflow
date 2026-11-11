@@ -332,7 +332,7 @@ def test_e54_zombie_child_reaped_by_poll() -> None:
                     break
             except psutil.NoSuchProcess:
                 break
-            time.sleep(0.01)
+            time.sleep(0.02)
 
         # 0. The zombie state was ACTUALLY observed. Without this the two
         #    assertions below would also hold for a still-running child,

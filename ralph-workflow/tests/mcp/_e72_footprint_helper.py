@@ -182,7 +182,7 @@ def _pause_watcher(pause_path):
             except Exception:
                 pass
             os._exit(0)
-        time.sleep(0.005)
+        time.sleep(0.02)
 
 
 _inherited = int(os.environ.get("RALPH_MCP_INHERITED_FD", "-1"))
@@ -207,7 +207,7 @@ if _resume_path:
     while time.monotonic() < deadline:
         if p.exists():
             break
-        time.sleep(0.005)
+        time.sleep(0.02)
 
 if _pause_path:
     threading.Thread(target=_pause_watcher, args=(_pause_path,), daemon=True).start()

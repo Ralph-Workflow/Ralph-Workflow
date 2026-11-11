@@ -171,7 +171,7 @@ def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
                 break
             if process.poll() is not None:
                 break
-            time.sleep(0.01)
+            time.sleep(0.025)
 
         assert ready_reached, (
             f"CLI child failed to reach 'ready_to_serve' stage within {_READY_TIMEOUT_S:.1f}s; "

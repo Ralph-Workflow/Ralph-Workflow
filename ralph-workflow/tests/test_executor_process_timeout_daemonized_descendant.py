@@ -55,7 +55,7 @@ def _assert_sleeper_reaped(stdout: str) -> None:
     sleeper = int(lines[-1])
     deadline = time.monotonic() + 1.0
     while _alive(sleeper) and time.monotonic() < deadline:
-        time.sleep(0.01)
+        time.sleep(0.03)
     try:
         assert not _alive(sleeper), f"daemonized descendant {sleeper} outlived the exec call"
     finally:

@@ -452,7 +452,7 @@ def test_e17_bridge_state_continuity_enumeration(tmp_path: pathlib.Path) -> None
     drain_can_finish.set()
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline and bridge.diagnostics().draining_process_count > 0:
-        time.sleep(0.01)
+        time.sleep(0.02)
     assert bridge.diagnostics().draining_process_count == 0
     assert old_inner.process.poll() is not None
 

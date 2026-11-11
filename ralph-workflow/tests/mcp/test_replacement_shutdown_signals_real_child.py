@@ -600,7 +600,7 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
                     # observes, so the fallback could not reach it.
                     os.kill(os.getpid(), signal.SIGINT)
                 return
-            time.sleep(0.001)
+            time.sleep(0.01)
 
     watchdog = threading.Thread(target=_sigint_watchdog, name="e45-sigint-watchdog", daemon=True)
     watchdog.start()

@@ -221,7 +221,7 @@ while time.monotonic() < deadline:
             payload = {}
         if payload:
             break
-    time.sleep(0.005)
+    time.sleep(0.02)
 
 if not payload:
     raise SystemExit("candidate never reported its pids")
@@ -299,7 +299,7 @@ def _wait_all_gone(pids: dict[str, int], timeout_s: float) -> list[str]:
         survivors = [name for name, pid in pids.items() if _pid_alive(pid)]
         if not survivors:
             break
-        time.sleep(0.005)
+        time.sleep(0.02)
     return survivors
 
 

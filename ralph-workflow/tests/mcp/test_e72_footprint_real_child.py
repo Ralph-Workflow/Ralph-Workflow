@@ -346,7 +346,7 @@ def _wait_until(predicate: Callable[[], bool], *, timeout_s: float) -> bool:
             return True
         if time.monotonic() >= deadline:
             return False
-        time.sleep(0.01)
+        time.sleep(0.025)
 
 
 def _read_published_upstream_pid(pid_file: Path, *, timeout_s: float) -> int:
@@ -527,9 +527,9 @@ def _sample_loop(
 ) -> None:
     """Repeatedly snapshot whole-tree metrics while the bridge runs.
 
-    Sampler thread body: ``stop_sampling.wait(0.001)`` paces ~1000 ticks/sec
-    which is fast enough to catch the sub-second overlap window without
-    flooding /proc reads.
+    Sampler thread body: ``stop_sampling.wait(0.015)`` paces 15ms / approximately
+    66 ticks/sec which is fast enough to catch the sub-second overlap
+    window without flooding /proc reads.
     """
     while not stop_sampling.is_set():
         sample = _sample_lineage(
@@ -540,7 +540,7 @@ def _sample_loop(
         overlap_samples.append(sample)
         if sample.fd_holders == OVERLAP_MAX_CHILDREN:
             candidate_overlap_observed.set()
-        stop_sampling.wait(0.005)
+        stop_sampling.wait(0.015)
 
 
 def _drive_make_before_break(bridge: lifecycle.RestartAwareMcpBridge) -> bool:

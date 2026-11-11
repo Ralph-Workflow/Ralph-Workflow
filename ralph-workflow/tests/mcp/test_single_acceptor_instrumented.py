@@ -119,7 +119,7 @@ def main() -> None:
         log("WAITING_RESUME")
         if resume_file is not None:
             while not resume_file.exists():
-                time.sleep(0.01)
+                time.sleep(0.025)
         log("STARTED_ACCEPT")
     else:
         log("STARTED_ACCEPT")
@@ -297,7 +297,7 @@ def _sigcont_old_and_wait_for_recovery(
             if data == b"PONG_old\n":
                 return
         except Exception:
-            pass
+            time.sleep(0.02)
 
 
 def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:

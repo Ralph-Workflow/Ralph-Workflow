@@ -34,8 +34,62 @@ _REMOTE = "tacos"
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
 
+def _fast_branch_name(root: Path) -> str | None:
+    git_dir = root / ".git" if (root / ".git").is_dir() else root
+    head_file = git_dir / "HEAD"
+    try:
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            return head_content.removeprefix("ref: refs/heads/")
+    except OSError:
+        pass
+    return None
+
+
+def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
+    git_dir = root / ".git" if (root / ".git").is_dir() else root
+    try:
+        if ref_name == "HEAD":
+            head_file = git_dir / "HEAD"
+            head_content = head_file.read_text(encoding="utf-8").strip()
+            if head_content.startswith("ref: refs/heads/"):
+                target_ref = git_dir / head_content.removeprefix("ref: ")
+                if target_ref.is_file():
+                    return target_ref.read_text(encoding="utf-8").strip()
+            elif len(head_content) == 40:
+                return head_content
+        else:
+            ref_file = git_dir / "refs" / "heads" / ref_name
+            if ref_file.is_file():
+                return ref_file.read_text(encoding="utf-8").strip()
+            packed_refs_file = git_dir / "packed-refs"
+            if packed_refs_file.is_file():
+                for line in packed_refs_file.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("#") or line.startswith("^"):
+                        continue
+                    parts = line.split()
+                    if len(parts) == 2 and parts[1].endswith(f"/{ref_name}"):
+                        return parts[0]
+    except OSError:
+        pass
+    return None
+
+
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run ``git <args>`` in ``repo_root``."""
+    # RALPH-TEST-REASON: fast-paths for rev-parse and branch reduce test subprocess CPU overhead
+    if args == ("branch", "--show-current"):
+        name = _fast_branch_name(repo_root)
+        if name is not None:
+            return subprocess.CompletedProcess(
+                args=("git", *args), stdout=name + "\n", stderr="", returncode=0
+            )
+    if len(args) == 2 and args[0] == "rev-parse" and not args[1].startswith("-"):
+        sha = _fast_rev_parse(repo_root, args[1])
+        if sha is not None:
+            return subprocess.CompletedProcess(
+                args=("git", *args), stdout=sha + "\n", stderr="", returncode=0
+            )
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),

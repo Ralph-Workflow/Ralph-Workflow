@@ -193,7 +193,7 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
         # refused instead.
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline and not probe_entered_file.exists():
-            time.sleep(0.01)
+            time.sleep(0.025)
         assert probe_entered_file.exists(), "In-flight request never reached slow_probe"
 
         # 2. Trigger handover pause sentinel
@@ -688,7 +688,7 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
             run_id=hung_run_id,
             workspace_root=tmp_path,
-            sleep_fn=lambda s: time.sleep(0.01),
+            sleep_fn=lambda s: time.sleep(0.025),
         )
 
         snap = lifecycle.snapshot_dir(tmp_path, hung_run_id)
@@ -725,7 +725,7 @@ def _wait_for_marker(marker: Path, message: str) -> None:
     """
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline and not marker.exists():
-        time.sleep(0.01)
+        time.sleep(0.025)
     assert marker.exists(), message
 
 

@@ -127,7 +127,7 @@ def _wait_child_dead(proc: lifecycle.ProcessLike, timeout_s: float) -> None:
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return
-        time.sleep(0.005)
+        time.sleep(0.02)
 
 
 def _assert_no_connrefused(port: int, *, context: str) -> None:

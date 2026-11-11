@@ -391,7 +391,7 @@ def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> 
 
         deadline = started + _DRAIN_REAP_BOUND_S
         while time.monotonic() < deadline and child.poll() is None:
-            time.sleep(0.01)
+            time.sleep(0.03)
         elapsed = time.monotonic() - started
 
         # (3) After the drain deadline expires the old child is killed.
