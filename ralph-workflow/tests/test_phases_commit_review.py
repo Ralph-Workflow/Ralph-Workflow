@@ -42,6 +42,50 @@ COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
+def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
+    if (repo_path / ".git").exists():
+        try:
+            from ralph.config.bootstrap import (
+                auto_seed_default_git_exclude,
+                auto_seed_default_gitignore,
+            )
+            from ralph.git.commit_review import untrack_engine_internal_files
+            from ralph.phases.commit_review import is_agent_internal_path
+
+            untrack_engine_internal_files(repo_path, is_agent_internal_path)
+            auto_seed_default_gitignore(repo_path)
+            auto_seed_default_git_exclude(repo_path)
+            return seal_pending(repo_path, "run", 1).tree_sha
+        except Exception:
+            return None
+
+    try:
+        import shutil
+        import tempfile
+
+        from ralph.config.bootstrap import (
+            auto_seed_default_git_exclude,
+            auto_seed_default_gitignore,
+        )
+        from ralph.git.commit_review import ensure_git_initialized
+
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo = Path(td)
+            for item in repo_path.iterdir():
+                if item.name == ".agent":
+                    continue
+                if item.is_dir():
+                    shutil.copytree(item, temp_repo / item.name)
+                else:
+                    shutil.copy2(item, temp_repo / item.name)
+            ensure_git_initialized(str(temp_repo))
+            auto_seed_default_gitignore(temp_repo)
+            auto_seed_default_git_exclude(temp_repo)
+            return seal_pending(temp_repo, "run", 1).tree_sha
+    except Exception:
+        return None
+
+
 def _write_commit_review_artifact(
     workspace: FsWorkspace,
     content: dict[str, object],
@@ -55,24 +99,7 @@ def _write_commit_review_artifact(
     if "tree_sha" in content:
         tree_sha = str(content["tree_sha"])
     else:
-        repo_path = Path(workspace.root)
-        if (repo_path / ".git").exists():
-            try:
-                from ralph.config.bootstrap import (
-                    auto_seed_default_git_exclude,
-                    auto_seed_default_gitignore,
-                )
-                from ralph.git.commit_review import untrack_engine_internal_files
-                from ralph.phases.commit_review import is_agent_internal_path
-
-                untrack_engine_internal_files(repo_path, is_agent_internal_path)
-                auto_seed_default_gitignore(repo_path)
-                auto_seed_default_git_exclude(repo_path)
-                tree_sha = seal_pending(repo_path, "run", 1).tree_sha
-            except Exception:
-                tree_sha = None
-        else:
-            tree_sha = None
+        tree_sha = _resolve_artifact_tree_sha(Path(workspace.root))
 
     lines = [
         "---",

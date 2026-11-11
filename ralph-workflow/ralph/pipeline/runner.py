@@ -822,8 +822,36 @@ def _reduce_runtime_recovery(
     return recovered_state, effects
 
 
+def checkpoint_path_for_root(root: Path) -> Path:
+    """Return the canonical checkpoint path for a workspace root.
+
+    The canonical checkpoint is the durable file the runner writes for the
+    run's own progress, so every consumer that needs the checkpoint of a
+    workspace root resolves it through this function instead of re-deriving a
+    path of its own.
+    """
+    return root / "checkpoint.json"
+
+
+def rollback_checkpoint_path_for_root(root: Path) -> Path:
+    """Return the durable rollback-lifecycle checkpoint path for a workspace root.
+
+    The commit-review rollback's pending marker lives under ``.agent/``
+    because the proposal seal EXCLUDES the runtime directory from the
+    proposal tree. A marker in the working tree would be part of the
+    proposal, and the restore would delete it as a proposal-added file --
+    taking the recovery evidence with it, so a crash inside the restore
+    would leave a half-restored tree with nothing left to resume from.
+
+    The rollback writes BOTH halves of its lifecycle state here: the pending
+    marker BEFORE the destructive restore and the durable clear AFTER it, so
+    one file carries the whole recovery contract.
+    """
+    return root / ".agent" / "checkpoint.json"
+
+
 def _checkpoint_path(workspace_scope: WorkspaceScope) -> Path:
-    return workspace_scope.root / "checkpoint.json"
+    return checkpoint_path_for_root(workspace_scope.root)
 
 
 def _save_checkpoint_or_log(
@@ -2187,8 +2215,12 @@ def execute_pending_rollback(
         state: The state asking for the rollback.
         workspace_root: The workspace root the restore runs in.
         pipeline_policy: The active pipeline policy.
-        checkpoint_path: When provided, the rollback-pending state must be
-            persisted here before the destructive restore can begin.
+        checkpoint_path: The file the rollback's durable lifecycle state is
+            written to. When omitted, the rollback's OWN rollback-safe path
+            is used (``<workspace_root>/.agent/checkpoint.json``): the
+            proposal seal EXCLUDES the runtime directory from the proposal
+            tree, so a marker in the working tree would be deleted by the
+            very restore it protects.
 
     Returns:
         The state with the rollback flags cleared and the rejection context
@@ -2197,13 +2229,18 @@ def execute_pending_rollback(
     """
     from ralph.git.proposal_seal import rollback
 
+    marker_path = (
+        checkpoint_path
+        if checkpoint_path is not None
+        else rollback_checkpoint_path_for_root(workspace_root)
+    )
     rollback_ref = state.rollback_ref
     if not isinstance(rollback_ref, str) or not rollback_ref:
         return state
-    if checkpoint_path is not None and not _save_checkpoint_or_log(
+    if not _save_checkpoint_or_log(
         state,
         message="Checkpoint save failed before rollback in phase={phase}: {err}",
-        path=checkpoint_path,
+        path=marker_path,
     ):
         return rollback_gate_failure_state(
             state,
@@ -2224,7 +2261,16 @@ def execute_pending_rollback(
             f"Rollback preflight failed: {exc}",
         )
     _write_rejection_hint(state, workspace_root, pipeline_policy)
-    return state.copy_with(rollback_pending=False, rollback_ref=None)
+    cleared = state.copy_with(rollback_pending=False, rollback_ref=None)
+    # The durable CLEAR belongs in the same file as the durable marker: a
+    # resume that reads a pending marker it has already satisfied would
+    # restore the working tree a second time.
+    _save_checkpoint_or_log(
+        cleared,
+        message="Checkpoint save failed after rollback in phase={phase}: {err}",
+        path=marker_path,
+    )
+    return cleared
 
 
 def _execute_pending_rollback_if_needed(
@@ -2244,7 +2290,6 @@ def _execute_pending_rollback_if_needed(
         next_state,
         workspace_scope.root,
         policy_bundle.pipeline,
-        checkpoint_path=_checkpoint_path(workspace_scope),
     )
 
 

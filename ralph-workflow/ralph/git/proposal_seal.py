@@ -8,6 +8,7 @@ pruning, dirty baseline sealing, and crash-safe rollback.
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from git import Repo
 from git.exc import GitCommandError
 from loguru import logger
 
+from ralph.checked_accessors import as_str
 from ralph.git.diff_entry import DiffEntry
 from ralph.git.git_command_queue import route_git_method
 from ralph.git.proposal_preflight_error import ProposalPreflightError
@@ -553,6 +555,40 @@ def rollback(
 REJECTED_PROPOSAL_REF_PREFIX = "refs/ralph/rejected-proposals/"
 _PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
 
+#: A full Git object name: 40 hex characters in a SHA-1 repository, 64 in a
+#: SHA-256 one. A ref that resolves to anything else did not resolve to an
+#: object, and a marker ref must never be pointed at such a value.
+_FULL_OBJECT_NAME_RE: re.Pattern[str] = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})")
+
+
+def _resolve_full_object_name(repo: Repo, ref: str) -> str:
+    """Return the full object name ``ref`` resolves to.
+
+    The resolved value comes out of an EXTERNAL process (git), so it is
+    validated at runtime instead of asserted: git must return text, and that
+    text must be a full hex object name (40 characters in a SHA-1
+    repository, 64 in a SHA-256 one). Anything else is refused, so no ref
+    is ever pointed at a value that is not an object id.
+
+    Args:
+        repo: The open repository the ref is resolved in.
+        ref: The ref to resolve.
+
+    Returns:
+        The validated full object name.
+
+    Raises:
+        TypeError: If git did not return text.
+        ValueError: If the resolved text is not a full hex object name.
+    """
+    resolved = as_str(
+        route_git_method(repo, "rev_parse", ("--verify", ref)),
+        field=f"resolved object name for {ref!r}",
+    ).strip()
+    if _FULL_OBJECT_NAME_RE.fullmatch(resolved) is None:
+        raise ValueError(f"Ref {ref!r} did not resolve to a full object name")
+    return resolved
+
 
 def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
     """Record a rolled-back proposal ref so the sweep keeps it for the run.
@@ -568,8 +604,7 @@ def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
     marker_ref = REJECTED_PROPOSAL_REF_PREFIX + proposal_ref[len(_PROPOSAL_REF_PREFIX) :]
     try:
         with _open_repo(repo_root) as repo:
-            sha_obj = route_git_method(repo, "rev_parse", ("--verify", proposal_ref))
-            sha = str(sha_obj).strip()
+            sha = _resolve_full_object_name(repo, proposal_ref)
             route_git_method(repo, "update_ref", (marker_ref, sha))
     except Exception as exc:
         # The mark only protects a ref; a failure here must not fail the

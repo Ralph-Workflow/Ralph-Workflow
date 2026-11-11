@@ -1466,15 +1466,17 @@ def _resolve_initial_state(
             # FAILURE, never a rollback attempt: the tree keeps the state it
             # had, the proposal ref is kept, and the run stops on the
             # policy's failure route instead of restoring blindly.
+            #
+            # The resumed restore is guarded by the SAME durable contract as
+            # the runner's: the pending marker is persisted before the
+            # destructive restore and the durable clear after it, in the ONE
+            # file the restore cannot delete (see
+            # ``ralph.pipeline.runner.rollback_checkpoint_path_for_root``).
             resumed = _runner_module.execute_pending_rollback(
                 resumed,
                 root,
                 policy_bundle.pipeline,
             )
-            with suppress(Exception):
-                from ralph.pipeline.checkpoint import save as save_checkpoint
-
-                save_checkpoint(resumed, root / ".agent" / "checkpoint.json")
 
         # Legacy checkpoints carry no cycle timing; initialize it HERE, in the
         # one seam every resumed run passes through, so the wiring cannot be

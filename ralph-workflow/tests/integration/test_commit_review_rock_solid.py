@@ -39,10 +39,17 @@ from git import Repo
 if TYPE_CHECKING:
     from pathlib import Path
 
+from ralph.config.bootstrap import auto_seed_default_git_exclude, auto_seed_default_gitignore
+from ralph.git.commit_review import untrack_engine_internal_files
+from ralph.git.proposal_seal import seal_pending
 from ralph.mcp.artifacts._commit_review import CommitReview
 from ralph.mcp.artifacts._commit_review_action import CommitReviewAction
 from ralph.phases import PhaseContext
-from ralph.phases.commit_review import CommitReviewApproved, handle_commit_review_phase
+from ralph.phases.commit_review import (
+    CommitReviewApproved,
+    handle_commit_review_phase,
+    is_agent_internal_path,
+)
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.workspace.fs import FsWorkspace
 
@@ -130,12 +137,13 @@ def _pre_stage_innocent_symlink(tmp_git_repo: Path) -> None:
     symlink.symlink_to(target)
 
 
-def _write_artifact(workspace_root: Path, cleanup: CommitReview) -> None:
+def _write_artifact(workspace_root: Path, cleanup: CommitReview, tree_sha: str) -> None:
     """Write the commit_review artifact to ``workspace_root``.
 
-    The artifact carries the canonical ``verdict`` contract. The phase
-    binds the approval to the sealed proposal tree it computed itself, so
-    the artifact does not have to repeat the tree SHA.
+    The artifact carries the canonical ``verdict`` contract and the tree SHA
+    of the sealed proposal the reviewer judged. A verdict that names no tree
+    is not bound to the review, so the phase sends it back for a re-review
+    instead of approving it.
     """
     artifact_path = workspace_root / ".agent" / "artifacts" / "commit_review.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,6 +151,7 @@ def _write_artifact(workspace_root: Path, cleanup: CommitReview) -> None:
         "---",
         "type: commit_review",
         f"verdict: {cleanup.verdict}",
+        f"tree_sha: {tree_sha}",
         "---",
         "",
         "## Actions",
@@ -176,6 +185,15 @@ def test_handle_commit_review_phase_rock_solid(
     """
     _pre_stage_tracked_paths(tmp_git_repo)
     _pre_stage_innocent_symlink(tmp_git_repo)
+    # The phase pre-emptively untracks the engine-internal files and seeds the
+    # canonical ignore/exclude files before it seals, and the ``.gitignore``
+    # seed is a DETERMINISTIC COMMIT. Reproducing those steps here makes the
+    # phase's own preparation a no-op, so the tree the reviewer judged is
+    # the tree the phase seals.
+    untrack_engine_internal_files(tmp_git_repo, is_agent_internal_path)
+    auto_seed_default_gitignore(tmp_git_repo)
+    auto_seed_default_git_exclude(tmp_git_repo)
+    judged_tree_sha = seal_pending(tmp_git_repo, "run", 1).tree_sha
 
     cleanup_actions: list[CommitReviewAction] = [
         CommitReviewAction(action="delete_file", path=path)
@@ -186,7 +204,7 @@ def test_handle_commit_review_phase_rock_solid(
     cleanup = CommitReview.model_construct(verdict="approve", actions=cleanup_actions)
 
     workspace = FsWorkspace(tmp_git_repo)
-    _write_artifact(tmp_git_repo, cleanup)
+    _write_artifact(tmp_git_repo, cleanup, judged_tree_sha)
 
     ctx = PhaseContext.construct(
         workspace=workspace,

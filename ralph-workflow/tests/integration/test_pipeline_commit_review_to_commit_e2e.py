@@ -129,15 +129,54 @@ EXPECTED_GIT_EXCLUDE_FRAGMENTS: tuple[str, ...] = (
 )
 
 
+def _resolve_tree_sha_from_workspace(workspace: FsWorkspace) -> str | None:
+    context_path = Path(workspace.root) / ".agent" / "tmp" / "commit_review_context.json"
+    if context_path.exists():
+        try:
+            import json
+
+            data = json.loads(context_path.read_text(encoding="utf-8"))
+            tree_sha = data.get("tree_sha")
+            if isinstance(tree_sha, str) and tree_sha:
+                return tree_sha
+        except Exception:
+            pass
+
+    repo_path = Path(workspace.root)
+    if (repo_path / ".git").exists():
+        try:
+            from ralph.config.bootstrap import (
+                auto_seed_default_git_exclude,
+                auto_seed_default_gitignore,
+            )
+            from ralph.git.commit_review import untrack_engine_internal_files
+            from ralph.git.proposal_seal import seal_pending
+            from ralph.phases.commit_review import is_agent_internal_path
+
+            untrack_engine_internal_files(repo_path, is_agent_internal_path)
+            auto_seed_default_gitignore(repo_path)
+            auto_seed_default_git_exclude(repo_path)
+            return seal_pending(repo_path, "run", 1).tree_sha
+        except Exception:
+            pass
+    return None
+
+
 def _write_commit_review_artifact(workspace: FsWorkspace, content: dict[str, object]) -> None:
     """Write a commit_review artifact to the workspace."""
     raw_actions = content["actions"]
     actions = [
         (action["action"], action.get("path", action.get("pattern", ""))) for action in raw_actions
     ]
+    tree_sha = content.get("tree_sha")
+    if tree_sha is None:
+        tree_sha = _resolve_tree_sha_from_workspace(workspace)
     path = Path(workspace.root) / ".agent" / "artifacts" / "commit_review.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(commit_review_markdown(actions), encoding="utf-8")
+    path.write_text(
+        commit_review_markdown(actions, tree_sha=str(tree_sha) if tree_sha else None),
+        encoding="utf-8",
+    )
 
 
 def _write_commit_message_artifacts(

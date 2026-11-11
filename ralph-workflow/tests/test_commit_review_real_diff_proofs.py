@@ -14,7 +14,7 @@ import pytest
 from git import Repo
 
 from ralph.config.bootstrap import auto_seed_default_git_exclude, auto_seed_default_gitignore
-from ralph.git.proposal_seal import DiffEntry, diff_tree, rollback, seal_pending
+from ralph.git.proposal_seal import DiffEntry, diff_tree, preflight, rollback, seal_pending
 from ralph.git.subprocess_runner import run_git
 from ralph.phases.commit_review import (
     CommitReviewGateFailed,
@@ -23,6 +23,12 @@ from ralph.phases.commit_review import (
     evaluate_tripwires,
     run_commit_review_stage1_preflight,
 )
+from ralph.pipeline.reducer import reduce
+from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
+
+#: The bundled default policy, used to prove the routing of a gate failure.
+_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 # The module carries the module-level ``subprocess_e2e`` marker because every
 # proof drives the REAL git boundary (``Repo.init``, ``git diff-tree -r``, the
@@ -310,15 +316,17 @@ def test_a_small_staged_deletion_does_not_trip_the_mass_deletion_fraction(
     assert not [f for f in report.hard if f.category == "mass_deletion"]
 
 
-def test_an_unavailable_base_membership_fails_the_gate_closed(
+def test_an_unavailable_base_membership_fails_the_gate_without_discarding_work(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A diff without the immutable membership is refused, not silently accepted.
+    """An UNMEASURABLE mass-deletion threshold fails the gate, it never rejects.
 
     The membership is the denominator of the mass-deletion fraction. When the
-    git layer cannot read it, the fraction cannot be evaluated, so the
-    proposal is refused instead of letting the check lapse.
+    git layer cannot read it, the fraction cannot be evaluated. That is an
+    inability to MEASURE, not measured damage: the gate fails, the proposal
+    stays preserved, and the working tree is left alone -- a rejection would
+    roll the tree back and throw the work away.
     """
 
     def _without_membership(*_args: object, **_kwargs: object) -> list[DiffEntry]:
@@ -350,7 +358,70 @@ def test_an_unavailable_base_membership_fails_the_gate_closed(
         "development_commit_review",
     )
 
-    assert isinstance(outcome, CommitReviewRejected), outcome
-    assert outcome.hard is True
-    assert "Mass deletion" in outcome.reason
-    assert "immutable base-tree membership is unavailable" in outcome.reason
+    # RALPH-TEST-REASON: unmeasurable mass-deletion threshold must fail gate rather than reject to prevent destructive rollback
+    assert isinstance(outcome, CommitReviewGateFailed), outcome
+    assert not isinstance(outcome, CommitReviewRejected), (
+        "An unmeasurable threshold must never reject: a rejection rolls the tree back"
+    )
+    assert "membership" in outcome.detail
+    assert "NOT rejected" in outcome.detail
+    # The working tree is untouched: the gate did not roll the deletion back.
+    assert not (repo_root / "module_00.py").exists()
+    assert (repo_root / "module_01.py").exists()
+    # The proposal is preserved, so the work stays recoverable by hand.
+    preflight(repo_root, "refs/ralph/proposals/run-missing-membership/1")
+
+
+def test_an_unavailable_base_membership_charges_no_rejection_and_asks_for_no_rollback(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The unmeasurable threshold ends the run without discarding the work.
+
+    A rejection charges the rejection counter and asks the runner to roll the
+    tree back. The unmeasurable threshold must do neither: the run ends in
+    the failure terminal with the pending work and the proposal intact.
+    """
+
+    def _without_membership(*_args: object, **_kwargs: object) -> list[DiffEntry]:
+        return [
+            DiffEntry(
+                path="module_00.py",
+                status="D",
+                old_mode="100644",
+                new_mode="000000",
+                size=0,
+                is_binary=False,
+                content=None,
+                base_tree_paths=None,
+            )
+        ]
+
+    repo_root = tmp_git_repo
+    _init_repo(repo_root, dict.fromkeys(_module_paths(4), "content\n"))
+    _seed_engine_defaults(repo_root)
+    (repo_root / "module_00.py").unlink()
+
+    monkeypatch.setattr("ralph.phases.commit_review.diff_tree", _without_membership)
+
+    outcome = run_commit_review_stage1_preflight(
+        repo_root,
+        "run-missing-membership",
+        "1",
+        None,
+        "development_commit_review",
+    )
+    assert isinstance(outcome, CommitReviewGateFailed), outcome
+
+    policy = load_policy(_DEFAULTS_DIR).pipeline
+    next_state, _ = reduce(PipelineState(phase="development_commit_review"), outcome, policy)
+
+    assert next_state.phase == "failed_terminal"
+    assert next_state.commit_review_rejections == 0, (
+        "A gate failure must not charge the rejection counter"
+    )
+    assert next_state.rollback_pending is False, "A gate failure must not ask for a rollback"
+    assert next_state.rollback_ref is None
+    # The pending work is still in the worktree.
+    assert not (repo_root / "module_00.py").exists()
+    assert (repo_root / "module_01.py").exists()

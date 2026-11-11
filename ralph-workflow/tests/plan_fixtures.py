@@ -90,17 +90,23 @@ status: completed
 """
 
 
-def commit_review_markdown(actions: Iterable[tuple[str, str]]) -> str:
+def commit_review_markdown(
+    actions: Iterable[tuple[str, str]],
+    *,
+    tree_sha: str | None = None,
+) -> str:
     """Return a valid commit-review document for action/value pairs."""
     rendered_actions = "\n".join(
         f"- [A-{index}] {action} | {value}"
         for index, (action, value) in enumerate(actions, start=1)
     )
+    frontmatter = ["---", "type: commit_review", "verdict: approve"]
+    if tree_sha is not None:
+        frontmatter.append(f"tree_sha: {tree_sha}")
+    frontmatter.append("---")
+    header = "\n".join(frontmatter)
     return f"""\
----
-type: commit_review
-verdict: approve
----
+{header}
 ## Actions
 {rendered_actions}
 """

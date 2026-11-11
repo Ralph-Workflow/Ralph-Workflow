@@ -8,7 +8,6 @@ Orchestrates the two-stage safety gate and edit phase before commit:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -36,14 +35,12 @@ from ralph.phases._commit_review_actions import (
     apply_commit_review_actions,
 )
 from ralph.phases._commit_review_catalog import (
-    COMMIT_REVIEW_IDENTITY_COUNTER,
-    DEFAULT_IDENTITY_MAX,
+    GENERATED_TEXT_DIRECTORIES as _GENERATED_TEXT_DIRECTORIES,
+)
+from ralph.phases._commit_review_catalog import (
     GENERATED_TEXT_EXTENSIONS,
     LOCKFILE_BASENAMES,
     TEMPORARY_SUFFIXES,
-)
-from ralph.phases._commit_review_catalog import (
-    GENERATED_TEXT_DIRECTORIES as _GENERATED_TEXT_DIRECTORIES,
 )
 from ralph.phases._commit_review_catalog import (
     GENERATED_TEXT_MARKERS as _GENERATED_TEXT_MARKERS,
@@ -72,7 +69,6 @@ from ralph.phases._commit_review_events import (
 )
 from ralph.phases._commit_review_outcome import (
     build_commit_review_retry_hint,
-    build_unapplied_retry_hint,
     decide_commit_review_outcome,
 )
 from ralph.phases._commit_review_tripwires import (
@@ -85,10 +81,18 @@ from ralph.phases._commit_review_tripwires import (
     evaluate_tripwires,
     resolve_immutable_tracked_count,
 )
-from ralph.phases.required_artifacts import clear_validation_retry_hint, retry_hint_path
+from ralph.phases._commit_review_verdict import (
+    _rebind_verdict_to_sealed_tree,
+    _tree_binding_events,
+    _tree_binding_fault,
+    _verdict_failure,
+    artifact_digest,
+    maybe_succeed_after_identity_bound,
+    persist_unapplied_hint,
+)
+from ralph.phases.required_artifacts import clear_validation_retry_hint
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
-from ralph.policy.models._loop_counter_config import LoopCounterConfig
 from ralph.policy.models._pipeline_policy import PipelinePolicy
 from ralph.recovery.classifier import FailureCategory
 
@@ -108,6 +112,15 @@ _COMMIT_REVIEW_CONTEXT_PATH = ".agent/tmp/commit_review_context.json"
 #: The out-of-scope signal stays advisory and the hard tripwires keep their
 #: own Stage 1 behaviour.
 _UNSAFE_SURVIVAL_CATEGORIES: Final[frozenset[str]] = frozenset({"secret", "binary_size"})
+
+#: A sealed tree SHA is a 40-character hex string. A verdict that names
+#: anything else is malformed and cannot be bound to a tree.
+_TREE_SHA_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-fA-F]{40}$")
+
+#: The no-progress state keeps one count per fingerprint, so two different
+#: reviewer malfunctions cannot reset each other's budget. The cap keeps the
+#: state file bounded when a reviewer submits a stream of distinct artifacts.
+_MAX_IDENTITY_FINGERPRINTS: Final[int] = 32
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -508,13 +521,16 @@ def run_commit_review_stage1_preflight(
 
     tracked_count = resolve_immutable_tracked_count(diff_entries)
     if tracked_count is None:
-        reason = (
-            "Mass deletion: the immutable base-tree membership is unavailable, so the "
-            "deleted-file fraction cannot be measured against a trustworthy denominator; "
-            "refusing the proposal instead of skipping the check."
+        detail = (
+            "Mass deletion check unavailable: the immutable base-tree membership could "
+            "not be read, so the deleted-file fraction cannot be measured against a "
+            "trustworthy denominator. This is an inability to MEASURE, not measured "
+            "damage: the proposal is NOT rejected, the worktree and the proposal ref "
+            "are preserved, and the gate fails so an operator can restore the "
+            "evidence source."
         )
-        logger.error("{}: {}", phase_name, reason)
-        return CommitReviewRejected(reason=reason, ref=seal.ref, hard=True)
+        logger.error("{}: {}", phase_name, detail)
+        return CommitReviewGateFailed(detail=detail)
 
     thresholds, allowed_dirs, protected = _resolve_policy_thresholds(pipeline_policy, phase_name)
 
@@ -582,7 +598,7 @@ def _handle_actions_and_reseal(
         _consume_commit_review_artifact(ctx)
         return [CommitReviewGateFailed(detail=f"Failed to apply commit review actions: {exc}")]
 
-    _persist_unapplied_hint(ctx, phase_name, report)
+    persist_unapplied_hint(ctx, phase_name, report)
 
     loopback = decide_commit_review_outcome(phase_name, report)
     if loopback is not None:
@@ -664,22 +680,22 @@ def _evaluate_verdict(
     phase_name: str,
     ctx: PhaseContext,
 ) -> list[Event | CommitReviewEvent]:
-    verdict = artifact.verdict
-    if verdict is None:
+    verdict_failure = _verdict_failure(artifact)
+    if verdict_failure is not None:
+        return [verdict_failure]
+
+    if artifact.tree_sha != seal.tree_sha:
         return [
             CommitReviewGateFailed(
                 detail=(
-                    "Missing 'verdict' in commit_review artifact; must be 'approve' or 'reject'"
+                    f"Verdict tree SHA {artifact.tree_sha!r} does not match the sealed "
+                    f"proposal tree SHA {seal.tree_sha!r}; refusing to decide an "
+                    "unbound verdict"
                 )
             )
         ]
-    if verdict not in ("approve", "reject"):
-        return [
-            CommitReviewGateFailed(
-                detail=f"Invalid verdict {verdict!r}, must be 'approve' or 'reject'"
-            )
-        ]
 
+    verdict = artifact.verdict
     if verdict == "reject":
         if not verify_reject_citations(artifact.reason, diff_entries):
             logger.warning(
@@ -723,15 +739,19 @@ def _stage2_process_artifact(
     phase_name: str,
     ctx: PhaseContext,
 ) -> list[Event | CommitReviewEvent]:
-    if artifact.tree_sha is not None and artifact.tree_sha != seal.tree_sha:
+    verdict_failure = _verdict_failure(artifact)
+    if verdict_failure is not None:
+        # The artifact's own grammar is the first word: a verdict that cannot
+        # be read never reaches the tree binding and never runs an action.
+        return [verdict_failure]
+
+    binding_fault = _tree_binding_fault(artifact, seal)
+    if binding_fault is not None:
+        # The verdict names no tree the reviewer judged, so its edit step
+        # must not run: the artifact is dropped and the reviewer is sent
+        # back for a re-review of the sealed tree.
         _consume_commit_review_artifact(ctx)
-        return [
-            CommitReviewLoopback(
-                hint=f"Stale commit review: artifact tree SHA {artifact.tree_sha!r} "
-                f"does not match current sealed proposal tree SHA {seal.tree_sha!r}; "
-                "re-review the current tree."
-            )
-        ]
+        return _tree_binding_events(ctx, phase_name, binding_fault, artifact, seal)
 
     action_res = _handle_actions_and_reseal(
         repo_root, artifact, seal, diff_entries, run_id, iteration, base, phase_name, ctx
@@ -741,7 +761,10 @@ def _stage2_process_artifact(
     seal, diff_entries = action_res
 
     _consume_commit_review_artifact(ctx)
-    return _evaluate_verdict(artifact, seal, diff_entries, phase_name, ctx)
+    # The edit step produced a new sealed tree, so the verdict is evaluated
+    # against that tree: the binding follows the tree that will be committed.
+    rebound = _rebind_verdict_to_sealed_tree(artifact, seal)
+    return _evaluate_verdict(rebound, seal, diff_entries, phase_name, ctx)
 
 
 def handle_commit_review_phase(
@@ -765,7 +788,7 @@ def handle_commit_review_phase(
     phase_name = effect.phase
     repo_root, root_err = _resolve_workspace_root_safe(ctx)
     if repo_root is None:
-        return _maybe_succeed_after_identity_bound(
+        return maybe_succeed_after_identity_bound(
             ctx,
             phase_name,
             fingerprint="workspace-root",
@@ -812,13 +835,13 @@ def handle_commit_review_phase(
 
     _persist_commit_review_context(ctx, seal, tripwire_report.soft, diff_entries)
 
-    artifact_digest = _artifact_digest(ctx)
+    artifact_fingerprint = artifact_digest(ctx, COMMIT_REVIEW_ARTIFACT_PATH)
     artifact = _load_commit_review_artifact(ctx, phase_name)
     if artifact is None:
-        return _maybe_succeed_after_identity_bound(
+        return maybe_succeed_after_identity_bound(
             ctx,
             phase_name,
-            fingerprint=f"missing-or-invalid:{artifact_digest}",
+            fingerprint=f"missing-or-invalid:{artifact_fingerprint}",
             events=[
                 PhaseFailureEvent(
                     phase=phase_name,
@@ -842,137 +865,6 @@ def _consume_commit_review_artifact(ctx: PhaseContext) -> None:
             ctx.workspace.delete(COMMIT_REVIEW_ARTIFACT_PATH)
     except Exception as exc:
         logger.warning("Failed to consume commit-review leftover artifact: {}", exc)
-
-
-def _maybe_succeed_after_identity_bound(
-    ctx: PhaseContext,
-    phase_name: str,
-    *,
-    fingerprint: str,
-    events: list[Event | CommitReviewEvent],
-) -> list[Event | CommitReviewEvent]:
-    """Cap identical recoverable failures, then fail the gate.
-
-    The identity bound stops a malfunctioning reviewer from looping forever.
-    Reaching the bound is a reviewer malfunction -- a missing or invalid
-    artifact -- so it is a gate failure, never an approval: the phase must
-    not hand the commit phase an unbound (SHA-less) tree to commit.
-    """
-    if _charge_identity(ctx, phase_name, fingerprint):
-        logger.warning(
-            "{}: identical no-progress bound reached; failing the commit review gate",
-            phase_name,
-        )
-        return [
-            CommitReviewGateFailed(
-                detail=(
-                    f"Commit review artifact missing or invalid after the identical "
-                    f"no-progress bound ({fingerprint}); treating it as a reviewer malfunction"
-                )
-            )
-        ]
-    return events
-
-
-def _artifact_digest(ctx: PhaseContext) -> str:
-    """Fingerprint the leftover or newly submitted commit-review artifact bytes."""
-    if not ctx.workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH):
-        return "missing"
-    try:
-        raw = ctx.workspace.read(COMMIT_REVIEW_ARTIFACT_PATH)
-    except Exception:
-        return "unreadable"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _identity_max(ctx: PhaseContext) -> int:
-    """Return the policy cap for identical no-progress commit-review attempts."""
-    policy: object = ctx.pipeline_policy
-    if isinstance(policy, PipelinePolicy):
-        cfg = policy.loop_counters.get(COMMIT_REVIEW_IDENTITY_COUNTER)
-        parsed = DEFAULT_IDENTITY_MAX if cfg is None else cfg.default_max
-    else:
-        parsed = _identity_max_from_untyped_policy(policy)
-    if parsed <= 0:
-        return DEFAULT_IDENTITY_MAX
-    return parsed
-
-
-def _identity_max_from_untyped_policy(policy: object) -> int:
-    """Read the identity cap from test doubles that are not PipelinePolicy."""
-    counters = cast("object", getattr(policy, "loop_counters", None))
-    if not isinstance(counters, dict):
-        return DEFAULT_IDENTITY_MAX
-    cfg_obj = cast("object", counters.get(COMMIT_REVIEW_IDENTITY_COUNTER))
-    if cfg_obj is None:
-        return DEFAULT_IDENTITY_MAX
-    if isinstance(cfg_obj, LoopCounterConfig):
-        return cfg_obj.default_max
-    raw = cast("object", getattr(cfg_obj, "default_max", DEFAULT_IDENTITY_MAX))
-    if isinstance(raw, bool) or not isinstance(raw, int):
-        return DEFAULT_IDENTITY_MAX
-    return raw
-
-
-def _charge_identity(ctx: PhaseContext, phase_name: str, fingerprint: str) -> bool:
-    """Increment the phase-owned identity counter; return True when the cap is reached."""
-    prior = _read_identity_state(ctx)
-    if prior is not None and prior[0] == phase_name and prior[1] == fingerprint:
-        count = prior[2] + 1
-    else:
-        count = 1
-    _write_identity_state(ctx, phase_name, fingerprint, count)
-    return count >= _identity_max(ctx)
-
-
-def _read_identity_state(ctx: PhaseContext) -> tuple[str, str, int] | None:
-    if not ctx.workspace.exists(_IDENTITY_STATE_PATH):
-        return None
-    try:
-        loaded: object = json.loads(ctx.workspace.read(_IDENTITY_STATE_PATH))
-    except Exception:
-        return None
-    if not isinstance(loaded, dict):
-        return None
-    phase = loaded.get("phase")
-    fingerprint = loaded.get("fingerprint")
-    count = loaded.get("count")
-    if not isinstance(phase, str) or not isinstance(fingerprint, str):
-        return None
-    if isinstance(count, bool) or not isinstance(count, int):
-        return None
-    return (phase, fingerprint, count)
-
-
-def _write_identity_state(ctx: PhaseContext, phase_name: str, fingerprint: str, count: int) -> None:
-    payload = {"phase": phase_name, "fingerprint": fingerprint, "count": count}
-    try:
-        ctx.workspace.write(_IDENTITY_STATE_PATH, json.dumps(payload))
-    except Exception as exc:
-        logger.warning("Failed to persist commit-review identity state: {}", exc)
-
-
-def _persist_unapplied_hint(
-    ctx: PhaseContext,
-    phase_name: str,
-    report: CommitReviewApplyReport,
-) -> None:
-    """Write declined and apply-failed decisions for the next prompt."""
-    hint = build_unapplied_retry_hint(report)
-    if not hint:
-        return
-    try:
-        ctx.workspace.write(
-            retry_hint_path(
-                phase_name,
-                pipeline_policy=ctx.pipeline_policy
-                if isinstance(ctx.pipeline_policy, PipelinePolicy)
-                else None,
-            ),
-            hint,
-        )
-    except Exception as exc:
-        logger.warning("Failed to persist commit-review retry hint: {}", exc)
 
 
 __all__ = [

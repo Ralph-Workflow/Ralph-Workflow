@@ -733,9 +733,31 @@ def _write_review_artifact(
     *,
     verdict: str,
     actions: tuple[tuple[str, str], ...] = (),
+    tree_sha: str | None = None,
 ) -> None:
     """Write a canonical commit_review artifact with the given verdict and actions."""
-    lines = ["---", "type: commit_review", f"verdict: {verdict}", "---"]
+    resolved_tree_sha = tree_sha
+    if resolved_tree_sha is None and (repo_root / ".git").exists():
+        try:
+            from ralph.config.bootstrap import (
+                auto_seed_default_git_exclude,
+                auto_seed_default_gitignore,
+            )
+            from ralph.git.commit_review import untrack_engine_internal_files
+            from ralph.git.proposal_seal import seal_pending
+            from ralph.phases.commit_review import is_agent_internal_path
+
+            untrack_engine_internal_files(repo_root, is_agent_internal_path)
+            auto_seed_default_gitignore(repo_root)
+            auto_seed_default_git_exclude(repo_root)
+            resolved_tree_sha = seal_pending(repo_root, "run", 1).tree_sha
+        except Exception:
+            resolved_tree_sha = None
+
+    lines = ["---", "type: commit_review", f"verdict: {verdict}"]
+    if resolved_tree_sha is not None:
+        lines.append(f"tree_sha: {resolved_tree_sha}")
+    lines.append("---")
     if actions:
         lines.extend(["", "## Actions"])
         for index, (action, value) in enumerate(actions, start=1):
