@@ -1717,12 +1717,57 @@ def _reduce_commit_review_rejection(
         rollback_ref=event.ref,
         last_review_rejection_reason=event.reason,
     )
-    return _advance_phase(
+    return _route_rejection_through_commit_entry(
         state_for_advance,
-        target_phase,
         policy,
+        phase_def,
+        target_phase,
         routing_timing=routing_timing,
     )
+
+
+def _commit_phase_fed_by_review(phase_def: PhaseDefinition, policy: PipelinePolicy) -> str | None:
+    """Return the commit phase a commit-review phase feeds, if it declares one.
+
+    A commit-review phase approves into the commit phase that carries its
+    proposal, and the commit-outcome accounting resolves that same phase, so
+    the rejection route crosses the same boundary.
+    """
+    commit_phase = phase_def.transitions.on_success
+    target_def = policy.phases.get(commit_phase)
+    if target_def is None or target_def.role != "commit":
+        return None
+    return commit_phase
+
+
+def _route_rejection_through_commit_entry(
+    state: PipelineState,
+    policy: PipelinePolicy,
+    phase_def: PhaseDefinition,
+    target_phase: PipelinePhase,
+    *,
+    routing_timing: RoutingTiming | None = None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Route a rejection across the commit entry, then on to the reject target.
+
+    A rejection is a completed commit-phase outcome, so the route crosses the
+    commit phase's entry: that entry is where the development and cycle
+    timeboxes conclude, exactly as for a commit-then-development route.
+    Skipping the entry would leave the development timer running with the
+    seconds it had already consumed, and the cycle timer running past the
+    boundary that ends it.
+
+    The commit phase is entered and left again within the same reduction, so
+    it never becomes the phase the run is in: no commit-message agent runs
+    and nothing is committed. The commit-outcome accounting is charged once,
+    through the same ``apply_commit_outcome`` path a ``COMMIT_SUCCESS``
+    uses, and the rollback stays with the runner's single rollback owner.
+    """
+    commit_phase = _commit_phase_fed_by_review(phase_def, policy)
+    if commit_phase is None:
+        return _advance_phase(state, target_phase, policy, routing_timing=routing_timing)
+    commit_state, _ = _advance_phase(state, commit_phase, policy, routing_timing=routing_timing)
+    return _advance_phase(commit_state, target_phase, policy, routing_timing=routing_timing)
 
 
 def _reduce_commit_review_event(

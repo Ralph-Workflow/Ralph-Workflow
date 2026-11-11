@@ -16,6 +16,7 @@ from ralph.phases._commit_review_tripwires import (
     TripwireThresholds,
     evaluate_tripwires,
     is_recognized_secret_path,
+    resolve_immutable_tracked_count,
 )
 
 
@@ -270,7 +271,12 @@ def test_protected_top_level_directory_deleted_in_its_entirety() -> None:
 
 def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_deletion() -> None:
     """Deleting SOME tracked paths of a protected top-level directory fires no such finding."""
-    base_paths = frozenset({"src/app.py", "src/util.py"})
+    # RALPH-TEST-REASON: the membership is the WHOLE base tree, so the fixture
+    # must match the tracked_count it reports: a 2-path subset presented as the
+    # whole tree would make one deletion look like half the repository.
+    base_paths = frozenset({"src/app.py", "src/util.py"}) | frozenset(
+        f"docs/note_{index}.md" for index in range(8)
+    )
     diff = [DiffEntry(path="src/app.py", status="D", base_tree_paths=base_paths)]
     report = evaluate_tripwires(diff, 10, TripwireThresholds())
     assert report.is_clean is True
@@ -426,3 +432,118 @@ def test_combined_hard_and_soft_findings() -> None:
     assert report.hard[0].category == "protected_overwrite"
     assert len(report.soft) == 1
     assert report.soft[0].category == "secret"
+
+
+def _base_tree_paths(count: int) -> frozenset[str]:
+    """Return a base-tree membership of ``count`` tracked paths."""
+    return frozenset(f"components/module_{index:03d}.py" for index in range(count))
+
+
+def test_mass_deletion_fraction_is_measured_against_the_immutable_base_tree() -> None:
+    """The fraction denominator is the base tree, never the mutable real index.
+
+    Staging the deletion of every tracked path empties the real index, so a
+    denominator read from that index would be zero and the fraction check
+    would be skipped entirely. The membership the git layer attaches to the
+    entries keeps the denominator at the size of the tree the diff was
+    computed against.
+    """
+    base_paths = _base_tree_paths(10)
+    deleted = sorted(base_paths)[:3]
+    diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
+    thresholds = TripwireThresholds(max_deleted_files=50, max_deleted_fraction=0.2)
+
+    report = evaluate_tripwires(
+        diff_entries=diff,
+        tracked_count=0,
+        thresholds=thresholds,
+    )
+
+    assert report.has_hard_tripwires is True
+    mass_findings = [f for f in report.hard if f.category == "mass_deletion"]
+    assert len(mass_findings) == 1
+    assert mass_findings[0].count == 3
+    assert "30.0%" in mass_findings[0].message
+    assert "(3/10)" in mass_findings[0].message
+
+
+def test_staged_additions_cannot_dilute_the_mass_deletion_fraction() -> None:
+    """Staged additions never inflate the denominator of the fraction.
+
+    The additions are tracked by the real index, so an index-sized
+    denominator would report a fraction of 3/27 and stay silent. The
+    immutable base tree holds 10 paths, so 3 of them is 30%.
+    """
+    base_paths = _base_tree_paths(10)
+    deleted = sorted(base_paths)[:3]
+    diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
+    diff.extend(
+        DiffEntry(path=f"components/added_{index:02d}.py", status="A", base_tree_paths=base_paths)
+        for index in range(20)
+    )
+    thresholds = TripwireThresholds(max_deleted_files=50, max_deleted_fraction=0.2)
+
+    report = evaluate_tripwires(
+        diff_entries=diff,
+        tracked_count=27,
+        thresholds=thresholds,
+    )
+
+    assert report.has_hard_tripwires is True
+    mass_findings = [f for f in report.hard if f.category == "mass_deletion"]
+    assert len(mass_findings) == 1
+    assert mass_findings[0].count == 3
+    assert "(3/10)" in mass_findings[0].message
+
+
+def test_a_small_deletion_does_not_trip_the_mass_deletion_fraction() -> None:
+    """A couple of deleted files in a large repository stays below the fraction."""
+    base_paths = _base_tree_paths(100)
+    deleted = sorted(base_paths)[:2]
+    diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
+
+    report = evaluate_tripwires(
+        diff_entries=diff,
+        tracked_count=98,
+        thresholds=TripwireThresholds(),
+    )
+
+    assert report.is_clean is True
+    assert report.hard == ()
+
+
+def test_the_deleted_file_count_threshold_survives_an_empty_real_index() -> None:
+    """The count threshold keeps working when the real index lists nothing."""
+    base_paths = _base_tree_paths(10)
+    deleted = sorted(base_paths)[:3]
+    diff = [DiffEntry(path=path, status="D", base_tree_paths=base_paths) for path in deleted]
+    thresholds = TripwireThresholds(max_deleted_files=2, max_deleted_fraction=0.9)
+
+    report = evaluate_tripwires(
+        diff_entries=diff,
+        tracked_count=0,
+        thresholds=thresholds,
+    )
+
+    mass_findings = [f for f in report.hard if f.category == "mass_deletion"]
+    assert len(mass_findings) == 1
+    assert mass_findings[0].count == 3
+    assert "exceeds limit of 2" in mass_findings[0].message
+
+
+def test_the_immutable_tracked_count_is_unavailable_without_the_base_membership() -> None:
+    """A missing membership makes the denominator unknowable, not zero.
+
+    ``None`` is the fail-closed signal: the caller must refuse the proposal
+    instead of evaluating the fraction against a denominator it cannot trust.
+    """
+    deletions = [DiffEntry(path="components/module_000.py", status="D")]
+    additions = [DiffEntry(path="components/module_000.py", status="A")]
+
+    assert resolve_immutable_tracked_count(deletions) is None
+    assert resolve_immutable_tracked_count(additions) == 0
+    assert resolve_immutable_tracked_count([]) == 0
+
+    base_paths = _base_tree_paths(4)
+    carried = [DiffEntry(path="components/module_000.py", status="D", base_tree_paths=base_paths)]
+    assert resolve_immutable_tracked_count(carried) == 4

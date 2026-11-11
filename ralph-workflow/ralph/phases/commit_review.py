@@ -83,6 +83,7 @@ from ralph.phases._commit_review_tripwires import (
     TripwireReport,
     TripwireThresholds,
     evaluate_tripwires,
+    resolve_immutable_tracked_count,
 )
 from ralph.phases.required_artifacts import clear_validation_retry_hint, retry_hint_path
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -230,20 +231,6 @@ def _resolve_diff_base(repo_root: Path) -> str:
         return "HEAD"
     except Exception:
         return "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-    finally:
-        _close_repo(repo)
-
-
-def _count_tracked_files(repo_root: Path) -> int:
-    """Return count of tracked files in the repository."""
-    repo: Repo | None = None
-    try:
-        repo = Repo(repo_root, search_parent_directories=False)
-        output_obj = cast("object", repo.git.ls_files())
-        lines = [line for line in str(output_obj).splitlines() if line.strip()]
-        return len(lines)
-    except Exception:
-        return 0
     finally:
         _close_repo(repo)
 
@@ -511,7 +498,16 @@ def run_commit_review_stage1_preflight(
         logger.error("{}: failed to compute diff-tree: {}", phase_name, exc)
         return CommitReviewGateFailed(detail=f"Failed to compute diff-tree: {exc}")
 
-    tracked_count = _count_tracked_files(repo_root)
+    tracked_count = resolve_immutable_tracked_count(diff_entries)
+    if tracked_count is None:
+        reason = (
+            "Mass deletion: the immutable base-tree membership is unavailable, so the "
+            "deleted-file fraction cannot be measured against a trustworthy denominator; "
+            "refusing the proposal instead of skipping the check."
+        )
+        logger.error("{}: {}", phase_name, reason)
+        return CommitReviewRejected(reason=reason, ref=seal.ref, hard=True)
+
     thresholds, allowed_dirs, protected = _resolve_policy_thresholds(pipeline_policy, phase_name)
 
     tripwire_entries = [
@@ -915,8 +911,10 @@ __all__ = [
     "CommitReviewGateFailed",
     "CommitReviewLoopback",
     "CommitReviewRejected",
+    "TripwireThresholds",
     "apply_commit_review_actions",
     "build_commit_review_retry_hint",
+    "evaluate_tripwires",
     "handle_commit_review_phase",
     "is_agent_internal_path",
     "run_commit_review_stage1_preflight",

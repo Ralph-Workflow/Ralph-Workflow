@@ -227,7 +227,7 @@ def _collect_binary_paths(repo: Repo, base: str, ref: str) -> set[str]:
     return binary_paths
 
 
-def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str]:
+def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str] | None:
     """Return the tracked paths present in the tree the diff is computed against.
 
     A recursive ``git diff-tree`` reports BLOB entries only, so the removal of
@@ -238,6 +238,14 @@ def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str]:
 
     ``--full-tree`` is required: without it ``git ls-tree`` limits the listing
     to the current working directory and reports paths relative to it.
+
+    Returns:
+        The tracked paths of the base tree, an EMPTY set when the base tree
+        holds no tracked path, or ``None`` when the membership could not be
+        read. ``None`` is not an empty tree: it means the denominator of the
+        mass-deletion fraction is unknown, so the caller must fail closed
+        instead of measuring the fraction against a denominator it cannot
+        trust.
     """
     try:
         raw_obj = route_git_method(
@@ -246,7 +254,7 @@ def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str]:
             ("-r", "--name-only", "--full-tree", "-z", base),
         )
     except Exception:
-        return frozenset()
+        return None
     raw = str(raw_obj)
     return frozenset(path for path in raw.split("\0") if path)
 
@@ -283,7 +291,8 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
 
     Returns:
         List of DiffEntry records describing changed paths, modes, sizes, and binary status.
-        Every entry also carries the tracked paths of the base tree.
+        Every entry also carries the tracked paths of the base tree, or ``None``
+        when that membership could not be read.
 
     Raises:
         ProposalSealError: If diff-tree execution fails.

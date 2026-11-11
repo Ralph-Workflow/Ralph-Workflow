@@ -475,6 +475,30 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
     )
 
 
+def _submit_symlink_review_artifact(workspace: FsWorkspace, submission_index: int) -> None:
+    """Submit the reviewer's artifact for one commit-review pass.
+
+    The FIRST submission asks for the symlink delete as well. The engine
+    refuses that delete, and a refused action loops the batch back to the
+    reviewer instead of advancing to the commit. Every later submission is
+    the corrected retry: the safe deletions are already applied, so it asks
+    for nothing and the batch advances.
+    """
+    if submission_index == 1:
+        actions: list[dict[str, str]] = [
+            {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
+        ] + [{"action": "delete_file", "path": INNOCENT_SYMLINK}]
+    else:
+        actions = []
+    _write_commit_review_artifact(
+        workspace,
+        {
+            "verdict": "approve",
+            "actions": actions,
+        },
+    )
+
+
 def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -511,18 +535,6 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
         f"Pre-condition failed: {INNOCENT_SYMLINK!r} must be a symlink before cleanup runs"
     )
 
-    _write_commit_review_artifact(
-        engine_internal_workspace_with_symlink,
-        {
-            "verdict": "approve",
-            "actions": [
-                {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
-            ]
-            + [
-                {"action": "delete_file", "path": INNOCENT_SYMLINK},
-            ],
-        },
-    )
     invoker = CommitReviewAlwaysLoopbackInvoker(memory_workspace)
     saved_states: list[object] = []
 
@@ -533,6 +545,11 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
     ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoker.invoke(effect.agent_name, effect.phase)
+            if effect.phase in cleanup_phases:
+                _submit_symlink_review_artifact(
+                    engine_internal_workspace_with_symlink,
+                    invoker.count_for(effect.phase),
+                )
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
             return runner.execute_commit_effect(
@@ -628,6 +645,12 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
     assert invoker.count_for("development_commit_review") >= 1, (
         "CommitReviewAlwaysLoopbackInvoker must have been invoked for "
         "development_commit_review at least once."
+    )
+
+    assert invoker.count_for("development_commit_review") >= 2, (
+        "The refused symlink delete must loop the batch back to commit review: "
+        "a rejected action never advances to the commit, so the reviewer has "
+        "to submit a corrected artifact before the batch advances."
     )
 
     for rel_path in ORIGINALLY_FAILING_PATHS:

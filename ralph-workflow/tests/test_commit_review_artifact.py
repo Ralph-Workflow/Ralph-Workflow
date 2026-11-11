@@ -408,6 +408,7 @@ class _FakeDiffEntry(NamedTuple):
     status: str = "M"
     is_binary: bool = False
     size: int = 100
+    base_tree_paths: frozenset[str] | None = None
 
 
 def test_citation_verifier_valid_path_match() -> None:
@@ -420,6 +421,30 @@ def test_citation_verifier_unmatched_path_rejected() -> None:
     """Unmatched path in reason fails verification."""
     diff: list[object] = [_FakeDiffEntry(path="src/main.py", status="M")]
     assert verify_reject_citations("Accidental deletion of src/other.py", diff) is False
+
+
+def test_citation_verifier_absent_tracked_file_citation_is_rejected() -> None:
+    """A cited tracked file that is absent from the diff fails verification.
+
+    The cited name carries no file extension, so it is recognized as a path
+    only because the base tree tracks it.  Ignoring such a claim silently
+    would let a fabricated reason authorize the rollback path.
+    """
+    diff: list[object] = [
+        _FakeDiffEntry(
+            path="src/main.py",
+            status="M",
+            base_tree_paths=frozenset({"src/main.py", "Makefile"}),
+        )
+    ]
+    assert (
+        verify_reject_citations(
+            "src/main.py was modified and Makefile was deleted",
+            diff,
+        )
+        is False
+    )
+    assert verify_reject_citations("src/main.py was modified", diff) is True
 
 
 def test_citation_verifier_multiple_paths_all_must_match() -> None:

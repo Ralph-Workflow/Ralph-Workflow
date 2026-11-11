@@ -268,12 +268,35 @@ def _check_content_secrets(norm_path_str: str, content: str | None) -> list[Find
     return findings
 
 
+def _resolve_fraction_denominator(entries: list[object], tracked_count: int) -> int:
+    """Return the denominator of the mass-deletion fraction.
+
+    The denominator is the number of tracked paths in the IMMUTABLE tree the
+    diff was computed against (the proposal's base tree). The real git index
+    is mutable: staging a deletion shrinks it and staging an addition
+    inflates it, so a fraction measured against the index can be silenced or
+    diluted by the very change it is meant to judge.
+
+    Entries produced by the git layer carry that membership. Entries
+    assembled without it fall back to the caller-supplied count.
+    """
+    membership = _collect_base_tree_paths(entries)
+    if membership is not None:
+        return len(membership)
+    return tracked_count
+
+
 def _evaluate_mass_deletion(
     entries: list[object],
     tracked_count: int,
     thresholds: TripwireThresholds,
 ) -> list[Finding]:
-    """Evaluate mass deletion thresholds."""
+    """Evaluate mass deletion thresholds.
+
+    The COUNT threshold is a plain count of the deleted paths. The FRACTION
+    threshold is measured against the immutable base tree the diff was
+    computed against, never against the mutable real index.
+    """
     findings: list[Finding] = []
     deleted_count = sum(1 for e in entries if _is_deleted(str(_get_entry_attr(e, "status", ""))))
 
@@ -289,15 +312,16 @@ def _evaluate_mass_deletion(
             )
         )
 
-    if tracked_count > 0 and thresholds.max_deleted_fraction >= 0.0:
-        deleted_fraction = deleted_count / tracked_count
+    denominator = _resolve_fraction_denominator(entries, tracked_count)
+    if denominator > 0 and thresholds.max_deleted_fraction >= 0.0:
+        deleted_fraction = deleted_count / denominator
         if deleted_fraction > thresholds.max_deleted_fraction:
             findings.append(
                 Finding(
                     category="mass_deletion",
                     message=(
                         f"Mass deletion: {deleted_fraction:.1%} of tracked files deleted "
-                        f"({deleted_count}/{tracked_count}) exceeds limit of "
+                        f"({deleted_count}/{denominator}) exceeds limit of "
                         f"{thresholds.max_deleted_fraction:.1%}"
                     ),
                     count=deleted_count,
@@ -312,19 +336,50 @@ def _normalized_repo_path(raw_path: str) -> str:
     return PurePosixPath(raw_path.replace("\\", "/")).as_posix()
 
 
-def _collect_base_tree_paths(entries: list[object]) -> frozenset[str]:
+def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:
     """Return the base-tree membership carried by the diff entries.
 
     Entries produced by the git layer carry the tracked paths of the tree the
     diff was computed against. Entries assembled without that membership
-    contribute nothing, so a rule that needs it stays silent instead of
-    guessing.
+    contribute nothing, so ``None`` reports that the membership is absent and
+    a rule that needs it stays silent instead of guessing.
     """
     for entry in entries:
         paths = _get_entry_attr(entry, "base_tree_paths", None)
         if isinstance(paths, (set, frozenset, list, tuple)):
             return frozenset(str(path) for path in paths)
-    return frozenset()
+    return None
+
+
+def resolve_immutable_tracked_count(entries: Iterable[object]) -> int | None:
+    """Return the tracked-file count of the IMMUTABLE base tree of a diff.
+
+    The count is the number of tracked paths in the tree the diff was
+    computed against (the proposal's base tree), never the mutable real
+    index: a staged deletion would shrink the index and a staged addition
+    would inflate it, so the index cannot be the denominator of a tripwire
+    that judges the staged change.
+
+    Args:
+        entries: The diff entries produced by the git layer.
+
+    Returns:
+        The number of tracked paths in the base tree, or ``None`` when that
+        membership is unavailable AND the diff proposes deletions. ``None``
+        means the mass-deletion fraction cannot be evaluated against a
+        trustworthy denominator, so the caller must fail closed instead of
+        silently skipping the check.
+    """
+    materialized = list(entries)
+    membership = _collect_base_tree_paths(materialized)
+    if membership is not None:
+        return len(membership)
+    proposes_deletions = any(
+        _is_deleted(str(_get_entry_attr(entry, "status", ""))) for entry in materialized
+    )
+    if proposes_deletions:
+        return None
+    return 0
 
 
 def _collect_deleted_paths(entries: list[object]) -> set[str]:
@@ -498,7 +553,10 @@ def evaluate_tripwires(
 
     Args:
         diff_entries: Iterable of diff entries (DiffEntry instances or duck-typed objects/dicts).
-        tracked_count: Total number of tracked files in the repository before the diff.
+        tracked_count: Fallback count of tracked files, used ONLY when the entries
+            do not carry the immutable base-tree membership. The membership the
+            git layer attaches to the entries always wins, so the fraction can
+            never be measured against the mutable real index.
         thresholds: TripwireThresholds instance configuring mass-deletion and binary limits.
         allowed_dirs: Optional collection of allowed directory prefixes for scope enforcement.
         protected: Optional collection of additional protected file paths/patterns.
@@ -570,4 +628,5 @@ __all__ = [
     "TripwireThresholds",
     "evaluate_tripwires",
     "is_recognized_secret_path",
+    "resolve_immutable_tracked_count",
 ]

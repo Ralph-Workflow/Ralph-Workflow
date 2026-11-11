@@ -400,6 +400,8 @@ SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_bootstrap_auto_seed_git_exclude.py",
     "tests/test_bootstrap_auto_seed_gitignore.py",
     "tests/test_commit_review_diff.py",
+    "tests/test_commit_review_real_diff_proofs.py",
+    "tests/test_commit_review_reject_citation_gate.py",
     "tests/test_commit_detached_head_recovery.py",
     "tests/test_commit_executor.py",
     "tests/test_git_proposal_seal.py",

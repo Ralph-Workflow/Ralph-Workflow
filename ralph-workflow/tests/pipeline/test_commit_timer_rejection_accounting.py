@@ -1,10 +1,12 @@
-"""Characterisation pins for the commit-review rejection accounting path.
+"""Black-box pins for the commit-review rejection route and its accounting.
 
 Split from ``test_commit_timer_characterisation.py`` so both files stay under
 the repository's 1000-line file cap enforced by
 :mod:`ralph.testing.audit_repo_structure`. These pins characterise the
-rejection/rollback accounting and the rejection-loop timer behaviour; the
-timer modules themselves are unchanged.
+rejection route: it crosses the commit phase the review feeds, so the frozen
+timer boundaries fire exactly as they do for a commit-then-development route,
+and the commit-outcome accounting is charged once through the same path a
+successful commit uses. The timer modules themselves are unchanged.
 """
 
 from __future__ import annotations
@@ -67,20 +69,6 @@ def _phase_before_cycle_commit(policy: PipelinePolicy) -> str:
     raise AssertionError(msg)
 
 
-def _analysis_phase_looping_back_to_development(policy: PipelinePolicy) -> str:
-    """Return the analysis phase whose request_changes decision routes to development.
-
-    Resolved from the policy so the characterisation stays name-neutral.
-    """
-    dev_start = policy.development_timebox.start_entry if policy.development_timebox else None
-    for name, phase in policy.phases.items():
-        route = phase.decisions.get("request_changes")
-        if route is not None and route.target == dev_start:
-            return name
-    msg = "no analysis phase routes request_changes back to development"
-    raise AssertionError(msg)
-
-
 def _sample_timing(
     phase: str,
     iteration: int = 0,
@@ -94,19 +82,6 @@ def _sample_timing(
         elapsed=timedelta(seconds=elapsed_seconds),
         elapsed_seconds=elapsed_seconds,
     )
-
-
-def _outer_budget_counter(policy: PipelinePolicy) -> str:
-    """Return the tracked budget counter charged by the commit phases.
-
-    The name is read from the policy so this characterisation stays
-    name-neutral.
-    """
-    for name, counter in policy.budget_counters.items():
-        if counter.tracks_budget:
-            return name
-    msg = "policy declares no tracked budget counter"
-    raise AssertionError(msg)
 
 
 def _commit_accounting(
@@ -127,6 +102,14 @@ def _commit_accounting(
         state.get_outer_progress(counter_name),
         state.cycle_timing_start_index,
     )
+
+
+def _rejection(
+    reason: str = "Detected mass deletion",
+    ref: str = "refs/ralph/proposals/test-run/0",
+) -> CommitReviewRejected:
+    """Return the rejection event the review phases emit on a rejected proposal."""
+    return CommitReviewRejected(reason=reason, ref=ref, hard=True)
 
 
 # 1. Development timebox conclusion on commit entry
@@ -179,11 +162,7 @@ def test_rejection_accounting_is_identical_to_successful_commit_accounting() -> 
 
     rejected, _ = reduce(
         _starting_state(review_phase),
-        CommitReviewRejected(
-            reason="Detected mass deletion",
-            ref="refs/ralph/proposals/test-run/1",
-            hard=True,
-        ),
+        _rejection(ref="refs/ralph/proposals/test-run/1"),
         policy,
         routing_timing=RoutingTiming(total_elapsed_seconds=100.0),
     )
@@ -227,27 +206,27 @@ def test_commit_review_rejections_counter_is_absent_from_the_lifecycle_loop_rese
         )
 
 
-# 6. Rejection-loop timer behaviour
+# 2. The rejection route crosses the commit entry
 
 
-def test_rejection_route_leaves_both_timers_running_and_does_not_restart_development() -> None:
-    """A rejection never enters the commit entry, so neither timer is concluded.
+def test_rejection_route_crosses_the_commit_entry_and_restarts_the_development_timer() -> None:
+    """The rejection route crosses the commit entry, so the development timer restarts.
 
     The rejection is reduced while the commit-review phase is current and the
-    route leaves it through the review phase's reject target, so the commit
-    entry is never entered: the development timer is neither concluded (its
-    consumed seconds and start epoch are kept) nor restarted from zero (it is
-    still running), and the cycle timer keeps running with its consumed
-    seconds.
+    route leaves it through the commit phase that phase feeds, which is the
+    development timebox's ``end_entry``: the entry concludes the timer
+    (zeroing its consumed seconds and clearing its start epoch). The
+    development window that opens after the route therefore starts from zero
+    instead of resuming the seconds the pre-rejection development had already
+    consumed.
 
-    This characterises the rejection loop as it behaves today. The frozen
-    specification expected a rejection routed through the commit entry to
-    conclude both timers and to restart the development timer from zero; the
-    measured behaviour differs, so the difference is reported rather than
-    "fixed" here — no timer module is touched by this file.
+    The cycle timer keeps running: the per-iteration commit phase is not the
+    cycle timebox's ``end_entry``, so only the final commit phase concludes
+    it.
     """
     policy = _policy()
     review_phase = _phase_before_dev_commit(policy)
+    commit_phase = _dev_commit_entry(policy)
     reject_target = policy.phases[review_phase].transitions.on_reject
     assert reject_target is not None
 
@@ -264,13 +243,9 @@ def test_rejection_route_leaves_both_timers_running_and_does_not_restart_develop
         commit_review_rejections=0,
     )
 
-    rejected, _ = reduce(
+    rejected, effects = reduce(
         state,
-        CommitReviewRejected(
-            reason="Detected mass deletion",
-            ref="refs/ralph/proposals/test-run/0",
-            hard=True,
-        ),
+        _rejection(),
         policy,
         routing_timing=RoutingTiming(
             total_elapsed_seconds=1600.0,
@@ -279,17 +254,142 @@ def test_rejection_route_leaves_both_timers_running_and_does_not_restart_develop
         ),
     )
 
+    # The route entered the commit phase the review feeds ...
+    assert rejected.previous_phase == commit_phase
+    # ... and continued to the review phase's reject target.
     assert rejected.phase == reject_target
-    # The development timer keeps running: not concluded, not restarted.
+    # The development timer concluded on the commit entry, so the development
+    # window that opens after the route starts from zero.
+    # RALPH-TEST-REASON: the rejection route crosses the commit entry, so the
+    # development timer concludes there and the development window restarts at
+    # zero instead of resuming the seconds the pre-rejection work had spent.
     assert rejected.dev_timebox_active is True
-    assert rejected.dev_timebox_consumed_seconds == 1500.0
-    assert rejected.dev_timebox_started_at_epoch == 4000.0
-    # The cycle timer is untouched by the rejection route.
+    assert rejected.dev_timebox_consumed_seconds == 0.0
+    assert rejected.dev_timebox_started_at_epoch == 5100.0
+    # The cycle timer is not concluded by the per-iteration commit entry.
     assert rejected.cycle_timebox_active is True
     assert rejected.cycle_timebox_consumed_seconds == 2100.0
     # The rejection is still charged as a completed commit-phase outcome.
     assert rejected.commit_review_rejections == 1
     assert rejected.rollback_pending is True
+    # The reduction schedules nothing: the commit phase is entered and left
+    # within it, so no commit-message agent is ever invoked.
+    assert effects == []
+
+
+def test_final_review_rejection_route_crosses_the_final_commit_entry_and_concludes_the_cycle_timer() -> (
+    None
+):
+    """The final-review rejection crosses the final commit entry and ends the cycle timer.
+
+    The final commit phase is the cycle timebox's ``end_entry``, so the route
+    through it concludes the cycle timer: it goes inactive and keeps its
+    consumed seconds for the run-time report. The development timer is not
+    running at that point in the cycle (the per-iteration commit entry
+    concluded it), so the development window that opens after the route starts
+    from zero.
+
+    The iteration budget is charged once, through the commit-outcome
+    accounting of the final commit phase, and the rejection counter survives
+    the resets that accounting performs.
+    """
+    policy = _policy()
+    review_phase = _phase_before_cycle_commit(policy)
+    final_commit = _cycle_commit_entry(policy)
+    reject_target = policy.phases[review_phase].transitions.on_reject
+    assert reject_target is not None
+    lifecycle = policy.lifecycle_phases.get(final_commit)
+    assert lifecycle is not None
+    counter_name = lifecycle.increments_counter
+    assert counter_name is not None and counter_name != "none"
+    reset_fields = tuple(lifecycle.loop_resets)
+    assert reset_fields
+
+    timings = (_sample_timing("development", iteration=0),)
+    state = PipelineState(
+        phase=review_phase,
+        dev_timebox_active=False,
+        dev_timebox_consumed_seconds=0.0,
+        dev_timebox_started_at_epoch=None,
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=2100.0,
+        cycle_timebox_started_at_epoch=1000.0,
+        phase_timings=timings,
+        cycle_timing_start_index=0,
+        commit_review_rejections=0,
+    )
+    for reset_field in reset_fields:
+        state = state.with_loop_iteration(reset_field, 3)
+    state = state.with_outer_progress(counter_name, 1)
+
+    rejected, _ = reduce(
+        state,
+        _rejection(ref="refs/ralph/proposals/test-run/2"),
+        policy,
+        routing_timing=RoutingTiming(
+            total_elapsed_seconds=1600.0,
+            development_elapsed_seconds=0.0,
+            current_epoch=5100.0,
+        ),
+    )
+
+    # The route entered the final commit phase the review feeds ...
+    assert rejected.previous_phase == final_commit
+    # ... and continued to the review phase's reject target.
+    assert rejected.phase == reject_target
+    # The cycle timer concluded on the final commit entry and keeps its
+    # consumed seconds for the run-time report.
+    assert rejected.cycle_timebox_active is False
+    assert rejected.cycle_timebox_consumed_seconds == 2100.0
+    # The development window that opens after the route starts from zero.
+    assert rejected.dev_timebox_active is True
+    assert rejected.dev_timebox_consumed_seconds == 0.0
+    assert rejected.dev_timebox_started_at_epoch == 5100.0
+    # The commit-outcome accounting is charged once: the resets are zeroed,
+    # the iteration counter advances by exactly one and the cumulative-elapsed
+    # window restarts.
+    for reset_field in reset_fields:
+        assert rejected.get_loop_iteration(reset_field) == 0
+    assert rejected.get_outer_progress(counter_name) == 2
+    assert rejected.cycle_timing_start_index == len(timings)
+    # The rejection counter is the one exemption from the resets.
+    assert rejected.commit_review_rejections == 1
+
+
+def test_rejection_route_keeps_the_rollback_marker_and_the_rejection_context() -> None:
+    """The rejection route leaves the crash-safe rollback marker and its context.
+
+    The runner's single rollback owner restores the tree from the sealed
+    proposal ref once the reduction reports the rollback as pending, and it
+    records the rejection reason and the ref name for the next developer
+    prompt. Both live in the state the reduction hands over, so the marker,
+    the ref and the reason have to survive the route.
+    """
+    policy = _policy()
+    review_phase = _phase_before_dev_commit(policy)
+    ref = "refs/ralph/proposals/test-run/3"
+
+    state = PipelineState(
+        phase=review_phase,
+        phase_timings=(_sample_timing("development", iteration=0),),
+        commit_review_rejections=0,
+    )
+
+    rejected, _ = reduce(
+        state,
+        _rejection(reason="Detected mass deletion", ref=ref),
+        policy,
+        routing_timing=RoutingTiming(total_elapsed_seconds=100.0),
+    )
+
+    assert rejected.rollback_pending is True
+    assert rejected.rollback_ref == ref
+    assert rejected.last_review_rejection_reason == "Detected mass deletion"
+    # No commit was prepared for the rejected proposal.
+    assert rejected.commit.agent_invoked is False
+
+
+# 3. Rejection-loop timer behaviour
 
 
 def test_rejection_loop_survives_the_resets_and_stops_at_the_default_limit() -> None:
@@ -350,3 +450,37 @@ def test_rejection_loop_survives_the_resets_and_stops_at_the_default_limit() -> 
     assert second.commit_review_rejections == 2
     assert second.rollback_pending is False
     assert second.rollback_ref == "refs/ralph/proposals/test-run/1"
+
+
+def test_post_timebox_rejection_fails_without_a_rollback_and_keeps_the_proposal_ref() -> None:
+    """A rejection after the cycle timebox elapsed ends the run without a rollback.
+
+    The timebox guard owns that route: the rejection never reaches the commit
+    entry, so no rollback is pending and the rejected proposal ref is kept for
+    manual recovery.
+    """
+    policy = _policy()
+    assert policy.cycle_timebox is not None
+    review_phase = _phase_before_dev_commit(policy)
+    ref = "refs/ralph/proposals/test-run/4"
+
+    state = PipelineState(
+        phase=review_phase,
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=float(policy.cycle_timebox.duration_seconds),
+        commit_review_rejections=0,
+    )
+
+    rejected, _ = reduce(
+        state,
+        _rejection(ref=ref),
+        policy,
+        routing_timing=RoutingTiming(
+            total_elapsed_seconds=float(policy.cycle_timebox.duration_seconds) + 10.0
+        ),
+    )
+
+    assert rejected.phase == policy.recovery.failed_route
+    assert rejected.rollback_pending is False
+    assert rejected.rollback_ref == ref
+    assert rejected.commit_review_rejections == 1

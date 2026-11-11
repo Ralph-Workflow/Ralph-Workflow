@@ -163,6 +163,10 @@ class _DiffSummary:
         added: Paths whose diff entry has added status.
         modified: Paths whose diff entry has modified status.
         binary: Paths whose diff entry is marked binary.
+        tracked: The repository paths the base tree holds.  A token that
+            names one of them is a path citation even when it carries no
+            file extension, so an absent tracked file can never be cited
+            silently.
     """
 
     paths: frozenset[str]
@@ -171,6 +175,7 @@ class _DiffSummary:
     added: frozenset[str]
     modified: frozenset[str]
     binary: frozenset[str]
+    tracked: frozenset[str] = frozenset()
 
     def count_for(self, kind: str) -> int:
         """Return how many diff entries back a count of the given category."""
@@ -252,6 +257,24 @@ def _entry_fields(entry: object) -> tuple[str, str, bool]:
     return path, status, is_binary
 
 
+def _entry_tracked_paths(entry: object) -> frozenset[str]:
+    """Return the base tree's tracked paths carried by a diff entry.
+
+    Args:
+        entry: A diff entry object or a mapping with the same keys.
+
+    Returns:
+        The tracked paths, or an empty set when the entry carries none.
+    """
+    if isinstance(entry, dict):
+        raw: object = entry.get("base_tree_paths")
+    else:
+        raw = getattr(entry, "base_tree_paths", None)
+    if not isinstance(raw, (frozenset, set, tuple, list)):
+        return frozenset()
+    return frozenset(str(item) for item in raw)
+
+
 def _status_kind(status: str) -> str:
     """Classify a git diff status into the category a count is typed against."""
     code = status.strip().upper()
@@ -280,8 +303,10 @@ def _extract_diff_info(diff_entries: Sequence[object]) -> _DiffSummary:
     added: set[str] = set()
     modified: set[str] = set()
     binary: set[str] = set()
+    tracked: set[str] = set()
 
     for entry in diff_entries:
+        tracked.update(_entry_tracked_paths(entry))
         raw_path, status, is_binary = _entry_fields(entry)
         if not raw_path:
             continue
@@ -309,6 +334,7 @@ def _extract_diff_info(diff_entries: Sequence[object]) -> _DiffSummary:
         added=frozenset(added),
         modified=frozenset(modified),
         binary=frozenset(binary),
+        tracked=frozenset(tracked),
     )
 
 
@@ -317,6 +343,11 @@ def _is_path_candidate(token: str, summary: _DiffSummary) -> bool:
     if not token:
         return False
     if token in summary.paths or token in summary.basenames:
+        return True
+    if token in summary.tracked:
+        # The token names a tracked repository file, so it IS a path
+        # citation even without a file extension.  A tracked file that is
+        # absent from the diff cannot verify, so it must not pass silently.
         return True
     if "/" in token:
         return True

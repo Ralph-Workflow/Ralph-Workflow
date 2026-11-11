@@ -74,10 +74,15 @@ def decide_commit_review_outcome(
     problems, so they get different hints: a rejected delete names the paths
     the classifier refused, while an apply-time failure names the paths that
     were accepted but could not be applied.
+
+    A batch advances to the commit phase only when every requested action
+    either applied or was a safe no-op, so one failed apply operation is
+    enough to loop the agent back -- even when sibling actions applied
+    successfully.
     """
-    if all_applications_failed(report):
+    if _has_failed_applications(report):
         logger.warning(
-            "{}: every requested commit-review action failed at apply time; looping back",
+            "{}: requested commit-review actions failed at apply time; looping back",
             phase_name,
         )
         return CommitReviewLoopback(hint=build_unapplied_retry_hint(report))
@@ -93,16 +98,16 @@ def decide_commit_review_outcome(
     return None
 
 
-def all_applications_failed(report: CommitReviewApplyReport) -> bool:
-    """Return True when every attempted apply threw and nothing applied."""
-    attempted = (
-        len(report.failed_delete_paths) + len(report.failed_pattern_tokens) + report.applied_count
-    )
-    return report.applied_count == 0 and attempted > 0
+def _has_failed_applications(report: CommitReviewApplyReport) -> bool:
+    """Return True when any requested action failed to apply.
+
+    ``failed_pattern_tokens`` carries the gitignore and exclude patterns
+    that threw while the rule was appended.
+    """
+    return bool(report.failed_delete_paths or report.failed_pattern_tokens)
 
 
 __all__ = [
-    "all_applications_failed",
     "build_commit_review_retry_hint",
     "build_unapplied_retry_hint",
     "decide_commit_review_outcome",

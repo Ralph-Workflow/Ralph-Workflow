@@ -20,12 +20,15 @@ class DiffEntry:
             Only bounded, non-binary blobs are read, so a staged credential
             can be detected by CONTENT and not only by file name.
         base_tree_paths: The tracked paths of the tree the diff was computed
-            against, or None when the entry does not carry base-tree
-            membership. A recursive diff reports BLOB entries only, so the
-            removal of a whole directory arrives as one deleted blob path per
-            tracked file and never as a directory entry: the base-tree
-            membership is what tells "the directory is gone in its entirety"
-            apart from "some files under it are gone".
+            against, or None when that membership could not be determined.
+            An EMPTY set means the base tree holds no tracked path at all,
+            which is a different fact: None means the membership is unknown.
+            A recursive diff reports BLOB entries only, so the removal of a
+            whole directory arrives as one deleted blob path per tracked file
+            and never as a directory entry: the base-tree membership is what
+            tells "the directory is gone in its entirety" apart from "some
+            files under it are gone", and it is the immutable denominator of
+            the mass-deletion fraction.
     """
 
     path: str
