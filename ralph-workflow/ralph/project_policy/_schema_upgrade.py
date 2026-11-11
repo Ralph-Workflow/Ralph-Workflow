@@ -230,7 +230,12 @@ def _freeze_policy_files(
     )
 
 
+maybe_resolve_schema_upgrade = _maybe_resolve_schema_upgrade
+freeze_policy_files = _freeze_policy_files
+
 __all__ = [
     "_freeze_policy_files",
     "_maybe_resolve_schema_upgrade",
+    "freeze_policy_files",
+    "maybe_resolve_schema_upgrade",
 ]

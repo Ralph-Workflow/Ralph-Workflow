@@ -267,7 +267,11 @@ def test_main_returns_two_when_no_committed_baseline_exists(
     root = tmp_path / "tree"
     root.mkdir()
     (root / "config.py").write_text(_planted_secret_file(), encoding="utf-8")
-    monkeypatch.setattr("ralph.testing.audit_secret_scan.head_tree", lambda _root: None)
+
+    def _absent_head_tree(_root: Path) -> Path | None:
+        return None
+
+    monkeypatch.setattr("ralph.testing.audit_secret_scan.head_tree", _absent_head_tree)
 
     assert main([str(root)]) == 2
 
@@ -276,7 +280,11 @@ def test_main_returns_two_when_the_default_tree_has_no_baseline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The default invocation fails closed when the package has no committed copy."""
-    monkeypatch.setattr("ralph.testing.audit_secret_scan.head_tree", lambda _root: None)
+
+    def _absent_head_tree(_root: Path) -> Path | None:
+        return None
+
+    monkeypatch.setattr("ralph.testing.audit_secret_scan.head_tree", _absent_head_tree)
 
     assert main([]) == 2
 

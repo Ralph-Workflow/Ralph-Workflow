@@ -19,6 +19,7 @@ from ralph.project_policy import (
     instruction_surface,
     markers,
     set_research_freshness_clock,
+    validators,
 )
 from ralph.testing.audit_instruction_integrity import (
     CATEGORY_HIDDEN_UNICODE,
@@ -26,6 +27,7 @@ from ralph.testing.audit_instruction_integrity import (
     audit_instruction_integrity,
 )
 from ralph.workspace.memory import MemoryWorkspace
+from tests.project_policy.policy_corpus import seed_complete_corpus, stack
 
 
 def test_managed_block_line_budget_passes_at_or_below_limit() -> None:
@@ -197,3 +199,111 @@ def test_instruction_integrity_audit_finds_hidden_unicode(tmp_path: Path) -> Non
     assert len(unicode_findings) == 1
     assert unicode_findings[0].category == CATEGORY_HIDDEN_UNICODE
     assert "U+200B" in unicode_findings[0].detail
+
+
+def test_validate_readiness_nonexistent_cited_path_is_blocking_silent_for_existing_path() -> None:
+    """Nonexistent cited path in AGENTS.md is blocking; silent for existing path."""
+    ws = MemoryWorkspace()
+    seed_complete_corpus(ws)
+    ws.write("docs/existing-runbook.md", "# Runbook\n")
+    agents_base = ws.read(markers.AGENTS_MD)
+
+    # Existing path citation: silent
+    ws.write(markers.AGENTS_MD, agents_base + "\nSee [Runbook](docs/existing-runbook.md).\n")
+    findings = validators.validate_readiness(ws, stack())
+    cited_findings = [
+        f for f in findings if f.requirement_id == markers.AGENTS_MD_CITED_PATH_FINDING_ID
+    ]
+    assert cited_findings == []
+
+    # Nonexistent path citation: blocking
+    ws.write(markers.AGENTS_MD, agents_base + "\nSee [Missing](docs/nonexistent-runbook.md).\n")
+    findings = validators.validate_readiness(ws, stack())
+    cited_findings = [
+        f for f in findings if f.requirement_id == markers.AGENTS_MD_CITED_PATH_FINDING_ID
+    ]
+    assert len(cited_findings) == 1
+    assert cited_findings[0].blocking is True
+    assert "docs/nonexistent-runbook.md" in cited_findings[0].missing_evidence
+
+
+def test_validate_readiness_line_budget_fires_above_threshold_silent_below_non_blocking() -> None:
+    """Line-budget warning fires above threshold, silent below, and is non-blocking."""
+    ws = MemoryWorkspace()
+    seed_complete_corpus(ws)
+
+    # Silent below threshold
+    findings_below = validators.validate_readiness(ws, stack())
+    budget_findings_below = [
+        f
+        for f in findings_below
+        if f.requirement_id
+        in (
+            markers.PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID,
+            markers.MANAGED_BLOCK_LINE_BUDGET_FINDING_ID,
+        )
+    ]
+    assert budget_findings_below == []
+
+    # Above project AGENTS.md threshold (> 200 lines): non-blocking finding
+    long_content = (
+        ws.read(markers.AGENTS_MD) + "\n" + "\n".join(f"# Section {i}" for i in range(210))
+    )
+    ws.write(markers.AGENTS_MD, long_content)
+    findings_above = validators.validate_readiness(ws, stack())
+    proj_budget_findings = [
+        f
+        for f in findings_above
+        if f.requirement_id == markers.PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID
+    ]
+    assert len(proj_budget_findings) == 1
+    assert proj_budget_findings[0].blocking is False
+
+    # Above managed block threshold (> 40 lines): non-blocking finding
+    ws_block = MemoryWorkspace()
+    seed_complete_corpus(ws_block)
+    long_block = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"See {markers.CANONICAL_DIR}.\n"
+        + "\n".join(f"# Instruction line {i}" for i in range(45))
+        + f"\n{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws_block.write(markers.AGENTS_MD, long_block)
+    findings_block = validators.validate_readiness(ws_block, stack())
+    block_budget_findings = [
+        f
+        for f in findings_block
+        if f.requirement_id == markers.MANAGED_BLOCK_LINE_BUDGET_FINDING_ID
+    ]
+    assert len(block_budget_findings) == 1
+    assert block_budget_findings[0].blocking is False
+
+
+def test_validate_readiness_freshness_fires_beyond_365_days_silent_within_non_blocking() -> None:
+    """Citation review freshness check fires beyond 365 days, silent within, non-blocking."""
+    ws = MemoryWorkspace()
+    seed_complete_corpus(ws)
+
+    # Seeded corpus has review date 2026-07-13. Setting clock to 2026-08-01 is within 365 days: silent.
+    set_research_freshness_clock(lambda: date(2026, 8, 1))
+    try:
+        findings_within = validators.validate_readiness(ws, stack())
+        freshness_within = [
+            f
+            for f in findings_within
+            if f.requirement_id.startswith(markers.RESEARCH_FRESHNESS_FINDING_ID)
+        ]
+        assert freshness_within == []
+
+        # Setting clock to 2028-01-01 is > 365 days: fires, non-blocking
+        set_research_freshness_clock(lambda: date(2028, 1, 1))
+        findings_beyond = validators.validate_readiness(ws, stack())
+        freshness_beyond = [
+            f
+            for f in findings_beyond
+            if f.requirement_id.startswith(markers.RESEARCH_FRESHNESS_FINDING_ID)
+        ]
+        assert len(freshness_beyond) > 0
+        assert all(f.blocking is False for f in freshness_beyond)
+    finally:
+        set_research_freshness_clock(None)

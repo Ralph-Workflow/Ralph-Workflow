@@ -397,7 +397,7 @@ def test_bootstrap_migrates_outdated_ralph_placeholder_idempotently() -> None:
         f"This project participates in Ralph Workflow's project-policy-readiness\n"
         f"preflight. Before ordinary planning or development begins, the canonical\n"
         f"quality-policy files under {markers.CANONICAL_DIR} must exist...\n"
-        f"{agents_md._PLACEHOLDER_SENTINEL}\n"
+        "The remediation agent MUST, in order:\n"
         f"1. Inspect the project.\n"
         f"{markers.AGENTS_BLOCK_END}\n"
     )
@@ -425,7 +425,7 @@ def test_bootstrap_migrates_outdated_ralph_ready_block_idempotently() -> None:
     outdated_ready = (
         f"{markers.AGENTS_BLOCK_BEGIN}\n"
         f"This project follows Ralph Workflow quality policies. Before any change, read {markers.CANONICAL_DIR}...\n"
-        f"{agents_md._RALPH_MANAGED_SIGNATURE} "
+        "Readiness reports THREE dimensions, not two: "
         f"structure complete=true, implementation verified=false, outcome evidence reviewed=true.\n"
         f"{markers.AGENTS_BLOCK_END}\n"
     )
@@ -451,7 +451,7 @@ def test_condense_migrates_outdated_ralph_ready_block_idempotently() -> None:
     outdated_ready = (
         f"{markers.AGENTS_BLOCK_BEGIN}\n"
         f"This project follows Ralph Workflow quality policies. Before any change, read {markers.CANONICAL_DIR}...\n"
-        f"{agents_md._RALPH_MANAGED_SIGNATURE} "
+        "Readiness reports THREE dimensions, not two: "
         f"structure complete=true, implementation verified=true, outcome evidence reviewed=true.\n"
         f"{markers.AGENTS_BLOCK_END}\n"
     )

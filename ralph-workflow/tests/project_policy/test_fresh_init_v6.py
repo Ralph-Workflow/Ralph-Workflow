@@ -1,0 +1,291 @@
+"""Black-box tests verifying fresh project initialization creates v6 starters.
+
+Contract under test:
+1. Fresh workspace initialization / preflight bootstrap creates all 12 core starters
+   carrying the v6 schema marker (<!-- ralph-policy-schema: v6 -->).
+2. Fresh starters carry the 7-column Guard inventory header with the Enforcement column
+   (| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |).
+3. Guard inventory rows in freshly seeded starters adhere to the v6 fill model:
+   explicit placeholder (deterministic: PROJECT-FACT-UNRESOLVED) and no hardcoded Ralph audit IDs.
+4. Fresh workspace creates the bounded policy portfolio at docs/ralph-workflow-policy/policy-portfolio.toml
+   with schema version v3 and required enforcement fields per control.
+5. All 22 bundled starters comply with the v6 schema, 7-column table, and fill model.
+6. Real filesystem bootstrap via FsWorkspace is idempotent and preserves the v6 contract on disk.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING
+
+import pytest
+
+from ralph.language_detector.models import ProjectStack
+from ralph.project_policy import (
+    markers,
+    parse_portfolio_toml,
+    preflight,
+    starters,
+    validators,
+)
+from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.memory import MemoryWorkspace
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+pytestmark = [pytest.mark.timeout_seconds(10)]
+
+
+def _stack() -> ProjectStack:
+    return ProjectStack(primary_language="Python")
+
+
+def _parse_guard_inventory_table(content: str) -> list[dict[str, str]]:
+    """Parse markdown table rows black-box without private internals."""
+    lines = [line.strip() for line in content.splitlines()]
+    header_idx = -1
+    for i, line in enumerate(lines):
+        if line.startswith("|"):
+            cells = [c.strip().lower() for c in line.strip("|").split("|")]
+            if len(cells) >= 2 and cells[0] == "guard" and "enforcement" in cells:
+                header_idx = i
+                break
+    if header_idx == -1 or header_idx + 2 >= len(lines):
+        return []
+    headers = [c.strip().lower() for c in lines[header_idx].strip("|").split("|")]
+    rows: list[dict[str, str]] = []
+    for line in lines[header_idx + 2 :]:
+        if not line.startswith("|"):
+            break
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) == len(headers):
+            rows.append(dict(zip(headers, cells, strict=False)))
+    return rows
+
+
+def test_fresh_workspace_preflight_seeds_all_twelve_core_v6_starters() -> None:
+    """A fresh workspace seeded by preflight receives all 12 core policy starters
+    each carrying the v6 schema marker and canonical policy ID.
+    """
+    ws = MemoryWorkspace()
+    result = preflight.run_policy_readiness_preflight(ws, _stack())
+
+    assert result.requires_remediation()
+    assert len(markers.CORE_POLICY_FILES) == 12
+
+    for name in markers.CORE_POLICY_FILES:
+        rel_path = f"{markers.CANONICAL_DIR}{name}"
+        assert ws.exists(rel_path), f"Fresh init must seed core starter {name}"
+        content = ws.read(rel_path)
+
+        first_line = content.splitlines()[0].strip()
+        assert first_line == markers.POLICY_SCHEMA_MARKER, (
+            f"Starter {name} first line must be {markers.POLICY_SCHEMA_MARKER!r}, got {first_line!r}"
+        )
+        assert f"{markers.POLICY_ID_PREFIX} {name} -->" in content, (
+            f"Starter {name} must carry canonical policy ID marker"
+        )
+
+
+def test_fresh_workspace_seeds_seven_column_guard_inventory_with_enforcement() -> None:
+    """Every seeded core starter carries the 7-column Guard inventory table
+    including the Enforcement column.
+    """
+    ws = MemoryWorkspace()
+    preflight.run_policy_readiness_preflight(ws, _stack())
+
+    expected_header_lower = tuple(h.lower() for h in markers.GUARD_INVENTORY_HEADER)
+    assert len(expected_header_lower) == 7
+    assert "enforcement" in expected_header_lower
+
+    for name in markers.CORE_POLICY_FILES:
+        rel_path = f"{markers.CANONICAL_DIR}{name}"
+        content = ws.read(rel_path)
+
+        rows = _parse_guard_inventory_table(content)
+        assert rows, f"Starter {name} must contain parseable guard inventory rows"
+
+        for row in rows:
+            assert "enforcement" in row, f"Starter {name} row missing enforcement key: {row}"
+            assert row["enforcement"], f"Starter {name} row has empty enforcement: {row}"
+            # All 7 columns must have non-empty values
+            assert len(row) == 7, f"Starter {name} row must have 7 cells: {row}"
+            for key, val in row.items():
+                assert val.strip(), f"Starter {name} cell {key} must not be empty"
+
+
+def test_fresh_starters_follow_fill_model_no_ralph_audit_ids() -> None:
+    """Freshly seeded starters adhere to the v6 fill model:
+    every Guard inventory row uses 'deterministic: PROJECT-FACT-UNRESOLVED'
+    as an explicit placeholder, and does NOT hardcode Ralph's internal audit IDs.
+    """
+    ws = MemoryWorkspace()
+    preflight.run_policy_readiness_preflight(ws, _stack())
+
+    banned_audit_tokens = (
+        "audit_secret_scan",
+        "audit_instruction_integrity",
+        "audit_test_integrity",
+        "audit_repo_structure",
+        "audit_comments",
+        "audit_di_seam",
+    )
+
+    for name in markers.CORE_POLICY_FILES:
+        rel_path = f"{markers.CANONICAL_DIR}{name}"
+        content = ws.read(rel_path)
+        rows = _parse_guard_inventory_table(content)
+
+        for row in rows:
+            enf = row.get("enforcement", "")
+            # Fill model: starters ship with explicit placeholder
+            assert enf == "deterministic: PROJECT-FACT-UNRESOLVED", (
+                f"Starter {name} guard {row.get('guard')!r} must ship with "
+                f"'deterministic: PROJECT-FACT-UNRESOLVED', observed: {enf!r}"
+            )
+            # Guard rows must not pre-fill Ralph's own internal audit IDs
+            for banned in banned_audit_tokens:
+                assert banned not in enf, (
+                    f"Starter {name} pre-filled Ralph internal audit ID {banned!r} in enforcement"
+                )
+
+
+def test_fresh_workspace_seeds_portfolio_v3_with_enforcement() -> None:
+    """Fresh workspace preflight seeds docs/ralph-workflow-policy/policy-portfolio.toml
+    conforming to schema v3 with required enforcement field on every control.
+    """
+    ws = MemoryWorkspace()
+    preflight.run_policy_readiness_preflight(ws, _stack())
+
+    assert ws.exists(markers.PORTFOLIO_PATH), "policy-portfolio.toml must be seeded"
+    portfolio_content = ws.read(markers.PORTFOLIO_PATH)
+
+    assert 'schema_version = "v3"' in portfolio_content
+    portfolio = parse_portfolio_toml(portfolio_content)
+
+    assert portfolio.schema_version == "v3"
+    assert len(portfolio.controls) > 0
+
+    for control in portfolio.controls:
+        assert control.enforcement, (
+            f"Control {control.id} in policy-portfolio.toml must declare enforcement"
+        )
+        assert control.detects, (
+            f"Control {control.id} in policy-portfolio.toml must declare detects"
+        )
+        assert control.retirement_trigger, (
+            f"Control {control.id} in policy-portfolio.toml must declare retirement_trigger"
+        )
+
+
+def test_all_bundled_starters_comply_with_v6_schema_and_seven_columns() -> None:
+    """All 22 bundled starters (12 core + 10 conditional) carry schema v6,
+    7-column guard inventory, and the fill model placeholder.
+    """
+    starter_names = list(starters.iter_starter_names())
+    assert len(starter_names) == 22
+
+    for name in starter_names:
+        content = starters.read_starter(name)
+        first_line = content.splitlines()[0].strip()
+        assert first_line == markers.POLICY_SCHEMA_MARKER, (
+            f"Bundled starter {name} first line must be v6 marker, got {first_line!r}"
+        )
+
+        rows = _parse_guard_inventory_table(content)
+        assert rows, f"Bundled starter {name} must have parseable guard inventory rows"
+        for row in rows:
+            assert len(row) == 7, f"Bundled starter {name} row must have 7 columns"
+            assert row["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED", (
+                f"Bundled starter {name} row {row.get('guard')!r} must use fill model placeholder"
+            )
+
+
+def test_fresh_real_filesystem_init_seeds_v6_policy_pack(tmp_path: Path) -> None:
+    """Black-box test on real filesystem: preflight bootstrap seeds the complete
+    v6 policy pack to disk idempotently.
+    """
+    ws = FsWorkspace(tmp_path)
+    stack = _stack()
+
+    # First run on fresh filesystem seeds the v6 pack
+    result = preflight.run_policy_readiness_preflight(ws, stack)
+    assert result.requires_remediation()
+
+    policy_dir = tmp_path / "docs" / "ralph-workflow-policy"
+    assert policy_dir.is_dir()
+
+    # Check portfolio on disk
+    portfolio_file = policy_dir / "policy-portfolio.toml"
+    assert portfolio_file.is_file()
+    portfolio = parse_portfolio_toml(portfolio_file.read_text(encoding="utf-8"))
+    assert portfolio.schema_version == "v3"
+
+    # Check 12 core starters on disk
+    for name in markers.CORE_POLICY_FILES:
+        policy_file = policy_dir / name
+        assert policy_file.is_file(), f"Expected {name} to exist on disk"
+        text = policy_file.read_text(encoding="utf-8")
+        assert text.startswith("<!-- ralph-policy-schema: v6 -->")
+        rows = _parse_guard_inventory_table(text)
+        assert rows, f"Expected guard inventory rows in {name}"
+        assert all(r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED" for r in rows)
+
+    # Second run is idempotent: does not re-seed existing files
+    second_result = preflight.run_policy_readiness_preflight(ws, stack)
+    assert second_result.requires_remediation()
+    # Changed files should be empty (no re-seeding) or only AGENTS.md/CLAUDE.md
+    core_policy_paths = {f"{markers.CANONICAL_DIR}{n}" for n in markers.CORE_POLICY_FILES}
+    assert not any(p in core_policy_paths for p in second_result.changed_files)
+
+
+def test_fresh_seeded_starter_resolves_via_fill_model_to_valid() -> None:
+    """Demonstrates that a freshly seeded starter can be resolved using the
+    v6 fill model (substituting placeholders, deleting template comments) to
+    pass policy validation.
+    """
+    starter_name = "gate-script-policy.md"
+    content = starters.read_starter(starter_name)
+
+    # Apply v6 fill model: resolve fact placeholders, command, enforcement, and strip banners
+    content = content.replace(
+        "RALPH-FACT: supported_platforms: PROJECT-FACT-UNRESOLVED",
+        "RALPH-FACT: supported_platforms: linux, macos",
+    )
+    content = content.replace(
+        "RALPH-FACT: shell_dialect: PROJECT-FACT-UNRESOLVED",
+        "RALPH-FACT: shell_dialect: bash",
+    )
+    content = content.replace(
+        "RALPH-FACT: script_directory: PROJECT-FACT-UNRESOLVED",
+        "RALPH-FACT: script_directory: scripts/",
+    )
+    content = content.replace(
+        "RALPH-COMMAND: PROJECT-FACT-UNRESOLVED",
+        "RALPH-COMMAND: shellcheck scripts/",
+    )
+    content = content.replace(
+        "deterministic: PROJECT-FACT-UNRESOLVED",
+        "deterministic: shellcheck scripts/",
+    )
+    content = re.sub(
+        r"<!--\s*(RALPH-STARTER-TEMPLATE|REPLACE-ME):.*?-->\s*", "", content, flags=re.DOTALL
+    )
+
+    ws = MemoryWorkspace()
+    preflight.run_policy_readiness_preflight(ws, _stack())
+    findings_before = [
+        f for f in validators.validate_readiness(ws, _stack()) if starter_name in f.path
+    ]
+    assert findings_before, f"Unresolved {starter_name} must produce findings"
+
+    rel_path = f"{markers.CANONICAL_DIR}{starter_name}"
+    ws.write(rel_path, content)
+
+    findings_after = [
+        f for f in validators.validate_readiness(ws, _stack()) if starter_name in f.path
+    ]
+    assert findings_after == [], (
+        f"Resolved starter {starter_name} must have 0 findings: {findings_after}"
+    )

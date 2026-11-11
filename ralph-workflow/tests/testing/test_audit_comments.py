@@ -379,7 +379,11 @@ def test_main_returns_two_when_a_root_is_missing(tmp_path: Path) -> None:
 
 def test_main_returns_two_when_baseline_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing baseline when invoked with no arguments fails closed with exit code 2."""
-    monkeypatch.setattr("ralph.testing.audit_comments.head_tree", lambda _root: None)
+
+    def _absent_head_tree(_root: Path) -> Path | None:
+        return None
+
+    monkeypatch.setattr("ralph.testing.audit_comments.head_tree", _absent_head_tree)
     assert main([]) == 2
 
 

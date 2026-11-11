@@ -52,6 +52,8 @@ from ralph.project_policy import (
     remediation,
     validators,
 )
+from ralph.project_policy._prompt_ui import PromptChoice, SelectFn
+from ralph.project_policy._schema_upgrade import maybe_resolve_schema_upgrade
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import PolicyPortfolio, parse_portfolio_toml
 from ralph.project_policy.preflight import run_policy_readiness_preflight
@@ -66,12 +68,15 @@ __all__ = [
     "PolicyFinding",
     "PolicyPortfolio",
     "PortfolioError",
+    "PromptChoice",
+    "SelectFn",
     "agents_md",
     "check_capture_command_fact",
     "check_policy_citations",
     "evidence",
     "get_research_freshness_clock",
     "instruction_surface",
+    "maybe_resolve_schema_upgrade",
     "models",
     "parse_portfolio_toml",
     "remediation",

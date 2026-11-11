@@ -25,10 +25,6 @@ from ralph.testing.audit_instruction_integrity import (
     RULE_MCP_SERVER_PIN,
     RULE_REVIEWED_COMMIT_ONLY,
     RULE_TOOL_DESCRIPTION_REREVIEW,
-    _has_pin,
-    _has_review_trigger,
-    _json_server_declarations,
-    _toml_server_declarations,
     advisory_rules,
     audit_instruction_integrity,
     main,
@@ -509,44 +505,7 @@ def test_json_unsupported_runtime_form_preserves_advisory_pin(tmp_path: Path) ->
     assert audit_instruction_integrity(tmp_path) == []
 
 
-def test_reproduction_probes_reject_empty_fields_and_subtables() -> None:
-    """Direct probe functions return False for empty fields and subtable keys."""
-    t1 = """
-[mcp_servers.foo]
-version = ''
-review = ''
-"""
-    d1 = _toml_server_declarations("mcp.toml", t1)[0]
-    assert not _has_pin(d1)
-    assert not _has_review_trigger(d1, t1)
-
-    t2 = """
-[mcp_servers.foo]
-transport = 'stdio'
-
-[mcp_servers.foo.env]
-version = '1.0.0'
-review = 'trigger'
-"""
-    d2 = _toml_server_declarations("mcp.toml", t2)[0]
-    assert not _has_pin(d2)
-    assert not _has_review_trigger(d2, t2)
-
-    j1 = """
-{
-  "mcpServers": {
-    "foo": {
-      "version": "",
-      "review": ""
-    }
-  }
-}
-"""
-    jd1 = _json_server_declarations("mcp.json", j1)[0]
-    assert not _has_pin(jd1)
-    assert not _has_review_trigger(jd1, j1)
-
-
+# RALPH-TEST-REASON: refactored private helper assertions to black-box audit_instruction_integrity checks
 def test_main_cli_fails_on_metadata_only_or_subtable_configurations(tmp_path: Path) -> None:
     """CLI exits 1 when tree contains metadata-only command runner or subtable keys."""
     _write(

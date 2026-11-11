@@ -51,10 +51,10 @@ section and the AGENTS.md managed block to decide which conditional
 policy to apply. The default for a conditional starter is "do not
 load it" — the starter's own trigger must fire.
 
-The `execution-kernel.md` starter is the v5 generic layer; every
-other starter shrinks its `## AI execution instructions` to
-domain-specific steps plus a kernel pointer. The kernel rules are
-not rephrased in domain starter body prose.
+The `execution-kernel.md` starter is the generic layer (introduced in v5,
+carrying the v6 schema marker); every other starter shrinks its
+`## AI execution instructions` to domain-specific steps plus a kernel pointer.
+The kernel rules are not rephrased in domain starter body prose.
 
 ## Guard inventory (B9)
 
@@ -126,18 +126,20 @@ Run the v6-specific tests:
 
 ```bash
 cd ralph-workflow
-python -m pytest tests/project_policy/test_v6_enforcement.py -q
+python -m pytest tests/project_policy/test_v6_enforcement.py tests/project_policy/test_fresh_init_v6.py -q
 ```
 
 ## What ships in the v6 contract
 
-* 12 required core files (was 11): add `execution-kernel.md`.
-* 10 conditional files (unchanged).
+* 12 required core files (`execution-kernel.md` plus the 11 domain policies; all carrying schema marker `<!-- ralph-policy-schema: v6 -->`).
+* 10 conditional files (unchanged; carrying the v6 schema marker).
+* 7-column `## Guard inventory` table on every applicable starter with the new `Enforcement` column.
+* Starters fill model: starters ship with explicit placeholders (`deterministic: PROJECT-FACT-UNRESOLVED`), with no Ralph audit IDs pre-filled.
 * Portfolio schema v3: every control needs `enforcement`
   (`deterministic: <id>` or `advisory: <reason>; review: <trigger>`), in
   addition to `detects` and `retirement_trigger`.
-* `## Guard inventory` table on every applicable starter.
-* Three readiness dimensions on every surface.
+* Instruction-surface hygiene checks in readiness gate (line budgets, hidden/bidi Unicode, citation freshness).
+* Three readiness dimensions on every surface (`structure_complete`, `implementation_verified`, `outcome_evidence_reviewed`).
 
 ## What does NOT ship in v6
 

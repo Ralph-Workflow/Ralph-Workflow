@@ -29,13 +29,13 @@ profiles are unrouted criteria.
 
 ## Bounded policy portfolio
 
-Project-policy schema v4 adds one canonical manifest:
+Project-policy schema v6 requires one canonical manifest:
 `docs/ralph-workflow-policy/policy-portfolio.toml`. The policy Markdown files
 remain the domain-owned source for requirements and project facts; the manifest
 is the single source for which controls are effective, where they run, and what
 they cost.
 
-Ralph parses portfolio schema `v1` in
+Ralph parses portfolio schema versions up to `v3` in
 `ralph/project_policy/portfolio.py::parse_portfolio_toml`. Composition is
 deterministic and independent of declaration order:
 
@@ -72,7 +72,7 @@ a validated oracle, and an independent verdict. Process exit, telemetry,
 provenance, agent narration, or private-state inspection alone is not accepted
 as an evidence contract.
 
-Schema v4 is delivered through the existing single upgrade-or-freeze decision.
+Schema v6 is delivered through the existing single upgrade-or-freeze decision.
 Ralph seeds the portfolio only after upgrade consent; a frozen older schema is
 left unchanged. Readiness evidence and cache signatures include the manifest,
 applicability decisions, policy files, stack signals, and migration candidates,
