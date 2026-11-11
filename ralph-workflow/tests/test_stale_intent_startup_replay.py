@@ -10,6 +10,7 @@ stay free of white-box coupling to another test module's privates.
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,6 +47,7 @@ def _commit(root: Path, path: str, content: str) -> str:
     return _git(root, "rev-parse", "HEAD").stdout.strip()
 
 
+@functools.lru_cache(maxsize=4)
 def _make_config(target: str) -> UnifiedConfig:
     """Return the auto-integrate config that lands ``target``."""
     return UnifiedConfig.model_validate(

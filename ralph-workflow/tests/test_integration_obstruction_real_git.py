@@ -57,9 +57,12 @@ def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> 
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    _run(repo_root, "add", filename)
-    _run(repo_root, "commit", "-m", message)
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    from git import Repo
+
+    repo = Repo(repo_root)
+    repo.index.add([filename])
+    commit = repo.index.commit(message)
+    return commit.hexsha
 
 
 def _behind_with_untracked_copy(tmp_git_repo: Path, content: str) -> str:

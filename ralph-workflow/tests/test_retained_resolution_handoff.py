@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import inspect
 import shutil
 import tempfile
@@ -40,6 +41,16 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
+_COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
+
+
+@pytest.fixture(autouse=True)
+def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ralph.prompts import commit_evidence
+
+    monkeypatch.setattr(commit_evidence, "commit_generation_diff", lambda _root: "")
+    monkeypatch.setattr(commit_evidence, "list_changed_paths", lambda _root: [])
+
 
 def _fresh_git_repo(base: Path, template: Path, name: str) -> Path:
     """Clone the pristine git template so each looped case starts from a clean repo.
@@ -48,10 +59,11 @@ def _fresh_git_repo(base: Path, template: Path, name: str) -> Path:
     looped case has to copy the session template again to stay independent.
     """
     repo = base / f"case-{name}"
-    shutil.copytree(template, repo)
+    shutil.copytree(template, repo, ignore=_COPY_IGNORE)
     return repo
 
 
+@functools.lru_cache(maxsize=16)
 def _make_config(target: str, *, enabled: bool = True) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
@@ -424,44 +436,29 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     tmp_git_repo: Path,
     tmp_path: Path,
 ) -> None:
-    crash_before_mutation = False
     owner = tmp_git_repo
     target = _git(owner, "branch", "--show-current").stdout.strip()
     _commit(owner, "shared.txt", "base\n")
     assert _git(owner, "switch", "-c", "remote-seed").returncode == 0
-    remote = _commit(owner, "shared.txt", "remote\n")
+    _commit(owner, "shared.txt", "remote\n")
     origin = tmp_path / "origin.git"
     assert _git(owner, "init", "--bare", str(origin)).returncode == 0
     assert _git(owner, "remote", "add", "origin", str(origin)).returncode == 0
     assert _git(owner, "push", "origin", f"remote-seed:{target}").returncode == 0
     assert _git(owner, "switch", target).returncode == 0
-    local = _commit(owner, "shared.txt", "local\n")
+    _commit(owner, "shared.txt", "local\n")
     feature = tmp_path / "feature"
     assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
-    feature_tip = _commit(feature, "feature.txt", "valuable completed feature\n")
-    if crash_before_mutation:
-        write_record(
-            feature,
-            IntegrationRecord(
-                phase="integrating",
-                target=target,
-                pre_feature_sha=local,
-                pre_target_sha=remote,
-                operation_kind="target_reconcile",
-                owning_worktree=str(owner),
-                initiating_feature_sha=feature_tip,
-            ),
-        )
-    else:
-        initial = auto_integrate_after_commit(
-            UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
-            WorkspaceScope(feature),
-            RebaseState(),
-            rebase_stop_resolver=lambda *_args: False,
-            sleep=lambda _s: None,
-            jitter=lambda: 0.0,
-        )
-        assert initial is not None and read_record(feature) is not None
+    _commit(feature, "feature.txt", "valuable completed feature\n")
+    initial = auto_integrate_after_commit(
+        UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
+        WorkspaceScope(feature),
+        RebaseState(),
+        rebase_stop_resolver=lambda *_args: False,
+        sleep=lambda _s: None,
+        jitter=lambda: 0.0,
+    )
+    assert initial is not None and read_record(feature) is not None
 
     def resolve(root: Path, _branch: str, _stop: RebaseStop) -> bool:
         (root / "shared.txt").write_text("local and remote preserved\n", encoding="utf-8")
@@ -472,10 +469,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
 
     owner_receipt = record_path(owner)
     owner_receipt.parent.mkdir(parents=True, exist_ok=True)
-    if crash_before_mutation:
-        owner_receipt.symlink_to(owner / "unavailable-receipt.json")
-    else:
-        owner_receipt.write_text("{", encoding="utf-8")
+    owner_receipt.write_text("{", encoding="utf-8")
     before = _git(owner, "rev-parse", "HEAD").stdout
     blocked = recover_incomplete_integration(
         WorkspaceScope(feature),
@@ -484,10 +478,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     )
     assert blocked is not None and blocked.recovery_record_retained
     assert _git(owner, "rev-parse", "HEAD").stdout == before
-    if crash_before_mutation:
-        assert owner_receipt.is_symlink()
-    else:
-        assert owner_receipt.read_text(encoding="utf-8") == "{"
+    assert owner_receipt.read_text(encoding="utf-8") == "{"
     assert not inspect_integration_resolution(feature, blocked).dispatch_allowed
     owner_receipt.unlink()
     recovered = recover_incomplete_integration(

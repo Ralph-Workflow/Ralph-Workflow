@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -31,20 +33,51 @@ def _commit(root: Path, path: str, content: str) -> str:
     return _git(root, "rev-parse", "HEAD").stdout.strip()
 
 
+_PREPARED_TEMPLATE: list[tuple[Path, str, IntegrationRecord]] = []
+_COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
+
+
 def _prepared(root: Path) -> tuple[str, IntegrationRecord]:
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    _commit(root, "shared.txt", "feature\n")
-    assert _git(root, "switch", target).returncode == 0
-    _commit(root, "shared.txt", "target\n")
-    assert _git(root, "switch", "feature").returncode == 0
-    assert _git(root, "merge", "--no-edit", target).returncode != 0
-    FsWorkspace(root).write("shared.txt", "resolved\n")
-    assert _git(root, "add", "shared.txt").returncode == 0
-    assert prepare_pending_merge(root, target) is None
-    record = read_record(root)
-    assert record is not None
+    if not _PREPARED_TEMPLATE:
+        td = Path(tempfile.mkdtemp(prefix="prepared-merge-template-"))
+        assert _git(td, "init").returncode == 0
+        assert _git(td, "config", "user.name", "Test Committer").returncode == 0
+        assert _git(td, "config", "user.email", "test@example.com").returncode == 0
+        assert _git(td, "config", "core.logAllRefUpdates", "false").returncode == 0
+        assert _git(td, "config", "commit.gpgSign", "false").returncode == 0
+        assert _git(td, "config", "gc.auto", "0").returncode == 0
+        assert _git(td, "config", "core.fsync", "none").returncode == 0
+        target = _git(td, "branch", "--show-current").stdout.strip()
+        if not target:
+            target = "main"
+            assert _git(td, "branch", "-M", target).returncode == 0
+        _commit(td, "shared.txt", "base\n")
+        assert (
+            _git(td, "switch", "-c", "feature").returncode == 0
+        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        _commit(td, "shared.txt", "feature\n")
+        assert (
+            _git(td, "switch", target).returncode == 0
+        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        _commit(td, "shared.txt", "target\n")
+        assert (
+            _git(td, "switch", "feature").returncode == 0
+        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        assert (
+            _git(td, "merge", "--no-edit", target).returncode != 0
+        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        FsWorkspace(td).write("shared.txt", "resolved\n")
+        assert (
+            _git(td, "add", "shared.txt").returncode == 0
+        )  # RALPH-TEST-REASON: template setup uses td instead of root to avoid repeated subprocesses
+        assert prepare_pending_merge(td, target) is None
+        record = read_record(td)
+        assert record is not None
+        _PREPARED_TEMPLATE.append((td, target, record))
+
+    template_dir, target, record = _PREPARED_TEMPLATE[0]
+    shutil.rmtree(root, ignore_errors=True)
+    shutil.copytree(template_dir, root, ignore=_COPY_IGNORE)
     return target, record
 
 

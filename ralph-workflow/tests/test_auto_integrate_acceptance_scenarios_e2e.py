@@ -13,6 +13,7 @@ they run inside the 60-second combined ``make verify`` budget.
 
 from __future__ import annotations
 
+import functools
 import shutil
 import subprocess
 import time
@@ -30,6 +31,7 @@ from ralph.workspace.scope import WorkspaceScope
 
 _TARGET = "release"
 _REMOTE = "tacos"
+_COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -103,7 +105,7 @@ def _seed_repo(path: Path, default_branch: str = _TARGET) -> None:
     if template is None:
         _init_repo(path, default_branch)
         return
-    shutil.copytree(template, path)
+    shutil.copytree(template, path, ignore=_COPY_IGNORE)
     if default_branch != _TARGET:
         assert _run(path, "branch", "-M", default_branch).returncode == 0
 
@@ -112,6 +114,7 @@ def _head_sha(repo_root: Path, ref: str) -> str:
     return _run(repo_root, "rev-parse", ref).stdout.strip()
 
 
+@functools.lru_cache(maxsize=16)
 def _build_config(
     *,
     enabled: bool = True,

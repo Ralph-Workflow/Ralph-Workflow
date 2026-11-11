@@ -47,8 +47,11 @@ product criterion).
 
 from __future__ import annotations
 
+import functools
 import os
 import shlex
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -78,8 +81,6 @@ pytestmark = [
 ]
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ralph.config.models import AgentConfig, UnifiedConfig
 
 
@@ -223,6 +224,25 @@ def _apply_redirect(
     return agent_config, config
 
 
+@functools.cache
+def _base_smoke_config() -> UnifiedConfig:
+    dummy_scope = WorkspaceScope(Path(tempfile.gettempdir()))
+    cfg = load_config(None, {}, workspace_scope=dummy_scope)
+    return cfg.model_copy(
+        update={
+            "general": cfg.general.model_copy(
+                update={
+                    "agent_idle_drain_window_seconds": 0.05,
+                    "agent_parent_exit_grace_seconds": 0.2,
+                    "agent_descendant_wait_timeout_seconds": 1.0,
+                    "agent_descendant_wait_poll_seconds": 0.01,
+                    "agent_process_exit_wait_seconds": 2.0,
+                }
+            )
+        }
+    )
+
+
 def _end_to_end_test_for_harness(
     workspace: Path,
     transport: str,
@@ -299,30 +319,7 @@ def _end_to_end_test_for_harness(
         monkeypatch.setenv("MOCK_MULTIMODAL_IGNORE_RESPONSE", "1")
         monkeypatch.delenv("MOCK_MULTIMODAL_SKIP_MEDIA", raising=False)
 
-    workspace_scope = WorkspaceScope(workspace)
-    config = load_config(None, {}, workspace_scope=workspace_scope)
-    # S-7 (test-only latency tightening): every knob below governs a
-    # *post-completion* wait -- the drain window the read loop sits out
-    # after the terminal completion sentinel, the descendant-wait poll
-    # quantum, and the parent-exit grace. The stub has no descendants and
-    # emits everything before its completion sentinel, so shortening these
-    # waits removes ~0.8s of pure sleeping per run without weakening any
-    # gate: the smoke run's own ``_SMOKE_IDLE_TIMEOUT_SECONDS`` (30s) and
-    # session ceiling are untouched, and the graded contract below (WIRE
-    # provenance, multimodal breaks) is asserted exactly as before.
-    config = config.model_copy(
-        update={
-            "general": config.general.model_copy(
-                update={
-                    "agent_idle_drain_window_seconds": 0.05,
-                    "agent_parent_exit_grace_seconds": 0.2,
-                    "agent_descendant_wait_timeout_seconds": 1.0,
-                    "agent_descendant_wait_poll_seconds": 0.01,
-                    "agent_process_exit_wait_seconds": 2.0,
-                }
-            )
-        }
-    )
+    config = _base_smoke_config()
 
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(agent_name)
