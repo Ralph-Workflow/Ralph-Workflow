@@ -620,6 +620,85 @@ def test_scan_guarded_config_files_with_explicit_dirs_includes_bundled_template(
     assert not guarded.is_dir
 
 
+def test_explicit_dir_scan_detects_bundled_template_content_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit-dir scan detects a content mutation of the bundled agents template."""
+    # RALPH-TEST-REASON: the shipped template must survive this scenario byte
+    # for byte, so its bytes are captured before the mutation runs and compared
+    # again afterwards. Comparing the raw bytes (not a re-derived hash) makes
+    # any write to the shipped file fail the test.
+    real_template_bytes = _BUNDLED_AGENTS_TEMPLATE.read_bytes()
+
+    synthetic = tmp_path / "synthetic-ralph-workflow-agents.toml"
+    original_content = "[agents.claude]\ncmd = 'claude'\n"
+    mutated_content = "[agents.claude]\ncmd = 'Claude'\n"
+    synthetic.write_text(original_content, encoding="utf-8")
+
+    # RALPH-TEST-REASON: the scanner resolves the bundled template from its own
+    # module globals at CALL time, so the stand-in has to be injected into that
+    # namespace for the duration of the test. Redirecting the global is what
+    # lets the composition be proved without writing to the shipped template.
+    # The globals mapping of the scanner function is that namespace, so the
+    # patch redirects the very lookup the production scan performs.
+    monkeypatch.setitem(
+        _scan_guarded_config_files.__globals__,
+        "_BUNDLED_AGENTS_TEMPLATE",
+        synthetic,
+    )
+
+    # RALPH-TEST-REASON: the guarded-directory scan only collects files whose
+    # name matches the guarded pattern, and the synthetic stand-in deliberately
+    # does not match it. Clearing the override pins the scan to the production
+    # name patterns, so the ONLY way the synthetic path can enter the snapshot
+    # is the bundled-template branch this test is about.
+    monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+
+    before = _scan_guarded_config_files(guarded_dirs=[tmp_path])
+
+    # RALPH-TEST-REASON: an explicit guarded_dirs scan must still protect the
+    # bundled template, so the stand-in has to be in the snapshot even though
+    # the caller named no directory for it.
+    assert synthetic.resolve() in before
+    before_snapshot = before[synthetic.resolve()]
+    assert before_snapshot.sha256
+    assert not before_snapshot.is_dir
+
+    original_stat = synthetic.stat()
+    synthetic.write_text(mutated_content, encoding="utf-8")
+    # RALPH-TEST-REASON: the mutation must be a pure content change, so the
+    # mtime is restored afterwards. With size and mtime unchanged, the content
+    # hash is the only snapshot field that differs, which is what makes a
+    # content-hash violation the only possible detection.
+    os.utime(synthetic, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+
+    after = _scan_guarded_config_files(guarded_dirs=[tmp_path])
+    after_snapshot = after[synthetic.resolve()]
+
+    # RALPH-TEST-REASON: the mutation must change the content hash and nothing
+    # else, otherwise the detection below could be attributed to a metadata
+    # change instead of to the content change.
+    assert before_snapshot.sha256 != after_snapshot.sha256
+    assert before_snapshot.size == after_snapshot.size
+    assert before_snapshot.mtime_ns == after_snapshot.mtime_ns
+
+    violations = _diff_config_snapshots(before, after)
+    synthetic_violations = [v for v in violations if str(synthetic.resolve()) in v]
+
+    # RALPH-TEST-REASON: exactly one violation must be reported for the mutated
+    # template, and it must be the content-hash kind: the guard has to name the
+    # content change, not merely the mtime bump that a rewrite also causes.
+    assert len(synthetic_violations) == 1
+    assert synthetic_violations[0].startswith("MODIFIED (content hash changed): ")
+    assert "content hash changed" in synthetic_violations[0]
+    assert "mtime changed" not in synthetic_violations[0]
+
+    # RALPH-TEST-REASON: the whole point of the scenario is that the shipped
+    # template is never written to.
+    assert _BUNDLED_AGENTS_TEMPLATE.read_bytes() == real_template_bytes
+
+
 def test_real_config_guard_catches_symlink_unprefixed_and_transient_in_pytester(
     pytester: pytest.Pytester,
     tmp_path: Path,

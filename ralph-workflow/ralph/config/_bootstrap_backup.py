@@ -6,6 +6,7 @@ import logging
 import shutil
 import tomllib
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -16,6 +17,7 @@ from ralph.config._config_filenames import (
     _GLOBAL_AGENTS_FILENAME,
     _GLOBAL_POLICY_FILENAME_MAP,
 )
+from ralph.config._paths import resolve_global_config_dir
 from ralph.config.loader import load_toml
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -90,12 +92,81 @@ def _resolve_global_policy_source(
     return _get_bundled_defaults_dir() / local_policy_filename
 
 
-def _is_agents_config(target: Path) -> bool:
+def _safe_resolved_path(path: Path) -> Path | None:
+    """Return the canonical identity of *path*, or None when it cannot be resolved.
+
+    ``Path.resolve`` raises ``RuntimeError`` on a symlink loop and ``OSError``
+    on other filesystem failures. An unknown identity must never be reported as
+    a match, so every failure degrades to None.
+    """
     try:
-        resolved_name = target.resolve().name
-    except OSError:
-        resolved_name = target.name
-    return _GLOBAL_AGENTS_FILENAME in {target.name, resolved_name}
+        return path.resolve()
+    except (OSError, RuntimeError):
+        return None
+
+
+def _same_file_identity(left: Path, right: Path) -> bool:
+    """Return True when both paths denote ONE file on disk.
+
+    ``Path.samefile`` compares device and inode, so it recognises a hard
+    link -- two names for one backing file -- which a resolved-path comparison
+    cannot see. A path that does not exist has no identity to compare.
+    """
+    try:
+        return left.samefile(right)
+    except (OSError, ValueError):
+        return False
+
+
+def _agents_config_candidate_paths(target: Path) -> list[Path]:
+    """Return the agents-configuration paths whose identity *target* must match.
+
+    The sibling path covers the co-located layout where the main config and
+    the agents config share one directory; the XDG path covers the active
+    user-global agents config, which may live in a different directory than
+    the main config being migrated.
+    """
+    candidates = [target.parent / _GLOBAL_AGENTS_FILENAME]
+    # An undeterminable home directory leaves the sibling candidate only.
+    with suppress(OSError, RuntimeError):
+        candidates.append(resolve_global_config_dir() / _GLOBAL_AGENTS_FILENAME)
+    return candidates
+
+
+def _agents_config_alias_reason(target: Path) -> str | None:
+    """Return why *target* is the agents configuration file, or None when it is not.
+
+    A filename comparison alone cannot see an alias: the main config and the
+    agents config may be two names for ONE backing file whose own name is
+    neither of them. Comparing the identity of *target* with the identity of
+    every known agents-configuration path closes that bypass, so the migration
+    never writes to the operator-owned agents file. Identity is the file
+    itself (device and inode), not its spelling, so a hard link is recognised
+    as the very same file a symlink would point at.
+
+    An identity that cannot be established is treated as an alias: refusing to
+    migrate is recoverable, rewriting the agents file is not.
+    """
+    if target.name == _GLOBAL_AGENTS_FILENAME:
+        return f"target filename is {_GLOBAL_AGENTS_FILENAME}"
+    resolved_target = _safe_resolved_path(target)
+    if resolved_target is None:
+        return "target path could not be resolved to an identity"
+    if resolved_target.name == _GLOBAL_AGENTS_FILENAME:
+        return f"resolved target filename is {_GLOBAL_AGENTS_FILENAME}"
+    for candidate in _agents_config_candidate_paths(target):
+        resolved_candidate = _safe_resolved_path(candidate)
+        if resolved_candidate is None:
+            continue
+        if resolved_candidate != resolved_target and not _same_file_identity(
+            resolved_target, candidate
+        ):
+            continue
+        return (
+            f"target resolves to the same file as agents configuration {candidate} "
+            f"(resolved identity {resolved_candidate})"
+        )
+    return None
 
 
 def _extract_legacy_agent_drains(target: Path) -> list[tuple[str, str]]:
@@ -126,10 +197,11 @@ def _extract_legacy_agent_drains(target: Path) -> list[tuple[str, str]]:
 
 
 def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
-    if _is_agents_config(target):
+    alias_reason = _agents_config_alias_reason(target)
+    if alias_reason is not None:
         msg = (
             f"Skipping legacy global config migration: target {target} refers to "
-            f"agents configuration file {_GLOBAL_AGENTS_FILENAME}"
+            f"agents configuration file {_GLOBAL_AGENTS_FILENAME} ({alias_reason})"
         )
         logger.warning(msg)
         _std_logger.warning(msg)
