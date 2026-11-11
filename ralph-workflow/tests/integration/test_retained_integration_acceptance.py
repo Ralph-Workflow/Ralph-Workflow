@@ -54,9 +54,16 @@ def _git(root: Path, *args: str) -> GitRunResult:
 
 def _commit(root: Path, path: str, content: str) -> str:
     (root / path).write_text(content, encoding="utf-8")
-    assert _git(root, "add", path).returncode == 0
-    assert _git(root, "commit", "-m", path).returncode == 0
-    return _git(root, "rev-parse", "HEAD").stdout.strip()
+    from git import Repo
+
+    repo = Repo(root)
+    try:
+        repo.index.add([path])
+        commit = repo.index.commit(path)
+        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        return commit.hexsha
+    finally:
+        repo.close()
 
 
 def test_acceptance_scenario_1_linked_worktree_unrelated_branch_advance(

@@ -43,12 +43,17 @@ def _run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def _init_repo(root: Path, name: str = "Test") -> None:
     """Create a minimal git repo with a first commit."""
-    _run_git(root, "init")
-    _run_git(root, "config", "user.email", f"{name.lower()}@test.com")
-    _run_git(root, "config", "user.name", name)
+    from git import Repo
+
+    repo = Repo.init(root)
+    with repo.config_writer() as cfg:
+        cfg.set_value("user", "name", name)
+        cfg.set_value("user", "email", f"{name.lower()}@test.com")
     (root / "file.txt").write_text("initial\n")
-    _run_git(root, "add", ".")
-    _run_git(root, "commit", "-m", "initial")
+    repo.index.add(["file.txt"])
+    # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+    repo.index.commit("initial")
+    repo.close()
 
 
 def _detached_at(root: Path, target: str) -> None:
@@ -73,8 +78,27 @@ def _append_synthetic_reflog(root: Path, sha: str, subject: str) -> None:
     logs_head.write_text(original + synthetic)
 
 
+def _commit_file(root: Path, filename: str, content: str, message: str) -> str:
+    from git import Repo
+
+    (root / filename).write_text(content)
+    repo = Repo(root)
+    try:
+        repo.index.add([filename])
+        # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        commit = repo.index.commit(message)
+        return commit.hexsha
+    finally:
+        repo.close()
+
+
 def _head_oid(root: Path) -> str:
-    return _run_git(root, "rev-parse", "HEAD").stdout.strip()
+    from git import Repo
+
+    repo = Repo(root)
+    sha = repo.head.commit.hexsha
+    repo.close()
+    return sha
 
 
 class TestDetachedBranchNameRealGit:
@@ -90,13 +114,7 @@ class TestDetachedBranchNameRealGit:
 
         # Create a named branch
         _run_git(tmp_path, "checkout", "-b", "feature")
-        (tmp_path / "feature.txt").write_text("feat\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "add feature")
-
-        # Get the SHA of the branch tip
-        sha_result = _run_git(tmp_path, "rev-parse", "HEAD")
-        sha = sha_result.stdout.strip()
+        sha = _commit_file(tmp_path, "feature.txt", "feat\n", "add feature")
 
         # Detach HEAD at the branch tip SHA
         _detached_at(tmp_path, sha)
@@ -178,12 +196,7 @@ class TestDetachedBranchNameRealGit:
         _run_git(tmp_path, "checkout", "-b", "main")
         main_sha = _run_git(tmp_path, "rev-parse", "HEAD").stdout.strip()
         _run_git(tmp_path, "checkout", "-b", "feature")
-        (tmp_path / "feat.txt").write_text("feat\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "feature commit")
-
-        # Detach HEAD at the new commit (a SHA) -- this is the newest entry.
-        new_sha = _run_git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+        new_sha = _commit_file(tmp_path, "feat.txt", "feat\n", "feature commit")
         _detached_at(tmp_path, new_sha)
 
         # Sanity: HEAD is detached and not at main_sha.
@@ -210,9 +223,7 @@ class TestDetachedBranchNameRealGit:
         # most-recent entry, but a brand new commit on detached HEAD will
         # then make an older reflog entry name ``feature`` as the to-field.
         _detached_at(tmp_path, feature_sha)
-        (tmp_path / "x.txt").write_text("x\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "detached work")
+        _commit_file(tmp_path, "x.txt", "x\n", "detached work")
 
         # Corrupt HEAD so rev-parse fails.
         git_dir = tmp_path / ".git"
@@ -244,12 +255,8 @@ class TestDetachedBranchNameRealGit:
         _detached_at(tmp_path, develop_sha)
 
         # Make commits on the detached HEAD
-        (tmp_path / "c1.txt").write_text("c1\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "C1")
-        (tmp_path / "c2.txt").write_text("c2\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "C2")
+        _commit_file(tmp_path, "c1.txt", "c1\n", "C1")
+        _commit_file(tmp_path, "c2.txt", "c2\n", "C2")
 
         # Most recent checkout entry is still "checkout: moving from develop to <sha>"
         # (the SHA of develop's tip). The "to" part is a SHA, not "develop".
@@ -306,17 +313,12 @@ class TestDetachedBranchNameRealGit:
         """
         _init_repo(tmp_path)
         _run_git(tmp_path, "checkout", "-b", "main")
-        (tmp_path / "m.txt").write_text("m\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "main c2")
-        sha_main = _run_git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+        sha_main = _commit_file(tmp_path, "m.txt", "m\n", "main c2")
         # Detach HEAD at sha_main (so HEAD == main tip).
         _detached_at(tmp_path, sha_main)
         # Add a new commit on detached HEAD -- now HEAD is forward of
         # ``main``'s tip.
-        (tmp_path / "d.txt").write_text("d\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "detached c3")
+        _commit_file(tmp_path, "d.txt", "d\n", "detached c3")
         detached_head_oid = _head_oid(tmp_path)
         assert detached_head_oid != sha_main
         # Inject a synthetic reflog entry naming ``main`` as the
@@ -353,17 +355,11 @@ class TestDetachedBranchNameRealGit:
         _run_git(tmp_path, "checkout", "-b", "main")
         sha_c1 = _run_git(tmp_path, "rev-parse", "HEAD").stdout.strip()
         # Advance main to C2.
-        (tmp_path / "m.txt").write_text("m\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "main c2")
-        sha_c2 = _run_git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+        sha_c2 = _commit_file(tmp_path, "m.txt", "m\n", "main c2")
         # Branch feature at C1, advance to C3.
         _run_git(tmp_path, "checkout", sha_c1)
         _run_git(tmp_path, "checkout", "-b", "feature")
-        (tmp_path / "f.txt").write_text("f\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "feature c3")
-        sha_c3 = _run_git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+        sha_c3 = _commit_file(tmp_path, "f.txt", "f\n", "feature c3")
         # Create oldbranch at C1 (behind detached HEAD once we detach).
         _run_git(tmp_path, "branch", "oldbranch", sha_c1)
         # Detach HEAD at C1.
@@ -417,10 +413,7 @@ class TestDetachedBranchNameRealGit:
         # Working-tree content is preserved across reattach; the
         # checkout above left an untracked-but-touched tree, so record
         # the state before recovery.
-        (tmp_path / "work.txt").write_text("work\n")
-        _run_git(tmp_path, "add", ".")
-        _run_git(tmp_path, "commit", "-m", "work")
-        detached_head_oid = _head_oid(tmp_path)
+        detached_head_oid = _commit_file(tmp_path, "work.txt", "work\n", "work")
         work_before = (tmp_path / "work.txt").read_text()
 
         # Move ``feature`` so its tip equals the current detached HEAD.

@@ -36,17 +36,27 @@ def _git(repo: Path, *args: str) -> str:
 
 def _commit(repo: Path, name: str, content: str) -> None:
     (repo / name).write_text(content, encoding="utf-8")
-    _git(repo, "add", name)
-    _git(repo, "commit", "-q", "-m", f"{name}: {content.strip()}")
+    from git import Repo
+
+    git_repo = Repo(repo)
+    try:
+        git_repo.index.add([name])
+        git_repo.index.commit(f"{name}: {content.strip()}")
+    finally:
+        git_repo.close()
 
 
 def _init(repo: Path) -> None:
     repo.mkdir(parents=True, exist_ok=True)
-    _git(repo, "init", "-q")
-    _git(repo, "config", "user.email", "test@example.com")
-    _git(repo, "config", "user.name", "Test User")
+    from git import Repo
+
+    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
+    r = Repo.init(repo, initial_branch=_TARGET)
+    with r.config_writer() as cfg:
+        cfg.set_value("user", "email", "test@example.com")
+        cfg.set_value("user", "name", "Test User")
+    r.close()
     _commit(repo, "shared.txt", "base\n")
-    _git(repo, "branch", "-M", _TARGET)
     _git(repo, "checkout", "-q", "-b", "feature")
 
 

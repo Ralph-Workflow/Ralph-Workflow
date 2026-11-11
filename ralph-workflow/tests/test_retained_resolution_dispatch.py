@@ -104,10 +104,17 @@ def _branch_sha(root: Path, branch: str) -> str:
 
 def _commit(root: Path, path: str, content: str) -> str:
     """Commit a file and return the new tip's SHA."""
+    from git import Repo
+
     FsWorkspace(root).write(path, content)
-    assert _git(root, "add", path).returncode == 0
-    assert _git(root, "commit", "-m", path).returncode == 0
-    return _branch_sha(root, _current_branch(root))
+    repo = Repo(root)
+    try:
+        repo.index.add([path])
+        commit = repo.index.commit(path)
+        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        return commit.hexsha
+    finally:
+        repo.close()
 
 
 def _seed_commit(root: Path, path: str, content: str) -> str:

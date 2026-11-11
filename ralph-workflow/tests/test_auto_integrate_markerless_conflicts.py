@@ -69,8 +69,15 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def _commit(repo: Path, path: str, content: str, message: str) -> None:
     (repo / path).write_text(content, encoding="utf-8")
-    assert _git(repo, "add", path).returncode == 0
-    assert _git(repo, "commit", "-m", message).returncode == 0
+    from git import Repo
+
+    git_repo = Repo(repo)
+    try:
+        git_repo.index.add([path])
+        commit = git_repo.index.commit(message)
+        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+    finally:
+        git_repo.close()
 
 
 @pytest.mark.subprocess_e2e

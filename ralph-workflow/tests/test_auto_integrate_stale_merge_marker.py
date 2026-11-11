@@ -46,20 +46,25 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _base_branch(repo_root: Path) -> str:
-    return (
-        _run(repo_root, "symbolic-ref", "--quiet", "HEAD")
-        .stdout.strip()
-        .removeprefix("refs/heads/")
-    )
+    from git import Repo
+
+    return Repo(repo_root).active_branch.name
 
 
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
+    from git import Repo
+
     path = repo_root / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
-    assert _run(repo_root, "add", filename).returncode == 0
-    assert _run(repo_root, "commit", "-m", message).returncode == 0
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    repo = Repo(repo_root)
+    try:
+        repo.index.add([filename])
+        commit = repo.index.commit(message)
+        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        return commit.hexsha
+    finally:
+        repo.close()
 
 
 def _build_config(*, target: str) -> UnifiedConfig:

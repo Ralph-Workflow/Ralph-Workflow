@@ -50,21 +50,30 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    assert _run(repo_root, "add", filename).returncode == 0
-    assert _run(repo_root, "commit", "-m", message).returncode == 0
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    from git import Repo
+
+    repo = Repo(repo_root)
+    repo.index.add([filename])
+    commit = repo.index.commit(message)
+    assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+    return commit.hexsha
 
 
 def _init_repo(path: Path, default_branch: str = _TARGET) -> None:
     """Seed a repository whose default branch is ``default_branch``."""
     path.mkdir(parents=True, exist_ok=True)
-    assert _run(path, "init").returncode == 0
-    assert _run(path, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(path, "config", "user.name", "Test User").returncode == 0
-    assert _run(path, "config", "core.logAllRefUpdates", "false").returncode == 0
-    assert _run(path, "config", "commit.gpgSign", "false").returncode == 0
-    assert _run(path, "config", "gc.auto", "0").returncode == 0
-    assert _run(path, "config", "core.fsync", "none").returncode == 0
+    from git import Repo
+
+    # RALPH-TEST-REASON: GitPython config replaces subprocess git config to reduce CPU overhead
+    repo = Repo.init(path)
+    with repo.config_writer() as cfg:
+        cfg.set_value("user", "email", "test@example.com")
+        cfg.set_value("user", "name", "Test User")
+        cfg.set_value("core", "logAllRefUpdates", "false")
+        cfg.set_value("commit", "gpgSign", "false")
+        cfg.set_value("gc", "auto", "0")
+        cfg.set_value("core", "fsync", "none")
+    repo.close()
     _commit(path, "seed.txt", "seed\n", "seed")
     assert _run(path, "branch", "-M", default_branch).returncode == 0
 

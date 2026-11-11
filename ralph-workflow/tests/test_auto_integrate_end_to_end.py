@@ -92,20 +92,33 @@ def test_remote_reconcile_conflict_regression_lands_feature_after_clean_abort(
     assert _run(tmp_git_repo, "remote", "add", "origin", str(bare)).returncode == 0
     assert _run(tmp_git_repo, "push", "-u", "origin", main).returncode == 0
     (tmp_git_repo / "conflict.txt").write_text("local\n", encoding="utf-8")
-    assert _run(tmp_git_repo, "add", "conflict.txt").returncode == 0
-    assert _run(tmp_git_repo, "commit", "-m", "local target").returncode == 0
+    from git import Repo
+
+    r = Repo(tmp_git_repo)
+    r.index.add(["conflict.txt"])
+    # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+    r.index.commit("local target")
+    r.close()
     assert _run(tmp_git_repo, "checkout", "-b", "feature").returncode == 0
     (tmp_git_repo / "feature.txt").write_text("feature\n", encoding="utf-8")
-    assert _run(tmp_git_repo, "add", "feature.txt").returncode == 0
-    assert _run(tmp_git_repo, "commit", "-m", "feature").returncode == 0
+    r = Repo(tmp_git_repo)
+    r.index.add(["feature.txt"])
+    # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+    r.index.commit("feature")
+    r.close()
     assert _run(tmp_git_repo, "worktree", "add", str(owner), main).returncode == 0
 
     assert _run(tmp_git_repo.parent, "clone", str(bare), str(writer)).returncode == 0
-    assert _run(writer, "config", "user.name", "Test User").returncode == 0
-    assert _run(writer, "config", "user.email", "test@example.com").returncode == 0
+    rw = Repo(writer)
+    # RALPH-TEST-REASON: GitPython config replaces subprocess git config to reduce CPU overhead
+    with rw.config_writer() as cfg:
+        cfg.set_value("user", "name", "Test User")
+        cfg.set_value("user", "email", "test@example.com")
     (writer / "conflict.txt").write_text("remote\n", encoding="utf-8")
-    assert _run(writer, "add", "conflict.txt").returncode == 0
-    assert _run(writer, "commit", "-m", "remote target").returncode == 0
+    rw.index.add(["conflict.txt"])
+    # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+    rw.index.commit("remote target")
+    rw.close()
     assert _run(writer, "push", "origin", main).returncode == 0
 
     outcome = auto_integrate_after_commit(

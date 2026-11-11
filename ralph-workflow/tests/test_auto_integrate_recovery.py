@@ -103,18 +103,24 @@ def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.Compl
 
 def _base_branch(tmp_git_repo: Path) -> str:
     """Return the seed template's default branch name."""
-    out = _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
-    return out.stdout.strip().removeprefix("refs/heads/")
+    from git import Repo
+
+    return Repo(tmp_git_repo).active_branch.name
 
 
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     """Write+stage+commit ``filename`` and return the resulting HEAD SHA."""
+    from git import Repo
+
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    _run(repo_root, "add", filename)
-    _run(repo_root, "commit", "-m", message)
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    repo = Repo(repo_root)
+    try:
+        repo.index.add([filename])
+        return repo.index.commit(message).hexsha
+    finally:
+        repo.close()
 
 
 def _build_config(
@@ -137,26 +143,18 @@ def _build_config(
 
 def test_recovery_mid_rebase_kill_preserves_feature_resolution(tmp_git_repo: Path) -> None:
     base = _base_branch(tmp_git_repo)
-    (tmp_git_repo / "shared.txt").write_text("line1\nline2\nline3\n", encoding="utf-8")
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "shared seed")
-    a_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    a_sha = _commit(tmp_git_repo, "shared.txt", "line1\nline2\nline3\n", "shared seed")
     _run(tmp_git_repo, "branch", "feature", a_sha)
     _run(tmp_git_repo, "checkout", "feature")
-    (tmp_git_repo / "shared.txt").write_text("line1\nFEATURE-D1\nline3\n", encoding="utf-8")
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "feature: D1")
-    (tmp_git_repo / "shared.txt").write_text(
-        "line1\nFEATURE-D1\nFEATURE-D2\nline3\n", encoding="utf-8"
+    _commit(tmp_git_repo, "shared.txt", "line1\nFEATURE-D1\nline3\n", "feature: D1")
+    pre_feature_sha = _commit(
+        tmp_git_repo,
+        "shared.txt",
+        "line1\nFEATURE-D1\nFEATURE-D2\nline3\n",
+        "feature: D2",
     )
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "feature: D2")
-    pre_feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     _run(tmp_git_repo, "checkout", base)
-    (tmp_git_repo / "shared.txt").write_text("line1\nBASE\nline3\n", encoding="utf-8")
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "base: B")
-    pre_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    pre_target_sha = _commit(tmp_git_repo, "shared.txt", "line1\nBASE\nline3\n", "base: B")
     _run(tmp_git_repo, "checkout", "feature")
     preflight = _run(tmp_git_repo, "rebase", base)
     assert preflight.returncode != 0, "preflight: expected rebase to conflict"
@@ -246,24 +244,15 @@ def test_recovery_killed_after_clean_merge_before_ff(tmp_git_repo: Path) -> None
     completes the ff.
     """
     base = _base_branch(tmp_git_repo)
-    (tmp_git_repo / "shared.txt").write_text("line1\nline2\nline3\n", encoding="utf-8")
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "shared seed")
-    a_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    a_sha = _commit(tmp_git_repo, "shared.txt", "line1\nline2\nline3\n", "shared seed")
     _run(tmp_git_repo, "branch", "feature", a_sha)
     _run(tmp_git_repo, "checkout", "feature")
-    (tmp_git_repo / "shared.txt").write_text("line1\nFEATURE\nline3\n", encoding="utf-8")
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "feature: D1")
-    (tmp_git_repo / "shared.txt").write_text("line1\nline2\nline3\n", encoding="utf-8")
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "feature: D2 revert")
-    pre_feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _commit(tmp_git_repo, "shared.txt", "line1\nFEATURE\nline3\n", "feature: D1")
+    pre_feature_sha = _commit(
+        tmp_git_repo, "shared.txt", "line1\nline2\nline3\n", "feature: D2 revert"
+    )
     _run(tmp_git_repo, "checkout", base)
-    (tmp_git_repo / "shared.txt").write_text("line1\nBASE\nline3\n", encoding="utf-8")
-    _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "base: B")
-    pre_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    pre_target_sha = _commit(tmp_git_repo, "shared.txt", "line1\nBASE\nline3\n", "base: B")
     _run(tmp_git_repo, "checkout", "feature")
     assert _run(tmp_git_repo, "merge", "--no-edit", base).returncode == 0
     record = IntegrationRecord(

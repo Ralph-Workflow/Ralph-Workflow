@@ -18,6 +18,41 @@ pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 def _git(root: Path, *args: str) -> GitRunResult:
+    # RALPH-TEST-REASON: GitPython fast-paths for rev-parse, show, and branch reduce test CPU overhead
+    if args == ("branch", "--show-current"):
+        from git import Repo
+
+        repo = Repo(root)
+        try:
+            name = repo.active_branch.name
+            return GitRunResult(stdout=name + "\n", stderr="", returncode=0)
+        except Exception:
+            pass
+        finally:
+            repo.close()
+    if len(args) == 2 and args[0] == "rev-parse" and not args[1].startswith("-"):
+        from git import Repo
+
+        repo = Repo(root)
+        try:
+            sha = repo.rev_parse(args[1]).hexsha
+            return GitRunResult(stdout=sha + "\n", stderr="", returncode=0)
+        except Exception:
+            pass
+        finally:
+            repo.close()
+    if len(args) == 2 and args[0] == "show" and ":" in args[1]:
+        ref, path = args[1].split(":", 1)
+        from git import Repo
+
+        repo = Repo(root)
+        try:
+            content = repo.commit(ref).tree[path].data_stream.read().decode("utf-8")
+            return GitRunResult(stdout=content, stderr="", returncode=0)
+        except Exception:
+            pass
+        finally:
+            repo.close()
     return run_git(
         args,
         cwd=root,
@@ -28,9 +63,17 @@ def _git(root: Path, *args: str) -> GitRunResult:
 
 def _commit(root: Path, path: str, content: str) -> str:
     FsWorkspace(root).write(path, content)
-    assert _git(root, "add", path).returncode == 0
-    assert _git(root, "commit", "-m", path).returncode == 0
-    return _git(root, "rev-parse", "HEAD").stdout.strip()
+    from git import Repo
+
+    repo = Repo(root)
+    try:
+        repo.index.add([path])
+        # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        commit = repo.index.commit(path)
+        assert commit.hexsha
+        return commit.hexsha
+    finally:
+        repo.close()
 
 
 _PREPARED_TEMPLATE: list[tuple[Path, str, IntegrationRecord]] = []
@@ -40,14 +83,19 @@ _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branc
 def _prepared(root: Path) -> tuple[str, IntegrationRecord]:
     if not _PREPARED_TEMPLATE:
         td = Path(tempfile.mkdtemp(prefix="prepared-merge-template-"))
-        assert _git(td, "init").returncode == 0
-        assert _git(td, "config", "user.name", "Test Committer").returncode == 0
-        assert _git(td, "config", "user.email", "test@example.com").returncode == 0
-        assert _git(td, "config", "core.logAllRefUpdates", "false").returncode == 0
-        assert _git(td, "config", "commit.gpgSign", "false").returncode == 0
-        assert _git(td, "config", "gc.auto", "0").returncode == 0
-        assert _git(td, "config", "core.fsync", "none").returncode == 0
-        target = _git(td, "branch", "--show-current").stdout.strip()
+        from git import Repo
+
+        # RALPH-TEST-REASON: GitPython config replaces subprocess git config to reduce CPU overhead
+        repo = Repo.init(td)
+        with repo.config_writer() as cfg:
+            cfg.set_value("user", "name", "Test Committer")
+            cfg.set_value("user", "email", "test@example.com")
+            cfg.set_value("core", "logAllRefUpdates", "false")
+            cfg.set_value("commit", "gpgSign", "false")
+            cfg.set_value("gc", "auto", "0")
+            cfg.set_value("core", "fsync", "none")
+        target = repo.active_branch.name
+        repo.close()
         if not target:
             target = "main"
             assert _git(td, "branch", "-M", target).returncode == 0

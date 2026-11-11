@@ -41,9 +41,16 @@ def _run(repo_root: Path, *args: str):
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     path = repo_root / filename
     path.write_text(content, encoding="utf-8")
-    assert _run(repo_root, "add", filename).returncode == 0
-    assert _run(repo_root, "commit", "-m", message).returncode == 0
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    from git import Repo
+
+    repo = Repo(repo_root)
+    try:
+        repo.index.add([filename])
+        commit = repo.index.commit(message)
+        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        return commit.hexsha
+    finally:
+        repo.close()
 
 
 def _backup_refs(repo_root: Path) -> list[str]:
@@ -56,9 +63,14 @@ def _two_worktrees(tmp_path: Path) -> tuple[Path, Path, str]:
     """Shared repo with two linked worktrees on the same pre-feature SHA."""
     root = tmp_path / "repo"
     root.mkdir()
-    assert _run(root.parent, "init", "-b", "main", str(root)).returncode == 0
-    _run(root, "config", "user.email", "t@example.com")
-    _run(root, "config", "user.name", "t")
+    from git import Repo
+
+    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
+    repo = Repo.init(root, initial_branch="main")
+    with repo.config_writer() as cfg:
+        cfg.set_value("user", "email", "t@example.com")
+        cfg.set_value("user", "name", "t")
+    repo.close()
     _commit(root, "seed.txt", "seed\n", "seed")
     pre_feature_sha = _commit(root, "feature.txt", "f\n", "feature base")
     wt_a = tmp_path / "wt-a"
@@ -133,9 +145,14 @@ def test_legacy_sha_only_ref_survives_cleanup(tmp_path: Path) -> None:
 def test_create_with_none_owning_worktree_falls_back_to_root(tmp_path: Path) -> None:
     root = tmp_path / "solo"
     root.mkdir()
-    assert _run(root.parent, "init", "-b", "main", str(root)).returncode == 0
-    _run(root, "config", "user.email", "t@example.com")
-    _run(root, "config", "user.name", "t")
+    from git import Repo
+
+    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
+    repo = Repo.init(root, initial_branch="main")
+    with repo.config_writer() as cfg:
+        cfg.set_value("user", "email", "t@example.com")
+        cfg.set_value("user", "name", "t")
+    repo.close()
     sha = _commit(root, "f.txt", "f\n", "one")
     ref = create_rebase_backup_ref(root, sha, None)
     assert ref == qualified_backup_ref(str(root), sha)
@@ -153,9 +170,14 @@ def test_delete_rebase_backup_ref_exact_name_unchanged(tmp_path: Path) -> None:
 def _repo_with_edit(tmp_path: Path) -> tuple[Path, str]:
     root = tmp_path / "repo"
     root.mkdir()
-    assert _run(root.parent, "init", "-b", "main", str(root)).returncode == 0
-    _run(root, "config", "user.email", "t@example.com")
-    _run(root, "config", "user.name", "t")
+    from git import Repo
+
+    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
+    repo = Repo.init(root, initial_branch="main")
+    with repo.config_writer() as cfg:
+        cfg.set_value("user", "email", "t@example.com")
+        cfg.set_value("user", "name", "t")
+    repo.close()
     head = _commit(root, "a.txt", "a\n", "seed")
     (root / "a.txt").write_text("edited\n", encoding="utf-8")
     (root / "notes.txt").write_text("untracked notes\n", encoding="utf-8")
@@ -171,9 +193,14 @@ def test_snapshot_records_an_untracked_nested_repo_as_a_gitlink(tmp_path: Path) 
     root, head = _repo_with_edit(tmp_path)
     nested = root / "vendored"
     nested.mkdir()
-    assert _run(nested, "init", "-b", "main").returncode == 0
-    _run(nested, "config", "user.email", "t@example.com")
-    _run(nested, "config", "user.name", "t")
+    from git import Repo
+
+    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
+    repo = Repo.init(nested, initial_branch="main")
+    with repo.config_writer() as cfg:
+        cfg.set_value("user", "email", "t@example.com")
+        cfg.set_value("user", "name", "t")
+    repo.close()
     nested_head = _commit(nested, "x.txt", "x\n", "nested seed")
 
     backup_ref = preserve_dirt_commit(root, head)

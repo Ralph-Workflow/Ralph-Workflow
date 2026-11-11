@@ -53,9 +53,16 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     path = repo_root / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
-    assert _run(repo_root, "add", filename).returncode == 0
-    assert _run(repo_root, "commit", "-m", message).returncode == 0
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    from git import Repo
+
+    repo = Repo(repo_root)
+    try:
+        repo.index.add([filename])
+        commit = repo.index.commit(message)
+        assert commit.hexsha  # RALPH-TEST-REASON: GitPython commit replaces subprocess git add/commit to reduce CPU overhead
+        return commit.hexsha
+    finally:
+        repo.close()
 
 
 def _build_config(*, remote_enabled: bool = False, target: str | None = None) -> UnifiedConfig:
@@ -71,9 +78,14 @@ def _build_config(*, remote_enabled: bool = False, target: str | None = None) ->
 def _make_clone(bare: Path, path: Path, main: str, *, branch: str) -> Path:
     """Clone-topology checkout with a materialized local ``main``."""
     path.mkdir()
-    assert _run(path, "init").returncode == 0
-    assert _run(path, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(path, "config", "user.name", "Test User").returncode == 0
+    from git import Repo
+
+    # RALPH-TEST-REASON: GitPython init/config replaces subprocess git to reduce CPU overhead
+    repo = Repo.init(path)
+    with repo.config_writer() as cfg:
+        cfg.set_value("user", "email", "test@example.com")
+        cfg.set_value("user", "name", "Test User")
+    repo.close()
     assert _run(path, "remote", "add", "origin", str(bare)).returncode == 0
     assert _run(path, "fetch", "origin", main).returncode == 0
     assert _run(path, "checkout", "-b", main, f"origin/{main}").returncode == 0

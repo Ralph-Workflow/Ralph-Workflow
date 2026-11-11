@@ -50,17 +50,23 @@ def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.Compl
 
 def _base_branch(tmp_git_repo: Path) -> str:
     """Return the seed template's default branch name."""
-    out = _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
-    return out.stdout.strip().removeprefix("refs/heads/")
+    from git import Repo
+
+    return Repo(tmp_git_repo).active_branch.name
 
 
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
+    from git import Repo
+
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    _run(repo_root, "add", filename)
-    _run(repo_root, "commit", "-m", message)
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    repo = Repo(repo_root)
+    try:
+        repo.index.add([filename])
+        return repo.index.commit(message).hexsha
+    finally:
+        repo.close()
 
 
 def _build_config(

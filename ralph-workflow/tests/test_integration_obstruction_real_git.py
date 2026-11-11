@@ -49,8 +49,9 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _base_branch(tmp_git_repo: Path) -> str:
-    out = _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
-    return out.stdout.strip().removeprefix("refs/heads/")
+    from git import Repo
+
+    return Repo(tmp_git_repo).active_branch.name
 
 
 def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> str:
@@ -60,9 +61,12 @@ def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> 
     from git import Repo
 
     repo = Repo(repo_root)
-    repo.index.add([filename])
-    commit = repo.index.commit(message)
-    return commit.hexsha
+    try:
+        repo.index.add([filename])
+        commit = repo.index.commit(message)
+        return commit.hexsha
+    finally:
+        repo.close()
 
 
 def _behind_with_untracked_copy(tmp_git_repo: Path, content: str) -> str:
@@ -483,7 +487,12 @@ def test_saved_rebase_stop_recovers_empty_replay_or_next_conflict(
         _commit_file(root, "later.txt", "later target\n", "later target")
     if scenario == "rename":
         assert _run(root, "mv", "later.txt", "renamed.txt").returncode == 0
-        assert _run(root, "commit", "-m", "rename target path").returncode == 0
+        from git import Repo
+
+        _repo = Repo(root)
+        # RALPH-TEST-REASON: GitPython commit replaces subprocess git commit to reduce CPU overhead
+        _repo.index.commit("rename target path")
+        _repo.close()
     onto = _run(root, "rev-parse", "HEAD").stdout.strip()
     _run(root, "checkout", "feature")
     assert _run(root, "rebase", target).returncode != 0

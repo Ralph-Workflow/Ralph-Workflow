@@ -69,17 +69,23 @@ def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.Compl
 
 def _base_branch(tmp_git_repo: Path) -> str:
     """Return the seed template's default branch name."""
-    out = _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
-    return out.stdout.strip().removeprefix("refs/heads/")
+    from git import Repo
+
+    return Repo(tmp_git_repo).active_branch.name
 
 
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
+    from git import Repo
+
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    _run(repo_root, "add", filename)
-    _run(repo_root, "commit", "-m", message)
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    repo = Repo(repo_root)
+    try:
+        repo.index.add([filename])
+        return repo.index.commit(message).hexsha
+    finally:
+        repo.close()
 
 
 def _build_config(
@@ -121,8 +127,7 @@ def _snapshot(tmp_git_repo: Path) -> dict[str, object]:
 def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
     """Set up feature/base divergence with a guaranteed shared.txt conflict."""
     base = _base_branch(tmp_git_repo)
-    _commit(tmp_git_repo, "base_seed.txt", "base seed\n", "base seed")
-    base_seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    base_seed_sha = _commit(tmp_git_repo, "base_seed.txt", "base seed\n", "base seed")
     _run(tmp_git_repo, "branch", "feature", base_seed_sha)
     _run(tmp_git_repo, "checkout", "feature")
     _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
