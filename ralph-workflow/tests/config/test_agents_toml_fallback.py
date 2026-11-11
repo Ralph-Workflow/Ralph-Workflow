@@ -343,6 +343,59 @@ def test_corrupt_agents_toml_load_config_and_diagnose_contain_path_line_col_and_
     assert "ralph --regenerate-config" in diag_warn
 
 
+def test_corrupt_agents_toml_console_warning_names_regenerate_config(
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Rich console warning for a corrupt agents file names `ralph --regenerate-config`."""
+    monkeypatch.chdir(tmp_git_repo)
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir(parents=True)
+    agents_path = config_home / "ralph-workflow-agents.toml"
+    agents_path.write_text("[agents]\nbad syntax = = =\n", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+
+    agent_dir = tmp_git_repo / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / "ralph-workflow.toml").write_text("[general]\n", encoding="utf-8")
+
+    from rich.console import Console
+
+    from ralph.cli.commands.diagnose import diagnose_command
+    from ralph.display.context import make_display_context
+
+    console_buf = io.StringIO()
+    console = Console(file=console_buf, force_terminal=False, width=200)
+    display_ctx = make_display_context(console=console)
+
+    records, sink_id = _capture_warnings()
+    try:
+        exit_code = diagnose_command(
+            config_path=None,
+            cli_overrides={},
+            display_context=display_ctx,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert exit_code != 0
+    rendered = " ".join(console_buf.getvalue().split())
+    assert "ralph --regenerate-config" in rendered, (
+        "Expected the console warning for the unreadable agents file to name the "
+        f"recovery command:\n{console_buf.getvalue()}"
+    )
+
+    # The console warning must carry the SAME fix hint the loguru record
+    # carries -- the operator must not see two disagreeing recovery paths.
+    load_records = [record for record in records if "Failed to load agents configuration" in record]
+    assert load_records, f"expected a loguru warning for the agents file, got: {records}"
+    loguru_hint = load_records[0].split("using built-in default. ", 1)[-1].strip()
+    assert "ralph --regenerate-config" in loguru_hint
+    assert loguru_hint in rendered, (
+        f"expected the console hint to match the loguru hint {loguru_hint!r}:\n"
+        f"{console_buf.getvalue()}"
+    )
+
+
 def test_corrupt_agents_toml_diagnose_command_warns_with_recovery_instructions(
     tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

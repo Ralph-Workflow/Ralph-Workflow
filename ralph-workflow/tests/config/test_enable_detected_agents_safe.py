@@ -5,11 +5,33 @@ from __future__ import annotations
 import logging
 import tomllib
 from pathlib import Path
-from typing import cast
 
 import pytest
+from loguru import logger
 
 from ralph.config.agent_detection import enable_detected_agents
+
+
+def _capture_loguru_records(level: str = "DEBUG") -> tuple[list[tuple[str, int]], int]:
+    """Attach a loguru sink that records every emitted message.
+
+    Returns the captured ``(message, level number)`` pairs and the sink id
+    so the caller can remove the sink again. loguru is the operator-visible
+    sink the CLI wires, so a record captured here is a line the operator
+    can actually see.
+    """
+    records: list[tuple[str, int]] = []
+
+    def sink(message: object) -> None:
+        record = getattr(message, "record", None)
+        if not isinstance(record, dict):
+            return
+        text = str(record.get("message", ""))
+        number = getattr(record.get("level"), "no", 0)
+        records.append((text, number if isinstance(number, int) else 0))
+
+    sink_id = logger.add(sink, level=level)
+    return records, sink_id
 
 
 def test_enable_detected_agents_creates_backup_preserving_operator_edits(
@@ -45,8 +67,9 @@ def test_enable_detected_agents_creates_backup_preserving_operator_edits(
     new_content = config_path.read_text(encoding="utf-8")
     assert 'operator_custom_key = "custom_value"' in new_content
     assert "[agents.codex]" in new_content
-    data = cast("dict[str, dict[str, object]]", tomllib.loads(new_content))
+    data = tomllib.loads(new_content)
     agents = data.get("agents", {})
+    assert isinstance(agents, dict)
     assert "codex" in agents
     assert "claude" in agents
 
@@ -94,8 +117,9 @@ def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
 
     # Resulting file is valid TOML
     new_content = config_path.read_text(encoding="utf-8")
-    data = cast("dict[str, dict[str, object]]", tomllib.loads(new_content))
+    data = tomllib.loads(new_content)
     agents = data.get("agents", {})
+    assert isinstance(agents, dict)
     assert "pi" in agents
     assert "codex" not in agents
 
@@ -154,3 +178,65 @@ def test_enable_detected_agents_unchanged_content_produces_no_backup_and_no_writ
     assert config_path.read_text(encoding="utf-8") == initial_content
     # write_agents_toml should not have logged a write
     assert "Wrote" not in caplog.text
+
+
+def test_enable_detected_agents_emits_trigger_line_to_operator_visible_loguru_sink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The enable-detected path's trigger line reaches the loguru sink the operator sees."""
+    config_path = tmp_path / "ralph-workflow-agents.toml"
+    config_path.write_text(
+        '[agents.claude]\ncmd = "claude"\n\n'
+        "# @AGENT-BLOCK-START: codex\n"
+        "# [agents.codex]\n"
+        '# cmd = "codex exec"\n'
+        "# @AGENT-BLOCK-END\n",
+        encoding="utf-8",
+    )
+    bak_path = config_path.with_name(f"{config_path.name}.bak")
+
+    monkeypatch.setattr("ralph.config.agent_detection.detect_installed_agents", lambda: ["codex"])
+
+    records, sink_id = _capture_loguru_records()
+    try:
+        enabled = enable_detected_agents(config_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert enabled == ["codex"]
+    matching = [
+        (text, level_no)
+        for text, level_no in records
+        if str(config_path) in text
+        and "ralph --init: enable detected agents" in text
+        and (str(bak_path) in text or bak_path.name in text)
+    ]
+    assert matching, (
+        "no operator-visible trigger line for the enable-detected path; captured: "
+        f"{[text for text, _ in records]}"
+    )
+    # The line is emitted at INFO or above, so it is visible without debug verbosity.
+    assert max(level_no for _, level_no in matching) >= 20
+
+
+def test_enable_detected_agents_on_invalid_utf8_file_reports_and_keeps_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An agents file that is not valid UTF-8 is reported, never crashed on."""
+    config_path = tmp_path / """ralph-workflow-agents.toml"""
+    original_bytes = b"""[agents.claude]\ncmd = "\xff\xfe"\n"""
+    config_path.write_bytes(original_bytes)
+
+    monkeypatch.setattr(
+        """ralph.config.agent_detection.detect_installed_agents""", lambda: ["""codex"""]
+    )
+
+    with caplog.at_level(logging.WARNING):
+        enabled = enable_detected_agents(config_path)
+
+    assert enabled == []
+    assert config_path.read_bytes() == original_bytes
+    assert """ralph --regenerate-config""" in caplog.text

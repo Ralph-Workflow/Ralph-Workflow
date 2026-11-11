@@ -522,6 +522,13 @@ ralph.config.agent_detection
    :members:
    :show-inheritance:
 
+ralph.config.agents_bootstrap
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.agents_bootstrap
+   :members:
+   :show-inheritance:
+
 ralph.config.agents_file_writer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

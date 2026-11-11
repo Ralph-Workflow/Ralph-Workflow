@@ -1,18 +1,77 @@
-"""Atomic and safe writer for ralph-workflow-agents.toml config files.
+"""Atomic and safe writer for the user-global ``ralph-workflow-agents.toml``.
 
-Ensures TOML validity before write, backs up existing configurations when changed,
-and performs atomic file replacement via temporary files.
+:func:`write_agents_toml` is the single choke point for every write to the
+user-global agents configuration (``~/.config/ralph-workflow-agents.toml``).
+It validates the TOML payload, compares it with the on-disk file **as
+bytes**, replaces the target atomically through a temporary file in the
+same directory, and reports the write on an operator-visible sink.
+
+Behavioural contract
+---------------------
+
+**Bytes, not decoded text.** The current file is read with
+``Path.read_bytes`` and compared with the UTF-8 encoding of the new
+payload. A file whose bytes are not valid UTF-8 is therefore *different*
+(it can never equal the new payload) instead of raising
+``UnicodeDecodeError``; its raw bytes land in the ``.bak`` so
+``ralph --regenerate-config`` can always recover an operator's file.
+
+**Symlinked targets.** When ``path`` is a symlink the write goes *through*
+the link: the resolved real file is replaced, the symlink itself is never
+replaced, and it stays a symlink pointing at the updated file.
+
+**Backup location.** The backup always lives at ``<path>.bak`` next to the
+*requested* path -- the path the operator configured -- even when that
+path is a symlink. It holds the previous bytes of the file that was
+actually replaced (the resolved real file for a symlinked target). The
+location is deterministic and matches the ``BootstrapResult.backup`` path
+that :mod:`ralph.config.bootstrap` derives from the same target.
+
+**Modes.** An existing file keeps its mode (``stat.S_IMODE`` of the
+replaced file, symlinks resolved). A newly created file gets mode
+``0644``; ``tempfile.mkstemp`` would otherwise leave it at ``0600``.
+
+**Failure cleanup.** The backup is written *before* the replace, so an
+operator's content is never overwritten without a recoverable copy on
+disk. A failed write removes the temporary file under
+``contextlib.suppress(OSError)`` so the original exception is never
+masked and no stray temporary file survives, and it removes (or restores)
+the backup it created, so a failed write leaves the original file
+byte-identical and no stray backup behind.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import stat
 import tempfile
 import tomllib
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from loguru import logger
+
+_std_logger = logging.getLogger(__name__)
+
+#: Mode applied to a newly created agents configuration file.
+_NEW_FILE_MODE = 0o644
+
+
+def _read_existing_bytes(target: Path) -> bytes | None:
+    """Return the current bytes of *target*, or ``None`` when it does not exist."""
+    try:
+        return target.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _resolve_mode(target: Path) -> int:
+    """Return the permission bits a replacement of *target* must carry."""
+    try:
+        return stat.S_IMODE(target.stat().st_mode)
+    except FileNotFoundError:
+        return _NEW_FILE_MODE
 
 
 def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
@@ -21,7 +80,9 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
     Parameters
     ----------
     path:
-        Target file path for the agents configuration.
+        Target file path for the agents configuration. A symlink is
+        written through: the resolved real file is replaced and the
+        symlink stays a symlink.
     text:
         TOML formatted string content to write.
     trigger:
@@ -44,34 +105,63 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
     except ValueError as err:
         raise ValueError(f"Invalid TOML content for {path}: {err}") from err
 
+    new_bytes = text.encode("utf-8")
+    write_target = path.resolve() if path.is_symlink() else path
     bak_path = path.with_name(f"{path.name}.bak")
 
-    if path.exists():
-        existing_text = path.read_text(encoding="utf-8")
-        if existing_text == text:
-            return False
-        bak_path.write_bytes(  # filesystem-write-ok: backup copy of existing agents config file before atomic overwrite
-            path.read_bytes()
-        )
+    existing_bytes = _read_existing_bytes(write_target)
+    if existing_bytes == new_bytes:
+        return False
 
-    path.parent.mkdir(  # filesystem-write-ok: ensuring target directory exists before writing agents config
+    file_mode = _resolve_mode(write_target)
+
+    write_target.parent.mkdir(  # filesystem-write-ok: ensuring target directory exists before writing agents config
         parents=True, exist_ok=True
     )
-    fd, tmp_path_str = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.tmp.")
-    tmp_path = Path(tmp_path_str)
-    try:
-        with os.fdopen(  # filesystem-write-ok: transient scratch file written before atomic replace
-            fd, "w", encoding="utf-8"
-        ) as handle:
-            handle.write(text)
-            handle.flush()
-        # filesystem-write-ok: atomic-replace boundary for agents config file
-        tmp_path.replace(path)
-    except BaseException:
-        tmp_path.unlink(  # filesystem-write-ok: removing transient scratch file on failure
-            missing_ok=True
+    previous_backup: bytes | None = None
+    if existing_bytes is not None:
+        previous_backup = bak_path.read_bytes() if bak_path.is_file() else None
+        # The backup lands BEFORE the replace: an overwrite never happens
+        # without a recoverable copy of the previous bytes on disk.
+        bak_path.write_bytes(  # filesystem-write-ok: backup copy of the previous agents config bytes before the overwrite
+            existing_bytes
         )
+
+    tmp_path: Path | None = None
+    try:
+        fd, tmp_path_str = tempfile.mkstemp(
+            dir=write_target.parent,
+            prefix=f".{write_target.name}.tmp.",
+        )
+        tmp_path = Path(tmp_path_str)
+        with os.fdopen(  # filesystem-write-ok: transient scratch file written before atomic replace
+            fd, "wb"
+        ) as handle:
+            handle.write(new_bytes)
+            handle.flush()
+        tmp_path.chmod(  # filesystem-write-ok: the replacement keeps the previous file mode (0644 for a new file)
+            file_mode
+        )
+        # filesystem-write-ok: atomic-replace boundary for agents config file
+        tmp_path.replace(write_target)
+    except BaseException:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(  # filesystem-write-ok: removing transient scratch file on failure
+                    missing_ok=True
+                )
+        if existing_bytes is not None:
+            with contextlib.suppress(OSError):
+                if previous_backup is None:
+                    bak_path.unlink(  # filesystem-write-ok: removing the backup created by the failed write
+                        missing_ok=True
+                    )
+                else:
+                    bak_path.write_bytes(  # filesystem-write-ok: restoring the pre-existing backup after a failed write
+                        previous_backup
+                    )
         raise
 
-    logger.info("Wrote %s (trigger: %s, backup: %s)", path, trigger, bak_path)
+    logger.info("Wrote {} (trigger: {}, backup: {})", path, trigger, bak_path)
+    _std_logger.info("Wrote %s (trigger: %s, backup: %s)", path, trigger, bak_path)
     return True

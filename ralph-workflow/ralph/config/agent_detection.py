@@ -55,11 +55,14 @@ def _commit_deterministic_config_write(
 ) -> ScopedCommitResult | None:
     """Wrap a project-local config write with the deterministic auto-commit contract.
 
-    This is the shared producer-side wiring every Ralph-owned config
-    write site (``load_toml`` migration, ``autowire_chains_to_detected_agent``,
-    ``enable_detected_agents``, and the ``ralph --init`` starter-prompt
-    creation) routes through after wt-012. The contract mirrors the
-    skill / policy ``commit_deterministic_writes`` callers:
+    This is the shared producer-side wiring the Ralph-owned config write
+    sites that AUTO-COMMIT their change route through after wt-012
+    (``load_toml`` migration, ``autowire_chains_to_detected_agent``, and the
+    ``ralph --init`` starter-prompt creation). Write sites that publish
+    WITHOUT a commit do not route through this helper: ``enable_detected_agents``
+    publishes the agents file through ``write_agents_toml`` (atomic replace plus
+    ``.bak`` backup) and deliberately creates no chore commit. The contract
+    mirrors the skill / policy ``commit_deterministic_writes`` callers:
 
     * the pre-write content hash of ``config_path`` is captured BEFORE
       ``write_fn`` runs, so the deterministic commit can isolate the
@@ -145,7 +148,7 @@ def _commit_deterministic_config_write(
     # ``atomic_write_text_if_changed`` (loader migration) uses
     # ``Path.replace`` to swap the symlink for a regular file, so the
     # change lands at the LEXICAL ``rel_path``; ``write_text_if_changed``
-    # (autowire / enable_detected_agents) opens the path with
+    # (autowire) opens the path with
     # ``path.open("w")`` which FOLLOWS the symlink and writes through
     # to the RESOLVED target. We cannot tell at compile time which
     # primitive the caller's ``write_fn`` uses, so capture BOTH the
@@ -321,7 +324,16 @@ def autowire_chains_to_detected_agent(
 def enable_detected_agents(config_path: Path | None = None) -> list[str]:
     """Activate untouched bundled blocks for installed agents, without changing active ones."""
     path = config_path or resolve_global_config_dir() / "ralph-workflow-agents.toml"
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        msg = (
+            f"Cannot enable detected agents: {path} is not valid UTF-8. "
+            "Run `ralph --regenerate-config` to restore the bundled agents configuration."
+        )
+        logger.warning(msg)
+        _std_logger.warning(msg)
+        return []
     enabled: list[str] = []
 
     for name in detect_installed_agents():

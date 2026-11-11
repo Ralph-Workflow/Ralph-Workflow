@@ -47,7 +47,7 @@ Ralph Workflow manages a standard config set across two scopes.
 | `~/.config/ralph-workflow-pipeline.toml` | Global pipeline defaults when a workspace has no local pipeline override |
 | `~/.config/ralph-workflow-artifacts.toml` | Global artifact defaults when a workspace has no local artifact override |
 
-User-global agent definitions in `~/.config/ralph-workflow-agents.toml` are immutable during normal runs, changing only via explicit `ralph --init` or `ralph --regenerate-config` commands. See [Agent configuration immutability and recovery](#agent-configuration-immutability-and-recovery).
+User-global agent definitions in `~/.config/ralph-workflow-agents.toml` are never modified during normal runs: an existing file changes only via explicit `ralph --init` or `ralph --regenerate-config` commands, while a missing file is seeded once from the bundled template on first run. See [Agent configuration immutability and recovery](#agent-configuration-immutability-and-recovery).
 
 ### Project and worktree-local files
 
@@ -124,7 +124,7 @@ Ralph Workflow distinguishes between optional configuration layers that safely d
 
 When an optional configuration file contains syntax errors, invalid UTF-8 bytes, schema validation issues, or cannot be read due to filesystem permissions, Ralph Workflow emits a deduplicated warning naming the file, error details (including line and column numbers when available), and remediation advice (`ralph --check-config`), then safely falls back to built-in defaults:
 
-- **Agent configurations**: user-global `~/.config/ralph-workflow-agents.toml` and project-local agent configurations (`.agent/agents.toml` or `[agents.*]` definitions).
+- **Agent configuration and policy files**: user-global `~/.config/ralph-workflow-agents.toml` (the agent CLI definitions) and the project-local `.agent/agents.toml` (the agent-chains / drain-bindings policy file).
 - **Policy TOML files**: pipeline configurations (`.agent/pipeline.toml`, `~/.config/ralph-workflow-pipeline.toml`), artifact schemas (`.agent/artifacts.toml`, `~/.config/ralph-workflow-artifacts.toml`), phase policy files, and other user policy TOMLs.
 - **MCP configurations**: global `~/.config/ralph-workflow-mcp.toml` and project-local `.agent/mcp.toml` (including the `[web_visit]` section).
 - **User portfolio TOML**: `docs/ralph-workflow-policy/policy-portfolio.toml` and user project-policy portfolio settings.
@@ -133,10 +133,10 @@ Fallback warnings are deduplicated per file content fingerprint (SHA-256) so run
 
 ### Agent configuration immutability and recovery
 
-Agent CLI definitions in `~/.config/ralph-workflow-agents.toml` (and optional project-local `.agent/agents.toml`) specify CLI flags, binaries, and output parsers. To guarantee deterministic execution and avoid unexpected drift:
+Agent CLI definitions — the binary, the flags, and the output parser for each coding-agent CLI — live in `~/.config/ralph-workflow-agents.toml`, and an `[agents.*]` block left in the legacy `ralph-workflow.toml` still takes precedence over that file. The optional project-local `.agent/agents.toml` is a different document: it is the agent-chains / drain-bindings policy file (`[agent_chains]`, `[agent_drains]`, `forbid_sibling_drain_inference`), and a `[agents.*]` block placed there is rejected. To guarantee deterministic execution and avoid unexpected drift:
 
-- **Immutability during normal operations**: `ralph-workflow-agents.toml` changes **only** via explicit operator commands (`ralph --init` and `ralph --regenerate-config`). It is never created, mutated, or rewritten during normal configuration loading, `ralph --diagnose`, or pipeline execution runs.
-- **Safe atomic writes and backup logging**: When written or refreshed by explicit operator commands (`ralph --init` or `ralph --regenerate-config`), Ralph Workflow employs an atomic write sequence. If an existing `ralph-workflow-agents.toml` file is present, a `.bak` backup (`ralph-workflow-agents.toml.bak`) is safely preserved in the same directory before the file is overwritten. A log line explicitly names the trigger (recording whether the file was created or regenerated, and identifying the backup file).
+- **Immutability during normal operations**: an existing `ralph-workflow-agents.toml` is never mutated or rewritten during normal configuration loading, `ralph --diagnose`, or pipeline execution runs; it changes **only** via the explicit operator commands `ralph --init` and `ralph --regenerate-config`. A **missing** file is the one case where creation happens on a normal run: it is seeded once from the bundled template on first use, so a first run against an empty config directory does create `ralph-workflow-agents.toml`. That first-run seeding creates a file that did not exist — it is not an edit of operator content.
+- **Safe atomic writes and backup logging**: When written or refreshed by explicit operator commands (`ralph --init` or `ralph --regenerate-config`), Ralph Workflow employs an atomic write sequence. If an existing `ralph-workflow-agents.toml` file is present, a `.bak` backup (`ralph-workflow-agents.toml.bak`) is safely preserved in the same directory before the file is overwritten. Whenever the writer actually changes the file it emits a single log line naming the target path, the trigger, and the `.bak` path — `Wrote <path> (trigger: <trigger>, backup: <path>.bak)` — to the operator-visible log, so every write records its trigger. Writing content identical to what is already on disk is a no-op: nothing is rewritten, no `.bak` is created, and no log line is emitted. `ralph --regenerate-config` also prints a summary with the number of config files it regenerated and the number of `.bak` backups it saved.
 - **Corrupt TOML resilience and recovery**: If `ralph-workflow-agents.toml` contains syntax errors, invalid UTF-8 bytes, or schema validation issues, the failure is treated non-fatally at runtime. Ralph Workflow logs a deduplicated `WARNING` detailing the parsing or validation failure, leaves the corrupted file on disk untouched, and safely falls back to built-in agent defaults so pipeline runs and rebase resolutions continue without interruption. To restore a known-good configuration baseline, run the recovery command:
 
 ```bash
@@ -483,8 +483,8 @@ Run `ralph --check-policy` followed by `ralph --explain-policy`.
 ### I broke my config and want to get back to a known-good baseline
 
 Run `ralph --regenerate-config`. Ralph Workflow rewrites user-global files
-(including `ralph-workflow-agents.toml`) and backs up overwritten files with a `.bak` suffix
-while logging the trigger. Existing project-local TOMLs are refreshed too, but missing
+(including `ralph-workflow-agents.toml`) and backs up overwritten files with a `.bak` suffix,
+recording the trigger in the write log line. Existing project-local TOMLs are refreshed too, but missing
 `.agent/` files are not created. If an agent configuration was corrupted, this restores
 the known-good bundled defaults while preserving the broken file as a `.bak` backup.
 To create the local override set, use `ralph --init-local-config` explicitly.

@@ -117,6 +117,43 @@ def describe_config_failure(exc: BaseException) -> str:
     return _format_error_detail(exc)
 
 
+#: Operator-facing recovery command that restores a broken agents file.
+_AGENTS_RECOVERY_COMMAND = "ralph --regenerate-config"
+#: Operator-facing command that validates the configuration without rewriting it.
+_CHECK_CONFIG_COMMAND = "ralph --check-config"
+
+
+def effective_fix_hint(path: Path, kind: str, fix_hint: str) -> str:
+    """Return the operator-facing hint, naming the agents recovery command.
+
+    An unreadable agents file must name ``ralph --regenerate-config`` --
+    the command that restores the file -- and not only
+    ``ralph --check-config``, which only validates it. Every operator-facing
+    sink (the loguru record and the console panel) renders this one value,
+    so the operator never reads two different recovery paths.
+
+    Args:
+        path: The configuration file the operator has to fix.
+        kind: The configuration layer the file belongs to.
+        fix_hint: The raw operator-facing fix instruction.
+
+    Returns:
+        The fix hint the operator must see.
+    """
+    path_obj = Path(path)
+    if not _is_agents_config(path_obj, kind):
+        return fix_hint
+    if _AGENTS_RECOVERY_COMMAND in fix_hint:
+        return fix_hint
+    check_config = f"`{_CHECK_CONFIG_COMMAND}`"
+    if check_config in fix_hint:
+        return fix_hint.replace(
+            check_config,
+            f"`{_AGENTS_RECOVERY_COMMAND}` or {check_config}",
+        )
+    return f"{fix_hint} Fix: run `{_AGENTS_RECOVERY_COMMAND}`."
+
+
 def emit_config_failure_warning(
     path: Path | str,
     *,
@@ -159,15 +196,7 @@ def emit_config_failure_warning(
     """
     path_obj = Path(path)
     resolved = path_obj.resolve()
-    effective_fix_hint = fix_hint
-    if _is_agents_config(path_obj, kind) and "ralph --regenerate-config" not in effective_fix_hint:
-        if "`ralph --check-config`" in effective_fix_hint:
-            effective_fix_hint = effective_fix_hint.replace(
-                "`ralph --check-config`",
-                "`ralph --regenerate-config` or `ralph --check-config`",
-            )
-        else:
-            effective_fix_hint = f"{effective_fix_hint} Fix: run `ralph --regenerate-config`."
+    effective_hint = effective_fix_hint(path_obj, kind, fix_hint)
 
     fingerprint = _compute_file_fingerprint(resolved, exc, raw_bytes=raw_bytes)
     key = (resolved, fingerprint)
@@ -180,7 +209,7 @@ def emit_config_failure_warning(
 
     logger.warning(
         f"Failed to load {kind} configuration from {path_obj}: {error_detail}; "
-        f"{behaviour}. {effective_fix_hint}"
+        f"{behaviour}. {effective_hint}"
     )
     return True
 

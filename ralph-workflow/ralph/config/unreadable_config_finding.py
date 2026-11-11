@@ -26,6 +26,7 @@ from ralph.config._config_filenames import (
 from ralph.config._paths import resolve_global_config_dir
 from ralph.config._toml_fallback import (
     _format_error_detail,
+    effective_fix_hint,
     emit_config_failure_warning,
 )
 from ralph.project_policy.markers import PORTFOLIO_PATH
@@ -127,19 +128,20 @@ def collect_unreadable_config_files(
             else:
                 behaviour = "using built-in default"
                 fix_hint = "Fix: run `ralph --check-config`."
+            effective_hint = effective_fix_hint(path, warn_kind, fix_hint)
 
             warned = emit_config_failure_warning(
                 path,
                 kind=warn_kind,
                 error_detail=error_detail,
                 behaviour=behaviour,
-                fix_hint=fix_hint,
+                fix_hint=effective_hint,
                 exc=error,
             )
             if warned and display is not None and hasattr(display, "emit_warning"):
                 display.emit_warning(
                     f"Failed to load {warn_kind} configuration from {path}: {error_detail}; "
-                    f"{behaviour}. {fix_hint}"
+                    f"{behaviour}. {effective_hint}"
                 )
             findings.append(UnreadableConfigFinding(path=path, kind=warn_kind, error=error))
 

@@ -11,7 +11,11 @@ The tests pin the operator-visible contract:
 * the bundled agents template exists, parses, and carries every built-in
   agent block;
 * neither main-config template still ships an ``[agents.*]`` block;
-* the new file is created on first run and refreshed by regeneration;
+* a MISSING agents file is seeded once from the bundled template, while an
+  EXISTING one is left byte-identical outside ``ralph --init`` /
+  ``ralph --regenerate-config``;
+* ``ralph --regenerate-config`` refreshes the file and keeps the operator's
+  previous bytes in a ``.bak``;
 * ``load_config`` reads ``[agents.*]`` from it; and
 * an ``[agents.*]`` table left behind in an existing ``ralph-workflow.toml``
   still wins, so upgrading installs keep working.
@@ -40,6 +44,19 @@ def _bundled_dir() -> Path:
 
 def _bundled_agents_template() -> Path:
     return _bundled_dir() / AGENTS_FILENAME
+
+
+def _scratch_files(directory: Path) -> list[Path]:
+    """Return leftover atomic-write scratch files inside ``directory``.
+
+    The agents writer stages the new content in a hidden ``.<name>.tmp.*``
+    file and then atomically replaces the target, so a completed write
+    leaves no scratch file behind. A writer that never touched the
+    directory must not leave one either.
+    """
+    return sorted(
+        path for path in directory.iterdir() if path.name.startswith(".") and ".tmp." in path.name
+    )
 
 
 def test_bundled_agents_template_parses_and_activates_claude() -> None:
@@ -91,7 +108,16 @@ def test_main_template_opens_on_agent_chains() -> None:
 
 
 def test_ensure_global_agents_config_creates_the_file(tmp_path: Path) -> None:
-    """First run seeds ~/.config/ralph-workflow-agents.toml."""
+    """First run seeds ~/.config/ralph-workflow-agents.toml.
+
+    The documented contract has two halves, and this test pins the
+    seeding half: an EXISTING agents file is never modified outside
+    ``ralph --init`` / ``ralph --regenerate-config``, but a MISSING file
+    IS seeded once from the bundled template on the first run that finds
+    it absent. The seed must be valid TOML carrying the bundled
+    template's content, and it must leave neither a backup (there was
+    nothing to back up) nor a scratch file behind.
+    """
     result = ensure_global_agents_config(tmp_path)
 
     target = tmp_path / AGENTS_FILENAME
@@ -100,33 +126,102 @@ def test_ensure_global_agents_config_creates_the_file(tmp_path: Path) -> None:
     with target.open("rb") as handle:
         assert "claude" in tomllib.load(handle)["agents"]
 
+    # The seed IS the bundled template, verbatim.
+    assert target.read_text(encoding="utf-8") == _bundled_agents_template().read_text(
+        encoding="utf-8"
+    )
+
+    # The reported result names the seeded file, and there is no backup:
+    # a first seed has nothing to back up.
+    assert result.path == target
+    assert result.backup is None, (
+        "seeding a MISSING file must not create a backup; there was nothing to back up"
+    )
+    assert not (tmp_path / f"{AGENTS_FILENAME}.bak").exists()
+    assert _scratch_files(tmp_path) == []
+
+    # Seeded ONCE: a second run finds the file present and changes nothing.
+    seeded_bytes = target.read_bytes()
+    second = ensure_global_agents_config(tmp_path)
+    assert second.action == "skipped"
+    assert target.read_bytes() == seeded_bytes
+
 
 def test_ensure_global_agents_config_is_idempotent(tmp_path: Path) -> None:
-    """A second run leaves an existing file untouched."""
+    """A second run leaves an existing file untouched.
+
+    The documented contract: outside ``ralph --init`` /
+    ``ralph --regenerate-config`` the agents file is never modified. The
+    operator's own content must survive a bootstrap run byte-for-byte,
+    with no backup, no scratch file, and no commit side effect.
+    """
     ensure_global_agents_config(tmp_path)
-    (tmp_path / AGENTS_FILENAME).write_text('[agents.custom]\ncmd = "mine"\n')
+    (tmp_path / AGENTS_FILENAME).write_text('[agents.custom]\ncmd = "mine"\n', encoding="utf-8")
+    operator_bytes = (tmp_path / AGENTS_FILENAME).read_bytes()
 
     result = ensure_global_agents_config(tmp_path)
 
     assert result.action == "skipped"
     assert "mine" in (tmp_path / AGENTS_FILENAME).read_text()
 
+    # The existing file is left byte-identical -- not rewritten, not
+    # reformatted, not re-ordered.
+    assert (tmp_path / AGENTS_FILENAME).read_bytes() == operator_bytes
+
+    # No backup, no scratch file, no commit: the skipped path touches
+    # nothing on disk.
+    assert result.backup is None
+    assert not (tmp_path / f"{AGENTS_FILENAME}.bak").exists()
+    assert _scratch_files(tmp_path) == []
+    assert not (tmp_path / ".git").exists(), (
+        "the bootstrap must not create a repository to commit the skipped file into"
+    )
+
 
 def test_regenerate_all_refreshes_the_agents_file(tmp_path: Path) -> None:
-    """--regenerate-config rewrites the agents file and backs up the old one."""
+    """--regenerate-config rewrites the agents file and backs up the old one.
+
+    The documented contract: the agents file may only be rewritten by an
+    explicit operator command. ``ralph --regenerate-config`` restores the
+    bundled template and preserves the operator's previous bytes in
+    ``<name>.bak``.
+    """
     global_dir = tmp_path / "config"
     global_dir.mkdir()
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
-    (global_dir / AGENTS_FILENAME).write_text('[agents.custom]\ncmd = "mine"\n')
+    (global_dir / AGENTS_FILENAME).write_text('[agents.custom]\ncmd = "mine"\n', encoding="utf-8")
+    operator_bytes = (global_dir / AGENTS_FILENAME).read_bytes()
 
-    regenerate_all(global_dir=global_dir, agent_dir=agent_dir)
+    results = regenerate_all(global_dir=global_dir, agent_dir=agent_dir)
 
     assert (global_dir / f"{AGENTS_FILENAME}.bak").read_text() == (
         '[agents.custom]\ncmd = "mine"\n'
     )
     with (global_dir / AGENTS_FILENAME).open("rb") as handle:
         assert "claude" in tomllib.load(handle)["agents"]
+
+    # The backup holds the operator's bytes byte-for-byte.
+    assert (global_dir / f"{AGENTS_FILENAME}.bak").read_bytes() == operator_bytes
+
+    # The regenerated file is the bundled template again; the operator's
+    # custom agent is gone from the live file.
+    assert (global_dir / AGENTS_FILENAME).read_text(encoding="utf-8") == (
+        _bundled_agents_template().read_text(encoding="utf-8")
+    )
+    assert "mine" not in (global_dir / AGENTS_FILENAME).read_text(encoding="utf-8")
+
+    # The reported result names the regenerated file and its backup.
+    agents_results = [r for r in results if r.path.name == AGENTS_FILENAME]
+    assert len(agents_results) == 1, (
+        f"regenerate_all must report the agents file exactly once; got: {results!r}"
+    )
+    agents_result = agents_results[0]
+    assert agents_result.action == "regenerated"
+    assert agents_result.backup == global_dir / f"{AGENTS_FILENAME}.bak"
+
+    # The atomic write leaves no scratch file behind.
+    assert _scratch_files(global_dir) == []
 
 
 def test_load_config_reads_agents_from_the_agents_file(

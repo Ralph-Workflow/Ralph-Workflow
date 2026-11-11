@@ -18,6 +18,9 @@ General regeneration refreshes only local TOMLs that already exist, including
 .agent/ralph-workflow.toml, .agent/mcp.toml, .agent/pipeline.toml,
 .agent/artifacts.toml, and the optional advanced .agent/agents.toml.
 
+The agents configuration and the config-write commit routing it shares with
+the other config files live in :mod:`ralph.config.agents_bootstrap`.
+
 The explicit local-config flow also seeds a batteries-included .gitignore with
 Ralph-local, Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter,
 Elixir, Scala, Terraform, IDE, and OS metadata patterns (see
@@ -28,7 +31,6 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Mapping
-from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
@@ -54,18 +56,18 @@ from ralph.config._config_filenames import (
     _LOCAL_POLICY_FILENAMES,
 )
 from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
-from ralph.config.agents_file_writer import write_agents_toml
+from ralph.config.agents_bootstrap import (
+    BootstrapResult,
+    _commit_config_write,
+    _prepare_config_commit,
+    write_agents_with_backup,
+)
 from ralph.config.loader import load_toml
 from ralph.config.unreadable_config_finding import (
     UnreadableConfigFinding,
     collect_unreadable_config_files,
 )
-from ralph.git.operations import _atomic_append_text, create_commit, stage_files
-from ralph.git.scoped_auto_commit import (
-    ScopedCommitStatus,
-    classify_target_for_commit,
-    commit_deterministic_writes,
-)
+from ralph.git.operations import _atomic_append_text
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
@@ -285,21 +287,6 @@ def _get_bundled_defaults_dir() -> Path:
     return Path(policy_file).parent / "defaults"
 
 
-@dataclass(frozen=True)
-class BootstrapResult:
-    """Result of a bootstrap operation.
-
-    Attributes:
-        path: Target file path that was acted on.
-        action: What happened: created, skipped, or regenerated.
-        backup: Path to the .bak file if the original was backed up, else None.
-    """
-
-    path: Path
-    action: Literal["created", "skipped", "regenerated"]
-    backup: Path | None = None
-
-
 def ensure_global_config(global_dir: Path | None = None, *, force: bool = False) -> BootstrapResult:
     """Ensure ~/.config/ralph-workflow.toml exists, creating it from the bundled template.
 
@@ -342,7 +329,7 @@ def ensure_global_agents_config(
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_AGENTS_FILENAME
     source = _get_bundled_defaults_dir() / _GLOBAL_AGENTS_FILENAME
-    return _write_agents_with_backup(
+    return write_agents_with_backup(
         source, target, force, trigger="ralph --regenerate-config" if force else "ralph-workflow"
     )
 
@@ -726,7 +713,7 @@ def _regenerate_existing_local_configs(
         },
     }
     return [
-        _write_agents_with_backup(source, target, True, trigger="ralph --regenerate-config")
+        write_agents_with_backup(source, target, True, trigger="ralph --regenerate-config")
         if filename in _ADVANCED_LOCAL_POLICY_FILENAMES
         else _copy_with_backup(source, target, True)
         for filename, source in sources.items()
@@ -844,93 +831,6 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     return BootstrapResult(target, "regenerated", backup)
 
 
-def _write_agents_with_backup(
-    source: Path, target: Path, force: bool, *, trigger: str | None = None
-) -> BootstrapResult:
-    """Safely write agents configuration, validating TOML and backing up prior edits.
-
-    Routes writing through :func:`ralph.config.agents_file_writer.write_agents_toml`
-    which validates TOML syntax via tomllib, backs up any existing configuration
-    to ``<name>.bak``, uses a unique temporary file, and logs the trigger.
-
-    Args:
-        source: Bundled template to copy.
-        target: Destination path.
-        force: When True, overwrite target (with backup). When False, skip if target exists.
-        trigger: Optional write trigger description. Defaults to "ralph --regenerate-config"
-            when force is True, else "ralph-workflow".
-
-    Returns:
-        BootstrapResult describing what happened.
-    """
-    target.parent.mkdir(parents=True, exist_ok=True)
-    pre_existed = target.exists()
-
-    if pre_existed and not force:
-        return BootstrapResult(target, "skipped", None)
-
-    backup: Path | None = None
-    commit_routing = classify_target_for_commit(target, target)
-    pre_contents: dict[str, str | None] = {}
-    repo_root: Path | None = None
-    if commit_routing != "not_repo":
-        from ralph.git.scoped_auto_commit import capture_pre_write_contents
-
-        repo_anchor = target if target.exists() else target.parent
-        while not repo_anchor.exists():
-            repo_anchor = repo_anchor.parent
-        repo_root = Path(Repo(repo_anchor, search_parent_directories=True).working_dir)
-        pre_contents = capture_pre_write_contents(repo_root, [_repo_rel_path(target, repo_root)])
-
-    text = source.read_text(encoding="utf-8")
-    actual_trigger = trigger or ("ralph --regenerate-config" if force else "ralph-workflow")
-    written = write_agents_toml(target, text, trigger=actual_trigger)
-
-    bak_path = target.with_name(f"{target.name}.bak")
-    if pre_existed and written:
-        backup = bak_path
-
-    action: Literal["created", "skipped", "regenerated"] = (
-        "regenerated" if pre_existed else "created"
-    )
-
-    commit_paths: list[str] = []
-    subject = "chore(config): noop"
-    commit_repo_root = target.parent
-    if commit_routing in ("tracked", "untracked_new"):
-        assert repo_root is not None  # guaranteed by commit_routing != "not_repo"
-        commit_repo_root = repo_root
-        commit_paths = [_repo_rel_path(target, repo_root)]
-        subject = f"chore(config): update {target.name}"
-    else:
-        logger.debug(
-            "config bootstrap: {} classified {}; bypassing deterministic commit",
-            target,
-            commit_routing,
-        )
-    try:
-        result = commit_deterministic_writes(
-            commit_repo_root,
-            paths=commit_paths,
-            pre_contents=pre_contents,
-            subject=subject,
-            create_commit_fn=create_commit,
-            stage_fn=stage_files,
-        )
-        if result.status is ScopedCommitStatus.CREATED and result.sha:
-            logger.debug("config bootstrap commit created: {}", result.sha[:8])
-        elif result.status is ScopedCommitStatus.SKIPPED:
-            logger.warning(
-                "config bootstrap: {} was already dirty at HEAD; left for the user flow",
-                target,
-            )
-        elif result.status is ScopedCommitStatus.FAILED:
-            logger.warning("config bootstrap commit failed (non-fatal): {}", result.error)
-    except Exception as exc:  # pragma: no cover - defensive, non-fatal
-        logger.warning("config bootstrap commit failed (non-fatal): {}", exc)
-    return BootstrapResult(target, action, backup)
-
-
 def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResult:
     """Copy source to target, optionally backing up an existing target first.
 
@@ -951,27 +851,11 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
     if pre_existed and not force:
         return BootstrapResult(target, "skipped", None)
 
-    backup: Path | None = None
-    # wt-12: classify the target BEFORE any write so the commit routing
+    # The target is classified BEFORE any write so the commit routing
     # decision uses the pre-write state.
-    commit_routing = classify_target_for_commit(target, target)
-    pre_contents: dict[str, str | None] = {}
-    repo_root: Path | None = None
-    if commit_routing != "not_repo":
-        from ralph.git.scoped_auto_commit import capture_pre_write_contents
+    plan = _prepare_config_commit(target)
 
-        # Use the closest existing ancestor for the Repo() probe: a
-        # first-creation target does not exist on disk yet, and
-        # ``Repo(target, search_parent_directories=True)`` raises
-        # ``NoSuchPathError`` even with the parent-search fallback. The
-        # containing repo is the same one ``classify_target_for_commit``
-        # just discovered (wt-12 DA-001 / DA-010).
-        repo_anchor = target if target.exists() else target.parent
-        while not repo_anchor.exists():
-            repo_anchor = repo_anchor.parent
-        repo_root = Path(Repo(repo_anchor, search_parent_directories=True).working_dir)
-        pre_contents = capture_pre_write_contents(repo_root, [_repo_rel_path(target, repo_root)])
-
+    backup: Path | None = None
     if pre_existed and force:
         backup = _backup_path(target)
         if backup.exists():
@@ -993,67 +877,5 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
     action: Literal["created", "skipped", "regenerated"] = (
         "regenerated" if pre_existed else "created"
     )
-    # wt-12 commit routing. ``tracked`` and ``untracked_new`` targets are
-    # wholly Ralph-authored at this point, so they are committed under the
-    # fixed subject below. ``untracked_ignored`` and ``not_repo`` targets
-    # bypass commit handling SILENTLY (debug log only, never a warning):
-    # an ignored path is not Ralph's place to commit into, and a non-repo
-    # tree has nothing to commit into. This is expressed as an empty
-    # ``paths`` list, for which ``commit_deterministic_writes`` is a
-    # guaranteed silent NOOP -- the call itself stays on the unconditional
-    # statement path after the write.
-    commit_paths: list[str] = []
-    subject = "chore(config): noop"
-    commit_repo_root = target.parent
-    if commit_routing in ("tracked", "untracked_new"):
-        assert repo_root is not None  # guaranteed by commit_routing != "not_repo"
-        commit_repo_root = repo_root
-        commit_paths = [_repo_rel_path(target, repo_root)]
-        subject = f"chore(config): update {target.name}"
-    else:
-        logger.debug(
-            "config bootstrap: {} classified {}; bypassing deterministic commit",
-            target,
-            commit_routing,
-        )
-    # Empty ``paths`` short-circuits to a NOOP before any git access, so
-    # the placeholder root below is never touched for bypass classes.
-    try:
-        result = commit_deterministic_writes(
-            commit_repo_root,
-            paths=commit_paths,
-            pre_contents=pre_contents,
-            subject=subject,
-            create_commit_fn=create_commit,
-            stage_fn=stage_files,
-        )
-        if result.status is ScopedCommitStatus.CREATED and result.sha:
-            logger.debug("config bootstrap commit created: {}", result.sha[:8])
-        elif result.status is ScopedCommitStatus.SKIPPED:
-            logger.warning(
-                "config bootstrap: {} was already dirty at HEAD; left for the user flow",
-                target,
-            )
-        elif result.status is ScopedCommitStatus.FAILED:
-            logger.warning("config bootstrap commit failed (non-fatal): {}", result.error)
-    except Exception as exc:  # pragma: no cover - defensive, non-fatal
-        logger.warning("config bootstrap commit failed (non-fatal): {}", exc)
+    _commit_config_write(target, plan)
     return BootstrapResult(target, action, backup)
-
-
-def _repo_rel_path(target: Path, working_dir: Path) -> str:
-    """Return the repo-relative POSIX path of ``target`` inside ``working_dir``.
-
-    wt-12: uses the LEXICAL path (``target`` as-is), NOT
-    ``target.resolve(...)``. A tracked symlink (e.g. ``.agent/ralph-workflow.toml
-    -> ../real.toml``) is tracked at its lexical path; ``resolve`` would
-    swap the path for the symlink target and the deterministic commit
-    helper would stage/commit the wrong blob (or warn
-    "already dirty at HEAD" when the target file differs from HEAD),
-    leaving the symlink's lexical entry dirty for the agent flow
-    (DA-001 / DA-007 / DA-008 / DA-010).
-
-    The caller is responsible for passing a target whose lexical path is
-    inside ``working_dir``; bootstrap only writes paths inside the repo.
-    """
-    return target.relative_to(working_dir).as_posix()

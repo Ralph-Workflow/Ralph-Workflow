@@ -407,6 +407,11 @@ def test_enable_detected_agents_commits_via_symlinked_config_path(
 ) -> None:
     """``enable_detected_agents`` through a symlink writes safely via
     ``write_agents_toml`` with backup, creating NO auto-commit.
+
+    The symlinked path is the operator's own layout, so the write must
+    update the file BEHIND the symlink and leave the symlink itself in
+    place: replacing a symlinked agents config with a regular file
+    silently detaches the operator's config from the file they manage.
     """
     _init_repo_with_initial_commit(tmp_path)
     target = tmp_path / "target.toml"
@@ -449,10 +454,34 @@ def test_enable_detected_agents_commits_via_symlinked_config_path(
     assert "[agents.codex]" in updated_text
     assert "# @AGENT-BLOCK-START" not in updated_text
 
+    # The symlink SURVIVED the write: the writer must update the file
+    # behind the symlink, never replace the symlink with a regular file.
+    assert config_link.is_symlink(), (
+        "enable_detected_agents must not replace a symlinked agents config with a regular file"
+    )
+    assert config_link.resolve() == target.resolve(), (
+        "the symlink must still point at the original target file"
+    )
+
+    # The REAL file behind the symlink holds the updated agents content.
+    target_text = target.read_text(encoding="utf-8")
+    assert "[agents.codex]" in target_text, (
+        "the real file behind the symlink must hold the activated agents block"
+    )
+    assert "# @AGENT-BLOCK-START" not in target_text
+
     # .bak file was created containing the original content.
     bak_path = config_link.with_name(f"{config_link.name}.bak")
     assert bak_path.exists()
     assert bak_path.read_text(encoding="utf-8") == initial_content
+
+    # The pre-write bytes are preserved in a backup, whatever the backup
+    # file is named after.
+    backups = sorted(tmp_path.glob("*.bak"))
+    assert backups, "the writer must back up the original agents content"
+    assert any(path.read_text(encoding="utf-8") == initial_content for path in backups), (
+        f"no backup holds the original content; got: {[p.name for p in backups]!r}"
+    )
 
     # Trigger log was recorded naming the file, trigger, and backup path.
     assert any(

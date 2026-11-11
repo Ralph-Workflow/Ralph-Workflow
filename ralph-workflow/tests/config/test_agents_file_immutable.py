@@ -1,8 +1,18 @@
-"""Tests verifying immutability of the agents configuration file during config load, diagnose, and pipeline runs."""
+"""Tests verifying immutability of the agents configuration file.
+
+Two contracts are proven here:
+
+* the agents file is never rewritten implicitly -- a normal load, a
+  ``--diagnose`` run and a pipeline run leave it byte-identical;
+* an EXPLICIT rewrite never damages the file it replaces -- a symlinked
+  agents path stays a symlink (the real file behind it is updated), and an
+  existing file keeps its permission mode.
+"""
 
 from __future__ import annotations
 
 import hashlib
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +22,7 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from ralph.cli.main import app
+from ralph.config.agents_file_writer import write_agents_toml
 from ralph.config.enums import Verbosity
 from ralph.config.loader import load_config, reset_retired_agent_key_warnings
 from ralph.display.context import make_display_context
@@ -262,3 +273,36 @@ def test_pipeline_run_leaves_agents_file_byte_identical(
     assert not any(
         p.name.startswith(".ralph-workflow-agents.toml.tmp") for p in config_home.iterdir()
     )
+
+
+def test_write_through_symlinked_agents_path_preserves_symlink_and_updates_real_file(
+    tmp_path: Path,
+) -> None:
+    """A write through a symlinked agents path keeps the symlink and updates the real file."""
+    real_file = tmp_path / "real-agents.toml"
+    link_path = tmp_path / "ralph-workflow-agents.toml"
+    real_file.write_text('[agents.claude]\ncmd = "claude-old"\n', encoding="utf-8")
+    link_path.symlink_to(real_file)
+
+    write_agents_toml(link_path, '[agents.claude]\ncmd = "claude-new"\n', trigger="symlink-proof")
+
+    # The symlink is still a symlink pointing at the same real file.
+    assert link_path.is_symlink()
+    assert link_path.readlink() == real_file
+    assert link_path.resolve() == real_file.resolve()
+
+    # The real file behind the link carries the new content.
+    assert real_file.read_text(encoding="utf-8") == '[agents.claude]\ncmd = "claude-new"\n'
+
+
+def test_rewrite_preserves_existing_agents_file_mode(tmp_path: Path) -> None:
+    """A rewrite keeps the mode of an existing agents file (0644 stays 0644)."""
+    target_path = tmp_path / "ralph-workflow-agents.toml"
+    target_path.write_text('[agents.claude]\ncmd = "claude-old"\n', encoding="utf-8")
+    target_path.chmod(0o644)
+    assert stat.S_IMODE(target_path.stat().st_mode) == 0o644
+
+    write_agents_toml(target_path, '[agents.claude]\ncmd = "claude-new"\n', trigger="mode-proof")
+
+    assert stat.S_IMODE(target_path.stat().st_mode) == 0o644
+    assert target_path.read_text(encoding="utf-8") == '[agents.claude]\ncmd = "claude-new"\n'
