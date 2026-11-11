@@ -239,6 +239,8 @@ def test_failed_writer_keeps_a_concurrent_writers_backup(
     assert reached_replace.wait(timeout=10), "writer A never reached the target replace"
 
     write_agents_toml(target, '[agents.claude]\nmodel = "writer-b"\n', trigger="writer-b")
+    backup = target.with_name(f"{target.name}.bak")
+    writer_b_backup_identity = (backup.stat().st_dev, backup.stat().st_ino)
 
     release_a.set()
     thread.join(timeout=10)
@@ -250,8 +252,81 @@ def test_failed_writer_keeps_a_concurrent_writers_backup(
     tomllib.loads(target.read_text(encoding="utf-8"))
 
     # The failed writer left the concurrent writer's recovery copy alone.
-    backup = target.with_name(f"{target.name}.bak")
     assert backup.read_text(encoding="utf-8") == original
+    assert (backup.stat().st_dev, backup.stat().st_ino) == writer_b_backup_identity
 
     # No scratch file survives the race.
     assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted([target.name, backup.name])
+
+
+def test_failed_writer_interleaved_at_backup_publication_preserves_concurrent_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed writer does not delete a backup published immediately after its own backup replace.
+
+    Even if a concurrent writer B publishes a backup to ``bak_path`` immediately
+    after writer A's backup replace (before writer A executes target replacement),
+    writer A's ownership token captured before the replace ensures writer A
+    never identifies writer B's backup as its own and leaves writer B's backup
+    untouched when writer A fails.
+    """
+    target = tmp_path / _AGENTS_FILENAME
+    original = '[agents.claude]\nmodel = "operator"\n'
+    target.write_text(original, encoding="utf-8")
+    bak_path = target.with_name(f"{target.name}.bak")
+
+    writer_b_backup_identity: tuple[int, int] | None = None
+    real_replace = Path.replace
+
+    def interleaving_replace(
+        self: Path, target_path: object, *args: object, **kwargs: object
+    ) -> Path:
+        nonlocal writer_b_backup_identity
+        if threading.current_thread().name == "writer-a" and str(target_path) == str(target):
+            raise OSError("simulated target replace failure")
+        result = real_replace(self, target_path, *args, **kwargs)
+        if threading.current_thread().name == "writer-a" and str(target_path) == str(bak_path):
+            # Writer A just replaced bak_path. Run Writer B to completion on a dedicated thread.
+            writer_b_thread = threading.Thread(
+                target=lambda: write_agents_toml(
+                    target, '[agents.claude]\nmodel = "writer-b"\n', trigger="writer-b"
+                ),
+                name="writer-b",
+            )
+            writer_b_thread.start()
+            writer_b_thread.join(timeout=5)
+            assert not writer_b_thread.is_alive(), "writer B failed to finish"
+            writer_b_backup_identity = (bak_path.stat().st_dev, bak_path.stat().st_ino)
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    outcome: dict[str, object] = {}
+
+    def run_writer_a() -> None:
+        try:
+            write_agents_toml(target, '[agents.claude]\nmodel = "writer-a"\n', trigger="writer-a")
+        except OSError as exc:
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=run_writer_a, name="writer-a")
+    thread.start()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert isinstance(outcome.get("error"), OSError)
+
+    # Writer B succeeded and owns the file.
+    assert target.read_text(encoding="utf-8") == '[agents.claude]\nmodel = "writer-b"\n'
+    tomllib.loads(target.read_text(encoding="utf-8"))
+
+    # Writer B's backup is intact and was not deleted by writer A's failure.
+    assert bak_path.is_file()
+    assert bak_path.read_text(encoding="utf-8") == original
+    assert writer_b_backup_identity is not None
+    assert (bak_path.stat().st_dev, bak_path.stat().st_ino) == writer_b_backup_identity
+
+    # No scratch file survives the race.
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted(
+        [target.name, bak_path.name]
+    )

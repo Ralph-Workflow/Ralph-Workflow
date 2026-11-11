@@ -223,6 +223,8 @@ TESTS_ALLOWLIST: set[str] = {
     # exercises runtime inotify watch proof via real subprocess
     # (R5 watch-handle contract)
     "test_explore_resource_lifecycle.py",
+    # real-git diff-tree fixture setup via subprocess.run (tmp-path repos)
+    "test_commit_review_real_diff_proofs.py",
 }
 
 _MCP_FIXTURE_FILES = {

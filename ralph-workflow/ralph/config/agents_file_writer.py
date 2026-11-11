@@ -127,6 +127,7 @@ def _publish_backup(
         with staged:
             staged.write(previous_bytes)
             staged.flush()
+        identity = _file_identity(staging)
         staging.replace(bak_path)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -134,7 +135,7 @@ def _publish_backup(
                 missing_ok=True
             )
         raise
-    return _file_identity(bak_path)
+    return identity
 
 
 def _release_backup(

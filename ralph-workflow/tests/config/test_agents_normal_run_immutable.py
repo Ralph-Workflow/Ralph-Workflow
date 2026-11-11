@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import inspect
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
 import ralph.cli.main as cli_main
-from ralph.cli.commands import init as init_module
 from ralph.cli.main import app
 from ralph.config.bootstrap import ensure_global_agents_config
 from ralph.config.loader import load_config
@@ -98,7 +97,18 @@ def test_init_explicitly_creates_missing_agents_file(
     assert not target.with_name(f"{target.name}.bak").exists()
 
 
-def test_init_command_wires_the_explicit_creation_flag() -> None:
+def test_init_command_creates_missing_agents_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The explicit init route requests the creation; a normal route does not."""
-    init_source = inspect.getsource(init_module.init_command)
-    assert "ensure_global_agents_config(create_if_missing=True)" in init_source
+    target = _isolate_config(monkeypatch, tmp_path)
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    assert not target.exists()
+
+    result = CliRunner().invoke(app, ["--init"])
+
+    assert result.exit_code == 0, result.output
+    assert target.is_file()
+    parsed = tomllib.loads(target.read_text(encoding="utf-8"))
+    assert isinstance(parsed, dict)
+    assert not target.with_name(f"{target.name}.bak").exists()
