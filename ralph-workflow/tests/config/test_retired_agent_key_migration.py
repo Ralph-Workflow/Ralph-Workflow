@@ -17,24 +17,21 @@ def test_load_config_removes_retired_agent_key_from_explicit_source(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config_path = tmp_path / "ralph-workflow.toml"
-    config_path.write_text(
+    original_text = (
         "# Keep this operator note.\n"
         "[agents.claude]\n"
         'cmd = "claude"\n'
         "can_commit = true\n"
-        'display_name = "Claude Code"\n',
-        encoding="utf-8",
+        'display_name = "Claude Code"\n'
     )
+    config_path.write_text(original_text, encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
 
     config = load_config(config_path=config_path)
 
-    rewritten = config_path.read_text(encoding="utf-8")
     assert config.agents["claude"].display_name == "Claude Code"
-    assert "# Keep this operator note." in rewritten
-    assert 'cmd = "claude"' in rewritten
-    assert 'display_name = "Claude Code"' in rewritten
-    assert "can_commit = true" not in rewritten
+    assert not hasattr(config.agents["claude"], "can_commit")
+    assert config_path.read_text(encoding="utf-8") == original_text
 
 
 def test_load_config_rejects_near_miss_agent_key_without_rewriting_source(
@@ -106,27 +103,21 @@ def test_load_config_migrates_retired_agent_key_from_global_agents_source(
 def test_load_toml_preserves_comments_and_strings_during_retired_agent_key_migration(
     tmp_path: Path,
 ) -> None:
-    config_path = tmp_path / "ralph-workflow.toml"
-    config_path.write_text(
+    original_text = (
         "[agents.claude] # active agent\n"
         'note = "can_commit = true"\n'
         "# can_commit = true\n"
         "can_commit = true # retired\n"
         "[general]\n"
-        "can_commit = true\n",
-        encoding="utf-8",
+        "can_commit = true\n"
     )
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text(original_text, encoding="utf-8")
 
     data = load_toml(config_path)
 
     assert data["agents"] == {"claude": {"note": "can_commit = true"}}
-    assert config_path.read_text(encoding="utf-8") == (
-        "[agents.claude] # active agent\n"
-        'note = "can_commit = true"\n'
-        "# can_commit = true\n"
-        "[general]\n"
-        "can_commit = true\n"
-    )
+    assert config_path.read_text(encoding="utf-8") == original_text
 
 
 def test_load_toml_does_not_rewrite_malformed_retired_agent_source(tmp_path: Path) -> None:

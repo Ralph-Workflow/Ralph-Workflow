@@ -4,8 +4,8 @@ Wires the shared ``commit_deterministic_writes`` primitive into the three
 config write sites after wt-012 U0:
 
 * ``ralph.config.loader.load_toml`` -- the retired
-  ``agent_can_commit`` key migration
-  (subject: ``chore(config): migrate retired agent_can_commit assignments``);
+  ``agent_can_commit`` key migration (migrates in memory only; non-writing
+  and non-committing);
 * ``ralph.config.agent_detection.autowire_chains_to_detected_agent`` --
   the detected-CLI agent-configuration updates
   (subject: ``chore(config): update agent configuration``);
@@ -111,34 +111,23 @@ def _git_status_clean(repo_root: Path) -> bool:
 def test_load_toml_migration_lands_in_deterministic_chore_commit(
     tmp_path: Path,
 ) -> None:
-    """A TOML with a retired ``agent_can_commit`` key migrates via a
-    fixed-subject chore commit and leaves the tree clean.
+    """A TOML with a retired ``agent_can_commit`` key migrates in memory only.
 
-    The pre-write hash of the config is captured BEFORE the migration
-    runs, the migration rewrites the file, and
-    ``commit_deterministic_writes`` produces a chore commit with the
-    literal subject
-    ``chore(config): migrate retired agent_can_commit assignments``.
-
-    The config file is committed at HEAD before ``load_toml`` runs so
-    the deterministic writer's pre-write hash matches HEAD -- the
-    retired-key migration is the deterministic writer's own diff, not
-    someone else's pre-staged work.
+    `load_toml` is non-writing and non-committing: it parses the migrated
+    source into memory, does NOT rewrite the file on disk, creates NO chore
+    commit (HEAD unchanged), and leaves the tree clean.
     """
     _init_repo_with_initial_commit(tmp_path)
     config_path = tmp_path / "ralph-workflow.toml"
-    config_path.write_text(
-        '[agents.claude]\ncmd = "claude"\ncan_commit = true\ndisplay_name = "Claude Code"\n',
-        encoding="utf-8",
+    initial_content = (
+        '[agents.claude]\ncmd = "claude"\ncan_commit = true\ndisplay_name = "Claude Code"\n'
     )
-    # Seed the retired-key version at HEAD so the pre-write hash matches
-    # HEAD before ``load_toml`` runs. Without this, the file would be
-    # untracked at HEAD and the deterministic writer would treat it as
-    # "already dirty" (HEAD != pre-write) and SKIP the chore commit.
+    config_path.write_text(initial_content, encoding="utf-8")
     repo = Repo(tmp_path)
     try:
         repo.index.add(["ralph-workflow.toml"])
         repo.index.commit("seed retired key", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
+        initial_head = repo.head.commit.hexsha
     finally:
         repo.close()
 
@@ -146,56 +135,39 @@ def test_load_toml_migration_lands_in_deterministic_chore_commit(
 
     # 1. The migration removed the retired key in-memory.
     assert "can_commit" not in data.get("agents", {}).get("claude", {})
-    # 2. The on-disk file also had the retired key stripped.
-    rewritten = config_path.read_text(encoding="utf-8")
-    assert "can_commit = true" not in rewritten
-    assert "[agents.claude]" in rewritten
-    # 3. A chore commit with the pinned subject landed.
+    # 2. The on-disk file is NOT rewritten.
+    assert config_path.read_text(encoding="utf-8") == initial_content
+    # 3. No chore commit landed; HEAD is unchanged.
+    repo = Repo(tmp_path)
+    try:
+        assert repo.head.commit.hexsha == initial_head
+    finally:
+        repo.close()
     subjects = _git_log_subjects(tmp_path)
-    assert subjects[0] == "chore(config): migrate retired agent_can_commit assignments"
-    # 4. The post-commit tree is clean -- no untracked / unstaged / staged residue.
-    assert _git_status_clean(tmp_path), "tree must be clean after the deterministic commit"
+    assert subjects[0] == "seed retired key"
+    # 4. The tree remains clean -- no untracked / unstaged / staged residue.
+    assert _git_status_clean(tmp_path), "tree must be clean after load_toml"
 
 
 def test_load_toml_migration_commits_via_symlinked_config_path(
     tmp_path: Path,
 ) -> None:
-    """DA-001/DA-008/DA-011: a symlinked config entry commits the LEXICAL path.
-
-    The pre-fix bug: ``_commit_deterministic_config_write`` resolved the
-    symlink to capture and commit ``target.toml`` (the symlink target),
-    but ``atomic_write_text_if_changed`` writes to the lexical
-    ``config.toml`` and ``Path.replace``s the symlink with a regular
-    file -- the symlink target is left unchanged (and may end up
-    dangling). The pre-write hash of ``target.toml`` then equals its
-    on-disk hash after the write, so the deterministic helper
-    incorrectly returned ``NOOP`` and the lexical ``config.toml`` entry
-    stayed dirty. The fix captures the LEXICAL path so the on-disk
-    hash check observes the new regular file at the lexical path.
-    """
+    """A symlinked config entry migrates in memory only and does not replace symlink."""
     _init_repo_with_initial_commit(tmp_path)
-    # ``target.toml`` holds the original (un-migrated) content. It is
-    # tracked at HEAD so the deterministic writer's pre-write hash
-    # matches HEAD before ``load_toml`` runs.
     target = tmp_path / "target.toml"
-    target.write_text(
-        '[agents.claude]\ncmd = "claude"\ncan_commit = true\ndisplay_name = "Claude Code"\n',
-        encoding="utf-8",
+    initial_content = (
+        '[agents.claude]\ncmd = "claude"\ncan_commit = true\ndisplay_name = "Claude Code"\n'
     )
-    # ``config.toml`` is a tracked symlink to ``target.toml``. The
-    # migration helper writes to ``config.toml`` (the lexical entry the
-    # user-facing config lives at), so the chore commit must reference
-    # ``config.toml`` and leave the replaced lexical entry clean.
+    target.write_text(initial_content, encoding="utf-8")
     config_link = tmp_path / "config.toml"
     config_link.symlink_to(target)
     repo = Repo(tmp_path)
     try:
         repo.index.add(["target.toml"])
         repo.index.commit("seed target", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
-        # Add the symlink as a tracked entry AFTER seeding the target
-        # so git records the symlink blob (the target text) at HEAD.
         repo.index.add(["config.toml"])
         repo.index.commit("seed symlink", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
+        initial_head = repo.head.commit.hexsha
     finally:
         repo.close()
 
@@ -210,28 +182,21 @@ def test_load_toml_migration_commits_via_symlinked_config_path(
 
     # 1. The migration removed the retired key in-memory.
     assert "can_commit" not in data.get("agents", {}).get("claude", {})
-    # 2. The lexical ``config.toml`` is now a regular file (the symlink
-    #    was replaced by the atomic temp+rename write).
-    assert not config_link.is_symlink(), (
-        "atomic_write_text_if_changed must replace the symlink with a regular file"
-    )
-    rewritten = config_link.read_text(encoding="utf-8")
-    assert "can_commit = true" not in rewritten
-    assert "[agents.claude]" in rewritten
-    # 3. A chore commit with the pinned subject landed on the lexical
-    #    ``config.toml`` entry -- not on the (unchanged) symlink target.
+    # 2. The symlink is preserved (not replaced with a regular file).
+    assert config_link.is_symlink(), "config.toml must remain a symlink"
+    assert config_link.resolve() == target.resolve()
+    # 3. The target file is unchanged.
+    assert target.read_text(encoding="utf-8") == initial_content
+    # 4. No commit was created; HEAD unchanged.
+    repo = Repo(tmp_path)
+    try:
+        assert repo.head.commit.hexsha == initial_head
+    finally:
+        repo.close()
     subjects = _git_log_subjects(tmp_path)
-    assert subjects[0] == "chore(config): migrate retired agent_can_commit assignments"
-    committed_paths = _head_commit_paths(tmp_path)
-    assert "config.toml" in committed_paths, (
-        f"chore commit must include the lexical config.toml entry; got: {sorted(committed_paths)}"
-    )
-    # 4. The post-commit tree is clean: the lexical config.toml entry is
-    #    committed, the unchanged symlink target is NOT swept in.
-    assert _git_status_clean(tmp_path), (
-        "tree must be clean after the deterministic commit; the lexical "
-        "config.toml must NOT be left dirty"
-    )
+    assert subjects[0] == "seed symlink"
+    # 5. Tree is clean.
+    assert _git_status_clean(tmp_path)
 
 
 def repo_head_tree_mode(repo_root: Path, path: str) -> str:
@@ -577,10 +542,9 @@ def test_unrelated_prestaged_file_is_preserved_across_config_commit(
     """Pre-staged unrelated work MUST survive a config chore commit.
 
     The user pre-stages ``src/main.py`` BEFORE the config writer runs.
-    The ``chore(config): migrate retired agent_can_commit assignments``
-    commit must:
+    A ``chore(config): update agent configuration`` commit must:
 
-    * include the migrated config file;
+    * include the updated config file;
     * NOT include ``src/main.py`` (pre-staged work is the agent's
       responsibility, not the deterministic writer's);
     * leave ``src/main.py`` staged after the chore commit (the
@@ -600,18 +564,18 @@ def test_unrelated_prestaged_file_is_preserved_across_config_commit(
         repo.close()
 
     # Seed the config file at HEAD so the deterministic writer's
-    # pre-write hash matches HEAD before the migration runs.
+    # pre-write hash matches HEAD before the write runs.
     config_path = tmp_path / ".agent" / "ralph-workflow.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
-        '[agents.claude]\ncmd = "claude"\ncan_commit = true\n',
+        '[agents.claude]\ncmd = "claude"\n',
         encoding="utf-8",
     )
     repo = Repo(tmp_path)
     try:
         repo.index.add([".agent/ralph-workflow.toml"])
         repo.index.commit(
-            "seed config with retired key",
+            "seed config",
             author=Actor("t", "t@t"),
             committer=Actor("t", "t@t"),
         )
@@ -621,7 +585,7 @@ def test_unrelated_prestaged_file_is_preserved_across_config_commit(
     # User pre-stages a mid-work edit on src/main.py AFTER all the
     # seed commits -- the index is clean before the user stages, and
     # the pre-staged state is the only thing tracking the in-progress
-    # edit when ``load_toml`` runs.
+    # edit when the config write runs.
     src_file.write_text("print('v2')\n", encoding="utf-8")
     repo = Repo(tmp_path)
     try:
@@ -633,11 +597,18 @@ def test_unrelated_prestaged_file_is_preserved_across_config_commit(
     finally:
         repo.close()
 
-    load_toml(config_path)
+    _commit_deterministic_config_write(
+        config_path,
+        subject="chore(config): update agent configuration",
+        write_fn=lambda: config_path.write_text(
+            '[agents.claude]\ncmd = "claude-updated"\n',
+            encoding="utf-8",
+        ),
+    )
 
     # Chore commit landed with the fixed subject.
     subjects = _git_log_subjects(tmp_path)
-    assert subjects[0] == "chore(config): migrate retired agent_can_commit assignments"
+    assert subjects[0] == "chore(config): update agent configuration"
 
     # The chore commit MUST NOT include the pre-staged src/main.py.
     repo = Repo(tmp_path)
@@ -764,42 +735,54 @@ def test_failed_create_commit_injection_preserves_head_and_index(
 
 
 def test_repeat_config_write_is_a_noop(tmp_path: Path) -> None:
-    """A second identical migration write produces no commit.
+    """A second identical config write produces no commit (idempotent).
 
     After the first commit, the on-disk content of the config matches
-    HEAD's blob for the same path. A second ``load_toml`` call sees no
-    diff (``migrated_source == source``) and ``commit_deterministic_writes``
-    correctly reports NOOP -- the chore commit does NOT land a second
-    time on an idempotent re-run.
+    HEAD's blob for the same path. A second write with identical content
+    sees no diff and ``_commit_deterministic_config_write`` correctly reports
+    NOOP -- the chore commit does NOT land a second time on an idempotent re-run.
     """
     _init_repo_with_initial_commit(tmp_path)
     config_path = tmp_path / "ralph-workflow.toml"
     config_path.write_text(
-        '[agents.claude]\ncmd = "claude"\ncan_commit = true\n',
+        '[agents.claude]\ncmd = "claude"\n',
         encoding="utf-8",
     )
-    # Seed the retired-key version at HEAD so the deterministic writer's
-    # pre-write hash matches HEAD before ``load_toml`` runs.
     repo = Repo(tmp_path)
     try:
         repo.index.add(["ralph-workflow.toml"])
         repo.index.commit(
-            "seed config with retired key",
+            "seed config",
             author=Actor("t", "t@t"),
             committer=Actor("t", "t@t"),
         )
     finally:
         repo.close()
 
-    # First call -- the migration commit lands.
-    load_toml(config_path)
+    # First call -- the config commit lands.
+    result_first = _commit_deterministic_config_write(
+        config_path,
+        subject="chore(config): update agent configuration",
+        write_fn=lambda: config_path.write_text(
+            '[agents.claude]\ncmd = "claude-updated"\n',
+            encoding="utf-8",
+        ),
+    )
+    assert result_first is not None and result_first.status is ScopedCommitStatus.CREATED
     head_after_first = Repo(tmp_path).head.commit.hexsha
     subjects_after_first = _git_log_subjects(tmp_path)
-    assert subjects_after_first[0] == "chore(config): migrate retired agent_can_commit assignments"
+    assert subjects_after_first[0] == "chore(config): update agent configuration"
 
-    # Second call -- the on-disk file no longer has the retired key, so
-    # the migration is a no-op and no chore commit lands.
-    load_toml(config_path)
+    # Second call -- identical write produces NOOP and no new commit lands.
+    result_second = _commit_deterministic_config_write(
+        config_path,
+        subject="chore(config): update agent configuration",
+        write_fn=lambda: config_path.write_text(
+            '[agents.claude]\ncmd = "claude-updated"\n',
+            encoding="utf-8",
+        ),
+    )
+    assert result_second is not None and result_second.status is ScopedCommitStatus.NOOP
     head_after_second = Repo(tmp_path).head.commit.hexsha
     assert head_after_second == head_after_first, (
         "second identical write MUST NOT produce a new chore commit"

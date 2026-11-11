@@ -248,6 +248,19 @@ def detect_installed_agents() -> list[str]:
     ]
 
 
+#: Trigger label of the ``autowire_chains_to_detected_agent`` write on agents targets.
+_AUTOWIRE_TRIGGER = "ralph --init: autowire agent chains"
+
+
+def _is_agents_config_path(path: Path) -> bool:
+    """Return True if *path* names an agents configuration file."""
+    from ralph.config._config_filenames import _GLOBAL_AGENTS_FILENAME
+
+    return path.name in {_GLOBAL_AGENTS_FILENAME, "agents.toml"} or path.name.endswith(
+        "-agents.toml"
+    )
+
+
 def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
     """Read the flat chain mapping from a bundled or user main config."""
     parsed = cast("dict[str, object]", tomllib.loads(text))
@@ -300,24 +313,27 @@ def autowire_chains_to_detected_agent(
         match.group(),
     )
     new_text = text[: match.start()] + rewritten + text[match.end() :]
-    # wt-012: route the project-local config write through the shared
-    # deterministic auto-commit primitive so a chore commit with the
-    # fixed ``chore(config): update agent configuration`` subject
-    # captures the chain rewrite, never leaking it into a later
-    # agent's commit. A path outside a git repo (e.g. a global
-    # ``~/.config/`` config) is the documented silent-NOOP path --
-    # the write still lands on disk so the operator's config is
-    # always current, and no commit is attempted.
-    _commit_deterministic_config_write(
-        main_config_path,
-        subject="chore(config): update agent configuration",
-        write_fn=lambda: write_text_if_changed(
-            DEFAULT_FILE_BACKEND,
+    if _is_agents_config_path(main_config_path):
+        write_agents_toml(main_config_path, new_text, trigger=_AUTOWIRE_TRIGGER)
+    else:
+        # wt-012: route the project-local config write through the shared
+        # deterministic auto-commit primitive so a chore commit with the
+        # fixed ``chore(config): update agent configuration`` subject
+        # captures the chain rewrite, never leaking it into a later
+        # agent's commit. A path outside a git repo (e.g. a global
+        # ``~/.config/`` config) is the documented silent-NOOP path --
+        # the write still lands on disk so the operator's config is
+        # always current, and no commit is attempted.
+        _commit_deterministic_config_write(
             main_config_path,
-            new_text,
-            encoding="utf-8",
-        ),
-    )
+            subject="chore(config): update agent configuration",
+            write_fn=lambda: write_text_if_changed(
+                DEFAULT_FILE_BACKEND,
+                main_config_path,
+                new_text,
+                encoding="utf-8",
+            ),
+        )
     return sorted(default_agents)
 
 

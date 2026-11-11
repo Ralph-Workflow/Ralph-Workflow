@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from git import Actor, Repo
 from loguru import logger
 from rich.console import Console
 from typer.testing import CliRunner
@@ -334,3 +335,124 @@ def test_rewrite_preserves_existing_agents_file_mode(tmp_path: Path) -> None:
 
     assert stat.S_IMODE(target_path.stat().st_mode) == 0o644
     assert target_path.read_text(encoding="utf-8") == '[agents.claude]\ncmd = "claude-new"\n'
+
+
+def _init_repo_with_initial_commit(repo_root: Path) -> None:
+    """Create a fresh git repo with one initial empty commit so HEAD exists."""
+    repo = Repo.init(repo_root)
+    try:
+        repo.config_writer().set_value("user", "name", "Test Author").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+        actor = Actor("Test Author", "test@example.com")
+        repo.index.commit("initial", author=actor, committer=actor)
+    finally:
+        repo.close()
+
+
+def test_load_config_with_explicit_agents_path_leaves_file_immutable_when_migrating(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Loading explicit config containing retired can_commit leaves sha256 byte-identical and creates no commit."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir()
+    _init_repo_with_initial_commit(repo_dir)
+    agents_path = repo_dir / "ralph-workflow-agents.toml"
+    content = (
+        "# Custom agent configuration\n"
+        "[agents.claude]\n"
+        'cmd = "claude"\n'
+        "can_commit = true\n"
+        'display_name = "Claude Code"\n'
+    )
+    agents_path.write_text(content, encoding="utf-8")
+    repo = Repo(repo_dir)
+    try:
+        repo.index.add([agents_path.name])
+        repo.index.commit("seed agents", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
+        initial_head = repo.head.commit.hexsha
+    finally:
+        repo.close()
+
+    initial_bytes = agents_path.read_bytes()
+    initial_sha256 = hashlib.sha256(initial_bytes).hexdigest()
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+
+    config = load_config(config_path=agents_path)
+
+    # Key removed in memory
+    assert config.agents["claude"].cmd == "claude"
+    assert config.agents["claude"].display_name == "Claude Code"
+    assert not hasattr(config.agents["claude"], "can_commit")
+
+    # Asserts sha256 byte-identical
+    final_bytes = agents_path.read_bytes()
+    final_sha256 = hashlib.sha256(final_bytes).hexdigest()
+    assert final_bytes == initial_bytes
+    assert final_sha256 == initial_sha256
+
+    # No .migration temp files and no .bak file
+    assert not any(".migration" in p.name for p in repo_dir.iterdir())
+    assert not any(p.name.endswith(".bak") for p in repo_dir.iterdir())
+
+    # No Git commit created
+    repo = Repo(repo_dir)
+    try:
+        assert repo.head.commit.hexsha == initial_head
+    finally:
+        repo.close()
+
+
+def test_diagnose_with_explicit_agents_config_leaves_file_immutable_when_migrating(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Running ralph --diagnose --config leaves agents file sha256 byte-identical and creates no commit."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir()
+    _init_repo_with_initial_commit(repo_dir)
+    agents_path = repo_dir / "ralph-workflow-agents.toml"
+    content = (
+        "# Custom agent configuration\n"
+        "[agents.claude]\n"
+        'cmd = "claude"\n'
+        "can_commit = true\n"
+        'display_name = "Claude Code"\n'
+    )
+    agents_path.write_text(content, encoding="utf-8")
+    repo = Repo(repo_dir)
+    try:
+        repo.index.add([agents_path.name])
+        repo.index.commit("seed agents", author=Actor("t", "t@t"), committer=Actor("t", "t@t"))
+        initial_head = repo.head.commit.hexsha
+    finally:
+        repo.close()
+
+    initial_bytes = agents_path.read_bytes()
+    initial_sha256 = hashlib.sha256(initial_bytes).hexdigest()
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.chdir(repo_dir)
+
+    result = CliRunner().invoke(app, ["--diagnose", "--config", str(agents_path)])
+    assert result.exit_code in (0, 1)
+
+    # Asserts sha256 byte-identical
+    final_bytes = agents_path.read_bytes()
+    final_sha256 = hashlib.sha256(final_bytes).hexdigest()
+    assert final_bytes == initial_bytes
+    assert final_sha256 == initial_sha256
+
+    # No .migration temp files and no .bak file
+    assert not any(".migration" in p.name for p in repo_dir.iterdir())
+    assert not any(p.name.endswith(".bak") for p in repo_dir.iterdir())
+
+    # No Git commit created
+    repo = Repo(repo_dir)
+    try:
+        assert repo.head.commit.hexsha == initial_head
+    finally:
+        repo.close()
