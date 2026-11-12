@@ -13,6 +13,7 @@ from ralph.workspace.scope import WorkspaceScope
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_PATH = REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow.toml"
 LOCAL_TEMPLATE_PATH = REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow-local.toml"
+CONFIGURATION_DOC = REPO_ROOT / "docs" / "sphinx" / "configuration.md"
 
 
 def test_retention_max_age_days_default_is_seven() -> None:
@@ -53,11 +54,14 @@ def test_load_config_honors_stricter_retention_preference(tmp_path: Path) -> Non
 
 
 def test_both_templates_document_the_retention_preference() -> None:
-    for path in (TEMPLATE_PATH, LOCAL_TEMPLATE_PATH):
-        text = path.read_text()
-        assert "retention_max_age_days" in text, (
-            f"{path.name} must document the retention_max_age_days key"
-        )
+    text = CONFIGURATION_DOC.read_text()
+    assert "retention_max_age_days" in text, (
+        "the configuration page must document the retention_max_age_days key"
+    )
+    assert ".agent/ralph-workflow.toml" in text, (
+        "the configuration page must state that the project-level override "
+        "carries the same retention key"
+    )
 
 
 def test_run_start_sweep_receives_configured_retention(

@@ -32,8 +32,8 @@ and registries to manage configurations and execution strategies.
 
 - `adding-a-new-agent.md` / `quickstart-add-a-new-agent.md` — register a new agent CLI
 - `architecture.md` — subsystem shape and runtime responsibilities
-- `artifact-submission-contract.md` — required artifact content
-- `memory-lifecycle.md` — bounded-accumulator rules
+- [`artifact-submission-contract.md`](../../ralph-workflow/docs/agents/artifact-submission-contract.md) — required artifact content
+- [`memory-lifecycle.md`](../../ralph-workflow/docs/agents/memory-lifecycle.md) — memory budget, teardown, and resource-lifecycle audit contracts
+- [`watchdog-spec.md`](../../ralph-workflow/docs/agents/watchdog-spec.md) — watchdog design and invariants
 - Pro support: see
-  [`docs/sphinx/pro-support.md#engine-internals-pro-contract`](../sphinx/pro-support.md#engine-internals-pro-contract)
-- `watchdog-spec.md` — watchdog design and invariants
+  [`docs/sphinx/pro-support.md#engine-internals-pro-contract`](../../ralph-workflow/docs/sphinx/pro-support.md#engine-internals-pro-contract)

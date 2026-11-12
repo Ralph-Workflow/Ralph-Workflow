@@ -407,7 +407,7 @@ See [Configuration](configuration.md#conflict_resolution) to tune the documented
 
 ### Why bounded MCP timeouts are non-negotiable
 
-An unbounded MCP call hangs the MCP server thread and starves the agent of output. The `subprocess.run`/`.communicate`/`.wait` calls in `ralph/mcp/` MUST carry a `timeout=` parameter, as must `httpx.*`, `requests.*`, `urlopen`, and `socket.create_connection`. The only bypass is an inline `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design call. The audit (`ralph/testing/audit_mcp_timeout.py`) runs under `make verify`, so a missing timeout is a hard failure, not a warning.
+An unbounded MCP call hangs the MCP server thread and starves the agent of output. The `subprocess.run`/`.communicate`/`.wait` calls in `ralph/mcp/` MUST carry a `timeout=` parameter, as must `httpx.*`, `requests.*`, `urlopen`, and `socket.create_connection`. The only bypass is a structural-exemption entry in `ralph/testing/audit_mcp_timeout.py` that names the call site and its reason; a source comment does not exempt a call. The audit (`ralph/testing/audit_mcp_timeout.py`) runs under `make verify`, so a missing timeout is a hard failure, not a warning.
 
 ### Recovery
 

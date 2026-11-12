@@ -8,9 +8,20 @@ from ralph.testing.audit_sast import SastFinding, audit_sast_roots, diff_finding
 
 pytestmark = pytest.mark.timeout_seconds(60)
 
+RALPH_TEST_CHANGE_REASONS = {
+    "inline-waiver-contract": (
+        "the retired expectation asserted that a source comment suppresses a "
+        "static-analysis finding; a waiver is a configuration-level entry in "
+        "the SAST configuration, so the gate honours the project Bandit "
+        "configuration and reports a finding whose source carries a comment"
+    ),
+}
+
 _ASSERT_PATTERN = "VALUE = 1\nassert VALUE == 1\n"
 
-_WAIVED_PATTERN = "VALUE = 1\nassert VALUE == 1  # nosec: B101 - fixture, not shipped logic\n"
+_COMMENTED_PATTERN = "VALUE = 1\nassert VALUE == 1  # a trailing note\n"
+
+_WAIVER_CONFIG = '[tool.bandit]\nskips = ["B101"]\n'
 
 
 def _write_tree(root: Path, files: dict[str, str]) -> Path:
@@ -43,9 +54,22 @@ def test_gate_reports_a_new_finding_with_a_fix_hint(tmp_path: Path) -> None:
     assert findings[0].fix_hint
 
 
-def test_gate_honours_the_inline_nosec_waiver(tmp_path: Path) -> None:
+def test_gate_reports_a_finding_whose_source_carries_a_comment(tmp_path: Path) -> None:
     baseline = _write_tree(tmp_path / "baseline", {"ralph/pkg/mod.py": "VALUE = 1\n"})
-    current = _write_tree(tmp_path / "current", {"ralph/pkg/mod.py": _WAIVED_PATTERN})
+    current = _write_tree(tmp_path / "current", {"ralph/pkg/mod.py": _COMMENTED_PATTERN})
+
+    findings, _ = audit_sast_roots(baseline, current)
+
+    assert [f.test_id for f in findings] == ["B101"]
+    assert findings[0].file_path == "ralph/pkg/mod.py"
+
+
+def test_gate_honours_a_configuration_level_waiver(tmp_path: Path) -> None:
+    baseline = _write_tree(tmp_path / "baseline", {"ralph/pkg/mod.py": "VALUE = 1\n"})
+    current = _write_tree(
+        tmp_path / "current",
+        {"pyproject.toml": _WAIVER_CONFIG, "ralph/pkg/mod.py": _ASSERT_PATTERN},
+    )
 
     findings, _ = audit_sast_roots(baseline, current)
 

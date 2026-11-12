@@ -24,6 +24,31 @@ from ralph.policy.loader import (
 )
 from ralph.workspace.scope import WorkspaceScope
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ensure_global_config_force_creates_backup": (
+        "the absolute comment gate bans comments in tracked TOML, so the regenerated "
+        "global config no longer opens with a comment banner; the check now asserts the "
+        "regenerated file is valid TOML that carries the expected agent_chains and "
+        "agent_drains tables, and it still asserts the previous file was backed up "
+        "byte for byte"
+    ),
+    "test_bundled_mcp_template_describes_broad_multimodal_support": (
+        "the multimodal description moved out of the comment-only bundled "
+        "ralph/policy/defaults/mcp.toml into the owning documentation page "
+        "docs/sphinx/advanced-mcp-configuration.md, because the absolute comment gate "
+        "bans comments in tracked TOML; the check now asserts the bundled template "
+        "carries no active TOML keys and that the owning page documents read_media, "
+        "its read_image compatibility alias, and no retired image-only wording"
+    ),
+    "test_local_template_mentions_ccs_alternative": (
+        "the CCS alternative moved out of the comment-only bundled local template into "
+        "the owning configuration page docs/sphinx/configuration.md, because the "
+        "absolute comment gate bans comments in tracked TOML; the check now asserts the "
+        "template ships the ccs and ccs_aliases tables and that the configuration page "
+        "documents the ccs/work chain alternative"
+    ),
+}
+
 pytestmark = pytest.mark.timeout_seconds(2.0)
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
@@ -205,7 +230,9 @@ def test_ensure_global_config_force_creates_backup(tmp_path: Path) -> None:
     backup = target.with_suffix(".toml.bak")
     assert backup.exists()
     assert backup.read_text(encoding="utf-8") == "# MINE"
-    assert target.read_text(encoding="utf-8").startswith("#")
+    regenerated = tomllib.loads(target.read_text(encoding="utf-8"))
+    assert "agent_chains" in regenerated
+    assert "agent_drains" in regenerated
     assert result.action == "regenerated"
     assert result.backup == backup
 
@@ -392,10 +419,15 @@ def test_bundled_global_template_parses_as_valid_toml() -> None:
 def test_bundled_mcp_template_describes_broad_multimodal_support() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "mcp.toml"
     content = template.read_text(encoding="utf-8")
-    assert "read_media" in content
-    assert "read_image" in content
-    assert "compatibility" in content
+    assert tomllib.loads(content) == {}
+    doc = (
+        Path(__file__).resolve().parents[1] / "docs" / "sphinx" / "advanced-mcp-configuration.md"
+    ).read_text(encoding="utf-8")
+    assert "read_media" in doc
+    assert "read_image" in doc
+    assert "compatibility" in doc
     assert "Multimodal image reading support" not in content
+    assert "Multimodal image reading support" not in doc
 
 
 def test_local_template_defines_active_runtime_drain_bindings() -> None:
@@ -445,8 +477,13 @@ def test_local_template_does_not_expose_review_era_drain_bindings() -> None:
 
 def test_local_template_mentions_ccs_alternative() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
-    content = template.read_text(encoding="utf-8")
-    assert "ccs/work" in content
+    data = tomllib.loads(template.read_text(encoding="utf-8"))
+    assert "ccs" in data
+    assert "ccs_aliases" in data
+    doc = (Path(__file__).resolve().parents[1] / "docs" / "sphinx" / "configuration.md").read_text(
+        encoding="utf-8"
+    )
+    assert "ccs/work" in doc
 
 
 def test_generated_local_template_validates_against_bundled_policy(

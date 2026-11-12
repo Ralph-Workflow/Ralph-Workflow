@@ -209,7 +209,7 @@ first use. The file contains no name, email, host, repository, or prompt data.
 
 ### `[general]`
 
-Core workflow settings: verbosity, git identity, retry behavior, and liveness limits. See `ralph/policy/defaults/ralph-workflow.toml` for the canonical defaults and inline `# comment` lines documenting the semantics of each key.
+Core workflow settings: verbosity, git identity, retry behavior, and liveness limits. See `ralph/policy/defaults/ralph-workflow.toml` for the canonical defaults.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -522,6 +522,18 @@ for all eight aliases, examples, and the literal CLI flags Ralph Workflow emits.
 
 In practice: **chains** define fallback order for one kind of work; **drains** map workflow steps to those chains. Multiple drains can point at the same chain, which lets you change agent policy without rewriting the workflow itself.
 
+CCS is the alternative to the built-in Claude agents: a `ccs/<alias>` chain entry runs the `ccs <alias>` command through Claude Code Switch. The alias is your CCS profile name, so `ccs/work` needs a `work` profile in your CCS installation. Declare an alias under `[ccs_aliases]` when it needs its own command or flags:
+
+```toml
+[ccs_aliases]
+work = "ccs work"
+
+[agent_chains]
+planning = ["ccs/work"]
+```
+
+See [Claude Code Switch (CCS)](agent-compatibility.md#ccs_aliases) for the transport, the flags Ralph Workflow emits, and the measured caveats.
+
 ### Per-agent CLI flags
 
 Each built-in agent has a documented CLI flag shape in `ralph/policy/defaults/ralph-workflow.toml` (`[agents.<name>]`). The per-agent flag tables and compatibility caveats (CCS/GLM, ZhipuAI, Aider, Gemini CLI) live on [Agent Compatibility](agent-compatibility.md).
@@ -734,3 +746,45 @@ pytest suite, and the audit scripts. See
 [docs/agents/verification.md](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/verification.md)
 for the full ordered step list, the combined test budget, and the
 non-circumvention rules.
+
+### Optional watchdog and retention keys
+
+The bundled templates ship these keys commented out, so a project only carries the
+ones it opts into. The semantics live here, in the page that owns the
+configuration.
+
+```toml
+agent_idle_activity_evidence_ttl_seconds = 30.0
+agent_workspace_change_weights = { source = 1.0, log = 0.0, cache = 0.0, artifact = 0.0, other = 0.0 }
+retention_max_age_days = 7.0
+```
+
+`agent_idle_activity_evidence_ttl_seconds` sets the per-channel activity TTL. It
+defers `NO_OUTPUT_DEADLINE` while MCP tool calls, subagent work, or workspace
+events are fresher than the TTL. Workspace evidence is collected whenever a run
+has a `workspace_path`, even when `show_progress` is disabled. A subagent that is
+alive but silent on every channel is not treated as activity. Set it to `0.0` to
+disable and restore legacy stdout-only behavior.
+
+`agent_workspace_change_weights` sets the per-kind workspace file-change weights.
+Values are binary: `0.0` drops the kind, `1.0` counts it as full activity. The
+default is conservative and counts only source-code changes. The five kinds are
+`source` (source code and documentation), `log` (`*.log`, `*.tmp`, `*.bak`,
+`*.swp`, `*~`, `*.pyc`, `*.pyo`), `cache` (`.git`, `__pycache__`,
+`.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `node_modules`, `.venv`,
+`.agent/tmp`, `.agent/raw`, `.agent/ralph-explore`, `.agent/receipts`,
+`.agent/prompt_history`, `.agent/artifact-formats`, `.agent/logs`,
+`completion_seen_*.json`, `.agent/workers/<unit>/{tmp,logs,handoffs}`, the root
+`checkpoint.json`, transport MCP overlays, and every file directly under
+`.agent/` such as `state.db`, `.workspace-awareness.json`, `PLAN.md` and
+`active_runs.json`), `artifact` (`.agent/artifacts`), and `other` (anything
+else). See the Watchdogs section of `docs/sphinx/concepts.md` for the migration
+note.
+
+`retention_max_age_days` sets the Ralph-managed retention window. Aged run
+bookkeeping, receipts, scratch, Codex homes, session files, `state.db` rows and
+operational logs older than the window are reclaimed at run start and by cleanup
+planning; active runs are always protected. The value must be greater than `0`
+and at most `3650`; invalid values are rejected at config load. The same key
+applies to the project-level override in `.agent/ralph-workflow.toml`, where it
+governs the retention for that project only.

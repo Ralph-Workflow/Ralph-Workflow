@@ -36,11 +36,11 @@ the project maintains and can lint them.
 * Per-language `RALPH-LANG:` declarations are required for every maintained
   first-party code language, each followed by a `RALPH-COMMAND:` line or an
   explicit `RALPH-INAPPLICABLE:` line.
-* Inline suppressions MUST carry the narrowest tool-supported diagnostic
-  identifier and a documented reason. Blanket suppressions are forbidden.
-* The authoritative configuration or suppression inventory MUST identify
-  file-level disables and broad exclusions with their reason; duplicating
-  every entry in this policy is not required.
+* Inline suppressions are forbidden. The underlying diagnostic is fixed in
+  code, or suppressed in the linter's per-file configuration, never inline.
+* The authoritative configuration MUST identify file-level disables and broad
+  exclusions with their reason; duplicating every entry in this policy is not
+  required.
 
 ## Dead code — zero tolerance
 
@@ -74,7 +74,7 @@ Then delete this comment. -->
 
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
-| No lint bypass | Lint owner | no `# noqa`, `per-file-ignores`, or `extend-per-file-ignores` lands in the tree | audit_lint_bypass returns zero findings | audit_lint_bypass returns zero findings | deterministic: PROJECT-FACT-UNRESOLVED | when the rule is restated as a kernel-level constraint |
+| No lint bypass | Lint owner | no inline lint suppression lands in the tree, and every `per-file-ignores` entry matches the documented per-file configuration | audit_lint_bypass returns zero findings | audit_lint_bypass returns zero findings | deterministic: PROJECT-FACT-UNRESOLVED | when the rule is restated as a kernel-level constraint |
 | Public / wrapper syntax-proxy | Lint owner | making a method public or adding a wrapper solely to satisfy a rule is a violation, not a fix | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to make a structural rule pass | no private method is renamed to public solely to satisfy a private-call ratchet | deterministic: PROJECT-FACT-UNRESOLVED | when every private-call ratchet is removed from the policy |
 
 ## Project facts to resolve
@@ -138,9 +138,8 @@ An agent MUST NOT:
 
 * Add `per-file-ignores`, `extend-per-file-ignores`, or any other
   global rule silencing without a per-file reason.
-* Use an inline suppression without the narrowest tool-supported identifier,
-  when supported, and an adjacent reason. Blanket or file-wide suppression
-  requires a documented exception.
+* Add an inline suppression. Fix the underlying lint finding in code, or
+  suppress it in the linter's per-file configuration.
 * Lower the lint strictness level to obtain a passing result.
 * Retain verified dead code, suppress it, or add a fake use solely to make a
   linter pass. A verified live-entry annotation follows the evidence contract above.

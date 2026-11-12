@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.checked_accessors import optional_str
+from ralph.git.git_command_queue import route_git_method
 from ralph.git.scoped_auto_commit import _git_blob_sha
 from ralph.skills._agent_paths import (
     project_sibling_skill_roots,
@@ -17,6 +18,10 @@ from ralph.skills._content import _MANAGED_MARKER, BASELINE_SKILL_NAMES
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+_LS_TREE_META_FIELDS: int = 3
+_LS_TREE_BLOB_TYPE: str = "blob"
+_LITERAL_PATHSPEC_PREFIX: str = ":(literal)"
 
 
 def _candidate_skill_paths(workspace_root: Path) -> list[str]:
@@ -148,3 +153,46 @@ def _diff_written_paths(
         close = cast("Callable[[], object] | None", getattr(repo, "close", None))
         if callable(close):
             close()
+
+
+def _head_blob_shas(
+    workspace_root: Path,
+    candidate_paths: list[str],
+) -> dict[str, str | None] | None:
+    shas: dict[str, str | None] = dict.fromkeys(candidate_paths)
+    if not candidate_paths:
+        return shas
+    try:
+        repo = Repo(workspace_root)
+    except (InvalidGitRepositoryError, Exception):
+        return None
+    try:
+        raw_output: object = route_git_method(
+            repo,
+            "ls_tree",
+            (
+                "-r",
+                "HEAD",
+                "--",
+                *(f"{_LITERAL_PATHSPEC_PREFIX}{path}" for path in candidate_paths),
+            ),
+        )
+        raw = optional_str(raw_output) or ""
+    except (GitCommandError, OSError):
+        return None
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
+    for line in raw.splitlines():
+        meta, separator, path = line.partition("\t")
+        if not separator:
+            continue
+        fields = meta.split()
+        if len(fields) != _LS_TREE_META_FIELDS:
+            continue
+        if fields[1] != _LS_TREE_BLOB_TYPE:
+            continue
+        if path in shas:
+            shas[path] = fields[2]
+    return shas

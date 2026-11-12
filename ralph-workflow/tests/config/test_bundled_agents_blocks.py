@@ -25,6 +25,27 @@ EXPECTED_BLOCK_NAMES = (
     "kimi",
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_bundled_template_ships_every_expected_agent_block": (
+        "the bundled agents template ships the inactive agent definitions as "
+        "structured [inactive_agents.<name>] tables instead of the retired "
+        "comment-marker blocks, so the check now reads the structured table headers; "
+        "it still asserts that every expected agent ships in the template"
+    ),
+    "test_every_bundled_agent_block_uncomments_to_valid_toml": (
+        "the inactive agent definitions are structured TOML tables instead of "
+        "comment-carried blocks, so the check now parses every bundled table "
+        "directly; it still asserts that every inactive agent ships a usable "
+        "command definition"
+    ),
+    "test_enable_detected_agents_enables_every_bundled_block": (
+        "the bundled agents template ships the inactive agent definitions as "
+        "structured [inactive_agents.<name>] tables, so the isolated fixture is "
+        "built from the structured table; the check still asserts that every "
+        "bundled agent activates into [agents.<name>] with its bundled definition"
+    ),
+}
+
 
 def _block_names(text: str) -> list[str]:
     return re.findall(r"^\[inactive_agents\.([^\]]+)\]", text, re.MULTILINE)

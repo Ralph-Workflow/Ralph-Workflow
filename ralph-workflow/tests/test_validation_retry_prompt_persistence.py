@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases import PhaseContext
-from ralph.phases.required_artifacts import retry_hint_path
+from ralph.phases.required_artifacts import PREMISE_CHECK_LINE, retry_hint_path
 from ralph.phases.verification import handle_verification_phase
 from ralph.pipeline.effect_executor import write_agent_retry_prompt
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -214,3 +214,29 @@ def test_regression_s2_successful_submit_reports_recovery_and_clears_hint(tmp_pa
     assert _payload(recovered)["validation_recovered"] is True
     assert _payload(recovered)["message"] == "VALIDATION RECOVERED"
     assert not backend.exists(hint_path)
+
+
+def test_persisted_hint_renders_the_premise_line_only_on_an_identical_repeat(
+    tmp_path: Path,
+) -> None:
+    session = MockSession(drain="development")
+    workspace = MockWorkspace(tmp_path)
+    hint_path = tmp_path / retry_hint_path("development")
+    changed_spec = "---\ntype: product_spec\n---\n## Title\n"
+
+    def submit(content: str) -> str:
+        result = handle_submit_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "product_spec", "content": content},
+        )
+        assert result.is_error is True
+        return hint_path.read_text(encoding="utf-8")
+
+    first = submit(_INVALID_PRODUCT_SPEC)
+    repeat = submit(_INVALID_PRODUCT_SPEC)
+    changed = submit(changed_spec)
+
+    assert first.count(PREMISE_CHECK_LINE) == 0
+    assert repeat.count(PREMISE_CHECK_LINE) == 1
+    assert changed.count(PREMISE_CHECK_LINE) == 0

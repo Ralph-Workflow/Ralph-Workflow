@@ -54,7 +54,7 @@ RALPH-FACT: user_docs_path: README.md + START_HERE.md + docs/README.md (and the 
 RALPH-FACT: operator_docs_path: ralph-workflow/docs/sphinx/ (Sphinx HTML build; the canonical operator manual) plus the per-area pages in ralph-workflow/docs/sphinx/ (configuration.md, cli.md, troubleshooting.md, recovery.md, artifacts.md, agents.md, agent-compatibility.md, mcp-tools.md, mcp-tool-restriction.md, versioning.md, pro-support.md, advanced-*.md).
 RALPH-FACT: contributor_docs_path: CONTRIBUTING.md (root pointer) → ralph-workflow/CONTRIBUTING.md (maintained guide) plus the contributor-facing subpages in docs/agents/ at the repo root (verification.md, testing-guide.md, architecture.md, type-ignore-policy.md, fabrication-guard.md, quickstart-add-a-new-agent.md, adding-a-new-agent.md, agent-support-architecture.md, workspace-trait.md) and the per-area guides in ralph-workflow/docs/agents/ (artifact-submission-contract.md, memory-lifecycle.md, broken-agent-detection.md, explore-index-fault-matrix.md, filesystem-activity-traceability.md, prompt-surface-changes.md, watchdog-spec.md, type-ignore-policy.md, architecture.md, quickstart-add-a-new-agent.md, adding-a-new-agent.md). AGENTS.md and the ralph-workflow-policy corpus cross-reference these by file path.
 RALPH-FACT: api_reference_path: the Sphinx API reference is auto-generated from `ralph/.. automodule::` entries in ralph-workflow/docs/sphinx/modules.rst (enforced by tests/test_sphinx_modules_coverage.py). New public modules under `ralph/` MUST add an `.. automodule::` entry in the same commit.
-RALPH-FACT: architecture_docs_path: docs/architecture/ (repo-root architecture index) and ralph-workflow/docs/architecture/ (package architecture). MADR-format ADRs live under ralph-workflow/docs/architecture/adr-*.md; one example is adr-0001-interrupt-architecture.md.
+RALPH-FACT: architecture_docs_path: docs/architecture/ (repo-root architecture index) and ralph-workflow/docs/architecture/ (package architecture).
 RALPH-FACT: release_notes_path: ralph-workflow/CHANGELOG.md (canonical) plus the per-version Sphinx changelog rollup if a release note spans multiple pages. The CHANGELOG follows the Keep a Changelog + SemVer convention; every user-visible change has a CHANGELOG entry in the same workflow that lands the change.
 RALPH-FACT: docstring_convention: source code carries no docstrings; contracts live in names, type annotations, and tests. The absolute comment and docstring audit (`ralph.testing.audit_comments`, wired as `absolute comment and docstring policy audit (audit_comments)`) enforces this over tracked Python and shell/TOML/YAML/Makefile/Jinja sources; the Sphinx API reference under `ralph-workflow/docs/sphinx/modules.rst` lists modules and public symbols instead of rendering docstrings.
 RALPH-FACT: example_verification_command: `make -C ralph-workflow docs-linkcheck` runs Sphinx's link-check over the operator manual (`uv run --extra docs sphinx-build -b linkcheck docs/sphinx docs/sphinx/_build/linkcheck`). For non-Sphinx route pages (README.md, START_HERE.md, docs/README.md, ralph-workflow/docs/README.md) the project ships `scripts/check_route_page_links.py` (head + GET, 10 s per-request timeout, http://PROMPT.md and docs.claude.com excluded per ralph-workflow/docs/sphinx/conf.py). Both run as part of the maintainer's release preflight.
@@ -100,9 +100,8 @@ URL.
 ## Exceptions
 
 A documented exception (e.g. legacy doc kept for backward URL
-compatibility) requires a documented reason, scope, owner, and
-removal or review date. The exception lives in this section; the
-surface itself carries a marker cross-referencing the entry.
+compatibility) requires a documented reason, scope, owner, and a
+removal or review date. The exception lives in this section.
 
 ## Maintenance triggers
 

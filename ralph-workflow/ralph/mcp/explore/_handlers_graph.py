@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ralph.mcp.explore import graph as graph_module
 from ralph.mcp.explore import handlers as handlers_module
+from ralph.mcp.explore._bounded_flags import BoundedFlagRegistry
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
     _int_param,
@@ -44,39 +45,8 @@ _VALID_CHANGE_KINDS: tuple[str, ...] = (
 _GRAPH_LIMIT_MAX: int = 100
 _GRAPH_DEFAULT_TIMEOUT_MS: int = 5_000
 _GRAPH_TIMEOUT_MAX_MS: int = 30_000
-_GRAPH_CANCEL_FLAGS: dict[str, bool] = {}
+_GRAPH_CANCEL_FLAGS: BoundedFlagRegistry = BoundedFlagRegistry()
 _GRAPH_CANCEL_LOCK: threading.Lock = threading.Lock()
-
-_REINDEX_CANCEL_FLAGS: dict[str, bool] = {}
-_REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
-
-
-_new_cancel_token_ = _new_cancel_token
-
-
-def _arm_cancel_flag(
-    registry: dict[str, bool],
-    lock: threading.Lock,
-    token: str,
-    initial: bool,
-) -> Callable[[], bool]:
-    with lock:
-        registry[token] = bool(initial)
-
-    def _is_set() -> bool:
-        with lock:
-            return bool(registry.get(token, False))
-
-    return _is_set
-
-
-def _disarm_cancel_flag(
-    registry: dict[str, bool],
-    lock: threading.Lock,
-    token: str,
-) -> None:
-    with lock:
-        registry.pop(token, None)
 
 
 def _graph_node_to_dict(node: graph_module.GraphNode) -> dict[str, object]:

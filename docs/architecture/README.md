@@ -2,7 +2,7 @@
 
 The runtime architecture for the maintained Python package lives under
 [`ralph-workflow/docs/sphinx/developer-internals.md`](../ralph-workflow/docs/sphinx/developer-internals.md).
-For the MADR-format interrupt ADR see
+For the interrupt architecture ADR see
 [`ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md).
 
 The retired Rust implementation's architecture material is quarantined

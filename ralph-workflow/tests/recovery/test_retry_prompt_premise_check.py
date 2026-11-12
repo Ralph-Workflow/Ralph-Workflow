@@ -8,6 +8,7 @@ from ralph.phases.required_artifacts import (
     validation_retry_fingerprint,
 )
 from ralph.prompts import commit_review, materialize
+from ralph.recovery.retry_prompt import build_validation_retry_footer
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_premise_check_anchor_is_not_exported": (
@@ -83,6 +84,46 @@ def test_generic_retry_hint_renders_the_premise_line_only_on_an_identical_repeat
     assert PREMISE_CHECK_LINE not in first
     assert PREMISE_CHECK_LINE in repeat
     assert PREMISE_CHECK_LINE not in changed
+
+
+def test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure() -> None:
+    failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
+    failure_b = [_Diagnostic("MD002", "body section is missing")]
+    fingerprint_a = validation_retry_fingerprint("development_result", failure_a)
+
+    first = build_validation_retry_hint("development_result", failure_a)
+    repeat = build_validation_retry_hint(
+        "development_result",
+        failure_a,
+        prior_hint=first,
+        prior_fingerprint=fingerprint_a,
+    )
+    changed = build_validation_retry_hint(
+        "development_result",
+        failure_b,
+        prior_hint=repeat,
+        prior_fingerprint=fingerprint_a,
+    )
+
+    assert first.count(PREMISE_CHECK_LINE) == 0
+    assert repeat.count(PREMISE_CHECK_LINE) == 1
+    assert changed.count(PREMISE_CHECK_LINE) == 0
+
+
+def test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies() -> None:
+    failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
+    fingerprint_a = validation_retry_fingerprint("development_result", failure_a)
+
+    first = build_validation_retry_hint("development_result", failure_a)
+    repeat = build_validation_retry_hint(
+        "development_result",
+        failure_a,
+        prior_hint=first,
+        prior_fingerprint=fingerprint_a,
+    )
+
+    assert repeat.count(build_validation_retry_footer()) == 1
+    assert repeat.endswith(PREMISE_CHECK_LINE)
 
 
 def test_prompt_readers_stay_read_only() -> None:

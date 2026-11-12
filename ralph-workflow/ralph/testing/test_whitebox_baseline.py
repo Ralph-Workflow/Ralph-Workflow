@@ -266,7 +266,7 @@ tests/mcp/websearch/test_brave_backend.py|0,0,1
 tests/pipeline/_terminal_mcp_error_seams.py|0,2,1
 tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py|1,3,2
 tests/pipeline/test_integration_log_dedupe.py|2,1,5
-tests/pipeline/test_integration_resolution_dispatch_inventory.py|0,0,9
+tests/pipeline/test_integration_resolution_dispatch_inventory.py|0,0,10
 tests/pipeline/test_interrupt_reports_the_state_reached.py|2,0,3
 tests/pipeline/test_kimi_smoke_harness.py|0,3,0
 tests/pipeline/test_next_attempt_gets_fresh_bridge.py|0,1,1
@@ -748,7 +748,7 @@ tests/test_prompts_cycle_deadline_publication.py|1,1,1
 tests/test_property_a_one_transport_one_behavior.py|0,2,1
 tests/test_property_c_liveness_contract.py|0,10,13
 tests/test_property_d_failure_observability.py|0,10,4
-tests/test_property_e_streaming_terminates.py|0,11,3
+tests/test_property_e_streaming_terminates.py|0,10,0
 tests/test_property_f_retry_side_effects.py|0,1,0
 tests/test_property_g_recovery_signal.py|0,11,1
 tests/test_property_h_bounded_resources.py|0,5,13

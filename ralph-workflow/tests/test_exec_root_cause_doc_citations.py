@@ -102,6 +102,11 @@ FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
 )
 
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_repaired_citation_points_at_named_token": "line numbers shifted following removal of comments and docstrings across python sources",
+    "test_every_backticked_citation_line_exists": "line numbers in cited document shifted following removal of comments and docstrings across python sources",
+}
+
 REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     ("ralph/mcp/server/exec_sse_streaming.py", 46, "def extract_progress_token"),
     ("ralph/mcp/server/exec_sse_streaming.py", 101, '"method": "notifications/progress"'),

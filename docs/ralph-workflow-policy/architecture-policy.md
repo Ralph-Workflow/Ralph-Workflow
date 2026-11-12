@@ -28,8 +28,7 @@ cross-component imports, module state, and seam placement.
 * Mutable state, transactions, concurrency, caches, and background work MUST
   have explicit owners and lifecycles. Global mutable singletons are
   forbidden; long-lived mutable collections require FIFO/size caps
-  (`deque(maxlen=...)`, `OrderedDict` with a count cap) or a documented
-  `# bounded-accumulator-ok: <reason>` marker.
+  (`deque(maxlen=...)`, `OrderedDict` with a count cap).
 * Public APIs, CLI behavior, protocols, schemas, and persisted formats MUST be
   treated as compatibility boundaries when consumers depend on them. The
   pydantic-validated models under ralph-workflow/ralph/pydantic_validation_errors.py
@@ -39,19 +38,17 @@ cross-component imports, module state, and seam placement.
   reuse need; implementation count alone neither requires nor forbids an
   abstraction. The di_seam and audit_agent_module_state audits
   re-evaluate every new dependency on a per-PR basis.
-* Material, hard-to-reverse architectural decisions MUST be recorded durably
-  as MADR-format ADRs under ralph-workflow/docs/architecture/ (filename
-  pattern: `adr-NNNN-slug.md`); the index lives at
-  ralph-workflow/docs/architecture/README.md (per the package-side
-  architecture router page that links each ADR with its provenance).
+* Material, hard-to-reverse architectural decisions MUST be reflected in the
+  affected `RALPH-FACT:` lines of this policy and in the owning module's
+  contract in the same workflow that makes the change.
 * Architecture MUST be evaluated against explicit quality-attribute scenarios,
   stakeholder needs, operational context, and known tradeoffs rather than a
   preferred pattern in isolation. The `quality_attribute_scenarios` and
   `known_risks_and_tradeoffs` facts below are the maintained list.
 * Relevant static, runtime, deployment, interface, and data-flow views MUST be
   documented when those views affect design or operation. The architecture
-  ADRs and the operator manual at ralph-workflow/docs/sphinx/ are the
-  maintained fabric for these views.
+  documentation under ralph-workflow/docs/architecture/ and the operator manual
+  at ralph-workflow/docs/sphinx/ are the maintained fabric for these views.
 
 ## Project facts to resolve
 
@@ -64,9 +61,9 @@ RALPH-FACT: component_map: ralph-workflow/ralph/ is partitioned by concept into 
 RALPH-FACT: dependency_direction: top-down by subpackage depth. Higher-level subpackages (cli, mcp, agents, pipeline) may import from any lower-level subpackage. Lower-level subpackages (files, workspace, language_detector) and the flat top-level modules `ralph/logging.py` / `ralph/timeout_defaults.py` MUST NOT import from higher-level ones. Cross-cutting subpackages (testing, project_policy) live at the leaves and are dev-only — production code MUST NOT import ralph.testing. Circular-import avoidance is delegated to lazy PLC0415 imports at the documented sites in ralph/cli, ralph/config, ralph/display, ralph/mcp/explore, ralph/mcp/tools/workspace, ralph/pipeline (each with a documented reason in the audit_lint_bypass allowlist).
 RALPH-FACT: forbidden_dependencies: (1) ralph.testing MUST NOT be imported from ralph/<production>; the audit_agent_module_state check walks the import graph and flags any production module that reaches into ralph.testing. (2) ralph.* MUST NOT read the ambient process environment or probe the project virtualenv outside the documented composition roots — the di_seam audit's PASS-1 allowlist enumerates every permitted ambient read, and runtime-environment / virtualenv discovery goes through ralph/runtime/environment.py rather than ad-hoc site-packages or prefix probing. (3) Cross-component state MUST NOT be passed through module-level mutable globals; all cross-component state flows through the Workspace seam or through explicit constructor injection. (4) ralph.pro_support MUST NOT be required by any open-source path; it is loaded only by the `rdev` development launcher.
 RALPH-FACT: state_ownership: each ralph/<subpackage> owns its state and exposes it through its public __init__.py exports. Cross-package state passes through the ralph/files/ seam (FsWorkspace for filesystem, MemoryWorkspace for tests) and through the Clock protocol in ralph/agents/clock.py for time (the watchdog package under ralph/agents/idle_watchdog/ takes the clock by constructor injection). Process-level subprocess state passes through ralph/executor/ (MockProcessExecutor for tests, real executor for subprocess_e2e). No module-level mutable state is shared across subpackage boundaries.
-RALPH-FACT: external_io_boundaries: ralph/files/ (FsWorkspace / MemoryWorkspace) owns filesystem access; ralph/mcp/ owns MCP transport over stdio and the local-only HTTP fallback; ralph/agents/ owns subprocess invocation to AI agent CLIs; ralph/executor/ owns the subprocess executor abstraction; ralph/git/ owns git CLI; ralph/pro_support/ owns the Pro services HTTP client. Every external I/O call is funnelled through a typed adapter, and the audit_mcp_timeout + audit_resource_lifecycle checks enforce the bounded-timeout and bounded-accumulator contracts on these adapters.
+RALPH-FACT: external_io_boundaries: ralph/files/ (FsWorkspace / MemoryWorkspace) owns filesystem access; ralph/mcp/ owns MCP transport over stdio and the local-only HTTP fallback; ralph/agents/ owns subprocess invocation to AI agent CLIs; ralph/executor/ owns the subprocess executor abstraction; ralph/git/ owns git CLI; ralph/pro_support/ owns the Pro services HTTP client. Every external I/O call is funnelled through a typed adapter, and the audit_mcp_timeout + audit_resource_lifecycle checks enforce the bounded-timeout and bounded-collection contracts on these adapters.
 RALPH-FACT: durable_contracts: (1) cross-process payloads pass through pydantic-validated models in ralph-workflow/ralph/pydantic_validation_errors.py (re-exported by ralph-workflow/ralph/__init__.py). (2) loguru records cross subpackage boundaries through the structured types in ralph-workflow/ralph/logging_models.py. (3) the recovery classifier owns the FailureCategory enum in ralph-workflow/ralph/recovery/classifier.py. (4) the watchdog contract (ralph-workflow/ralph/agents/idle_watchdog/) owns in-stream IdleWatchdog and post-exit PostExitWatchdog with Clock injection. A new durable contract that crosses a subpackage boundary AND is consumed by a named system (the recovery classifier, the cross-process payload models, the loguru structured types, or the watchdog contract) requires a typed model in pydantic_validation_errors.py or logging_models.py AND, where the recovery classifier will triage failures from that contract, an entry in the recovery classifier. An internal contract that does not cross a documented system boundary does not need a classifier entry. Ad-hoc dict[str, Any] across a subpackage boundary remains a defect.
-RALPH-FACT: decision_record_location: ralph-workflow/docs/architecture/adr-NNNN-slug.md, MADR format. Index at ralph-workflow/docs/architecture/README.md (the package-side architecture router page that links each ADR with its provenance). Existing examples: ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md and ralph-workflow/docs/architecture/project-policy-readiness-traceability.md. A material architectural choice made without an ADR is a process defect; the agent-policy obligates the agent to record the choice before the change merges.
+RALPH-FACT: decision_record_location: ralph-workflow/docs/architecture/ — the architecture reference page that documents the current component map, dependency direction, state ownership, external I/O boundaries, and durable contracts. It is updated in the same workflow that changes the architecture it describes.
 RALPH-FACT: quality_attribute_scenarios: (1) The 60 s combined test budget is the dominant performance scenario — verified by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS + the _BUDGET_TRACKED_STEPS set; a regression that pushes the suite past 60 s is a fail-closed defect. (2) Determinism is mandatory for the default suite: ordinary tests inject clock / filesystem / subprocess fakes, while the explicit real-git auto-integration registry in ralph/test_suites.py is selected through the required_auto_integrate_e2e marker even when those tests also carry subprocess_e2e. The broader subprocess_e2e suite remains opt-in. (3) Async I/O is supported via pytest-asyncio (asyncio_mode=auto) for subpackage code that needs it. (4) Memory growth is bounded by the resource-lifecycle audit; long-lived accumulators must declare a cap or get flagged.
 RALPH-FACT: runtime_and_deployment_views: (1) install view: `make dev` delegates to `python -m ralph.install`, which copies the checkout, runs `uv sync --extra dev` in the copied dev snapshot, and writes `rdev`; `make stable` installs the pinned stable env, and `make install` creates the system-wide manual-build snapshot. (2) runtime view: `python -m ralph` CLI; `rdev` launcher for the dev build; `ralph` launcher for the stable build. (3) CI view: `.github/workflows/verify.yml` invokes `cd ralph-workflow && make verify` on every push and pull_request event on the GitHub primary repository; `.woodpecker.yml` continues the same gate on the Codeberg mirror while maintained. `.github/workflows/cla.yml` runs the CLA checkbox check, and `.github/workflows/publish-python-package.yml` is a release-only tag pipeline that builds and publishes the package to PyPI. (4) distribution view: Homebrew formula at ralph-workflow/Formula/ralph-workflow.rb (built via `make dist-homebrew`); PyPI wheel + sdist (built via `make dist-pypi`).
 RALPH-FACT: major_data_flows: (1) CLI invocation: `python -m ralph` -> typer CLI -> ralph/agents/invoke/ -> subprocess to the configured agent CLI (Claude Code / OpenCode / Codex / Cursor / Pi) -> NDJSON stream on stdout -> ralph/agents/parsers/* -> typed output line (AgentOutputLine) -> pydantic pipeline state model -> recovery classifier -> output. (2) MCP transport: ralph/mcp/server/__main__.py -> stdio JSON-RPC -> ralph/mcp/server/_fallback_http_handler.py (local-only HTTP) -> ralph/mcp/tools/* -> workspace write/read. (3) Filesystem: any path -> FsWorkspace.write_file / read_file / append_file / edit_file -> root-normalized, path-traversal-checked, audit-tool-exec-checked. (4) Workspace awareness: WorkspaceMonitor -> bounded WorkspaceAwareness -> persisted Explore dirty queue -> coalesced ReindexWriter -> committed generation or explicit live fallback. (5) Watchdog: agent subprocess -> PostExitWatchdog (Clock-injected) -> recovery classifier -> retry or final output.
@@ -92,9 +89,9 @@ When working in this domain, the agent additionally MUST:
 * PRESERVE the documented dependency direction; lazy imports (PLC0415) at the
   named sites are the only sanctioned escape hatch, each with a documented
   reason in the audit_lint_bypass allowlist.
-* RECORD every material architectural choice in a new MADR ADR under
-  ralph-workflow/docs/architecture/ BEFORE the change merges; an
-  architecture change without an ADR is a process defect.
+* RECORD every material architectural choice in the affected `RALPH-FACT:`
+  lines of this policy BEFORE the change merges; an architecture change that
+  leaves the recorded facts stale is a process defect.
 * UPDATE the affected `RALPH-FACT:` lines (component_map,
   dependency_direction, forbidden_dependencies, state_ownership,
   external_io_boundaries, durable_contracts, runtime_and_deployment_views,
@@ -102,8 +99,8 @@ When working in this domain, the agent additionally MUST:
 
 An agent MUST NOT:
 
-* Introduce a new subpackage without updating `component_map` and recording
-  an ADR.
+* Introduce a new subpackage without updating `component_map` and the other
+  affected facts.
 * Cross a documented component boundary with a direct import; the seam
   is the integration surface.
 * Introduce module-level mutable state shared across subpackage
@@ -129,10 +126,10 @@ ignore.
 ## Exceptions
 
 A documented exception to the dependency direction or the forbidden-import
-list requires a MADR ADR under ralph-workflow/docs/architecture/, scope,
-reason, owner, and a removal or review date. Exceptions expire at the
-next policy review; an expired exception without an updated reason is
-treated as a violation.
+list requires a scope, reason, owner, and a removal or review date recorded
+under "Exceptions" in this policy. Exceptions expire at the next policy
+review; an expired exception without an updated reason is treated as a
+violation.
 
 ## Maintenance triggers
 
@@ -140,7 +137,8 @@ This policy MUST be reviewed in the same workflow as any of:
 
 * A new subpackage is added under ralph-workflow/ralph/.
 * A new external I/O dependency is introduced.
-* A new ADR is recorded under ralph-workflow/docs/architecture/.
+* The architecture documentation under ralph-workflow/docs/architecture/
+  changes.
 * A cross-component boundary is crossed by a new import.
 * A new durable contract (pydantic model, loguru record, classifier
   category) is added.

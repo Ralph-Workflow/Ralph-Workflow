@@ -48,6 +48,14 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_default_strategies_covers_every_transport": (
+        "AgentCatalog._DEFAULT_STRATEGIES was renamed to _default_strategies when the "
+        "uppercase property lost its banned noqa suppression; the transport-coverage "
+        "expectation is unchanged and now reads the live symbol"
+    ),
+}
+
 _GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
 _GOLDEN_CUSTOM: dict[str, object] = dict(_CUSTOM_COMMAND_REGISTRY)
 _GOLDEN_STRATEGIES: dict[AgentTransport, object] = dict(_STRATEGY_DISPATCH)
@@ -798,14 +806,14 @@ def test_register_agent_support_headless_and_interactive_lockstep() -> None:
 
 class TestPostRefactorContract:
     def test_default_strategies_covers_every_transport(self) -> None:
-        default_strategies = default_catalog()._DEFAULT_STRATEGIES
+        default_strategies = default_catalog()._default_strategies
         assert set(default_strategies) == set(AgentTransport), (
-            f"AgentCatalog._DEFAULT_STRATEGIES missing transport(s); "
+            f"AgentCatalog._default_strategies missing transport(s); "
             f"expected {sorted(AgentTransport)}, got {sorted(default_strategies)}"
         )
         for transport, factory in default_strategies.items():
             assert callable(factory), (
-                f"AgentCatalog._DEFAULT_STRATEGIES[{transport.name!r}] must be callable"
+                f"AgentCatalog._default_strategies[{transport.name!r}] must be callable"
             )
 
     def test_agent_support_shape_parity_builtin_vs_kwargs(self) -> None:

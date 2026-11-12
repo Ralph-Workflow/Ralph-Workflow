@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore import handlers as handlers_module
+from ralph.mcp.explore._bounded_flags import BoundedFlagRegistry
 from ralph.mcp.explore._pipeline_writer import ReindexWriter
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
@@ -42,7 +43,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_REINDEX_CANCEL_FLAGS: dict[str, bool] = {}
+_REINDEX_CANCEL_FLAGS: BoundedFlagRegistry = BoundedFlagRegistry()
 _REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 

@@ -346,7 +346,7 @@ Lint and typecheck bypass detection MUST be part of the authoritative gate:
 * Newly weakened global configuration (per-file-ignores,
   ignore_missing_imports, follow_imports = silent, ignore_errors,
   disable_error_code, and similar) is detected and reported.
-* Blanket or unexplained inline suppressions are detected and reported.
+* Inline suppressions are detected and reported.
 * Commands claiming to verify the project while omitting required paths are
   detected and reported.
 * A selection or caching mechanism that can shrink what actually ran is a

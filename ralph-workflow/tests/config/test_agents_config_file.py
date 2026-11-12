@@ -14,6 +14,22 @@ if TYPE_CHECKING:
 
 AGENTS_FILENAME = "ralph-workflow-agents.toml"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_bundled_agents_template_parses_and_activates_claude": (
+        "the bundled agents template now ships the inactive agent definitions as "
+        "structured [inactive_agents.<name>] tables next to the active "
+        "[agents.*] table, so the check now expects both top-level tables; it "
+        "still asserts that the active claude agent is defined"
+    ),
+    "test_bundled_agents_template_carries_every_builtin_block": (
+        "the bundled agents template ships the inactive agent definitions as "
+        "structured [inactive_agents.<name>] tables instead of comment-marker "
+        "blocks, so the check now looks for every builtin agent in the parsed "
+        "active and inactive tables; it still asserts that no builtin agent is "
+        "missing from the template"
+    ),
+}
+
 
 def _bundled_dir() -> Path:
     return _config_bootstrap._get_bundled_defaults_dir()
@@ -41,10 +57,8 @@ def test_bundled_agents_template_parses_and_activates_claude() -> None:
 def test_bundled_agents_template_carries_every_builtin_block() -> None:
     with _bundled_agents_template().open("rb") as handle:
         data = tomllib.load(handle)
-    all_agents = set(data.get("agents", {})) | set(data.get("inactive_agents", {}))
-    missing = tuple(
-        support.name for support in builtin_supports() if support.name not in all_agents
-    )
+    shipped = set(data.get("agents", {})) | set(data.get("inactive_agents", {}))
+    missing = tuple(support.name for support in builtin_supports() if support.name not in shipped)
     assert not missing, f"agents template is missing entries for: {missing!r}"
 
 

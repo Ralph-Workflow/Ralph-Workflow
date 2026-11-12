@@ -79,8 +79,8 @@ construct.
 A genuinely required dynamic or effectful boundary — a serialization library,
 plugin loader, FFI surface, or framework hook — is NOT an open exception to
 the rules above: contain it behind a typed adapter, record it in
-`sanctioned_dynamic_boundaries`, and annotate it per the suppression and
-live-entry rules below. That set of boundaries is ratcheted; it MUST NOT grow
+`sanctioned_dynamic_boundaries`, and confine it to the live-entry rules
+below. That set of boundaries is ratcheted; it MUST NOT grow
 without a documented justification. <!-- ralph-control: sanctioned-dynamic-boundaries -->
 
 ### Tooling, suppressions, and enforcement
@@ -101,11 +101,12 @@ the project maintains and can statically check them.
 * Selection MUST consider active maintenance, security responsiveness,
   compatibility, first-party source coverage, diagnostic quality, and CI
   suitability. No product is universally preferred by this policy.
-* Suppressions MUST carry the narrowest tool-supported diagnostic identifier
-  and a documented reason. Blanket suppressions are forbidden.
+* Inline suppressions are forbidden. The underlying diagnostic is fixed in
+  code, or suppressed in the type checker's configuration, never inline.
 * A suppression is a last resort after fixing the type, narrowing the dynamic
   boundary, adding validation, or improving a local adapter/stub has been tried.
-  Every new suppression MUST name the tool limitation or external boundary,
+  A suppression that remains is a configuration-level entry in the type
+  checker's configuration that names the tool limitation or external boundary,
   owner, and removal/review trigger. Suppression count MUST NOT increase
   without a documented exception; legacy debt uses a ratcheted checked
   baseline that rejects new unchecked scope. <!-- ralph-control: suppression-count-baseline -->
@@ -131,7 +132,7 @@ Then delete this comment. -->
 |---|---|---|---|---|---|---|
 | Unknown at untrusted boundaries | Type owner | TypeScript `unknown` is allowed at untrusted boundaries with immediate narrowing | static type check accepts `unknown`; linter permits `unknown`; reviewer can name the boundary type and the narrowing call | static type check accepts `unknown` | deterministic: PROJECT-FACT-UNRESOLVED | when the type system gains first-class refinement types |
 | Typed tests | Type owner | tests are fully typed within the declared checker scope | static type check over the test files returns zero errors | static type check over the test files returns zero errors | deterministic: PROJECT-FACT-UNRESOLVED | when the test framework is removed from the project |
-| No typecheck bypass | Type owner | no global silencer (`ignore_missing_imports`, `follow_imports = silent`, `disallow_untyped_defs = false`, blanket per-file-ignores) lands in the tree; the no-bypass rule bans the bypass mechanisms, NOT the narrow suppressions governed by the suppression ratchet | audit_typecheck_bypass returns zero global-silencer findings | audit_typecheck_bypass returns zero global-silencer findings | deterministic: PROJECT-FACT-UNRESOLVED | when the rule is restated as a kernel-level constraint |
+| No typecheck bypass | Type owner | no global silencer (`ignore_missing_imports`, `follow_imports = silent`, `disallow_untyped_defs = false`, blanket per-file-ignores) lands in the tree; the no-bypass rule bans the bypass mechanisms, and an inline suppression is not an available form | audit_typecheck_bypass returns zero global-silencer findings | audit_typecheck_bypass returns zero global-silencer findings | deterministic: PROJECT-FACT-UNRESOLVED | when the rule is restated as a kernel-level constraint |
 | `sanctioned-dynamic-boundaries` Sanctioned dynamic boundary set | Type owner | the set of sanctioned dynamic boundaries is ratcheted; new entries require a documented justification | `sanctioned_dynamic_boundaries` list length is at or below the recorded baseline; new entries are absent absent a documented justification | the current `sanctioned_dynamic_boundaries` list length per project | deterministic: PROJECT-FACT-UNRESOLVED | when the ratcheted set is retired by the kernel |
 | `suppression-count-baseline` Suppression count baseline | Type owner | the suppression count is ratcheted; new suppressions require a documented exception | the project's recorded suppression count holds or shrinks | the current suppression count per project | deterministic: PROJECT-FACT-UNRESOLVED | when the suppression ratchet is retired by the kernel |
 

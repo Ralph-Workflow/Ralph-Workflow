@@ -183,8 +183,8 @@ RALPH-FACT: authoritative_verify_command: `make -C ralph-workflow verify` (runs 
 RALPH-FACT: gate_prerequisites: Ruby is a required system prerequisite for the Homebrew-formula gate; `make formula-check` fails non-zero with a policy citation rather than skipping when it is absent. GitHub CI provisions Ruby 3.3.6 through `ruby/setup-ruby@v1`; the maintained Codeberg runner installs Ruby before invoking the gate. Developer-side `make -C ralph-workflow dev` is a POSIX/WSL checkout installer: it requires `uv` >= 0.7.0, serializes the full staged refresh, checks the lock, performs the locked dev sync, validates the candidate and published snapshot, and writes `rdev` last while preserving the prior snapshot, `.venv`, and launcher on failure. Native Windows uses the packaged install path. The CI prerequisite is the smaller `pip install --upgrade uv` declared in `.github/workflows/verify.yml` and `.woodpecker.yml`; neither workflow calls `make dev`, each installs `uv` and then runs `cd ralph-workflow && make verify` directly. The `make verify` target resolves the current checkout's Python toolchain via `uv run` against `uv.lock`, so the locked test environment is reproducible without an explicit `make dev` step on the CI runner.
 RALPH-FACT: gate_order: `make formula-check`, `make docs`, and `make verify-drift` are Make prerequisites. Formula validation runs `ruby -c Formula/ralph-workflow.rb` and must resolve successfully before the Python verify chain starts. Ralph then executes `ralph/verify.py:_VERIFY_STEPS` in tuple order: ruff (`uv run ruff check ralph/ tests/`), mypy (`uv run python -m mypy ralph/`), the budget-tracked `make test` profile, the remaining audits and social-proof step, then the budget-tracked aggregate `make test-verification-smoke` step. The aggregate step is one pytest invocation that covers the offline install, multimodal, and visual smoke scenarios (formerly three separate steps merged to amortize pytest imports and worker startup); the individual targets `make test-install-make-smoke`, `make test-multimodal-smoke`, and `make test-visual-smoke` remain available for targeted developer use but are NOT separate `_VERIFY_STEPS` entries. The install scenario drives the public `make install` command with a fake `uv` that accepts only the locked installer argv forms, so it proves the transaction without network access. The exact audit inventory and order live in `_VERIFY_STEPS`, so adding an audit there updates the authoritative topology without a duplicated numeric count. `make test` uses `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e`: files in `ralph/test_suites.py:REQUIRED_AUTO_INTEGRATE_E2E_FILES` receive the marker in `tests/conftest.py` and remain in the default profile even when they also carry `subprocess_e2e`. Each non-test step has the `_VERIFY_STEP_TIMEOUT_SECONDS` cap; every test-running step is charged to `_TOTAL_TEST_BUDGET_SECONDS`.
 RALPH-FACT: repo_structure_audit: `ralph.testing.audit_repo_structure` (allowlists in `ralph/testing/_repo_structure_allowlists.py`) enforces four structural rules: max 1000 lines per file; at most one public top-level class per module; no private (`_`-prefixed) `ralph` imports in tests; no unallowlisted lint/typecheck suppression comments. The audit's own `collect_violations()` entry point is the single source of truth, and the verify step is its green-path coverage. It is wired into `_VERIFY_STEPS` precisely because it previously lived only in a `subprocess_e2e` test that `make verify` never ran, and the policy rotted undetected.
-RALPH-FACT: bypass_detection_lint_audit: `ralph.testing.audit_lint_bypass` walks the project tree to detect `per-file-ignores`, `extend-per-file-ignores`, blanket `# noqa` without a specific ruff error code, and weakens to the documented allowlist. Wired into `make verify` as the audit_lint_bypass step.
-RALPH-FACT: bypass_detection_typecheck_audit: `ralph.testing.audit_typecheck_bypass` walks the project tree to detect `ignore_missing_imports`, `follow_imports = silent`, `ignore_errors`, `disable_error_code`, blanket `# type: ignore` without a specific mypy error code, `# type: ignore` inside test files, and `disallow_untyped_defs = false`. The acceptance bar is documented in `ralph-workflow/docs/agents/type-ignore-policy.md`; violations fail verify.
+RALPH-FACT: bypass_detection_lint_audit: `ralph.testing.audit_lint_bypass` walks the project tree to detect inline ruff suppressions, and inspects `pyproject.toml` for weakened lint configuration (`ignore`, `extend-ignore`, `extend-per-file-ignores`, and any `per-file-ignores` entry outside the documented per-file inventory). Wired into `make verify` as the audit_lint_bypass step.
+RALPH-FACT: bypass_detection_typecheck_audit: `ralph.testing.audit_typecheck_bypass` inspects every `mypy*` section of `ralph-workflow/mypy.ini` and the `[tool.mypy]` table of `ralph-workflow/pyproject.toml` to detect a weakened type-checking setting (`ignore_missing_imports = true`, `follow_imports = silent`, `ignore_errors = true`, any `disable_error_code`, `warn_unused_ignores = false`, `disallow_untyped_defs = false`, any `exclude`). Inline type suppressions are a separate ban: the repo-structure audit (`ralph/testing/audit_repo_structure.py`) reports every inline type or lint suppression in the tree, and the absolute comment audit (`ralph/testing/audit_comments.py`) fails on every comment token in tracked Python. The acceptance bar is documented in `ralph-workflow/docs/agents/type-ignore-policy.md`; violations fail verify.
 RALPH-FACT: ci_integration_command: `.github/workflows/verify.yml` runs `cd ralph-workflow && make verify` on every push and pull_request event on the GitHub primary repository. `.woodpecker.yml` continues the same gate on the Codeberg mirror while it is maintained. `.github/workflows/cla.yml` separately runs the CLA checkbox check on pull_request events, while `.github/workflows/publish-python-package.yml` is a release-only workflow triggered on `ralph-workflow-v*` tags. The social-proof gate under `python3 ../scripts/verify_social_proof.py` is part of the same verify suite. The opt-in subprocess E2E suite (`make test-subprocess-e2e`) and live AGY suite (`make test-live-agy`) are NOT in `make verify` and have their own budgets.
 RALPH-FACT: required_verification_profiles: five named profiles are declared so a caller picks the right surface for the work at hand. (1) `default` profile = `make -C ralph-workflow verify` (formula-check, docs, and drift prerequisites followed by the complete `_VERIFY_STEPS` chain: ruff, mypy, the combined `make test` selection, all declared audits, social proof, and the budget-tracked aggregate `make test-verification-smoke` step — one pytest invocation that covers the deterministic offline install, multimodal, and visual smoke scenarios under the 60 s combined test budget). The install scenario uses a fake `uv`, does not contact a network, and drives the public `make install` transaction. The combined selection includes the registered real-git auto-integration files through `required_auto_integrate_e2e`; there is no separate auto-integration step in `_VERIFY_STEPS`. (2) `test-fast` profile = `make -C ralph-workflow test-fast` (the static, fail-closed three-file suite-routing contract profile: `tests/test_makefile_verification_workflow.py`, `tests/test_test_suites.py`, and `tests/test_test_suites_orchestration.py`; it is developer feedback only, not completion verification). (3) `pre-commit` profile = `make -C ralph-workflow pre-commit` (runs the package `.pre-commit-config.yaml` hooks: whitespace/EOF/YAML/large-file/TOML checks, ruff, ruff-format, and mypy, across all files; not a CI gate and not the dead-code sweep). (4) `subprocess-e2e` profile = `make -C ralph-workflow test-subprocess-e2e` (the broader subprocess-reality suite; subprocess tests outside the required auto-integration registry are excluded from the default profile, and the opt-in suite timeout lives in ralph-workflow/Makefile as PYTEST_SUITE_TIMEOUT_SECONDS). (5) `live-agy` profile = `make -C ralph-workflow test-live-agy` (a network-backed AGY lifecycle test, excluded from the default budget via the `live_agy` marker and sized via LIVE_AGY_SUITE_TIMEOUT_SECONDS). A profile is selected by its Make target; a missing profile is a build-time blocker, not a runtime fallback.
 RALPH-FACT: verification_time_budget: fast path invocation-to-answer cap 10 seconds; full gate is 60 seconds combined wall-clock for ALL test suites running sequentially under `make verify`, pinned to 60.0 in `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS` by an import-time epsilon check `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` and a positive-runtime guard `_TOTAL_TEST_BUDGET_SECONDS > 0`. Per-step caps are secondary and independent: `_VERIFY_STEP_TIMEOUT_SECONDS = 30.0` for each non-test verification step, with `_MIN_VERIFY_STEP_TIMEOUT_SECONDS = 5.0` as a non-trivial floor. Every phase of every test (setup, call, teardown) is charged against its own per-test budget — the `timeout_seconds` marker, else 1.0 s of main-thread CPU — plus a 5x wall-clock hang cap, by `ralph-workflow/tests/_per_test_budget.py`. The aggregate ceiling is immutable; new default-lane cost requires an offsetting `REMOVE`, `MERGE`, or `REPLACE` choice rather than a higher cap.
@@ -253,17 +253,18 @@ the wired audits:
   `disallow_untyped_defs = false`, blank `warn_unused_ignores`, etc.)
   is detected and reported by `audit_lint_bypass` /
   `audit_typecheck_bypass`.
-* Blanket or unexplained inline suppressions (`# noqa` without a
-  specific ruff code outside the allowlist; `# type: ignore` without
-  a mypy error code; `# type: ignore` inside test files) are detected
-  and reported.
+* Inline suppressions are detected and reported: the lint bypass audit
+  reports inline ruff suppressions, the repo-structure audit reports every
+  inline type or lint suppression in the tree, and the absolute comment
+  audit fails on every comment token in tracked Python.
 * The MCP-bypass audit (`audit_mcp_timeout`) detects unbounded
   blocking calls (`subprocess.run` / `.communicate` / `.wait`,
   `httpx.*`, `requests.*`, `urlopen`, `socket.create_connection`)
   without `timeout=` under `ralph/mcp/`, `ralph/git/`, `ralph/process/`,
   `ralph/executor/`, `ralph/agents/`, `ralph/pro_support/`, `ralph/api/`,
-  `ralph/update_check/`, and `ralph/contrib/`. The ONLY bypass is an inline
-  `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design
+  `ralph/update_check/`, and `ralph/contrib/`. The ONLY exemption is a
+  structural-exemption entry in `ralph/testing/audit_mcp_timeout.py` that
+  names the call site and its reason; an inline comment does not exempt a
   call.
 * The resource-lifecycle audit (`audit_resource_lifecycle`) detects
   unbounded mutable accumulators (list / dict / set / deque WITHOUT
@@ -273,8 +274,8 @@ the wired audits:
   `diagnostics`, `api`, `update_check`, `contrib`, `git`, `cli`, `telemetry`,
   `policy`, `language_detector`, `workspace`, `phases`, `guidelines`,
   `checkpoint`, `config`, `exit_pause`, `files`, `platform`, `project_policy`,
-  `skills`, and `interrupt`. The ONLY bypass is an inline
-  `# bounded-accumulator-ok: <reason>` marker naming the cap or drain.
+  `skills`, and `interrupt`. There is no inline bypass marker; the finding is
+  repaired by adding the cap or the drain.
 * The drift audit (`verify-drift` Makefile target invoking
   `scripts/verify_drift.sh`, which delegates to
   `scripts/wt028-drift-check.sh`) catches new uses of the canonical
@@ -309,14 +310,13 @@ drift category. Approved documented exceptions MUST be listed under
 
 ## Exceptions
 
-A documented bypass (e.g. a generated file with a `// @ts-nocheck`
-header; a vendored dependency stub under `ralph-workflow/stubs/`) MUST
-have a reason, scope, owner, and removal or review date. The
-allowlists in `ralph/testing/audit_lint_bypass.py` /
-`audit_typecheck_bypass.py` / `audit_mcp_timeout.py` /
-`audit_resource_lifecycle.py` are the canonical home for those
-allowlists, and they MUST be updated in the same commit that adds the
-exception. Undocumented bypasses are non-compliant and fail the
+A documented bypass (e.g. a vendored dependency stub under
+`ralph-workflow/stubs/`, or a per-file configuration entry in
+`ralph-workflow/pyproject.toml`) MUST have a reason, scope, owner, and a
+removal or review date. The allowlists in `ralph/testing/audit_lint_bypass.py`
+/ `audit_mcp_timeout.py` / `audit_resource_lifecycle.py` are the canonical
+home for those allowlists, and they MUST be updated in the same commit that
+adds the exception. Undocumented bypasses are non-compliant and fail the
 corresponding audit.
 
 ## Maintenance triggers

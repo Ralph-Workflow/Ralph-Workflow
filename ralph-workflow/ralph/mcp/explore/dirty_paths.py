@@ -4,6 +4,7 @@ import threading
 import time
 from typing import Protocol, cast
 
+from ralph.mcp.explore._bounded_state import BoundedKeyValueStore
 from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path
 
@@ -88,7 +89,9 @@ def resolve_explore_index(session: object) -> ExploreIndexLike | None:
 
 
 _PENDING_LOCK = threading.Lock()
-_PENDING_MARKS: dict[tuple[int, str], tuple[ExploreIndexLike, str, str]] = {}
+_PENDING_MARKS: BoundedKeyValueStore[tuple[int, str], tuple[ExploreIndexLike, str, str]] = (
+    BoundedKeyValueStore()
+)
 
 
 def _enqueue_mark(

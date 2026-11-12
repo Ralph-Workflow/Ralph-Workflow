@@ -5,6 +5,15 @@ import pytest
 import ralph.testing.audit_skill_auto_commit as audit_module
 from ralph.testing.audit_skill_auto_commit import main as audit_main
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_audit_blocks_regression_when_failure_path_log_removed": (
+        "the skill auto-commit wiring moved out of cli/commands/run.py into "
+        "cli/commands/_run_start_setup.py and the audit pins that live path, so "
+        "the old run.py monkeypatch no longer removed a pinned literal and the "
+        "regression went undetected"
+    ),
+}
+
 pytestmark = pytest.mark.timeout_seconds(5)
 
 _AUDIT_INVARIANTS = audit_module._INVARIANTS

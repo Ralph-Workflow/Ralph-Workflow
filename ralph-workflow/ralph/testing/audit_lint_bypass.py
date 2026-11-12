@@ -44,145 +44,6 @@ def _string_key_mapping(value: object) -> dict[str, object]:
     }
 
 
-_NOQA_ALLOWLIST: set[tuple[str, str]] = {
-    ("audit_test_policy", "PLR0911"),
-    ("audit_test_policy", "PLW0603"),
-    ("analysis_decision", "PLR0911"),
-    ("commit_executor", "PLC0415"),
-    ("runner", "PLC0415"),
-    ("worker_runtime", "PLC0415"),
-    ("commit_review", "PLC0415"),
-    ("materialize", "PLC0415"),
-    ("supervising", "PLC0415"),
-    ("pytest_timeout_plugin", "PLC0415"),
-    ("_event_classification", "PLC0415"),
-    ("_host_contention_signal", "PLC0415"),
-    ("_process_manager", "PLC0415"),
-    ("run_loop", "PLC0415"),
-    ("scoped_auto_commit", "PLC0415"),
-    (
-        "scoped_auto_commit",
-        "PLR0911",
-    ),
-    (
-        "scoped_auto_commit",
-        "PLR0912",
-    ),
-    (
-        "scoped_auto_commit",
-        "PLR0915",
-    ),
-    (
-        "scoped_auto_commit",
-        "C420",
-    ),
-    ("preflight", "C420"),
-    ("_run_start_setup", "PLC0415"),
-    (
-        "_run_start_setup",
-        "PLR0912",
-    ),
-    ("init", "PLC0415"),
-    (
-        "manager",
-        "PLC0415",
-    ),
-    (
-        "bootstrap",
-        "PLC0415",
-    ),
-    ("preflight", "PLC0415"),
-    (
-        "cli_integration",
-        "PLC0415",
-    ),
-    ("_installer", "PLC0415"),
-    (
-        "_installer_candidates",
-        "PLC0415",
-    ),
-    (
-        "validators",
-        "PLC0415",
-    ),
-    ("run_loop", "PLR0912"),
-    ("run_loop", "PLR0915"),
-    (
-        "run_loop",
-        "PLR0911",
-    ),
-    ("idle_watchdog", "PLR0911"),
-    ("idle_watchdog", "PLR0912"),
-    ("idle_watchdog", "PLR0915"),
-    ("_active_branch", "PLR0911"),
-    ("_fire_evaluators", "PLR0911"),
-    ("_fire_evaluators", "PLR0912"),
-    ("_waiting_branch", "PLR0911"),
-    ("_waiting_branch", "PLR0912"),
-    ("_waiting_branch", "PLR0915"),
-    ("_stuck_classifier", "PLR0911"),
-    (
-        "parallel_display",
-        "PLR0911",
-    ),
-    (
-        "parallel_display",
-        "PLR0912",
-    ),
-    ("heartbeat", "PLC0415"),
-    ("canonical_submit", "PLC0415"),
-    ("artifact", "PLC0415"),
-    ("completion_signals", "PLC0415"),
-    ("pydantic_validation_errors", "PLR0911"),
-    ("failure_classifier", "PLR0911"),
-    ("commit_plumbing", "UP047"),
-    ("claude_interactive_transcript_parser", "PLR0911"),
-    ("claude_interactive_transcript_parser", "PLR0912"),
-    ("smoke_multimodal", "PLR0911"),
-    ("smoke_multimodal", "PLR0912"),
-    ("smoke_plumbing", "PLR0912"),
-    ("mock_multimodal_agent", "PLR0912"),
-    ("mock_multimodal_agent", "PLR0915"),
-    ("_workspace", "PLC0415"),
-    ("run", "PLC0415"),
-    ("workspace_health", "PLC0415"),
-    ("_metrics", "PLW0603"),
-    ("_sentry", "PLW0603"),
-    ("smoke_multimodal", "PLR0911"),
-    ("parallel_display", "PLR0912"),
-    ("pydantic_validation_errors", "PLR0911"),
-    ("_command_builders", "PLC0415"),
-    ("_runtime_resolvers", "PLC0415"),
-    ("context", "PLC0415"),
-    ("_media_io", "PLW0603"),
-    ("_terminal_bg_query", "PLW0603"),
-    ("_start_stage_tracker", "PLW0603"),
-    ("_mcp_health_event", "PLW0603"),
-    ("__init__", "PLC0415"),
-    ("__init__", "RUF022"),
-    ("catalog", "PLC0415"),
-    ("registration", "UP037"),
-    ("registration", "PLC0415"),
-    ("registry", "PLC0415"),
-    ("vision_agent_provisioning", "PLC0415"),
-    ("catalog", "N802"),
-    ("_factory", "PLC0415"),
-    ("test_audit_agent_module_state", "PLC0415"),
-    ("_auto_commit", "PLC0415"),
-    ("audit_skill_auto_commit", "PLR0912"),
-    ("plan", "PLR0912"),
-    ("scoped_auto_commit", "PLC0415"),
-    ("cli_integration", "PLC0415"),
-    ("auto_integrate_recovery", "PLR0911"),
-    ("auto_integrate_recovery", "PLR0912"),
-    ("auto_integrate_remote_sync", "PLR0911"),
-    ("loader", "PLR0912"),
-    ("_direct_mcp_recovery", "PLR0912"),
-    ("subscriber", "PLR0911"),
-    ("_ndjson_base", "PLR0911"),
-    ("teardown", "PLC0415"),
-}
-
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -454,8 +315,8 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
             continue
 
         codes_str = match.group(1)
-
-        if codes_str is None:
+        codes = [code.strip() for code in str(codes_str or "").split(",") if code.strip()]
+        if not codes:
             violations.append(
                 LintBypassViolation(
                     file_path=rel_path,
@@ -466,19 +327,16 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
             )
             continue
 
-        codes = [c.strip() for c in str(codes_str).split(",") if c.strip()]
-        for code in codes:
-            if (file_stem, code) in _NOQA_ALLOWLIST:
-                continue
-            violations.append(
-                LintBypassViolation(
-                    file_path=rel_path,
-                    line=lineno,
-                    category="forbidden-noqa",
-                    detail=f"'# noqa: {code}' — inline lint suppression is not "
-                    f"permitted; remove the comment and fix the underlying lint error",
-                )
+        violations.extend(
+            LintBypassViolation(
+                file_path=rel_path,
+                line=lineno,
+                category="forbidden-noqa",
+                detail=f"'# noqa: {code}' — inline lint suppression is not "
+                f"permitted; remove the comment and fix the underlying lint error",
             )
+            for code in codes
+        )
 
     return violations
 

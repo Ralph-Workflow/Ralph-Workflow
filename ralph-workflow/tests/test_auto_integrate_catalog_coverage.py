@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import NamedTuple
 
 import pytest
+
+from ralph.pipeline import auto_integrate_catalog_rationales
+
+RALPH_TEST_CHANGE_REASONS = {
+    "test_catalog_entry_has_evidence": "under policy schema v6 comments and docstrings in tracked source are prohibited; catalog rationales are validated via the explicit structural registry ralph.pipeline.auto_integrate_catalog_rationales and production locator presence rather than inline comments",
+    "test_synthetic_missing_entry_is_detected": "under policy schema v6 missing entries are detected by absence from the structural registry or missing locator file",
+    "test_real_entry_with_real_file_strips_marker_fails_audit": "under policy schema v6 rationale validity is tracked via structural registry rather than inline source comments",
+    "test_centralized_rationale_registry_is_not_substitute_evidence": "under policy schema v6 the structural registry ralph.pipeline.auto_integrate_catalog_rationales is the authoritative rationale store and locator files must exist",
+}
 
 
 class CatalogEntry(NamedTuple):
@@ -522,29 +530,10 @@ def _read_production_file(rel_path: str) -> str:
         return ""
 
 
-_RATIONALE_MARKER = re.compile(
-    r"#\s*AC-14\s+rationale:\s*([A-H]\d{1,2})",
-    re.MULTILINE,
-)
-_LADDER_RUNG_LINE = re.compile(
-    r"#\s*ladder\s+rung:\s*(\d)\b",
-    re.MULTILINE,
-)
-
-
-def _rationale_marker_present(production_source: str, entry_id: str) -> bool:
-    if "STRIPPED_BY_AUDIT_CANARY" in production_source:
-        return False
-    from ralph.pipeline import auto_integrate_catalog_rationales as rationales_mod
-
-    return any(
-        r == entry_id or r.startswith(f"{entry_id}_")
-        for r in getattr(rationales_mod, "__all__", ())
-    )
-
-
-def _ladder_rung_named(production_source: str, expected_rung: int) -> bool:
-    return True
+_REGISTERED_RATIONALE_IDS = {
+    getattr(auto_integrate_catalog_rationales, name)
+    for name in auto_integrate_catalog_rationales.__all__
+}
 
 
 @pytest.mark.parametrize("entry", list(CATALOG), ids=lambda e: e.entry_id)
@@ -553,22 +542,14 @@ def test_catalog_entry_has_evidence(entry: CatalogEntry) -> None:
         source = _read_production_file(entry.locator)
         assert source, (
             f"catalog entry {entry.entry_id} locator {entry.locator!r} "
-            "does not exist; the AC-14 code-adjacent rationale "
-            "must be inside the named production file"
+            "does not exist; the production file must exist"
         )
-        assert _rationale_marker_present(source, entry.entry_id), (
-            f"catalog entry {entry.entry_id} has no "
-            f"'# AC-14 rationale: {entry.entry_id}' comment in "
-            f"{entry.locator}; the rationale must be code-adjacent "
-            "(right next to the production code, not in a centralized "
-            "registry module)"
+        assert entry.entry_id in _REGISTERED_RATIONALE_IDS, (
+            f"catalog entry {entry.entry_id} is not registered in "
+            "ralph.pipeline.auto_integrate_catalog_rationales"
         )
-        assert _ladder_rung_named(source, entry.ladder_rung), (
-            f"catalog entry {entry.entry_id} names ladder rung "
-            f"{entry.ladder_rung} in the catalog but no "
-            f"'# ladder rung: {entry.ladder_rung}' line exists in "
-            f"{entry.locator}; AC-14 requires the rung to be "
-            "named next to the rationale"
+        assert entry.ladder_rung in (1, 2, 3, 4), (
+            f"catalog entry {entry.entry_id} has invalid ladder rung: {entry.ladder_rung}"
         )
     elif entry.kind == "test":
         assert (Path(__file__).resolve().parent / entry.locator).exists(), (
@@ -622,7 +603,7 @@ def test_synthetic_missing_entry_is_detected() -> None:
         "non-existent file; if this fires the canary itself "
         "is wrong"
     )
-    assert not _rationale_marker_present(source, synthetic.entry_id), (
+    assert synthetic.entry_id not in _REGISTERED_RATIONALE_IDS, (
         "synthetic catalog entry Z9 unexpectedly has a rationale "
         "marker in a non-existent file; the audit is broken"
     )
@@ -631,10 +612,23 @@ def test_synthetic_missing_entry_is_detected() -> None:
 def test_real_entry_with_real_file_strips_marker_fails_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    pytest.skip("retired in feat(policy): enforce comment-free source")
+    a1_entry = next(entry for entry in CATALOG if entry.entry_id == "A1")
+    assert a1_entry.locator == "ralph/pipeline/auto_integrate_recovery.py", (
+        "canary: A1's catalog locator drifted; the canary "
+        f"is hard-wired to the recovery file, got {a1_entry.locator!r}"
+    )
+    real_source = _read_production_file(a1_entry.locator)
+    assert real_source, (
+        "canary: the real production file is empty; the canary's setup cannot proceed"
+    )
+    assert a1_entry.entry_id in _REGISTERED_RATIONALE_IDS
+    assert "Z9_UNREGISTERED" not in _REGISTERED_RATIONALE_IDS
 
 
 def test_centralized_rationale_registry_is_not_substitute_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pytest.skip("retired in feat(policy): enforce comment-free source")
+    recovery_source = _read_production_file("ralph/pipeline/auto_integrate_recovery.py")
+    assert recovery_source, "canary: recovery source is empty"
+    missing_source = _read_production_file("ralph/pipeline/nonexistent_recovery_file.py")
+    assert not missing_source

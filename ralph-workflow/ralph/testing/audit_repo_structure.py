@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ralph.testing._repo_structure_allowlists import (
-    _LEGACY_BYPASS_COMMENT_ALLOWLIST,
     _LEGACY_LARGE_FILE_ALLOWLIST,
     _LEGACY_MULTIPLE_CLASS_ALLOWLIST,
     _LEGACY_PRIVATE_IMPORT_ALLOWLIST,
@@ -202,8 +201,6 @@ def _collect_source_violations() -> list[str]:
                     continue
                 violations.append(f"private ralph import: {rel}: from {module} import {names}")
             for lineno, line in data.bypass_comments:
-                if (rel, lineno) in _LEGACY_BYPASS_COMMENT_ALLOWLIST:
-                    continue
                 violations.append(f"bypass comment: {rel}:{lineno}: {line}")
             if path.is_relative_to(RALPH_DIR):
                 for lineno, outer, inner in data.nested_classes:

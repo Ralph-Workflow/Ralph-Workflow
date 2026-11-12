@@ -33,7 +33,7 @@ and registries to manage configurations and execution strategies.
 - `adding-a-new-agent.md` / `quickstart-add-a-new-agent.md` — register a new agent CLI
 - `architecture.md` — subsystem shape and runtime responsibilities
 - `artifact-submission-contract.md` — required artifact content
-- `memory-lifecycle.md` — bounded-accumulator rules
+- `memory-lifecycle.md` — memory budget, teardown, and resource-lifecycle audit contracts
 - `remote-sync.md` — auto-integration remote-sync contract: the local target follows the configured remote
 - Pro support: see
   [`docs/sphinx/pro-support.md#engine-internals-pro-contract`](../sphinx/pro-support.md#engine-internals-pro-contract)

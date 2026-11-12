@@ -6,10 +6,12 @@ import logging
 import os
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ralph.mcp.explore._bounded_state import BoundedKeyValueStore
 from ralph.mcp.explore._recovery_types import HealthState, _RecoveryState
 
 logger = logging.getLogger(__name__)
@@ -217,7 +219,7 @@ class RecoveryScheduler:
             pass
 
 
-_LAST_ADVISORY_LOCK_FD: list[int | None] = [None]
+_LAST_ADVISORY_LOCK_FD: deque[int | None] = deque([None], maxlen=1)
 
 
 def advisory_lock_path(workspace_root: Path) -> Path:
@@ -369,7 +371,7 @@ def run_recovery_action(
 
 
 _PENDING_RECOVERY_CAP: int = 64
-_PENDING_RECOVERY: dict[str, str] = {}
+_PENDING_RECOVERY: BoundedKeyValueStore[str, str] = BoundedKeyValueStore()
 _PENDING_LOCK = threading.Lock()
 
 _RECOVERABLE_QUERY_CODES: frozenset[str] = frozenset(
@@ -454,7 +456,7 @@ def enqueue_recovery(
 
 
 _DRAIN_WAKEUP = threading.Event()
-_DRAIN_THREAD: list[threading.Thread | None] = [None]
+_DRAIN_THREAD: deque[threading.Thread | None] = deque([None], maxlen=1)
 _DRAIN_TIMEOUT_MS = 15_000
 
 

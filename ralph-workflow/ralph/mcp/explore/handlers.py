@@ -4,9 +4,10 @@ import logging
 import sqlite3
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.pipeline import (
@@ -236,25 +237,27 @@ __all__ = [
 ]
 
 
-_LAZY_REEXPORTS: dict[str, str] = {
-    "graph_module": "ralph.mcp.explore.graph",
-    "_GRAPH_CANCEL_FLAGS": "ralph.mcp.explore._handlers_graph",
-    "_GRAPH_CANCEL_LOCK": "ralph.mcp.explore._handlers_graph",
-    "_graph_edge_to_dict": "ralph.mcp.explore._handlers_graph",
-    "_graph_node_to_dict": "ralph.mcp.explore._handlers_graph",
-    "_graph_result_to_dict": "ralph.mcp.explore._handlers_graph",
-    "handle_ralph_graph": "ralph.mcp.explore._handlers_graph",
-    "_build_disabled_status_payload": "ralph.mcp.explore._handlers_index_status",
-    "_build_status_payload": "ralph.mcp.explore._handlers_index_status",
-    "_gitignore_child_rule_present": "ralph.mcp.explore._handlers_index_status",
-    "_gitignore_coverage": "ralph.mcp.explore._handlers_index_status",
-    "_gitignore_repair_payload": "ralph.mcp.explore._handlers_index_status",
-    "handle_ralph_index_status": "ralph.mcp.explore._handlers_index_status",
-    "_REINDEX_CANCEL_FLAGS": "ralph.mcp.explore._handlers_reindex",
-    "_REINDEX_CANCEL_LOCK": "ralph.mcp.explore._handlers_reindex",
-    "_build_reindex_payload": "ralph.mcp.explore._handlers_reindex",
-    "handle_ralph_reindex": "ralph.mcp.explore._handlers_reindex",
-}
+_LAZY_REEXPORTS: Mapping[str, str] = MappingProxyType(
+    {
+        "graph_module": "ralph.mcp.explore.graph",
+        "_GRAPH_CANCEL_FLAGS": "ralph.mcp.explore._handlers_graph",
+        "_GRAPH_CANCEL_LOCK": "ralph.mcp.explore._handlers_graph",
+        "_graph_edge_to_dict": "ralph.mcp.explore._handlers_graph",
+        "_graph_node_to_dict": "ralph.mcp.explore._handlers_graph",
+        "_graph_result_to_dict": "ralph.mcp.explore._handlers_graph",
+        "handle_ralph_graph": "ralph.mcp.explore._handlers_graph",
+        "_build_disabled_status_payload": "ralph.mcp.explore._handlers_index_status",
+        "_build_status_payload": "ralph.mcp.explore._handlers_index_status",
+        "_gitignore_child_rule_present": "ralph.mcp.explore._handlers_index_status",
+        "_gitignore_coverage": "ralph.mcp.explore._handlers_index_status",
+        "_gitignore_repair_payload": "ralph.mcp.explore._handlers_index_status",
+        "handle_ralph_index_status": "ralph.mcp.explore._handlers_index_status",
+        "_REINDEX_CANCEL_FLAGS": "ralph.mcp.explore._handlers_reindex",
+        "_REINDEX_CANCEL_LOCK": "ralph.mcp.explore._handlers_reindex",
+        "_build_reindex_payload": "ralph.mcp.explore._handlers_reindex",
+        "handle_ralph_reindex": "ralph.mcp.explore._handlers_reindex",
+    }
+)
 
 
 def __getattr__(name: str) -> object:

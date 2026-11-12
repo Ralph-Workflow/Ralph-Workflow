@@ -110,6 +110,10 @@ def test_ralph_mcp_server_public_surface_has_no_fastmcp_symbol() -> None:
     assert not hasattr(runtime, "_create_tool")
 
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_grep_audit_finds_zero_fastmcp_hits_in_tests": "the five absence-documenting test files no longer carry FastMCP absence marker comments after the schema v6 comment sweep",
+}
+
 _ABSENCE_MARKER = "Property A: there is no alternate FastMCP path"
 
 _ABSENCE_DOCUMENTING_TESTS: frozenset[str] = frozenset()

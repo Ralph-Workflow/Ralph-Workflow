@@ -45,10 +45,10 @@ These requirements hold regardless of application type:
   this bullet names the security-specific surface where a bypass
   would expose a real defect and makes the rule concrete for
   scanner, validation, authentication, and sandbox lanes.
-* Security-relevant suppressions (scanner finding waivers, unsafe-block
-  annotations, `nosec`-style comments) MUST carry the specific finding
-  identifier AND a documented reason. Blanket suppressions are
-  forbidden.
+* Security-relevant suppressions MUST be configuration-level: a scanner
+  finding waiver is an entry in the SAST tool's configuration, never an
+  inline comment in the source. A waiver carries the specific finding
+  identifier AND a documented reason. Blanket suppressions are forbidden.
 * Facts that cannot be verified from the repository MUST come from the
   project owner and MUST NOT be guessed. When owner input is unavailable,
   record the fact as pending owner confirmation, apply a separate fail-safe

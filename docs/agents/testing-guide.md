@@ -1200,7 +1200,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_property_a_one_transport_one_behavior.py` | 0 | 2 | 1 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_c_liveness_contract.py` | 0 | 10 | 13 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_d_failure_observability.py` | 0 | 10 | 4 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
-| `tests/test_property_e_streaming_terminates.py` | 0 | 11 | 3 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
+| `tests/test_property_e_streaming_terminates.py` | 0 | 10 | 0 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_f_retry_side_effects.py` | 0 | 1 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
 | `tests/test_property_g_recovery_signal.py` | 0 | 11 | 1 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_h_bounded_resources.py` | 0 | 5 | 13 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |

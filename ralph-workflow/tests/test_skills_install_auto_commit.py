@@ -895,3 +895,68 @@ def test_run_start_migration_removes_retired_managed_skills_in_one_commit(
         )
     finally:
         repo.close()
+
+
+def test_install_preserved_conflicting_skill_dir_is_not_swept_into_chore_commit(
+    tmp_path: Path,
+) -> None:
+    Repo.init(tmp_path)
+    _commit_all_initial(tmp_path)
+
+    sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
+    sibling_dir.mkdir(parents=True)
+    _write_managed_marker(sibling_dir, "submit-artifact", files={})
+    (sibling_dir / "alias").symlink_to("original")
+    (sibling_dir / "notes.md").write_text("user notes\n", encoding="utf-8")
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add([".claude/skills/submit-artifact/alias"])
+        actor = Actor("Test Author", "test@example.com")
+        repo.index.commit("seed tracked symlink descendant", author=actor, committer=actor)
+        (sibling_dir / "alias").unlink()
+        (sibling_dir / "alias").symlink_to("dirty")
+    finally:
+        repo.close()
+
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+    with patch("pathlib.Path.home", return_value=home):
+        outcome = install_project_baseline_skills_with_diff(tmp_path)
+
+    assert ".claude/skills/submit-artifact/alias" in outcome.written_paths, (
+        f"the dirty symlink descendant MUST be reported; got: {sorted(outcome.written_paths)}"
+    )
+    assert ".claude/skills/submit-artifact" in outcome.written_paths, (
+        f"the conflicting transition root MUST be reported; got: {sorted(outcome.written_paths)}"
+    )
+
+    result = commit_skill_writes(
+        tmp_path,
+        written_paths=outcome.written_paths,
+        pre_contents=outcome.pre_contents,
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+        intentional_transitions=outcome.intentional_transitions,
+    )
+
+    assert ".claude/skills/submit-artifact" in result.skipped_paths, (
+        f"conflicting transition root MUST be skipped; got: {result!r}"
+    )
+
+    repo = Repo(tmp_path)
+    try:
+        tree_paths = _head_tree_blob_paths(repo)
+        assert ".claude/skills/submit-artifact/notes.md" not in tree_paths, (
+            f"the user's untracked file MUST NOT be swept into the chore commit; "
+            f"got: {sorted(p for p in tree_paths if '.claude' in p)}"
+        )
+        assert ".claude/skills/submit-artifact" not in tree_paths, (
+            f"the skipped transition MUST NOT land a symlink at HEAD; "
+            f"got: {sorted(p for p in tree_paths if '.claude' in p)}"
+        )
+        porcelain = repo.git.status("--porcelain")
+        assert any(
+            ".claude/skills/submit-artifact/notes.md" in line for line in porcelain.splitlines()
+        ), f"the user's untracked file MUST stay untracked; status: {porcelain!r}"
+    finally:
+        repo.close()

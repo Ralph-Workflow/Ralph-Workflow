@@ -606,7 +606,7 @@ explicit branches for the two new kinds — `STALLED` renders
 `Agent resumed after stall (idle_elapsed=Ns)`. Both branches
 NEVER fall through to the `hit hard ceiling` template reserved
 for `HARD_STOP` (the kind dispatch is locked by
-`audit_lint_bypass.py::_NOQA_ALLOWLIST`).
+`audit_lint_bypass.py`, which treats every inline `# noqa` as a violation).
 
 ### Stall-label lifetime
 

@@ -135,18 +135,5 @@ retention_max_age_days = 7.0
 # json_parser = "claude"
 # session_flag = "--resume {}"
 
-# Edit this only if you need a named CCS model alias for THIS project.
-# -----------------------------------------------------------------------------
-# [ccs_aliases.*] -- CCS alias mappings (string or table form)
-# -----------------------------------------------------------------------------
-# Simple string form (uses built-in defaults for the named alias):
-# ccs_aliases = { claude = "claude", opencode = "opencode" }
-#
-# Table form (override per-alias CCS settings):
-# [ccs_aliases.claude]
-# cmd = "claude"
-# model_flag = "--model claude-sonnet-4"
-#
-# [ccs_aliases.opencode]
-# cmd = "opencode"
-# model_flag = "--model opencode-o3"
+[ccs_aliases]
+

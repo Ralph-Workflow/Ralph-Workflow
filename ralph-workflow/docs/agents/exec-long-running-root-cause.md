@@ -176,10 +176,10 @@ contract the agent does not honour:
 > exec subprocess timeout — the *pre-§3b* output-only inactivity window
 > that the liveness-based subsystem has since superseded. The §3b fix
 > replaces this rule for the whole production entry path: normal `exec`
-> always becomes a registry job (ralph/mcp/tools/exec.py:792-821), so
+> always becomes a registry job (`ralph/mcp/tools/exec.py:706-706`), so
 > the inactivity window is no longer the kill rule for short in-request
 > calls either — it survives only on the injected-runner seam
-> (ralph/mcp/tools/exec.py:777-790). See "Cause 1 — present-day
+> (`ralph/mcp/tools/exec.py:706-706`). See "Cause 1 — present-day
 > liveness subsystem" further on for current behavior. This section is
 > preserved so a reader can tell what the old failure mode was, and so
 > the WU-5 citations remain anchored to the source code they describe.
@@ -300,7 +300,7 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   `hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000` to
   `handle.communicate_and_cleanup`. The `inactivity` window is gated BELOW
   this; the `hard_cap` window is the outermost envelope. Note this is the
-  seam path (exec.py:777-790 → `exec.py:567` → `exec.py:603`), not the
+  seam path (`exec.py:706-706` → `exec.py:567` → `exec.py:603`), not the
   production entry path.
 - On the **production entry path**, the wall-clock cap is the registry's
   job ceiling, not `EXEC_MAX_TIMEOUT_MS`:

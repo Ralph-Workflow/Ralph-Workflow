@@ -26,11 +26,14 @@ or inapplicable (with a reason and the stack change that would re-open it).
   practice (mypy for Python, tsc for TypeScript, cargo check for Rust,
   go build for Go, etc.). A non-standard checker is permitted only
   with a documented reason.
-* Suppressions (`# type: ignore`, `@ts-ignore`, `#[allow(...)]`) MUST
-  carry a specific error code AND a documented reason per
-  `ralph-workflow/docs/agents/type-ignore-policy.md`. Blanket
-  suppressions are forbidden. Bare `# type: ignore` without a specific
-  mypy error code is rejected by `ralph/testing/audit_typecheck_bypass.py`.
+* Inline type suppressions are forbidden in tracked source. The underlying
+  type error is fixed in code, or suppressed in the type checker's
+  configuration (`ralph-workflow/mypy.ini`), never inline. The repo-structure
+  audit (`ralph/testing/audit_repo_structure.py`) reports every inline type
+  suppression in the tree, and the absolute comment audit
+  (`ralph/testing/audit_comments.py`) fails on every comment token in tracked
+  Python, so an inline suppression cannot land there. The acceptance bar is
+  documented in `ralph-workflow/docs/agents/type-ignore-policy.md`.
 * Generated code, vendored code, and migration code MUST be excluded
   from type checking via configuration (not by inline suppression). The
   exclusion pattern MUST be listed in this policy.
@@ -39,11 +42,12 @@ or inapplicable (with a reason and the stack change that would re-open it).
   is forbidden and is detected by `ralph/testing/audit_typecheck_bypass.py`.
 * Test files MUST be fully typed. The mypy target is `mypy ralph/`, which
   excludes `ralph-workflow/tests/` by directory selection (not by inline
-  suppression). The zero-tolerance rule for `# type: ignore` in tests is
-  enforced by `ralph/testing/audit_typecheck_bypass.py` scanning test sources
-  directly. Both facts hold: mypy does not type-check tests by target, and
-  the audit rejects any new `# type: ignore` line a test file would have
-  introduced.
+  suppression). The zero-tolerance rule for inline type suppressions in
+  tests is enforced by `ralph/testing/audit_repo_structure.py`, which reports
+  every inline type suppression in the tree, and by
+  `ralph-workflow/tests/test_type_ignore_policy.py`, which asserts the tree
+  carries none. Both facts hold: mypy does not type-check tests by target,
+  and no test file may carry an inline suppression.
 
 ### Type assertions and casts
 
@@ -67,11 +71,10 @@ An assertion is permitted only in one of three positions:
   kind, and MUST NOT be repeated at call sites.
 * STRUCTURAL SEAM — permitted with a documented reason where the proof
   lives in another module and cannot be checked locally, such as protocol
-  conformance or a lazy/plugin module boundary. These carry the same reason
-  requirement as a suppression and count against the same suppression baseline
-  (`suppression_rationale_policy`). Where the language offers a runtime-
-  checkable protocol or interface, it MUST be used instead, demoting the seam
-  to the first position.
+  conformance or a lazy/plugin module boundary. The documented reason is part
+  of the contract of the named helper that owns the assertion. Where the
+  language offers a runtime-checkable protocol or interface, it MUST be used
+  instead, demoting the seam to the first position.
 
 Every other assertion is forbidden. In particular, asserting the SHAPE OF
 EXTERNAL DATA is forbidden without exception: narrowing a value read from
@@ -104,14 +107,14 @@ RALPH-FACT: typechecker_per_language: Python → mypy (via `make typecheck` → 
 RALPH-FACT: strictness_level: mypy --strict (per ralph-workflow/mypy.ini) plus `disallow_untyped_defs = True`, `disallow_incomplete_defs = True`, `check_untyped_defs = True`, `no_implicit_optional = True`, `warn_unused_ignores = True`, `warn_unused_configs = True`, `warn_return_any = True`, `warn_unreachable = True`, `strict_equality = True`, `enable_error_code = ignore-without-code`. Disallow-Any family is fully on (`disallow_any_explicit`, `disallow_any_decorated`, `disallow_any_unimported`, `disallow_any_expr`); any of these flags being weakened is detected by `ralph/testing/audit_typecheck_bypass.py`.
 RALPH-FACT: excluded_paths: `ralph-workflow/stubs/` is on mypy_path (first-party type stubs); `ralph-workflow/tests/` is NOT type-checked (`mypy ralph/` excludes it by target). Legacy Rust in `docs/legacy-rust/` and the bundled Homebrew formula (`ralph-workflow/Formula/`) are outside the mypy target by directory selection, not by inline suppression.
 RALPH-FACT: stubbed_dependencies: first-party stubs live under `ralph-workflow/stubs/` and are registered via `mypy_path` in `ralph-workflow/mypy.ini`. Runtime dev dependencies ship typing support in their own wheels (httpx, pydantic, typer, rich, mcp, loguru, tqdm, gitpython, sentry-sdk, watchdog, jinja2, readability-lxml, selectolax, tomli-w); `types-psutil>=5.9` is declared under `[project.optional-dependencies].dev` because `psutil` does not ship types.
-RALPH-FACT: suppression_rationale_policy: suppressions are governed by `ralph-workflow/docs/agents/type-ignore-policy.md`. Every `# type: ignore[<code>]` comment MUST end with exactly one of two reason markers: `# reason: external library has no type support` or `# reason: autogenerated code has no type support`. Any other text is rejected by `ralph/testing/audit_typecheck_bypass.py`. Blanket `# type: ignore` without `[<code>]` is also rejected. Tests files have zero tolerance for `# type: ignore`.
+RALPH-FACT: suppression_rationale_policy: inline type suppressions are forbidden in tracked source; the acceptance bar is `ralph-workflow/docs/agents/type-ignore-policy.md`. The underlying type error is fixed in code, or suppressed in the type checker's configuration (`ralph-workflow/mypy.ini`), never inline. `ralph/testing/audit_typecheck_bypass.py` reports a weakened mypy configuration (`ignore_missing_imports = true`, `follow_imports = silent`, `ignore_errors = true`, any `disable_error_code`, `warn_unused_ignores = false`, `disallow_untyped_defs = false`, any `exclude`); `ralph/testing/audit_repo_structure.py` reports every inline type suppression in the tree; `ralph/testing/audit_comments.py` fails on every comment token in tracked Python. Test files carry no inline type suppression.
 RALPH-FACT: ci_gate_integration: `make verify` runs the typechecker via the `python -m mypy ralph/` verify step (`ralph/verify.py:_VERIFY_STEPS`). `.github/workflows/verify.yml` invokes `cd ralph-workflow && make verify` on every push and pull_request event on the GitHub primary repository and fails the build when mypy exits non-zero. `.woodpecker.yml` continues the same gate on the Codeberg mirror while it is maintained; the CLA and publish workflows remain specialized. `make typecheck` is a thin shortcut.
-RALPH-FACT: suppression_inventory_and_baseline: zero-suppression baseline — the baseline is the count of in-tree `# type: ignore[<code>]` comments on `git log -1 HEAD -- ralph/` of the canonical commit, recorded as 0 in the repository history. The audit (`ralph/testing/audit_typecheck_bypass.py`) flags any new line that adds a suppress without a `# reason: external library has no type support` or `# reason: autogenerated code has no type support` marker. New suppressions in ralph-workflow/tests/ are rejected unconditionally by the same audit. Suppression count MUST NOT increase without a documented exception; legacy debt uses a ratcheted checked baseline that rejects new unchecked scope. <!-- ralph-control: suppression-count-baseline --> A non-zero baseline requires a documented exception in this policy and a reduction down to 0.
+RALPH-FACT: suppression_inventory_and_baseline: zero-suppression baseline — the baseline is the count of in-tree inline type suppressions on `git log -1 HEAD -- ralph/` of the canonical commit, recorded as 0 in the repository history. The repo-structure audit (`ralph/testing/audit_repo_structure.py`) reports every inline type suppression in the tree, and `ralph-workflow/tests/test_type_ignore_policy.py` asserts the tree carries none, so the count is 0 in source and in tests. Suppression count MUST NOT increase without a documented exception; legacy debt uses a ratcheted checked baseline that rejects new unchecked scope. <!-- ralph-control: suppression-count-baseline --> A non-zero baseline requires a documented exception in this policy and a reduction down to 0.
 RALPH-FACT: maintenance_evidence: mypy (Dormanzke + Coghlan et al., MIT, https://github.com/python/mypy) — actively maintained, latest stable >= 1.11; mypy --strict selected for ralph-workflow/; all first-party modules under ralph-workflow/ralph/ are covered by the ralph-workflow/mypy.ini target. Recheck trigger: a major mypy version bump, the project moving off Python 3.12, or any new dependency that ships without inline types.
 RALPH-FACT: first_party_languages: Python (primary), Ruby (a single Homebrew formula at ralph-workflow/Formula/ralph-workflow.rb). JSON and YAML are non-code (config) and have no per-language checking. The separate fail-closed `make formula-check` gate performs Ruby syntax validation.
 RALPH-FACT: excluded_language_evidence: TypeScript / .ts and .tsx are absent from the repo (file extension scan from ralph-workflow/ralph/language_detector/ returns zero); Go source is absent (no go.mod); Rust source is quarantined under docs/legacy-rust/ and is outside any build target. Each exclusion names the deterministic detector signal that triggered the inapplicability record.
 RALPH-FACT: type_modeling_conventions: project defaults documented in ralph-workflow/ralph/pydantic_validation_errors.py and ralph-workflow/ralph/logging_models.py — pydantic-validated typed models at trust boundaries, structured loguru records for cross-module log payloads, frozen dataclasses for recovery-classifier outputs. Plain strings and dict[str, Any] are reserved for serialization and parsing layers; once data crosses a trust boundary it MUST land in a typed model.
-RALPH-FACT: sanctioned_dynamic_boundaries: enumerated at the trust boundaries only — the `subprocess_e2e` agent NDJSON stream parsers under ralph-workflow/ralph/agents/parsers/ (the Claude / OpenCode / Codex / Cursor / Pi / Gemini / Kimi / Nanocoder / Agy / generic parsers plus the shared ralph-workflow/ralph/agents/parsers/_ndjson_base.py; raw JSON objects narrowed via ralph-workflow/ralph/agents/parsers/*.py into the typed AgentOutputLine record), the invocation-engine subprocess / PTY stream readers under ralph-workflow/ralph/agents/invoke/ (raw agent stdout narrowed into dict[str, object] records), and the MCP JSON envelope parser at ralph-workflow/ralph/mcp/server/_fallback_http_handler.py (raw JSON-RPC body narrowed into the typed JsonRpcRequest record). Each boundary is annotated with a typed adapter that narrows the raw payload to a typed record BEFORE first-party code consumes it. That set of boundaries is ratcheted; it MUST NOT grow without a documented justification. <!-- ralph-control: sanctioned-dynamic-boundaries --> New dynamic boundaries require a documented addition to this fact plus a typed adapter, and the typecheck-bypass audit (`ralph/testing/audit_typecheck_bypass.py`) rejects any new `# type: ignore` that lacks one of the two documented reason markers, plus every `# type: ignore` in a test file.
+RALPH-FACT: sanctioned_dynamic_boundaries: enumerated at the trust boundaries only — the `subprocess_e2e` agent NDJSON stream parsers under ralph-workflow/ralph/agents/parsers/ (the Claude / OpenCode / Codex / Cursor / Pi / Gemini / Kimi / Nanocoder / Agy / generic parsers plus the shared ralph-workflow/ralph/agents/parsers/_ndjson_base.py; raw JSON objects narrowed via ralph-workflow/ralph/agents/parsers/*.py into the typed AgentOutputLine record), the invocation-engine subprocess / PTY stream readers under ralph-workflow/ralph/agents/invoke/ (raw agent stdout narrowed into dict[str, object] records), and the MCP JSON envelope parser at ralph-workflow/ralph/mcp/server/_fallback_http_handler.py (raw JSON-RPC body narrowed into the typed JsonRpcRequest record). Each boundary is annotated with a typed adapter that narrows the raw payload to a typed record BEFORE first-party code consumes it. That set of boundaries is ratcheted; it MUST NOT grow without a documented justification. <!-- ralph-control: sanctioned-dynamic-boundaries --> New dynamic boundaries require a documented addition to this fact plus a typed adapter, and the repo-structure audit (`ralph/testing/audit_repo_structure.py`) reports any inline type suppression anywhere in the tree, including in a test file.
 
 ## Guard inventory
 
@@ -138,8 +141,9 @@ An agent MUST NOT:
 
 * Add `ignore_missing_imports`, `follow_imports = silent`, or similar
   global silencers without a per-dependency reason.
-* Use `# type: ignore` without a specific error code.
-* Add a `# type: ignore` to a test file.
+* Add an inline type suppression to any source file, with or without a
+  specific error code.
+* Add an inline type suppression to a test file.
 * Weaken the strictness level to obtain a passing result.
 * Assert a type where a runtime check would discharge the same obligation.
 * Assert the type of a value read from external, deserialized, or otherwise

@@ -72,7 +72,7 @@ reader job; pick the first link that matches, then stop.
   architecture index (one-paragraph pointer into the package's
   runtime internals)
 - [`ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md) —
-  the MADR-format ADR for the interrupt architecture
+  the interrupt architecture ADR
 
 ## I am looking at the retired Rust implementation
 

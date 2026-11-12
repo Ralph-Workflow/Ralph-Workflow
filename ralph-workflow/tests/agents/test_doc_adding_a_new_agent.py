@@ -9,6 +9,14 @@ import pytest
 
 from ralph.agents.registration import register_agent_support
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_recipe_test_docstrings_point_to_doc": (
+        "the module docstring that linked the recipe test to the canonical doc is "
+        "retired by the absolute no-docstring policy; the recipe test now names the "
+        "canonical doc as live data, so the check reads that live reference"
+    ),
+}
+
 
 def test_doc_exists_and_non_empty() -> None:
     doc_path = Path("docs/agents/adding-a-new-agent.md")
@@ -118,7 +126,7 @@ def test_discoverability_link_from_contributing_doc() -> None:
     )
 
 
-def test_recipe_test_docstrings_point_to_doc() -> None:
+def test_recipe_test_references_the_canonical_doc() -> None:
     recipe1 = Path("tests/agents/test_add_a_new_agent_recipe.py")
 
     assert recipe1.exists()

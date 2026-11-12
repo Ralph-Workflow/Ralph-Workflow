@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final, Protocol
 
 from ralph.mcp.explore.structure import StructureExtraction
@@ -23,7 +26,7 @@ class PythonStructureExtractor(Protocol):
     ) -> StructureExtraction: ...
 
 
-_runtime_crossover: list[int | None] = [None]
+_runtime_crossover: deque[int | None] = deque([None], maxlen=1)
 
 
 def set_runtime_crossover(nodes: int | None) -> None:
@@ -70,10 +73,12 @@ def _accelerated_extract_python(
     )
 
 
-_IMPL_REGISTRY: Final[dict[str, PythonStructureExtractor]] = {
-    IMPL_SCALAR: _scalar_extract_python,
-    IMPL_ACCELERATED: _accelerated_extract_python,
-}
+_IMPL_REGISTRY: Final[Mapping[str, PythonStructureExtractor]] = MappingProxyType(
+    {
+        IMPL_SCALAR: _scalar_extract_python,
+        IMPL_ACCELERATED: _accelerated_extract_python,
+    }
+)
 
 
 def select_structure_extractor(

@@ -28,6 +28,16 @@ from tests.conftest import (
 
 pytest_plugins = ("pytester",)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_bundled_defaults_agents_toml_is_protected_and_valid": (
+        "the bundled agents template ships the inactive agent definitions as "
+        "structured [inactive_agents.<name>] TOML tables instead of the retired "
+        "comment-marker blocks, so the check now asserts the structured codex "
+        "table and that the retired markers are gone; it still proves the "
+        "bundled template is protected, valid TOML, and unmodified by reading it"
+    ),
+}
+
 
 def test_resolve_guarded_config_dirs_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
@@ -557,6 +567,8 @@ def test_bundled_defaults_agents_toml_is_protected_and_valid() -> None:
     assert parsed["agents"]["claude"]["cmd"] == "claude"
     assert "[agents.claude]" in content
     assert "[inactive_agents.codex]" in content
+    assert parsed["inactive_agents"]["codex"]["cmd"] == "codex exec"
+    assert "@AGENT-BLOCK-START" not in content
     assert bundled_agents.read_bytes() == initial_bytes
 
 

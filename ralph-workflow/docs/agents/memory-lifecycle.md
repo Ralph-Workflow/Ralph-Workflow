@@ -81,9 +81,8 @@ Lifecycle owners and automated enforcement:
 | Structural leak classes | `ralph/testing/audit_resource_lifecycle.py` | `make verify` AST scan of every production root |
 
 Searched without a new production bound (no measured growth curve):
-`ralph/{agents,display,mcp,pipeline,process,recovery,runtime,telemetry}/`
-plus `# bounded-accumulator-ok:` markers on the hot path. Deliberate
-non-fixes: do not pool the per-call stdio upstream client; do not add
+`ralph/{agents,display,mcp,pipeline,process,recovery,runtime,telemetry}/`.
+Deliberate non-fixes: do not pool the per-call stdio upstream client; do not add
 deadlines around healthy-agent `asyncio.gather` (activity-aware
 watchdog + finally teardown already own that bound). New production
 bounds belong only where those harnesses demonstrate a growth curve —
@@ -160,8 +159,8 @@ FIFO/size cap. The current inventory:
 | BoundedTextBuffer / `clamp_tail` | `DEFAULT_MAX_BUFFER_CHARS` (1 MiB) | `ralph/agents/_bounded_text_buffer.py` | Tail-preserving cap for long-lived partial-line text buffers. |
 | TextAccumulator | 4096 raw lines and `_MAX_BUFFER_CHARS` | `ralph/agents/parsers/text_accumulator.py` | `append_delta` flushes on either cap without changing healthy-path paragraph behavior. |
 
-Every blocking I/O call MUST carry a `timeout=` keyword (or a
-justified `# mcp-timeout-ok: <reason>` marker) — see
+Every blocking I/O call MUST carry a `timeout=` keyword (or a call
+site registered in `STRUCTURAL_EXEMPTIONS`) — see
 [Bounded-subprocess audit](#bounded-subprocess-audit) below. No
 production code may call `subprocess.run(...)`,
 `handle.communicate(...)`, `handle.wait(...)`,
@@ -200,8 +199,8 @@ The `ralph.testing.audit_mcp_timeout` AST-based audit enforces:
 - No `for line in proc.stdout:` style unbounded stream iteration (the
   reader must be interruptible)
 - No `subprocess.getoutput` / `subprocess.getstatusoutput` /
-  `os.system` (no timeout at all; require explicit
-  `# mcp-timeout-ok` marker)
+  `os.system` (no timeout at all; a call site that must stay unbounded
+  is registered in `STRUCTURAL_EXEMPTIONS`)
 
 The audit is AST-based and can only flag **literal** `None` values
 (`ast.Constant(value=None)` and `ast.Name(id='None')`). A variable
@@ -226,11 +225,11 @@ Audit roots (the directories scanned by default):
 | `ralph/contrib` | Contributor integration helpers |
 
 Adding a NEW unbounded call in any audited root fails `make verify`
-on the audit step. Inline `# mcp-timeout-ok: <reason>` markers are
-allowed only when the call is bounded by an enclosing
-`asyncio.wait(timeout=...)` / `asyncio.wait_for(timeout=...)` / the
-activity-aware idle watchdog teardown / a similarly-justified bound.
-Each marker MUST name the bound.
+on the audit step. The audit reads no inline marker: the only escape
+is a call site registered in `STRUCTURAL_EXEMPTIONS` in
+`ralph/testing/audit_mcp_timeout.py`, keyed by
+`(module, qualified callable, category, occurrence index)` with the
+bound it relies on.
 
 ### Executor audit detail (post-Step 1 + Step 2)
 
@@ -309,12 +308,12 @@ The regression is pinned by:
 
 ## Executor teardown
 
-`SubprocessAgentExecutor.run()` wraps the gather
-(`drain_output()`, `handle.wait()`) in a try/finally that ALWAYS
-terminates a non-terminal handle on exit. This is the foundation for
-the `# mcp-timeout-ok: bounded by activity-aware idle watchdog
-teardown` marker on the gather — a hard `wait_for` ceiling around the
-gather would risk killing slow-but-healthy agents.
+`SubprocessAgentExecutor._supervise()` wraps the drain and the
+supervised wait in a try/finally that ALWAYS terminates a non-terminal
+handle on exit. This is the foundation for the `STRUCTURAL_EXEMPTIONS`
+entry that keeps the supervised wait out of the bounded-timeout audit —
+a hard `wait_for` ceiling around the drain would risk killing
+slow-but-healthy agents.
 
 The regression is pinned by
 `tests/test_subprocess_agent_executor_teardown.py::test_finally_block_terminates_non_terminal_handle`
@@ -365,22 +364,20 @@ classes of leak in production code:
 | **Daemon-Thread rule** | `threading.Thread(...)` and `Thread(...)` (resolved through import aliases) WITHOUT `daemon=True` | Non-daemon threads can block process exit on the `concurrent.futures` `_python_exit` atexit join |
 | **With-managed HTTP client** | `httpx.Client(...)`, `httpx.AsyncClient(...)`, `requests.Session(...)` constructed OUTSIDE a `with` statement (bare assignment) | Bare construction leaks the underlying HTTP connection pool and is not closed at interpreter exit |
 | **Centralized raw-fd creation** | `os.open(...)`, `os.openpty(...)`, `os.pipe(...)` OUTSIDE `ralph/process/` | Raw fd creation bypasses the centralized process lifecycle; the zombie reaper / terminal records don't see the fd and it leaks across restarts |
-| **Resource accumulators** (wt-024 memory-perf AC-04) | Mutable collection literals (`[]`, `{}`, `set()`) and constructor calls (`list()` / `dict()` / `set()` / `deque()` / `collections.deque()` WITHOUT `maxlen=` / `OrderedDict()` / `collections.OrderedDict()` / `defaultdict()` / `collections.defaultdict()`) assigned to (a) module-level names OR (b) instance attributes (`self.X`) inside `__init__` bodies | Unbounded accumulators retain heavyweight objects (exceptions, tracebacks, large payloads) across a long unattended run — the exact leak class that produced `BudgetState.failures` and `RalphAuditSinkAdapter._records`. `OrderedDict` and `defaultdict` are flagged because they have NO `maxlen` kwarg (unlike `deque`); the FIFO escape hatch is a manual `popitem(last=False)` / `len(...) > cap` eviction policy in the code itself, and the `# bounded-accumulator-ok: <cap>` marker is the only audit-recognized escape (it MUST name the cap constant). |
+| **Resource accumulators** (wt-024 memory-perf AC-04) | Mutable collection literals (`[]`, `{}`, `set()`) and constructor calls (`list()` / `dict()` / `set()` / `deque()` / `collections.deque()` WITHOUT `maxlen=` / `OrderedDict()` / `collections.OrderedDict()` / `defaultdict()` / `collections.defaultdict()`) assigned to (a) module-level names OR (b) instance attributes (`self.X`) inside `__init__` bodies | Unbounded accumulators retain heavyweight objects (exceptions, tracebacks, large payloads) across a long unattended run — the exact leak class that produced `BudgetState.failures` and `RalphAuditSinkAdapter._records`. `OrderedDict` and `defaultdict` are flagged because they have NO `maxlen` kwarg (unlike `deque`); the FIFO escape hatch is a manual `popitem(last=False)` / `len(...) > cap` eviction policy in the code itself, and the audit accepts no inline marker — the escape is a bounded structure in the code or a call site registered in `EXEMPT_CALL_SITES` in `audit_resource_lifecycle.py`. |
 | **Centralized child spawn** | Direct child-process creation outside `ralph/process/`, including alias and from-import forms | Untracked children bypass the ProcessManager atexit, signal-handler, and zombie-reaper teardown chain. |
 
-The audit has TWO inline escape hatch markers on the line that
-suppresses the violation:
+The audit reads no inline marker: a comment on the offending line
+suppresses nothing. Every contract has the same two escapes:
 
-- `# resource-lifecycle-ok: <reason>` — applies to contracts 1-3 and 5
-  (daemon-Thread, HTTP client, raw-fd, centralized child spawn);
-- `# bounded-accumulator-ok: <reason>` — applies to contract 4
-  (resource accumulators).
+- the code satisfies the contract (a bounded collection, a daemon
+  thread, a `with`-managed client, a centralized spawn);
+- the call site is registered in `EXEMPT_CALL_SITES` in
+  `audit_resource_lifecycle.py` as
+  `(file, qualified callable, category)`.
 
-Both markers are part of a single marker SET in
-`audit_resource_lifecycle.py` so contracts 1-3 and 5 share the
-resource-lifecycle marker while contract 4 uses its cap-specific marker.
-The markers are the only allowlist mechanism — keep them rare and
-justified (name the cap / drain).
+Keep the registry short: an entry is the price of a genuinely bounded
+site, and a site that can carry a bounded collection must.
 
 Exclusions for the accumulator contract (intentional, documented
 to avoid false positives):
@@ -509,8 +506,8 @@ HTTP client, file handle, accumulator):
    canonical reference.
 3. **HTTP clients**: `with httpx.Client(...) as client:` for
    request-scoped clients. For long-lived singletons, manage via an
-   explicit close in a `finally` block AND add a
-   `# resource-lifecycle-ok: <reason>` marker so the audit's
+   explicit close in a `finally` block AND register the call site in
+   `EXEMPT_CALL_SITES` in `audit_resource_lifecycle.py` so the audit's
    production-tree scan stays green.
 4. **Background threads**: `daemon=True` + a `threading.Event` stop
    signal + a bounded join on shutdown. Never rely on GC to reap a
@@ -521,17 +518,13 @@ HTTP client, file handle, accumulator):
    default. Mirrors the `ProcessManager.terminal_history_limit = 256` /
    `BoundedLinesQueue(maxlen=256)` pattern. For long-lived mutable
    accumulators (module-level OR `self.X` in `__init__`), the audit
-   flags the assignment unless you use `deque(maxlen=...)` /
-   `OrderedDict` + count cap / a justified
-   `# bounded-accumulator-ok: <reason>` marker naming the cap or drain.
-   `OrderedDict` and `defaultdict` have NO `maxlen` kwarg, so the marker
-   is the only audit-recognized escape for legitimately manually-capped
-   sites (the marker MUST name the source-verified cap constant, e.g.
-   `ProcessManagerPolicy.terminal_history_limit`,
-   `_MAX_CACHE_ENTRIES=32`,
-   `_MAX_SUBAGENT_OUTPUT_CAPTURES=128`,
-   `_MAX_EVICTED_TOMBSTONES`,
-   `_DECISION_LOG_MAX=16`, etc.).
+   flags the assignment unless the collection is bounded in the code
+   (`deque(maxlen=...)`) or the call site is registered in
+   `EXEMPT_CALL_SITES` in `audit_resource_lifecycle.py`.
+   `OrderedDict` and `defaultdict` have NO `maxlen` kwarg, so a
+   manually capped FIFO site (for example
+   `ProcessManagerPolicy.terminal_history_limit`) registers its call
+   site there.
 
 6. **Text buffers**: any `+=` accumulation of stream data into a long-lived
    buffer MUST go through `clamp_tail` / `BoundedTextBuffer` with an injected
@@ -539,9 +532,8 @@ HTTP client, file handle, accumulator):
    bugs fixed in wt-024.
 
 If a new resource class is added, extend the
-`audit_resource_lifecycle.py` audit to cover it AND add an inline
-marker style (`# resource-lifecycle-ok: <reason>` for contracts 1-3 and 5
-or `# bounded-accumulator-ok: <reason>` for contract 4). The audit
+`audit_resource_lifecycle.py` audit to cover it AND register the call
+sites that are genuinely bounded in `EXEMPT_CALL_SITES`. The audit
 exists to make a future leak fail `make verify` BEFORE it ships, not
 after a long-running session shows OOM in production.
 

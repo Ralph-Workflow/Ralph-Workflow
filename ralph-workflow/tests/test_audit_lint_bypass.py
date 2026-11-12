@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.testing import audit_lint_bypass as audit_lint_bypass_module
 from ralph.testing.audit_lint_bypass import (
     _check_pyproject_config,
     _collect_py_files,
@@ -13,8 +14,10 @@ from ralph.testing.audit_lint_bypass import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS = {
+    "legitimate noqa exemption": "the per-file noqa allowlist was deleted from the gate, so a coded noqa is a forbidden-noqa violation in every file instead of only outside the allowlisted ones",
     "noqa code used in the wrong file": "the acceptable-noqa-code list was removed from the gate, so every coded noqa that is not allowlisted for its file is now reported as forbidden-noqa",
+    "test_allowlisted_noqa_code_is_a_violation_in_every_file": "the check was renamed and inverted: the per-file noqa allowlist is gone, so a coded noqa is a forbidden-noqa violation in every file, and the check now asserts that outcome instead of the old allowlist outcome",
 }
 
 
@@ -60,12 +63,37 @@ def test_forbidden_noqa_code_detected() -> None:
     assert "F841" in violations[0].detail
 
 
-def test_legitimate_noqa_not_flagged() -> None:
+def test_allowlisted_noqa_code_is_a_violation_in_every_file() -> None:
     lines = [
         "global _CACHE  # noqa: PLW0603",
     ]
     violations = _find_noqa_violations(lines, "ralph/testing/audit_test_policy.py")
-    assert len(violations) == 0
+    assert len(violations) == 1
+    assert violations[0].category == "forbidden-noqa"
+    assert "PLW0603" in violations[0].detail
+
+
+def test_previously_allowlisted_file_stem_is_a_violation() -> None:
+    lines = [
+        "from ralph.pipeline import commit_executor  # noqa: PLC0415",
+    ]
+    violations = _find_noqa_violations(lines, "ralph/pipeline/commit_executor.py")
+    assert len(violations) == 1
+    assert violations[0].category == "forbidden-noqa"
+    assert "PLC0415" in violations[0].detail
+
+
+def test_noqa_without_a_code_is_a_violation() -> None:
+    lines = [
+        "x = 1  # noqa:",
+    ]
+    violations = _find_noqa_violations(lines, "src/vars.py")
+    assert len(violations) == 1
+    assert violations[0].category == "bare-noqa"
+
+
+def test_audit_module_exposes_no_noqa_allowlist() -> None:
+    assert not hasattr(audit_lint_bypass_module, "_NOQA_ALLOWLIST")
 
 
 def test_unauthorized_noqa_code_for_wrong_file() -> None:

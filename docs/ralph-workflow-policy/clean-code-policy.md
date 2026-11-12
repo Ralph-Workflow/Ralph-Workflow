@@ -45,8 +45,7 @@ practice and adapt to other detected languages (see Verification).
   location) and excluded from generic lint/typecheck rules.
 * Mutable collection literals at module level or assigned to `self.X`
   in `__init__` MUST carry a FIFO/size cap (`deque(maxlen=...)`,
-  `OrderedDict` with a count cap) or a documented
-  `# bounded-accumulator-ok: <reason>` marker. Unbounded accumulators
+  `OrderedDict` with a count cap). Unbounded accumulators
   retain heavyweight objects across a long unattended run and are the
   bug class the resource-lifecycle audit
   (`ralph.testing.audit_resource_lifecycle`) detects — see
@@ -176,8 +175,7 @@ and is the binding check for the resource-accumulator rule above.
 
 A documented exception (e.g. legacy compatibility shim with a removal
 date) requires a documented reason, scope, owner, and removal or
-review date. The exception lives in this section; the symbol itself
-carries an inline marker cross-referencing the entry.
+review date. The exception lives in this section.
 
 ## Maintenance triggers
 

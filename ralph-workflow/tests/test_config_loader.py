@@ -48,6 +48,10 @@ from ralph.workspace.scope import WorkspaceScope
 
 DEFAULT_VERBOSITY = 2
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_general_config_provider_fallback_is_labeled_reserved": "under policy schema v6 comments in tracked Python are prohibited; provider_fallback is reserved by being unexposed in schema and unconsumed rather than carrying an inline comment",
+}
+
 ACTIVE_AGENT_POLICY = (
     "[agent_chains]\n"
     'planning = ["claude"]\n'

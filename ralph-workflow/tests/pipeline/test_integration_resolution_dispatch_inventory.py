@@ -9,13 +9,26 @@ from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
 from ralph.project_policy import cli_integration
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_dispatch_inventory_reconciles_every_named_route": (
+        "_run_inner_loop no longer calls _block_unresolved_integration directly."
+        " The fail-closed dispatch fence moved into _continue_after_startup_integration."
+        " _run_pipeline_step now reaches determine_effect_from_policy through"
+        " the _prepare_pipeline_step_dispatch funnel."
+    ),
+    "test_resolution_routes_are_explicitly_out_of_graph_recovery": (
+        "run_rebase_conflict_resolution_pipeline moved to pipeline_entrypoints.py."
+        " The _run_rounds runner it delegates to now lives in the driver."
+    ),
+}
+
 ORDINARY_DISPATCH_ROUTES = (
     (run_loop._run_inner_loop, "_continue_after_startup_integration"),
     (run_loop._continue_after_startup_integration, "_block_unresolved_integration"),
     (run_loop._run_inner_loop_after_startup, "_block_unresolved_integration"),
     (run_loop._resume_after_cooldown_wait, "inspect_integration_resolution"),
     (runner._run_pipeline_step, "_prepare_pipeline_step_dispatch"),
-    (runner._prepare_pipeline_step_dispatch, "determine_effect_from_policy"),
+    (runner._prepare_pipeline_step_dispatch, "call_determine_effect_from_policy"),
     (runner._integrate_inline_effect, "_integrate_on_phase_transition"),
     (effect_executor.execute_agent_effect, "assert_non_resolution_dispatch_allowed"),
     (worker_runtime.run_parallel_worker_from_manifest, "assert_non_resolution_dispatch_allowed"),
@@ -25,8 +38,9 @@ ORDINARY_DISPATCH_ROUTES = (
 )
 
 RESOLUTION_ROUTES = (
-    session.invoke_resolution_agent,
-    driver.run_rebase_conflict_resolution_outcome,
+    (session.invoke_resolution_agent, "PHASE_RESOLUTION"),
+    (driver.run_rebase_conflict_resolution_pipeline, "run_rebase_conflict_resolution_outcome"),
+    (driver.run_rebase_conflict_resolution_outcome, "_run_rounds"),
 )
 
 EXPECTED_EFFECT_EXECUTOR_CALLER_MODULES = {
@@ -77,17 +91,6 @@ def test_every_live_effect_executor_caller_is_inventoried() -> None:
 
 
 def test_resolution_routes_are_explicitly_out_of_graph_recovery() -> None:
-    out_of_graph_outcome = driver.run_rebase_conflict_resolution_outcome
-    for route in RESOLUTION_ROUTES:
+    for route, mechanism in RESOLUTION_ROUTES:
         source = inspect.getsource(route)
-        assert (
-            "PHASE_RESOLUTION" in source
-            or "_run_rounds" in source
-            or (
-                "run_rebase_conflict_resolution_outcome" in source
-                and "_run_rounds" in inspect.getsource(out_of_graph_outcome)
-            )
-        ), (
-            f"{route.__module__}.{route.__name__} must resolve through the "
-            f"out-of-graph resolution rounds"
-        )
+        assert mechanism in source, f"{route.__module__}.{route.__name__} lacks {mechanism}"

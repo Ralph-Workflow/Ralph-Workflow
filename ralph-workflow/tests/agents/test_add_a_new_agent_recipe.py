@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +18,15 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _DOC_REFERENCE = "docs/agents/adding-a-new-agent.md"
+
+
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+CANONICAL_RECIPE_DOC = _PACKAGE_ROOT / "docs" / "agents" / "adding-a-new-agent.md"
+
+
+def test_canonical_recipe_doc_is_present() -> None:
+    assert CANONICAL_RECIPE_DOC.exists(), f"{CANONICAL_RECIPE_DOC} must exist"
+    assert CANONICAL_RECIPE_DOC.stat().st_size > 0, f"{CANONICAL_RECIPE_DOC} must be non-empty"
 
 
 class _FakeParser(ParserTemplateBase):

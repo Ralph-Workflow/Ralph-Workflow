@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import sys
+import tempfile
+import tokenize
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,8 +22,10 @@ if TYPE_CHECKING:
 __all__ = [
     "BANDIT_TIMEOUT_SECONDS",
     "FIX_HINTS",
+    "SAST_CONFIG_FILENAME",
     "SCANNED_PREFIX",
     "SCANNED_SUFFIX",
+    "WAIVER_INSTRUCTION",
     "SastFinding",
     "audit_sast_roots",
     "diff_findings",
@@ -35,6 +40,17 @@ SCANNED_SUFFIX = ".py"
 BANDIT_TIMEOUT_SECONDS = 20.0
 
 MAX_CLI_ROOT_ARGUMENTS = 2
+
+SAST_CONFIG_FILENAME = "pyproject.toml"
+
+SAST_CONFIG_SECTION = "tool.bandit"
+
+WAIVER_INSTRUCTION = (
+    "A false positive is waived with a skips entry for the finding id in the "
+    f"[{SAST_CONFIG_SECTION}] table of {SAST_CONFIG_FILENAME}, and the waiver is "
+    "recorded with a reason, an owner and a review date under the security "
+    "policy Exceptions section. A source comment never waives a finding."
+)
 
 FIX_HINTS: dict[str, str] = {
     "B101": "replace the assert with an explicit raise, or move the check into a test",
@@ -53,7 +69,7 @@ FIX_HINTS: dict[str, str] = {
     "B301": "replace the pickle payload with a safe format such as JSON",
     "B303": "use hashlib.sha256 instead of md5 for integrity hashing",
     "B304": "use tempfile.mkstemp() or NamedTemporaryFile instead of mktemp",
-    "B307": "mark the eval() call with an explicit nosec waiver or remove it",
+    "B307": "remove the eval() call and dispatch on an explicit mapping instead",
     "B310": "open the URL through a client that enforces a timeout and a scheme check",
     "B311": "use secrets or os.urandom for the security-relevant random value",
     "B312": "remove the telnet usage and speak SSH instead",
@@ -79,9 +95,7 @@ FIX_HINTS: dict[str, str] = {
 }
 
 GENERIC_FIX_HINT = (
-    "read the Bandit documentation entry for this test id and fix the cause; "
-    "waive it only with an inline '# nosec: <id>' marker that carries a "
-    "documented rationale"
+    "read the Bandit documentation entry for this test id and fix the cause. " + WAIVER_INSTRUCTION
 )
 
 
@@ -169,31 +183,65 @@ def _parse_results(stdout: str, sources: Mapping[str, str]) -> list[SastFinding]
     return findings
 
 
+def _comment_free_source(text: str) -> str:
+    lines = text.split("\n")
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError):
+        return text
+    for token in tokens:
+        if token.type != tokenize.COMMENT:
+            continue
+        (row, column), (_, end_column) = token.start, token.end
+        index = row - 1
+        if index < 0 or index >= len(lines):
+            continue
+        line = lines[index]
+        lines[index] = line[:column] + " " * (end_column - column) + line[end_column:]
+    return "\n".join(lines)
+
+
+def _write_comment_free_tree(
+    destination: Path,
+    relative_paths: Sequence[str],
+    sources: Mapping[str, str],
+) -> None:
+    for relative in relative_paths:
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(_comment_free_source(sources[relative]), encoding="utf-8")
+
+
+def _sast_config_path(root: Path) -> Path | None:
+    candidate = root / SAST_CONFIG_FILENAME
+    if not candidate.is_file():
+        return None
+    return candidate.resolve()
+
+
 def scan_files(
     root: Path, relative_paths: Sequence[str], sources: Mapping[str, str]
 ) -> list[SastFinding]:
     if not relative_paths:
         return []
-    command = [
-        sys.executable,
-        "-m",
-        "bandit",
-        "-f",
-        "json",
-        "-q",
-        "--",
-        *relative_paths,
-    ]
-    completed = run_process(
-        command[0],
-        command[1:],
-        options=ProcessRunOptions(
-            cwd=root,
-            timeout=BANDIT_TIMEOUT_SECONDS,
-            capture_output=True,
-            label="testing:audit-sast",
-        ),
-    )
+    command = [sys.executable, "-m", "bandit", "-f", "json", "-q"]
+    config_path = _sast_config_path(root)
+    if config_path is not None:
+        command.extend(["-c", str(config_path)])
+    command.extend(["--", *relative_paths])
+    with tempfile.TemporaryDirectory(prefix="ralph-sast-scan-") as directory:
+        scan_root = Path(directory)
+        _write_comment_free_tree(scan_root, relative_paths, sources)
+        completed = run_process(
+            command[0],
+            command[1:],
+            options=ProcessRunOptions(
+                cwd=scan_root,
+                timeout=BANDIT_TIMEOUT_SECONDS,
+                capture_output=True,
+                label="testing:audit-sast",
+            ),
+        )
     if completed.returncode == TIMEOUT_EXIT_CODE:
         msg = f"the Bandit scan exceeded {BANDIT_TIMEOUT_SECONDS:.0f}s"
         raise RuntimeError(msg)
@@ -306,6 +354,11 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Auditing static analysis (baseline diff): baseline={baseline_label} current={current_root}"
     )
+    config_path = _sast_config_path(current_root)
+    config_label = (
+        f"{config_path} [{SAST_CONFIG_SECTION}]" if config_path is not None else "Bandit defaults"
+    )
+    print(f"SAST configuration: {config_label}")
     print()
 
     try:
@@ -325,9 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(
             "A NEW static-analysis finding fails the gate: fix the cause at the "
-            "reported location. Waive a false positive with an inline "
-            "'# nosec: <id>' marker that carries a documented rationale, and "
-            "record the waiver under the security policy's Exceptions section."
+            "reported location. " + WAIVER_INSTRUCTION
         )
         return 1
 

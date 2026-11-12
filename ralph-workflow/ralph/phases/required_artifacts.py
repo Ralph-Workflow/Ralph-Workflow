@@ -282,15 +282,22 @@ def build_validation_retry_hint(
 
 
 def _validation_retry_attempts(hint: str) -> list[str]:
+    region = _validation_retry_attempt_region(hint)
     marker = "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft."
     attempt_pattern: Pattern[str] = re.compile(
         rf"ATTEMPT \d+\n({re.escape(marker)}.*?)(?=\n\nATTEMPT \d+\n|\Z)",
         flags=re.DOTALL,
     )
-    numbered_attempts: list[str] = [match.group(1) for match in attempt_pattern.finditer(hint)]
+    numbered_attempts: list[str] = [match.group(1) for match in attempt_pattern.finditer(region)]
     if numbered_attempts:
         return [attempt.strip() for attempt in numbered_attempts]
-    return [f"{marker}{attempt.strip()}" for attempt in hint.split(marker)[1:] if attempt.strip()]
+    return [f"{marker}{attempt.strip()}" for attempt in region.split(marker)[1:] if attempt.strip()]
+
+
+def _validation_retry_attempt_region(hint: str) -> str:
+    region = hint.removesuffix(PREMISE_CHECK_LINE).rstrip()
+    footer_index = region.rfind(build_validation_retry_footer())
+    return region if footer_index < 0 else region[:footer_index]
 
 
 def _number_validation_retry_attempt(attempt: str, index: int) -> str:

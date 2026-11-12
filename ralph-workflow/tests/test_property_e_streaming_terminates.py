@@ -5,17 +5,21 @@ import json
 from email.message import Message
 from typing import TYPE_CHECKING, Never
 
-import ralph.mcp.server._metrics as _metrics_mod
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
-from ralph.mcp.server._metrics import McpMetrics, reset_default_metrics
+from ralph.mcp.server._metrics import get_default_metrics, reset_default_metrics
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
 from ralph.mcp.server._server_state import ServerState
 
 if TYPE_CHECKING:
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
     from ralph.mcp.server._mcp_server import McpServer
+
+RALPH_TEST_CHANGE_REASONS = {
+    "test_terminal_frame_counter_increments_for_normal_exec": "bind to get_default_metrics() so recorded emissions route to the inspected metrics instance",
+    "test_error_terminal_frame_counter_increments_for_raising_handler": "bind to get_default_metrics() so recorded emissions route to the inspected metrics instance",
+}
 
 
 def _exec_post_payload(command: str) -> bytes:
@@ -166,9 +170,7 @@ def test_writer_close_mid_stream_still_terminal_or_silent() -> None:
 
 def test_terminal_frame_counter_increments_for_normal_exec() -> None:
     reset_default_metrics()
-    metrics = McpMetrics()
-
-    _metrics_mod._default_metrics = metrics
+    metrics = get_default_metrics()
 
     class _OkMcp:
         def __init__(self) -> None:
@@ -192,8 +194,8 @@ def test_terminal_frame_counter_increments_for_normal_exec() -> None:
 
 
 def test_error_terminal_frame_counter_increments_for_raising_handler() -> None:
-    metrics = McpMetrics()
-    _metrics_mod._default_metrics = metrics
+    reset_default_metrics()
+    metrics = get_default_metrics()
 
     class _RaisingMcp:
         def __init__(self) -> None:
@@ -204,4 +206,4 @@ def test_error_terminal_frame_counter_increments_for_raising_handler() -> None:
 
     _run_exec_post(_RecordingServer(_RaisingMcp()))
     assert metrics.snapshot()["terminal_frame_emissions"] >= 1
-    _metrics_mod._default_metrics = None
+    reset_default_metrics()

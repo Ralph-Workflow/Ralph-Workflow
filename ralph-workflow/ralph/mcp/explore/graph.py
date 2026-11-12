@@ -276,6 +276,9 @@ def _cancelled_result(
     )
 
 
+if TYPE_CHECKING:
+    from ralph.mcp.explore._graph_query import run_query
+
 __all__ = [
     "GraphEdge",
     "GraphNode",

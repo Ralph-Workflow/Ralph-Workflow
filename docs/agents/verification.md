@@ -106,16 +106,16 @@ The following do **NOT** circumvent the combined test budget or the lint/typeche
 | Emptying `_KNOWN_TEST_STEP_LABELS` / `_BUDGET_TRACKED_STEPS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
 | Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time containment RuntimeError check — immune to `python -O` |
 | Adding `per-file-ignores` / `extend-per-file-ignores` / blanket `# noqa` | Detected by `ralph/testing/audit_lint_bypass.py` |
-| Using a bare `# noqa` with no specific error code, or `# noqa: CODE` where `CODE` is not in the allowlist | Detected by `ralph/testing/audit_lint_bypass.py` |
+| Using any `# noqa` — bare, or `# noqa: CODE` | Detected by `ralph/testing/audit_lint_bypass.py` — inline lint suppression is not permitted; remove the comment and fix the underlying lint error |
 | Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, `ignore_errors`, `disable_error_code`, `warn_unused_ignores = false`, or `disallow_untyped_defs = false` to mypy config | Detected by `ralph/testing/audit_typecheck_bypass.py` |
-| Using blanket `# type: ignore` without a specific mypy error code, or `# type: ignore[CODE]` without a policy-compliant reason marker | Detected by `ralph/testing/audit_typecheck_bypass.py` and enforced by `docs/agents/type-ignore-policy.md` (mandatory reading) |
+| Using `# type: ignore` to silence a mypy error, bare or with an error code | Detected by `ralph/testing/audit_comments.py` — every source comment is a finding, so no suppression comment survives the gate; the remedy is a fix in the code (see `docs/agents/type-ignore-policy.md`, mandatory reading) |
 | Using `# type: ignore` in test files | Tests must be fully typed — no exceptions |
 | Using `time.sleep()`, real subprocess, or real file I/O in non-`subprocess_e2e` tests | Detected by `ralph/testing/audit_test_policy.py` |
-| Unbounded `subprocess.run` / `httpx.*` / `urlopen` / `socket.create_connection` (no `timeout=`) in `ralph/mcp/`, `ralph/git/`, `ralph/process/manager/` | Detected by `ralph/testing/audit_mcp_timeout.py` — including `subprocess.run`/`.communicate`/`.wait` without `timeout=`; the ONLY bypass is an inline `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design call |
-| Mutable collection literals (`list` / `dict` / `set` / `deque`) assigned to module-level names or `self.X` in `__init__` without `maxlen=` or a justified `# bounded-accumulator-ok:` marker | Detected by `ralph/testing/audit_resource_lifecycle.py` — a `deque()` call without `maxlen=` counts as unbounded; the ONLY bypass is an inline `# bounded-accumulator-ok: <reason>` marker naming the cap or drain |
-| Any weakening of any check without a documented justification and an entry in the audit allowlist | There is NO other path to bypass — the allowlist entry plus the written justification is the only sanctioned route |
+| Unbounded `subprocess.run` / `httpx.*` / `urlopen` / `socket.create_connection` (no `timeout=`) in `ralph/mcp/`, `ralph/git/`, `ralph/process/manager/` | Detected by `ralph/testing/audit_mcp_timeout.py` — including `subprocess.run`/`.communicate`/`.wait` without `timeout=`; the remedy is an explicit bounded timeout on the call |
+| Mutable collection literals (`list` / `dict` / `set` / `deque`) assigned to module-level names or `self.X` in `__init__` without `maxlen=` | Detected by `ralph/testing/audit_resource_lifecycle.py` — a `deque()` call without `maxlen=` counts as unbounded; the remedy is a bounded structure such as `deque(maxlen=...)` or an explicit count cap in the code |
+| Any weakening of any check | There is no bypass — the check is repaired in the code it guards, and never weakened, disabled, or excluded to make a finding disappear |
 
-Every circumvention above is detected by `make verify`. Any bypass requires a documented justification and an entry in the audit allowlist — there is no other path. See [AGENTS.md §'Non-negotiables'](../../AGENTS.md) for the absolute rules this contract implements; the table above is the canonical one.
+Every circumvention above is detected by `make verify`. There is no bypass: a finding is repaired in the code that raised it, or the reporting tool's own configuration already accepts that case — a gate is never weakened, disabled, or excluded to make a finding disappear. See [AGENTS.md §'Non-negotiables'](../../AGENTS.md) for the absolute rules this contract implements; the table above is the canonical one.
 
 ## How to fix a slow test
 
