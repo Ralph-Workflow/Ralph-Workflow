@@ -11,16 +11,17 @@ The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make 
 
 ## Verify steps and gates
 
-`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **47 steps**. The four gates that protect the supply chain and the test surface are:
+`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **47 steps**. The five gates that protect the supply chain and the test surface are:
 
 | Gate | Verify step label | Enforcing command |
 |---|---|---|
 | Instruction / MCP-config integrity | `instruction integrity audit (audit_instruction_integrity)` | `uv run python -m ralph.testing.audit_instruction_integrity` |
 | Dependency integrity | `dependency integrity audit (audit_dependency_integrity)` | `uv run python -m ralph.testing.audit_dependency_integrity` |
 | Secret scan | `secret scan audit (audit_secret_scan)` | `uv run python -m ralph.testing.audit_secret_scan` |
+| Static analysis (SAST) | `sast baseline-diff audit (audit_sast)` | `uv run python -m ralph.testing.audit_sast` |
 | Test integrity | `test integrity audit (audit_test_integrity)` | `uv run python -m ralph.testing.audit_test_integrity` |
 
-Each of the four is an audit, not a test suite: none is listed in `_KNOWN_TEST_STEP_LABELS` or `_BUDGET_TRACKED_STEPS`, so each runs on every `make verify` without being charged to the combined 60-second test budget. The instruction-integrity gate checks the whole tree; the other three report only what the working-tree diff against the committed `HEAD` baseline changes. A gate that is not registered in `_VERIFY_STEPS` does not run at all — see §'No unrelated-failure exemption'.
+Each of the five is an audit, not a test suite: none is listed in `_KNOWN_TEST_STEP_LABELS` or `_BUDGET_TRACKED_STEPS`, so each runs on every `make verify` without being charged to the combined 60-second test budget. The instruction-integrity gate checks the whole tree; the other four report only what the working-tree diff against the committed `HEAD` baseline changes. A gate that is not registered in `_VERIFY_STEPS` does not run at all — see §'No unrelated-failure exemption'.
 
 ## Project-policy portfolio
 
