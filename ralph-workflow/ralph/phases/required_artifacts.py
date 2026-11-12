@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from re import Pattern
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.artifacts.development_result import normalize_development_result_content
 from ralph.mcp.artifacts.typed_artifacts import (
@@ -24,6 +25,20 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown import Diagnostic
     from ralph.policy.models import ArtifactsPolicy
     from ralph.workspace.protocol import Workspace
+
+PREMISE_CHECK_LINE: Final[str] = "test the premise shared by the failed fixes before another patch"
+
+
+def failure_fingerprint(failure_summary: str, diagnostic_identity: str) -> str:
+    payload = "\x1f".join((failure_summary.strip(), diagnostic_identity.strip()))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def premise_check_line(current_fingerprint: str, persisted_fingerprint: str | None) -> str:
+    if not persisted_fingerprint or persisted_fingerprint != current_fingerprint:
+        return ""
+    return PREMISE_CHECK_LINE
+
 
 _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
     "development_result": normalize_development_result_content,
@@ -107,6 +122,22 @@ def retry_hint_path(phase: str, *, pipeline_policy: object | None = None) -> str
     return f".agent/tmp/last_retry_error_{drain}.txt"
 
 
+def retry_fingerprint_path(phase: str, *, pipeline_policy: object | None = None) -> str:
+    phase_def = (
+        pipeline_policy.phases.get(phase) if isinstance(pipeline_policy, PipelinePolicy) else None
+    )
+    drain = phase_def.drain if phase_def is not None else phase
+    return f".agent/tmp/last_retry_fingerprint_{drain}.txt"
+
+
+def retry_fingerprint_path_for_hint(hint_path: str) -> str:
+    head, separator, name = hint_path.rpartition("/")
+    if not name.startswith("last_retry_error_") or not name.endswith(".txt"):
+        return hint_path
+    companion = name.replace("last_retry_error_", "last_retry_fingerprint_")
+    return f"{head}{separator}{companion}" if separator else companion
+
+
 def read_validation_retry_hint(
     workspace_root: Path,
     drain: str,
@@ -133,11 +164,21 @@ def clear_validation_retry_hint(
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=pipeline_policy)
     legacy_path = retry_hint_path(phase)
+    fingerprint_path = retry_fingerprint_path(phase, pipeline_policy=pipeline_policy)
+    legacy_fingerprint_path = retry_fingerprint_path(phase)
+    derived_fingerprint_path = retry_fingerprint_path_for_hint(hint_path)
     try:
         if workspace.exists(hint_path):
             workspace.remove(hint_path)
         if legacy_path != hint_path and workspace.exists(legacy_path):
             workspace.remove(legacy_path)
+        for candidate in (
+            fingerprint_path,
+            legacy_fingerprint_path,
+            derived_fingerprint_path,
+        ):
+            if workspace.exists(candidate):
+                workspace.remove(candidate)
     except Exception:
         return
 
@@ -175,11 +216,21 @@ def validation_corrective_action(artifact_type: str, diagnostics: list[Diagnosti
     )
 
 
+def validation_retry_fingerprint(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
+    signature = "\n".join(
+        f"{diagnostic.rule_id}|{diagnostic.section or ''}|{diagnostic.message}"
+        for diagnostic in diagnostics
+        if diagnostic.severity == "error"
+    )
+    return failure_fingerprint(artifact_type, signature)
+
+
 def build_validation_retry_hint(
     artifact_type: str,
     diagnostics: list[Diagnostic],
     *,
     prior_hint: str = "",
+    prior_fingerprint: str | None = None,
 ) -> str:
     lines = [
         "PREVIOUS ATTEMPT FAILED: artifact validation rejected the retained draft.",
@@ -215,13 +266,19 @@ def build_validation_retry_hint(
         if len(attempts) > 1
         else ""
     )
-    return "\n\n".join(
+    hint = "\n\n".join(
         [
             VALIDATION_FAILURE_BANNER,
             header + "\n\n".join(bounded_attempts),
             build_validation_retry_footer(),
         ]
     )
+    premise = premise_check_line(
+        validation_retry_fingerprint(artifact_type, diagnostics), prior_fingerprint
+    )
+    if not premise:
+        return hint
+    return f"{hint}\n\n{premise}"
 
 
 def _validation_retry_attempts(hint: str) -> list[str]:
@@ -270,6 +327,23 @@ def _bound_validation_retry_attempt(headline: str, attempt: str, body_budget: in
     return f"{headline}\n{body[:body_budget].rstrip()}\n[older attempt body truncated]"
 
 
+def retry_hint_fingerprint(
+    phase: str,
+    detail: str,
+    *,
+    registry: dict[str, RequiredArtifact] | None = None,
+) -> str:
+    ra = registry.get(phase) if registry is not None else None
+    if ra is None:
+        summary = "the required artifact was not submitted before completion was declared"
+    else:
+        summary = (
+            f"required artifact '{ra.artifact_type}' at '{ra.artifact_path}' "
+            "was not submitted or was invalid"
+        )
+    return failure_fingerprint(summary, detail)
+
+
 def build_retry_hint(
     phase: str,
     detail: str,
@@ -280,27 +354,28 @@ def build_retry_hint(
     example_payload: str | None = None,
     unsubmitted_draft: bool = False,
     validation: bool = False,
+    prior_fingerprint: str | None = None,
 ) -> str:
     ra = registry.get(phase) if registry is not None else None
     if ra is None:
-        block = build_retry_error_block(
-            failure_summary=(
-                "the required artifact was not submitted before completion was declared"
-            ),
-            detail=detail,
-            validation=validation,
-        )
+        failure_summary = "the required artifact was not submitted before completion was declared"
         artifact_type, artifact_path = "the required artifact", None
     else:
-        block = build_retry_error_block(
-            failure_summary=(
-                f"required artifact '{ra.artifact_type}' at '{ra.artifact_path}' "
-                "was not submitted or was invalid"
-            ),
-            detail=detail,
-            validation=validation,
+        failure_summary = (
+            f"required artifact '{ra.artifact_type}' at '{ra.artifact_path}' "
+            "was not submitted or was invalid"
         )
         artifact_type, artifact_path = ra.artifact_type, ra.artifact_path
+    block = build_retry_error_block(
+        failure_summary=failure_summary,
+        detail=detail,
+        validation=validation,
+    )
+    premise = premise_check_line(
+        retry_hint_fingerprint(phase, detail, registry=registry), prior_fingerprint
+    )
+    if premise:
+        block = f"{block}\n\n{premise}"
 
     lines = [block, "", "Submit the artifact now. Do not restart the task from scratch."]
     if unsubmitted_draft:
@@ -347,11 +422,19 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
 
 
 __all__ = [
+    "PREMISE_CHECK_LINE",
     "RequiredArtifact",
     "build_missing_input_hint",
     "build_required_artifacts",
     "build_retry_hint",
+    "build_validation_retry_hint",
+    "failure_fingerprint",
+    "premise_check_line",
     "resolve_phase_required_artifact",
     "resolve_required_artifact",
+    "retry_fingerprint_path",
+    "retry_fingerprint_path_for_hint",
+    "retry_hint_fingerprint",
     "retry_hint_path",
+    "validation_retry_fingerprint",
 ]

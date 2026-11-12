@@ -29,6 +29,8 @@ from ralph.phases.required_artifacts import (
     build_retry_hint,
     clear_validation_retry_hint,
     resolve_phase_required_artifact,
+    retry_fingerprint_path_for_hint,
+    retry_hint_fingerprint,
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -454,16 +456,22 @@ def _write_retry_hint(
     preserve_existing: bool = True,
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
+    fingerprint_path = retry_fingerprint_path_for_hint(hint_path)
     try:
         registry = build_required_artifacts(ctx.artifacts_policy)
     except AttributeError:
         registry = None
+    prior_fingerprint = ""
+    with suppress(Exception):
+        if ctx.workspace.exists(fingerprint_path):
+            prior_fingerprint = ctx.workspace.read(fingerprint_path).strip()
     hint = build_retry_hint(
         phase,
         detail,
         registry=registry,
         unsubmitted_draft=unsubmitted_draft,
         validation=True,
+        prior_fingerprint=prior_fingerprint or None,
     )
     with suppress(Exception):
         if preserve_existing and ctx.workspace.exists(hint_path):
@@ -471,6 +479,10 @@ def _write_retry_hint(
             if existing:
                 hint = f"{existing}\n\n{hint}"
         ctx.workspace.write(hint_path, hint)
+        ctx.workspace.write(
+            fingerprint_path,
+            retry_hint_fingerprint(phase, detail, registry=registry),
+        )
 
 
 def _worker_retry_hint_path(

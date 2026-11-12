@@ -5,6 +5,14 @@ import importlib
 from ralph.pipeline import parallel
 from ralph.pipeline.parallel import ParallelExecutionMode
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_parallel_package_docstring_mentions_same_workspace": (
+        "the docstring mandate is retired by the absolute no-docstring policy; "
+        "the check now asserts the package carries no docstring, which is the "
+        "same contract in the opposite direction"
+    ),
+}
+
 
 def test_parallel_all_equals_v1_surface() -> None:
 

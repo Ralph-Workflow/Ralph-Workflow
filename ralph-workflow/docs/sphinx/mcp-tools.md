@@ -470,3 +470,53 @@ The optional `ralph_explore` wrapper remains deferred and is tracked in `ralph.m
 
 - [Concepts](concepts.md) — MCP, drains, capabilities, and artifact types
 - [Local Web Access](advanced-mcp-configuration.md#web-access-search-visit-crawl) — `visit_url` SSRF posture and upstream crawlers
+
+
+## Configuration examples
+
+The bundled MCP configuration template is `ralph/policy/defaults/mcp.toml`.
+The blocks below show the supported server shapes; copy one into the template
+and edit it. Keep the file secret-free and prefer `api_key_env` over inline
+secrets.
+
+```toml
+[mcp_servers.github]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+
+[mcp_servers.github.env]
+GITHUB_TOKEN = "$GITHUB_TOKEN"
+```
+
+```toml
+[mcp_servers.docs]
+transport = "http"
+url = "https://mcp.example.com/docs"
+```
+
+```toml
+[mcp_servers.angular-cli]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@angular/mcp"]
+```
+
+```toml
+[mcp_servers.docs-mcp]
+transport = "http"
+url = "http://localhost:6280/mcp"
+```
+
+```toml
+[web_search]
+enabled = true
+backend = "duckduckgo"
+```
+
+The docs-mcp server runs locally through `npx -y docs-mcp-server` and listens
+on port 6280 by default; see https://github.com/arabold/docs-mcp-server for
+setup. The modern streamable HTTP endpoint (`/mcp`) is preferred; the legacy
+SSE endpoint (`/sse`) stays supported for clients that require it. The
+angular-cli server uses the published package name from
+https://angular.dev/tools/mcp.

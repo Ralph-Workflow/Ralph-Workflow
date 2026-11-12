@@ -96,14 +96,14 @@ def _render_prompt(
         "declare_complete_tool_names": _transport_tool_names(DECLARE_COMPLETE_TOOL),
         "submit_tool_names": _transport_tool_names(SUBMIT_MD_ARTIFACT_TOOL),
         "verify_tool_names": _transport_tool_names(VERIFY_MD_ARTIFACT_TOOL),
-        "LAST_RETRY_ERROR": _read_and_clear_retry_hint(workspace, PHASE_ANALYSIS),
+        "LAST_RETRY_ERROR": _read_retry_hint(workspace, PHASE_ANALYSIS),
     }
     partials = load_partial_templates((packaged_template_root(),))
     template = (packaged_template_root() / PROMPT_TEMPLATE_NAME).read_text(encoding="utf-8")
     return render_template(template, variables, partials)
 
 
-def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+def _read_retry_hint(workspace: Workspace, phase: str) -> str:
     path = retry_hint_path(phase)
     if not workspace.exists(path):
         return ""

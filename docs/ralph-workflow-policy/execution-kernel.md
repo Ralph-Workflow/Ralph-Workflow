@@ -74,12 +74,15 @@ execution instructions" section. They live here exactly once.
    collection, a scanner that crashes is a HARD failure. Repairing the
    gate is the only lawful move; weakening the gate is a violation.
    (evidence: strong)
-3. **No weakening.** Adding `# noqa`, `# type: ignore`, a per-file lint
-   ignore, a `follow_imports = silent`, a lowered coverage threshold, a
-   deselected test, a raised budget, a removed time limit, a `disabled`
-   audit, or any other relaxation that hides a real defect is a violation.
-   The only lawful way past a red gate is fixing the production code or
-   fixing the test — never the gate. (evidence: strong)
+3. **No weakening.** A global silencer, a blanket ignore, a lowered
+   coverage threshold, a deselected test, a raised budget, a removed time
+   limit, a `disabled` audit, an inline lint or type suppression, or any
+   other relaxation that hides a real defect is a violation. The only
+   lawful way past a red gate is fixing the production code or fixing the
+   test — never the gate. A suppression lives in tool configuration
+   (`pyproject.toml` per-file settings, mypy configuration, bandit
+   configuration), never inline; the underlying warning is fixed in code.
+   (evidence: strong)
 4. **Policy follows reality.** Update policy facts, commands, and
    requirements in the same workflow that changes the underlying tool,
    gate, exclusion, or behaviour. (evidence: none)
@@ -157,12 +160,14 @@ those.
    unverified, so the next cold agent can see it. The handoff carries
    prose and adds no new mechanically validated field: a field nobody
    validates is a promise, not a contract. (evidence: moderate)
-7. **Premise check.** When the runtime has retried the same failure,
-   the deterministic retry-prompt formatter
-   (`ralph/recovery/retry_prompt.py`) adds "test the premise shared by
-   the failed fixes before another patch" to the retry prompt. The rule
-   states only the requirement on the formatter: the agent neither
-   counts retries nor remembers earlier attempts. (evidence: anecdotal)
+7. **Premise check.** When the runtime has retried the same failure, the
+   deterministic retry-prompt formatter (`ralph/recovery/retry_prompt.py`)
+   adds the sentence
+   "test the premise shared by the failed fixes before another patch"
+   to the retry prompt. The runtime clears that signal at
+   accepted-artifact and phase completion. The agent does not count
+   retries, does not remember earlier attempts, and keeps no
+   cross-session progress state of its own. (evidence: anecdotal)
 8. **Smallest change.** Subtract before adding: prefer deleting,
    narrowing, or simplifying over introducing new machinery. A change
    that replaces an API migrates its callers and deletes the replaced

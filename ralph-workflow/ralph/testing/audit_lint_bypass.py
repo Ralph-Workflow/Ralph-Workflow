@@ -397,10 +397,6 @@ _TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset(
     }
 )
 
-_ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset(
-    {"C420", "PLC0415", "PLR0911", "PLR0912", "PLR0915", "PLW0603"}
-)
-
 
 class LintBypassViolation:
     def __init__(
@@ -467,26 +463,15 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
         for code in codes:
             if (file_stem, code) in _NOQA_ALLOWLIST:
                 continue
-            if code in _ACCEPTABLE_NOQA_CODES:
-                violations.append(
-                    LintBypassViolation(
-                        file_path=rel_path,
-                        line=lineno,
-                        category="unauthorized-noqa",
-                        detail=f"'# noqa: {code}' — code {code} is not "
-                        f"allowlisted for file '{file_stem}.py'",
-                    )
+            violations.append(
+                LintBypassViolation(
+                    file_path=rel_path,
+                    line=lineno,
+                    category="forbidden-noqa",
+                    detail=f"'# noqa: {code}' — inline lint suppression is not "
+                    f"permitted; remove the comment and fix the underlying lint error",
                 )
-            else:
-                violations.append(
-                    LintBypassViolation(
-                        file_path=rel_path,
-                        line=lineno,
-                        category="forbidden-noqa",
-                        detail=f"'# noqa: {code}' — code {code} is not an "
-                        f"acceptable noqa code (acceptable: {sorted(_ACCEPTABLE_NOQA_CODES)})",
-                    )
-                )
+            )
 
     return violations
 

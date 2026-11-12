@@ -56,6 +56,22 @@ def validation_retry_hint_file(
     return _workspace_root(workspace) / retry_hint_path(drain)
 
 
+def validation_retry_fingerprint_file(
+    session: CoordinationSessionLike, workspace: WorkspaceLike
+) -> Path | None:
+    from ralph.phases.required_artifacts import (
+        retry_fingerprint_path,
+    )
+
+    drain = _session_drain(session)
+    if drain is None:
+        return None
+    worker_namespace = _worker_namespace(session)
+    if worker_namespace is not None:
+        return worker_namespace / "tmp" / f"last_retry_fingerprint_{drain}.txt"
+    return _workspace_root(workspace) / retry_fingerprint_path(drain)
+
+
 def persist_validation_retry_hint(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -65,6 +81,7 @@ def persist_validation_retry_hint(
 ) -> None:
     from ralph.phases.required_artifacts import (
         build_validation_retry_hint,
+        validation_retry_fingerprint,
     )
 
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
@@ -73,11 +90,29 @@ def persist_validation_retry_hint(
         return
     backend.mkdir(path.parent, parents=True, exist_ok=True)
     prior_hint = backend.read_text(path) if backend.exists(path) else ""
+    fingerprint_path = validation_retry_fingerprint_file(session, workspace)
+    prior_fingerprint = (
+        backend.read_text(fingerprint_path).strip()
+        if fingerprint_path is not None and backend.exists(fingerprint_path)
+        else ""
+    )
     write_text_if_changed(
         backend,
         path,
-        build_validation_retry_hint(artifact_type, diagnostics, prior_hint=prior_hint),
+        build_validation_retry_hint(
+            artifact_type,
+            diagnostics,
+            prior_hint=prior_hint,
+            prior_fingerprint=prior_fingerprint or None,
+        ),
     )
+    if fingerprint_path is not None:
+        backend.mkdir(fingerprint_path.parent, parents=True, exist_ok=True)
+        write_text_if_changed(
+            backend,
+            fingerprint_path,
+            validation_retry_fingerprint(artifact_type, diagnostics),
+        )
 
 
 def clear_validation_retry_hint(
@@ -95,6 +130,10 @@ def clear_validation_retry_hint(
         return False
     cleared = backend.exists(path)
     backend.unlink(path, missing_ok=True)
+    fingerprint_path = validation_retry_fingerprint_file(session, workspace)
+    if fingerprint_path is not None:
+        cleared = backend.exists(fingerprint_path) or cleared
+        backend.unlink(fingerprint_path, missing_ok=True)
     phase_name = session.phase if isinstance(session, _PhaseScopedSession) else None
     drain = _session_drain(session)
     if not isinstance(phase_name, str) or drain is None or phase_name == drain:

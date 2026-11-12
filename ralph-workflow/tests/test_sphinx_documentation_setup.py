@@ -8,6 +8,14 @@ from pathlib import Path
 
 from ralph import version
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_public_packages_have_non_empty_docstrings": (
+        "the docstring mandate is retired by the absolute no-docstring policy; "
+        "the check now asserts that the listed public packages carry no "
+        "docstring, which is the same contract in the opposite direction"
+    ),
+}
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONF_PATH = REPO_ROOT / "docs" / "sphinx" / "conf.py"
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"

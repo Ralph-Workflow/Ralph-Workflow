@@ -53,6 +53,8 @@ from ralph.mcp.server.lifecycle import (
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
     build_retry_hint,
+    retry_fingerprint_path_for_hint,
+    retry_hint_fingerprint,
     retry_hint_path,
 )
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
@@ -88,6 +90,7 @@ from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_N
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import (
+    build_premise_check_block,
     build_retry_error_block,
     build_validation_retry_footer,
 )
@@ -1596,6 +1599,22 @@ def _validation_retry_context(
     )
 
 
+def _retry_fingerprint_file(
+    *,
+    workspace_root: Path,
+    drain: str | None,
+    worker_namespace: Path | None,
+) -> Path | None:
+    if drain is None:
+        return None
+    hint_file = (
+        worker_namespace / "tmp" / f"last_retry_error_{drain}.txt"
+        if worker_namespace is not None
+        else workspace_root / retry_hint_path(drain)
+    )
+    return Path(retry_fingerprint_path_for_hint(hint_file.as_posix()))
+
+
 def _retry_prompt_file_for_context(
     *,
     workspace_root: Path,
@@ -1727,13 +1746,34 @@ def _write_agent_retry_prompt(
     summary = "\n".join(condensed) if condensed else "(no output captured)"
     validation_hint = _validation_retry_context(workspace_root, drain, worker_namespace)
     validation_retry = reason == "ArtifactValidation" or bool(validation_hint)
+    fingerprint_file = _retry_fingerprint_file(
+        workspace_root=workspace_root,
+        drain=drain,
+        worker_namespace=worker_namespace,
+    )
+    current_fingerprint = retry_hint_fingerprint(str(drain or reason), detail or reason)
+    prior_fingerprint = (
+        fingerprint_file.read_text(encoding="utf-8").strip()
+        if fingerprint_file is not None and fingerprint_file.is_file()
+        else ""
+    )
+    same_failure = bool(build_premise_check_block(current_fingerprint, prior_fingerprint or None))
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         detail=detail,
         prompt_path=str(prompt_path),
         context_path=str(context_path),
         validation=validation_retry,
+        same_failure=same_failure,
     )
+    if fingerprint_file is not None:
+        fingerprint_file.parent.mkdir(parents=True, exist_ok=True)
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            fingerprint_file,
+            current_fingerprint,
+            encoding="utf-8",
+        )
     validation_block = (
         "VALIDATION ERRORS (ACCUMULATED)\n"
         f"{validation_hint}\n\n"
@@ -1858,13 +1898,31 @@ def _write_terminal_missing_artifact_hint(
             if ctx.policy_bundle is not None
             else None
         )
-        hint = build_retry_hint(str(ctx.effect.phase), str(exc), registry=registry)
+        phase_name = str(ctx.effect.phase)
         hint_file = workspace_root / retry_hint_path(
-            str(ctx.effect.phase),
+            phase_name,
             pipeline_policy=ctx.policy_bundle.pipeline if ctx.policy_bundle is not None else None,
+        )
+        fingerprint_file = workspace_root / retry_fingerprint_path_for_hint(hint_file.as_posix())
+        prior_fingerprint = (
+            fingerprint_file.read_text(encoding="utf-8").strip()
+            if fingerprint_file.is_file()
+            else ""
+        )
+        hint = build_retry_hint(
+            phase_name,
+            str(exc),
+            registry=registry,
+            prior_fingerprint=prior_fingerprint or None,
         )
         hint_file.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(DEFAULT_FILE_BACKEND, hint_file, hint, encoding="utf-8")
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            fingerprint_file,
+            retry_hint_fingerprint(phase_name, str(exc), registry=registry),
+            encoding="utf-8",
+        )
     except Exception:
         return
 

@@ -252,7 +252,7 @@ def _loopback_template_name_for_phase(phase_def: PhaseDefinition | None) -> str 
     return phase_def.loopback_prompt_template or phase_def.continuation_template
 
 
-def read_and_clear_retry_hint(
+def read_retry_hint(
     workspace: Workspace,
     phase: str,
     *,
@@ -463,7 +463,7 @@ def _render_planning_prompt(
         preserve_planning_context,
     ) = _prepare_planning_prompt_context(context, options)
     last_retry_error = (
-        read_and_clear_retry_hint(
+        read_retry_hint(
             workspace,
             phase,
             worker_namespace=options.worker_namespace,
@@ -558,7 +558,7 @@ def _render_developer_prompt(
         analysis_feedback_path,
         analysis_feedback_status,
     ) = _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
-    last_retry_error = read_and_clear_retry_hint(
+    last_retry_error = read_retry_hint(
         workspace,
         phase,
         worker_namespace=options.worker_namespace,
@@ -647,7 +647,7 @@ def _render_template_based_prompt(
         analysis_feedback_path,
         analysis_feedback_status,
     ) = _resolve_loopback_analysis_feedback(workspace, phase, pipeline_policy, artifacts_policy)
-    last_retry_error = read_and_clear_retry_hint(
+    last_retry_error = read_retry_hint(
         workspace,
         phase,
         worker_namespace=worker_namespace,

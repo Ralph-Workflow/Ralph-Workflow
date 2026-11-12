@@ -94,7 +94,7 @@ def render_commit_review_prompt(
     output_dir = workspace_root / ".agent/tmp/prompt_payloads"
     if worker_namespace:
         output_dir = worker_namespace / "tmp/prompt_payloads"
-    last_retry_error = _read_and_clear_retry_hint(
+    last_retry_error = _read_retry_hint(
         workspace_root,
         phase,
         worker_namespace,
@@ -132,7 +132,7 @@ def render_commit_review_prompt(
     return f"{rendered.rstrip()}\n\n{build_validation_retry_footer()}\n"
 
 
-def _read_and_clear_retry_hint(
+def _read_retry_hint(
     workspace_root: Path,
     phase: str,
     worker_namespace: Path | None,

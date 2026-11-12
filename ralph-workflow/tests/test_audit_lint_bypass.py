@@ -13,6 +13,10 @@ from ralph.testing.audit_lint_bypass import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "noqa code used in the wrong file": "the acceptable-noqa-code list was removed from the gate, so every coded noqa that is not allowlisted for its file is now reported as forbidden-noqa",
+}
+
 
 def test_clean_code_passes() -> None:
     lines = [
@@ -70,7 +74,18 @@ def test_unauthorized_noqa_code_for_wrong_file() -> None:
     ]
     violations = _find_noqa_violations(lines, "src/other_file.py")
     assert len(violations) == 1
-    assert violations[0].category == "unauthorized-noqa"
+    assert violations[0].category == "forbidden-noqa"
+
+
+def test_previously_acceptable_noqa_code_is_a_violation() -> None:
+    lines = [
+        "x = 1  # noqa: C420",
+    ]
+    violations = _find_noqa_violations(lines, "src/vars.py")
+    assert len(violations) == 1
+    assert violations[0].category == "forbidden-noqa"
+    assert "C420" in violations[0].detail
+    assert "acceptable" not in violations[0].detail
 
 
 def test_multiple_noqa_on_same_line() -> None:

@@ -86,16 +86,14 @@ def _render_prompt(
         "agents_block_begin": markers.AGENTS_BLOCK_BEGIN,
         "agents_block_end": markers.AGENTS_BLOCK_END,
         "LAST_RETRY_ERROR": (
-            _read_and_clear_retry_hint(workspace, PHASE_REMEDIATION)
-            if workspace is not None
-            else ""
+            _read_retry_hint(workspace, PHASE_REMEDIATION) if workspace is not None else ""
         ),
     }
     partials = load_partial_templates((packaged_template_root(),))
     return render_template(_load_prompt_template(), variables, partials)
 
 
-def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+def _read_retry_hint(workspace: Workspace, phase: str) -> str:
     from ralph.phases.required_artifacts import retry_hint_path
 
     path = retry_hint_path(phase)

@@ -7,6 +7,14 @@ from ralph.config.mcp_models import (
     MediaConfig,
 )
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_media_config_docstring_describes_broad_multimodal_not_image_only": (
+        "the docstring mandate is retired by the absolute no-docstring policy; "
+        "the check now asserts MediaConfig carries no docstring, and the "
+        "supported media kinds stay declared by the model fields"
+    ),
+}
+
 RALPH_RESERVED_NAME = "ralph"
 
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
@@ -40,13 +48,8 @@ class TestMediaConfig:
         with pytest.raises(ValidationError):
             config.enabled = True
 
-    def test_media_config_docstring_describes_broad_multimodal_not_image_only(self) -> None:
-        doc = MediaConfig.__doc__ or ""
-        assert "image support" not in doc.lower(), (
-            "MediaConfig.__doc__ must not say 'image support' — "
-            "Ralph supports broad multimodal (images, PDFs, audio, video, documents), "
-            f"not image-only.\nActual docstring: {doc!r}"
-        )
-        assert "multimodal" in doc.lower(), (
-            f"MediaConfig.__doc__ must mention multimodal support. Actual docstring: {doc!r}"
+    def test_media_config_carries_no_docstring(self) -> None:
+        assert MediaConfig.__doc__ is None, (
+            "MediaConfig must carry no docstring; the supported media kinds are "
+            "declared by the model fields and their validators."
         )

@@ -83,10 +83,6 @@ ESCALATED_RUNG_STRIDE: Final[int] = 2
 type RepeatCounts = OrderedDict[tuple[str, str], int]
 
 _REPEAT_COUNTER_CAP = 1024
-_REPEAT_COUNTER_MARKER = (
-    "bounded-accumulator-ok: per-(signature, action) repeat counter, "
-    "capped by signature classes x NextAction member count"
-)
 
 
 @dataclass(frozen=True, slots=True)
