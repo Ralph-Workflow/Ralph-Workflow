@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.project_policy import markers
+from ralph.project_policy import markers, starters
 from ralph.project_policy.starters import (
     STARTER_NAMES,
-    __doc__,
     iter_starter_names,
     read_starter,
 )
@@ -21,10 +20,8 @@ def test_starter_count_matches_loader_truth() -> None:
     assert len(markers.CONDITIONAL_POLICY_FILES) == 10
 
 
-def test_starter_docstring_states_v5_composition_without_recounting() -> None:
-    assert "20 entries: 10 core + 10 conditional" not in __doc__
-    assert "STARTER_NAMES" in __doc__
-    assert "CORE_POLICY_FILES" in __doc__
+def test_starters_module_carries_no_docstring() -> None:
+    assert starters.__doc__ is None
 
 
 def test_clean_code_starter_echoes_narrow_boundary_rule() -> None:

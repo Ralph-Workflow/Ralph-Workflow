@@ -29,7 +29,7 @@ code.
   reuse value; implementation count alone neither requires nor forbids one.
 * Dead code, commented-out code, unused compatibility layers, and
   unused imports MUST be removed. The "we might need it later"
-  rationale does not override the no-dead-code rule.
+  reason does not override the no-dead-code rule.
 * Functions, classes, modules, and files MUST remain cohesive, expose
   understandable interfaces, and have bounded reasons to change.
 * Error handling MUST surface actionable context. Bare `except: pass` is
@@ -48,12 +48,11 @@ code.
 
 ## Commenting policy
 
-A comment records ONLY what the code cannot say: intent, a non-obvious
-constraint, an invariant, a workaround with its removal trigger, or an
-external contract. A comment that restates the code is noise, and a
-comment that contradicts the code misleads the next maintainer.
+Source code contains no comments. Intent, constraints, and invariants are
+expressed through names, types, structure, tests, and assertions. The only
+`#` line tolerated is a shebang on line 1 of an executable script.
 
-Banned comment content:
+Banned without exception:
 
 * Restating the code the comment sits on.
 * Change narration ("added for X", "fixed", "now", "previously").
@@ -62,32 +61,53 @@ Banned comment content:
 * Notes addressed to the reviewer instead of to the next maintainer.
 * A deferred-work marker (a `todo`, `fixme`, or `hack` prefix) that
   carries neither an owner nor a removal trigger.
+* Encoding declarations, `# type: ignore`, `# noqa`, `# pragma`,
+  `# pylint:` and `# fmt:` suppressions. The underlying warning is fixed
+  in code, or suppressed in tool configuration, never inline.
 
-Editing code means re-reading the adjacent comments: they may have gone
-stale. Public-API docstrings stay mandatory (see
-`documentation-policy.md`); this rule does not weaken that requirement.
+Editing code means deleting any comment found in the touched region.
+Docstrings are banned the same way as comments: no module, class,
+function, or method docstring, and no string-literal statement used as
+documentation. Contracts live in names, type annotations, and tests.
 
 Evidence tags differ by claim. The comment/code-inconsistency link to
 defects is tagged moderate (the source is listed under Research basis)
 and is the basis for a blocking check. The over-commenting claim — that
 agents comment too much, and that removing such comments changes
-outcomes — is tagged anecdotal and its effect size is unconfirmed, so a
-comment that restates the code is reported for review and does not fail
-the check; it is reviewed whenever the comment audit reports it. No
-percentage, multiplier, or benchmark figure from either claim belongs in
-this policy until it is confirmed against the primary source.
+outcomes — is tagged anecdotal and its effect size is unconfirmed, so
+the ban rests on the project rule rather than on a measured effect size;
+the checker enforces it regardless. No percentage, multiplier, or
+benchmark figure from either claim belongs in this policy until it is
+confirmed against the primary source.
 
-The inline bypass form is `# comment-ok: <reason>`; the reason is
-mandatory, and an empty reason is not a bypass. The marker waives its
-own line and the line immediately below it.
+There is no inline bypass marker and no baseline. A comment is a finding
+even when it carries a reason, and the gate holds no list of exempted
+lines.
 
-The comment audit runs in BASELINE MODE: it fails only on comments on
-new or changed lines relative to the committed baseline, and it honours
-the bypass above. It scans the source file types it is configured to
-scan; comments in files it does not scan are covered by the review gate.
-Burn-down of the existing baseline is a separate, optional follow-up
-outside this gate; the remaining count comes from a one-off scan of the
-committed tree, not from the gate.
+The comment audit enforces this absolutely: it fails on every comment
+token and every docstring in tracked Python, and on every comment in
+shell, TOML, YAML, Makefile and Jinja sources, except a line-1 shebang.
+It reads comments with the `tokenize` module, so a `#` inside a string
+is never misread, and it finds docstrings through the `ast` module. A
+finding carries `path:line`, the comment text, and the fix hint "delete
+the comment or encode it in code".
+
+## Documentation restriction
+
+A change MAY edit documentation only when it changes user-visible
+behaviour, a public interface, an install or run command, or a policy
+contract, and then only the single owning document and only the affected
+statement.
+
+Documentation states current facts and procedures only. It does not
+record why a choice was made, which alternatives were weighed, how the
+choice evolved, research notes, exclusion lists, migration narration, or
+a log of reasoning. A choice lives in the code, the tests, or the gate
+that enforces it, and nowhere else.
+
+No new documentation file, plan, design note, ADR, log, or summary is
+created unless the task names the file. Documentation that contradicts
+this rule is deleted or reduced to current facts.
 
 ## Guard inventory
 
@@ -99,7 +119,7 @@ Then delete this comment. -->
 |---|---|---|---|---|---|---|
 | Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | no private method is renamed to public solely to satisfy a private-call ratchet | deterministic: PROJECT-FACT-UNRESOLVED | when every private-call ratchet is retired |
 | Bounded premature abstraction | Clean-code owner | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops growing the abstraction target |
-| Comment content | Clean-code owner | the comments on a new or changed line carry what the code cannot say | a comment on a new or changed line matches a blocking banned comment shape listed under Commenting policy | a comment on a new or changed line matches a blocking banned comment shape | deterministic: PROJECT-FACT-UNRESOLVED | when the comment gate is retired |
+| Comment and docstring absence | Clean-code owner | source carries no comments and no docstrings | the comment audit returns zero findings over the tracked tree | the comment audit returns zero findings over the tracked tree | deterministic: PROJECT-FACT-UNRESOLVED | when the comment gate is retired |
 
 ## Project facts to resolve
 
@@ -176,7 +196,8 @@ RALPH-REVIEW: review naming, cohesion, interface clarity, abstraction justificat
 
 <!-- REPLACE-ME: set the project's real comment audit command. It reports the
 banned comment shapes listed under Commenting policy on the lines a change
-touched, and it honours the inline `# comment-ok: <reason>` bypass. Prefer a
+touched, and it fails on every comment token, every docstring, and every
+documentation marker word outside quoted code. Prefer a
 check the project already runs over new tooling; if the project has no such
 audit yet, create the smallest real one rather than declaring a hollow
 command. Then delete this comment. -->
@@ -190,7 +211,7 @@ findings. The review gate certifies the judgment the audits cannot.
 ## Exceptions
 
 A documented exception (e.g. legacy compatibility shim with a removal
-date) requires a documented rationale, scope, owner, and removal or
+date) requires a documented reason, scope, owner, and removal or
 review date.
 
 ## Maintenance triggers
@@ -202,7 +223,7 @@ This policy MUST be reviewed in the same workflow as any of:
 * The error-handling or logging convention changes.
 * A new generated/vendored code category is added.
 * The commenting rule changes: a new banned comment shape, a change to
-  the bypass form, or a change to the baseline-mode scope.
+  the scanned file set, or a change to the enforcement mode.
 
 ## Research basis
 

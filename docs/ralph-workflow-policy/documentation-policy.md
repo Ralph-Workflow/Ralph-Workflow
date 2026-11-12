@@ -24,11 +24,21 @@ of documentation belongs.
   obsolete documentation MUST be removed or reconciled.
 * Examples and commands in documentation MUST match actual behaviour
   and MUST be verified where practical.
-* Public APIs MUST have accurate docstrings covering: purpose,
-  parameters, return value, raised exceptions, and a minimal usage
-  example. A non-empty module docstring is enforced by
-  `ralph.testing.audit_public_docstrings` for every public module
-  under `ralph/`.
+* Docstrings are banned. No module, class, function, or method
+  docstring, and no string-literal statement used as documentation.
+  Contracts live in names, type annotations, and tests.
+* A change MAY edit documentation only when it changes user-visible
+  behaviour, a public interface, an install or run command, or a policy
+  contract, and then only the single owning document and only the
+  affected statement.
+* Documentation states current facts and procedures only. It does not
+  record why a choice was made, which alternatives were weighed, how the
+  choice evolved, research notes, exclusion lists, migration narration, or
+  a log of reasoning. A choice lives in the code, the tests, or the gate
+  that enforces it, and nowhere else.
+* No new documentation file, plan, design note, ADR, log, or summary is
+  created unless the task names the file. Documentation that contradicts
+  this rule is deleted or reduced to current facts.
 * Configuration documentation MUST list every option with its
   default, valid range, and effect.
 * Release notes MUST enumerate user-visible changes and required
@@ -46,7 +56,7 @@ RALPH-FACT: contributor_docs_path: CONTRIBUTING.md (root pointer) → ralph-work
 RALPH-FACT: api_reference_path: the Sphinx API reference is auto-generated from `ralph/.. automodule::` entries in ralph-workflow/docs/sphinx/modules.rst (enforced by tests/test_sphinx_modules_coverage.py). New public modules under `ralph/` MUST add an `.. automodule::` entry in the same commit.
 RALPH-FACT: architecture_docs_path: docs/architecture/ (repo-root architecture index) and ralph-workflow/docs/architecture/ (package architecture). MADR-format ADRs live under ralph-workflow/docs/architecture/adr-*.md; one example is adr-0001-interrupt-architecture.md.
 RALPH-FACT: release_notes_path: ralph-workflow/CHANGELOG.md (canonical) plus the per-version Sphinx changelog rollup if a release note spans multiple pages. The CHANGELOG follows the Keep a Changelog + SemVer convention; every user-visible change has a CHANGELOG entry in the same workflow that lands the change.
-RALPH-FACT: docstring_convention: PEP 257 + Google-style sections (Args:, Returns:, Raises:, Example:) on every public function / class / module. Module docstrings are non-empty for every module under `ralph/` (enforced by `ralph.testing.audit_public_docstrings`). Sphinx `.. automodule::` directives render the same docstrings into the operator manual; a docstring edit updates both surfaces at once.
+RALPH-FACT: docstring_convention: source code carries no docstrings; contracts live in names, type annotations, and tests. The absolute comment and docstring audit (`ralph.testing.audit_comments`, wired as `absolute comment and docstring policy audit (audit_comments)`) enforces this over tracked Python and shell/TOML/YAML/Makefile/Jinja sources; the Sphinx API reference under `ralph-workflow/docs/sphinx/modules.rst` lists modules and public symbols instead of rendering docstrings.
 RALPH-FACT: example_verification_command: `make -C ralph-workflow docs-linkcheck` runs Sphinx's link-check over the operator manual (`uv run --extra docs sphinx-build -b linkcheck docs/sphinx docs/sphinx/_build/linkcheck`). For non-Sphinx route pages (README.md, START_HERE.md, docs/README.md, ralph-workflow/docs/README.md) the project ships `scripts/check_route_page_links.py` (head + GET, 10 s per-request timeout, http://PROMPT.md and docs.claude.com excluded per ralph-workflow/docs/sphinx/conf.py). Both run as part of the maintainer's release preflight.
 
 ## Guard inventory
@@ -54,7 +64,7 @@ RALPH-FACT: example_verification_command: `make -C ralph-workflow docs-linkcheck
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
 | Synchronized docs | Docs owner | documentation matches shipped behaviour across public CLI, API, MCP, and configuration surfaces | doc build runs clean with zero warnings; route-link checks return zero broken links | doc build runs clean with zero warnings; route-link checks return zero broken links | deterministic: make -C ralph-workflow docs | when documentation is generated entirely from code signatures |
-| Public docstrings | Docs owner | public modules, classes, and methods declare purposeful docstrings | public docstring audit returns zero missing docstring findings | public docstring audit returns zero missing docstring findings | deterministic: public docstring audit (audit_public_docstrings) | when docstrings are replaced by formal interface specs |
+| Comment and docstring absence | Docs owner | source carries no comments and no docstrings | the absolute comment audit returns zero findings over the tracked tree | the absolute comment audit returns zero findings over the tracked tree | deterministic: absolute comment and docstring policy audit (audit_comments) | when the comment gate is retired |
 
 ## AI execution instructions
 
@@ -90,7 +100,7 @@ URL.
 ## Exceptions
 
 A documented exception (e.g. legacy doc kept for backward URL
-compatibility) requires a documented rationale, scope, owner, and
+compatibility) requires a documented reason, scope, owner, and
 removal or review date. The exception lives in this section; the
 surface itself carries a marker cross-referencing the entry.
 
@@ -99,7 +109,7 @@ surface itself carries a marker cross-referencing the entry.
 This policy MUST be reviewed in the same workflow as any of:
 
 * A new documentation surface is added.
-* The docstring convention changes.
+* The documentation-restriction rule changes.
 * The example verification command changes.
 
 ## Research basis

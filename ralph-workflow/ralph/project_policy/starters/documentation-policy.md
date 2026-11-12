@@ -13,7 +13,7 @@ blocked while this banner or any placeholder token remains. -->
 This policy governs every documentation surface the project maintains:
 user, operator, contributor, API, architecture, and code documentation.
 It defines when a behaviour change requires a documentation update, the
-expectations for docstrings, comments, public APIs, configuration,
+restrictions on docstrings, comments, public APIs, configuration,
 commands, examples, migrations, and release notes, and where each kind
 of documentation belongs.
 
@@ -29,6 +29,21 @@ of documentation belongs.
   obsolete documentation MUST be removed or reconciled.
 * Examples and commands in documentation MUST match actual behaviour
   and MUST be verified where practical.
+* Docstrings are banned. No module, class, function, or method
+  docstring, and no string-literal statement used as documentation.
+  Contracts live in names, type annotations, and tests.
+* A change MAY edit documentation only when it changes user-visible
+  behaviour, a public interface, an install or run command, or a policy
+  contract, and then only the single owning document and only the
+  affected statement.
+* Documentation states current facts and procedures only. It does not
+  record why a choice was made, which alternatives were weighed, how the
+  choice evolved, research notes, exclusion lists, migration narration, or
+  a log of reasoning. A choice lives in the code, the tests, or the gate
+  that enforces it, and nowhere else.
+* No new documentation file, plan, design note, ADR, log, or summary is
+  created unless the task names the file. Documentation that contradicts
+  this rule is deleted or reduced to current facts.
 * Externally supported APIs MUST follow the declared documentation convention
   for purpose, parameters, return value, and relevant exceptions. Usage
   examples are required for non-obvious contracts, not trivial accessors.
@@ -46,6 +61,7 @@ Then delete this comment. -->
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
 | Single source of truth | Documentation owner | every policy statement lives in exactly one canonical file | no parallel policy rulebook outside the canonical directory; the migrated marker points from old location to new | no parallel policy rulebook outside the canonical directory | deterministic: PROJECT-FACT-UNRESOLVED | when the canonical directory is removed (the kernel absorbs the contract) |
+| Comment and docstring absence | Documentation owner | source carries no comments and no docstrings | the comment audit returns zero findings over the tracked tree | the comment audit returns zero findings over the tracked tree | deterministic: PROJECT-FACT-UNRESOLVED | when the comment gate is retired |
 
 ## Project facts to resolve
 
@@ -131,7 +147,7 @@ documented. The review gate certifies accuracy and non-fabrication.
 ## Exceptions
 
 A documented exception (e.g. legacy doc kept for backward URL
-compatibility) requires a documented rationale, scope, owner, and
+compatibility) requires a documented reason, scope, owner, and
 removal or review date.
 
 ## Maintenance triggers
@@ -139,7 +155,7 @@ removal or review date.
 This policy MUST be reviewed in the same workflow as any of:
 
 * A new documentation surface is added.
-* The docstring convention changes.
+* The documentation-restriction rule changes.
 * The example verification command changes.
 
 ## Research basis

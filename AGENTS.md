@@ -14,7 +14,7 @@ Use these first, in this order:
 3. `docs/agents/verification.md`
 3.5. `ralph-workflow/docs/agents/artifact-submission-contract.md`
 4. `ralph-workflow/README.md`
-5. Python source and docstrings under `ralph-workflow/ralph/`
+5. Python source under `ralph-workflow/ralph/`
 6. `docs/code-style/documentation-rubric.md` (canonical documentation rubric — applies to every docs change)
 
 Note: the root `PROMPT.md` is the canonical project brief, while
@@ -168,6 +168,20 @@ Run the extra smoke checks or focused tests from `docs/agents/verification.md` w
 - Keep Markdown concise and current with the Python project.
 - Do not create temporary Markdown files in the repo root or `docs/`.
 - Put temporary files under `tmp/` at the repo root.
+- A change may edit documentation only when it changes user-visible
+  behavior, a public interface, an install or run command, or a policy
+  contract, and then only the single owning document and only the
+  affected statement.
+- Documentation states current facts and procedures only. It does not
+  record why a choice was made, which alternatives were weighed, how the
+  choice evolved, research notes, exclusion lists, migration narration, or
+  a log of reasoning. A choice lives in the code, the tests, or the gate
+  that enforces it, and nowhere else.
+- No new documentation files, plans, design notes, ADRs, logs, or
+  summaries are created unless the task names the file. Documentation
+  that contradicts this rule is deleted or reduced to current facts.
+- Docstrings are banned the same way as comments: contracts live in
+  names, type annotations, and tests.
 
 ## External dependencies
 

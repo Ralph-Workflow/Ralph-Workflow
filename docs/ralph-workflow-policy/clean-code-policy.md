@@ -27,7 +27,7 @@ practice and adapt to other detected languages (see Verification).
   An abstraction with one implementation and one caller is premature.
 * Dead code, commented-out code, unused compatibility layers, and
   unused imports MUST be removed. The "we might need it later"
-  rationale does not override the no-dead-code rule.
+  reason does not override the no-dead-code rule.
 * Function, class, module, and file scope MUST follow single
   responsibility: a function does one thing, a module owns one
   concept. Functions over `pylint.max-args = 40` (the CLI typer
@@ -54,12 +54,12 @@ practice and adapt to other detected languages (see Verification).
 
 ## Commenting policy
 
-A comment records ONLY what the code cannot say: intent, a non-obvious
-constraint, an invariant, a workaround with its removal trigger, or an
-external contract. A comment that restates the code is noise, and a
-comment that contradicts the code misleads the next maintainer.
+Source code contains no comments. Intent, constraints, and invariants are
+expressed through names, types, structure, tests, and assertions. The only
+`#` line tolerated is a shebang on line 1 of an executable script, because
+the kernel reads it.
 
-Banned comment content:
+Banned without exception:
 
 * Restating the code the comment sits on.
 * Change narration ("added for X", "fixed", "now", "previously").
@@ -68,33 +68,55 @@ Banned comment content:
 * Notes addressed to the reviewer instead of to the next maintainer.
 * A deferred-work marker (a `todo`, `fixme`, or `hack` prefix) that
   carries neither an owner nor a removal trigger.
+* Encoding declarations, `# type: ignore`, `# noqa`, `# pragma`,
+  `# pylint:` and `# fmt:` suppressions. The underlying warning is fixed
+  in code, or suppressed in tool configuration (`pyproject.toml`
+  per-file settings), never inline.
 
-Editing code means re-reading the adjacent comments: they may have gone
-stale. Public-API docstrings stay mandatory
-(`ralph.testing.audit_public_docstrings`); this rule does not weaken
-that requirement.
+Editing code means deleting any comment found in the touched region.
+Docstrings are banned the same way as comments: no module, class,
+function, or method docstring, and no string-literal statement used as
+documentation. Contracts live in names, type annotations, and tests.
 
 Evidence tags differ by claim. The comment/code-inconsistency link to
 defects is tagged moderate (the source is listed under Research basis)
 and is the basis for the blocking check. The over-commenting claim —
 that agents comment too much, and that removing such comments changes
-outcomes — is tagged anecdotal and its effect size is unconfirmed, so a
-comment that restates the code is reported for review and does not fail
-the gate; it is reviewed whenever the comment audit reports it. No
-percentage, multiplier, or benchmark figure from either claim belongs in
-this policy until it is confirmed against the primary source.
+outcomes — is tagged anecdotal and its effect size is unconfirmed, so
+the ban rests on the project rule rather than on a measured effect size;
+the checker enforces it regardless. No percentage, multiplier, or
+benchmark figure from either claim belongs in this policy until it is
+confirmed against the primary source.
 
-The inline bypass form is `# comment-ok: <reason>`; the reason is
-mandatory, and an empty reason is not a bypass. The marker waives its
-own line and the line immediately below it.
+There is no inline bypass marker and no baseline. A comment is a finding
+even when it carries a reason, and the gate holds no list of exempted
+lines.
 
-The comment audit (`ralph.testing.audit_comments`) runs in BASELINE MODE:
-it fails only on comments on new or changed lines relative to the
-committed baseline, and it honours the bypass above. It scans Python
-source (`.py` and `.pyi`); comments in other languages are covered by
-the review gate. Burn-down of the existing baseline is a separate,
-optional follow-up outside this gate; the remaining count comes from a
-one-off scan of the committed tree, not from the gate.
+The comment audit (`ralph.testing.audit_comments`) enforces this
+absolutely: it fails on every comment token and every docstring in
+tracked Python, and on every comment in shell, TOML, YAML, Makefile and
+Jinja sources, except a line-1 shebang. It reads comments with the
+`tokenize` module, so a `#` inside a string is never misread, and it
+finds docstrings through the `ast` module. A finding carries
+`path:line`, the comment text, and the fix hint "delete the comment or
+encode it in code".
+
+## Documentation restriction
+
+A change MAY edit documentation only when it changes user-visible
+behaviour, a public interface, an install or run command, or a policy
+contract, and then only the single owning document and only the affected
+statement.
+
+Documentation states current facts and procedures only. It does not
+record why a choice was made, which alternatives were weighed, how the
+choice evolved, research notes, exclusion lists, migration narration, or
+a log of reasoning. A choice lives in the code, the tests, or the gate
+that enforces it, and nowhere else.
+
+No new documentation file, plan, design note, ADR, log, or summary is
+created unless the task names the file. Documentation that contradicts
+this rule is deleted or reduced to current facts.
 
 ## Project facts to resolve
 
@@ -103,11 +125,11 @@ rely on them when enforcing this policy and MUST keep them current as
 the project evolves.
 
 RALPH-FACT: naming_convention: PEP 8 snake_case for functions, variables, and module names; PascalCase for classes; SCREAMING_SNAKE_CASE for module-level constants. CLI entry points live under `ralph/cli/` and use Typer / rich-click conventions. Tests live under `ralph-workflow/tests/` and mirror the package layout they exercise. Type aliases use the `T = ...` PEP 613 form only when reused across modules.
-RALPH-FACT: module_boundary_rule: each subpackage under `ralph/` (agents, api, checkpoint, cli, config, contrib, diagnostics, display, executor, exit_pause, files, git, guidelines, interrupt, language_detector, mcp, phases, pipeline, platform, policy, pro_support, process, project_policy, prompts, recovery, runtime, skills, telemetry, testing, update_check, visual, workspace) owns one concept and is the seam for dependency injection via the shared fixtures in `ralph-workflow/tests/conftest.py` and the per-component fixture modules under `ralph-workflow/tests/_support/`. (`logging` and `timeout` are flat top-level modules — `ralph/logging.py` and `ralph/timeout_defaults.py` — not subpackages, per architecture-policy.md:63.) New public subpackages require an `.. automodule::` entry in `docs/sphinx/modules.rst` (enforced by `tests/test_sphinx_modules_coverage.py`). Circular-import avoidance is delegated to lazy `PLC0415` ignores with rationale, not to a global silencer.
+RALPH-FACT: module_boundary_rule: each subpackage under `ralph/` (agents, api, checkpoint, cli, config, contrib, diagnostics, display, executor, exit_pause, files, git, guidelines, interrupt, language_detector, mcp, phases, pipeline, platform, policy, pro_support, process, project_policy, prompts, recovery, runtime, skills, telemetry, testing, update_check, visual, workspace) owns one concept and is the seam for dependency injection via the shared fixtures in `ralph-workflow/tests/conftest.py` and the per-component fixture modules under `ralph-workflow/tests/_support/`. (`logging` and `timeout` are flat top-level modules — `ralph/logging.py` and `ralph/timeout_defaults.py` — not subpackages, per architecture-policy.md:63.) New public subpackages require an `.. automodule::` entry in `docs/sphinx/modules.rst` (enforced by `tests/test_sphinx_modules_coverage.py`). Circular-import avoidance is delegated to a documented lazy import boundary, not to a global silencer.
 RALPH-FACT: error_handling_convention: raise typed exceptions (custom pydantic-validated models in `ralph/pydantic_validation_errors.py` for canonical subtypes); never `except: pass`. Errors MUST carry actionable context (the affected subject, the failing input, the operator's next step). Subprocess / network failures carry a `timeout=` per the MCP timeout contract. Recovery classifies exceptions via `ralph/recovery/classifier.py:FailureClassifier`; do not classify at the call site.
 RALPH-FACT: logging_convention: `loguru` is the production logger (per `[project].dependencies` in `ralph-workflow/pyproject.toml`). Structured fields follow `ralph/logging_models.py`. Logging configuration is centralized in `ralph/_logging_config.py` and `ralph/_logging_paths.py`; per-module `logging.basicConfig` is forbidden. Verbosity toggle lives at `python -m ralph --verbose`.
-RALPH-FACT: generated_code_marker: autogenerated audit / verifiers under `ralph/testing/audit_*.py` are marked via module-level docstrings; vendored stubs live under `ralph-workflow/stubs/` (registered via `mypy_path` in `ralph-workflow/mypy.ini`). Migration / compatibility shims live under `ralph/pro_support/` and carry the same `# reason: autogenerated code has no type support` marker that satisfies `audit_typecheck_bypass`.
-RALPH-FACT: vendored_code_marker: vendored first-party type stubs live under `ralph-workflow/stubs/` with a per-stub module docstring declaring the upstream package, the stub scope, and the upstream-version pin. The legacy Rust implementation under `docs/legacy-rust/` is quarantined and carries its own README marking it retired; treat as read-only.
+RALPH-FACT: generated_code_marker: autogenerated audit / verifiers under `ralph/testing/audit_*.py` are marked by their `audit_` filename prefix; vendored stubs live under `ralph-workflow/stubs/` (registered via `mypy_path` in `ralph-workflow/mypy.ini`). Migration / compatibility shims live under `ralph/pro_support/` and are marked by that directory location.
+RALPH-FACT: vendored_code_marker: vendored first-party type stubs live under `ralph-workflow/stubs/` and are marked by that directory location plus the `mypy_path` entry in `ralph-workflow/mypy.ini`; the upstream package and its version pin are recorded in the stub file name. The legacy Rust implementation under `docs/legacy-rust/` is quarantined and carries its own README marking it retired; treat as read-only.
 RALPH-FACT: dead_code_audit_command: `make -C ralph-workflow dead-code` runs `uv run --with vulture python -m vulture --config pyproject.toml`. Vulture's minimum-confidence floor is the single project-wide `min_confidence = 100` set in `ralph-workflow/pyproject.toml` `[tool.vulture]`; there is no separate quick-run / release-only override. Removal rather than annotation is the project default; a `# noqa`-style annotated dead symbol is a defect, not a workaround.
 
 ## Guard inventory
@@ -116,7 +138,7 @@ RALPH-FACT: dead_code_audit_command: `make -C ralph-workflow dead-code` runs `uv
 |---|---|---|---|---|---|---|
 | Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | no private method is renamed to public solely to satisfy a private-call ratchet | advisory: code review verifies visibility; review: when private-call ratchet is reviewed | when every private-call ratchet is retired |
 | Bounded premature abstraction | Clean-code owner | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value | advisory: code review verifies boundary value; review: on new abstraction introduction | when the project stops growing the abstraction target |
-| Comment content | Clean-code owner | the comments on a new or changed line carry what the code cannot say | a comment on a new or changed line matches a blocking banned comment shape listed under Commenting policy | a comment on a new or changed line matches a blocking banned comment shape | deterministic: comment policy audit (audit_comments) | when the comment gate is retired |
+| Comment and docstring absence | Clean-code owner | source carries no comments and no docstrings | the absolute comment audit returns zero findings over the tracked tree | the absolute comment audit returns zero findings over the tracked tree | deterministic: absolute comment and docstring policy audit (audit_comments) | when the comment gate is retired |
 
 ## AI execution instructions
 
@@ -142,11 +164,9 @@ RALPH-COMMAND: uv run python -m ralph.testing.audit_comments
 The comment audit is the binding check for the commenting rule above. It
 runs from the Python project root (`ralph-workflow/`), the same
 invocation the verify gate uses. The expected successful result is a
-clean audit over the new and changed lines (exit 0), honouring the
-inline `# comment-ok: <reason>` bypass. A blocking finding is reported
-with file:line and rule id; the remediation is to delete the comment or
-rewrite it, never to weaken the gate. An advisory finding is reported
-for review and does not fail the gate.
+clean audit over the whole tracked tree (exit 0). A finding is reported
+with file:line, the comment text, and the fix hint; the remediation is
+to delete the comment or encode it in code, never to weaken the gate.
 
 The drift audit
 (`ralph/testing/audit_resource_lifecycle`) is part of `make verify`
@@ -155,7 +175,7 @@ and is the binding check for the resource-accumulator rule above.
 ## Exceptions
 
 A documented exception (e.g. legacy compatibility shim with a removal
-date) requires a documented rationale, scope, owner, and removal or
+date) requires a documented reason, scope, owner, and removal or
 review date. The exception lives in this section; the symbol itself
 carries an inline marker cross-referencing the entry.
 
@@ -168,7 +188,7 @@ This policy MUST be reviewed in the same workflow as any of:
 * The error-handling or logging convention changes.
 * A new generated/vendored code category is added.
 * The commenting rule changes: a new banned comment shape, a change to
-  the bypass form, or a change to the baseline-mode scope.
+  the scanned file set, or a change to the enforcement mode.
 
 ## Research basis
 
