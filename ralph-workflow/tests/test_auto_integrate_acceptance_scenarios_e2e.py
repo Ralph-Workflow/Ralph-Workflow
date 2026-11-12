@@ -5,6 +5,7 @@ import functools
 import shutil
 import subprocess
 import time
+from collections.abc import Generator
 from pathlib import Path
 from typing import TextIO
 
@@ -123,6 +124,14 @@ def _refreshed_repo(repo_root: Path) -> Repo:
     repo = Repo(repo_root)
     _REPO_CACHE[repo_root] = repo
     return repo
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repos() -> Generator[None, None, None]:
+    yield
+    for repo in _REPO_CACHE.values():
+        repo.close()
+    _REPO_CACHE.clear()
 
 
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:

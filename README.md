@@ -8,7 +8,7 @@ Coding agents write code fast; the handoffs around them — babysitting a sessio
 re-explaining context, resolving conflicts, waiting in a review queue — do not scale
 the same way. A software factory removes that bottleneck.
 
-**Ralph Workflow is the operating system for autonomous coding: a free, open-source AI agent orchestrator and software factory that anybody can use — you give it a spec and your own checks, it runs plan → build → verify → fix as a configurable workflow graph across Git worktrees, and hands you integrated software to judge.**
+**Ralph Workflow is the operating system for autonomous coding: a free, open-source AI agent orchestrator and software factory that anybody can use — for developers and teams with a coding agent CLI, you give it a spec and your own checks, it runs plan → build → verify → fix as a configurable workflow graph across Git worktrees, and hands you integrated software to judge.**
 
 It runs on your machine: no account, no hosted service, nothing to pay. Your
 specifications, configuration, and Git history stay yours.
@@ -27,6 +27,19 @@ an attempt fails: switching or combining vendors is a configuration change, not 
 rewrite. Ralph Workflow needs no API key of its own; it launches the agent CLI you
 installed and authenticated. Each agent defines its own authentication (a login, an
 API key, or either), and its vendor determines model access, rate limits, and cost.
+
+Every default ships with the package: workflow graph, agent chains, tool configuration,
+artifact contracts, retries, recovery, and Git sync. `ralph --init` seeds your setup,
+there is no setup project before the first useful run, and you are productive on day 1.
+The [bundled defaults](ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)
+are preconfigured and yours to tweak — phases, routing, agent chains, including
+adding a fallback agent when you need one — without starting over, and you
+still bring the checks you trust.
+
+Run one agent by hand and you are the scheduler, reviewer, and merger; run a plain
+agent loop and it repeats one prompt — Ralph Workflow runs a configurable workflow
+graph with review, retries, recovery, and fallback agent chains you configure, keeps
+independent runs in separate Git worktrees, and lands checked work on one mainline.
 
 [**Start your first run →**](START_HERE.md)
 
@@ -55,9 +68,9 @@ each phase's output contract is in the
 
 A plain agent loop repeats one prompt until the work stops changing: give an agent a
 task, let it work, check the result, iterate — that is the whole Ralph loop. By hand,
-you supply every choice: the next prompt, the retry, the merge.
+you make every call: the next prompt, the retry, the merge.
 
-A workflow graph keeps that loop and moves those decisions into configuration:
+A workflow graph keeps that loop and moves those calls into configuration:
 
 - **Which phase runs next.** A phase ends in a drain: `done` advances, `fix-needed`
   routes into a fix cycle, `blocked` waits for a human, `retry` re-attempts.
@@ -82,10 +95,10 @@ coordination that makes that work converge.
   startup, after commits, and at phase boundaries.
 - **Resolve conflicts in the workflow.** Ralph Workflow rebases onto the target and
   routes conflicts to a resolution agent chain, with an endpoint-merge fallback.
-- **Land automatically.** The local target fast-forwards to the integrated tip.
-  Local integration is on by default and the target defaults to `main`; remote
-  sync publishes to the configured remote when one exists, and can be turned
-  off for local-only operation.
+- **Land automatically.** The local target fast-forwards to the integrated tip once
+  Git proves the integration finished. Local integration is on by default and the
+  target defaults to `main`; remote sync publishes to the configured remote when
+  one exists, and can be turned off for local-only operation.
 - **Recover interrupted integration.** Durable recovery state continues an unfinished
   Git operation before ordinary development resumes.
 
@@ -101,8 +114,9 @@ Git operation.
 
 ## Bring your own agent
 
-Nine backends ship with Ralph Workflow. Authenticate each one yourself; the agent's
-own flow is what runs, and Ralph Workflow never reads, stores, or proxies it.
+Nine backends ship with Ralph Workflow. Authenticate each one yourself — Ralph Workflow
+needs no API key of its own and sells no model access; it launches the agent CLI you
+installed and authenticated, and each agent's own login or key is what runs.
 
 - **Claude Code** (`claude`) — `claude login` or an Anthropic API key.
 - **Claude Code (headless)** (`claude`) — the same binary without a PTY; the same
@@ -112,7 +126,9 @@ own flow is what runs, and Ralph Workflow never reads, stores, or proxies it.
 - **Nanocoder** (`nanocoder`) — local-only TUI, no remote authentication.
 - **AGY (Google Anti Gravity)** (`agy`) — `agy login` with a Google account.
 - **Pi** (`pi`) — provider configuration inside Pi.
-- **Cursor** (`agent`) — `CURSOR_API_KEY` or a file-backed Cursor login.
+- **Cursor** (`agent`) — `CURSOR_API_KEY` or a file-backed Cursor login; if no valid
+  Cursor auth file exists, Ralph Workflow copies your existing Cursor IDE login into
+  Cursor's file-backed auth paths.
 - **Kimi Code** (`kimi`) — an interactive `kimi` login wires the managed Kimi Code
   subscription.
 
@@ -215,6 +231,6 @@ your changes.
   [code of conduct](CODE_OF_CONDUCT.md), and the
   [Contributor License Agreement](CLA.md) that every pull request must agree to.
 
-The Ralph Loop pattern is credited to [Geoffrey Huntley](https://ghuntley.com/ralph);
+The Ralph loop pattern is credited to [Geoffrey Huntley](https://ghuntley.com/ralph);
 Ralph Workflow is an independent implementation built on that core, and it is
 independent of the agent vendors it drives.

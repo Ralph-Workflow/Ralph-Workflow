@@ -15,15 +15,25 @@ harness of harnesses.
 In plain terms: you keep the coding agent and the model access you
 already have, and Ralph Workflow runs the process around it. Agent chains
 can mix backends and fall back to another agent when one fails. Ralph
-Workflow holds no model credentials and needs no API key of its own — it
-launches the agent CLI you installed and authenticated. Each agent
-defines its own authentication (a login, an API key, or either), and its
-vendor determines model access, rate limits, and cost; see
+Workflow needs no API key of its own and sells no model access; it
+launches the agent CLI you installed and authenticated, and each agent's
+own login or key is what runs. Each agent defines its own authentication
+(a login, an API key, or either), and its vendor determines model access,
+rate limits, and cost; see
 [`agents`](ralph-workflow/docs/sphinx/agents.md).
 
 Ralph Workflow itself is a configurable workflow graph that runs plan →
 build → verify → fix across Git worktrees, with review, recovery, and Git
 integration around that core loop.
+
+Every default ships with the package: the workflow graph, agent definitions
+and chains, MCP tool configuration, artifact contracts, retries, recovery,
+and Git sync ([`bundled defaults`](ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)).
+`ralph --init` seeds that setup, so there is no setup project before your
+first useful run and you are productive on day 1. The defaults are
+preconfigured and yours to tweak — phases, routing, agent chains, including
+adding a fallback agent when you need one — without starting over, and you
+still bring the checks you trust.
 
 ## Goal
 
@@ -140,6 +150,6 @@ before trusting the result.
   [`ralph-workflow/docs/sphinx/index.rst`](ralph-workflow/docs/sphinx/index.rst)
 - Public storefront → [`README.md`](README.md)
 
-Ralph Workflow is licensed under AGPL-3.0-or-later. The Ralph Loop
+Ralph Workflow is licensed under AGPL-3.0-or-later. The Ralph loop
 pattern is credited to Geoffrey Huntley; Ralph Workflow is an independent
 implementation built on that core.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 import subprocess
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -262,6 +263,14 @@ def _build_template(root: Path, *, remote: str, feature_commit: bool) -> None:
     writer = root / "writer"
     _git(root, "clone", "-q", "-o", remote, str(bare), str(writer))
     _identify(writer)
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repos() -> Generator[None, None, None]:
+    yield
+    for repo in _REPO_CACHE.values():
+        repo.close()
+    _REPO_CACHE.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

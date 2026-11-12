@@ -20,7 +20,9 @@ reader job; pick the first link that matches, then stop.
 
 - [Configuration reference](../ralph-workflow/docs/sphinx/configuration.md) —
   `ralph-workflow.toml`, project-local overrides, Git sync, and
-  auto-integration
+  auto-integration, plus the
+  [bundled defaults](../ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)
+  that ship with the package
 - [CLI reference](../ralph-workflow/docs/sphinx/cli.md) — flags and depth presets
 - [Advanced pipeline configuration](../ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md) —
   `pipeline.toml` phases and routing
@@ -54,8 +56,6 @@ reader job; pick the first link that matches, then stop.
   how the tool surface is narrowed per agent
 - [Versioning](../ralph-workflow/docs/sphinx/versioning.md) —
   version policy and compatibility
-- [Pro support](../ralph-workflow/docs/sphinx/pro-support.md) —
-  what the maintained project supports
 - [Operator manual](../ralph-workflow/docs/sphinx/index.rst) — the whole
   manual in one table of contents
 
