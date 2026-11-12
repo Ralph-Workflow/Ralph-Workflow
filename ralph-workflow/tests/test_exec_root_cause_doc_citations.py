@@ -106,7 +106,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_repaired_citation_points_at_named_token": "line numbers shifted following removal of comments and docstrings across python sources",
     "test_every_backticked_citation_line_exists": "line numbers in cited document shifted following removal of comments and docstrings across python sources",
     "test_progress_token_handling_is_cited_as_current": "the citation refresh re-pointed the progress-token citations at the verified current lines of exec_sse_streaming.py",
-    "test_historical_evidence_is_labelled_historical": "the citation refresh renamed the current-behavior subsections; the doc now carries the (HISTORICAL) and (CURRENT) labels the gate protects",
+    "test_historical_evidence_is_labelled_historical": "the historical output-only inactivity subsection was removed from the doc; the gate now forbids a (HISTORICAL) label and still requires the (CURRENT) labels the gate protects",
     "test_injected_runner_seam_is_not_the_production_path": "the exec.py ranges shifted; the doc cites the verified current production entry path and injected runner seam",
     "test_exec_wait_and_exec_cancel_named_as_present": "the names.py tool-name literals moved; the doc cites the verified current registration lines",
 }
@@ -337,8 +337,14 @@ class TestRootCauseDocCitations:
 
     def test_historical_evidence_is_labelled_historical(self) -> None:
         text = _read_doc()
+        assert "(HISTORICAL)" not in text, (
+            "root-cause doc must not label any subsection as historical. The "
+            "superseded output-only inactivity claim was removed from the "
+            "doc, so no historical subsection remains and a (HISTORICAL) "
+            "label would re-introduce history narration into a document that "
+            "states current facts only."
+        )
         for marker in (
-            "## Cause 1 (CONFIRMED) — `inactivity` is output-only (HISTORICAL)",
             "### Cause 1 — production liveness subsystem (CURRENT)",
             "### Cause 4 — progress-notification path (CURRENT)",
         ):

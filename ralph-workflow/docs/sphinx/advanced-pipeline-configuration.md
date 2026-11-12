@@ -425,9 +425,9 @@ stale configuration, not as a usable execution route. Replace it with
 `dispatch_mode = "agent_subagents"` so the developer agent dispatches the plan
 through its native subagent tools.
 
-### Policy v2 migration note (historical)
+### Per-phase parallelization configuration
 
-The historical migration from a top-level `[parallel_execution]` block to per-phase `[phases.<name>.parallelization]` (introduced in the policy v2 overhaul) moved `max_parallel_workers`, `max_work_units`, `require_allowed_directories`, and `post_fanout_verification` under the development phase. A bundled default `pipeline.toml` that ships a top-level `[parallel_execution]` block fails fast at validation: the loader raises `ValueError` and points the operator at `ralph --regenerate-config` to refresh the bundled template. Run `ralph --explain-policy` after the refresh to confirm the new layout. The error message names the replacement path so the fix is one line per moved field.
+Parallelization is configured per phase, under `[phases.<name>.parallelization]`; the bundled default declares it on the development phase. A `pipeline.toml` that contains a top-level `[parallel_execution]` block fails fast at validation: the policy model rejects it with a `ValueError` that the loader reports as a `pipeline.toml validation failed` error, and the message points the operator at `ralph --regenerate-config` to refresh the bundled template. `ralph --check-policy` exits non-zero on such a file, while a run that loads it non-strictly logs the failure and uses the built-in default pipeline. The error message names the replacement path, so the fix is one line per moved field: `max_parallel_workers`, `max_work_units`, `require_allowed_directories`, and `post_fanout_verification` each move under the phase's `parallelization` block. Run `ralph --explain-policy` after the refresh to confirm the resulting layout.
 
 ### `[[post_commit_routes]]`
 

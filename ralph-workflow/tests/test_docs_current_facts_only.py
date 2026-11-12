@@ -288,6 +288,21 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
             "Historical (pre-§3b) wording",
             "no longer holds",
             "no longer cites a local-source URL",
+            "## Cause 1 (CONFIRMED) — `inactivity` is output-only (HISTORICAL)",
+            "the structured error template `hard_cap=False` / `inactivity=True`",
+            'prompts the agent to "raise `timeout_ms` up to the cap"',
+            "which the production entry path does not take.",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md",
+        (
+            "### Policy v2 migration note (historical)",
+            "The historical migration from a top-level",
+            "(introduced in the policy v2 overhaul)",
+            "moved `max_parallel_workers`, `max_work_units`, "
+            "`require_allowed_directories`, and `post_fanout_verification` "
+            "under the development phase",
         ),
     ),
     (
@@ -313,6 +328,13 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
             "carrying a failed cycle outcome into",
             "`request_changes` alone remains inside the current cycle",
             "selects a disposition",
+            "This supports following an explicit route with less",
+            "The evidence supports the execution shape",
+            "The design uses primary research only for the narrow behavior each source",
+            "Every normative prompting behavior introduced by this design has an explicit",
+            "| Prompt behavior | Evidence basis | Supported inference |",
+            "Long-context retrieval is position-sensitive, so critical instructions "
+            "should be concise and salient.",
         ),
     ),
     (

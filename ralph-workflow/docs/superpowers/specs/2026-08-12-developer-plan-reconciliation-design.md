@@ -126,76 +126,19 @@ Black-box tests cover:
 Focused artifact and prompt tests run before the authoritative `make verify`
 gate. No new dependency, phase, command, or persistent runtime state is added.
 
-## Evidence basis and limits
+## Prompt behaviors
 
-The design uses primary research only for the narrow behavior each source
-measured; benchmark numbers are not guarantees for Ralph's agents.
+These are the developer and analyzer prompt behaviors this design specifies:
 
-- [Agentless](https://arxiv.org/abs/2407.01489) reports that a fixed
-  localization, repair, and validation workflow outperformed the compared
-  open-source agents on its then-current SWE-bench Lite evaluation while
-  costing less. This supports following an explicit route with less
-  discretionary re-exploration; it does not establish that every plan is
-  correct.
-- [ReAct](https://arxiv.org/abs/2210.03629) found that interleaved reasoning
-  and environment actions help track and update plans and handle exceptions on
-  its evaluated tasks. This supports the ready-item action/evidence loop and
-  evidence-triggered local adaptation, not transferring its benchmark gains to
-  coding.
-- [Large Language Models Cannot Self-Correct Reasoning
-  Yet](https://arxiv.org/abs/2310.01798) found that intrinsic self-correction
-  often failed or degraded reasoning, while
-  [CRITIC](https://arxiv.org/abs/2305.11738) found gains from tool-interactive
-  feedback on its evaluated tasks. This supports focused checks and full-gate
-  evidence rather than unaided self-review; it does not prove a separate model
-  is always required.
-- [Reflexion](https://arxiv.org/abs/2303.11366) improved subsequent trials by
-  retaining feedback-derived reflection. This supports recording a bounded
-  failure, cause, and changed next action, not unbounded history.
-- [Lost in the Middle](https://arxiv.org/abs/2307.03172) shows that retrieval
-  from long contexts depends materially on information position. This supports
-  a short, single-sourced execution loop adjacent to the plan; it did not test
-  coding-agent developer prompts.
-- [Measuring AI Ability to Complete Long Software
-  Tasks](https://arxiv.org/abs/2503.14499) associates longer task horizons
-  with reliability and adapting to mistakes, subject to external-validity
-  limits. This supports independently verifiable increments and bounded
-  recovery, not a universal duration cutoff.
-- [PlanBench](https://arxiv.org/abs/2206.10498) found substantial planning and
-  change-reasoning limitations in its evaluated models and domains. This
-  supports evidence-triggered local reconciliation while retaining the request
-  as authority; it does not license wholesale replanning.
-- [SWE-bench](https://arxiv.org/abs/2310.06770) characterizes repository issue
-  resolution as coordinating changes across functions, classes, and files,
-  while [SWE-agent](https://arxiv.org/abs/2405.15793) shows that the
-  agent-computer interface materially changes measured coding performance.
-  These support dependency-aware groups, concrete tool actions, and cross-unit
-  checks; their historical success rates are not current performance claims.
-
-The evidence supports the execution shape but cannot prove that this exact
-prompt delivers timely completion. That product claim requires an agent
-evaluation across compact, inaccurate, adapted, blocked, and large work-unit
-plans, including the weakest supported agent.
-
-## Prompt-to-evidence traceability
-
-Every normative prompting behavior introduced by this design has an explicit
-research basis and a bounded interpretation:
-
-| Prompt behavior | Evidence basis | Supported inference |
-|---|---|---|
-| Follow the supplied plan and avoid broad rediscovery | Agentless; SWE-agent | A constrained localization/repair interface can reduce discretionary search; this is not evidence that plans are infallible. |
-| Process the next ready dependency and verify each increment | ReAct; SWE-bench | Interleaved actions and observations support state tracking across repository changes. |
-| Adapt only when fresh tool evidence falsifies the immediate premise | ReAct; PlanBench; CRITIC | Plans can be wrong, and external feedback is a stronger correction signal than unaided reconsideration. |
-| Record a bounded failure, cause, and changed next action | Reflexion | Retained feedback can improve a later attempt; the evidence does not support unlimited retry history. |
-| Keep shared guidance short and adjacent to the active plan | Lost in the Middle | Long-context retrieval is position-sensitive, so critical instructions should be concise and salient. |
-| Use independent work units concurrently only when coordination is worthwhile | SWE-bench; SWE-agent; long-software-task measurements | Multi-file tasks benefit from explicit interfaces and verifiable decomposition; mandatory delegation for compact work is not supported. |
-| Require focused tool evidence and a final repository gate | CRITIC; Cannot Self-Correct Yet | External feedback is safer than relying on intrinsic self-correction alone. |
-| Have analysis independently re-derive criteria | CRITIC; Cannot Self-Correct Yet | A separate evidence pass reduces reliance on an implementer's unsupported self-assessment; it does not guarantee correctness. |
-| Approve partial/failed handoffs when fresh evidence shows no necessary work remains | ReAct; CRITIC | Outcome should follow observed task state, not the producer's label. |
-| Retry only actionable localized gaps inside one cycle; a `failed` verdict routes back to development and re-audits against the request | PlanBench; long-software-task measurements; Reflexion | Replanning and recovery are fallible and should be bounded; repeating unchanged work without a new evidence-based action is unsupported, while a fresh plan may expose a different route. |
-
-Artifact grammar, stable IDs, routing names, and commit mechanics are local
-workflow constraints rather than empirical claims about model cognition. They
-are covered by repository tests and policy verification, not attributed to AI
-research.
+- Follow the supplied plan and avoid broad rediscovery.
+- Process the next ready dependency and verify each increment.
+- Adapt only when fresh tool evidence falsifies the immediate premise.
+- Record a bounded failure, cause, and changed next action.
+- Keep shared guidance short and adjacent to the active plan.
+- Use independent work units concurrently only when coordination is worthwhile.
+- Require focused tool evidence and a final repository gate.
+- Have analysis independently re-derive criteria.
+- Approve partial/failed handoffs when fresh evidence shows no necessary work
+  remains.
+- Retry only actionable localized gaps inside one cycle; a `failed` verdict
+  routes back to development and re-audits against the request.

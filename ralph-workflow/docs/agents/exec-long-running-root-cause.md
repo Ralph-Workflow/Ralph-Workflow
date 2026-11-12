@@ -163,15 +163,18 @@ contract the agent does not honour:
   a connection-timeout, not a tool-call-timeout.
 - `agy.py:27` writes only `{"serverUrl": endpoint}`.
 
-## Cause 1 (CONFIRMED) — `inactivity` is output-only (HISTORICAL)
+## Cause 1 (CONFIRMED) — kills come from sampled liveness, not an output-only window
 
-The output-only inactivity window is the timeout rule of the
-**injected-runner seam**: it is refreshed only by a chunk from
-the child's stdout/stderr, never by CPU work. The production entry path
-does not use it — every normal `exec` becomes an `ExecJobRegistry` job
-(`ralph/mcp/tools/exec.py:572-607`) whose kills come from sampled
-liveness. See "Cause 1 — production liveness subsystem (CURRENT)" further
-on for that rule.
+Every normal `exec` call becomes an `ExecJobRegistry` job
+(`ralph-workflow/ralph/mcp/tools/exec.py:572-607`) and the registry
+decides kills from sampled liveness. The output-only inactivity window
+is the timeout rule of the exec tool's **injected runner seam**
+(`ralph-workflow/ralph/mcp/tools/exec.py:558-571`): it is refreshed only
+by a chunk from the child's stdout/stderr, never by CPU work. The seam
+is entered only when a caller injects a custom runner or replaces
+`run_command` (`exec.py:558-560`), so no production `exec` call takes
+it. The rule table for the production kills is under
+"Cause 1 — production liveness subsystem (CURRENT)" below.
 
 - `ralph-workflow/ralph/process/manager/_managed_process.py:279` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
@@ -182,15 +185,21 @@ on for that rule.
   `timeout_value = timeout` (`:354-356`); the terminate-then-raise is at
   `:357-360`.
 - `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:37`)
-  — a 90-second default inactivity cap. A CPU-busy command that never
-  emits stdout (e.g. tight loop, in-process buffered logging, redirected
-  output to a file) dies at `timeout_ms` with cause `inactivity` and
-  the structured error template `hard_cap=False` / `inactivity=True`
-  prompts the agent to "raise `timeout_ms` up to the cap" — but raising
-  it only widens the same output-only window.
+  — the inactivity window the exec seam applies when the caller passes no
+  timeout. A command that stays silent is killed there with cause
+  `inactivity`, and the rendered error reports that no output was received
+  for the window and that every output chunk resets it
+  (`ralph-workflow/ralph/mcp/tools/_exec_execution_error.py:238-255`).
 
-The seam that applies this rule is `ralph-workflow/ralph/mcp/tools/exec.py:558-571`,
-which the production entry path does not take.
+What an operator sees on the production path: a job that stops making
+progress is killed with cause `stalled` or `no_progress`, a job that
+outruns its ceiling is killed with cause `hard_cap`, and a call that
+outlasts the soft-reply budget returns a `JobSnapshot` carrying a
+`job_id` and the instruction "call exec_wait; do not re-run"
+(`ralph-workflow/ralph/mcp/tools/exec.py:609-621`). Poll the job with
+`exec_wait` or abort it with `exec_cancel`; the rendered error names the
+action for the cause it reports
+(`ralph-workflow/ralph/mcp/tools/_exec_execution_error.py:133-158`).
 
 ### Cause 1 — production liveness subsystem (CURRENT)
 
@@ -609,7 +618,7 @@ the third column.
 
 | Cause | Seam reached | Implementation file |
 | --- | --- | --- |
-| 1 — `inactivity` is output-only | Liveness sampling and fuzzy assessor with CPU/IO/novelty ladder | `ralph/process/manager/_liveness_assessor.py` |
+| 1 — kills come from sampled liveness | Liveness sampling and fuzzy assessor with CPU/IO/novelty ladder | `ralph/process/manager/_liveness_assessor.py` |
 | 2 — 300 s absolute cap | `EXEC_SOFT_REPLY_BUDGET_MS`, `EXEC_JOB_CEILING_S`, `EXEC_JOB_CEILING_MAX_S` | `ralph/timeout_defaults.py` |
 | 3 — client timeout configuration | write documented timeout keys derived from `EXEC_SOFT_REPLY_BUDGET_MS` + headroom | `ralph/mcp/transport/{claude,codex,kimi,opencode,pi}.py` |
 | 4 — streamed output does not keep clients alive | SSE notification stream and progress token handling | `ralph/mcp/server/exec_sse_streaming.py` |
