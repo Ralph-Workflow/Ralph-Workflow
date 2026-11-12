@@ -245,17 +245,16 @@ def test_agents_page_not_in_developer_internals_toctree() -> None:
     )
 
 
-def test_public_packages_have_non_empty_docstrings() -> None:
-    missing: list[str] = []
+def test_public_packages_carry_no_docstrings() -> None:
+    documented: list[str] = []
 
     for pkg_name in _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS:
         mod = importlib.import_module(pkg_name)
-        if not (mod.__doc__ and mod.__doc__.strip()):
-            missing.append(pkg_name)
+        if mod.__doc__ and mod.__doc__.strip():
+            documented.append(pkg_name)
 
-    assert not missing, (
-        "The following public packages have no docstring (pydoc-first contract):\n"
-        + "\n".join(f"  {pkg}" for pkg in missing)
+    assert not documented, "The following public packages still carry a docstring:\n" + "\n".join(
+        f"  {pkg}" for pkg in documented
     )
 
 

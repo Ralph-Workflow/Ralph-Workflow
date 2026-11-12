@@ -38,10 +38,8 @@ def test_worktree_fan_out_is_not_importable() -> None:
     )
 
 
-def test_parallel_package_docstring_mentions_same_workspace() -> None:
-
-    doc = parallel.__doc__ or ""
-    assert "same-workspace" in doc, (
-        "ralph.pipeline.parallel.__doc__ must contain 'same-workspace' to "
-        "make the v1 product boundary visible to users importing the package."
+def test_parallel_package_carries_no_docstring() -> None:
+    assert parallel.__doc__ is None, (
+        "ralph.pipeline.parallel must carry no docstring; contracts live in "
+        "names, type annotations, and tests."
     )

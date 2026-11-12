@@ -359,7 +359,6 @@ def test_enable_detected_agents_conflict_propagates_without_stale_backup_or_over
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Detected agent block activation propagates conflict without overwriting operator edits."""
     config_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = (
         '# @AGENT-BLOCK-START: claude\n# [agents.claude]\n# cmd = "claude"\n# @AGENT-BLOCK-END\n'
@@ -382,10 +381,8 @@ def test_enable_detected_agents_conflict_propagates_without_stale_backup_or_over
     with pytest.raises(AgentsFileConflictError):
         enable_detected_agents(config_path)
 
-    # Operator edits preserved
     assert config_path.read_text(encoding="utf-8") == operator_interleaved
 
-    # Temp files cleaned up
     leftovers = [
         f.name
         for f in tmp_path.iterdir()

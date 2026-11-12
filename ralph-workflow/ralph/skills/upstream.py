@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+if sys.platform != "win32":
+    import fcntl
+
 from ralph.checked_accessors import as_mapping, as_str_dict, optional_str
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.skills._agent_paths import (
@@ -283,9 +286,7 @@ def _acquire_platform_lock(descriptor: int) -> Callable[[], None] | None:
 
 
 def _acquire_posix_lock(descriptor: int) -> Callable[[], None] | None:
-    try:
-        import fcntl
-    except ImportError:
+    if sys.platform == "win32":
         return None
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX)

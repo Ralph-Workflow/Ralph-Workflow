@@ -489,7 +489,6 @@ def test_autowire_agents_toml_conflict_propagates_without_stale_backup_or_overwr
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Chain autowiring targeting an agents file propagates conflict without overwriting operator edits."""
     _init_repo_with_initial_commit(tmp_path)
     agents_path = tmp_path / "ralph-workflow-agents.toml"
     agents_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
@@ -515,10 +514,8 @@ def test_autowire_agents_toml_conflict_propagates_without_stale_backup_or_overwr
     with pytest.raises(AgentsFileConflictError):
         autowire_chains_to_detected_agent(agents_path, detected=["codex"])
 
-    # Operator edits preserved
     assert agents_path.read_text(encoding="utf-8") == operator_interleaved
 
-    # Temp files cleaned up
     leftovers = [
         f.name
         for f in tmp_path.iterdir()

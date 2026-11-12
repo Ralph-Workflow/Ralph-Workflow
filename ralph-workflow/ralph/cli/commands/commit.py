@@ -227,10 +227,7 @@ def _apply_generated_commit(
         if commit_result.status is CommitCreationStatus.ALREADY_ADVANCED:
             display.emit_warning("HEAD changed before commit; retaining commit artifact")
             return 1
-        if (
-            commit_result.status is not CommitCreationStatus.CREATED
-            or commit_result.sha is None
-        ):
+        if commit_result.status is not CommitCreationStatus.CREATED or commit_result.sha is None:
             display.emit_warning("Commit failed: commit creation did not complete")
             return 1
         delete_commit_message_artifacts(repo_root)
@@ -251,7 +248,6 @@ def _handle_agent_commit_generation(
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
 ) -> int:
-    display = resolve_active_display(None, display_context)
     generate = options.generate_commit_msg or options.generate_commit
     apply = options.generate_commit
     git_user_name = config.general.git_user_name
@@ -260,39 +256,21 @@ def _handle_agent_commit_generation(
     if not generate:
         return 0
 
-    if not _commit_dispatch_allowed(
-        repo_root,
-        config,
+    inputs = _resolve_commit_generation_inputs(
+        repo_root=repo_root,
+        config=config,
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
-    ):
+    )
+    if inputs is None:
         return 1
-
-    delete_commit_message_artifacts(repo_root)
-    diff = working_tree_diff(repo_root)
-    if not diff.strip():
-        display.emit_warning("No changes to commit")
-        return 1
-
-    registry = AgentRegistry.from_config(config)
-    workspace_scope = resolve_workspace_scope(repo_root)
-    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    agents = _resolve_commit_message_agents(agents_policy)
-    if not agents:
-        display.emit_warning("No agents configured in the commit policy drain")
-        return 1
+    diff, chain_config = inputs
 
     result = _generate_commit_message_with_chain(
         diff=diff,
         repo_root=repo_root,
-        chain_config=CommitChainConfig(
-            registry=registry,
-            agents=agents,
-            verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
-            agents_policy=agents_policy,
-            general_config=config,
-        ),
+        chain_config=chain_config,
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
@@ -305,18 +283,54 @@ def _handle_agent_commit_generation(
     )
     if status != 0:
         return status
-    if persisted_message is None:
+    if persisted_message is None or not apply:
         return 0
+    return _apply_generated_commit(
+        repo_root,
+        persisted_message,
+        git_user_name=git_user_name,
+        git_user_email=git_user_email,
+        display_context=display_context,
+    )
 
-    if apply:
-        return _apply_generated_commit(
-            repo_root,
-            persisted_message,
-            git_user_name=git_user_name,
-            git_user_email=git_user_email,
-            display_context=display_context,
-        )
-    return 0
+
+def _resolve_commit_generation_inputs(
+    *,
+    repo_root: Path,
+    config: UnifiedConfig,
+    display_context: DisplayContext,
+    pro_hooks: ProPipelineHooks | None,
+    model_identity: MultimodalModelIdentity | None,
+) -> tuple[str, CommitChainConfig] | None:
+    display = resolve_active_display(None, display_context)
+    if not _commit_dispatch_allowed(
+        repo_root,
+        config,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+    ):
+        return None
+    delete_commit_message_artifacts(repo_root)
+    diff = working_tree_diff(repo_root)
+    if not diff.strip():
+        display.emit_warning("No changes to commit")
+        return None
+    registry = AgentRegistry.from_config(config)
+    workspace_scope = resolve_workspace_scope(repo_root)
+    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    agents = _resolve_commit_message_agents(agents_policy)
+    if not agents:
+        display.emit_warning("No agents configured in the commit policy drain")
+        return None
+    chain_config = CommitChainConfig(
+        registry=registry,
+        agents=agents,
+        verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
+        agents_policy=agents_policy,
+        general_config=config,
+    )
+    return diff, chain_config
 
 
 def _show_commit_message(repo_root: Path, *, display_context: DisplayContext) -> None:

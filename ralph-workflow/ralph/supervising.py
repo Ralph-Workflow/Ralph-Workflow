@@ -156,5 +156,6 @@ def __getattr__(name: str) -> object:
     if name == "WorkflowInstanceTracker":
         tracker_module = import_module("ralph._supervising_tracker")
         if isinstance(tracker_module, _TrackerModule):
-            return tracker_module.WorkflowInstanceTracker
+            tracker: _TrackerModule = tracker_module
+            return tracker.WorkflowInstanceTracker
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -27,10 +27,9 @@ inapplicable.
 * Per-language `RALPH-LANG:` declarations are required for every
   detected language, each followed by a `RALPH-COMMAND:` line or an
   explicit `RALPH-INAPPLICABLE:` line.
-* Inline suppressions (`# noqa`, `// eslint-disable`, `#[allow(...)]`)
-  MUST carry a specific error code AND a documented reason. Blanket
-  suppressions are forbidden. Bare `# noqa` without a specific code is
-  rejected by `ralph/testing/audit_lint_bypass.py`.
+* Inline suppressions are forbidden. The underlying lint warning is fixed
+  in code, or suppressed in tool configuration (`pyproject.toml`
+  `[tool.ruff.lint.per-file-ignores]`), never inline.
 * File-level disables and per-file-ignores MUST be listed in this
   policy with the affected path and the reason. Weakening
   per-file-ignores is detected by `ralph/testing/audit_lint_bypass.py`.

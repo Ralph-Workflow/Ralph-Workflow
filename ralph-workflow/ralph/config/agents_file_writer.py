@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import tomllib
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,7 +33,7 @@ class AgentsFileConflictError(OSError):
     pass
 
 
-_PATH_LOCKS: dict[Path, threading.Lock] = {}
+_PATH_LOCKS: weakref.WeakValueDictionary[Path, threading.Lock] = weakref.WeakValueDictionary()
 _PATH_LOCKS_GUARD = threading.Lock()
 
 

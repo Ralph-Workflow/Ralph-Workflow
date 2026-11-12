@@ -294,7 +294,6 @@ def test_ensure_global_agents_config_conflict_propagates_without_stale_backup_or
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Explicit regeneration propagates AgentsFileConflictError without overwrite or stale backup."""
     global_dir = tmp_path / "config"
     global_dir.mkdir(parents=True)
     agents_file = global_dir / AGENTS_FILENAME
@@ -315,10 +314,8 @@ def test_ensure_global_agents_config_conflict_propagates_without_stale_backup_or
     with pytest.raises(AgentsFileConflictError):
         ensure_global_agents_config(global_dir, force=True)
 
-    # Operator interleaved edit is preserved on disk
     assert agents_file.read_text(encoding="utf-8") == operator_interleaved
 
-    # Temp files cleaned up
     leftovers = [
         f.name
         for f in global_dir.iterdir()
