@@ -71,11 +71,11 @@ The **inner loop** is what a chat-coding user does by hand: prompt → response 
 
 When you read the code, the inner loop is mostly in `ralph/agents/`. The outer loop is mostly in `ralph/pipeline/` and `ralph/policy/`.
 
-### Tradeoffs the simple core accepts
+### Per-phase execution
 
-- **Latency:** each phase is a full agent invocation. The composed loop is slower than a single long session. The tradeoff buys verification, recovery, and reviewability.
-- **Cost:** each phase is a billable agent call. Recovery, review, and re-runs multiply cost. The tradeoff buys not having to babysit.
-- **Variance:** each phase restarts from its own artifact, so the pipeline carries variance between phases. The artifact handoff is what keeps variance bounded.
+Each agent-backed phase starts a separate agent invocation. Recovery, review,
+and re-runs can start additional invocations. Artifacts carry phase output into
+the next phase.
 
 ### When the simple core is enough
 
@@ -87,14 +87,10 @@ If your task fits one prompt and one response, the original Ralph loop is the ri
 
 A **policy-driven pipeline** is a runtime that follows a declared policy and fails closed when the policy is unsatisfied. Ralph Workflow's runtime takes this shape: every phase, drain, recovery rule, artifact contract, and terminal condition is **declared in policy**, not hard-coded in Python.
 
-### Why policy is the right boundary
+### Policy configuration
 
-Two alternatives were possible:
-
-1. **Hard-code the pipeline in Python.** Simple, but every customization becomes a code change. The default workflow becomes the only workflow.
-2. **Make the user write a config from scratch.** Flexible, but every project starts with zero leverage. The first run is a research project.
-
-Ralph Workflow picks a third shape: **the runtime follows declared policy** and ships a **bundled default policy** that is strong enough to start with. The user can override any policy section without touching Python.
+Ralph Workflow loads a bundled default policy and applies project-local policy
+overrides without requiring Python changes.
 
 ### What lives in policy
 
@@ -115,24 +111,26 @@ The bundled default policy lives in `ralph/policy/defaults/*.toml`.
 
 `ralph/pipeline/orchestrator.py` is a **pure `determine_next_effect`** function: given the current `PipelineState`, it consults the policy and returns the next effect to execute. The effect is then handed to the appropriate handler in `ralph/phases/`.
 
-The runtime is intentionally thin:
+The runtime:
 
 - It does **not** decide which phases exist — policy decides.
 - It does **not** decide which agent handles a phase — the routing layer consults policy and returns the agent name.
 - It does **not** decide what counts as recovery — policy declares the transitions and the runtime enforces them.
 - It does **not** decide what artifacts are required — the artifact contract is policy, and the runtime fails the phase if it's missing.
 
-### Why the runtime fails closed
+### Fail-closed behavior
 
 If policy is unsatisfiable (e.g. a chain references an unknown agent, or a recovery transition has no budget), the runtime **fails closed** rather than guessing. The `ralph --check-policy` command validates a policy bundle before a real run; the validation runs the same code path the runtime uses, so a green check means the runtime will not fail with a policy-shaped error during the run.
 
 ### Where policy ends and code begins
 
-The boundary is intentional: **policy decides** what the pipeline *should* do for a given state; **code enforces** what the pipeline *must* do (atomicity, checkpoint integrity, watchdog invariants, artifact validation, budget caps). If the behavior is project- or team-specific, it belongs in policy. If it's a correctness invariant, it belongs in code with a test.
+**Policy decides** what the pipeline *should* do for a given state; **code enforces** what the pipeline *must* do (atomicity, checkpoint integrity, watchdog invariants, artifact validation, budget caps). If the behavior is project- or team-specific, it belongs in policy. If it's a correctness invariant, it belongs in code with a test.
 
-### The tradeoffs
+### Policy validation
 
-The composed shape accepts three costs: a **two-file minimum** (even the smallest customization requires a `ralph-workflow.toml` next to your `PROMPT.md`), **validation is mandatory** (every policy change runs through the same validator the runtime uses), and **defaults are versioned** (the bundled policy ships with Ralph Workflow; changes between versions are documented in the changelog). The trade is **legibility**: a reader can answer "why did this run route through this agent?" by reading one policy file, not by reading runtime code.
+Run `ralph --check-policy` after changing policy. It uses the runtime's policy
+validator and reports unsatisfied phase, route, recovery, and artifact
+contracts before a run starts.
 
 ---
 
@@ -178,7 +176,7 @@ After every reducer the runtime writes a checkpoint to `.agent/checkpoint.json` 
 
 ### Fan-out
 
-For multi-unit plans, the policy can declare `parallel_plan` or `work_units`. Parallel execution is delegated to the executing AI agent in the bundled default — Ralph-managed fan-out is dormant and retained only for future use. See [Advanced Pipeline Configuration → Parallel execution (agent-driven)](advanced-pipeline-configuration.md#parallel-execution-agent-driven) for the opt-in contract.
+For multi-unit plans, the policy can declare `parallel_plan` or `work_units`. Parallel execution is delegated to the executing AI agent in the bundled default — Ralph-managed fan-out is dormant. See [Advanced Pipeline Configuration → Parallel execution (agent-driven)](advanced-pipeline-configuration.md#parallel-execution-agent-driven) for the opt-in contract.
 
 ### Terminal outcomes
 
@@ -190,9 +188,9 @@ A run ends in one of four terminal outcomes: `done` (every phase produced its ar
 
 An **artifact** is the durable evidence a phase produces. Ralph Workflow's artifact lifecycle is what turns a phase's agent invocation into a handoff the user can inspect the next morning.
 
-### Why artifacts, not transcripts
+### Artifacts and transcripts
 
-A chat transcript shows what the agent *said*. An artifact shows what the agent *did*. For unattended runs that you review in the morning, the artifact is what you actually inspect. Ralph Workflow's policy declares an **artifact contract** per phase. The runtime validates the contract before accepting the phase as `done`. If the contract is missing, the phase returns `fix-needed` or `blocked`, not `done`.
+A chat transcript shows what the agent *said*. An artifact shows what the agent *did*. An artifact is the durable evidence a phase produces; policy declares an **artifact contract** per phase; the runtime validates the contract before accepting the phase as `done`; a missing contract yields `fix-needed` or `blocked`, not `done`.
 
 ### The artifact format
 
@@ -241,9 +239,9 @@ When the final reducer decides the run is at a terminal state, the runtime calls
 
 The terminal is the **only** signal the runtime hands back. There is no "trust the transcript" path. If the terminal is `done`, the run is done.
 
-### Why the canonical path matters
+### The canonical submission path
 
-The canonical submission path is audited because ad-hoc artifact writes are an attack surface: a bad artifact could advance the pipeline past verification. By making the canonical path the only supported write, the runtime guarantees every artifact passes its type's boundary, including the sanity-only plan check, every artifact is associated with a run ID, every artifact is recorded in the audit sink, and no artifact can bypass validation.
+The runtime guarantees that every artifact passes its type's boundary, including the sanity-only plan check, every artifact is associated with a run ID, every artifact is recorded in the audit sink, and no artifact can bypass validation.
 
 ---
 
@@ -305,7 +303,7 @@ git checkout refs/ralph/proposals/<run>/<iteration> -- .
 
 ### Phase rename and checkpoint compatibility
 
-Commit review replaced the former cleanup phase. The pre-rename phase names and the removed cleanup role, artifact, counter, template, and skill identifiers are gone, and Ralph Workflow performs **no checkpoint migration** for them. A checkpoint that still names a pre-rename phase is not rewritten — the run cannot route that phase and fails. Start a fresh run after upgrading.
+The current phase names in the bundled default policy (`ralph/policy/defaults/pipeline.toml`) are `planning`, `planning_analysis`, `development`, `development_commit_review`, `development_commit`, `development_analysis`, `development_final_commit_review`, `development_final_commit`, `complete`, and `failed_terminal`. Ralph Workflow performs **no checkpoint migration** for renamed phases: a checkpoint that still names a pre-rename phase is not rewritten, the run cannot route that phase, and the run fails. Start a fresh run after upgrading.
 
 ---
 
@@ -339,19 +337,15 @@ for the enforcement mechanism and audit inventory.
 
 The verification model has explicit non-circumvention rules. Highlights: lint, typecheck, and test checks cannot be weakened to get green; the MCP timeout contract cannot be bypassed without an inline marker and a documented reason; resource accumulators must carry a size cap or a justified marker; the test budget cannot be circumvented by splitting or renaming; artifact submissions must go through the canonical path; the fabrication guard cannot be weakened or skipped. These are **policies**, not suggestions. Each one is enforced by an audit or a runtime check, and each bypass requires an entry in a documented allowlist.
 
-### Why the verification model is strict
-
-The verification model exists because the project has shipped bugs, stale claims, and fabricated stats. The strict checks are the response: they make the failure mode **loud** rather than silent. The 60-second budget, in particular, exists because slow tests create feedback loops that erode developer trust in the test suite. The budget forces the test design to be fast by construction, which forces production code to be testable by construction.
-
 ---
 
 ## Watchdogs
 
 Ralph Workflow uses **watchdogs** to detect stuck or crashed agents and **timeout policies** to bound how long any operation may take. Both are policy-declared; the runtime enforces them.
 
-### Why watchdogs matter for unattended runs
+### Unattended runs
 
-An unattended run by definition has no human in the loop. The runtime is the only thing watching the agents. If an agent is stuck — looping, waiting on input that never comes, crashed silently — the runtime must detect and recover before the run wastes hours. The original Ralph loop has no watchdog: it just keeps prompting until the model says "done". Ralph Workflow replaces this with a structured watchdog that consults policy.
+An unattended run by definition has no human in the loop. The runtime is the only thing watching the agents. If an agent is stuck — looping, waiting on input that never comes, crashed silently — the runtime must detect and recover before the run wastes hours. The watchdog consults policy.
 
 ### The four evidence channels
 
@@ -405,7 +399,7 @@ Long resolutions publish low-cadence status with the current round or stop, late
 
 See [Configuration](configuration.md#conflict_resolution) to tune the documented bounds and [Troubleshooting](troubleshooting.md) when a resolution terminates.
 
-### Why bounded MCP timeouts are non-negotiable
+### Bounded MCP timeouts
 
 An unbounded MCP call hangs the MCP server thread and starves the agent of output. The `subprocess.run`/`.communicate`/`.wait` calls in `ralph/mcp/` MUST carry a `timeout=` parameter, as must `httpx.*`, `requests.*`, `urlopen`, and `socket.create_connection`. The only bypass is a structural-exemption entry in `ralph/testing/audit_mcp_timeout.py` that names the call site and its reason; a source comment does not exempt a call. The audit (`ralph/testing/audit_mcp_timeout.py`) runs under `make verify`, so a missing timeout is a hard failure, not a warning.
 
@@ -447,8 +441,10 @@ route.
 - Non-null `work_unit` and `worker_namespace` materialization inputs fail closed
   with `ValueError` in `ralph.prompts.materialize` (the developer execution
   path is the only live entry point). They are not CLI flags and not
-  operator-facing; they are historical `PromptPhaseOptions` /
-  `materialize_master_prompt` kwargs retained for backward compatibility.
+  operator-facing; `ralph.prompts.materialize.PromptPhaseOptions` carries them as
+  fields, `ralph.prompts.materialize.materialize_prompt_for_phase` accepts them
+  as keyword arguments, and `ralph.prompts.master_prompt.materialize_master_prompt`
+  accepts `worker_namespace` as a keyword argument.
 
 ### Single-audience prompt contract
 

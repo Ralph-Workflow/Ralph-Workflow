@@ -346,6 +346,35 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
             "originally implemented in S-1 and S-2",
         ),
     ),
+    (
+        "ralph-workflow/docs/sphinx/concepts.md",
+        (
+            "### Tradeoffs the simple core accepts",
+            "### Why policy is the right boundary",
+            "Two alternatives were possible:",
+            "Hard-code the pipeline in Python",
+            "Make the user write a config from scratch",
+            "Ralph Workflow picks a third shape",
+            "### The tradeoffs",
+            "The composed shape accepts three costs",
+            "The tradeoff buys verification, recovery, and reviewability",
+            "The tradeoff buys not having to babysit",
+            "two-file minimum",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/superpowers/plans/2026-05-21-parallel-worker-bootstrap-isolation.md",
+        (
+            "**Superseded**: worker orchestration is deprecated",
+            "## Root cause this plan addresses",
+            "The codebase already contains a unit-specific prompt renderer",
+            "This plan directly addresses the real cause found in the codebase",
+            "Plan complete and saved to",
+            "Which approach?",
+            "render_worker_prompt",
+            "Parallel Worker Bootstrap Isolation Implementation Plan",
+        ),
+    ),
 )
 
 
