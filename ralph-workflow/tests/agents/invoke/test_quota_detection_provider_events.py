@@ -1,22 +1,26 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import raise_if_quota_exhausted
-from ralph.agents.invoke._process_reader import ProcessLineReader
-from ralph.agents.invoke._quota_detection import is_provider_quota_output_line
-from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
-from ralph.agents.invoke._types import ProcessReaderCtx
+from ralph.agents.invoke import (
+    ProcessLineReader,
+    ProcessReaderCtx,
+    QuotaExhaustedError,
+    is_provider_quota_output_line,
+    raise_if_quota_exhausted,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.process.manager import ManagedProcess
 
 _QUOTA_WORDS = "Your account has credits exhausted for this period."
 
@@ -114,7 +118,7 @@ class _Handle:
 
 def _reader(tmp_path: Path, handle: _Handle) -> ProcessLineReader:
     return ProcessLineReader(
-        handle,  # type: ignore[arg-type]
+        cast("ManagedProcess", handle),
         ProcessReaderCtx(
             config=AgentConfig(cmd="codex", transport=AgentTransport.CODEX),
             policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),

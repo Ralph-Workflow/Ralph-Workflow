@@ -107,7 +107,7 @@ tests/config/test_heartbeat_ceiling_config.py|0,2,0
 tests/config/test_no_output_at_start_config.py|0,2,0
 tests/config/test_retention_max_age_config.py|0,0,1
 tests/config/test_workspace_change_weights_config.py|0,2,0
-tests/conftest.py|1,2,15
+tests/conftest.py|1,2,14
 tests/display/test_generated_scene_renderer.py|0,1,5
 tests/display/test_generated_scene_salience.py|0,1,0
 tests/display/test_operator_display_labels.py|0,2,0

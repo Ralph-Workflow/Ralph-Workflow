@@ -15,6 +15,7 @@ from loguru import logger
 
 from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.executor import ExecutorError, WorkerResult
+from ralph.agents.invoke._quota_detection import is_provider_quota_output_line
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
@@ -37,7 +38,6 @@ from ralph.process.manager import (
 )
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 from ralph.process.teardown import teardown_subtree, verified_child_session_pgid
-from ralph.recovery.failure_classifier import _is_subscription_limit_message
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Coroutine, Mapping, Sequence
@@ -194,7 +194,7 @@ class SubprocessAgentExecutor:
         raw_line: bytes,
     ) -> str:
         line = sanitize_display_line(raw_line.rstrip(b"\n"))
-        if _is_subscription_limit_message([line]):
+        if is_provider_quota_output_line(line):
             await handle.terminate(grace_period_s=0)
             raise QuotaExhaustedError(_binary_basename(self._command), line)
         return line

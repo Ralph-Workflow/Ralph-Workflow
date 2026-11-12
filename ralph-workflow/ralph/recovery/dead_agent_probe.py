@@ -4,10 +4,14 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.registry import AgentRegistry
+from ralph.recovery.canary_probe import run_canary_probe
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.config.agent_config import AgentConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 
 DEFAULT_MAX_PROBES_PER_RUN = 3
@@ -42,4 +46,23 @@ def build_dead_agent_probe_runner(
     return run
 
 
-__all__ = ["DEFAULT_MAX_PROBES_PER_RUN", "build_dead_agent_probe_runner"]
+def production_dead_agent_probe_runner(
+    config: UnifiedConfig | None,
+) -> Callable[[str, str], ProbeOutcome | None] | None:
+    if config is None:
+        return None
+
+    def resolve_agent(name: str) -> AgentConfig | None:
+        return AgentRegistry.from_config(config).get(name)
+
+    return build_dead_agent_probe_runner(
+        resolve_agent,
+        lambda agent_config: run_canary_probe(agent_config, general_config=config.general),
+    )
+
+
+__all__ = [
+    "DEFAULT_MAX_PROBES_PER_RUN",
+    "build_dead_agent_probe_runner",
+    "production_dead_agent_probe_runner",
+]

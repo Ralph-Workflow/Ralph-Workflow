@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from ralph.config.models import UnifiedConfig
 from ralph.display.auto_integrate_message import format_integration_label
 from ralph.display.integration_display_label import IntegrationDisplayLabel
+from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.pipeline import run_loop
 from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
     next_integration_action,
@@ -16,6 +19,7 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -109,11 +113,6 @@ def test_record_status_integrating_maps_to_integration_label() -> None:
 def test_unreadable_evidence_projects_to_ladder_escalation_label(
     tmp_path: object, cause: str
 ) -> None:
-    from ralph.config.models import UnifiedConfig
-    from ralph.git.subprocess_runner import GitRunOptions, run_git
-    from ralph.pipeline import run_loop
-    from ralph.workspace.scope import WorkspaceScope
-
     for args in (
         ["init", "-q", "-b", "main"],
         ["config", "user.email", "t@t"],

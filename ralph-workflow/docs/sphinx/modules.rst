@@ -3614,6 +3614,27 @@ ralph.recovery
 .. automodule:: ralph.recovery
    :no-members:
 
+ralph.recovery.attempt_facts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.attempt_facts
+   :members:
+   :show-inheritance:
+
+ralph.recovery.attribution
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.attribution
+   :members:
+   :show-inheritance:
+
+ralph.recovery.canary_probe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.canary_probe
+   :members:
+   :show-inheritance:
+
 ralph.recovery.classifier
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3646,6 +3667,20 @@ ralph.recovery.cycle_cap
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.cycle_cap
+   :members:
+   :show-inheritance:
+
+ralph.recovery.dead_agent_probe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.dead_agent_probe
+   :members:
+   :show-inheritance:
+
+ralph.recovery.dead_agent_verdict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.dead_agent_verdict
    :members:
    :show-inheritance:
 

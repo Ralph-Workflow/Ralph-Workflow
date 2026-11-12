@@ -116,6 +116,7 @@ def compute_continuation_retry_gate_key(
                 RecoveryController,
                 RecoveryControllerOptions,
             )
+            from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
             from ralph.workspace.scope import WorkspaceScope
 
             scope = WorkspaceScope(root=root)
@@ -123,7 +124,10 @@ def compute_continuation_retry_gate_key(
                 load_policy_bundle_for_run(scope, config) if config is not None else None
             )
             effective_controller = RecoveryController(
-                options=RecoveryControllerOptions(policy_bundle=policy_bundle)
+                options=RecoveryControllerOptions(
+                    policy_bundle=policy_bundle,
+                    dead_agent_probe_runner=production_dead_agent_probe_runner(config),
+                )
             )
         except Exception as exc:
             logger.debug("compute_continuation_retry_gate_key: fallback controller init: {}", exc)

@@ -17,6 +17,7 @@ from ralph.agents.invoke import (
     InvokeRuntimeOptions,
     PiContextExhaustedExitError,
     SupervisionInfrastructureError,
+    attempt_facts_for_failure,
     build_invoke_options_from_config,
     extract_transport_session_id,
     invoke_agent,
@@ -477,19 +478,23 @@ def _attempt_failure_observation(
     state: _AttemptState,
     probe: WorkspaceChangeProbe | None,
     workspace: Workspace | None,
-) -> AgentFailureEvent | None:
+    exc: BaseException,
+) -> AgentFailureEvent:
     existing = state.last_observation
     if existing is not None:
-        return existing
-    if not state.attempt_observed or probe is None or workspace is None:
-        return None
-    changed = bool(probe.has_changed(str(ctx.effect.phase), workspace))
-    observation = AgentFailureEvent(
-        phase=str(ctx.effect.phase),
-        agent=ctx.effect.agent_name,
-        artifact_valid=False,
-        workspace_changed=changed,
-    )
+        observation = existing
+    else:
+        changed: bool | None = None
+        if state.attempt_observed and probe is not None and workspace is not None:
+            changed = bool(probe.has_changed(str(ctx.effect.phase), workspace))
+        observation = AgentFailureEvent(
+            phase=str(ctx.effect.phase),
+            agent=ctx.effect.agent_name,
+            artifact_valid=False,
+            workspace_changed=changed,
+        )
+    if observation.facts is None:
+        observation = replace(observation, facts=attempt_facts_for_failure(exc))
     state.last_observation = observation
     return observation
 
@@ -845,7 +850,7 @@ def _invoke_agent_with_recovery(
                     raw_output=raw_output,
                     rendered_output=rendered_output,
                     observation=_attempt_failure_observation(
-                        ctx, state, workspace_probe, attempt_workspace
+                        ctx, state, workspace_probe, attempt_workspace, exc
                     ),
                 )
 
@@ -872,7 +877,7 @@ def _invoke_agent_with_recovery(
                 exc,
                 agent_invocation_error_sink=agent_invocation_error_sink,
                 observation=_attempt_failure_observation(
-                    ctx, state, workspace_probe, attempt_workspace
+                    ctx, state, workspace_probe, attempt_workspace, exc
                 ),
             )
     except (
@@ -908,7 +913,7 @@ def _invoke_agent_with_recovery(
                 exc,
                 agent_invocation_error_sink=agent_invocation_error_sink,
                 observation=_attempt_failure_observation(
-                    ctx, state, workspace_probe, attempt_workspace
+                    ctx, state, workspace_probe, attempt_workspace, exc
                 ),
             )
         raise

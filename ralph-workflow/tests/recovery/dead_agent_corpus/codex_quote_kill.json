@@ -4,6 +4,7 @@
   "agent": "codex",
   "transport": "codex",
   "incident": 2,
+  "incidents": [2, 3],
   "expected_attribution": "runtime",
   "expected_bench": false,
   "expected_verdict": "healthy",

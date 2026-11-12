@@ -3,16 +3,18 @@ from __future__ import annotations
 import contextlib
 import os
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import attempt_facts_from_exception
-from ralph.agents.invoke._process_reader import ProcessLineReader
-from ralph.agents.invoke._pty_line_reader import PtyLineReader
-from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
-from ralph.agents.invoke._types import ProcessReaderCtx
+from ralph.agents.invoke import (
+    ProcessLineReader,
+    ProcessReaderCtx,
+    PtyLineReader,
+    QuotaExhaustedError,
+    attempt_facts_from_exception,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -20,6 +22,8 @@ from ralph.recovery.attempt_facts import TerminationIssuer, has_return_code_disc
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
 
 _QUOTA_LINE = "RESOURCE_EXHAUSTED (code 429)\n"
 
@@ -29,6 +33,7 @@ class _KilledOnTerminate:
 
     stdin = None
     pid: int | None = None
+    master_fd: int | None = None
 
     def __init__(self, stdout: object = None) -> None:
         self.stdout = stdout
@@ -67,7 +72,7 @@ class _OneLineThenBlock:
 def _quota_error_from_pipe(tmp_path: Path) -> tuple[QuotaExhaustedError, _KilledOnTerminate]:
     handle = _KilledOnTerminate(_OneLineThenBlock(_QUOTA_LINE))
     reader = ProcessLineReader(
-        handle,  # type: ignore[arg-type]
+        cast("ManagedProcess", handle),
         ProcessReaderCtx(
             config=AgentConfig(cmd="codex", transport=AgentTransport.CODEX),
             policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
@@ -98,7 +103,7 @@ def test_pipe_quota_kill_reports_observed_returncode_and_issuer(tmp_path: Path) 
 def test_pty_quota_kill_attributes_the_detector_and_attaches_facts(tmp_path: Path) -> None:
     master_fd = os.open("/dev/null", os.O_RDONLY)
     handle = _KilledOnTerminate()
-    handle.master_fd = master_fd  # type: ignore[attr-defined]
+    handle.master_fd = master_fd
     ctx = SimpleNamespace(
         config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE),
         policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
@@ -108,7 +113,9 @@ def test_pty_quota_kill_attributes_the_detector_and_attaches_facts(tmp_path: Pat
         waiting_listener=None,
         workspace_path=tmp_path,
     )
-    reader = PtyLineReader(handle, "claude", ctx, FakeClock(start=0.0), extras=None)  # type: ignore[arg-type]
+    reader = PtyLineReader(
+        cast("ManagedPtyProcess", handle), "claude", ctx, FakeClock(start=0.0), extras=None
+    )
     try:
         reader._terminate_for_quota(_QUOTA_LINE)
         with pytest.raises(QuotaExhaustedError) as caught:

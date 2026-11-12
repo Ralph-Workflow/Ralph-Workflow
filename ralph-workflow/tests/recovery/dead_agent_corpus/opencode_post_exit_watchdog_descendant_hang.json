@@ -1,0 +1,32 @@
+{
+  "id": "opencode_post_exit_watchdog_descendant_hang",
+  "label": "negative",
+  "agent": "opencode",
+  "transport": "opencode",
+  "incident": 6,
+  "expected_attribution": "runtime",
+  "expected_bench": false,
+  "expected_verdict": "not_agent_fault",
+  "captured_lines": [
+    "{\"type\": \"tool_use\", \"sessionID\": \"s_0001\", \"part\": {\"type\": \"tool\", \"tool\": \"read_file\", \"callID\": \"c_0001\", \"state\": {\"status\": \"completed\", \"input\": {\"path\": \"docs/agents/verification.md\"}, \"output\": \"verification\"}}}",
+    "[post-exit-watchdog] FIRE reason=descendant_hang elapsed=30.0s",
+    "origin=agent issuer=None Agent 'opencode' failed with code 0: agent session exited without required completion evidence [elapsed=48.6s]"
+  ],
+  "tool_calls": [
+    "read_file"
+  ],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 48600,
+  "exit_status": "killed_sigterm",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "post_exit_watchdog",
+    "observed_returncode": -15,
+    "reported_returncode": 0,
+    "liveness_observed": true
+  },
+  "notes": "Incident 6. An opencode planning session passed its tool calls (last read_file docs/agents/verification.md), then the post-exit watchdog fired for descendant_hang after 30.0 seconds and killed the tree; the attempt surfaced as code 0 while the process manager saw rc=-15. The watchdog's own kill is recorded as the issuer and is never counted as the agent's failure."
+}

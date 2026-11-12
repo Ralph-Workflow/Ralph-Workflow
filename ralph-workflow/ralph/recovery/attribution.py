@@ -12,6 +12,7 @@ __all__ = [
     "RuntimeCause",
     "attribute_attempt",
     "authoritative_typed_signal_convicts_agent",
+    "liveness_observed",
     "mid_run_activity_clears_agent",
     "peers_fail_identically_points_to_task",
     "runtime_or_unattributed_kill_of_live_session_clears_agent",
@@ -112,7 +113,7 @@ _RUNTIME_ISSUER_CAUSES: Final[dict[TerminationIssuer, _RuntimeCause]] = {
 }
 
 
-def _liveness_observed(facts: AttemptFacts) -> bool:
+def liveness_observed(facts: AttemptFacts) -> bool:
     if facts.liveness_observed is True:
         return True
     if facts.subagent_activity_observed is True:
@@ -138,7 +139,7 @@ def runtime_or_unattributed_kill_of_live_session_clears_agent(
     runtime_cause = _RUNTIME_ISSUER_CAUSES.get(termination.issuer)
     if runtime_cause is None:
         return None
-    if not _liveness_observed(facts):
+    if not liveness_observed(facts):
         return None
     return _AttributionVerdict(
         attribution=_Attribution.RUNTIME,

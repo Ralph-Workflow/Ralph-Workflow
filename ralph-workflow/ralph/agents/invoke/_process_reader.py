@@ -1371,6 +1371,13 @@ def _run_subprocess_and_read_lines(
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
+            handle.terminate(grace_period_s=0.5)
+            capture_pid = cast("int | None", getattr(handle, "pid", None))
+            if capture_pid is not None:
+                if ctx.process_teardown is None:
+                    teardown_subtree(capture_pid, issuer="invoke:process")
+                else:
+                    ctx.process_teardown.teardown_subtree(capture_pid, issuer="invoke:process")
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)

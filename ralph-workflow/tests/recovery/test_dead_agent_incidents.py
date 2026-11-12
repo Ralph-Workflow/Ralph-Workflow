@@ -7,27 +7,28 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 import pytest
 
 from ralph.agents.execution_state import AgentExecutionState
-from ralph.agents.idle_watchdog import WatchdogFireReason
-from ralph.agents.idle_watchdog._evidence_tier import ChannelName
-from ralph.agents.idle_watchdog._stuck_classifier import StuckKind, classify_stuck
+from ralph.agents.idle_watchdog import ChannelName, StuckKind, WatchdogFireReason, classify_stuck
 from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
-from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
-from ralph.agents.invoke._completion import (
-    _handle_non_zero_returncode,
-    _raise_if_transport_reported_error,
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+    InactivityTimeoutOpts,
+    ProcessLineReader,
+    ProcessReaderCtx,
+    QuotaExhaustedError,
+    TerminationRecorder,
+    attempt_facts_from_exception,
+    check_process_result,
+    is_provider_quota_output_line,
 )
-from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
-from ralph.agents.invoke._process_reader import ProcessLineReader
-from ralph.agents.invoke._quota_detection import is_provider_quota_output_line
-from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
-from ralph.agents.invoke._types import ProcessReaderCtx
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.agent_config import AgentConfig
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
 from ralph.process.manager import ManagedProcess, ProcessManager, ProcessRecord, ProcessStatus
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 from tests.recovery._scenario_harness import AgentAttemptResult, run_scenario
@@ -35,8 +36,6 @@ from tests.recovery._scenario_harness import AgentAttemptResult, run_scenario
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.agents.invoke._completion import CompletionCheckOptions
-    from ralph.process.manager._process_manager_types import _SyncProcessLike
     from ralph.process.teardown import ProcessTeardown
 
 PHASE = "development"
@@ -437,42 +436,39 @@ def test_incident_3_user_prompt_quota_words_do_not_trigger_the_quota_detector() 
     )
 
 
-def test_incident_4_the_reported_return_code_is_read_from_the_agent_handle() -> None:
-    handle = FakeManagedHandle(returncode=None, issuer="invoke:process")
+def test_incident_4_an_unattributed_signal_end_records_unknown_and_the_observed_code() -> None:
+    handle = FakeManagedHandle(returncode=-15, issuer=None)
+    recorder = TerminationRecorder()
 
     with pytest.raises(AgentInvocationError) as excinfo:
-        _raise_if_transport_reported_error(
+        check_process_result(
             cast("ManagedProcess", handle),
             "opencode",
-            [INCIDENT_4_OPENCODE_TRANSPORT_ERROR_LINE],
+            [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
+            termination_recorder=recorder,
         )
 
     error = excinfo.value
-    assert error.returncode == 0, (
-        "the reported code comes from the agent handle, which had no terminal status, so it is "
-        f"reported as 0 (observed: {error.returncode!r})"
+    facts = attempt_facts_from_exception(error)
+    assert facts is not None
+    assert facts.termination is not None
+    assert facts.termination.issuer is TerminationIssuer.UNKNOWN, (
+        "a kill nobody attributed is unknown, never an agent exit "
+        f"(observed: {facts.termination.issuer!r})"
     )
-    assert error.failure_origin == "agent", (
-        f"the failure origin defaults to agent (observed: {error.failure_origin!r})"
-    )
-    assert error.issuer is None, (
-        "the handle already reported a termination issuer, but this path never reads it "
-        f"(observed issuer: {error.issuer!r})"
+    assert facts.termination.observed_returncode == -15
+    assert error.issuer == TerminationIssuer.UNKNOWN.value, (
+        f"the failure carries the recorded issuer instead of None (observed: {error.issuer!r})"
     )
 
 
-def test_incident_4_the_issuer_is_kept_only_for_signal_codes_on_the_non_zero_branch() -> None:
+def test_incident_4_the_issuer_is_kept_for_signal_codes_and_recorded_for_plain_exits() -> None:
     killed = FakeManagedHandle(returncode=-15, issuer="invoke:process")
     with pytest.raises(AgentInvocationError) as killed_error:
-        _handle_non_zero_returncode(
+        check_process_result(
             cast("ManagedProcess", killed),
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
-            cast("CompletionCheckOptions | None", None),
-            -15,
-            "",
-            False,
-            None,
         )
 
     assert killed_error.value.issuer == "invoke:process", (
@@ -484,20 +480,17 @@ def test_incident_4_the_issuer_is_kept_only_for_signal_codes_on_the_non_zero_bra
     )
 
     plain = FakeManagedHandle(returncode=1, issuer="invoke:process")
+    recorder = TerminationRecorder()
     with pytest.raises(AgentInvocationError) as plain_error:
-        _handle_non_zero_returncode(
+        check_process_result(
             cast("ManagedProcess", plain),
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
-            cast("CompletionCheckOptions | None", None),
-            1,
-            "",
-            False,
-            None,
+            termination_recorder=recorder,
         )
 
-    assert plain_error.value.issuer is None, (
-        "an issuer is only kept for the signal codes -15 and 143 "
+    assert plain_error.value.issuer == TerminationIssuer.AGENT_EXIT.value, (
+        "an ordinary non-zero exit is recorded as the agent's own exit "
         f"(observed issuer: {plain_error.value.issuer!r})"
     )
     assert plain_error.value.failure_origin == "agent", (
@@ -517,7 +510,7 @@ def test_incident_4_the_reported_code_and_the_process_manager_code_are_separate_
         label="invoke:opencode",
     )
     handle = ManagedProcess(
-        cast("_SyncProcessLike", FakeSyncProcess(0)),
+        FakeSyncProcess(0),
         record,
         ProcessManager(),
     )
@@ -589,7 +582,9 @@ def test_incident_4_each_candidate_kill_source_leaves_a_distinguishable_signatur
     )
 
 
-def test_incident_4_every_known_killer_records_an_issuer_instead_of_the_unattributed_signature() -> None:
+def test_incident_4_every_known_killer_records_an_issuer_instead_of_the_unattributed_signature() -> (
+    None
+):
     unattributed_signature = ("agent", None, 0)
     supervisor = AgentInactivityTimeoutError(
         "opencode",

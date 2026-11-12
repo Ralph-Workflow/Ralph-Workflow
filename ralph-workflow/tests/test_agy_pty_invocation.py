@@ -208,8 +208,9 @@ def test_agy_invoke_completes_when_completion_signal_present(
         options: SimpleNamespace,
         *,
         _clock: object,
+        termination_recorder: object = None,
     ) -> None:
-        del handle, agent_name, parsed_output, _clock
+        del handle, agent_name, parsed_output, _clock, termination_recorder
         captured_explicit_completion_seen.append(options.explicit_completion_seen)
 
     def fake_run_subprocess_and_read_lines(*args: object, **kwargs: object) -> object:
@@ -415,8 +416,9 @@ def test_ansi_wrapped_completion_marker_detected(
         options: SimpleNamespace,
         *,
         _clock: object,
+        termination_recorder: object = None,
     ) -> None:
-        del handle, agent_name, parsed_output, _clock
+        del handle, agent_name, parsed_output, _clock, termination_recorder
         captured_completion_seen.append(options.explicit_completion_seen)
 
     def fake_get_process_manager() -> _FakeProcessManager:

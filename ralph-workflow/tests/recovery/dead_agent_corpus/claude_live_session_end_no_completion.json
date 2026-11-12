@@ -1,0 +1,35 @@
+{
+  "id": "claude_live_session_end_no_completion",
+  "label": "negative",
+  "agent": "claude",
+  "transport": "claude",
+  "incident": 5,
+  "expected_attribution": "runtime",
+  "expected_bench": false,
+  "expected_verdict": "not_agent_fault",
+  "captured_lines": [
+    "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", \"id\": \"toolu_01\", \"name\": \"Read\", \"input\": {\"file_path\": \"ralph/recovery/controller.py\"}}]}}",
+    "{\"type\": \"user\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"toolu_01\", \"content\": \"class RecoveryController:\"}]}}",
+    "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", \"id\": \"toolu_02\", \"name\": \"Read\", \"input\": {\"file_path\": \"ralph/recovery/canary_probe.py\"}}]}}",
+    "{\"type\": \"user\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"toolu_02\", \"content\": \"def run_canary_probe\"}]}}",
+    "{\"type\": \"result\", \"subtype\": \"success\", \"is_error\": false, \"result\": \"I have read both files.\"}"
+  ],
+  "tool_calls": [
+    "Read",
+    "Read"
+  ],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 97900,
+  "exit_status": "exit_0",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "unknown",
+    "observed_returncode": 0,
+    "reported_returncode": 0,
+    "liveness_observed": true
+  },
+  "notes": "Incident 5. A claude planning session ran tool calls that passed (reading controller.py and canary_probe.py) for 97.9 seconds, then ended with exit 0 and no completion sentinel or plan receipt. No issuer was recorded and no probe ran. A live productive session with an unattributed end is not evidence against the agent and must never be benched or marked spent."
+}

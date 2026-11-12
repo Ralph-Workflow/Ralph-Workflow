@@ -132,6 +132,7 @@ def _return_code_may_be_a_signal(returncode: int | None) -> bool:
         return True
     return returncode < 0 or _SHELL_SIGNAL_EXIT_MIN <= returncode <= _SHELL_SIGNAL_EXIT_MAX
 
+
 _EXCEPTION_CHAIN_LIMIT = 8
 
 

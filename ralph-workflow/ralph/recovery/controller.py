@@ -395,6 +395,9 @@ def build_dead_agent_verdict(
     return decide(facts, effective_attribution, probe_outcome, typed_signal)
 
 
+_HEALTHY_VERDICT_VALUE = "healthy"
+
+
 def _verdict_benches_agent(verdict: PersistedVerdict) -> bool:
     namespace = _dead_agent_verdict_namespace()
     predicate = cast(
@@ -562,7 +565,9 @@ class RecoveryController:
                 )
             else:
                 counts_toward_agent_state = _verdict_counts_toward_agent_state(verdict)
-                if counts_toward_agent_state:
+                if str(verdict.verdict) == _HEALTHY_VERDICT_VALUE:
+                    failure = _without_unavailability_reason(failure)
+                elif counts_toward_agent_state:
                     failure = _without_broken_agent_reason(failure)
                 else:
                     failure = _without_unavailability_reason(failure)
@@ -652,7 +657,7 @@ class RecoveryController:
             ):
                 return preliminary
         if self._dead_agent_probe_runner is not None and agent is not None:
-            probe_outcome = self._dead_agent_probe_runner(phase, agent)
+            probe_outcome = self._run_probe_fail_open(phase, agent)
         if self._dead_agent_verdict_runner is not None:
             return self._dead_agent_verdict_runner(
                 facts=effective_facts,
@@ -668,6 +673,16 @@ class RecoveryController:
             probe_outcome=probe_outcome,
             typed_signal=typed_signal,
         )
+
+    def _run_probe_fail_open(self, phase: str, agent: str) -> ProbeOutcome | None:
+        runner = self._dead_agent_probe_runner
+        if runner is None:
+            return None
+        try:
+            return runner(phase, agent)
+        except Exception as exc:
+            logger.warning("dead-agent probe crashed phase={} agent={}: {}", phase, agent, exc)
+            return None
 
     def record_confirmed_unavailability(
         self,

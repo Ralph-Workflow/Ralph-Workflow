@@ -259,7 +259,7 @@ def test_invoke_agent_with_recovery_health_check_mcp_server_error_returns_agent_
     )
     from ralph.pipeline.events import PipelineEvent
 
-    assert result is PipelineEvent.AGENT_FAILURE
+    assert result == PipelineEvent.AGENT_FAILURE
 
     assert exception_calls == []
 

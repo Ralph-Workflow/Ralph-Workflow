@@ -19,7 +19,9 @@ from tests.recovery._corpus_derive import (
 EXPECTED_POSITIVE_IDS = frozenset({"agy_quota_error_step"})
 EXPECTED_NEGATIVE_IDS = frozenset(
     {
+        "claude_live_session_end_no_completion",
         "codex_quote_kill",
+        "opencode_post_exit_watchdog_descendant_hang",
         "opencode_subagent_kill",
         "transient_reconnecting_events",
         "slow_productive_midrun_error",
@@ -90,7 +92,7 @@ def test_the_corpus_report_line_counts_the_labelled_cases() -> None:
 
     report = f"fixtures={len(cases)}, positives={positives}, negatives={negatives}"
 
-    assert report == "fixtures=8, positives=1, negatives=7"
+    assert report == "fixtures=10, positives=1, negatives=9"
 
 
 def test_the_agy_case_derives_one_event_and_no_tool_calls() -> None:

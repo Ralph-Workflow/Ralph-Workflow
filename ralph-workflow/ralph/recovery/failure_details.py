@@ -24,9 +24,31 @@ def failure_message_parts(exc: BaseException | str) -> list[str]:
     return parts
 
 
-def failure_detail_parts(exc: BaseException | str) -> list[str]:
+class FailureDetailParts(list[str]):
+    provider_parts: tuple[str, ...]
+
+    def __init__(self, parts: Iterable[str], provider_parts: Iterable[str]) -> None:
+        super().__init__(parts)
+        self.provider_parts = tuple(provider_parts)
+
+
+def provider_message_parts(exc: BaseException | str) -> list[str]:
     if isinstance(exc, str):
         return failure_message_parts(exc)
+    parsed_output = cast("object", getattr(exc, "parsed_output", None))
+    carries_transcript = isinstance(parsed_output, list) and bool(parsed_output)
+    stderr = cast("object", getattr(exc, "stderr", None))
+    if isinstance(stderr, str) and stderr.strip():
+        return [stderr.strip()]
+    if carries_transcript:
+        return []
+    return failure_message_parts(exc)
+
+
+def failure_detail_parts(exc: BaseException | str) -> FailureDetailParts:
+    provider_parts = provider_message_parts(exc)
+    if isinstance(exc, str):
+        return FailureDetailParts(failure_message_parts(exc), provider_parts)
 
     parts = failure_message_parts(exc)
     parsed_output = cast("object", getattr(exc, "parsed_output", None))
@@ -36,7 +58,7 @@ def failure_detail_parts(exc: BaseException | str) -> list[str]:
             if item_text:
                 parts.append(item_text)
 
-    return parts
+    return FailureDetailParts(parts, provider_parts)
 
 
 def contains_casefolded_marker(parts: Iterable[str], markers: Iterable[str]) -> bool:
@@ -56,8 +78,10 @@ def has_stale_session_details(
 
 
 __all__ = [
+    "FailureDetailParts",
     "contains_casefolded_marker",
     "failure_detail_parts",
     "failure_message_parts",
     "has_stale_session_details",
+    "provider_message_parts",
 ]

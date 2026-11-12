@@ -77,7 +77,11 @@ from ralph.agents.invoke._pty_helpers import (
 )
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
-from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
+from ralph.agents.invoke._quota_detection import (
+    is_provider_quota_output_line,
+    raise_if_quota_exhausted,
+)
+from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.invoke._runtime_resolvers import RUNTIME_RESOLVERS
 from ralph.agents.invoke._session import (
     TURN_BOUNDARY_MARKER,
@@ -712,6 +716,7 @@ __all__ = [
     "ProcessReaderCtx",
     "PtyExtras",
     "PtyLineReader",
+    "QuotaExhaustedError",
     "ResolvedInvocationRuntime",
     "SupervisionInfrastructureError",
     "TerminationRecorder",
@@ -743,6 +748,7 @@ __all__ = [
     "invoke_agent",
     "is_canonical_session_text_line",
     "is_permission_prompt_line",
+    "is_provider_quota_output_line",
     "is_whole_canonical_session_line",
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",

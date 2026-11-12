@@ -381,7 +381,7 @@ def _run_rounds(
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
     if pipeline_deps is not None and session.unavailability_store is None:
         session.unavailability_store = pipeline_deps.unavailability_store
-    ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps)
+    ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps, config=config)
     if session.workspace is None and workspace_scope is not None:
         ws_obj: object = getattr(workspace_scope, "workspace", None)
         from ralph.workspace.protocol import Workspace

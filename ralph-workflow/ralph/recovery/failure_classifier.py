@@ -11,7 +11,7 @@ from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 
 from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
-from .failure_details import contains_casefolded_marker, failure_detail_parts
+from .failure_details import FailureDetailParts, contains_casefolded_marker, failure_detail_parts
 from .unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
@@ -423,7 +423,12 @@ def _is_unavailable_agent_message(msg: str) -> bool:
 
 
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
-    return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
+    provider_parts = (
+        detail_parts.provider_parts
+        if isinstance(detail_parts, FailureDetailParts)
+        else detail_parts
+    )
+    return contains_casefolded_marker(provider_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
 
 
 def _provider_unavailability_reason(
@@ -761,7 +766,7 @@ class FailureClassifier:
 
         return ClassifiedFailure(
             category=category,
-            reason=self._build_reason(category, raw_message),
+            reason=self._build_reason(category, raw_message, detail_parts),
             attributed_agent=agent if category == FailureCategory.AGENT else None,
             attributed_phase=phase,
             counts_against_budget=counts,
@@ -987,7 +992,9 @@ class FailureClassifier:
             return result
         return FailureCategory.AMBIGUOUS, False, False
 
-    def _build_reason(self, category: FailureCategory, raw_message: str) -> str:
+    def _build_reason(
+        self, category: FailureCategory, raw_message: str, detail_parts: list[str]
+    ) -> str:
         prefix_map = {
             FailureCategory.INTEGRATION: "Integration continuation required",
             FailureCategory.ENVIRONMENTAL: "Environmental fault",
@@ -998,6 +1005,6 @@ class FailureClassifier:
         }
         prefix = prefix_map.get(category, "Unknown fault")
         msg = raw_message[:300] if raw_message else "(no message)"
-        if _is_subscription_limit_message([raw_message]):
+        if _is_subscription_limit_message(detail_parts):
             return f"{prefix}: {msg}; quota or rate limit is exhausted"
         return f"{prefix}: {msg}"

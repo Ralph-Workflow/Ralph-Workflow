@@ -10,7 +10,7 @@ from ralph.recovery.attempt_facts import (
     TerminationRecord,
     has_return_code_discrepancy,
 )
-from ralph.recovery.attribution import Attribution, AttributionVerdict
+from ralph.recovery.attribution import Attribution, AttributionVerdict, liveness_observed
 from ralph.recovery.canary_probe import ProbeOutcome
 
 __all__ = [
@@ -84,6 +84,8 @@ PersistedVerdict = _PersistedVerdict
 def runtime_issued_termination_is_not_agent_fault(facts: AttemptFacts) -> bool:
     termination = facts.termination
     if termination is None:
+        return False
+    if termination.issuer is TerminationIssuer.QUOTA_DETECTOR and not liveness_observed(facts):
         return False
     return termination.issuer in _RUNTIME_ISSUERS
 

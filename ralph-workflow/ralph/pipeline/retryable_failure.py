@@ -12,7 +12,7 @@ from ralph.recovery.failure_classifier import (
 from ralph.recovery.failure_details import (
     contains_casefolded_marker,
     failure_detail_parts,
-    failure_message_parts,
+    provider_message_parts,
 )
 
 _TRANSIENT_CONNECTIVITY_MARKERS = (
@@ -40,7 +40,7 @@ def retryable_agent_failure_reason(
 ) -> str | None:
     detail_parts = failure_detail_parts(exc)
     if type(exc).__name__ == "QuotaExhaustedError" or _is_subscription_limit_message(
-        failure_message_parts(exc)
+        provider_message_parts(exc)
     ):
         return None
     primary_text = _primary_recovery_error_text(exc)

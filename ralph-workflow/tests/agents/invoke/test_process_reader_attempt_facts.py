@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
@@ -13,6 +13,8 @@ from ralph.process.liveness import FakeLivenessProbe
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.process.manager import ManagedProcess
 
 _PARENT_LINES = (
     '{"type":"step_start","sessionID":"ses_parent","part":{"type":"step-start"}}\n',
@@ -72,7 +74,7 @@ class _ExitedHandle:
 def _reader(tmp_path: Path, *, child_active_from: float) -> ProcessLineReader:
     clock = FakeClock(start=0.0)
     return ProcessLineReader(
-        _ExitedHandle(),  # type: ignore[arg-type]
+        cast("ManagedProcess", _ExitedHandle()),
         ProcessReaderCtx(
             config=AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE),
             policy=TimeoutPolicy(

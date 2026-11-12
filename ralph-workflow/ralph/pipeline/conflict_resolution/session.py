@@ -158,9 +158,11 @@ def ensure_session_controller(
     policy_bundle: PolicyBundle | None,
     *,
     pipeline_deps: PipelineDeps | None = None,
+    config: UnifiedConfig | None = None,
 ) -> RecoveryController:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
+    from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
     from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
@@ -190,6 +192,7 @@ def ensure_session_controller(
             policy_bundle=policy_bundle,
             unavailability_store=session.unavailability_store if session is not None else None,
             ledger=ledger_instance,
+            dead_agent_probe_runner=production_dead_agent_probe_runner(config),
         )
     )
     if session is not None:

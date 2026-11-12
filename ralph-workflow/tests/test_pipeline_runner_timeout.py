@@ -519,7 +519,7 @@ def test_agent_process_is_not_restarted_after_development_warning(
         agent_invocation_error=AgentInvocationError,
     )
 
-    assert result is PipelineEvent.AGENT_FAILURE
+    assert result == PipelineEvent.AGENT_FAILURE
     assert ceilings == []
 
 
@@ -576,7 +576,7 @@ def test_agent_process_is_not_restarted_after_development_budget_expires(
         agent_invocation_error=AgentInvocationError,
     )
 
-    assert result is PipelineEvent.AGENT_FAILURE
+    assert result == PipelineEvent.AGENT_FAILURE
     assert invocation_count == 0
 
 
@@ -651,7 +651,7 @@ def test_mcp_server_error_propagates_from_check_bridge_health(
     )
     from ralph.pipeline.events import PipelineEvent
 
-    assert result is PipelineEvent.AGENT_FAILURE
+    assert result == PipelineEvent.AGENT_FAILURE
 
 
 def test_bridge_shared_across_retry_attempts(
@@ -891,7 +891,7 @@ def test_mcp_server_error_propagates(
     )
     from ralph.pipeline.events import PipelineEvent
 
-    assert result is PipelineEvent.AGENT_FAILURE
+    assert result == PipelineEvent.AGENT_FAILURE
 
     from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
 
@@ -950,6 +950,6 @@ def test_mcp_server_error_propagates_without_logger_exception(
     )
     from ralph.pipeline.events import PipelineEvent
 
-    assert result is PipelineEvent.AGENT_FAILURE
+    assert result == PipelineEvent.AGENT_FAILURE
 
     assert exception_calls == []
