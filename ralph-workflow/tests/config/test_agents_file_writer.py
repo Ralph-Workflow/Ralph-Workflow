@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from loguru import logger as loguru_logger
 
-from ralph.config.agents_file_writer import write_agents_toml
+from ralph.config.agents_file_writer import AgentsFileConflictError, write_agents_toml
 from ralph.config.bootstrap import ensure_global_config
 
 
@@ -316,13 +316,19 @@ def test_module_imports_only_stdlib_and_loguru() -> None:
 
     allowed_top_levels = {
         "__future__",
+        "collections",
         "contextlib",
+        "fcntl",
+        "hashlib",
         "logging",
         "os",
         "pathlib",
         "stat",
+        "sys",
         "tempfile",
+        "threading",
         "tomllib",
+        "typing",
         "loguru",
     }
 
@@ -509,3 +515,113 @@ def test_migrate_legacy_global_config_rejects_invalid_candidate_toml(
     assert any(rec.levelno >= logging.WARNING for rec in caplog.records) or any(
         "invalid" in line.lower() for line in log_lines
     )
+
+
+def test_interleaved_operator_write_after_backup_aborts_without_overwrite_or_stale_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An operator edit interleaved after backup publication and before replacement aborts safely.
+
+    Deterministically asserts:
+      1. No generated overwrite: the operator edit is preserved.
+      2. No stale backup advertised as current: write_agents_toml raises AgentsFileConflictError.
+      3. Cleanup of temp state: scratch files in the target directory are removed.
+      4. Clear conflict result/log: logs the trigger, path, and recovery guidance.
+    """
+    target_path = tmp_path / "ralph-workflow-agents.toml"
+    initial_content = '[agents.original]\ncommand = "old"\n'
+    target_path.write_text(initial_content, encoding="utf-8")
+    operator_content = '[agents.operator]\ncommand = "preserve-me"\n'
+
+    real_replace = Path.replace
+
+    def interleaving_replace(
+        self: Path, target: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> Path:
+        result = real_replace(self, target, *args, **kwargs)
+        if str(target).endswith(".bak"):
+            target_path.write_text(operator_content, encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    with (
+        caplog.at_level(logging.WARNING),
+        _capture_loguru_lines() as log_lines,
+        pytest.raises(AgentsFileConflictError) as exc_info,
+    ):
+        write_agents_toml(
+            target_path,
+            '[agents.generated]\ncommand = "new"\n',
+            trigger="test_conflict_after_backup",
+        )
+
+    # 1. No generated overwrite: target must contain the operator edit
+    assert target_path.read_text(encoding="utf-8") == operator_content
+
+    # 2. No stale backup advertised as current: error raised and error message details
+    assert "Conflict detected" in str(exc_info.value)
+    assert str(target_path) in str(exc_info.value)
+
+    # 3. Cleanup of temp state: no transient scratch files survive
+    stray_files = [
+        f.name
+        for f in tmp_path.iterdir()
+        if f != target_path and not f.name.endswith(".bak") and not f.name.endswith(".lock")
+    ]
+    assert stray_files == []
+
+    # 4. Clear conflict result/log: operator-visible log record emitted
+    combined_logs = caplog.text + "\n" + "\n".join(log_lines)
+    assert "Conflict detected while writing" in combined_logs
+    assert "test_conflict_after_backup" in combined_logs
+    assert "Aborting write to preserve operator edits without overwrite" in combined_logs
+    assert "ralph --regenerate-config" in combined_logs
+
+
+def test_interleaved_operator_write_during_staging_aborts_without_backup_or_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An operator edit during staging aborts before backup publication, creating no backup."""
+    target_path = tmp_path / "ralph-workflow-agents.toml"
+    initial_content = '[agents.original]\ncommand = "old"\n'
+    target_path.write_text(initial_content, encoding="utf-8")
+    operator_content = '[agents.operator]\ncommand = "staged-preserve-me"\n'
+    bak_path = target_path.with_name(f"{target_path.name}.bak")
+
+    real_chmod = Path.chmod
+
+    def interleaving_chmod(self: Path, mode: int) -> None:
+        real_chmod(self, mode)
+        # Interleave operator write during staging (when chmod is called on tmp_path)
+        if self != target_path:
+            target_path.write_text(operator_content, encoding="utf-8")
+
+    monkeypatch.setattr(Path, "chmod", interleaving_chmod)
+
+    with (
+        caplog.at_level(logging.WARNING),
+        _capture_loguru_lines(),
+        pytest.raises(AgentsFileConflictError),
+    ):
+        write_agents_toml(
+            target_path,
+            '[agents.generated]\ncommand = "new"\n',
+            trigger="test_conflict_during_staging",
+        )
+
+    # Operator content preserved
+    assert target_path.read_text(encoding="utf-8") == operator_content
+    # No backup was created
+    assert not bak_path.exists()
+    # Temp files cleaned up
+    stray_files = [
+        f.name
+        for f in tmp_path.iterdir()
+        if f != target_path and not f.name.endswith(".bak") and not f.name.endswith(".lock")
+    ]
+    assert stray_files == []

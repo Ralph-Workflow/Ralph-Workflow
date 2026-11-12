@@ -8,6 +8,7 @@ import pytest
 from loguru import logger
 
 from ralph.config.agent_detection import enable_detected_agents
+from ralph.config.agents_file_writer import AgentsFileConflictError
 
 
 def _capture_loguru_records(level: str = "DEBUG") -> tuple[list[tuple[str, int]], int]:
@@ -352,3 +353,42 @@ def test_enable_detected_agents_on_invalid_utf8_file_reports_and_keeps_bytes(
     assert enabled == []
     assert config_path.read_bytes() == original_bytes
     assert """ralph --regenerate-config""" in caplog.text
+
+
+def test_enable_detected_agents_conflict_propagates_without_stale_backup_or_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Detected agent block activation propagates conflict without overwriting operator edits."""
+    config_path = tmp_path / "ralph-workflow-agents.toml"
+    initial_content = (
+        '# @AGENT-BLOCK-START: claude\n# [agents.claude]\n# cmd = "claude"\n# @AGENT-BLOCK-END\n'
+    )
+    config_path.write_text(initial_content, encoding="utf-8")
+    operator_interleaved = '[agents.interleaved]\ncmd = "preserve-me"\n'
+
+    monkeypatch.setattr("ralph.config.agent_detection.detect_installed_agents", lambda: ["claude"])
+
+    real_replace = Path.replace
+
+    def interleaving_replace(self: Path, target: object, *args: object, **kwargs: object) -> Path:
+        result = real_replace(self, target, *args, **kwargs)
+        if str(target).endswith(".bak"):
+            config_path.write_text(operator_interleaved, encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    with pytest.raises(AgentsFileConflictError):
+        enable_detected_agents(config_path)
+
+    # Operator edits preserved
+    assert config_path.read_text(encoding="utf-8") == operator_interleaved
+
+    # Temp files cleaned up
+    leftovers = [
+        f.name
+        for f in tmp_path.iterdir()
+        if f != config_path and not f.name.endswith(".bak") and not f.name.endswith(".lock")
+    ]
+    assert leftovers == []

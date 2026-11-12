@@ -9,6 +9,7 @@ import pytest
 from git import Actor, Repo
 
 from ralph.config.agent_detection import autowire_chains_to_detected_agent
+from ralph.config.agents_file_writer import AgentsFileConflictError
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -482,3 +483,48 @@ def test_autowire_custom_named_symlink_alias_to_xdg_agents_config(
     subjects = _git_log_subjects(project_dir)
     assert subjects[0] == "seed custom alias"
     assert "chore(config): update agent configuration" not in subjects
+
+
+def test_autowire_agents_toml_conflict_propagates_without_stale_backup_or_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chain autowiring targeting an agents file propagates conflict without overwriting operator edits."""
+    _init_repo_with_initial_commit(tmp_path)
+    agents_path = tmp_path / "ralph-workflow-agents.toml"
+    agents_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
+    operator_interleaved = '[agents.claude]\ncmd = "preserve-autowire-edit"\n'
+
+    monkeypatch.setattr(
+        "ralph.config.agent_detection.shutil.which",
+        _mock_no_binary,
+    )
+
+    real_replace = Path.replace
+
+    def interleaving_replace(
+        self: Path, target: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> Path:
+        result = real_replace(self, target, *args, **kwargs)
+        if str(target).endswith(".bak"):
+            agents_path.write_text(operator_interleaved, encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    with pytest.raises(AgentsFileConflictError):
+        autowire_chains_to_detected_agent(agents_path, detected=["codex"])
+
+    # Operator edits preserved
+    assert agents_path.read_text(encoding="utf-8") == operator_interleaved
+
+    # Temp files cleaned up
+    leftovers = [
+        f.name
+        for f in tmp_path.iterdir()
+        if f != agents_path
+        and not f.name.endswith(".bak")
+        and not f.name.endswith(".lock")
+        and f.name != ".git"
+    ]
+    assert leftovers == []

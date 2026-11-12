@@ -1,18 +1,102 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 import os
 import stat
+import sys
 import tempfile
+import threading
 import tomllib
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if sys.platform != "win32":
+    import fcntl
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _std_logger = logging.getLogger(__name__)
 
 _NEW_FILE_MODE = 0o644
+
+__all__ = ["AgentsFileConflictError", "write_agents_toml"]
+
+
+class AgentsFileConflictError(OSError):
+    pass
+
+
+_PATH_LOCKS: dict[Path, threading.Lock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
+def _get_target_lock(target: Path) -> threading.Lock:
+    with _PATH_LOCKS_GUARD:
+        lock = _PATH_LOCKS.get(target)
+        if lock is None:
+            lock = threading.Lock()
+            _PATH_LOCKS[target] = lock
+        return lock
+
+
+def _get_uid() -> int:
+    try:
+        return os.getuid()
+    except AttributeError:
+        return 0
+
+
+def _lock_file_path(target: Path) -> Path:
+    uid = _get_uid()
+    target_key = hashlib.sha256(str(target.resolve()).encode("utf-8")).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f".ralph-agents-{uid}-{target_key}.lock"
+
+
+@contextmanager
+def _target_serialization_lock(target: Path) -> Iterator[None]:
+    target_lock = _get_target_lock(target)
+    acquired = target_lock.acquire(timeout=0.1)
+    lock_fd: int | None = None
+    try:
+        if acquired:
+            try:
+                lock_path = _lock_file_path(target)
+                lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+                if sys.platform != "win32":
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            except OSError:
+                if lock_fd is not None:
+                    with contextlib.suppress(OSError):
+                        os.close(lock_fd)
+                    lock_fd = None
+        yield
+    finally:
+        if lock_fd is not None:
+            if sys.platform != "win32":
+                with contextlib.suppress(OSError):
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            with contextlib.suppress(OSError):
+                os.close(lock_fd)
+        if acquired:
+            target_lock.release()
+
+
+def _raise_conflict(path: Path, trigger: str) -> None:
+    msg = (
+        f"Conflict detected while writing {path} (trigger: {trigger}): "
+        f"the file was modified concurrently. "
+        f"Aborting write to preserve operator edits without overwrite. "
+        f"Inspect {path} or re-run with explicit recovery (e.g. ralph --regenerate-config)."
+    )
+    logger.warning(msg)
+    _std_logger.warning(msg)
+    raise AgentsFileConflictError(msg)
 
 
 def _read_existing_bytes(target: Path) -> bytes | None:
@@ -60,27 +144,38 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
     write_target = path.resolve() if path.is_symlink() else path
     bak_path = path.with_name(f"{path.name}.bak")
 
-    existing_bytes = _read_existing_bytes(write_target)
-    if existing_bytes == new_bytes:
-        return False
-
-    file_mode = _resolve_mode(write_target)
-
-    write_target.parent.mkdir(parents=True, exist_ok=True)
     tmp_path: Path | None = None
     try:
-        fd, tmp_path_str = tempfile.mkstemp(
-            dir=write_target.parent,
-            prefix=f".{write_target.name}.tmp.",
-        )
-        tmp_path = Path(tmp_path_str)
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(new_bytes)
-            handle.flush()
-        tmp_path.chmod(file_mode)
-        if existing_bytes is not None:
-            _publish_backup(bak_path, existing_bytes, write_target.parent)
-        tmp_path.replace(write_target)
+        with _target_serialization_lock(write_target):
+            existing_bytes = _read_existing_bytes(write_target)
+            if existing_bytes == new_bytes:
+                return False
+
+            file_mode = _resolve_mode(write_target)
+
+            write_target.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp_path_str = tempfile.mkstemp(
+                dir=write_target.parent,
+                prefix=f".{write_target.name}.tmp.",
+            )
+            tmp_path = Path(tmp_path_str)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(new_bytes)
+                handle.flush()
+            tmp_path.chmod(file_mode)
+
+            current_bytes = _read_existing_bytes(write_target)
+            if current_bytes != existing_bytes:
+                _raise_conflict(path, trigger)
+
+            if existing_bytes is not None:
+                _publish_backup(bak_path, existing_bytes, write_target.parent)
+
+            final_bytes = _read_existing_bytes(write_target)
+            if final_bytes != existing_bytes:
+                _raise_conflict(path, trigger)
+
+            tmp_path.replace(write_target)
     except BaseException:
         if tmp_path is not None:
             with contextlib.suppress(OSError):

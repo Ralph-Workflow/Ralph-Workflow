@@ -10,6 +10,7 @@ from loguru import logger
 from typer.testing import CliRunner
 
 from ralph.cli.main import app
+from ralph.config.agents_file_writer import AgentsFileConflictError
 from ralph.config.bootstrap import ensure_global_agents_config, regenerate_all
 
 AGENTS_FILENAME = "ralph-workflow-agents.toml"
@@ -287,3 +288,40 @@ def test_regenerate_agents_emits_trigger_line_to_operator_visible_loguru_sink(
         f"{[text for text, _ in records]}"
     )
     assert max(level_no for _, level_no in matching) >= 20
+
+
+def test_ensure_global_agents_config_conflict_propagates_without_stale_backup_or_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit regeneration propagates AgentsFileConflictError without overwrite or stale backup."""
+    global_dir = tmp_path / "config"
+    global_dir.mkdir(parents=True)
+    agents_file = global_dir / AGENTS_FILENAME
+    custom_content = '[agents.my_custom_agent]\ncmd = "custom-agent"\n'
+    agents_file.write_text(custom_content, encoding="utf-8")
+    operator_interleaved = '[agents.interleaved]\ncmd = "preserve-interleaved"\n'
+
+    real_replace = Path.replace
+
+    def interleaving_replace(self: Path, target: object, *args: object, **kwargs: object) -> Path:
+        result = real_replace(self, target, *args, **kwargs)
+        if str(target).endswith(".bak"):
+            agents_file.write_text(operator_interleaved, encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    with pytest.raises(AgentsFileConflictError):
+        ensure_global_agents_config(global_dir, force=True)
+
+    # Operator interleaved edit is preserved on disk
+    assert agents_file.read_text(encoding="utf-8") == operator_interleaved
+
+    # Temp files cleaned up
+    leftovers = [
+        f.name
+        for f in global_dir.iterdir()
+        if f != agents_file and not f.name.endswith(".bak") and not f.name.endswith(".lock")
+    ]
+    assert leftovers == []
