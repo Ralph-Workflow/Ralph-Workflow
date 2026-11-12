@@ -444,6 +444,92 @@ def test_a_skill_referencing_a_missing_companion_is_not_installed(sandbox: Path)
     assert any("condition-based-waiting-example.ts" in message for message in outcome.messages)
 
 
+def _release_body_with_raw_tag(value: object) -> bytes:
+    return json.dumps({"tag_name": value}).encode("utf-8")
+
+
+def _refused_tag_client(body: bytes) -> tuple[HttpClient, list[str]]:
+    calls: list[str] = []
+    return _fake_client({RELEASES_API_URL: (200, body)}, calls), calls
+
+
+def test_a_traversal_tag_is_refused_before_any_archive_request(sandbox: Path) -> None:
+    client, calls = _refused_tag_client(_release_body("../../../../evil/repo"))
+
+    outcome = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "failed"
+    assert outcome.error == "release-api-malformed"
+    assert calls == [RELEASES_API_URL]
+    root = _canonical_root()
+    for skill in UNIVERSAL_SKILL_NAMES:
+        assert not (root / skill).exists()
+
+
+@pytest.mark.parametrize(
+    "tag",
+    ["release/next", "..", ".", "v1.2.3 rc.1", "https://evil.example/repo", "v1.2.3\\next"],
+)
+def test_a_hostile_tag_shape_is_refused_before_any_archive_request(sandbox: Path, tag: str) -> None:
+    client, calls = _refused_tag_client(_release_body(tag))
+
+    outcome = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "failed"
+    assert outcome.error == "release-api-malformed"
+    assert calls == [RELEASES_API_URL]
+    root = _canonical_root()
+    for skill in UNIVERSAL_SKILL_NAMES:
+        assert not (root / skill).exists()
+
+
+def test_a_realistic_release_tag_is_still_accepted(sandbox: Path) -> None:
+    tag = "v1.2.3-rc.1"
+    client, calls = _client_for(tag, _SKILL_FILES)
+
+    outcome = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    assert outcome.tag == tag
+    assert calls == [RELEASES_API_URL, _archive_url(tag)]
+    expected = "https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v1.2.3-rc.1"
+    assert calls[1] == expected
+    assert outcome.installed == UNIVERSAL_SKILL_NAMES
+
+
+@pytest.mark.parametrize("value", [42, None, "", ["v1.2.3"]])
+def test_a_malformed_tag_name_is_refused_before_any_archive_request(
+    sandbox: Path, value: object
+) -> None:
+    client, calls = _refused_tag_client(_release_body_with_raw_tag(value))
+
+    outcome = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "failed"
+    assert outcome.error == "release-api-malformed"
+    assert calls == [RELEASES_API_URL]
+    root = _canonical_root()
+    for skill in UNIVERSAL_SKILL_NAMES:
+        assert not (root / skill).exists()
+
+
+def test_a_refused_tag_keeps_the_installed_skills_byte_identical(sandbox: Path) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+    root = _canonical_root()
+    before = _tree_snapshot(root)
+
+    hostile, calls = _refused_tag_client(_release_body("../../../../evil/repo"))
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=hostile
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error == "release-api-malformed"
+    assert calls == [RELEASES_API_URL]
+    assert _tree_snapshot(root) == before
+
+
 def test_no_write_lands_outside_the_allowed_set(sandbox: Path, tmp_path: Path) -> None:
     client, _calls = _client_for("v-test-1", _SKILL_FILES)
 

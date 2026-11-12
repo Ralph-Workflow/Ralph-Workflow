@@ -16,7 +16,7 @@ from ralph.mcp.explore.store import DEFAULT_INDEX_ROOT
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_ralph_graph_clears_cancel_flag_on_query_error": (
-        "patch target corrected to _handlers_graph module where run_query is imported"
+        "patch target corrected to the graph module the handler calls run_query through"
     ),
 }
 
@@ -623,7 +623,7 @@ def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
         }
         with (
             patch(
-                "ralph.mcp.explore._handlers_graph.run_query",
+                "ralph.mcp.explore.handlers.graph_module.run_query",
                 side_effect=_explode,
             ) as patched_run_query,
             pytest.raises(RuntimeError),

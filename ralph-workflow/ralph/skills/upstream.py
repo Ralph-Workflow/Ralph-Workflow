@@ -139,6 +139,8 @@ _URL_SCHEME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z][A-Za-z0-9+.
 
 _TAG_NUMBER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+")
 
+_TAG_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
 
 @dataclass(frozen=True)
 class UpdateOutcome:
@@ -424,7 +426,7 @@ def _fetch_release_tag(http: HttpClient) -> tuple[str | None, str | None]:
     except (UnicodeDecodeError, ValueError):
         return (None, "release-api-malformed")
     tag = optional_str(_mapping(payload).get("tag_name"), field="tag_name")
-    if tag is None:
+    if tag is None or _TAG_PATTERN.fullmatch(tag) is None:
         return (None, "release-api-malformed")
     return (tag, None)
 
@@ -634,7 +636,7 @@ def _preservation_reason(skill_dir: Path) -> str | None:
 
 def _missing_reference(content: _SkillPayload) -> str | None:
     for relative in sorted(content.files):
-        if not relative.endswith(".md"):
+        if Path(relative).suffix.lower() != ".md":
             continue
         data = content.files[relative][0]
         for reference in _iter_references(data.decode("utf-8", errors="replace")):
@@ -736,7 +738,9 @@ def _is_file_reference(candidate: str) -> bool:
     _, dot, extension = segment.rpartition(".")
     if not dot or not _FILE_NAME_PATTERN.match(segment):
         return False
-    return extension.islower() or extension.isupper()
+    if extension.islower() or extension.isupper():
+        return True
+    return f".{extension.lower()}" in _CARRIED_SUFFIXES
 
 
 def _is_external_reference(candidate: str) -> bool:

@@ -779,3 +779,114 @@ def test_a_code_span_that_names_a_reader_project_path_is_permitted(sandbox: Path
     assert outcome.status == "updated"
     root = upstream.canonical_skills_root()
     assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
+
+
+def test_an_uppercase_markdown_source_document_with_a_missing_target_is_refused(
+    sandbox: Path,
+) -> None:
+    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    missing["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "GUIDE.MD": b"# Guide\n\nSee [companion](absent.md).\n",
+    }
+    client, _calls = _client_for("v-test-1", missing)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert "systematic-debugging" in outcome.preserved
+    assert any("absent.md" in message for message in outcome.messages)
+    root = upstream.canonical_skills_root()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
+
+
+def test_an_uppercase_markdown_source_document_with_a_carried_target_is_accepted(
+    sandbox: Path,
+) -> None:
+    carried = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    carried["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "GUIDE.MD": b"# Guide\n\nSee [companion](absent.md).\n",
+        "absent.md": b"# Companion\n",
+    }
+    client, _calls = _client_for("v-test-1", carried)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "absent.md").read_bytes() == b"# Companion\n"
+
+
+def test_a_mixed_case_markdown_source_document_with_a_missing_target_is_refused(
+    sandbox: Path,
+) -> None:
+    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    missing["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "GUIDE.Md": b"# Guide\n\nSee [companion](absent.md).\n",
+    }
+    client, _calls = _client_for("v-test-1", missing)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert "systematic-debugging" in outcome.preserved
+    assert any("absent.md" in message for message in outcome.messages)
+    root = upstream.canonical_skills_root()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
+
+
+def test_a_link_destination_with_a_mixed_case_extension_that_is_missing_is_refused(
+    sandbox: Path,
+) -> None:
+    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    missing["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b"# Guide\n\nSee [companion](absent.Md).\n",
+    }
+    client, _calls = _client_for("v-test-1", missing)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert "systematic-debugging" in outcome.preserved
+    assert any("docs/absent.Md" in message for message in outcome.messages)
+    root = upstream.canonical_skills_root()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
+
+
+def test_a_link_destination_with_a_mixed_case_extension_that_is_carried_is_accepted(
+    sandbox: Path,
+) -> None:
+    carried = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    carried["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b"# Guide\n\nSee [companion](Companion.Md).\n",
+        "docs/Companion.Md": b"# Companion\n",
+    }
+    client, _calls = _client_for("v-test-1", carried)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "docs" / "Companion.Md").read_bytes() == (
+        b"# Companion\n"
+    )
+
+
+def test_a_mixed_case_non_carried_identifier_stays_permitted(sandbox: Path) -> None:
+    identifiers = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    identifiers["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": (
+            b"# Guide\n\n"
+            b"The test read `context.tempDir`, the flag is `config.DebugMode`, "
+            b"and the runtime is `python3.12`.\n"
+        ),
+    }
+    client, _calls = _client_for("v-test-1", identifiers)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
