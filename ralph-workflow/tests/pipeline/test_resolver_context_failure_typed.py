@@ -38,14 +38,23 @@ from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutc
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.run_loop import (
     LoopContext,
-    _build_status_bar_model,
-    _resolve_paused_rebase,
+    build_status_bar_model,
     integration_alert_for_state,
     log_waiting_state,
+    resolve_paused_rebase,
 )
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.context import WorkspaceContextError
 from ralph.workspace.scope import WorkspaceScope
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_integrated_transport_reaches_run_loop_alert_and_status_bar": (
+        "use public StatusBar.model property instead of private _model attribute"
+    ),
+    "test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar": (
+        "avoid soft line-wrapping breaking long path in console status bar assertion"
+    ),
+}
 
 
 def test_context_failure_enum_and_not_spent() -> None:
@@ -357,7 +366,7 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
             "ralph.pipeline.auto_integrate_agent.workspace_context",
             side_effect=RuntimeError("boom"),
         ):
-            resolved = _resolve_paused_rebase(mock_ctx, "main")
+            resolved = resolve_paused_rebase(mock_ctx, "main")
             outcome = recover_pending_merge(
                 repo,
                 initial_record,
@@ -407,7 +416,7 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
         assert "resolution required" in alert
         assert "no terminal evidence" not in alert
 
-        model = _build_status_bar_model(state, mock_ctx.policy_bundle, repo, attention="waiting")
+        model = build_status_bar_model(state, mock_ctx.policy_bundle, repo, attention="waiting")
         console = Console(file=io.StringIO(), width=100, force_terminal=True, color_system=None)
         ctx_disp = make_display_context(console=console, env={})
         rendered = render_status_bar(model, ctx_disp, home=str(tmp_path))
@@ -419,7 +428,7 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
         display_mock.terminal_width = 100
         sb = StatusBar(display_mock)
         sb.update(model)
-        assert sb._model == model
+        assert sb.model == model
 
         log_waiting_state(state, mock_ctx, "planning", rebase_state.last_reason, 5000)
         waiting_records = [r["message"] for r in records if "WAITING state" in r["message"]]
@@ -476,7 +485,7 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
                 fix=fix_msg,
             ),
         ):
-            resolved = _resolve_paused_rebase(mock_ctx, "main")
+            resolved = resolve_paused_rebase(mock_ctx, "main")
             outcome = recover_pending_merge(
                 repo,
                 initial_record,
@@ -517,13 +526,13 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
         assert fix_msg in alert_cfg
         assert "no terminal evidence" not in alert_cfg
 
-        model_cfg = _build_status_bar_model(
+        model_cfg = build_status_bar_model(
             state_cfg, mock_ctx.policy_bundle, repo, attention="waiting"
         )
-        console = Console(file=io.StringIO(), width=100, force_terminal=True, color_system=None)
+        console = Console(file=io.StringIO(), width=300, force_terminal=True, color_system=None)
         ctx_disp = make_display_context(console=console, env={})
         rendered_cfg = render_status_bar(model_cfg, ctx_disp, home=str(tmp_path))
-        assert fix_msg in " ".join(rendered_cfg.plain.split())
+        assert fix_msg in rendered_cfg.plain.replace("\n", "")
         assert "no terminal evidence" not in rendered_cfg.plain
 
         log_waiting_state(state_cfg, mock_ctx, "planning", rebase_state_cfg.last_reason, 5000)

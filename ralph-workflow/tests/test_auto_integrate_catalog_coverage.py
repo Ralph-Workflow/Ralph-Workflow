@@ -605,7 +605,7 @@ def test_synthetic_missing_entry_is_detected() -> None:
     )
     assert synthetic.entry_id not in _REGISTERED_RATIONALE_IDS, (
         "synthetic catalog entry Z9 unexpectedly has a rationale "
-        "marker in a non-existent file; the audit is broken"
+        "constant in registry; the audit is broken"
     )
 
 

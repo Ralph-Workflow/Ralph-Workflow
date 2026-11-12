@@ -46,6 +46,13 @@ from ralph.timeout_defaults import (
 )
 from ralph.workspace.scope import WorkspaceScope
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_general_config_provider_fallback_is_labeled_reserved": (
+        "under comment-free source policy (audit_comments), maintainer comments are banned; "
+        "test asserts provider_fallback retains exact model field shape without description"
+    ),
+}
+
 DEFAULT_VERBOSITY = 2
 
 RALPH_TEST_CHANGE_REASONS = {

@@ -12,6 +12,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Final
 
 if sys.platform != "win32":
     import fcntl
@@ -123,11 +124,13 @@ except AttributeError:
 
 _ATTEMPT_LOCK = threading.Lock()
 
-_REFERENCE_PATTERN = re.compile(r"`([^`\n]+)`|\]\(([^)\n]+)\)")
+_REFERENCE_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`\n]+)`|\]\(([^)\n]+)\)")
 
-_FILE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,8}$")
+_FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,8}$"
+)
 
-_TAG_NUMBER_PATTERN = re.compile(r"\d+")
+_TAG_NUMBER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+")
 
 
 @dataclass(frozen=True)
@@ -655,15 +658,34 @@ def _resolve_reference(relative: str, reference: str) -> str | None:
     return "/".join(parts)
 
 
+def _destination_path(raw: str) -> str:
+    candidate = raw.strip()
+    if candidate.startswith("<") and ">" in candidate:
+        candidate = candidate[1 : candidate.index(">")].strip()
+    elif candidate:
+        candidate = candidate.split(None, 1)[0]
+    path, _, _ = candidate.partition("#")
+    return path.strip()
+
+
 def _iter_references(text: str) -> Iterator[str]:
     for match in _REFERENCE_PATTERN.finditer(text):
-        token: str = match.group(1) or match.group(2) or ""
-        candidate = token.strip()
-        if not candidate or " " in candidate:
+        raw1: object = match.group(1)
+        raw2: object = match.group(2)
+        candidate: str
+        if isinstance(raw1, str):
+            candidate = raw1.strip()
+            if not candidate or " " in candidate:
+                continue
+        elif isinstance(raw2, str):
+            candidate = _destination_path(raw2)
+            if not candidate:
+                continue
+        else:
             continue
         if candidate.startswith(("http://", "https://", "/", "~", "#")):
             continue
-        parts = [part for part in candidate.split("/") if part]
+        parts: list[str] = [part for part in candidate.split("/") if part]
         if not parts:
             continue
         if not _FILE_NAME_PATTERN.match(parts[-1]):

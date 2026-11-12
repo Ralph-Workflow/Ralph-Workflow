@@ -867,6 +867,10 @@ class StatusBar:
         self._clock: Callable[[], float] = clock if clock is not None else time.monotonic
 
     @property
+    def model(self) -> StatusBarModel | None:
+        return self._model
+
+    @property
     def is_active(self) -> bool:
         return self._live is not None
 

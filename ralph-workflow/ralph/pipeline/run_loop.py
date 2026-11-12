@@ -614,7 +614,7 @@ def _log_resumed_state(
     )
 
 
-def _build_status_bar_model(
+def build_status_bar_model(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_root: Path,
@@ -667,6 +667,9 @@ def integration_alert_for_state(state: PipelineState) -> str | None:
     if rebase.last_failure_cause != ResolutionFailureCause.NONE:
         return f"integration conflict ({rebase.last_failure_cause}: {reason}) — resolution required"
     return f"integration conflict ({reason}) — resolution required"
+
+
+_build_status_bar_model = build_status_bar_model
 
 
 def _integration_alert_for_state(state: PipelineState) -> str | None:

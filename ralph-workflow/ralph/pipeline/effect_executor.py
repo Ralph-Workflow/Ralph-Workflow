@@ -90,7 +90,6 @@ from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_N
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import (
-    build_premise_check_block,
     build_retry_error_block,
     build_validation_retry_footer,
 )
@@ -1752,19 +1751,12 @@ def _write_agent_retry_prompt(
         worker_namespace=worker_namespace,
     )
     current_fingerprint = retry_hint_fingerprint(str(drain or reason), detail or reason)
-    prior_fingerprint = (
-        fingerprint_file.read_text(encoding="utf-8").strip()
-        if fingerprint_file is not None and fingerprint_file.is_file()
-        else ""
-    )
-    same_failure = bool(build_premise_check_block(current_fingerprint, prior_fingerprint or None))
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         detail=detail,
         prompt_path=str(prompt_path),
         context_path=str(context_path),
         validation=validation_retry,
-        same_failure=same_failure,
     )
     if fingerprint_file is not None:
         fingerprint_file.parent.mkdir(parents=True, exist_ok=True)

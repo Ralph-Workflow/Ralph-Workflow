@@ -4,21 +4,11 @@ import hashlib
 from typing import Final
 
 VALIDATION_FAILURE_BANNER: Final[str] = "VALIDATION FAILURE"
-PREMISE_CHECK_LINE: Final[str] = "test the premise shared by the failed fixes before another patch"
-PREMISE_LINE: Final[str] = PREMISE_CHECK_LINE
 
 
 def failure_fingerprint(failure_summary: str, diagnostic_identity: str = "") -> str:
     payload = "\x1f".join((failure_summary.strip(), diagnostic_identity.strip()))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def build_premise_check_block(current_fingerprint: str, prior_fingerprint: str | None) -> str:
-    if not current_fingerprint or not prior_fingerprint:
-        return ""
-    if current_fingerprint != prior_fingerprint:
-        return ""
-    return PREMISE_CHECK_LINE
 
 
 def build_validation_retry_footer() -> str:
@@ -36,7 +26,6 @@ def build_retry_error_block(
     prompt_path: str | None = None,
     context_path: str | None = None,
     validation: bool = False,
-    same_failure: bool = False,
 ) -> str:
     lines = [
         VALIDATION_FAILURE_BANNER if validation else "ERROR RECOVERY REQUIRED",
@@ -72,8 +61,6 @@ def build_retry_error_block(
             ),
         ]
     )
-    if same_failure:
-        lines.append(PREMISE_CHECK_LINE)
     if prompt_path:
         lines.append(f"Original prompt: `{prompt_path}`")
     if context_path:
@@ -82,10 +69,7 @@ def build_retry_error_block(
 
 
 __all__ = [
-    "PREMISE_CHECK_LINE",
-    "PREMISE_LINE",
     "VALIDATION_FAILURE_BANNER",
-    "build_premise_check_block",
     "build_retry_error_block",
     "build_validation_retry_footer",
     "failure_fingerprint",

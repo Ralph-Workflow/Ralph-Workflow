@@ -328,7 +328,6 @@ def test_module_imports_only_stdlib_and_loguru() -> None:
         "tempfile",
         "threading",
         "tomllib",
-        "weakref",
         "typing",
         "weakref",
         "loguru",
