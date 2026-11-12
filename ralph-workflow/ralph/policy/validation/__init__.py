@@ -1,4 +1,3 @@
-
 from ralph.policy.validation._api import (
     get_drain_resolution_matrix,
     validate_agent_chains_satisfiable,

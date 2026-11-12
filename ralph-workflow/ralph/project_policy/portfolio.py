@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -144,7 +143,6 @@ class _Profile:
 
 @dataclass(frozen=True, slots=True)
 class PolicyPortfolio:
-
     schema_version: str
     context: tuple[tuple[str, str | tuple[str, ...]], ...]
     selected_profiles: tuple[str, ...]
@@ -556,9 +554,7 @@ def _apply_exceptions(
     return tuple(sorted(retained)), tuple(sorted(applied))
 
 
-_DEFAULT_PORTFOLIO_CACHE: list[
-    PolicyPortfolio
-] = []
+_DEFAULT_PORTFOLIO_CACHE: list[PolicyPortfolio] = []
 
 
 def default_portfolio() -> PolicyPortfolio:

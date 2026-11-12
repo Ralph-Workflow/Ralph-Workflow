@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import bisect
@@ -10,11 +9,9 @@ from ralph.display._frequency_tier import FrequencyTier
 
 
 class RoleAnchor(NamedTuple):
-
     hue: float
     chroma: float
     l_ref: float
-
 
 
 _SRGB_THRESHOLD: Final[float] = 0.04045
@@ -234,8 +231,6 @@ _SQUEEZE_HEADROOM_THRESHOLD: Final[float] = 0.02
 
 _PURE_BLACK_HEX: Final[str] = "#000000"
 _PURE_WHITE_HEX: Final[str] = "#FFFFFF"
-
-
 
 
 def _oklch_to_rgb_clamped(l_val: float, c_val: float, h: float) -> tuple[float, float, float]:

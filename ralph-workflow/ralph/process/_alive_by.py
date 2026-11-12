@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class AliveBy(StrEnum):
-
     FRESH_PROGRESS = "fresh_progress"
     FRESH_HEARTBEAT_ONLY = "fresh_heartbeat_only"
     STALE_LABEL_ONLY = "stale_label_only"

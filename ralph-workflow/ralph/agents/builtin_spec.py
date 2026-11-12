@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import dataclasses
@@ -48,7 +47,6 @@ _BUILTIN_SPEC_FORWARDED_FIELDS: frozenset[str] = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class BuiltinAgentSpec:
-
     transport: AgentTransport
     parser_factory: Callable[[], AgentParser]
     strategy_factory: StrategyFactory

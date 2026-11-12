@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import dataclasses
@@ -26,9 +25,6 @@ __all__ = [
     "step_with_assessment",
     "tree_active",
 ]
-
-
-
 
 
 @dataclass(frozen=True)
@@ -77,8 +73,6 @@ class _LivenessVerdict:
 LivenessConfig = _LivenessConfig
 LivenessWindow = _LivenessWindow
 LivenessVerdict = _LivenessVerdict
-
-
 
 
 def output_recent(o: float | None, c: LivenessConfig) -> float:
@@ -160,8 +154,6 @@ def awake(w: float | None, c: LivenessConfig) -> float:
 _awake = awake
 
 
-
-
 _RULE_WEIGHTS: tuple[float, ...] = (1.0, 0.9, 0.9, 0.6, 0.0, 0.2, 0.55)
 _RULE_NAMES: tuple[str, ...] = ("R1", "R2", "R3", "R4", "R5", "R6", "R7")
 _SUSPICIOUS_RULES: frozenset[str] = frozenset({"R4", "R7"})
@@ -221,8 +213,6 @@ def _score_from_rule_weights(weights: tuple[float, ...]) -> float:
     return total_wz / total_w
 
 
-
-
 def _kind_from_weights(
     weights: tuple[float, ...],
     score: float,
@@ -236,8 +226,6 @@ def _kind_from_weights(
     if strongest_rule in _SUSPICIOUS_RULES:
         return "suspicious"
     return "working"
-
-
 
 
 def assess(window: LivenessWindow, config: LivenessConfig) -> LivenessVerdict:
@@ -313,7 +301,6 @@ def step_with_assessment(
 
 
 class StallIntegrator:
-
     __slots__ = ("_p", "_theta")
 
     def __init__(self, *, theta: float) -> None:
@@ -335,8 +322,6 @@ class StallIntegrator:
     @property
     def pressure(self) -> float:
         return self._p
-
-
 
 
 def default_liveness_config() -> LivenessConfig:

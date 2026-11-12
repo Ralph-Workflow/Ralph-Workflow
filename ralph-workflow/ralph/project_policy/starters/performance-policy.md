@@ -121,7 +121,7 @@ environment and findings without treating the profile itself as pass/fail.
 ## Exceptions
 
 A documented exception to a performance budget requires a documented
-rationale, scope, owner, and review date.
+reason, scope, owner, and review date.
 
 ## Maintenance triggers
 

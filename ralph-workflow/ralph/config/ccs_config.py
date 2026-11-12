@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict
@@ -8,7 +7,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class CcsConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     output_flag: str = "--output-format=stream-json"

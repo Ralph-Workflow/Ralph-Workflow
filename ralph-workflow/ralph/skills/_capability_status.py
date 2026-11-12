@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class CapabilityStatus(StrEnum):
-
     NOT_INSTALLED = "not_installed"
     INSTALLED_HEALTHY = "installed_healthy"
     CONFIGURED_UNREACHABLE = "configured_unreachable"

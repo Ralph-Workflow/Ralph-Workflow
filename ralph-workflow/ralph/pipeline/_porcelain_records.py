@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -136,8 +135,6 @@ def _decode_porcelain_entries(entries: list[PorcelainEntry]) -> list[PorcelainEn
     ]
 
 
-
-
 _PORCELAIN_V2_KINDS: Final[frozenset[str]] = frozenset({"1", "2", "u", "?", "!"})
 
 _PORCELAIN_V2_FIELD_COUNT: Final[dict[str, int]] = {"1": 8, "2": 9, "u": 9}
@@ -145,7 +142,6 @@ _PORCELAIN_V2_FIELD_COUNT: Final[dict[str, int]] = {"1": 8, "2": 9, "u": 9}
 
 @dataclass(frozen=True)
 class _PorcelainV2Entry:
-
     xy: str
     path: str
     head_mode: str | None

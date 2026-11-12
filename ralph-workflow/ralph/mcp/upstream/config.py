@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -21,7 +20,6 @@ McpServerOrigin = Literal["custom", "agent_upstream"]
 
 @dataclass(frozen=True)
 class UpstreamMcpServer:
-
     name: str
     transport: Literal["http", "stdio"]
     url: str | None = None
@@ -216,9 +214,7 @@ def _optional_str(value: object) -> str | None:
 
 def _origin_value(value: object) -> McpServerOrigin:
     if isinstance(value, str) and value in {"custom", "agent_upstream"}:
-        return cast(
-            "McpServerOrigin", value
-        )
+        return cast("McpServerOrigin", value)
     return "agent_upstream"
 
 

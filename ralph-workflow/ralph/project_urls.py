@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 GITHUB_REPOSITORY_URL = "https://github.com/Ralph-Workflow/Ralph-Workflow"

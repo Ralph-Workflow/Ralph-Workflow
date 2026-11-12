@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -231,7 +230,6 @@ SECRET_CONTENT_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 
 @runtime_checkable
 class _DiffEntryProtocol(Protocol):
-
     path: str
     status: str
     old_mode: str | None
@@ -246,7 +244,6 @@ DiffEntryProtocol = _DiffEntryProtocol
 
 @dataclass(frozen=True)
 class TripwireThresholds:
-
     max_deleted_files: int = DEFAULT_MAX_DELETED_FILES
     max_deleted_fraction: float = DEFAULT_MAX_DELETED_FRACTION
     binary_size_limit: int = DEFAULT_BINARY_SIZE_LIMIT
@@ -254,7 +251,6 @@ class TripwireThresholds:
 
 @dataclass(frozen=True)
 class _DiffEntry:
-
     path: str
     status: str
     old_mode: str | None = None

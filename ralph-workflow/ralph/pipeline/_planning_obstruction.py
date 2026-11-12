@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -15,7 +14,6 @@ __all__ = [
 
 
 class PlanningObstructionKind(StrEnum):
-
     NONE = "none"
     LOCAL_OVERWRITE = "local_overwrite"
     UNTRACKED_OVERWRITE = "untracked_overwrite"

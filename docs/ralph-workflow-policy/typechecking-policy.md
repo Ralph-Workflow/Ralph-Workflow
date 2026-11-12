@@ -25,9 +25,9 @@ or inapplicable (with a reason and the stack change that would re-open it).
 * The selected type checker MUST match the language ecosystem best
   practice (mypy for Python, tsc for TypeScript, cargo check for Rust,
   go build for Go, etc.). A non-standard checker is permitted only
-  with a documented rationale.
+  with a documented reason.
 * Suppressions (`# type: ignore`, `@ts-ignore`, `#[allow(...)]`) MUST
-  carry a specific error code AND a documented rationale per
+  carry a specific error code AND a documented reason per
   `ralph-workflow/docs/agents/type-ignore-policy.md`. Blanket
   suppressions are forbidden. Bare `# type: ignore` without a specific
   mypy error code is rejected by `ralph/testing/audit_typecheck_bypass.py`.
@@ -65,9 +65,9 @@ An assertion is permitted only in one of three positions:
   match groups, database rows, deserialization entry points. The assertion
   MUST live inside a named helper with a documented contract, ONE per leak
   kind, and MUST NOT be repeated at call sites.
-* STRUCTURAL SEAM — permitted with a documented rationale where the proof
+* STRUCTURAL SEAM — permitted with a documented reason where the proof
   lives in another module and cannot be checked locally, such as protocol
-  conformance or a lazy/plugin module boundary. These carry the same rationale
+  conformance or a lazy/plugin module boundary. These carry the same reason
   requirement as a suppression and count against the same suppression baseline
   (`suppression_rationale_policy`). Where the language offers a runtime-
   checkable protocol or interface, it MUST be used instead, demoting the seam
@@ -132,12 +132,12 @@ When working in this domain, the agent additionally MUST:
 * DECLARE one `RALPH-LANG:` block per language with the exact checker
   command. Do not invent languages; do not omit detected languages.
 * PREFER existing tooling and configuration. Adding a new type checker
-  requires a documented rationale and a benchmarked benefit.
+  requires a documented reason and a benchmarked benefit.
 
 An agent MUST NOT:
 
 * Add `ignore_missing_imports`, `follow_imports = silent`, or similar
-  global silencers without a per-dependency rationale.
+  global silencers without a per-dependency reason.
 * Use `# type: ignore` without a specific error code.
 * Add a `# type: ignore` to a test file.
 * Weaken the strictness level to obtain a passing result.
@@ -162,7 +162,7 @@ RALPH-LANG: TypeScript
 RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no TypeScript source exists in this project (no `tsconfig.json`, no `.ts` files); reopens when the first `.ts` file lands - at which point `RALPH-COMMAND: npx tsc --noEmit` becomes the gate.; evidence: ralph-workflow/ralph/language_detector/ returns zero `.ts` / `.tsx` files under the workspace root; owner: project-policy owner; expiry: 2027-07-12; warning: TypeScript checking is genuinely inapplicable until a `.ts` file lands; review trigger: when a `.ts` file is added under the workspace root.
 
 RALPH-LANG: Rust
-RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no Rust source is built, tested, or distributed in this project (docs/legacy-rust/ is the quarantined pointer to the retired Rust implementation and is outside any build target); reopens when active Rust code is reintroduced - at which point `RALPH-COMMAND: cargo check` (or the project's chosen tool, with a documented rationale) becomes the gate.; evidence: no Cargo.toml / Cargo.lock at repo root; docs/legacy-rust/ is marked retired in its README and excluded from any build target; owner: project-policy owner; expiry: 2027-07-12; warning: Rust type checking is genuinely inapplicable while the legacy pointer stays retired; review trigger: when a new Cargo.toml lands at the workspace root or a Rust module is reintroduced outside docs/legacy-rust/.
+RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no Rust source is built, tested, or distributed in this project (docs/legacy-rust/ is the quarantined pointer to the retired Rust implementation and is outside any build target); reopens when active Rust code is reintroduced - at which point `RALPH-COMMAND: cargo check` (or the project's chosen tool, with a documented reason) becomes the gate.; evidence: no Cargo.toml / Cargo.lock at repo root; docs/legacy-rust/ is marked retired in its README and excluded from any build target; owner: project-policy owner; expiry: 2027-07-12; warning: Rust type checking is genuinely inapplicable while the legacy pointer stays retired; review trigger: when a new Cargo.toml lands at the workspace root or a Rust module is reintroduced outside docs/legacy-rust/.
 
 RALPH-LANG: Go
 RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no Go source exists in this project (no `go.mod`; `ralph-workflow/ralph/language_detector/models.py` only references Go in stack-classification helpers); reopens when the first Go file lands - at which point `RALPH-COMMAND: go build ./...` becomes the gate.; evidence: no go.mod / go.sum at repo root; ralph-workflow/ralph/language_detector/ scan reports zero `.go` files; owner: project-policy owner; expiry: 2027-07-12; warning: Go type checking is genuinely inapplicable until a Go file lands; review trigger: when a go.mod lands at the workspace root.

@@ -19,6 +19,7 @@ your own words; the validator only checks the frontmatter ``status`` enum.
 
 Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, caller, integration, configuration, documentation, test, and command evidence. This review runs when the invocation gate admits it. Delegate independent evidence gathering to concurrent read-only subagents; reconcile findings here. Do not use an implementer summary, rationale, or completion claim as evidence.
 
+### Verification fan-out
 
 Fan out read-only verification across independent criterion groups, one subagent per group. Examples of groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). These examples are not size prerequisites for delegation. Each subagent returns the four-field shape (`Expected`, `Observed`, `Evidence`, `Location`) defined in the shared subagent guidance above.
 
@@ -34,6 +35,7 @@ Choose the outcome from fresh evidence, not the developer's status:
 
 `failed` records stronger or not-evaluable evidence for explicit resolution; the label itself never fails the pipeline.
 
+## Free-form decision body
 
 The validator only checks the frontmatter ``status`` enum. The body is the next agent's reading matter; write it in your own words.
 
@@ -90,6 +92,7 @@ as a separate `partial`:
   a Sphinx warning in the bounded docs build.
 {% endset %}
 
+## Decision artifact
 
 Submit the final analysis artifact from this session. Read `.agent/artifact-formats/development_analysis_decision.md`. The body is free-form: describe the verdict the next agent needs.
 

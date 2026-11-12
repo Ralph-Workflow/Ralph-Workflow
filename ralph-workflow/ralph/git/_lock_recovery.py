@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -126,13 +125,11 @@ def _probe_lsof_fuser(lock: Path, timeout: float) -> Literal["live", "dead", "un
         pass
 
     try:
-        result = (
-            subprocess.run(
-                ["fuser", str(lock)],
-                timeout=timeout,
-                capture_output=True,
-                check=False,
-            )
+        result = subprocess.run(
+            ["fuser", str(lock)],
+            timeout=timeout,
+            capture_output=True,
+            check=False,
         )
         if result.returncode == 0:
             return "live"
@@ -496,14 +493,12 @@ def _find_lock_holder(lock_path: Path) -> str:
         pass
 
     try:
-        result = (
-            subprocess.run(
-                ["fuser", str(lock_path)],
-                timeout=_PROBE_TIMEOUT_S,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+        result = subprocess.run(
+            ["fuser", str(lock_path)],
+            timeout=_PROBE_TIMEOUT_S,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
             pid = result.stdout.strip().split()[0]

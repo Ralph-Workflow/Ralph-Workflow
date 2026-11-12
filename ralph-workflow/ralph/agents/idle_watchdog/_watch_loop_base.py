@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -16,7 +15,6 @@ T = TypeVar("T")
 
 
 class WatchLoopBase:
-
     def __init__(self, clock: Clock) -> None:
         self.clock = clock
         self._event = threading.Event()

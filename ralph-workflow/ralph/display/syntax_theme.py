@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from functools import lru_cache
@@ -78,7 +77,6 @@ def _generate_syntax_colors(preview_surface: str | None) -> dict[str, str]:
 
 
 class SyntaxThemes:
-
     @staticmethod
     def dark() -> type[PygmentsStyle]:
         return _style(

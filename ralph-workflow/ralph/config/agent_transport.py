@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class AgentTransport(StrEnum):
-
     CLAUDE = "claude"
     CLAUDE_INTERACTIVE = "claude_interactive"
     CODEX = "codex"

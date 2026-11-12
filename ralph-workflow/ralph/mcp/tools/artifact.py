@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,7 +23,6 @@ def _noop_now_iso() -> str:
 
 @dataclass(frozen=True)
 class ArtifactHandlerDeps:
-
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _noop_now_iso
     history_enabled: bool = False
@@ -66,9 +64,7 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 
 
 def _resolve_artifact_dir(session: CoordinationSessionLike, workspace: WorkspaceLike) -> Path:
-    worker = cast(
-        "Path | None", getattr(session, "worker_artifact_dir", None)
-    )
+    worker = cast("Path | None", getattr(session, "worker_artifact_dir", None))
     return worker if worker is not None else _artifact_dir(workspace)
 
 

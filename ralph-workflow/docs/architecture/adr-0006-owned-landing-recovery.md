@@ -11,7 +11,7 @@ standalone commit generation previously reached the invariant directly and
 raised an uncaught exception. A separate defect deleted an unfinished landing
 receipt when a target advanced or an ancestry query failed.
 
-## Decision
+## Choice
 
 Standalone commit generation delegates existing ownership to the same recovery
 and supervised resolution paths as pipeline startup before inspecting its diff

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -747,7 +746,6 @@ def _find_empty_per_language_inapplicable(content: str) -> set[str]:
         if line.startswith(markers.INAPPLICABLE_MARKER) and not stripped:
             out.add(current_lang)
     return out
-
 
 
 __all__ = [

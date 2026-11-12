@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,7 +42,6 @@ HOOKS_DIR_NAME = "hooks"
 
 
 class GitHelpers:
-
     real_git: Path | None
     wrapper_dir: Path | None
     wrapper_repo_root: Path | None

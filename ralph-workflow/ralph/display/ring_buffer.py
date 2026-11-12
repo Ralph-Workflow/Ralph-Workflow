@@ -1,4 +1,3 @@
-
 import collections
 import threading
 
@@ -6,11 +5,8 @@ PARALLEL_DISPLAY_BUFFER_SIZE: int = 1000
 
 
 class RingBuffer:
-
     def __init__(self, maxsize: int) -> None:
-        self._buf: collections.deque[str] = collections.deque(
-            maxlen=maxsize
-        )
+        self._buf: collections.deque[str] = collections.deque(maxlen=maxsize)
         self._lock = threading.Lock()
         self._dropped_count: int = 0
 

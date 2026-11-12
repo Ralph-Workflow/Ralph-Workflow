@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.project_policy._assessment import parse_execution_evidence

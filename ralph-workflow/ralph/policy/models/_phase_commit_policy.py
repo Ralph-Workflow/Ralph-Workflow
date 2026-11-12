@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import Field
@@ -7,7 +6,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PhaseCommitPolicy(_FrozenPolicyModel):
-
     requires_artifact: bool = True
     skipped_advances_progress: bool = True
     increments_counter: str | None = Field(

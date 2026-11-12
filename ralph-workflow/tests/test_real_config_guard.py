@@ -795,7 +795,6 @@ def test_default_production_guard_preserves_ralph_and_home_policy(
 
 
 def test_proc_self_root_alias_detection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Guarded path detection catches aliases resolving to protected config via /proc/self/root."""
     fake_home = tmp_path / "fake_home"
     fake_config = fake_home / ".config"
     fake_config.mkdir(parents=True)

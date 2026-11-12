@@ -1,4 +1,3 @@
-
 from typing import Self
 
 from pydantic import ConfigDict, Field, model_validator
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class AgentsPolicy(_FrozenPolicyModel):
-
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     agent_chains: dict[str, AgentChainConfig] = Field(

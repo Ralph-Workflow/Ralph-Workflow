@@ -29,7 +29,7 @@ any moment:
 The lifecycle states above are the **typed projection** of the closed
 ownership model: every transition between states is the result of
 exactly one authoritative owner applying a closed transition table or
-calling a typed decision function. There is no fallback authority:
+calling a typed choice function. There is no fallback authority:
 
 - The durable integration record (`ralph.pipeline.auto_integrate_record.IntegrationRecord`)
   is the single source of truth for the integration lifecycle. All
@@ -44,7 +44,7 @@ calling a typed decision function. There is no fallback authority:
   outcomes; UNREADABLE refusals are mapped to intervention with
   bytes preserved on disk. The release path NEVER erases
   ownership evidence.
-- Decision-field writers on `RebaseState` are exclusively the typed
+- Choice-field writers on `RebaseState` are exclusively the typed
   setters: `set_publication_decision` (single writer of
   `last_publication_decision`), `set_fan_out_decision` (single writer of
   `last_fan_out_decision`), and `set_operation_display_state` (single
@@ -103,7 +103,7 @@ from a closed enum and an `is_diagnosis` flag, never from prose.
 ### Documentation review note
 
 - **What changed:** The closed-ownership section names all three setters, the 10 display plus 1 fan-out migration, and the two distinct crash-recovery reflog contracts.
-- **Why here:** This is the operator reference for what the activity line means and which writer owns each displayed decision.
+- **Why here:** This is the operator reference for what the activity line means and which writer owns each displayed choice.
 - **What stayed elsewhere:** The domain matrix and setter signatures stay in ADR-0009. Seam locations stay on the recovery page.
 - **Duplication:** This page keeps one-line state notes and points at Recovery for the reflog contracts.
 - **Clearer route:** An operator can match a displayed state to its setter, then open Recovery for how a crash is reconstructed.

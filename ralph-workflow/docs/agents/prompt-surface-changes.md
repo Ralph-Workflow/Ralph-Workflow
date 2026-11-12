@@ -47,7 +47,7 @@ that belongs to runtime machinery.
 ## Sampling and boundaries
 
 Sampled consumers for retained output shape: `_artifact_submission.j2` routes
-submitted Markdown through its validator and completion gate; analysis templates feed their decision
+submitted Markdown through its validator and completion gate; analysis templates feed their choice
 formats and validators. Render-integrity and fenced-artifact-example audits
 cover these rendered relationships.
 

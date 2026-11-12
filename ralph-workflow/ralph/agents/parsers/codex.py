@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, cast
@@ -22,7 +21,6 @@ def _parse_codex_object(
 
 
 class _CodexDispatch:
-
     def __init__(self, owner: CodexParser | None = None) -> None:
         self._owner = owner
         self._accumulators: dict[str, TextAccumulator] = {}
@@ -271,7 +269,6 @@ def _item_result_content(result: object) -> str:
 
 
 class CodexParser(NdjsonParserBase):
-
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
     )

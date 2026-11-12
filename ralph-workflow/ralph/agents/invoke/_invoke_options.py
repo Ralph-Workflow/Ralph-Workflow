@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
 
 
 class _CommandBuilder(Protocol):
-
     def __call__(
         self,
         config: AgentConfig,
@@ -44,7 +42,6 @@ class _CommandBuilder(Protocol):
 
 
 class _ProcessMonitorFactory(Protocol):
-
     def __call__(
         self,
         handle: ManagedProcess | ManagedPtyProcess,
@@ -58,7 +55,6 @@ class _ProcessMonitorFactory(Protocol):
 
 
 class _WorkspaceMonitorFactory(Protocol):
-
     def __call__(
         self,
         workspace_path: Path,
@@ -69,7 +65,6 @@ class _WorkspaceMonitorFactory(Protocol):
 
 
 class _UpstreamEnvApplier(Protocol):
-
     def __call__(
         self,
         upstreams: tuple[UpstreamMcpServer, ...],
@@ -103,7 +98,6 @@ _PLATFORM_OVERRIDE: ContextVar[str | None] = ContextVar(
 
 @dataclass(frozen=True)
 class InvokeOptions:
-
     workspace_monitor_factory: (
         Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
     ) = None
@@ -182,7 +176,6 @@ class InvokeOptions:
             override = _WORKSPACE_MONITOR_FACTORY_OVERRIDE.get()
             if override is not None:
                 object.__setattr__(self, "workspace_monitor_factory", override)
-
 
     @classmethod
     @contextmanager

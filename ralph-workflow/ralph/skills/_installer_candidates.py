@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -58,9 +57,7 @@ def _canonical_skill_leaf_names(canonical_skill_dir: Path, workspace_root: Path)
                 dirpath,
                 _dirnames,
                 filenames,
-            ) in os.walk(
-                str(canonical_skill_dir), followlinks=False
-            ):
+            ) in os.walk(str(canonical_skill_dir), followlinks=False):
                 base = Path(str(dirpath)).relative_to(canonical_skill_dir)
                 for filename in filenames:
                     leaves.add(str(base / filename))
@@ -79,9 +76,7 @@ def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:
             return _lexical_descendants(root, workspace_root)
         try:
             try:
-                raw = cast(
-                    "str", repo_obj.git.ls_files("--", str(root))
-                )
+                raw = cast("str", repo_obj.git.ls_files("--", str(root)))
             except (GitCommandError, OSError):
                 return _lexical_descendants(root, workspace_root)
             paths = [line.strip() for line in raw.splitlines() if line.strip()]
@@ -107,9 +102,7 @@ def _lexical_descendants(root: Path, workspace_root: Path) -> list[str]:
         dirpath,
         _dirnames,
         filenames,
-    ) in os.walk(
-        root, followlinks=False
-    ):
+    ) in os.walk(root, followlinks=False):
         base_rel = Path(str(dirpath)).relative_to(workspace_root)
         for filename in filenames:
             file_path = base_rel / filename

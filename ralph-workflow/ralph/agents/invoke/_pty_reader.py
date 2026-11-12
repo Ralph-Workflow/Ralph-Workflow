@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.agents.invoke._pty_runner import run_pty_and_read_lines as _run_pty_and_read_lines

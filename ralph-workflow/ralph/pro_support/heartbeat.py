@@ -1,10 +1,11 @@
-
 from __future__ import annotations
 
 import logging
 import threading
 import time
 from typing import TYPE_CHECKING, Protocol
+
+import httpx
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -19,12 +20,10 @@ _STATUS_SERVER_ERROR_THRESHOLD = 500
 
 
 class _HttpxResponseLike(Protocol):
-
     status_code: int
 
 
 class _HttpxClientLike(Protocol):
-
     def post(
         self,
         url: str,
@@ -39,8 +38,6 @@ class _HttpxClientFactory(Protocol):
 
 
 def _default_httpx_client_factory() -> _HttpxClientLike:
-    import httpx
-
     return httpx.Client(timeout=5.0)
 
 
@@ -49,7 +46,6 @@ def _default_clock() -> float:
 
 
 class ProHeartbeatClient:
-
     def __init__(
         self,
         run_id: str,

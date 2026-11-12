@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -27,11 +26,8 @@ GREP_GIT_CHANGED: Final[int] = 40
 INDEXED_COMPONENT_NOT_AVAILABLE: Final[str] = "no_indexed_data"
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class RankedItem:
-
     key: str
     score: int = 0
     reasons: tuple[str, ...] = field(default_factory=tuple)
@@ -50,8 +46,6 @@ class RankedItem:
         if self.evidence_id is not None:
             out["evidence_id"] = self.evidence_id
         return out
-
-
 
 
 def is_generated_path(path: str) -> bool:
@@ -230,8 +224,6 @@ def sort_ranked(items: list[RankedItem]) -> list[RankedItem]:
     return sorted(items, key=_sort_key)
 
 
-
-
 def score_search_file(
     *,
     candidate_path: str,
@@ -279,8 +271,6 @@ def score_search_file(
         reasons=tuple(reasons),
         path=candidate_path,
     )
-
-
 
 
 def score_grep_match(
@@ -478,8 +468,6 @@ def _row_int(row: sqlite3.Row, index: int) -> int:
         except (TypeError, ValueError):
             return 0
     return 0
-
-
 
 
 _FTS_DISQUALIFYING_METACHARS: Final[frozenset[str]] = frozenset(

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -197,17 +196,13 @@ def _render_commit_message_via_display(repo_root: Path, display_context: object)
         display = display_context
     elif display_context is not None:
         try:
-            display = resolve_active_display(
-                None, cast("DisplayContext", display_context)
-            )
+            display = resolve_active_display(None, cast("DisplayContext", display_context))
         except Exception:
             display = None
     if display is None:
         return
     with suppress(Exception):
-        cast("ParallelDisplay", display).emit_commit_message(
-            repo_root
-        )
+        cast("ParallelDisplay", display).emit_commit_message(repo_root)
 
 
 def _record_display_outcome(display: object | None, outcome: str, **opts: object) -> None:
@@ -218,14 +213,10 @@ def _record_display_outcome(display: object | None, outcome: str, **opts: object
             target = ctx
         elif ctx is not None:
             with suppress(Exception):
-                target = resolve_active_display(
-                    None, cast("DisplayContext", ctx)
-                )
+                target = resolve_active_display(None, cast("DisplayContext", ctx))
     if target is not None and hasattr(target, "record_artifact_outcome"):
         with suppress(Exception):
-            cast("ParallelDisplay", target).record_artifact_outcome(
-                outcome
-            )
+            cast("ParallelDisplay", target).record_artifact_outcome(outcome)
 
 
 def _is_write_tree_fn(value: object) -> TypeGuard[Callable[[Path | str], str]]:
@@ -299,7 +290,6 @@ COMMIT_APPROVAL_MISSING_CODE = "COMMIT_APPROVAL_MISSING"
 
 
 class CommitApprovalError(RuntimeError):
-
     def __init__(self, code: str, message: str) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
@@ -423,9 +413,7 @@ def execute_commit_effect(
     display: ParallelDisplay | None = None,
     **opts: object,
 ) -> Event:
-    verbosity = cast(
-        "Verbosity", opts.get("verbosity", Verbosity.VERBOSE)
-    )
+    verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
     _raw_create = opts.get("create_commit_fn")
     _create_commit_fn: _CreateCommitFn = cast(
         "_CreateCommitFn", _raw_create if callable(_raw_create) else create_commit

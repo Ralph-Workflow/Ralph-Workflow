@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -46,7 +45,6 @@ def with_prompt_echo_flag(
 
 
 class BaseExecutionStrategy:
-
     def __init__(
         self,
         *,

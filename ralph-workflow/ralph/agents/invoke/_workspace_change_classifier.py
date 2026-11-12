@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import fnmatch
@@ -152,7 +151,6 @@ SOURCE_EXTENSIONS: frozenset[str] = frozenset(
 
 @dataclass(frozen=True)
 class WorkspaceChangeClassifier:
-
     weights: Mapping[str, float] = field(
         default_factory=lambda: dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS)
     )

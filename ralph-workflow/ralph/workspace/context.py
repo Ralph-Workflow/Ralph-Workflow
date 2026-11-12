@@ -1,15 +1,24 @@
-
 from __future__ import annotations
 
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from pydantic import ValidationError
 
 from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
+from ralph.config.loader import (
+    ConfigTomlError,
+    _attribute_validation_error_to_layer,
+    _global_config_path,
+    load_config,
+    load_toml,
+)
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.policy.loader import load_policy_for_workspace_scope
 from ralph.workspace.errors import WorkspaceContextError
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
@@ -21,10 +30,43 @@ if TYPE_CHECKING:
     from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
     from ralph.policy.models import PolicyBundle
 
+_AGENT_REGISTRY_MODULE: Final = "ralph.agents.registry"
+_SESSION_PLAN_MODULE: Final = "ralph.mcp.session_plan"
+
+
+@runtime_checkable
+class _AgentRegistryFactory(Protocol):
+    @staticmethod
+    def from_config(config: UnifiedConfig) -> AgentRegistry: ...
+
+
+@runtime_checkable
+class _SessionPlanResolver(Protocol):
+    def __call__(self, root: Path) -> EffectiveSessionMcpPlan: ...
+
+
+def _module_namespace(module_name: str) -> dict[str, object]:
+    return cast("dict[str, object]", import_module(module_name).__dict__)
+
+
+def _build_agent_registry(config: UnifiedConfig) -> AgentRegistry:
+    registry_factory = _module_namespace(_AGENT_REGISTRY_MODULE).get("AgentRegistry")
+    if not isinstance(registry_factory, _AgentRegistryFactory):
+        msg = f"{_AGENT_REGISTRY_MODULE}.AgentRegistry is unavailable"
+        raise RuntimeError(msg)
+    return registry_factory.from_config(config)
+
+
+def _resolve_effective_session_mcp_plan(root: Path) -> EffectiveSessionMcpPlan:
+    resolver = _module_namespace(_SESSION_PLAN_MODULE).get("resolve_effective_session_mcp_plan")
+    if not isinstance(resolver, _SessionPlanResolver):
+        msg = f"{_SESSION_PLAN_MODULE}.resolve_effective_session_mcp_plan is unavailable"
+        raise RuntimeError(msg)
+    return resolver(root)
+
 
 @dataclass(frozen=True)
 class WorkspaceContext:
-
     target_scope: WorkspaceScope
     config: UnifiedConfig
     policy_bundle: PolicyBundle
@@ -39,26 +81,6 @@ class WorkspaceContext:
 
 @contextmanager
 def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
-    from ralph.agents.registry import (
-        AgentRegistry,
-    )
-    from ralph.config.loader import (
-        ConfigTomlError,
-        _attribute_validation_error_to_layer,
-        _global_config_path,
-        load_config,
-        load_toml,
-    )
-    from ralph.mcp.artifacts.file_backend import (
-        DEFAULT_FILE_BACKEND,
-    )
-    from ralph.mcp.session_plan import (
-        resolve_effective_session_mcp_plan,
-    )
-    from ralph.policy.loader import (
-        load_policy_for_workspace_scope,
-    )
-
     target_root = Path(target_root)
     if not DEFAULT_FILE_BACKEND.exists(target_root):
         raise FileNotFoundError(f"workspace_context: target worktree does not exist: {target_root}")
@@ -72,8 +94,8 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
     try:
         config = load_config(workspace_scope=target_scope)
         policy_bundle = load_policy_for_workspace_scope(target_scope, config=config)
-        registry = AgentRegistry.from_config(config)
-        effective_mcp_plan = resolve_effective_session_mcp_plan(target_scope.root)
+        registry = _build_agent_registry(config)
+        effective_mcp_plan = _resolve_effective_session_mcp_plan(target_scope.root)
     except (ConfigTomlError, OSError) as exc:
         msg = str(exc)
         m = re.search(r"Ralph could not read (.*?):", msg)

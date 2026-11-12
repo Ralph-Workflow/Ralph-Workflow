@@ -29,13 +29,13 @@ The deeper issue is architectural: key decisions in this slice were not explicit
 
 ## Architecture
 
-### 1. Commit scope resolution becomes a pure decision seam
+### 1. Commit scope resolution becomes a pure choice seam
 
 Commit scope selection should be expressed as a pure helper that accepts:
 - normalized commit payload
 - changed file list
 
-and returns one explicit staging decision:
+and returns one explicit staging choice:
 - stage all
 - stage specific included paths
 - stage changed paths minus exclusions
@@ -73,7 +73,7 @@ The runner/recovery path does not need a major rewrite, but this slice needs tar
 ### Contract and relay tests
 
 - Extend commit-message tests to cover excluded-file contract behavior.
-- Extend commit-executor tests to cover the pure decision seam and payload matrix.
+- Extend commit-executor tests to cover the pure choice seam and payload matrix.
 - Extend reducer/recovery tests to prove category relay is phase-correct and not hardcoded to artifact validation.
 - Extend proof-validation tests to keep the black-box artifact-validation path covered through recovery.
 
@@ -81,7 +81,7 @@ The runner/recovery path does not need a major rewrite, but this slice needs tar
 
 ### Pure black-box unit tests
 
-- commit scope decision helper: payload + changed paths → staged path result / validation failure
+- commit scope choice helper: payload + changed paths → staged path result / validation failure
 - commit failure reason helper: state/event → exact failure reason
 - classified phase failure relay helper: category + phase + raw reason → correctly prefixed failure text
 
@@ -116,4 +116,4 @@ The runner/recovery path does not need a major rewrite, but this slice needs tar
 
 - This spec belongs in `docs/superpowers/specs/` because it defines an implementation-scoped hardening contract for a contained pipeline slice.
 - It intentionally leaves broader repo-wide safety frameworks alone.
-- It makes the route clearer by separating pure-decision hardening from relay-path hardening rather than treating the original bug as a single-file patch.
+- It makes the route clearer by separating pure-choice hardening from relay-path hardening rather than treating the original bug as a single-file patch.

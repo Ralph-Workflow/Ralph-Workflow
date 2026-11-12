@@ -1,9 +1,7 @@
-
 from __future__ import annotations
 
 
 class CheckpointPolicyMismatchError(Exception):
-
     def __init__(self, checkpoint_phase: str, valid_phases: set[str]) -> None:
         self.checkpoint_phase = checkpoint_phase
         self.valid_phases = valid_phases

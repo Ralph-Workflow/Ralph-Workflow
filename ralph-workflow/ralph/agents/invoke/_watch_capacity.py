@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -26,7 +25,6 @@ __all__ = [
 
 
 class DirectoryCounter(Protocol):
-
     def __call__(self, workspace: Path, *, cap: int) -> int | None: ...
 
 

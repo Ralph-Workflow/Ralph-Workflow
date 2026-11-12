@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -8,7 +7,6 @@ from typing import cast
 
 @dataclass(frozen=True)
 class OpenCodeChildPart:
-
     child_session_id: str
     agent: str | None
     title: str

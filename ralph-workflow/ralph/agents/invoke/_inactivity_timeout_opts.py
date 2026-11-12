@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class InactivityTimeoutOpts:
-
     reason: WatchdogFireReason | None = None
     session_resume_safe: bool = False
     resumable_session_id: str | None = None

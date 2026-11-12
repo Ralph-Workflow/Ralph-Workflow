@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -26,7 +25,6 @@ if TYPE_CHECKING:
 if TYPE_CHECKING:
 
     class HttpPreflightFn(Protocol):
-
         def __call__(
             self, endpoint: str, required_tools: tuple[str, ...], timeout: timedelta
         ) -> None: ...
@@ -38,7 +36,6 @@ _STRICT_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
 @dataclass(frozen=True)
 class UpstreamValidationReport:
-
     servers: tuple[UpstreamServerReport, ...]
 
     @property

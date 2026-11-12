@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -19,7 +18,6 @@ from ralph.pipeline.integration_observation import (
 
 
 class NextAction(Enum):
-
     COMMIT = "commit"
     LAND = "land"
     REINTEGRATE = "reintegrate"
@@ -39,14 +37,12 @@ class NextAction(Enum):
 
 
 class DirtAttribution(Enum):
-
     PHASE_OWNED = "phase_owned"
     UNOWNED = "unowned"
     UNKNOWN = "unknown"
 
 
 class CleanupLadderRung(Enum):
-
     NORMAL_CLEANUP = "normal_cleanup"
     ALTERNATE_PRESERVATION = "alternate_preservation"
     QUARANTINE = "quarantine"
@@ -66,7 +62,6 @@ CLEANUP_LADDER_ORDER: tuple[CleanupLadderRung, ...] = (
 
 
 class EscalationRung(Enum):
-
     REPAIR = "repair"
     DISPATCH_RESOLVER = "dispatch_resolver"
     REBUILD_ON_TARGET = "rebuild_on_target"
@@ -96,7 +91,6 @@ _REPEAT_COUNTER_MARKER = (
 
 @dataclass(frozen=True, slots=True)
 class AttemptState:
-
     rung: EscalationRung = EscalationRung.REPAIR
     repeat_counts: RepeatCounts = field(
         default_factory=OrderedDict,
@@ -215,7 +209,6 @@ def cleanup_action_for(rung: CleanupLadderRung) -> NextAction:
 
 @dataclass(frozen=True, slots=True)
 class DecisionContext:
-
     observation: Observation
     attempts: AttemptState = field(default_factory=AttemptState)
     dirt_shape: DirtShape = DirtShape.NONE
@@ -229,9 +222,7 @@ def _is_real_conflict(observation: Observation) -> bool:
     )
 
 
-_LADDER_ACTION_MAP: dict[
-    EscalationRung, NextAction
-] = {
+_LADDER_ACTION_MAP: dict[EscalationRung, NextAction] = {
     EscalationRung.REPAIR: NextAction.REPAIR,
     EscalationRung.DISPATCH_RESOLVER: NextAction.DISPATCH_RESOLVER,
     EscalationRung.REBUILD_ON_TARGET: NextAction.REBUILD_ON_TARGET,
@@ -320,9 +311,7 @@ def _ladder_action_skipping_resolver(rung: EscalationRung, observation: Observat
     return action
 
 
-_ESCALATED_RUNG_MAP: dict[
-    EscalationRung, EscalationRung
-] = {
+_ESCALATED_RUNG_MAP: dict[EscalationRung, EscalationRung] = {
     rung: LADDER_ORDER[min(LADDER_ORDER.index(rung) + ESCALATED_RUNG_STRIDE, len(LADDER_ORDER) - 1)]
     for rung in EscalationRung
 }

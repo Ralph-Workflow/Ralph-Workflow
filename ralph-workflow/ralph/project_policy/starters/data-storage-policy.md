@@ -14,7 +14,7 @@ transactions, backup compatibility, and destructive data operations.
 
 Required for project-owned durable stores or migrations. External stateless
 dependencies alone do not trigger it; uncertainty requires owner confirmation.
-If durable ownership ends, retain a dated inactive decision and reactivation
+If durable ownership ends, retain a dated inactive choice and reactivation
 trigger, or remove the policy through reviewed cleanup.
 
 ## Default requirements
@@ -25,7 +25,7 @@ trigger, or remove the policy through reviewed cleanup.
 * Migrations MUST be ordered, reviewable, tested against representative prior
   state, and safe for the deployment strategy.
 * Destructive changes MUST have an explicit recovery, backup, or
-  irreversible-change decision.
+  irreversible-change choice.
 * Sensitive data handling MUST defer to the privacy and security policies.
 * Consistency, conflict, concurrency, and partial-failure behavior MUST be
   explicit for the selected store.

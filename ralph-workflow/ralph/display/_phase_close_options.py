@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PhaseCloseOptions:
-
     phase_role: str | None = None
     iteration_context: PhaseIterationContext | None = None
     exit_trigger: str | None = None

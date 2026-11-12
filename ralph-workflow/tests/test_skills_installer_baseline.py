@@ -51,7 +51,6 @@ def test_install_baseline_skills_writes_claude_discoverable_skill_directories(
     tmp_path: Path,
 ) -> None:
     entry, failures = install_baseline_skills(target_dir=tmp_path)
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 
     assert entry.status == _INSTALLED_HEALTHY, failures
     assert failures == []
@@ -67,7 +66,6 @@ def test_install_baseline_skills_preserves_conflicting_user_skill(tmp_path: Path
     skill_file = user_skill_dir / "SKILL.md"
     skill_file.write_text("# user version\n", encoding="utf-8")
 
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
     entry, failures = install_baseline_skills(target_dir=target_dir)
 
     assert entry.status == _NEEDS_REPAIR
@@ -87,7 +85,6 @@ def test_install_baseline_skills_updates_ralph_managed_skill_in_place(tmp_path: 
     )
 
     entry, failures = install_baseline_skills(target_dir=target_dir)
-    # RALPH-TEST-REASON: the retired default skills are no longer shipped, so the fixture uses a retained artifact skill
 
     assert entry.status == _INSTALLED_HEALTHY
     assert failures == []

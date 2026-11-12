@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 _REF_PREFIX = "ref:"

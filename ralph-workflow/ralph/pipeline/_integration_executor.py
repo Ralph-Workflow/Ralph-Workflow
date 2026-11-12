@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -19,19 +18,16 @@ __all__ = [
 
 @runtime_checkable
 class RebaseContinuationExecutor(Protocol):
-
     def continue_rebase(
         self,
         root: Path,
         target: str,
         resolver: RebaseStopResolver,
         config: ConflictResolutionConfig | None,
-    ) -> tuple[bool, str | None, ResolutionFailureCause]:
-        ...
+    ) -> tuple[bool, str | None, ResolutionFailureCause]: ...
 
 
 class _LiveRebaseContinuationExecutor:
-
     def continue_rebase(
         self,
         root: Path,

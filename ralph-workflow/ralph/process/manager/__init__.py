@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -120,9 +119,7 @@ if sys.platform.startswith("linux"):
         _libc = ctypes.CDLL(None, use_errno=True)
         _raw_prctl: object = getattr(_libc, "prctl", None)
         if callable(_raw_prctl):
-            _PRCTL_FN = cast(
-                "_Prctl", _raw_prctl
-            )
+            _PRCTL_FN = cast("_Prctl", _raw_prctl)
     except Exception:
         _PRCTL_FN = None
 

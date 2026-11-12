@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -42,7 +41,6 @@ _IMPACT_RELATIONS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
 
 @dataclass(frozen=True, slots=True)
 class GraphNode:
-
     id: str
     kind: str
     label: str
@@ -54,7 +52,6 @@ class GraphNode:
 
 @dataclass(frozen=True, slots=True)
 class GraphEdge:
-
     source: str
     target: str
     relation: str
@@ -67,7 +64,6 @@ class GraphEdge:
 
 @dataclass(frozen=True, slots=True)
 class GraphResult:
-
     query_type: str
     nodes: tuple[GraphNode, ...]
     edges: tuple[GraphEdge, ...]
@@ -199,8 +195,6 @@ def _iter_incoming(
         if relations and edge.relation not in relations:
             continue
         yield edge
-
-
 
 
 def _deadline_elapsed(deadline: float | None) -> bool:

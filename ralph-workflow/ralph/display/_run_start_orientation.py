@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RunStartOrientation:
-
     prompt_path: str | None = None
     developer_agent: str | None = None
     developer_model: str | None = None

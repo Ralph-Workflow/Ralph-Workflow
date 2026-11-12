@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -14,7 +13,6 @@ _READ_CHUNK_SIZE = 4096
 
 @dataclass
 class PtyProcess:
-
     pid: int
     master_fd: int
     slave_fd: int

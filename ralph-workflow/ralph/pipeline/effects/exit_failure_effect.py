@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,7 +21,6 @@ def _contains_forbidden_sentinel(reason: str) -> tuple[bool, str | None]:
 
 @dataclass(frozen=True)
 class ExitFailureEffect:
-
     reason: str
 
     def __post_init__(self) -> None:

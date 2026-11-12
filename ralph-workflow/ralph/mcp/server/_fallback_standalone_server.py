@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -70,9 +69,7 @@ class _FallbackStandaloneServer:
     def bound_address(self) -> tuple[str, int]:
         if self._httpd is None:
             raise RuntimeError("Server has not been started yet")
-        return cast(
-            "tuple[str, int]", self._httpd.server_address
-        )
+        return cast("tuple[str, int]", self._httpd.server_address)
 
     def prepare_httpd(self) -> _FallbackHttpServer:
         if self._httpd is not None:
@@ -197,9 +194,7 @@ class _FallbackStandaloneServer:
         if gate_path:
             gate_path_obj = Path(gate_path)
             deadline = time.monotonic() + _PRE_SERVE_GATE_TIMEOUT_S
-            while not DEFAULT_FILE_BACKEND.exists(
-                gate_path_obj
-            ):
+            while not DEFAULT_FILE_BACKEND.exists(gate_path_obj):
                 if time.monotonic() >= deadline:
                     raise McpServerError(
                         f"pre-serve gate timed out after {_PRE_SERVE_GATE_TIMEOUT_S:g}s "

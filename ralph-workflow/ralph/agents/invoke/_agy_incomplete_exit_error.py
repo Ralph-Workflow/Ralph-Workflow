@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, NoReturn
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class AgyIncompleteExitError(AgentInvocationError):
-
     def __init__(self, agent_name: str, diagnostic: str | None = None) -> None:
         canonical = (
             "agent exited without required completion evidence "

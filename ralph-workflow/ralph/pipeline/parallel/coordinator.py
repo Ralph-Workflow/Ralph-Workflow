@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.pipeline.parallel.parallel_coordinator import (

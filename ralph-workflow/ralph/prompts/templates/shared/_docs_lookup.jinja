@@ -1,4 +1,3 @@
-
 {% if HAS_DOCS_MCP %}
 {% if DOCS_LOOKUP_VARIANT == 'short' %}
 Docs MCP is active ({{DOCS_MCP_PORT}}). Prefer docs-mcp search over {{WEB_SEARCH_TOOL_REFERENCE}} for library/API research during {{DOCS_LOOKUP_PHASE | default('development')}}.
@@ -6,6 +5,7 @@ Docs MCP is active ({{DOCS_MCP_PORT}}). Prefer docs-mcp search over {{WEB_SEARCH
 > **Documentation:** The `arabold/docs-mcp-server` is configured and reachable at `{{DOCS_MCP_PORT}}`. Use docs-mcp search for library and API research before {{DOCS_LOOKUP_ACTION | default('revising the plan')}}.
 {% else %}
 
+## DOCUMENTATION LOOKUP
 
 The `arabold/docs-mcp-server` is configured and reachable at `{{DOCS_MCP_PORT}}`. {{DOCS_LOOKUP_INTENT | default('Before implementing or debugging with a library or framework:')}}
 1. Search documentation using the docs-mcp search tool from your MCP tool list.

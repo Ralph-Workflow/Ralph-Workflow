@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -34,7 +33,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
     class _SupportsAgentLookup(Protocol):
-
         def get(self, name: str) -> AgentConfig | None: ...
 
 

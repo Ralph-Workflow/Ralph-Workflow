@@ -1,4 +1,3 @@
-
 from ._base import BaseExecutionStrategy, with_prompt_echo_flag
 from ._completion_mixin import CompletionEnforcingStrategy
 from ._factory import (

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class PolicyFlagSet:
-
     def __init__(self, values: Iterable[PolicyFlag] | None = None) -> None:
         self._values = frozenset(values or ())
 

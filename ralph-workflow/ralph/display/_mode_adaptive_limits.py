@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ BODY_MEASURE_CAP: Final[int] = 100
 
 @dataclass(frozen=True)
 class _ModeAdaptiveLimits:
-
     headline_max_chars: int
     condenser_soft_limit: int
     condenser_hard_limit: int

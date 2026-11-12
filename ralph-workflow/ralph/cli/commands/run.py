@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -87,7 +86,6 @@ if TYPE_CHECKING:
         ) -> int: ...
 
     class _RunnerModule(Protocol):
-
         run: _RunnerFunc
 
 
@@ -96,14 +94,10 @@ _state = _RunFuncState()
 
 def _get_run_func() -> _RunnerFunc | None:
     if _state.run_func is not _RUN_FUNC_UNSET:
-        return cast(
-            "_RunnerFunc | None", _state.run_func
-        )
+        return cast("_RunnerFunc | None", _state.run_func)
 
     try:
-        module = cast(
-            "_RunnerModule", import_module("ralph.pipeline.runner")
-        )
+        module = cast("_RunnerModule", import_module("ralph.pipeline.runner"))
     except ImportError:
         _state.run_func = None
         return None
@@ -138,9 +132,7 @@ _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     module = import_module("ralph.pipeline.runner")
-    return cast(
-        "int", module.validate_custom_mcp_servers(workspace_root)
-    )
+    return cast("int", module.validate_custom_mcp_servers(workspace_root))
 
 
 validate_custom_mcp_servers = _validate_custom_mcp_servers
@@ -163,7 +155,6 @@ _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
 
 
 class RunPipelineRequest(NamedTuple):
-
     config_path: Path | None = None
     cli_overrides: ConfigOverrides | None = None
     dry_run: bool = False
@@ -381,9 +372,7 @@ def _run_preflight_checks(
             return _EXIT_PREFLIGHT
 
     if request.policy_bundle is not None:
-        loaded_policy_bundle = cast(
-            "PolicyBundle", request.policy_bundle
-        )
+        loaded_policy_bundle = cast("PolicyBundle", request.policy_bundle)
         try:
             validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:

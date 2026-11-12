@@ -41,7 +41,7 @@ On restart, the run loop reads the durable `PipelineState` checkpoint
 and the integration record, then calls `decide_phase_transition` from
 those two sources only. The previous turn's `last_decision` is NOT
 consulted (avoiding feedback-loop regression where a settled obligation
-remains blocked because the previous turn decided to block).
+remains blocked because the previous turn resolved to block).
 
 ## UNKNOWN representation
 - `rebase_state.last_outcome` may be `None` (no outcome yet) or

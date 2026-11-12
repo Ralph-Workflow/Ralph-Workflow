@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpRestartPolicy:
-
     max_restarts: int = 20
     cooldown_seconds: float = 2.0
     host_contention_window_seconds: float = 10.0

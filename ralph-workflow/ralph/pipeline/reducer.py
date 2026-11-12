@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import functools
@@ -479,9 +478,7 @@ def _reduce_pure(
     )
     if worker_result is not None:
         return worker_result
-    handler = _get_event_handlers().get(
-        cast("PipelineEvent", event)
-    )
+    handler = _get_event_handlers().get(cast("PipelineEvent", event))
     if handler is None:
         return state, []
     new_state, effects = handler(state, pipeline_policy, routing_timing)

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -56,7 +55,6 @@ type UpstreamLoaderFn = Callable[[Path | None], tuple[UpstreamMcpServer, ...]]
 
 @dataclass(frozen=True)
 class SessionMcpPlan:
-
     capabilities: frozenset[str]
     server_env: dict[str, str] | None = None
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)

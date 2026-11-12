@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 HANDOFF_PATHS: dict[str, str] = {

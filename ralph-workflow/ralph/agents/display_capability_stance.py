@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class DisplayCapabilityStance:
-
     capability: DisplayCapability
     kind: str
     reason: str = ""

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,7 +6,6 @@ from datetime import datetime
 
 @dataclass
 class CommitAttemptLog:
-
     attempt_number: int
     agent: str
     strategy: str

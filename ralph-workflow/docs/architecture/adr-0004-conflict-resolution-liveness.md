@@ -17,7 +17,7 @@ A time-based termination must remain distinguishable from a genuine lack of
 activity, and the repository must not be inspected or advanced while processes
 from the completed resolver can still write to it.
 
-## Decision
+## Choice
 
 1. Conflict-resolution invocations use an `activity_only` supervision profile.
    Every recognised liveness source—stdout, MCP `tools/call`, subagent progress,

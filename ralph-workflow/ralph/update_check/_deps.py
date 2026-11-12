@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class UpdateCheckDeps:
-
     current_version: str
     environ: Mapping[str, str]
     now: Callable[[], float]

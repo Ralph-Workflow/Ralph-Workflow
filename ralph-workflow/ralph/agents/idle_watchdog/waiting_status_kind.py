@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class WaitingStatusKind(StrEnum):
-
     ENTERED = "entered"
     PROGRESS = "progress"
     SUSPECTED_FROZEN = "suspected_frozen"

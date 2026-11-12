@@ -341,7 +341,7 @@ automate, but the tradeoff is less step-by-step visibility while the run is
 in flight. Pick the transport that matches the operational visibility you
 need for the run.
 
-Multimodal delivery is decided per session through
+Multimodal delivery is resolved per session through
 `ResolvedCapabilityProfile`, which acts as the pre-computed, session-owned
 contract for how each modality is delivered to the active agent transport.
 

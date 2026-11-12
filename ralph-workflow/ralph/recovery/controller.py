@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ast
@@ -62,15 +61,12 @@ __all__ = [
 ]
 
 
-
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
     {"_mark_agent_unavailable", "_apply_chain_retry"}
 )
 
 
-_CONTROLLER_SOURCE_TREE_CACHE: dict[
-    str, tuple[str, ast.Module]
-] = {}
+_CONTROLLER_SOURCE_TREE_CACHE: dict[str, tuple[str, ast.Module]] = {}
 
 
 def _controller_source_tree(
@@ -139,8 +135,6 @@ def _assert_two_state_invariant() -> None:
 
 
 _assert_two_state_invariant()
-
-
 
 
 def _find_all_agents_unavailable_if(func_body: list[ast.stmt]) -> ast.If | None:
@@ -314,19 +308,14 @@ def _build_fallover_record(
 
 
 class _RetryHintPath(Protocol):
-
     def __call__(self, phase: str, *, pipeline_policy: PipelinePolicy | None = None) -> str: ...
 
 
 def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], _RetryHintPath]:
     module = import_module("ralph.phases.required_artifacts")
     namespace = cast("dict[str, object]", module.__dict__)
-    build_retry_hint = cast(
-        "Callable[[str, str], str]", namespace["build_retry_hint"]
-    )
-    retry_hint_path = cast(
-        "_RetryHintPath", namespace["retry_hint_path"]
-    )
+    build_retry_hint = cast("Callable[[str, str], str]", namespace["build_retry_hint"])
+    retry_hint_path = cast("_RetryHintPath", namespace["retry_hint_path"])
     return build_retry_hint, retry_hint_path
 
 
@@ -337,7 +326,6 @@ def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
 
 
 class RecoveryController:
-
     def __init__(
         self,
         *,
@@ -349,9 +337,7 @@ class RecoveryController:
         self._reset_hint_backend: FileBackend = (
             reset_hint_backend if reset_hint_backend is not None else DEFAULT_FILE_BACKEND
         )
-        self._phase_chains: dict[
-            str, tuple[str, ...]
-        ] = {}
+        self._phase_chains: dict[str, tuple[str, ...]] = {}
         self._last_selection_state: dict[
             str, tuple[str | None, tuple[tuple[str, bool, bool, bool, str | None], ...]]
         ] = {}
@@ -360,9 +346,7 @@ class RecoveryController:
         self._bus = opts.event_bus or FailureEventBus()
         self._policy_bundle = opts.policy_bundle
         self._clock: Clock = opts.clock or SystemClock()
-        self._backoff_attempts: dict[str, int] = dict(
-            opts.backoff_attempts or {}
-        )
+        self._backoff_attempts: dict[str, int] = dict(opts.backoff_attempts or {})
         self._consecutive_unproductive_limit = (
             opts.agent_max_consecutive_unproductive
             if opts.agent_max_consecutive_unproductive is not None
@@ -1166,9 +1150,7 @@ class RecoveryController:
     def snapshot(self) -> dict[str, object]:
         tracker_snapshot = self._unavailability_tracker.snapshot()
         merged_attempts = dict(self._backoff_attempts)
-        merged_attempts.update(
-            cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {}))
-        )
+        merged_attempts.update(cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {})))
         return {
             "cycle_cap": self._cap.cap,
             "backoff_attempts": merged_attempts,

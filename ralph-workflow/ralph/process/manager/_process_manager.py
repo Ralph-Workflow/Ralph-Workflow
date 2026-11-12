@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -94,7 +93,6 @@ def _seed_popen_returncode(target: object, rc: int) -> None:
 
 
 class _ReturncodeSlot(Protocol):
-
     returncode: int | None
 
 
@@ -215,7 +213,6 @@ def _default_liveness_verifier(
 
 
 class ProcessManager:
-
     def __init__(
         self,
         policy: ProcessManagerPolicy | None = None,
@@ -228,15 +225,11 @@ class ProcessManager:
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         self._records: dict[int, ProcessRecord] = {}
-        self._terminal_records: OrderedDict[int, ProcessRecord] = (
-            OrderedDict()
-        )
+        self._terminal_records: OrderedDict[int, ProcessRecord] = OrderedDict()
         self._sync_procs: dict[int, _SyncProcessLike] = {}
         self._pty_procs: dict[int, _PtyProcessLike] = {}
         self._descendants: dict[int, list[int]] = {}
-        self._termination_outcomes: dict[
-            int, list[dict[str, str]]
-        ] = {}
+        self._termination_outcomes: dict[int, list[dict[str, str]]] = {}
         self._stop_event: threading.Event = threading.Event()
         self._reaper_thread: threading.Thread | None = None
 
@@ -247,9 +240,7 @@ class ProcessManager:
         self._status_lock = threading.Lock()
 
         self._async_procs: dict[int, _AsyncProcessLike] = {}
-        self._listeners: dict[
-            int, Callable[[ProcessEvent], None]
-        ] = {}
+        self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
         self._terminate_executor: ThreadPoolExecutor | None = None
         self._liveness_verifier: LivenessVerifier = (
@@ -280,7 +271,6 @@ class ProcessManager:
         self._psutil = psutil
         if self.policy.log_events:
             self.register_listener(loguru_event_listener)
-
 
     @staticmethod
     def _has_running_event_loop() -> bool:
@@ -479,7 +469,6 @@ class ProcessManager:
     def listener_callbacks(self) -> tuple[Callable[[ProcessEvent], None], ...]:
         return tuple(self._listeners.values())
 
-
     def register_descendant(self, parent_pid: int, descendant_pid: int) -> None:
         if parent_pid not in self._descendants:
             self._descendants[parent_pid] = []
@@ -643,7 +632,6 @@ class ProcessManager:
 
     def list_termination_outcomes(self) -> dict[int, list[dict[str, str]]]:
         return dict(self._termination_outcomes)
-
 
     def spawn(
         self,
@@ -925,7 +913,6 @@ class ProcessManager:
         if isinstance(handle, ManagedAsyncProcess):
             self._escalate_async_in_sync_context(handle.record, handle._proc, gp)
 
-
     def _reconcile_stale_entries(self) -> int:
         reconciled = 0
         for pid in list(self._records.keys()):
@@ -955,7 +942,6 @@ class ProcessManager:
                     logger.warning(f"Stale zombie entry reconciled: PID {pid} is zombie")
                 reconciled += 1
         return reconciled
-
 
     def _start_zombie_reaper(self) -> None:
         if self._reaper_thread is not None:
@@ -1172,7 +1158,6 @@ class ProcessManager:
 
     def shutdown_all_exec_jobs(self, *, grace_period_s: float | None = None) -> None:
         self.shutdown_all_for_label("exec_job:", grace_period_s=grace_period_s)
-
 
     def _terminate_root_only_sync(
         self,

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -30,7 +29,6 @@ def _hash_cell(*, target: str, viewport: Viewport, theme: str, state: str) -> st
 
 @dataclass(frozen=True, slots=True)
 class CaptureCell:
-
     target: str
     viewport: Viewport
     theme: str

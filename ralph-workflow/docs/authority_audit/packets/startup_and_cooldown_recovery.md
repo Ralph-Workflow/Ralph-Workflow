@@ -2,7 +2,7 @@
 
 ## Authoritative owner
 `ralph.pipeline.auto_integrate_recovery.recover_incomplete_integration`
-is the single authority for the startup recovery decision
+is the single authority for the startup recovery choice
 (`auto_integrate_recovery.py:702`).
 
 ## Writers
@@ -41,10 +41,10 @@ is the single authority for the startup recovery decision
   authority outputs (`auto_integrate_recovery.py:717-936`).
 
 ## Restart behaviour
-A crash before the recovery decision leaves the durable
+A crash before the recovery choice leaves the durable
 `IntegrationRecord` intact; on restart, `recover_incomplete_integration`
 re-reads the record via the typed `read_record_outcome` and re-derives
-the recovery decision. No replay of completed business work.
+the recovery choice. No replay of completed business work.
 
 ## UNKNOWN representation
 - `read_record_outcome` returns `UNREADABLE` for corrupt bytes, which

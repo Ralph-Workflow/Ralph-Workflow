@@ -124,7 +124,7 @@ and the cause.
 ## Exceptions
 
 A documented exception to a memory budget requires a documented
-rationale, scope, owner, and review date.
+reason, scope, owner, and review date.
 
 ## Maintenance triggers
 

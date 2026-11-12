@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -16,7 +15,6 @@ __all__ = ["ClassifyStuckInputs", "StuckKind", "classify_stuck"]
 
 
 class StuckKind(StrEnum):
-
     THINKING = "thinking"
     LOADING = "loading"
     WAITING_ON_CONNECTIVITY = "waiting_on_connectivity"
@@ -32,7 +30,6 @@ class _ClassifyQuietCallable(Protocol):
 
 
 class ClassifyStuckInputs(TypedDict, total=False):
-
     is_waiting_state: bool
     connectivity_state: str | None
     evidence_summary: EvidenceSummary
@@ -146,16 +143,14 @@ def _classify_stuck_inner(
     if connectivity_state == "offline":
         return StuckKind.WAITING_ON_CONNECTIVITY
     ttl = activity_evidence_ttl_seconds
-    if _first_party_fresh(evidence_summary, ttl):
-        return StuckKind.THINKING
-    if _subagent_liveness_fresh(evidence_summary, ttl):
-        return StuckKind.LOADING
+    evidence_kind = _evidence_kind(evidence_summary, ttl)
+    if evidence_kind is not None:
+        return evidence_kind
     del corroboration
     quiet_state = classify_quiet()
-    if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
-        return StuckKind.LOADING
-    if quiet_state == AgentExecutionState.RESUMABLE_CONTINUE:
-        return StuckKind.TRANSITIONING
+    quiet_kind = _quiet_state_kind(quiet_state)
+    if quiet_kind is not None:
+        return quiet_kind
     if (
         silent_subagent_seconds is not None
         and silent_subagent_seconds > 0
@@ -163,3 +158,22 @@ def _classify_stuck_inner(
     ):
         return StuckKind.SILENT_SUBAGENT
     return StuckKind.STUCK
+
+
+def _evidence_kind(
+    summary: EvidenceSummary,
+    ttl: float | None,
+) -> StuckKind | None:
+    if _first_party_fresh(summary, ttl):
+        return StuckKind.THINKING
+    if _subagent_liveness_fresh(summary, ttl):
+        return StuckKind.LOADING
+    return None
+
+
+def _quiet_state_kind(quiet_state: AgentExecutionState) -> StuckKind | None:
+    if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
+        return StuckKind.LOADING
+    if quiet_state == AgentExecutionState.RESUMABLE_CONTINUE:
+        return StuckKind.TRANSITIONING
+    return None

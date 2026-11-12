@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -23,9 +22,7 @@ if TYPE_CHECKING:
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    return cast(
-        "AgentTransport", config.transport
-    )
+    return cast("AgentTransport", config.transport)
 
 
 def _shell_single_quote(value: str) -> str:

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -42,7 +41,6 @@ def _canonical_transport(raw: object) -> str | None:
 
 @dataclass(frozen=True)
 class MultimodalModelIdentity:
-
     provider: str
     model_id: str | None = None
     transport: str | None = None

@@ -37,7 +37,7 @@ agent usage queryable by safe pipeline and drain classifications.
   invocations.
 - No telemetry upload when either supported opt-out mechanism is active.
 
-## Approach decision
+## Approach choice
 
 Use a canonical, random, file-backed identity and structured Sentry lifecycle
 metrics.

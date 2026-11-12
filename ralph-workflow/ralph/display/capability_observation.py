@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class CapabilityObservation:
-
     capability: DisplayCapability
     tool_name: str
     unit_id: str

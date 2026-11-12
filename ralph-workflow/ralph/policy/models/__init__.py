@@ -1,4 +1,3 @@
-
 from ralph.policy.models._agent_chain_config import AgentChainConfig
 from ralph.policy.models._agent_drain_config import AgentDrainConfig
 from ralph.policy.models._agents_policy import AgentsPolicy

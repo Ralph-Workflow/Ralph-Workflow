@@ -14,7 +14,7 @@ schemas, and persisted public formats.
 
 Required when a project publishes or promises a contract to external consumers.
 Internal-only surfaces are excluded only with recorded consumer evidence. If
-consumers disappear, retain a dated inactive decision and reactivation trigger,
+consumers disappear, retain a dated inactive choice and reactivation trigger,
 or remove the policy through reviewed cleanup.
 
 ## Default requirements

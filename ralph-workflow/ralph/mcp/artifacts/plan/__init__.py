@@ -1,4 +1,3 @@
-
 from ralph.mcp.artifacts.plan._section_models import PlanArtifactDict
 from ralph.mcp.artifacts.plan._section_registry import (
     PLAN_ARTIFACT_PATH,

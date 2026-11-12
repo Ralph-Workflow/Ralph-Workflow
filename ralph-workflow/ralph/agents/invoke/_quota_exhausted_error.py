@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
@@ -7,7 +6,6 @@ _MAX_QUOTA_DETAIL_CHARS = 512
 
 
 class QuotaExhaustedError(AgentInvocationError):
-
     def __init__(self, agent_name: str, detail: str | None = None) -> None:
         self.skip_same_agent_retries = True
         excerpt = ""

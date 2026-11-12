@@ -107,7 +107,7 @@ not a claim that the command is a fast verification gate.
 ## Exceptions
 
 A specific agent (e.g. an automation bot) MAY be exempted from
-certain obligations with a documented rationale, scope, owner, and
+certain obligations with a documented reason, scope, owner, and
 review date. The exemption lives in this section and MUST reference
 the relevant Ralph Workflow pipeline phase and the operator contract
 the bot obeys.

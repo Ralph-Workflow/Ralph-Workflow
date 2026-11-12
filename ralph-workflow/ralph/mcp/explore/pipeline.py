@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -30,8 +29,6 @@ from ralph.mcp.explore.store import (
 )
 
 logger = logging.getLogger(__name__)
-
-
 
 
 def reindex(

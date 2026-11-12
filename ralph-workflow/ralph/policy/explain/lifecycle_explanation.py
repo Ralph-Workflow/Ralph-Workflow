@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,7 +5,6 @@ from dataclasses import dataclass, field
 
 @dataclass
 class LifecycleExplanation:
-
     lifecycle_name: str
     completion_phase: str
     completion_block: str

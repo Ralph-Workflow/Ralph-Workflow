@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -19,7 +18,6 @@ SHUTDOWN_REAP_WAIT_S: Final[float] = 5.0
 
 @dataclass
 class StandaloneMcpProcess:
-
     endpoint: str
     process: ProcessLike
     session_file: Path

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -342,7 +341,6 @@ _GUARD_INVENTORY_CLAIM_SCOPE_MAX_SENTENCES: Final[int] = 1
 
 @dataclass(frozen=True, slots=True)
 class PolicyVersionSpec:
-
     version: str
     core_manifest: tuple[str, ...]
     guard_inventory_header: tuple[str, ...] | None

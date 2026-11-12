@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -42,7 +41,6 @@ def _content_block_fingerprint(block: dict[str, object]) -> str:
 
 
 class ClaudeParser(NdjsonParserBase):
-
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,
@@ -51,12 +49,8 @@ class ClaudeParser(NdjsonParserBase):
         super().__init__()
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._subagent_source_label: str | None = subagent_source_label
-        self._text_accumulator: dict[
-            tuple[str, int], TextAccumulator
-        ] = {}
-        self._thinking_accumulator: dict[
-            tuple[str, int], TextAccumulator
-        ] = {}
+        self._text_accumulator: dict[tuple[str, int], TextAccumulator] = {}
+        self._thinking_accumulator: dict[tuple[str, int], TextAccumulator] = {}
         self._fallback_accumulator: TextAccumulator | None = None
         self._fallback_thinking_accumulator: TextAccumulator | None = None
         self._current_message_id: str | None = None

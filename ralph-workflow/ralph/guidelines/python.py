@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     class ReviewGuidelines(Protocol):
-
         quality_checks: tuple[str, ...]
         security_checks: tuple[str, ...]
         performance_checks: tuple[str, ...]
@@ -24,7 +22,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PythonGuidelines:
-
     frameworks: tuple[str, ...] = ()
     quality_checks: tuple[str, ...] = field(init=False)
     security_checks: tuple[str, ...] = field(init=False)

@@ -159,7 +159,7 @@ Typical keys:
 
 ### `[phases.<name>.decisions.*]`
 
-Analysis phases can map explicit decision vocabulary to targets.
+Analysis phases can map explicit choice vocabulary to targets.
 
 Example:
 
@@ -208,10 +208,10 @@ analysis (the cycle closes immediately through the final commit), while
 cycle, regardless of elapsed time. Every status at or above 900 seconds enters
 analysis.
 
-### Analysis decision outcomes
+### Analysis choice outcomes
 
 When the gate admits a development result, the analysis agent produces a
-decision artifact with one of three statuses. The pipeline routes each status
+choice artifact with one of three statuses. The pipeline routes each status
 through the phase's `decisions` table:
 
 - **`completed`** — all criterion verdicts are met and no necessary plan
@@ -443,7 +443,7 @@ A route may also match on `cycle_outcome`, the verdict the cycle carried
 into its commit. Several routes into a final commit never record one —
 an agent-chain `workflow_fallback`, a `result_status_post_commit`
 override, a checkpoint written before cycle outcomes existed, or an
-analysis phase that succeeded without emitting a decision. A commit
+analysis phase that succeeded without emitting a choice. A commit
 phase reached with no recorded verdict is routed as `completed` (with a
 warning naming the phase and the substituted outcome) rather than
 skipping the route table: falling through lands on the phase's
@@ -637,7 +637,7 @@ validation with a message that identifies the offending field.
 `finalization_target` must each reference a declared phase or a declared
 terminal. The `start_source` → `start_entry` edge
 must be a declared transition in the active graph — it can appear as a
-phase transition, analysis decision target, bypass route,
+phase transition, analysis choice target, bypass route,
 post-commit route, or result-status post-commit route. The 80%
 warning point is always derived from the configured duration, so a
 custom value retains the same 80% behavior without a second setting.
@@ -706,7 +706,7 @@ If `--explain-policy` looks wrong, the policy is not ready.
 ## What usually goes wrong
 
 - adding a phase without valid transitions
-- changing decision vocabulary in artifacts without updating phase decisions
+- changing choice vocabulary in artifacts without updating phase decisions
 - editing `ralph-workflow.toml` when the real change belongs in `pipeline.toml`
 - changing loop/budget behavior without checking the rendered policy explanation
 

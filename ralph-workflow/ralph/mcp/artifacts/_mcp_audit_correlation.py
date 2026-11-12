@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpAuditCorrelation:
-
     run_id: str | None = None
     generation: int | None = None
     drain: str | None = None

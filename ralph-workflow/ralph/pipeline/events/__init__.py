@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from .agent_failure_event import (

@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 
 class CLIOverrides(TypedDict):
-
     general: GeneralOverrides
     developer_agent: str | None
     developer_model: str | None

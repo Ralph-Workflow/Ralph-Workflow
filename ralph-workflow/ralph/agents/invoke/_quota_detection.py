@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.agents.execution_state import is_user_prompt_event_line

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,7 +24,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitPromptPayloadConfig:
-
     output_dir: Path | None = None
     name_prefix: str = "commit_message"
 

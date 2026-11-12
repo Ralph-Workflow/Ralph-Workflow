@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -139,17 +138,13 @@ __all__ = [
 _DEFAULT_REMOTE_CLIENT: RemoteOps = default_remote_ops()
 
 
-
 _MAX_REMOTE_KEYS = 128
 
 
 class _RemotePullThrottle:
-
     def __init__(self, *, max_tracked_keys: int = _MAX_REMOTE_KEYS) -> None:
         self._max_tracked_keys = max(1, max_tracked_keys)
-        self._last_pull: OrderedDict[tuple[str, str, str], float] = (
-            OrderedDict()
-        )
+        self._last_pull: OrderedDict[tuple[str, str, str], float] = OrderedDict()
 
     def should_pull(
         self,
@@ -203,8 +198,6 @@ def _throttle_allows_pull(
         interval_seconds=interval,
         clock=clock,
     )
-
-
 
 
 _READABLE_REFRESH_OUTCOMES: frozenset[str] = frozenset(
@@ -643,5 +636,3 @@ def _render_unpublished_reason(target: str, remote: str) -> str:
 
 def _render_missing_branch_reason(target: str, remote: str) -> str:
     return f"{remote}/{target} does not exist yet; publication will create it"
-
-

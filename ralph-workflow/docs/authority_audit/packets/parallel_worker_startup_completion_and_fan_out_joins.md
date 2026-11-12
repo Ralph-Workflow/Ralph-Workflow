@@ -31,23 +31,23 @@ authority for parallel-worker fan-out join decisions
 
 ## Valid transitions
 - Parallel-worker completion is a derived projection; the
-  fan-out decision is the typed outcome of the
+  fan-out choice is the typed outcome of the
   `fan_out_decision(state)` call
   (`_fan_out_authority.py:108-127`).
 
 ## Restart behaviour
-A crash before a fan-out decision leaves the prior
-`last_fan_out_decision` intact; on restart, the fan-out decision is
+A crash before a fan-out choice leaves the prior
+`last_fan_out_decision` intact; on restart, the fan-out choice is
 re-derived from the persisted `worker_states` in the checkpoint
 (`_fan_out_authority.py:108-127`). No completed fan-out is
 replayed.
 
 ## UNKNOWN representation
 - `last_fan_out_decision is None` means the fan-out authority has
-  not yet decided; the terminal authority treats `None` as
-  eligible — an absent decision does NOT block terminal success
+  not yet resolved; the terminal authority treats `None` as
+  eligible — an absent choice does NOT block terminal success
   (`_terminal_authority.py:45`).
-- Worker statuses that map to no explicit decision fall through to
+- Worker statuses that map to no explicit choice fall through to
   `JOIN_BLOCKED` (`_fan_out_authority.py:127`).
 
 ## What blocks dispatch / terminal success

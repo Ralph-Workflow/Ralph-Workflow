@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -26,9 +25,7 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    response = cast(
-        "IO[bytes]", urllib.request.urlopen(request, timeout=timeout)
-    )
+    response = cast("IO[bytes]", urllib.request.urlopen(request, timeout=timeout))
     try:
         response_data = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES)
     finally:
@@ -57,9 +54,7 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
     if not isinstance(tools, list):
         return []
     return [
-        cast(
-            "str", entry_map["name"]
-        )
+        cast("str", entry_map["name"])
         for entry in tools
         for entry_map in [cast("dict[str, object]", entry)]
         if isinstance(entry, dict) and isinstance(entry_map.get("name"), str)

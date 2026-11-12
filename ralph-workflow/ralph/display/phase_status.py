@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -99,7 +98,6 @@ def format_transition_context_items(context: dict[str, object]) -> list[str]:
 
 @dataclass(frozen=True)
 class PhaseIterationContext:
-
     outer_dev: int | None = None
     outer_dev_cap: int | None = None
     inner_analysis: int | None = None

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -52,7 +51,6 @@ def _cleanup_stray_tmp(
 
 
 class Checkpoint:
-
     def __init__(
         self,
         path: Path = CHECKPOINT_PATH,

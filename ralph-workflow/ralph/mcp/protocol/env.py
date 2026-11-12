@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class McpEnvVar(StrEnum):
-
     ENDPOINT = "RALPH_MCP_ENDPOINT"
     RUN_ID = "RALPH_MCP_RUN_ID"
     AGENT_LABEL_SCOPE = "RALPH_AGENT_LABEL_SCOPE"

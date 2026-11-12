@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -54,7 +53,6 @@ _PROBE_TIMEOUT_SECONDS: float = 1.0
 
 @dataclass(frozen=True)
 class LeaseStealDecision:
-
     allowed: bool
     reason: LeaseStealReason
     detail: str
@@ -62,7 +60,6 @@ class LeaseStealDecision:
 
 @dataclass(frozen=True)
 class _LeaseRecord:
-
     holder_name: str | None
     holder_pid: int | None
     age_seconds: float
@@ -70,7 +67,6 @@ class _LeaseRecord:
 
 @dataclass(frozen=True)
 class _LeaseClock:
-
     monotonic: Callable[[], float]
     wall_time: Callable[[], float]
 

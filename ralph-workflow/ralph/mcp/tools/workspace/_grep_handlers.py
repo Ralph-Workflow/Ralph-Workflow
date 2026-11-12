@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -44,7 +43,6 @@ from ralph.mcp.tools.workspace._utils import (
 if TYPE_CHECKING:
     from ralph.mcp.explore.store import EvidenceRow, ExploreStore
     from ralph.workspace import Workspace
-
 
 
 def _freshness_for_grep(
@@ -242,8 +240,6 @@ def _indexed_matches(
     return matches
 
 
-
-
 def _compile_grep_pattern(
     pattern: str,
     *,
@@ -369,8 +365,6 @@ def _live_grep(
         if truncated:
             break
     return matches, skipped_files, truncated
-
-
 
 
 def handle_grep_files(

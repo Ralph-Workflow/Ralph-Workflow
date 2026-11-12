@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 
 
 class PhaseDecision(StrEnum):
-
     CONTINUE_PHASE = "continue_phase"
     ADVANCE_PHASE = "advance_phase"
     BLOCK_FOR_RECOVERY = "block_for_recovery"

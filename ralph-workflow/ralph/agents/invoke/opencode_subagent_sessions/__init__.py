@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ._child_part import OpenCodeChildPart, part_kind_from_data, summarize_child_part

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -74,7 +73,6 @@ def _tool_payload_declares_error(obj: dict[str, object]) -> bool:
 
 
 class KimiParser(NdjsonParserBase):
-
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,

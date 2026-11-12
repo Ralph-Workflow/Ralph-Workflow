@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.config.agent_transport import AgentTransport
@@ -15,7 +14,6 @@ __all__ = [
     "RecoveryStrategy",
     "Verbosity",
 ]
-
 
 
 PipelinePhase = str

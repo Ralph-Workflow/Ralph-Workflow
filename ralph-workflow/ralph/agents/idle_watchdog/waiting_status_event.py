@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WaitingStatusEvent:
-
     kind: WaitingStatusKind
     cumulative_seconds: float
     current_run_seconds: float

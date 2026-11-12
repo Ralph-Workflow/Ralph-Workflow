@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import deque
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class StageEventRecorder:
-
     def __init__(self, *, max_events: int = 64) -> None:
         self._events: deque[str] = deque(maxlen=max_events)
 

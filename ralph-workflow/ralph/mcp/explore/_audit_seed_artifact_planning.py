@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.explore._audit_types import AuditEntry, AuditFamily, AuditOutcome, _counters

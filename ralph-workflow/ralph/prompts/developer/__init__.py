@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,7 +30,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PlanningPromptInputs:
-
     prompt_content: str | None
     plan_content: str | None = None
     analysis_feedback_content: str | None = None

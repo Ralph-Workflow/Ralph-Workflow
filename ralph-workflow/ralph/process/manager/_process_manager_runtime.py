@@ -30,9 +30,7 @@ def load_psutil_module() -> _PsutilModuleLike | None:
         psutil_import = importlib.import_module("psutil")
     except ModuleNotFoundError:
         return None
-    return cast(
-        "_PsutilModuleLike", _PsutilModuleAdapter(cast("_PsutilModuleLike", psutil_import))
-    )
+    return cast("_PsutilModuleLike", _PsutilModuleAdapter(cast("_PsutilModuleLike", psutil_import)))
 
 
 def redacted_command(command: Sequence[str]) -> str:

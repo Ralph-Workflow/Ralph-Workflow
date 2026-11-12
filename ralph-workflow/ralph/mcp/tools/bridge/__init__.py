@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,7 +15,6 @@ MAX_AGENT_NAME_LENGTH = 20
 
 @dataclass
 class CommitLoggingSession:
-
     run_dir: Path
     attempt_counter: int = 0
     is_noop: bool = False

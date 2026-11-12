@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -80,7 +79,6 @@ def _build_spawn_env(
 
 @dataclass(frozen=True)
 class GitRunOptions:
-
     phase: str | None = None
     timeout: float | None = None
     env: Mapping[str, str] | None = None
@@ -193,9 +191,7 @@ def _spawn_git(
             with contextlib.suppress(Exception):
                 stream.close()
         if hasattr(raw_proc_obj, "__exit__"):
-            raw_proc = cast(
-                "_PopenExitProtocol", raw_proc_obj
-            )
+            raw_proc = cast("_PopenExitProtocol", raw_proc_obj)
             with contextlib.suppress(Exception):
                 raw_proc.__exit__(None, None, None)
 
@@ -215,5 +211,3 @@ def _spawn_git(
 
 
 __all__ = ["GitRunOptions", "run_git"]
-
-

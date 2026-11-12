@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -31,16 +30,13 @@ def sanitize_process_environment() -> tuple[str, ...]:
 
 
 class _Prctl(Protocol):
-
     def __call__(self, option: int, value: int) -> int: ...
 
 
 _libc = ctypes.CDLL(None, use_errno=True)
 _prctl_raw: object = getattr(_libc, "prctl", None)
 if callable(_prctl_raw):
-    _prctl: _Prctl = cast(
-        "_Prctl", _prctl_raw
-    )
+    _prctl: _Prctl = cast("_Prctl", _prctl_raw)
 else:
 
     def _prctl(option: int, value: int) -> int:

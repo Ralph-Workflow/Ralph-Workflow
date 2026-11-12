@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,7 +15,6 @@ PYPI_PROJECT_URL = "https://pypi.org/project/ralph-workflow/"
 
 @dataclass(frozen=True)
 class InstallInfo:
-
     kind: InstallKind
     upgrade_command: str
 

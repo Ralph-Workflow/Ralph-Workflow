@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 
 class FanOutDecision(StrEnum):
-
     JOIN_PENDING = "join_pending"
     JOIN_COMPLETE = "join_complete"
     JOIN_PARTIAL_FAILURE = "join_partial_failure"

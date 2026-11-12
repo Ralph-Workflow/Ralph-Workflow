@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import deque
@@ -16,15 +15,12 @@ def _notify(sink: Callable[[str], None], line: str) -> None:
 
 
 class BoundedLinesQueue:
-
     __slots__ = ("_deque", "_eviction_sink")
 
     def __init__(self, maxlen: int) -> None:
         if maxlen <= 0:
             raise ValueError("maxlen must be positive")
-        self._deque: deque[str] = deque(
-            maxlen=maxlen
-        )
+        self._deque: deque[str] = deque(maxlen=maxlen)
         self._eviction_sink: Callable[[str], None] | None = None
 
     @property

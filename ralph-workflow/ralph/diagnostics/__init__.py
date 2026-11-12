@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class DiagnosticReport:
-
     system: SystemInfo
     agents: AgentDiagnostics
     fs_health: FsHealth | None = None

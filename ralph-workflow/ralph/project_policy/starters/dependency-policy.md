@@ -24,7 +24,7 @@ lockfile.
   or another checker-supported mechanism; blanket silencing is forbidden.
 * A small local implementation is preferred over a poorly maintained,
   untypeable, incompatible, or disproportionately large dependency. The
-  "roll our own" decision MUST be justified by size, risk, or
+  "roll our own" choice MUST be justified by size, risk, or
   compatibility — never as a default.
 * Deployable applications and artifacts MUST use reproducible dependency
   resolution. Published libraries MUST document how CI verifies supported

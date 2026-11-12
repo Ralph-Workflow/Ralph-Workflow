@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -28,7 +27,6 @@ _DIAGNOSIS_WARN_CHANNEL = "evidence-diagnosis"
 
 @dataclass
 class ResolutionStatusReporter:
-
     display: object
     target: str
     round_index: int

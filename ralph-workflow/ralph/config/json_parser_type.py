@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class JsonParserType(StrEnum):
-
     CLAUDE = "claude"
     CODEX = "codex"
     GEMINI = "gemini"

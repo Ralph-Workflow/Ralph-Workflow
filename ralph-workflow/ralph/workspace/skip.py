@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 RECURSIVE_SKIP_DIRECTORY_NAMES: frozenset[str] = frozenset(

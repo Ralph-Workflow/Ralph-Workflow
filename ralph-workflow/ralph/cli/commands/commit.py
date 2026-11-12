@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -317,9 +316,7 @@ def _generate_commit_message_with_chain(
     model_identity: MultimodalModelIdentity | None = None,
 ) -> CommitAgentResult:
     deps = DefaultPipelineFactory().build(
-        cast(
-            "UnifiedConfig", chain_config.general_config
-        ),
+        cast("UnifiedConfig", chain_config.general_config),
         display_context,
         model_identity=model_identity,
         pro_hooks=pro_hooks,

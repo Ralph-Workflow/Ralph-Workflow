@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -43,9 +42,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_REINDEX_CANCEL_FLAGS: dict[
-    str, bool
-] = {}
+_REINDEX_CANCEL_FLAGS: dict[str, bool] = {}
 _REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 
@@ -95,9 +92,7 @@ def handle_ralph_reindex(
         with contextlib.suppress(Exception):
             session.explore_index = handle
         with contextlib.suppress(Exception):
-            cast(
-                "Workspace", workspace
-            ).explore_index = handle
+            cast("Workspace", workspace).explore_index = handle
     _ = cold_built
 
     started_at = time.time()

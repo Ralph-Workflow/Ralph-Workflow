@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DeveloperPromptInputs:
-
     prompt_content: str | None
     plan_content: str | None
     analysis_feedback_content: str | None = None

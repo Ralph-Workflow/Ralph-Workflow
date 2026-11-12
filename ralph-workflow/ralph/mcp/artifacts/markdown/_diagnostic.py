@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,7 +8,6 @@ DiagnosticSeverity = Literal["error", "warning", "info"]
 
 @dataclass(frozen=True)
 class Diagnostic:
-
     line: int
     section: str | None
     rule_id: str

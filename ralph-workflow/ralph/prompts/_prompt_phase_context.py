@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PromptPhaseContext:
-
     phase: str
     workspace: Workspace
     pipeline_policy: PipelinePolicy

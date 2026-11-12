@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field
@@ -9,7 +8,6 @@ _FROZEN = ConfigDict(frozen=True)
 
 
 class AgentChainState(RalphBaseModel):
-
     model_config = _FROZEN
 
     agents: list[str] = Field(default_factory=list)

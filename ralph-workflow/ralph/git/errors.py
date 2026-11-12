@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from git.exc import GitCommandError
 
 
 class GitOperationError(GitCommandError):
-
     def __init__(self, operation: str, message: str) -> None:
         self.operation = operation
         self.message = message

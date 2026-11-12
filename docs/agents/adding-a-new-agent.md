@@ -11,7 +11,7 @@ The single canonical entry point for agent registration is `register_agent_suppo
 
 ---
 
-## First decision: registered agent or new transport?
+## First choice: registered agent or new transport?
 
 Most additions should be a **registered agent** on an existing transport. Add a
 new `AgentTransport` only when the agent needs transport-specific command
@@ -274,7 +274,7 @@ through a non-AGY name so a reintroduced name-typed branch fails loudly.
   exception such as Nanocoder's JSON/plain long-run action-limit bug. If a PTY
   is still required, prove that the prompt is submitted as a turn, not merely
   rendered in the editor buffer.
-- Record the mode decision in this guide or the transport docs when future
+- Record the mode choice in this guide or the transport docs when future
   maintainers might reasonably choose the wrong path.
 
 ## Parser and display contract
@@ -465,7 +465,7 @@ output" so a transport does not regress to spinner-only visibility.
 
 Agent support is not complete until all of these are true:
 
-- The mode decision is explicit: existing transport vs new transport, headless
+- The mode choice is explicit: existing transport vs new transport, headless
   vs PTY, built-in vs custom registration.
 - The command builder produces the exact argv the maintained runtime uses.
 - The runtime resolver owns all transport-specific env and MCP setup.

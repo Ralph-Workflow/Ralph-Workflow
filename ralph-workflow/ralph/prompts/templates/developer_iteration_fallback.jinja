@@ -67,6 +67,7 @@ and what development-analysis feedback they received.
 
 {% include 'shared/_subagents.j2' %}
 
+## PARALLEL EXECUTION (required by default)
 
 {% include 'shared/_parallel_execution.j2' %}
 
@@ -87,6 +88,7 @@ Before submitting on every iteration, run an independent read-only pre-submit
 review against the request, execution plan, continuation context, and proof
 contract. Submit only after every required gap is closed.
 
+## Development result artifact contract
 
 {% include 'shared/_development_result_proof.j2' %}
 
@@ -96,6 +98,7 @@ type: development_result
 status: completed
 ---
 
+## Summary
 - Implemented and verified the assigned work.
 
 Wrote what I did, what changed, and how I verified it. The body is

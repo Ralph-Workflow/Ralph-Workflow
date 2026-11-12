@@ -42,7 +42,6 @@ def test_agent_skill_roots_have_last_verified_iso() -> None:
 
 
 def test_agent_skill_roots_include_codex_current_user_global_root() -> None:
-    """Codex reads its CURRENT user-global skills from ``~/.agents/skills``."""
     entry = next(e for e in agent_skill_roots() if e.agent == "codex-agents")
     assert entry.path_segments == (".agents", "skills")
     assert entry.source_url == "https://learn.chatgpt.com/docs/build-skills"
@@ -51,7 +50,6 @@ def test_agent_skill_roots_include_codex_current_user_global_root() -> None:
 
 
 def test_agent_skill_roots_include_antigravity_all_surfaces_root() -> None:
-    """Antigravity reads its user-global skills from ``~/.gemini/config/skills``."""
     entry = next(e for e in agent_skill_roots() if e.agent == "agy-config")
     assert entry.path_segments == (".gemini", "config", "skills")
     assert entry.source_url == "https://antigravity.google/docs/skills/"
@@ -60,7 +58,6 @@ def test_agent_skill_roots_include_antigravity_all_surfaces_root() -> None:
 
 
 def test_agent_skill_root_agent_names_are_unique() -> None:
-    """``agent`` is a lookup key, so two roots may never share one."""
     names = [entry.agent for entry in agent_skill_roots()]
     assert len(names) == len(set(names))
 
@@ -99,13 +96,34 @@ def test_agent_skill_roots_excludes_pi_for_no_user_global_root() -> None:
     )
 
 
-def test_opencode_claude_fallback_documented() -> None:
-    docstring = agent_paths_module.__doc__ or ""
-    assert "claude" in docstring.lower(), (
-        "Module docstring must mention 'claude' to document the OpenCode fallback contract"
+def test_opencode_claude_fallback_is_encoded_in_the_registry() -> None:
+    roots = agent_paths_module.agent_skill_roots()
+    claude_entries = [entry for entry in roots if entry.agent == "claude"]
+    assert len(claude_entries) == 1, (
+        "the OpenCode fallback onto ~/.claude/skills is satisfied by the single "
+        "canonical Claude install, so the registry must carry exactly one claude entry"
     )
-    assert "fallback" in docstring.lower() or "opencode" in docstring.lower(), (
-        "Module docstring must explicitly document the OpenCode fallback contract"
+    canonical = agent_paths_module.canonical_agent_skill_root()
+    assert canonical is claude_entries[0], (
+        "the canonical user-global skill root must be the Claude entry that "
+        "covers the OpenCode fallback path"
+    )
+    assert canonical.path_segments == (".claude", "skills"), (
+        "the canonical Claude install must live at ~/.claude/skills so the "
+        "OpenCode fallback path is covered by the canonical install"
+    )
+    opencode_entries = [entry for entry in roots if entry.agent == "opencode"]
+    assert len(opencode_entries) == 1, (
+        "the registry must carry exactly one opencode entry for the canonical "
+        "OpenCode discovery root"
+    )
+    opencode = opencode_entries[0]
+    assert opencode.path_segments == (".config", "opencode", "skills"), (
+        "the OpenCode entry must own the canonical OpenCode discovery root"
+    )
+    assert opencode.is_canonical is False, (
+        "the OpenCode entry must stay a sibling root: the Claude fallback is "
+        "satisfied by the canonical install, not by a second canonical root"
     )
 
 

@@ -1,4 +1,3 @@
-
 from ralph.api.model_entry import ModelEntry
 from ralph.api.opencode import (
     fetch_catalog,

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,7 +18,6 @@ PLAN_ARTIFACT_REL = "plan.md"
 
 @dataclass(frozen=True, slots=True)
 class AnalysisDecisionSummary:
-
     drain: str
     decision: str
     reason: str | None = None

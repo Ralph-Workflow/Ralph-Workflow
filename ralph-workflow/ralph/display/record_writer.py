@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -23,7 +22,6 @@ _INDENT_WIDTH: Final[int] = 2
 
 @dataclass(frozen=True)
 class _SafeId:
-
     raw: str
 
     @property
@@ -163,7 +161,6 @@ def _flatten_body(body: object) -> str:
 
 
 class RenderedRecordWriter:
-
     __slots__ = (
         "_agent",
         "_buffer",
@@ -266,5 +263,3 @@ __all__ = [
     "safe_id_is_lossless",
     "utc_now_iso",
 ]
-
-

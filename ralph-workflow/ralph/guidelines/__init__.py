@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.guidelines.go import GoGuidelines

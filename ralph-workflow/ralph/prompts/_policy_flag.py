@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class PolicyFlag(StrEnum):
-
     NO_EDIT = "no_edit"
     ALLOW_SHELL = "allow_shell"
     ALLOW_GIT_READ = "allow_git_read"

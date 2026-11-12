@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class GitOperationKind(StrEnum):
-
     RESOLVING_REBASE = "resolving_rebase"
     RESOLVING_MERGE = "resolving_merge"
     AWAITING_CONTINUE = "awaiting_continue"

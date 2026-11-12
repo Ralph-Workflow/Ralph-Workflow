@@ -1,4 +1,3 @@
-
 from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.context import (
     DisplayContext,

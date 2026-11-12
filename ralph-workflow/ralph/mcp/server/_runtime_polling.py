@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import concurrent.futures
@@ -53,9 +52,7 @@ def _poll_registry_build_gate(
         return
     gate_path_obj = Path(gate_path)
     effective_deadline_s = min(budget_s, _REGISTRY_BUILD_GATE_HARD_DEADLINE_S)
-    while not DEFAULT_FILE_BACKEND.exists(
-        gate_path_obj
-    ):
+    while not DEFAULT_FILE_BACKEND.exists(gate_path_obj):
         elapsed = clock_fn() - t0
         if elapsed >= effective_deadline_s:
             raise McpServerError(
@@ -83,9 +80,7 @@ def _poll_bounded_pre_serve(
     effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
-        allowed_roots = cast(
-            "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
-        )
+        allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
         ws = (
             workspace
             if workspace is not None

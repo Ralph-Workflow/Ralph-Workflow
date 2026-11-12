@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -26,7 +25,6 @@ __all__ = [
 
 
 class WorkUnitsPlan(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     work_units: list[WorkUnit] = Field(default_factory=list)

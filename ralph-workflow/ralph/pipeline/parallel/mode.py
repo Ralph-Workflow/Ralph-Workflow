@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class SameWorkspaceContext:
-
     repo_root: Path
     mcp_factory: McpServerFactory
     executor_command: tuple[str, ...] | None = None

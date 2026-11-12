@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import base64
@@ -12,7 +11,6 @@ from ralph.visual.visual_finding import (
     VISUAL_SEVERITIES,
     VisualFinding,
 )
-
 
 VERDICT_PASS: str = "pass"
 VERDICT_FAIL: str = "fail"
@@ -88,8 +86,6 @@ def validate_deterministic_capture_evidence(
     after_bytes = _fixture_capture_bytes(after, "after")
     if verdict.get("visual_verdict") == "improved" and before_bytes == after_bytes:
         raise ValueError("an improved verdict requires non-byte-identical before/after evidence")
-
-
 
 
 def _validate_inputs_typed(
@@ -244,11 +240,8 @@ def _validate_status_consistency(status: str, findings: tuple[VisualFinding, ...
         )
 
 
-
-
 @dataclass(frozen=True, slots=True, eq=False)
 class DesignVerdict:
-
     before: CaptureSet
     after: CaptureSet
     intent: str
@@ -283,7 +276,6 @@ class DesignVerdict:
         )
         object.__setattr__(self, "_by_capture", grouped)
 
-
     @property
     def cell_ids(self) -> frozenset[str]:
         return self.before.cell_ids
@@ -296,7 +288,6 @@ class DesignVerdict:
 
     def majors(self) -> tuple[VisualFinding, ...]:
         return tuple(f for f in self.findings if f.severity == "major")
-
 
     def __eq__(self, other: object) -> bool:
         return self is other

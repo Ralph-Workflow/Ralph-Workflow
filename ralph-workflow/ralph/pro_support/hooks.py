@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import dataclasses
@@ -39,7 +38,6 @@ if TYPE_CHECKING:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ProPipelineHooks:
-
     policy_bundle_factory: PolicyBundleFactory | None = None
     registry_factory: RegistryFactory | None = None
     state_factory: StateFactory | None = None

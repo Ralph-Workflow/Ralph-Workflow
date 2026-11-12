@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -52,14 +51,12 @@ CANONICAL_VALUE_FORMATS: Final[dict[str, str]] = {
 
 @dataclass(frozen=True)
 class _SceneCheckpointOptions:
-
     phase: str
     budget_progress: dict[str, tuple[int, int]]
 
 
 @dataclass(frozen=True)
 class SupportCase:
-
     background: Background
     colour: ColourMode
     glyphs: GlyphMode

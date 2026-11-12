@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -73,7 +72,6 @@ def infer_modality_and_mime(extension: str) -> tuple[str, str] | None:
 
 @dataclass(frozen=True)
 class ResourceReferenceContent:
-
     uri: str
     mime_type: str
     title: str

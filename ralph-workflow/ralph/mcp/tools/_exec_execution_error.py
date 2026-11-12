@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Final, Literal
@@ -28,7 +27,6 @@ _SPLIT_ACTION: Final[str] = "Split the work into smaller commands"
 
 
 class ExecutionError(ToolError):
-
     def __init__(
         self,
         message: str = "",
@@ -85,7 +83,6 @@ class ExecutionError(ToolError):
             return f"{base}\n  Diagnostics: {self.diagnostics}"
         return base
 
-
     def _is_job_kill(self) -> bool:
         if self.timeout_cause in _JOB_ONLY_CAUSES:
             return True
@@ -107,7 +104,6 @@ class ExecutionError(ToolError):
         if value is None or value <= 0:
             return None
         return value
-
 
     def _render_timeout(self) -> str:
         lines: list[str] = [self._render_kill_header()]

@@ -37,7 +37,7 @@ Suite admission, and fixing the production seam.
    Public-surface, contract, package, and unit tests are all valid when they
    express behavior cheaply without coupling to incidental internals.
 2. Prefer narrow unit tests for pure functions, parsers, validators, and
-   decision tables where every branch is reachable from the signature alone.
+   choice tables where every branch is reachable from the signature alone.
 3. Refactor the production boundary only when a test reveals a real
    cohesion, dependency, or I/O-seam problem. Never invent a public API
    solely to accommodate a test.
@@ -548,9 +548,9 @@ worthless tests passes every gate this policy can automate.
 ## Exceptions
 
 A narrower scope (e.g. no negative tests for purely declarative YAML
-schemas) requires a documented rationale in this section, the scope of
+schemas) requires a documented reason in this section, the scope of
 the exception, and the owner of the exception. Exceptions expire at the
-next policy review; an expired exception without an updated rationale
+next policy review; an expired exception without an updated reason
 is treated as a violation.
 
 ## Maintenance triggers

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -374,12 +373,8 @@ def _submit_canonical(
         ),
         receipt_secret=session.broker_secret,
     )
-    worker_namespace = cast(
-        "Path | None", getattr(session, "worker_namespace", None)
-    )
-    worker_artifact_dir = cast(
-        "Path | None", getattr(session, "worker_artifact_dir", None)
-    )
+    worker_namespace = cast("Path | None", getattr(session, "worker_namespace", None))
+    worker_artifact_dir = cast("Path | None", getattr(session, "worker_artifact_dir", None))
     if worker_namespace is None and worker_artifact_dir is not None:
         worker_namespace = worker_artifact_dir.parent
     submit_artifact_canonical(

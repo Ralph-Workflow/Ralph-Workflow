@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -12,12 +11,9 @@ _FRESHNESS_STATES = frozenset(
 
 
 class WorkspaceAwareness:
-
     def __init__(self, workspace_root: Path) -> None:
         self._workspace_root = workspace_root.absolute()
-        self._dirty_paths: OrderedDict[str, None] = (
-            OrderedDict()
-        )
+        self._dirty_paths: OrderedDict[str, None] = OrderedDict()
         self._mode = "watch"
         self._cause: str | None = None
         self._freshness_override: str | None = None
@@ -109,9 +105,7 @@ class WorkspaceAwareness:
             }
 
 
-_awareness_by_workspace: dict[
-    str, WorkspaceAwareness
-] = {}
+_awareness_by_workspace: dict[str, WorkspaceAwareness] = {}
 _awareness_lock = threading.Lock()
 
 

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -28,7 +27,6 @@ _DURABLE_SINK_HOLDER: list[Path | None] = [None]
 
 
 class RestartReason(Enum):
-
     PROCESS_EXITED = "process_exited"
     PROBE_FAILED = "probe_failed"
     PROBE_DEFERRED_CONTENTION = "probe_deferred_contention"
@@ -36,7 +34,6 @@ class RestartReason(Enum):
 
 @dataclass(frozen=True)
 class RestartDecision:
-
     reason: RestartReason
     exit_status: int | None = None
     probe_duration_s: float | None = None
@@ -94,11 +91,7 @@ def record_restart_decision(
         try:
             with _DURABLE_SINK_LOCK:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                with (
-                    target.open(
-                        "a", encoding="utf-8"
-                    ) as fh
-                ):
+                with target.open("a", encoding="utf-8") as fh:
                     record: dict[str, object] = {
                         "reason": decision.reason.value,
                         "exit_status": decision.exit_status,

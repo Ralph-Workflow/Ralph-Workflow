@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -35,7 +34,6 @@ _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, ob
 
 @dataclass(frozen=True)
 class RequiredArtifact:
-
     phase: str
     artifact_type: str
     artifact_path: str

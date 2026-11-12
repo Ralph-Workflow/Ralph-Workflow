@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -31,7 +30,6 @@ _IdentityMap = OrderedDict[int, "SubagentIdentity"]
 
 @dataclass(frozen=True, slots=True)
 class SubagentIdentity:
-
     pid: int
     source: Literal[
         "opencode",
@@ -62,7 +60,6 @@ class SubagentIdentity:
 
 
 class SubagentPidRegistry:
-
     __slots__ = ("_identities", "_known_pids_cache", "_lock")
 
     def __init__(self) -> None:

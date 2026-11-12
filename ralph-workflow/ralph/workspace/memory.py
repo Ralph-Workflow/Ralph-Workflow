@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
@@ -8,11 +7,8 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 
 class MemoryWorkspace:
-
     def __init__(self, root: str = "/workspace") -> None:
-        self._storage: dict[
-            str, str
-        ] = {}
+        self._storage: dict[str, str] = {}
         self._dirs: set[str] = {""}
         self._root = PurePosixPath(root)
         self.explore_index: object | None = None

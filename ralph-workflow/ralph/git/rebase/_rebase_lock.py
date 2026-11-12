@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
@@ -8,7 +7,6 @@ if TYPE_CHECKING:
 
 
 class RebaseLock:
-
     _acquire_fn: ClassVar[Callable[[], None] | None] = None
     _release_fn: ClassVar[Callable[[], None] | None] = None
 

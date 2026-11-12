@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -11,20 +10,16 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class DiscoveryStrategy(Protocol):
-
-    def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
-        ...
+    def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]: ...
 
 
 class NullDiscoveryStrategy:
-
     def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
         _ = host_pid
         return {}
 
 
 class RegistryBackedSubagentOutputCapture:
-
     def __init__(
         self,
         registry: ChildLivenessRegistry,
@@ -74,7 +69,6 @@ class RegistryBackedSubagentOutputCapture:
 
 
 class OpenCodeRegistryDiscoveryStrategy:
-
     def __init__(
         self,
         registry: ChildLivenessRegistry,

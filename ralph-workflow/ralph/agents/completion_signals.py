@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -44,7 +43,6 @@ def _bool_evidence(value: bool, *, holding_detail: str, absent_detail: str) -> E
 
 @dataclass(frozen=True)
 class CompletionSignals:
-
     explicit_complete: bool
     required_artifact_present: Evidence | bool
     artifact_types: tuple[str, ...]

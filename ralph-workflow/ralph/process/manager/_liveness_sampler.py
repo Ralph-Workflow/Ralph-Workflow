@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import deque
@@ -18,7 +17,6 @@ _HISTORY_MAXLEN: int = 256
 
 @runtime_checkable
 class _LivenessProc(Protocol):
-
     @property
     def pid(self) -> int: ...
 
@@ -51,7 +49,6 @@ class _CtxSwitchesObj(Protocol):
 
 
 class _OutputEvidence(NamedTuple):
-
     emitted_at: float
     line: str
 
@@ -60,12 +57,10 @@ OutputEvidence = _OutputEvidence
 
 
 class _PsutilModuleLike(Protocol):
-
     Process: Callable[[int], _LivenessProc]
 
 
 class _PsutilProcessAdapter:
-
     def __init__(self, proc: LivenessProc) -> None:
         self._proc = proc
 
@@ -94,7 +89,6 @@ class _PsutilProcessAdapter:
 
 
 class _PsutilModuleAdapter:
-
     def __init__(self, psutil_mod: _PsutilModuleLike) -> None:
         self._psutil = psutil_mod
         self.Process: Callable[[int], LivenessProc] = self._get_process
@@ -242,7 +236,6 @@ def _sum_voluntary_ctx(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
 
 
 class TreeSampler:
-
     def __init__(
         self,
         psutil_module: _PsutilModuleLike,
@@ -257,19 +250,11 @@ class TreeSampler:
         self._start_time: float | None = None
 
         self._prev_child_pids: set[int] | None = None
-        self._child_events_history: deque[tuple[float, int]] = deque(
-            maxlen=_HISTORY_MAXLEN
-        )
+        self._child_events_history: deque[tuple[float, int]] = deque(maxlen=_HISTORY_MAXLEN)
 
-        self._cpu_history: deque[tuple[float, float]] = deque(
-            maxlen=_HISTORY_MAXLEN
-        )
-        self._io_history: deque[tuple[float, float]] = deque(
-            maxlen=_HISTORY_MAXLEN
-        )
-        self._ctx_history: deque[tuple[float, float]] = deque(
-            maxlen=_HISTORY_MAXLEN
-        )
+        self._cpu_history: deque[tuple[float, float]] = deque(maxlen=_HISTORY_MAXLEN)
+        self._io_history: deque[tuple[float, float]] = deque(maxlen=_HISTORY_MAXLEN)
+        self._ctx_history: deque[tuple[float, float]] = deque(maxlen=_HISTORY_MAXLEN)
 
     def _reset_tracked_pid_state(self, root_pid: int) -> None:
         self._tracked_root_pid = root_pid

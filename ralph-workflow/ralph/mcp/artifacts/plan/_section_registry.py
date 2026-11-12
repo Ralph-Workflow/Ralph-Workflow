@@ -1,4 +1,3 @@
-
 PLAN_ARTIFACT_TYPE = "plan"
 PLAN_ARTIFACT_PATH = ".agent/artifacts/plan.md"
 

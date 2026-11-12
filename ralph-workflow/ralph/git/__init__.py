@@ -1,4 +1,3 @@
-
 from ralph.git import lock_recovery
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.errors import GitOperationError

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
@@ -47,7 +46,6 @@ if TYPE_CHECKING:
 
 
 class RemoteClient(Protocol):
-
     def refresh_target(
         self,
         repo_root: Path,
@@ -55,8 +53,7 @@ class RemoteClient(Protocol):
         *,
         timeout_seconds: float,
         remote: str,
-    ) -> str:
-        ...
+    ) -> str: ...
 
     def push_branch(
         self,
@@ -65,8 +62,7 @@ class RemoteClient(Protocol):
         *,
         remote: str,
         timeout_seconds: float,
-    ) -> PushResult:
-        ...
+    ) -> PushResult: ...
 
     def observe_remote_sha(
         self,
@@ -74,8 +70,7 @@ class RemoteClient(Protocol):
         target: str,
         *,
         remote: str,
-    ) -> str | None:
-        ...
+    ) -> str | None: ...
 
 
 def retry_pending_remote_publish(
@@ -212,6 +207,3 @@ __all__ = [
     "is_retryable_fast_forward_failure",
     "retry_pending_remote_publish",
 ]
-
-
-

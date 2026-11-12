@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.phases._commit_review_approved import CommitReviewApproved

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -346,9 +345,7 @@ def _coerce_agent_chain_config(
     if isinstance(value, AgentChainConfig):
         return value
     return AgentChainConfig(
-        agents=list(
-            cast("Sequence[str]", value)
-        ),
+        agents=list(cast("Sequence[str]", value)),
         max_retries=retry_budget,
         retry_delay_ms=retry_delay_ms,
     )
@@ -367,9 +364,7 @@ def _coerce_agent_drain_config(
             capability_class=value.capability_class,
         )
     return AgentDrainConfig(
-        chain=cast(
-            "str", value
-        ),
+        chain=cast("str", value),
         drain_class=builtin_drain_classes.get(drain),
     )
 
@@ -429,29 +424,17 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
     )
 
 
-_DEFAULT_AGENTS_POLICY_CACHE: list[
-    AgentsPolicy
-] = []
+_DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []
 
-_DEFAULT_PIPELINE_DATA_CACHE: list[
-    dict[str, object]
-] = []
+_DEFAULT_PIPELINE_DATA_CACHE: list[dict[str, object]] = []
 
-_DEFAULT_PIPELINE_POLICY_CACHE: list[
-    PipelinePolicy
-] = []
+_DEFAULT_PIPELINE_POLICY_CACHE: list[PipelinePolicy] = []
 
-_DEFAULT_ARTIFACTS_DATA_CACHE: list[
-    dict[str, object]
-] = []
+_DEFAULT_ARTIFACTS_DATA_CACHE: list[dict[str, object]] = []
 
-_DEFAULT_ARTIFACTS_POLICY_CACHE: list[
-    ArtifactsPolicy
-] = []
+_DEFAULT_ARTIFACTS_POLICY_CACHE: list[ArtifactsPolicy] = []
 
-_DEFAULT_POLICY_BUNDLE_CACHE: list[
-    PolicyBundle
-] = []
+_DEFAULT_POLICY_BUNDLE_CACHE: list[PolicyBundle] = []
 
 
 def cached_default_agents_policy() -> AgentsPolicy:

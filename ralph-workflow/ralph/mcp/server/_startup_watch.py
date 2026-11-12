@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -15,7 +14,6 @@ STAGE_POLL_INTERVAL_S: Final[float] = 0.25
 
 @dataclass
 class StartupWatch:
-
     spawn_start: float
     envelope_s: float
     boot_allowance_s: float

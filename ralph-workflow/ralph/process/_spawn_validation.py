@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -20,16 +19,13 @@ _NUL_BYTES = b"\x00"
 
 @runtime_checkable
 class _PromptMaterializerModule(Protocol):
-
     def materialize_argv_prompt(self, prompt: str, cwd: str | None) -> str:
         pass
 
 
 @runtime_checkable
 class _FsPathLike(Protocol):
-
-    def __fspath__(self) -> str | bytes:
-        ...
+    def __fspath__(self) -> str | bytes: ...
 
 
 class InvalidSpawnArgumentError(OSError, ValueError):

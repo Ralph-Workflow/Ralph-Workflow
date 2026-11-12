@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal, Self
@@ -9,7 +8,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class WebSearchBackendSpec(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     backend: Literal["ddgs", "searxng", "tavily", "brave", "exa"]

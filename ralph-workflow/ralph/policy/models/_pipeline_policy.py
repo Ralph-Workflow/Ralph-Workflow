@@ -1,4 +1,3 @@
-
 from typing import Self
 
 from pydantic import Field, model_validator
@@ -18,7 +17,6 @@ from ralph.policy.models._recovery_policy import RecoveryPolicy
 
 
 class PipelinePolicy(_FrozenPolicyModel):
-
     blocks: dict[str, PolicyBlock] = Field(
         default_factory=dict,
         description="Authoring-time block graph for block-oriented pipeline policies.",

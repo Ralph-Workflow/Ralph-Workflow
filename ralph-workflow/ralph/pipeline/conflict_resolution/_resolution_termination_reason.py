@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class ResolutionTerminationReason(StrEnum):
-
     CONFLICT_INACTIVITY = "CONFLICT_INACTIVITY"
     OPERATOR_CAP_REACHED = "OPERATOR_CAP_REACHED"
     SUPERVISION_INFRASTRUCTURE_FAILURE = "SUPERVISION_INFRASTRUCTURE_FAILURE"

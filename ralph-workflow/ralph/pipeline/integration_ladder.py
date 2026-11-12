@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -90,7 +89,6 @@ SALVAGE_KINDS: Final[tuple[str, ...]] = (
 
 @dataclass(frozen=True)
 class LadderStepResult:
-
     rung: CleanupLadderRung
     outcome: LadderOutcome
     reason: str
@@ -99,8 +97,6 @@ class LadderStepResult:
     quarantined_paths: tuple[str, ...] = ()
     next_rung: CleanupLadderRung | None = None
     evidence: dict[str, str] = field(default_factory=dict)
-
-
 
 
 def ladder_charge_count(state: AttemptLedgerState) -> int:
@@ -176,8 +172,6 @@ def evaluate_last_resort_preconditions(
     return results
 
 
-
-
 def preserve_via_temp_index(
     root: Path,
     *,
@@ -223,9 +217,7 @@ def preserve_via_temp_index(
         len(pruned_refs),
     )
     preserved_dir = state_dir / "preserved"
-    preserved_dir.mkdir(
-        parents=True, exist_ok=True
-    )
+    preserved_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256("\0".join(paths).encode(errors="surrogateescape")).hexdigest()
     token = f"{digest[:12]}-{head[:8] if head else 'nohead'}"
     patch_path = preserved_dir / f"{token}.patch"
@@ -245,8 +237,6 @@ def preserve_via_temp_index(
     value = "failed:no-durable-copy"
     _record_evidence(ledger, key, value)
     return LadderStepResult(rung, "failed", value, evidence={key: value})
-
-
 
 
 def quarantine_and_restore(
@@ -299,8 +289,6 @@ def quarantine_and_restore(
         quarantined_paths=tuple(quarantined),
         evidence={key: value},
     )
-
-
 
 
 def rebuild_in_fresh_worktree(
@@ -372,10 +360,7 @@ def rebuild_in_fresh_worktree(
     return LadderStepResult(rung, "succeeded", value, evidence={key: value})
 
 
-
-_REMINDED_AT: dict[
-    str, float
-] = {}
+_REMINDED_AT: dict[str, float] = {}
 
 
 def _remind_once(
@@ -448,8 +433,6 @@ def adapt_environment_and_retry(
     _record_evidence(ledger, key, value)
     _remind_once(failure or "none", clock, remind)
     return LadderStepResult(rung, "waiting", value, evidence={key: value})
-
-
 
 
 def last_resort_recovery(
@@ -535,8 +518,6 @@ def last_resort_recovery(
         tip,
     )
     return LadderStepResult(rung, "succeeded", value, evidence=preconditions)
-
-
 
 
 def run_ladder_rung(
@@ -637,8 +618,6 @@ def run_ladder_rung(
         is_landed=is_landed,
         budget=budget,
     )
-
-
 
 
 def default_git_plumbing() -> GitPlumbing:

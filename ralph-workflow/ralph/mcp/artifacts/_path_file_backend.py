@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class PathFileBackend:
-
     def exists(self, path: Path) -> bool:
         return path.exists()
 
@@ -42,9 +40,7 @@ class PathFileBackend:
         source.replace(destination)
 
     def sync_directory(self, path: Path) -> None:
-        descriptor = os.open(
-            path, os.O_RDONLY
-        )
+        descriptor = os.open(path, os.O_RDONLY)
         try:
             os.fsync(descriptor)
         finally:

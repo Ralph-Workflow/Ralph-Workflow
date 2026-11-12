@@ -32,7 +32,7 @@ from the testing gate.
   forbidden. Clock, network, process, and similar dependency seams remain
   justified when they enable deterministic behavioral testing.
 * Narrower unit tests are appropriate for pure functions, parsers,
-  validators, and decision tables where every branch is reachable from
+  validators, and choice tables where every branch is reachable from
   the function's signature alone.
 * Tests MUST be deterministic: no real time, real filesystem, real
   network, real subprocess, or global singleton mutation. Inject
@@ -176,7 +176,7 @@ An agent MUST NOT:
   I/O in tests that are not marked `subprocess_e2e` (or `live_agy`).
 * Mark a test `smoke` to dodge the budget.
 * Add `@pytest.mark.skip` / `xfail` without an issue link and a
-  documented rationale.
+  documented reason.
 * Treat a slow or hanging suite as a cost to absorb, or "fix" it by
   raising a timeout, splitting the suite, or skipping the offender.
 
@@ -276,9 +276,9 @@ from the combined budget.
 ## Exceptions
 
 A narrower scope (e.g. no negative tests for purely declarative YAML
-schemas) requires a documented rationale in this section, the scope of
+schemas) requires a documented reason in this section, the scope of
 the exception, and the owner of the exception. Exceptions expire at the
-next policy review; an expired exception without an updated rationale
+next policy review; an expired exception without an updated reason
 is treated as a violation.
 
 ## Maintenance triggers

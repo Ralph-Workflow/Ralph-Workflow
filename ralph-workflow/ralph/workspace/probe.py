@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -265,24 +264,18 @@ def take_workspace_snapshot(
 
 @runtime_checkable
 class _WorkspaceChangeProbe(Protocol):
+    def observe_before(self, phase: str, workspace: Workspace) -> None: ...
 
-    def observe_before(self, phase: str, workspace: Workspace) -> None:
-        ...
-
-    def has_changed(self, phase: str, workspace: Workspace) -> bool:
-        ...
+    def has_changed(self, phase: str, workspace: Workspace) -> bool: ...
 
 
 WorkspaceChangeProbe = _WorkspaceChangeProbe
 
 
 class DefaultWorkspaceChangeProbe:
-
     def __init__(self, *, max_files: int = DEFAULT_MAX_SNAPSHOT_FILES) -> None:
         self._baselines: dict[str, dict[str, str]] = {}
-        self._version_baselines: dict[
-            str, str | None
-        ] = {}
+        self._version_baselines: dict[str, str | None] = {}
         self._max_files = max_files
 
     def observe_before(self, phase: str, workspace: Workspace) -> None:

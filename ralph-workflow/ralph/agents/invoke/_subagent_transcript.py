@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -43,7 +42,6 @@ def read_meta_file(meta_path: Path) -> dict[str, object] | None:
 
 
 class ClaudeSubagentTranscriptTails:
-
     def __init__(
         self,
         *,
@@ -74,12 +72,8 @@ class ClaudeSubagentTranscriptTails:
             ],
         ] = {}
         self._tails_lock = threading.RLock()
-        self._probed_dispatch_ids: set[str] = (
-            set()
-        )
-        self._completed_dispatch_ids: set[str] = (
-            set()
-        )
+        self._probed_dispatch_ids: set[str] = set()
+        self._completed_dispatch_ids: set[str] = set()
         self._claude_code_version: str | None = None
         self._thread: threading.Thread | None = None
         self._stopped = False

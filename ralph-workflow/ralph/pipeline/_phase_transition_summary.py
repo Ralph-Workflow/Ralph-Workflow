@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -39,9 +38,7 @@ if TYPE_CHECKING:
 
 
 def _snapshot_from_state_func() -> _SnapshotFromStateFn:
-    module = cast(
-        "_SnapshotModule", import_module("ralph.display.snapshot")
-    )
+    module = cast("_SnapshotModule", import_module("ralph.display.snapshot"))
     return module.snapshot_from_state
 
 

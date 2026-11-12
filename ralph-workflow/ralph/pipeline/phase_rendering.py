@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.config.enums import Verbosity

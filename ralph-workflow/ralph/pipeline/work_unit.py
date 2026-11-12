@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -27,7 +26,6 @@ def _validate_relative_subpath(path: str) -> str:
 
 
 class WorkUnit(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     unit_id: str = Field(..., min_length=1)

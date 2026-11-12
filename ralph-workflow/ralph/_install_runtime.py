@@ -124,31 +124,19 @@ def write_dev_launcher(path: Path, content: str) -> None:
     backup: Path | None = None
     replaced = False
     try:
-        with (
-            os.fdopen(
-                descriptor, "w", encoding="utf-8"
-            ) as handle
-        ):
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(content)
             handle.flush()
-            os.fsync(
-                handle.fileno()
-            )
-        staging.chmod(
-            0o755
-        )
+            os.fsync(handle.fileno())
+        staging.chmod(0o755)
         if path.exists() or path.is_symlink():
             backup_descriptor, backup_name = tempfile.mkstemp(
                 prefix=f".{path.name}.", dir=path.parent, text=False
             )
             os.close(backup_descriptor)
             backup = Path(backup_name)
-            path.replace(
-                backup
-            )
-        staging.replace(
-            path
-        )
+            path.replace(backup)
+        staging.replace(path)
         replaced = True
         _fsync_directory(path.parent)
         if backup is not None:
@@ -159,36 +147,24 @@ def write_dev_launcher(path: Path, content: str) -> None:
                 if backup is None:
                     path.unlink()
                 else:
-                    backup.replace(
-                        path
-                    )
+                    backup.replace(path)
                 _fsync_directory(path.parent)
             except OSError as recovery_error:
                 raise InstallError(
                     f"launcher publication failed and recovery was not durable: {recovery_error}"
                 ) from error
         elif backup is not None:
-            backup.replace(
-                path
-            )
+            backup.replace(path)
             _fsync_directory(path.parent)
         raise
     finally:
-        staging.unlink(
-            missing_ok=True
-        )
+        staging.unlink(missing_ok=True)
 
 
 def _fsync_directory(directory: Path) -> None:
-    descriptor = (
-        os.open(
-            directory, os.O_RDONLY | os.O_DIRECTORY
-        )
-    )
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        os.fsync(
-            descriptor
-        )
+        os.fsync(descriptor)
     finally:
         os.close(descriptor)
 

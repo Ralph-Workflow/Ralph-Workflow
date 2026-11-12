@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal
@@ -19,7 +18,6 @@ _JUDGEMENT_TIERS: tuple[Literal["deterministic", "on-demand"], ...] = (
 
 
 class DesignVerdict(RalphBaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     run_id: str = Field(..., min_length=1)

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, cast
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
 
 class _GeminiDispatch:
-
     def __init__(self, owner: GeminiParser) -> None:
         self._owner = owner
 
@@ -87,9 +85,7 @@ class _GeminiDispatch:
     def _parse_tool_call(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         function_call_obj: JsonValue | None = obj.get("function_call")
         func_call: JsonDict | None = (
-            cast("JsonDict", function_call_obj)
-            if isinstance(function_call_obj, dict)
-            else None
+            cast("JsonDict", function_call_obj) if isinstance(function_call_obj, dict) else None
         )
         tool_name = str(
             obj.get("name", "")
@@ -103,9 +99,7 @@ class _GeminiDispatch:
         elif func_call is not None:
             func_args = func_call.get("args")
             if isinstance(func_args, dict):
-                args_str = str(
-                    cast("JsonDict", func_args)
-                )
+                args_str = str(cast("JsonDict", func_args))
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -126,9 +120,7 @@ class _GeminiDispatch:
         if isinstance(parts, list):
             for part in parts:
                 if isinstance(part, dict):
-                    part_dict = cast(
-                        "JsonDict", part
-                    )
+                    part_dict = cast("JsonDict", part)
                     text = str(part_dict.get("text", ""))
                     if text:
                         if part_dict.get("thought") is True:
@@ -137,9 +129,7 @@ class _GeminiDispatch:
                             yield AgentOutputLine(type="text", content=text, raw=stripped)
                     function_call_obj = part_dict.get("function_call")
                     func: JsonDict | None = (
-                        cast(
-                            "JsonDict", function_call_obj
-                        )
+                        cast("JsonDict", function_call_obj)
                         if isinstance(function_call_obj, dict)
                         else None
                     )
@@ -163,26 +153,16 @@ class _GeminiDispatch:
         candidate = candidates_val[0]
         if not isinstance(candidate, dict):
             return
-        content_val = cast(
-            "JsonDict", candidate
-        ).get(
-            "content"
-        )
+        content_val = cast("JsonDict", candidate).get("content")
         if not isinstance(content_val, dict):
             return
-        parts_val = cast(
-            "JsonDict", content_val
-        ).get(
-            "parts"
-        )
+        parts_val = cast("JsonDict", content_val).get("parts")
         if not isinstance(parts_val, list):
             return
         for part in parts_val:
             if not isinstance(part, dict):
                 continue
-            part_dict = cast(
-                "JsonDict", part
-            )
+            part_dict = cast("JsonDict", part)
             text = str(part_dict.get("text", ""))
             if not text:
                 continue
@@ -196,15 +176,12 @@ class _GeminiDispatch:
         if isinstance(parts_val, list) and parts_val:
             first_part = parts_val[0]
             if isinstance(first_part, dict):
-                part_dict = cast(
-                    "JsonDict", first_part
-                )
+                part_dict = cast("JsonDict", first_part)
                 return str(part_dict.get("text", ""))
         return ""
 
 
 class GeminiParser(NdjsonParserBase):
-
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
 
     def __init__(

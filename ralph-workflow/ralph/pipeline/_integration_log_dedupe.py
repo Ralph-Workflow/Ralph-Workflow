@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -11,7 +10,6 @@ type MonotonicClock = Callable[[], float]
 
 
 class IntegrationOutcomeLog:
-
     def __init__(
         self,
         *,
@@ -26,9 +24,7 @@ class IntegrationOutcomeLog:
         self._clock = clock
         self._repeat_log_interval_seconds = repeat_log_interval_seconds
         self._max_entries = max_entries
-        self._records: OrderedDict[str, tuple[float, int]] = (
-            OrderedDict()
-        )
+        self._records: OrderedDict[str, tuple[float, int]] = OrderedDict()
         self._lock = threading.Lock()
 
     def record(self, emit: OutcomeEmit, message: str) -> bool:

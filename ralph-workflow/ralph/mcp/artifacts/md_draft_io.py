@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,7 +17,6 @@ DEFAULT_MD_DRAFT_CHARACTER_CAP: int = PlanSizeLimits.DEFAULT.max_total_bytes
 
 @dataclass(frozen=True)
 class UnsubmittedDraftDivergence:
-
     draft_chars: int
     canonical_chars: int
 

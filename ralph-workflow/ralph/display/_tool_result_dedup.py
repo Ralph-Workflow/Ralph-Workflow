@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 __all__ = ["strip_duplicate_tool_prefix"]

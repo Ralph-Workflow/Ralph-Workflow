@@ -1,4 +1,3 @@
-
 from collections.abc import Callable, Sequence
 
 from ralph.mcp.explore._graph_impact import hubs as _hubs

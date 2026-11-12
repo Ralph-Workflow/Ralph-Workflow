@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import collections
@@ -58,9 +57,7 @@ _READER_DRAIN_TIMEOUT_S = 1.0
 
 _HookRegistrar = Callable[[Callable[[], None]], None]
 
-_runtime_hook_cache: dict[
-    str, _HookRegistrar
-] = {}
+_runtime_hook_cache: dict[str, _HookRegistrar] = {}
 
 
 def _is_hook_registrar(value: object) -> TypeGuard[_HookRegistrar]:
@@ -87,7 +84,6 @@ def _ensure_runtime_hooks() -> tuple[_HookRegistrar, _HookRegistrar]:
 
 
 class _PsutilLivenessProc:
-
     def __init__(self, proc: psutil.Process) -> None:
         self._proc = proc
 
@@ -114,7 +110,6 @@ class _PsutilLivenessProc:
 
 
 class _DefaultPsutilModule:
-
     def __init__(self) -> None:
         self.Process: Callable[[int], _LivenessProc] = self._get_process
 
@@ -127,7 +122,6 @@ _DEFAULT_PSUTIL_MODULE = _DefaultPsutilModule()
 
 @dataclass
 class _JobSnapshot:
-
     job_id: str
     running: bool
     elapsed_s: float
@@ -138,7 +132,6 @@ class _JobSnapshot:
 
 @dataclass
 class _JobResult:
-
     job_id: str
     returncode: int | None
     output: dict[str, object]
@@ -151,7 +144,6 @@ class _JobResult:
 
 @dataclass
 class _ProgressSubscription:
-
     request_id: str
     progress_token: str
     sink: Callable[[dict[str, object]], None]
@@ -159,7 +151,6 @@ class _ProgressSubscription:
 
 
 class _ExecJobError(Exception):
-
     def __init__(self, job_id: str, reason: str) -> None:
         self.job_id = job_id
         self.reason = reason
@@ -173,7 +164,6 @@ ExecJobError = _ExecJobError
 
 
 class _ActiveJob:
-
     def __init__(
         self,
         job_id: str,
@@ -246,7 +236,6 @@ class _ActiveJob:
 
 
 class ExecJobRegistry:
-
     def __init__(
         self,
         *,
@@ -274,16 +263,12 @@ class ExecJobRegistry:
         self._reader_drain_timeout_s = reader_drain_timeout_s
 
         self._lock = threading.Lock()
-        self._running_jobs: dict[
-            str, _ActiveJob
-        ] = {}
+        self._running_jobs: dict[str, _ActiveJob] = {}
         self._finished_results: collections.deque[JobResult] = collections.deque(
             maxlen=td.EXEC_JOB_RESULT_FIFO
         )
         self._finished_capabilities: dict[str, str] = {}
-        self._subscriptions: dict[
-            str, ProgressSubscription
-        ] = {}
+        self._subscriptions: dict[str, ProgressSubscription] = {}
 
         if auto_register_runtime_hooks:
             _register_shutdown, _register_owner_loss = _ensure_runtime_hooks()

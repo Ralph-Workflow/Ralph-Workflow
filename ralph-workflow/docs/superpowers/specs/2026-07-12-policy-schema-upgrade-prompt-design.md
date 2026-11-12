@@ -15,7 +15,7 @@ near-identical questions, and a user who wants to keep their current
 policy has to answer "no" over and over. There was also no hint about how
 to reverse a freeze once it was written.
 
-## Decision summary
+## Choice summary
 
 * The preflight asks **exactly one** question for the whole set, not one
   per file. It first lists every outdated file, then asks a single

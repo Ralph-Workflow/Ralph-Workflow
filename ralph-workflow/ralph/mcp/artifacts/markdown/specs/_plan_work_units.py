@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -31,9 +30,7 @@ def attach_owned_step_ids(
     section_names: tuple[str, ...] = ("Work Units",),
 ) -> None:
     owner_by_step: dict[str, str] = {}
-    entry_by_id = {
-        cast("str", entry["unit_id"]): entry for entry in entries
-    }
+    entry_by_id = {cast("str", entry["unit_id"]): entry for entry in entries}
 
     for index, section in enumerate(document.sections):
         if section.name in section_names:
@@ -130,9 +127,7 @@ def _claim_steps_by_target(
     owner_by_step: dict[str, str],
 ) -> None:
     directories_by_unit = {
-        cast(
-            "str", entry["unit_id"]
-        ): [
+        cast("str", entry["unit_id"]): [
             directory
             for directory in cast("list[object]", entry.get("allowed_directories", []))
             if isinstance(directory, str)
@@ -142,9 +137,7 @@ def _claim_steps_by_target(
     paths_by_unit = {
         str(entry["unit_id"]): {
             PurePosixPath(path)
-            for path in cast(
-                "list[object]", entry.get("allowed_paths", [])
-            )
+            for path in cast("list[object]", entry.get("allowed_paths", []))
             if isinstance(path, str)
         }
         for entry in entries
@@ -158,9 +151,7 @@ def _claim_steps_by_target(
         if step_id in owner_by_step:
             continue
         paths = [
-            cast(
-                "str", target["path"]
-            )
+            cast("str", target["path"])
             for target in targets
             if isinstance(target, dict) and isinstance(target.get("path"), str)
         ]
@@ -182,27 +173,17 @@ def _attach_cross_unit_dependencies(
     steps: list[Content],
 ) -> None:
     owner_by_step = {
-        step_id: cast(
-            "str", entry["unit_id"]
-        )
+        step_id: cast("str", entry["unit_id"])
         for entry in entries
-        for step_id in cast(
-            "list[str]", entry.get("step_ids", [])
-        )
+        for step_id in cast("list[str]", entry.get("step_ids", []))
     }
     step_by_id = {
         f"S-{number}": step for step in steps if isinstance((number := step.get("number")), int)
     }
     for entry in entries:
-        unit_id = cast(
-            "str", entry["unit_id"]
-        )
-        dependencies = cast(
-            "list[str]", entry["dependencies"]
-        )
-        for step_id in cast(
-            "list[str]", entry.get("step_ids", [])
-        ):
+        unit_id = cast("str", entry["unit_id"])
+        dependencies = cast("list[str]", entry["dependencies"])
+        for step_id in cast("list[str]", entry.get("step_ids", [])):
             step = step_by_id.get(step_id, {})
             raw_dependencies = step.get("depends_on", [])
             if not isinstance(raw_dependencies, list):

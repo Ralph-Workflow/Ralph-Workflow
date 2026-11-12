@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -148,9 +147,7 @@ def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
     stream = handle.stdin
     if stream is None:
         return
-    text_stream = cast(
-        "TextIO", stream
-    )
+    text_stream = cast("TextIO", stream)
     try:
         write_fd = os.dup(text_stream.fileno())
     except (AttributeError, OSError, ValueError):
@@ -373,7 +370,6 @@ def _extract_tool_call_from_activity_signal(
 
 
 class ProcessLineReader:
-
     def __init__(
         self,
         handle: ManagedProcess,
@@ -595,9 +591,7 @@ class ProcessLineReader:
         oldest_secs: float | None = oldest_secs_from_legacy
         scoped_count_int: int | None = scoped_count
         alive_by: AliveBy | None = None
-        reg = cast(
-            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
-        )
+        reg = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if reg is not None:
             try:
                 label_prefix = cast(
@@ -643,9 +637,7 @@ class ProcessLineReader:
         return reader
 
     def _start_stderr_thread(self) -> threading.Thread | None:
-        stderr_pipe = cast(
-            "IO[str] | None", getattr(self._handle, "stderr", None)
-        )
+        stderr_pipe = cast("IO[str] | None", getattr(self._handle, "stderr", None))
         if stderr_pipe is None:
             return None
         reader = threading.Thread(target=self._read_stderr_thread, args=(stderr_pipe,), daemon=True)
@@ -706,9 +698,7 @@ class ProcessLineReader:
             self._opencode_subagent_probe.poll()
 
     def _read_thread(self) -> None:
-        stdout_pipe = cast(
-            "IO[str] | None", self._handle.stdout
-        )
+        stdout_pipe = cast("IO[str] | None", self._handle.stdout)
         if stdout_pipe is None:
             with self._lines_lock:
                 self._reader_done[0] = True
@@ -766,9 +756,7 @@ class ProcessLineReader:
         self._quota_error = QuotaExhaustedError(_agent_command_name(self._config), detail)
         self._lines_event.set()
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer="invoke:process")
@@ -792,9 +780,7 @@ class ProcessLineReader:
         if self._completion_is_terminal is None:
             return
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer="invoke:process")
@@ -853,9 +839,7 @@ class ProcessLineReader:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer="invoke:process")
@@ -1337,9 +1321,7 @@ def _run_subprocess_and_read_lines(
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
                 if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                     handle.terminate(grace_period_s=0.5)
-                    exit_pid = cast(
-                        "int | None", getattr(handle, "pid", None)
-                    )
+                    exit_pid = cast("int | None", getattr(handle, "pid", None))
                     if exit_pid is not None:
                         if ctx.process_teardown is None:
                             teardown_subtree(exit_pid, issuer="invoke:process")

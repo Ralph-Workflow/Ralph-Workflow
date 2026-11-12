@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.policy.models._group_policy_block import GroupPolicyBlock

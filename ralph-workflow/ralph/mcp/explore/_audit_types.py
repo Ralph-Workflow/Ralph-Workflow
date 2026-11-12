@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class AuditOutcome(StrEnum):
-
     KEEP = "keep"
     ADD_ARGUMENT = "add_argument"
     REWORK_INTERNALS = "rework_internals"
@@ -18,7 +16,6 @@ class AuditOutcome(StrEnum):
 
 
 class AuditFamily(StrEnum):
-
     WORKSPACE_READ = "workspace_read"
     WORKSPACE_SEARCH = "workspace_search"
     WORKSPACE_LIST = "workspace_list"
@@ -35,7 +32,6 @@ class AuditFamily(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AuditCounters:
-
     transcript_tokens: int
     returned_bytes: int
     tool_calls: int
@@ -72,7 +68,6 @@ class AuditCounters:
 
 @dataclass(frozen=True, slots=True)
 class AuditEntry:
-
     tool: RalphToolName
     family: AuditFamily
     outcome: AuditOutcome
@@ -106,7 +101,6 @@ class AuditEntry:
 
 @dataclass(frozen=True, slots=True)
 class Measurement:
-
     tool: RalphToolName
     counters: AuditCounters
     source: str = "seed"
@@ -114,7 +108,6 @@ class Measurement:
 
 @dataclass(frozen=True, slots=True)
 class RefreshResult:
-
     register: tuple[AuditEntry, ...]
     applied: frozenset[RalphToolName]
     unmeasured: frozenset[RalphToolName]

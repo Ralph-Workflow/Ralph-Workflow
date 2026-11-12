@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field
@@ -9,7 +8,6 @@ from ralph.skills._capability_status import CapabilityStatus
 
 
 class CapabilityState(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     web_search: CapabilityEntry = Field(

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -33,9 +32,7 @@ def pop_last_captured_session_id() -> str | None:
 
 
 def apply_session_capture(state: PipelineState) -> PipelineState:
-    effect_executor = cast(
-        "_EffectExecutorModule", import_module("ralph.pipeline.effect_executor")
-    )
+    effect_executor = cast("_EffectExecutorModule", import_module("ralph.pipeline.effect_executor"))
     pop_last_captured_retry_intent = effect_executor.pop_last_captured_retry_intent
 
     captured_session_id = pop_last_captured_session_id()

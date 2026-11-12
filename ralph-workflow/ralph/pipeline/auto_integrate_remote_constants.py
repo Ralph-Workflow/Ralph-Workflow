@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -7,7 +6,6 @@ from ralph.pipeline.auto_integrate_sync import DEFAULT_REFRESH_REMOTE
 
 
 class RemoteSyncStatus(StrEnum):
-
     PULLED = "pulled"
     RECONCILED = "reconciled"
     CREATED = "created"

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -43,41 +42,30 @@ type CwdProvider = Callable[[], Path]
 
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
-
     @property
-    def root(self) -> Path:
-        ...
+    def root(self) -> Path: ...
 
 
 class _SpawnedProcessLike(Protocol):
+    @property
+    def stdout(self) -> object: ...
 
     @property
-    def stdout(self) -> object:
-        ...
+    def stderr(self) -> object: ...
 
-    @property
-    def stderr(self) -> object:
-        ...
+    def kill(self) -> None: ...
 
-    def kill(self) -> None:
-        ...
-
-    def communicate_and_cleanup(self, *args: object, **kwargs: object) -> object:
-        ...
+    def communicate_and_cleanup(self, *args: object, **kwargs: object) -> object: ...
 
 
 class _ReadablePipe(Protocol):
-
-    def read(self, n: int) -> bytes:
-        ...
+    def read(self, n: int) -> bytes: ...
 
 
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
-    root_value = cast(
-        "Path | str | None", getattr(workspace, "root", None)
-    )
+    root_value = cast("Path | str | None", getattr(workspace, "root", None))
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
@@ -743,9 +731,7 @@ def _collect_git_diff_capped(
 def _start_pipe_drain(pipe: object) -> threading.Thread | None:
     if pipe is None:
         return None
-    readable = cast(
-        "_ReadablePipe", pipe
-    )
+    readable = cast("_ReadablePipe", pipe)
 
     def _drain() -> None:
         with contextlib.suppress(Exception):

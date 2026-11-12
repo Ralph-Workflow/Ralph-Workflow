@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -34,7 +33,6 @@ if TYPE_CHECKING:
 if TYPE_CHECKING:
 
     class ProcessLike(Protocol):
-
         @property
         def stdin(self) -> IO[bytes] | None: ...
 
@@ -49,14 +47,12 @@ if TYPE_CHECKING:
         def kill(self) -> None: ...
 
     class ThreadLike(Protocol):
-
         def start(self) -> None: ...
         def join(self, timeout: float | None = None) -> None: ...
         def is_alive(self) -> bool: ...
 
 
 class StdioTransport:
-
     def __init__(
         self,
         command: list[str],

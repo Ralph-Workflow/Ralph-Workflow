@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -23,7 +22,6 @@ def same_checkout(first: Path | str, second: Path | str) -> bool:
 
 
 class AgentPhaseActivity:
-
     def __init__(self) -> None:
         self._state = threading.Lock()
         self._mutations = threading.RLock()

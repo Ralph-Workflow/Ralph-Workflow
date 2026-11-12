@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class WorkspaceChangeKind(StrEnum):
-
     SOURCE = "source"
     LOG = "log"
     CACHE = "cache"

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, Literal, Self
@@ -8,7 +7,6 @@ from pydantic import ConfigDict
 if TYPE_CHECKING:
 
     class RalphBaseModel:
-
         model_config: ClassVar[ConfigDict]
         model_fields: ClassVar[dict[str, object]]
 

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class ProcessRole(StrEnum):
-
     HOST = "host"
     SPAWNED_SUBAGENT = "spawned_subagent"
     INCIDENTAL_HELPER = "incidental_helper"
@@ -18,7 +16,6 @@ class ProcessRole(StrEnum):
 
 @runtime_checkable
 class ClassifiedProcess(Protocol):
-
     @property
     def pid(self) -> int: ...
 
@@ -31,18 +28,12 @@ class ClassifiedProcess(Protocol):
 
 @runtime_checkable
 class ProcessMonitor(Protocol):
+    def live_subagent_count(self) -> int: ...
 
-    def live_subagent_count(self) -> int:
-        ...
+    def spawned_subagent_count(self) -> int: ...
 
-    def spawned_subagent_count(self) -> int:
-        ...
+    def classified_processes(self) -> tuple[ClassifiedProcess, ...]: ...
 
-    def classified_processes(self) -> tuple[ClassifiedProcess, ...]:
-        ...
+    def refresh(self) -> None: ...
 
-    def refresh(self) -> None:
-        ...
-
-    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]:
-        ...
+    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]: ...

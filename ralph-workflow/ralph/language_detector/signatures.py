@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -12,17 +11,10 @@ if TYPE_CHECKING:
 
 
 class DetectionResults:
-
     def __init__(self) -> None:
-        self.frameworks: list[
-            str
-        ] = []
-        self.test_frameworks: list[
-            str
-        ] = []
-        self.package_managers: list[
-            str
-        ] = []
+        self.frameworks: list[str] = []
+        self.test_frameworks: list[str] = []
+        self.package_managers: list[str] = []
 
     def with_framework(self, value: str) -> DetectionResults:
         if value not in self.frameworks:

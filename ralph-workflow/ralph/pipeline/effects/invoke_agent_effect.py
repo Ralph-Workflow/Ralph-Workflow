@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ else:
 
 @dataclass(frozen=True)
 class InvokeAgentEffect:
-
     agent_name: str
     phase: PipelinePhase
     prompt_file: str

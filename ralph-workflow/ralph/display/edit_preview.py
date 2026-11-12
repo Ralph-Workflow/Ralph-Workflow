@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -142,7 +141,6 @@ def preview_record_text(
 
 
 class _BackgroundAwareCodeBlock(CodeBlock):
-
     @classmethod
     def create(cls, markdown: Markdown, token: object) -> _BackgroundAwareCodeBlock:
         node_info = str(cast("object", getattr(token, "info", "")) or "")
@@ -178,7 +176,6 @@ class _BackgroundAwareCodeBlock(CodeBlock):
 
 
 class _BackgroundAwareMarkdown(Markdown):
-
     elements: ClassVar[dict[str, type[MarkdownElement]]] = {
         **Markdown.elements,
         "fence": _BackgroundAwareCodeBlock,
@@ -218,7 +215,6 @@ class _BackgroundAwareMarkdown(Markdown):
 
 
 class _MarkdownContent:
-
     def __init__(self, content: RenderResult) -> None:
         self._content = content
 

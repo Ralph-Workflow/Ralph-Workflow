@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,7 +30,6 @@ from ralph.prompts.template_variables import (
 
 @dataclass(frozen=True)
 class SessionCapabilities:
-
     capabilities: CapabilitySet
     policy_flags: PolicyFlagSet
     tool_name_prefix: str = ""

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import errno
@@ -67,10 +66,7 @@ WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, flo
 
 
 class WorkspaceMonitor:
-
-    _shared_watches: ClassVar[
-        dict[str, _SharedWorkspaceWatch]
-    ] = {}
+    _shared_watches: ClassVar[dict[str, _SharedWorkspaceWatch]] = {}
     _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
@@ -164,9 +160,7 @@ class WorkspaceMonitor:
                     from ralph.mcp.server._mcp_health_event import record_host_contention_signal
 
                     record_host_contention_signal("watch_capacity_predicted")
-                except (
-                    Exception
-                ):
+                except Exception:
                     pass
                 return
             if not self._acquire_cross_process_watch_lock():
@@ -570,9 +564,7 @@ class WorkspaceMonitor:
     def dispatch_event(self, event: object) -> None:
         if self._handler is None:
             return
-        handler = cast(
-            "_HandlerWithDispatch", self._handler
-        )
+        handler = cast("_HandlerWithDispatch", self._handler)
         handler.dispatch(event)
         if isinstance(handler, WorkspaceChangeCoalescer):
             handler.flush()

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -18,7 +17,6 @@ type PreflightFn = Callable[[str, list[str], timedelta], None]
 
 @dataclass(frozen=True)
 class LifecycleDeps:
-
     create_session_file: Callable[[Path, SessionLike], Path]
     subprocess_env: Callable[[Path], dict[str, str]]
     spawn_process: SpawnProcess

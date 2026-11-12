@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PresentedEntry:
-
     kind: str
     severity: str
     identity: str
@@ -219,8 +217,6 @@ def _code_value_is_failure(value: object) -> bool:
         stripped = value.strip()
         return bool(stripped) and stripped != "0"
     return False
-
-
 
 
 _KIND_TO_GROUPING: dict[ActivityEventKind, tuple[str, int]] = {

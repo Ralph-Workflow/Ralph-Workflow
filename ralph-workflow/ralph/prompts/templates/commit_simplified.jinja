@@ -21,19 +21,23 @@ Each returns a compact interpretation with exact diff citations. Re-read
 those citations before relying on the lead, reconcile in this session, and
 submit one message. Helpers must not inspect anything outside this diff.
 
+## Write the message first
 
 Write the message a senior maintainer would want in permanent history. A reader should understand the problem, chosen outcome, and material consequences without reopening the diff. Recorded verification: {{ VERIFICATION_FACTS }}. If that says `none recorded`, omit verification entirely; never write “none recorded” in the message. Detail target: **{{ MESSAGE_BUDGET }}**.
 
 Match depth to conceptual scope, not file count. A trivial typo needs only a subject; a narrow fix needs one short paragraph; a medium change may need two or three focused paragraphs; and a broad, cross-cutting, or breaking change should be long enough to explain the prior limitation, new invariant or behavior, design decisions, tradeoffs, and migration or compatibility impact. Do not shorten it until those ideas are understandable. Group edits by purpose rather than subsystem. Never inventory files or directories, copy the diff, enumerate every edit, repeat facts, or pad with generated phrases such as “Changed X.”
 
+## Subject
 
 Summarize the user-visible or architectural outcome rather than the largest directory, implementation technique, or work performed. Write one concise imperative subject as `<kind>(<scope>)?!?: <description>`, choosing `feat` for capability, `fix` for corrected behavior, `refactor` for structure without intended behavior change, `perf` for performance, or the matching `docs|test|style|build|ci|chore` category. Use a scope only for one stable product concept and `!` only when consumers must change usage, deployment, or integration. Prefer a concrete verb that completes “This commit will…” over update, change, improve, or handle. Keep the value unquoted, lowercase the type and scope, use one space after the colon, and do not generate alternatives or end with punctuation.
 
+## Body
 
 Omit the body only for a one-line typo, formatting, or comment change; every other commit gets a body. Explain why the old behavior was insufficient, then the new behavior or invariant and why it resolves the problem. Mention real tradeoffs, deployment steps, compatibility impact, or recorded verification only when material. Prefer causal prose over a changelog; do not repeat the subject, narrate the diff, inventory components, claim unrecorded tests, or include empty boilerplate categories. Use `## Body Summary`, `## Body Details`, and
 `## Body Footer` instead only for migration steps, breaking changes, or issue
 references.
 
+## Document shape
 
 For a commit, use frontmatter `type: commit` and `subject:`, then the selected
 body form. When no commit is needed, submit only `type: skip`
@@ -45,6 +49,7 @@ type: commit
 subject: fix(auth): prevent token expiry race
 ---
 
+## Body
 - [B-1] Prevents a race where refreshed tokens could expire mid-request.
 {% endset %}
 {{ render_artifact_submission('commit_message', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_message_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

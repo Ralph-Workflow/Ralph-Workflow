@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -17,11 +16,9 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
     class _HandlerCallable(Protocol):
-
         def __call__(self, *args: object, **kwargs: object) -> GuidelineSource: ...
 
     class _StackDetector(Protocol):
-
         def __call__(self, workspace: Workspace, root: str) -> object: ...
 
 
@@ -125,9 +122,7 @@ SIGNATURE_LANGUAGE_MAP: dict[str, str] = {
 
 def _load_guideline_class(module_name: str, class_name: str) -> _HandlerCallable:
     module = import_module(module_name)
-    return cast(
-        "_HandlerCallable", _module_attr(module, class_name)
-    )
+    return cast("_HandlerCallable", _module_attr(module, class_name))
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:
@@ -150,9 +145,7 @@ def _guideline_categories(source: GuidelineSource) -> tuple[tuple[str, Sequence[
     def _category(name: str) -> Sequence[str]:
         value: object = getattr(source, name, ())
         if isinstance(value, list | tuple) and all(isinstance(item, str) for item in value):
-            return cast(
-                "Sequence[str]", value
-            )
+            return cast("Sequence[str]", value)
         return ()
 
     return (
@@ -246,7 +239,6 @@ LANGUAGE_HANDLERS: dict[str, Callable[[Iterable[str], bool], GuidelineSource]] =
 
 @dataclass
 class StackGuidelines:
-
     quality_checks: Sequence[str] = field(default_factory=lambda: list(BASE_QUALITY_CHECKS))
     security_checks: Sequence[str] = field(default_factory=lambda: list(BASE_SECURITY_CHECKS))
     performance_checks: Sequence[str] = field(default_factory=lambda: list(BASE_PERFORMANCE_CHECKS))
@@ -275,9 +267,7 @@ class StackGuidelines:
             items = source_items[category]
             if not items:
                 continue
-            mutable_target = cast(
-                "list[str]", target
-            )
+            mutable_target = cast("list[str]", target)
             seen = self._seen[category]
             for item in items:
                 if item not in seen:
@@ -330,9 +320,7 @@ def _detect_stack_with_workspace(workspace: Workspace, root: str) -> DetectedSta
     if detector_candidate is None or not callable(detector_candidate):
         return _fallback_detect_stack(workspace)
 
-    detector = cast(
-        "_StackDetector", detector_candidate
-    )
+    detector = cast("_StackDetector", detector_candidate)
     stack_candidate = detector(workspace, root)
     if not isinstance(stack_candidate, _DetectedStackLike):
         return _fallback_detect_stack(workspace)

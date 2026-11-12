@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal
@@ -10,7 +9,6 @@ _VALID_REASONS = frozenset({"no_output", "prompt_echo", "no_llm_activity"})
 
 
 class BrokenAgentExitError(AgentInvocationError):
-
     def __init__(
         self,
         agent_name: str,

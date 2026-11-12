@@ -20,7 +20,7 @@ The maintained runtime is a Python package, pinned in source control.
   (see the typechecking-policy.md).
 * A small local implementation is preferred over a poorly maintained,
   untypeable, incompatible, or disproportionately large dependency. The
-  "roll our own" decision MUST be justified by size, risk, or
+  "roll our own" choice MUST be justified by size, risk, or
   compatibility — never as a default.
 * Lockfile-based reproducibility is mandatory. CI MUST install from
   the lockfile, never from a regenerated manifest.
@@ -100,12 +100,12 @@ triage each finding under the security-policy.md Exceptions section.
 ## Exceptions
 
 A dependency with an incompatible license, unmaintained status, or
-known critical CVE may be accepted with a documented rationale, scope
+known critical CVE may be accepted with a documented reason, scope
 of the exception, owner of the exception, and a removal or review date.
 
 ### tomli-w: criterion (1), last release within 18 months
 
-* **Rationale.** `tomli_w` 1.2.0 is the latest release and was published
+* **Reason.** `tomli_w` 1.2.0 is the latest release and was published
   2025-01-15, so as of 2026-08-30 it is past the 18-month bar in
   `RALPH-FACT: dependency_evaluation_record`. It is quiet rather than
   abandoned: two modules and roughly 7 KB with zero transitive

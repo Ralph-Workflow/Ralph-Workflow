@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
@@ -22,10 +21,7 @@ __all__ = [
 _UNSET_PHASE = "__unset__"
 
 
-
-
 class WorkflowInstanceView:
-
     _current_stage: str | None
     _instance_id: str
     _lifecycle_status: InstanceStatus
@@ -83,8 +79,6 @@ class WorkflowInstanceView:
             f"run_id={self._run_id!r}, lifecycle_status={self._lifecycle_status!r}, "
             f"current_stage={self._current_stage!r}, recent_activity={self._recent_activity!r})"
         )
-
-
 
 
 def instance_view_from_snapshot(

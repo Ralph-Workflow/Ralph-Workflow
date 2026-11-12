@@ -51,7 +51,7 @@ workload, recorded in `docs/performance/explore-index-targets.json`.
 The table below states the per-metric tolerance; the gate fails
 when a final measurement exceeds ``target × (1 + tolerance)``.
 
-| Metric class              | Tolerance | Rationale                                      |
+| Metric class              | Tolerance | Reason                                      |
 |---------------------------|-----------|------------------------------------------------|
 | Wall / CPU time (seconds) | 25%       | In-process variance; covers 60s budget        |
 | No-op refresh             | 50%       | Skipped-no-changes path; wider variance OK    |

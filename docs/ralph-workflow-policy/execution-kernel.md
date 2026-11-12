@@ -202,7 +202,7 @@ slice is not that role's obligation.
 |---|---|---|---|
 | Planner | `planning` | Plan scaling (9), acceptance criteria, Check first (1) | a plan whose items name the check that decides each one |
 | Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Regression tests from the spec (4), Handoff by artifact (6), Smallest change (7), Context hygiene (8), Human checkpoints (11), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
-| Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a decision artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
+| Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a choice artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
 | Commit agent | `development_commit` | Commit-level hygiene (10) | one commit per logical change, its message listing the verification evidence and the unverified items |
 | Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (12) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
 
@@ -214,7 +214,7 @@ level names where a fix for a repeated mistake belongs, not where the
 rule is read.
 
 The enforcer is the guard that decides the rule. The guard inventory
-below records the same decision in its `Enforcement` column, so the
+below records the same choice in its `Enforcement` column, so the
 inventory resolves one `Enforcement` id per rule. A rule whose
 enforcer does not exist yet stays advisory with a review trigger; it is
 never marked `deterministic` on the strength of an enforcer that is
@@ -280,7 +280,7 @@ names who decides it.
 | Real-artifact evidence | Verification owner | the claim cites the command, its exit code, and the output that matters | the result body records the command and its exit code | the exit code and output recorded for the claim | advisory: the `development_result` body is free-form and only its `status` vocabulary is validated (`ralph/mcp/artifacts/development_result.py`), so the cited command, exit code, and output are not machine-checked; review: re-check when the body schema gains required evidence fields | when the recorded evidence is produced by the gate without an agent step |
 | Test integrity | Test owner | no existing assertion, fixture, or expected value is removed or weakened beside the production code it covers, and shipped code does not read the test runner's environment | the change diff removes or weakens a test expectation beside a production edit without a recorded reason, or shipped code reads the test runner's environment | the weakened expectation or the test-runner read the test-integrity audit reports | deterministic: test integrity audit (audit_test_integrity) | when the test-integrity gate is retired |
 | Regression tests from the spec | Test owner | the bug-fix test states the spec's expected value instead of the implementation's output | the test's expected value matches the value the code under test returns | the expected value written in the bug-fix test | advisory: the gate proves the test passes now, not that it failed before the fix; review: when a bug-fix change ships without a pre-fix failure record | when the pre-fix failure is recorded and checked mechanically |
-| Independent review | Analysis owner | the review reproduces each finding it treats as actionable | the decision body cites a reproduced command or a re-read location | the reproduced finding cited in the decision body | advisory: an analysis verdict is a review, not a gate; review: on every analysis phase that returns a verdict | when the analysis phase's findings are checked mechanically |
+| Independent review | Analysis owner | the review reproduces each finding it treats as actionable | the choice body cites a reproduced command or a re-read location | the reproduced finding cited in the choice body | advisory: an analysis verdict is a review, not a gate; review: on every analysis phase that returns a verdict | when the analysis phase's findings are checked mechanically |
 | Handoff by artifact | Artifact owner | the result body carries the command, the exit code, the output, and the unverified items | the result body contains a verification command and an unverified list | the verification command and the unverified list in the result body | advisory: the body is prose and only the frontmatter is validated; review: when the artifact contract changes | when the artifact body gains a validated field |
 | Smallest change | Architecture owner | the change deletes or narrows before it adds, and the replaced API leaves with its callers | the change diff still carries the replaced API after its callers moved | the replaced API still present in the change diff | advisory: no gate measures a diff against intent; review: when a change introduces machinery that replaces existing code | when an audit detects a replaced API that survives its callers |
 | Context hygiene | Session owner | the session keeps conclusions instead of raw payloads | the session context carries a bulk payload instead of a conclusion | the conclusion returned by the delegated read | advisory: context volume is not observable from outside the session; review: when a session's context crowds out the work unit | when the runtime measures session context volume |
@@ -473,7 +473,7 @@ here so they are not re-litigated without new evidence.
 * Model routing and single-vendor automation — a configuration
   recommendation, not a shipped rule.
 * Mutation testing, property-based testing, duplication metrics,
-  diff-size caps and decision logs — no direct evidence found; they stay
+  diff-size caps and choice logs — no direct evidence found; they stay
   advisory candidates until evidence exists.
 
 ## What the kernel does NOT do

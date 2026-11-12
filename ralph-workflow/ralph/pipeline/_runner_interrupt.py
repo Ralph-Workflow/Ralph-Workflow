@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import signal
@@ -23,12 +22,8 @@ if TYPE_CHECKING:
     from ralph.interrupt.signal_setter import SignalSetter
 
 
-_DEFAULT_SIGNAL_GETTER = cast(
-    "SignalGetter", signal.getsignal
-)
-_DEFAULT_SIGNAL_SETTER = cast(
-    "SignalSetter", signal.signal
-)
+_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
+_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
 
 
 def handle_keyboard_interrupt(

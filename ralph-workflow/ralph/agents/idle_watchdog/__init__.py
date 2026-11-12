@@ -1,4 +1,3 @@
-
 from ralph.process.child_liveness import AliveBy
 
 from ._activity_methods import (

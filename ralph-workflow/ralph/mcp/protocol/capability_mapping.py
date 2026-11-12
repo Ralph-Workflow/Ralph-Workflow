@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import Enum, StrEnum
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 
 
 class Capability(StrEnum):
-
     WORKSPACE_READ = "workspace.read"
     WORKSPACE_WRITE_EPHEMERAL = "workspace.write_ephemeral"
     WORKSPACE_WRITE_TRACKED = "workspace.write_tracked"

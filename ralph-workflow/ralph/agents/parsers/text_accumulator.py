@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -16,7 +15,6 @@ _MAX_BUFFER_CHARS: int = 1 << 20
 
 @dataclass(slots=True)
 class TextAccumulator:
-
     buffer: str = ""
     raw_lines: list[str] = field(default_factory=list)
 

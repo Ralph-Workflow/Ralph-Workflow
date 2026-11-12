@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -23,7 +22,6 @@ __all__ = [
 
 
 class PostExitWatchdog(WatchLoopBase):
-
     def __init__(self, policy: TimeoutPolicy, clock: Clock) -> None:
         super().__init__(clock)
         self._policy = policy

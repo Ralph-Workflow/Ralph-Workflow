@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -27,7 +26,6 @@ def _positive_int(raw: str, *, flag: str) -> int:
 
 
 class _BenchArgs(argparse.Namespace):
-
     workloads: str
     out: str | None
     capture_baseline: str | None

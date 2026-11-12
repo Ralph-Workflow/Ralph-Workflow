@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import errno
@@ -14,7 +13,6 @@ from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
 from .failure_details import contains_casefolded_marker, failure_detail_parts
 from .unavailability_reason import UnavailabilityReason
-
 
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
     {
@@ -530,7 +528,6 @@ def _connectivity_unavailability_reason(
 
 
 class FailureClassifier:
-
     def classify(
         self,
         exc: BaseException | str,
@@ -736,22 +733,16 @@ class FailureClassifier:
             "BaseException | None", getattr(exc, "__cause__", None)
         )
         if current is None:
-            current = cast(
-                "BaseException | None", getattr(exc, "__context__", None)
-            )
+            current = cast("BaseException | None", getattr(exc, "__context__", None))
         while current is not None and id(current) not in visited:
             visited.add(id(current))
             if isinstance(current, IdleWatchdogKilledError):
                 return current
-            next_cause = cast(
-                "BaseException | None", getattr(current, "__cause__", None)
-            )
+            next_cause = cast("BaseException | None", getattr(current, "__cause__", None))
             if next_cause is not None:
                 current = next_cause
             else:
-                current = cast(
-                    "BaseException | None", getattr(current, "__context__", None)
-                )
+                current = cast("BaseException | None", getattr(current, "__context__", None))
         return None
 
     def _classify_agent_invocation_error(

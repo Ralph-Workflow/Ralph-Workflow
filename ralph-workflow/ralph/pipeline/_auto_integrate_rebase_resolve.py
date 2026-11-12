@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -51,7 +50,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class RebaseRunResult:
-
     rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed
     merge_attempted: bool
     merge_outcome: MergeResult | None
@@ -84,7 +82,6 @@ def verify_terminal_state(
 
 
 class _RebaseResolutionOutcome(tuple[bool, str | None]):
-
     failure_cause: ResolutionFailureCause
 
     def __new__(

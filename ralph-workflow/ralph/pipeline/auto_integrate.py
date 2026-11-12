@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import random
@@ -14,7 +13,6 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
-
 from ralph.pipeline._auto_integrate_attempt_loop import (
     MAX_INTEGRATION_ATTEMPTS as _MAX_INTEGRATION_ATTEMPTS,
 )
@@ -135,9 +133,7 @@ from ralph.pipeline.rebase_state import StartupRetentionReason
 
 complete_commit = _complete_commit
 
-_random = (
-    random.Random()
-)
+_random = random.Random()
 
 
 _DEFAULT_RECOVER_BEFORE_ATTEMPT = recover_before_attempt
@@ -703,4 +699,3 @@ __all__ = [
     "recovery_retained_record",
     "resolve_integration_target",
 ]
-

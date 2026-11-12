@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class PipelineSnapshot:
-
     phase: str
     previous_phase: str | None
     review_issues_found: bool

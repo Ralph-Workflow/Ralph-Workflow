@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -22,7 +21,6 @@ class _RecoveryActionForFailureReason(Protocol):
 
 
 class AgentRetryIntent(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     action: AgentRetryAction | None = None

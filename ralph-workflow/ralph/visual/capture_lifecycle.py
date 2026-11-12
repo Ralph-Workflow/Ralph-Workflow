@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -28,14 +27,11 @@ _MANIFEST_SCHEMA_VERSION: str = "1"
 _MATRIX_KEY_SEP: str = "\x00"
 
 
-
-
 class _BaselineError(RuntimeError):
     pass
 
 
 class _MissingBaselineError(_BaselineError):
-
     def __init__(self, *, target: str, matrix_key: str) -> None:
         self.target = target
         self.matrix_key = matrix_key
@@ -47,7 +43,6 @@ class _MissingBaselineError(_BaselineError):
 
 
 class _DuplicateBaselineError(_BaselineError):
-
     def __init__(self, *, target: str, matrix_key: str) -> None:
         self.target = target
         self.matrix_key = matrix_key
@@ -62,11 +57,8 @@ class _BaselineStorageError(_BaselineError):
     pass
 
 
-
-
 @dataclass(frozen=True)
 class _RetainedBaselineCell:
-
     target: str
     viewport_name: str
     viewport_width: int
@@ -155,7 +147,6 @@ class _RetainedBaselineCell:
 
 @dataclass(frozen=True)
 class _RetainedBaselineEntry:
-
     artifact_id: str
     target: str
     matrix_key: str
@@ -242,7 +233,6 @@ class _RetainedBaselineEntry:
 
 @dataclass(frozen=True)
 class _BaselineManifest:
-
     run_id: str
     entries: tuple[RetainedBaselineEntry, ...]
 
@@ -311,8 +301,6 @@ for _type, _name in (
     _type.__qualname__ = _name
 
 
-
-
 def compute_matrix_key(
     *,
     viewports: tuple[Viewport, ...],
@@ -336,8 +324,6 @@ def compute_matrix_key(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-
-
 ClockFn = Callable[[], float]
 
 
@@ -346,7 +332,6 @@ def _default_clock() -> float:
 
 
 class CaptureLifecycle:
-
     def __init__(
         self,
         workspace_root: Path,
@@ -367,7 +352,6 @@ class CaptureLifecycle:
         self._run_id = run_id
         self._cycle_id = cycle_id
         self._clock = clock
-
 
     @property
     def run_id(self) -> str:
@@ -452,7 +436,6 @@ class CaptureLifecycle:
             raise MissingBaselineError(target=target, matrix_key=matrix_key)
         return retained
 
-
     def _manifest_path(self) -> Path:
         manifest_dir = self._workspace_root / MANIFEST_DIR_RELPATH
         return manifest_dir / _MANIFEST_FILENAME_TEMPLATE.format(run_id=self._run_id)
@@ -501,7 +484,6 @@ class CaptureLifecycle:
             raise BaselineStorageError(
                 f"failed to persist baseline manifest {path}: {exc}"
             ) from exc
-
 
     def _validate_lookup_keys(self, *, target: str, matrix_key: str) -> None:
         if not isinstance(target, str) or not target.strip():

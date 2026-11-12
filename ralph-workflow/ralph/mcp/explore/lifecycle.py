@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -16,7 +15,6 @@ from ralph.workspace.awareness import awareness_for_workspace
 
 
 class ReindexRunner(Protocol):
-
     def __call__(
         self,
         store: ExploreStore,
@@ -38,7 +36,6 @@ REFRESHABLE_PHASE_DRAINS: Final[frozenset[str]] = frozenset({"development", "fix
 
 @dataclass(frozen=True, slots=True)
 class LifecycleHookResult:
-
     invoked: bool
     timed_out: bool
     reindex_result: ReindexResult | None = None
@@ -124,13 +121,9 @@ def _run_hook(
         handle_runner_obj: object = getattr(explore_index, "runner", None)
         if callable(handle_runner_obj):
             resolved_runner: object = handle_runner_obj()
-            runner_value = cast(
-                "ReindexRunner", resolved_runner
-            )
+            runner_value = cast("ReindexRunner", resolved_runner)
     if runner_value is None:
-        runner_value = cast(
-            "ReindexRunner", claim_reindex
-        )
+        runner_value = cast("ReindexRunner", claim_reindex)
     options_value: ReindexOptions = ReindexOptions(mode="changed", timeout_ms=timeout_ms)
     try:
         runner: ReindexRunner = runner_value
@@ -140,9 +133,7 @@ def _run_hook(
             workspace_root,
             **{kwargs_name: options_value},
         )
-        result = cast(
-            "ReindexResult", raw_result
-        )
+        result = cast("ReindexResult", raw_result)
     except Exception as exc:
         logger.warning(
             "Lifecycle refresh (%s) failed: %s",

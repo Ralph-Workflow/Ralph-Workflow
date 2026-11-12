@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -93,7 +92,6 @@ def _missing_binary_message(command: Sequence[str]) -> str:
 
 
 class SubprocessAgentExecutor:
-
     def __init__(
         self,
         command: Sequence[str],
@@ -317,9 +315,7 @@ async def _until_root_exit(
         pending: set[asyncio.Task[None] | asyncio.Task[int]] = (
             {wait_task} if drain_task.done() else {drain_task, wait_task}
         )
-        await asyncio.wait(
-            pending, timeout=_EXIT_POLL_SECONDS, return_when=asyncio.FIRST_COMPLETED
-        )
+        await asyncio.wait(pending, timeout=_EXIT_POLL_SECONDS, return_when=asyncio.FIRST_COMPLETED)
         if drain_task.done():
             drain_task.result()
 

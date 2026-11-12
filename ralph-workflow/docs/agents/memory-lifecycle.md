@@ -333,7 +333,7 @@ finally block is a safety net, not a mandatory kill.
   token in every MCP tool handler; that functionality change is rejected for
   this pass and tracked as follow-up.
 
-- **Per-call stdio upstream spawn (decided non-goal)**:
+- **Per-call stdio upstream spawn (resolved non-goal)**:
   `ralph/mcp/upstream/_stdio_upstream_client.py` deliberately spawns per call.
   This is isolation, not merely overhead: each call gets a fresh environment
   snapshot, no cross-call state in a stateful server, and `server.env`

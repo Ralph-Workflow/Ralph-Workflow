@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError

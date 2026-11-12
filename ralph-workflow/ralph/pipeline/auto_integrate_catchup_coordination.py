@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -44,7 +43,6 @@ def remote_sync_interval_seconds(config: UnifiedConfig | None) -> float:
 
 @dataclass(slots=True)
 class RemoteSyncLease:
-
     fetch_allowed: bool
     _state_path: Path
     _interval_seconds: float
@@ -94,9 +92,7 @@ def _write_fetch_after(state_path: Path, fetch_after: float) -> None:
     state: dict[str, float] = {"fetch_after": fetch_after}
     payload = json.dumps(state, separators=(",", ":"))
     temporary = state_path.with_suffix(f".{os.getpid()}.tmp")
-    temporary.write_text(
-        payload, encoding="utf-8"
-    )
+    temporary.write_text(payload, encoding="utf-8")
     temporary.replace(state_path)
 
 
@@ -140,9 +136,7 @@ def remote_sync_transaction(
     state_path = coordination_dir / f"{key}.json"
     try:
         coordination_dir.mkdir(parents=True, exist_ok=True)
-        handle = lock_path.open(
-            "a+", encoding="utf-8"
-        )
+        handle = lock_path.open("a+", encoding="utf-8")
     except OSError:
         yield None
         return

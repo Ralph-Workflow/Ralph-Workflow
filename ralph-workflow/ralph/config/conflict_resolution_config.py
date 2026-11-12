@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import math
@@ -9,7 +8,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class ConflictResolutionConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     inactivity_timeout_seconds: float = Field(default=900.0, gt=0.0)

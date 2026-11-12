@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict
@@ -16,7 +15,6 @@ _FROZEN = ConfigDict(frozen=True)
 
 
 class _FrozenPipelineStateModel(RalphBaseModel):
-
     model_config = _FROZEN
 
 

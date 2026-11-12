@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,13 +6,10 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class SubagentOutputCapture(Protocol):
-
-    def read_lines(self, worker_id: str) -> list[str]:
-        ...
+    def read_lines(self, worker_id: str) -> list[str]: ...
 
 
 class FileSubagentOutputCapture:
-
     def __init__(self, path: str, *, encoding: str = "utf-8") -> None:
         self._path = Path(path)
         self._encoding = encoding

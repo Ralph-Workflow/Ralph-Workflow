@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -11,7 +10,6 @@ from loguru import logger
 
 @dataclass(frozen=True)
 class PromptChoice:
-
     key: str
     title: str
     description: str
@@ -42,9 +40,7 @@ class _Questionary(Protocol):
 
 
 def _load_questionary() -> _Questionary:
-    return cast(
-        "_Questionary", import_module("questionary")
-    )
+    return cast("_Questionary", import_module("questionary"))
 
 
 def select(question: str, choices: Sequence[PromptChoice], default: str) -> str:

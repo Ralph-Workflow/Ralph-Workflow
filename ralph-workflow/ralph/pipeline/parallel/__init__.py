@@ -1,4 +1,3 @@
-
 from ralph.pipeline.parallel.mode import ParallelExecutionMode, SameWorkspaceContext
 from ralph.pipeline.parallel.worker_runtime import (
     WorkerRuntimePaths as WorkerRuntimePaths,

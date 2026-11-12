@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict
@@ -9,7 +8,6 @@ _FROZEN = ConfigDict(frozen=True)
 
 
 class RunMetrics(RalphBaseModel):
-
     model_config = _FROZEN
 
     total_agent_calls: int = 0

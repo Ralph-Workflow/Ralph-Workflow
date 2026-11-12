@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AppliedTextEdits:
-
     original: str
     content: str
     applied: tuple[TextEdit, ...]

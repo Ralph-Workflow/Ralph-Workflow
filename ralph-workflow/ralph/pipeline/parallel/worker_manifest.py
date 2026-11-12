@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 
 class ParallelWorkerManifest(RalphBaseModel):
-
     unit_id: str
     description: str
     allowed_directories: list[str]

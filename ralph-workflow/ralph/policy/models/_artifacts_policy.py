@@ -1,4 +1,3 @@
-
 from typing import Self
 
 from pydantic import Field, model_validator
@@ -8,7 +7,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class ArtifactsPolicy(_FrozenPolicyModel):
-
     artifacts: dict[str, ArtifactContract] = Field(
         default_factory=dict,
         description="All artifact contracts keyed by artifact name",

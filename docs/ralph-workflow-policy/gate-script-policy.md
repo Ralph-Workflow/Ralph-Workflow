@@ -184,7 +184,7 @@ and by black-box coverage under `ralph-workflow/tests/`: `tests/test_check_route
 
 A documented exception — a vendored third-party script that cannot be modified,
 or a gate that legitimately requires network access — requires a documented
-rationale, scope, owner, and removal or review date. Undocumented exceptions
+reason, scope, owner, and removal or review date. Undocumented exceptions
 are non-compliant. A script exempted from the lint gate MUST still be tested.
 
 ## Maintenance triggers

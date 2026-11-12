@@ -1,10 +1,8 @@
-
 from __future__ import annotations
 
 import re
 import shlex
 from dataclasses import dataclass
-
 
 REQUIRED_STATES: tuple[str, ...] = ("default", "empty", "loading", "error", "overflow")
 
@@ -52,11 +50,8 @@ _KNOWN_KEYS: frozenset[str] = frozenset(
 )
 
 
-
-
 @dataclass(frozen=True)
 class Viewport:
-
     name: str
     width: int
     height: int
@@ -72,7 +67,6 @@ class Viewport:
 
 @dataclass(frozen=True)
 class _PolicyFacts:
-
     design_capture_command: str
     target: str
     viewports: tuple[Viewport, ...]
@@ -106,8 +100,6 @@ class _PolicyFacts:
 PolicyFacts = _PolicyFacts
 PolicyFacts.__name__ = "PolicyFacts"
 PolicyFacts.__qualname__ = "PolicyFacts"
-
-
 
 
 def _parse_viewport_token(token: str, *, fallback_name: str) -> Viewport:

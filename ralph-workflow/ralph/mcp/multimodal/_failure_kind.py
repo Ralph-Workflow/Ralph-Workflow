@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class MultimodalFailureKind(StrEnum):
-
     UNSUPPORTED_MODALITY = "unsupported_modality"
     UNSUPPORTED_RUNTIME_SEAM = "unsupported_runtime_seam"
     UNSUPPORTED_MIME_TYPE = "unsupported_mime_type"

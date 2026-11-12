@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib
@@ -17,9 +16,7 @@ if TYPE_CHECKING:
 
 def _psutil() -> _PsutilModuleLike | None:
     try:
-        return cast(
-            "_PsutilModuleLike", importlib.import_module("psutil")
-        )
+        return cast("_PsutilModuleLike", importlib.import_module("psutil"))
     except ImportError:
         return None
 

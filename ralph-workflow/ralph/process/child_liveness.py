@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time as _time
@@ -24,7 +23,6 @@ __all__ = [
 
 
 class ChildLivenessSubagentPidSource:
-
     def __init__(
         self,
         registry: ChildLivenessRegistry,
@@ -69,7 +67,6 @@ def classify_child_snapshot(
 
 
 class ChildLivenessRegistry:
-
     def __init__(
         self,
         *,

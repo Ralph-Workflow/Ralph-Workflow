@@ -107,14 +107,9 @@ _INLINE_CODE_RE = re.compile(r"(`+)[^`]*?\1")
 
 _SHELL_WORD_SEPARATORS = ";&|("
 
-_LINE_START_TOKENS: tuple[int, ...] = (
-    tokenize.NEWLINE,
-    tokenize.INDENT,
-    tokenize.DEDENT,
-    tokenize.ENDMARKER,
-)
+_YAML_QUOTED_SEGMENT_RE = re.compile(r"\"[^\"]*\"|'[^']*'")
 
-_SIMPLE_SUITE_SEPARATORS: frozenset[str] = frozenset({":", ";"})
+_YAML_BLOCK_INDICATOR_RE = re.compile(r"(?:^|[\s:\-])[|>][+-]?\d*(?:\s+#.*)?$")
 
 
 @dataclass(frozen=True)
@@ -170,28 +165,13 @@ def _python_tokens(text: str) -> Iterator[tokenize.TokenInfo]:
         yield from tokenize.generate_tokens(reader)
 
 
-def _iter_statements(tree: ast.Module) -> list[ast.stmt]:
-    statements: list[ast.stmt] = []
-    stack: list[ast.AST] = list(tree.body)
-    while stack:
-        node = stack.pop()
-        if isinstance(node, ast.stmt):
-            statements.append(node)
-        stack.extend(
-            child
-            for child in ast.iter_child_nodes(node)
-            if isinstance(child, (ast.stmt, ast.match_case))
-        )
-    return statements
-
-
 def _python_docstrings(text: str, path: str) -> list[Finding]:
     try:
         tree = ast.parse(text)
     except SyntaxError:
         return []
     findings: list[Finding] = []
-    for node in _iter_statements(tree):
+    for node in ast.walk(tree):
         if not isinstance(node, ast.Expr):
             continue
         value = node.value
@@ -203,44 +183,27 @@ def _python_docstrings(text: str, path: str) -> list[Finding]:
     return findings
 
 
-def _string_may_be_statement(
-    prev: tokenize.TokenInfo | None,
-    prev_prev: tokenize.TokenInfo | None,
-) -> bool:
-    if prev is None or prev.type in _LINE_START_TOKENS:
-        return True
-    if prev.type != tokenize.OP:
-        return False
-    if prev.string in _SIMPLE_SUITE_SEPARATORS:
-        return True
-    if prev.string != "(":
-        return False
-    return prev_prev is None or prev_prev.type in _LINE_START_TOKENS
+def _python_comments(text: str, path: str) -> list[Finding]:
+    findings: list[Finding] = []
+    for token in _python_tokens(text):
+        if token.type != tokenize.COMMENT:
+            continue
+        if token.start[0] == 1 and token.string.startswith("#!"):
+            continue
+        findings.append(Finding(path, token.start[0], _truncate(token.string.strip())))
+    return findings
 
 
 def scan_python_source(text: str, path: str) -> list[Finding]:
     findings: list[Finding] = []
-    needs_ast = False
-    prev: tokenize.TokenInfo | None = None
-    prev_prev: tokenize.TokenInfo | None = None
-    for token in _python_tokens(text):
-        token_type = token.type
-        if token_type == tokenize.COMMENT:
-            if not (token.start[0] == 1 and token.string.startswith("#!")):
-                findings.append(Finding(path, token.start[0], _truncate(token.string.strip())))
-            continue
-        if token_type == tokenize.NL:
-            continue
-        if token_type == tokenize.STRING and not needs_ast:
-            needs_ast = _string_may_be_statement(prev, prev_prev)
-        prev_prev, prev = prev, token
-    if needs_ast:
-        findings.extend(_python_docstrings(text, path))
+    if "#" in text:
+        findings.extend(_python_comments(text, path))
+    findings.extend(_python_docstrings(text, path))
     findings.sort(key=_finding_line_order)
     return findings
 
 
-def _starts_comment(text: str, index: int, yaml_style: bool) -> bool:
+def _starts_comment(text: str, index: int, yaml_style: bool, inline_hash: bool) -> bool:
     if index == 0:
         return True
     previous = text[index - 1]
@@ -248,7 +211,20 @@ def _starts_comment(text: str, index: int, yaml_style: bool) -> bool:
         return True
     if yaml_style:
         return False
+    if inline_hash:
+        return True
     return previous in _SHELL_WORD_SEPARATORS
+
+
+def _make_recipe_line(text: str, index: int) -> bool:
+    line_start = text.rfind("\n", 0, index) + 1
+    return text[line_start:index].lstrip(" ").startswith("\t")
+
+
+def _is_make_recipe_literal(text: str, index: int) -> bool:
+    if not _make_recipe_line(text, index):
+        return False
+    return index == 0 or not text[index - 1].isspace()
 
 
 @dataclass
@@ -279,10 +255,62 @@ class _ScanState:
         return index + 1
 
 
+def _yaml_literal_lines(text: str) -> frozenset[int]:
+    literal: set[int] = set()
+    block_indent: int | None = None
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        stripped = raw.strip()
+        if block_indent is not None:
+            if not stripped:
+                literal.add(line_number)
+                continue
+            if len(raw) - len(raw.lstrip(" ")) > block_indent:
+                literal.add(line_number)
+                continue
+            block_indent = None
+        content = _YAML_QUOTED_SEGMENT_RE.sub(" ", raw)
+        if _YAML_BLOCK_INDICATOR_RE.search(content) is None:
+            continue
+        block_indent = len(raw) - len(raw.lstrip(" "))
+    return frozenset(literal)
+
+
+def _scan_yaml_comments(text: str, path: str) -> list[Finding]:
+    findings: list[Finding] = []
+    literal_lines = _yaml_literal_lines(text)
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        if line_number in literal_lines:
+            continue
+        quote = ""
+        index = 0
+        length = len(raw)
+        while index < length:
+            char = raw[index]
+            if quote:
+                if char == "\\" and quote == '"':
+                    index += 2
+                    continue
+                if char == quote:
+                    quote = ""
+                index += 1
+                continue
+            if char in {'"', "'"}:
+                quote = char
+                index += 1
+                continue
+            if char == "#" and (index == 0 or raw[index - 1].isspace()):
+                if not (line_number == 1 and raw.startswith("#!")):
+                    findings.append(Finding(path, line_number, _truncate(raw[index:].strip())))
+                break
+            index += 1
+    return findings
+
+
 def _scan_hash_comments(text: str, path: str, mode: str) -> list[Finding]:
     yaml_style = mode == MODE_YAML
     shell_style = mode in (MODE_SHELL, MODE_MAKE)
     toml_style = mode == MODE_TOML
+    inline_hash = mode in (MODE_TOML, MODE_MAKE)
     findings: list[Finding] = []
     state = _ScanState()
     index = 0
@@ -309,7 +337,10 @@ def _scan_hash_comments(text: str, path: str, mode: str) -> list[Finding]:
             index = end + 1
             continue
         if char == "#":
-            if not _starts_comment(text, index, yaml_style):
+            if not _starts_comment(text, index, yaml_style, inline_hash):
+                index += 1
+                continue
+            if inline_hash and mode == MODE_MAKE and _is_make_recipe_literal(text, index):
                 index += 1
                 continue
             end = text.find("\n", index)
@@ -375,6 +406,8 @@ def scan_source(text: str, path: str, mode: str) -> list[Finding]:
         return _scan_jinja_comments(text, path)
     if mode == MODE_DOCS:
         return _scan_docs_markers(text, path)
+    if mode == MODE_YAML:
+        return _scan_yaml_comments(text, path)
     return _scan_hash_comments(text, path, mode)
 
 

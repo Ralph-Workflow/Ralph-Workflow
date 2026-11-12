@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,7 +28,6 @@ __all__ = [
 
 @dataclass
 class RetryDiagnosticHooks:
-
     save_checkpoint: Callable[[PipelineState, LoopContext], None] | None = None
     handoff_retained_failure: Callable[[LoopContext, str], None] | None = None
     recovery_preamble: (

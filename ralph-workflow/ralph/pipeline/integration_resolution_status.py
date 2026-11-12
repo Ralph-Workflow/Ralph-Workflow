@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class IntegrationResolutionStatus(StrEnum):
-
     RESOLVED = "resolved"
     RECOVERABLE = "recoverable"
     EXHAUSTED = "exhausted"

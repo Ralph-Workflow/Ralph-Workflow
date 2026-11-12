@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -30,11 +29,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-
-
 @dataclass
 class ExploreIndex:
-
     workspace_root: Path
     index_root: Path
     store: ExploreStore
@@ -85,9 +81,9 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
     persisted_extractor = store.get_setting("extractor_version")
     persisted_structure = store.get_setting("structure_extractor_version")
     if (
-        persisted_schema is None and store.index_storage_bytes() > 0
-    ) or (persisted_schema is not None and persisted_schema != SCHEMA_VERSION) or (
-        persisted_extractor is not None and persisted_extractor != EXTRACTOR_VERSION
+        (persisted_schema is None and store.index_storage_bytes() > 0)
+        or (persisted_schema is not None and persisted_schema != SCHEMA_VERSION)
+        or (persisted_extractor is not None and persisted_extractor != EXTRACTOR_VERSION)
     ):
         try:
             index_db = index_root / DEFAULT_INDEX_DB
@@ -125,8 +121,6 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
     )
 
 
-
-
 def _resolve_explore_index(session: object) -> ExploreIndex | None:
     handle: ExploreIndex | None = getattr(session, "explore_index", None)
     if handle is None:
@@ -146,8 +140,6 @@ def _gitignore_coverage(workspace_root: Path) -> bool:
     if ".agent/ralph-explore/" in stripped_lines:
         return True
     return ".agent/" in stripped_lines or ".agent" in stripped_lines or "/.agent/" in stripped_lines
-
-
 
 
 def _new_cancel_token() -> str:
@@ -244,9 +236,7 @@ __all__ = [
 ]
 
 
-_LAZY_REEXPORTS: dict[
-    str, str
-] = {
+_LAZY_REEXPORTS: dict[str, str] = {
     "graph_module": "ralph.mcp.explore.graph",
     "_GRAPH_CANCEL_FLAGS": "ralph.mcp.explore._handlers_graph",
     "_GRAPH_CANCEL_LOCK": "ralph.mcp.explore._handlers_graph",

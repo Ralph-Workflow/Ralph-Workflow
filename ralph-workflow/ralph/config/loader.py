@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import tomllib
@@ -184,7 +183,6 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
                     suggester=emit,
                 )
 
-
     return lines
 
 
@@ -322,9 +320,7 @@ def _validate_agents_layer(data: dict[str, object]) -> dict[str, object]:
 
 
 _MAX_RETIRED_AGENT_KEY_WARNINGS = 256
-_WARNED_RETIRED_AGENT_KEYS: dict[
-    Path, None
-] = {}
+_WARNED_RETIRED_AGENT_KEYS: dict[Path, None] = {}
 
 
 def reset_retired_agent_key_warnings() -> None:

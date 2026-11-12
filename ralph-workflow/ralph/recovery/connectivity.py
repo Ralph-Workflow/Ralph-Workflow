@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -39,7 +38,6 @@ ListenerCallable = Callable[[ConnectivityEvent], None]
 
 
 class ConnectivityMonitor:
-
     def __init__(
         self,
         *,

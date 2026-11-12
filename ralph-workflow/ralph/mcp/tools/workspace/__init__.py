@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved

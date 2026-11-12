@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hmac
@@ -30,7 +29,6 @@ def parse_ledger_line(line: bytes) -> dict[str, object] | None:
 
 
 class WireLedgerIndex:
-
     def __init__(
         self,
         path: Path,
@@ -45,9 +43,7 @@ class WireLedgerIndex:
         self._tail_line = b""
         self._head = GENESIS_HMAC
         self._intact = True
-        self._calls: list[
-            dict[str, object]
-        ] = []
+        self._calls: list[dict[str, object]] = []
 
     def snapshot(self) -> tuple[bool, tuple[dict[str, object], ...]]:
         with self._lock:

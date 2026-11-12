@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -52,7 +51,6 @@ EmitFn = Callable[[str], None]
 
 
 class InvokePolicyAgent(Protocol):
-
     def __call__(self, *, phase: str, prompt_path: str) -> bool: ...
 
 

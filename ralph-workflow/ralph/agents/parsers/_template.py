@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -19,7 +18,6 @@ _EMITTABLE_TYPES: frozenset[str] = frozenset({"tool_use", "tool_result", "text",
 
 _MAX_SUMMARY_LENGTH: int = 200
 _MAX_PREFIX_LENGTH: int = 80
-
 
 
 _CONTROL_CHARS_RE: re.Pattern[str] = re.compile(
@@ -130,7 +128,6 @@ def _tool_name_from_line(line: AgentOutputLine) -> str:
 
 
 class ParserTemplateBase:
-
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
     _accumulators: dict[str, TextAccumulator]

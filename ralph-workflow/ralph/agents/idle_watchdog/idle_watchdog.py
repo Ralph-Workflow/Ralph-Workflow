@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -142,7 +141,6 @@ if _actual != EXPECTED_FIRE_REASONS:
 
 @dataclass
 class IdleWatchdog:
-
     _config: TimeoutPolicy
     _clock: Clock
     _last_activity: float = field(init=False)
@@ -245,12 +243,8 @@ class IdleWatchdog:
         self._default_subagent_activity_listener: WaitingStatusListener | None = None
         self._subagent_output_count = 0
         self._last_subagent_output_at = None
-        self._subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = (
-            OrderedDict()
-        )
-        self._evicted_worker_tombstones: OrderedDict[str, None] = (
-            OrderedDict()
-        )
+        self._subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = OrderedDict()
+        self._evicted_worker_tombstones: OrderedDict[str, None] = OrderedDict()
         self._workspace_event_count_internal = 0
         self._last_workspace_event_at = None
         self._last_workspace_event_weight = 0.0

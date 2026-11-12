@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,7 +8,6 @@ _MAX_TOTAL_BYTES = 4_000_000
 
 @dataclass(frozen=True)
 class PlanSizeLimits:
-
     max_total_bytes: int = _MAX_TOTAL_BYTES
     DEFAULT: ClassVar[PlanSizeLimits]
 
@@ -20,7 +18,6 @@ class PlanSizeLimits:
 
 @dataclass(frozen=True)
 class PlanArtifactSizeError(ValueError):
-
     field: str
     actual: int
     cap: int

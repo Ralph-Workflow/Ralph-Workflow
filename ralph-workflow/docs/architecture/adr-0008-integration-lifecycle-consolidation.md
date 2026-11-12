@@ -30,7 +30,7 @@ untyped outcome strings (e.g. `"remote_failed"`). Furthermore, when marker SHAs 
 unreachable, diagnostic routines could enter repeated agent rotation loops or risk destructive
 metadata mutations.
 
-## Decision
+## Choice
 
 This ADR supersedes the "Out of Scope" clause of ADR-0007 by consolidating the integration
 lifecycle under typed authorities, single-writer state invariants, fail-closed reachability
@@ -135,7 +135,7 @@ We type the conflict-resolution driver and fault classification:
 - `ralph.pipeline.conflict_resolution.driver.ResolutionAction`: enum with values
   `CONTINUE_AGENT_ROUND`, `ESCALATE_TO_INTERVENTION`, `ACCEPT_WORKTREE_REPAIR`, `PROCEED_TO_FAST_FORWARD`.
 - `select_resolution_action(session, round_index, cap) -> ResolutionAction`: single authority for round
-  decision making.
+  choice making.
 - `ralph.pipeline.conflict_resolution.attempt_fault.AttemptFault`: enum with values
   `AGENT_HEALTHY`, `AGENT_EXITED`, `AGENT_INFRASTRUCTURE_FAILURE`, `AGENT_TOOL_DEAD`, `UNKNOWN`.
 - `classify_attempt_fault(evidence) -> AttemptFault`: typed classifier replacing unstructured `if evidence` checks.

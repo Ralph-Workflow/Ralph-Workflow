@@ -1,4 +1,2 @@
-
-
 class DevelopmentResultValidationError(ValueError):
     pass

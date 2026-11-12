@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -24,7 +23,6 @@ __all__ = ["AgyParser"]
 
 _IDENTIFYING_PARAM_KEYS: tuple[str, ...] = ("TargetFile", "path", "file_path", "command", "query")
 _PARAM_SUMMARY_MAX_LEN = 60
-
 
 
 _FENCE_RE = re.compile(r"^[ \t]*```([\w.+-]*)[^\n]*\n", re.MULTILINE)
@@ -199,7 +197,6 @@ def _extract_fallback_payload(obj: dict[str, object]) -> str | None:
 
 
 class AgyParser(NdjsonParserBase):
-
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,
@@ -210,9 +207,7 @@ class AgyParser(NdjsonParserBase):
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
-        self._emitted_tool_use_ids: set[str] = (
-            set()
-        )
+        self._emitted_tool_use_ids: set[str] = set()
         self._pending_text_usage: dict[str, object] | None = None
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:

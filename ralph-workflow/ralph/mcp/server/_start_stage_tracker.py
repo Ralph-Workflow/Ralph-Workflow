@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -34,25 +33,17 @@ def stage_file_path(root: Path, *, spawn_id: str | None = None) -> Path:
 def _do_record(root: Path, stage: str) -> None:
     path = stage_file_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = (
-        tempfile.mkstemp(
-            dir=path.parent, prefix=f".tmp.{path.name}.", suffix=".tmp"
-        )
-    )
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".tmp.{path.name}.", suffix=".tmp")
     tmp_path = Path(tmp_name)
     try:
         try:
             os.fchmod(fd, 0o644)
             os.write(fd, stage.encode("ascii"))
-            os.fsync(
-                fd
-            )
+            os.fsync(fd)
         finally:
             os.close(fd)
         tmp_path.replace(path)
-        dir_fd = os.open(
-            path.parent, os.O_RDONLY
-        )
+        dir_fd = os.open(path.parent, os.O_RDONLY)
         try:
             os.fsync(dir_fd)
         finally:
@@ -142,19 +133,11 @@ def record_overrun(
 
     def _write_record() -> None:
         try:
-            overruns_path.parent.mkdir(
-                parents=True, exist_ok=True
-            )
-            with (
-                overruns_path.open(
-                    "a", encoding="utf-8"
-                ) as f
-            ):
+            overruns_path.parent.mkdir(parents=True, exist_ok=True)
+            with overruns_path.open("a", encoding="utf-8") as f:
                 f.write(line)
                 f.flush()
-                os.fsync(
-                    f.fileno()
-                )
+                os.fsync(f.fileno())
         except BaseException:
             pass
 

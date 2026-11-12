@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -14,7 +13,6 @@ __all__ = ["Clock", "FakeClock", "SystemClock"]
 
 
 class FakeClock:
-
     def __init__(
         self,
         start: float = 0.0,

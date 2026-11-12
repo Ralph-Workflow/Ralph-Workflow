@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 A1_STALE_REBASE_MERGE = "A1"

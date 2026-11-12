@@ -707,7 +707,7 @@ git commit -m "perf(logging): block-buffer worker and structured sinks"
 
 ### Task 5: `RunStateDB` — per-workspace SQLite for machine-only bookkeeping
 
-The embedded-database decision: **yes, narrowly.** One WAL-mode SQLite file at `.agent/state.db` replaces one-file-per-event bookkeeping (receipts in Task 6, completion sentinels in Task 7). It must NOT absorb agent-facing files (PLAN.md, prompts, artifact JSON, spill files) — agents read those with plain file tools; that contract stays.
+The embedded-database choice: **yes, narrowly.** One WAL-mode SQLite file at `.agent/state.db` replaces one-file-per-event bookkeeping (receipts in Task 6, completion sentinels in Task 7). It must NOT absorb agent-facing files (PLAN.md, prompts, artifact JSON, spill files) — agents read those with plain file tools; that contract stays.
 
 Why SQLite fits here: receipts/sentinels are cross-process (MCP server writes, engine reads) — WAL handles that on local APFS; writes become row upserts to one inode instead of `mkdir`+create per event; accumulation becomes `DELETE WHERE`, not directory sweeps; atomicity without the `.tmp`+rename dance.
 

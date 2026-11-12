@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import collections
@@ -142,8 +141,6 @@ if TYPE_CHECKING:
 
 _TOOL_REGISTRY_MAX_RESETS: int = 3
 _PROBE_TIMEOUT_EXPAWN_CAP: int = 32
-
-
 
 
 def _bridge_clock(self_or_bridge: object) -> Callable[[], float]:
@@ -446,7 +443,6 @@ class _RestartFnProtocol(Protocol):
 
 
 class RestartAwareMcpBridge:
-
     def __init__(
         self,
         inner: StandaloneMcpProcess,
@@ -550,16 +546,12 @@ class RestartAwareMcpBridge:
         )
         self._current_candidate: StandaloneMcpProcess | None = None
         self._candidate_in_flight: bool = False
-        self._drain_threads: list[
-            threading.Thread
-        ] = []
+        self._drain_threads: list[threading.Thread] = []
         self._is_shutting_down: bool = False
         self._unkillable_reapers: collections.deque[tuple[object, int]] = collections.deque(
             maxlen=8
         )
-        self._unkillable_reap_threads: list[
-            threading.Thread
-        ] = []
+        self._unkillable_reap_threads: list[threading.Thread] = []
 
     @property
     def run_id(self) -> str:
@@ -773,11 +765,7 @@ class RestartAwareMcpBridge:
         try:
             with _DURABLE_SINK_LOCK:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                with (
-                    target.open(
-                        "a", encoding="utf-8"
-                    ) as fh
-                ):
+                with target.open("a", encoding="utf-8") as fh:
                     record: dict[str, object] = {
                         "reason": "probe_deferred_contention",
                         "exit_status": None,
@@ -923,9 +911,7 @@ class RestartAwareMcpBridge:
         self._first_probe_deferred_at = None
 
     def _spawn_candidate(self) -> StandaloneMcpProcess:
-        fn = cast(
-            "_RestartFnProtocol", self._restart_fn
-        )
+        fn = cast("_RestartFnProtocol", self._restart_fn)
         try:
             return fn(make_before_break=True)
         except TypeError:
@@ -1157,9 +1143,7 @@ class RestartAwareMcpBridge:
                     if callable(kill_fn):
                         with contextlib.suppress(Exception):
                             kill_fn()
-                    poll_fn = cast(
-                        "Callable[[], object] | None", getattr(proc, "poll", None)
-                    )
+                    poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
                     old_exited = False
                     if poll_fn is not None and callable(poll_fn):
                         deadline = time.monotonic() + self._handover_kill_wait_s
@@ -2334,9 +2318,7 @@ def _visible_mcp_tool_names_owned(
 def _workspace_root(workspace: WorkspaceLike) -> Path:
     if isinstance(workspace, FsWorkspace):
         return workspace.root
-    root_value = cast(
-        "Path | str | None", getattr(workspace, "root", None)
-    )
+    root_value = cast("Path | str | None", getattr(workspace, "root", None))
     if isinstance(root_value, Path):
         return root_value.resolve()
     if isinstance(root_value, str):
@@ -2395,9 +2377,7 @@ def _spawn_process(
                 errno.EPERM,
             ):
                 raise
-            log_fd = os.open(
-                os.devnull, os.O_WRONLY
-            )
+            log_fd = os.open(os.devnull, os.O_WRONLY)
             logger.warning(
                 "MCP diagnostic log setup failed (errno={} path={}); "
                 "degrading to devnull so startup and serving can continue",
@@ -2444,9 +2424,7 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json")
     path = Path(temp_path)
     try:
-        with os.fdopen(
-            fd, "w", encoding="utf-8"
-        ) as stream:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(session_payload_json(session))
         return path
     except BaseException:

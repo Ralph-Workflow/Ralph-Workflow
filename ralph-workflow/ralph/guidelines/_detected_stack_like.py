@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class _DetectedStackLike(Protocol):
-
     primary_language: str
     secondary_languages: Sequence[str]
     frameworks: Sequence[str]

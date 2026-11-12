@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Self
@@ -9,7 +8,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class AnalysisDecision(RalphBaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     status: str

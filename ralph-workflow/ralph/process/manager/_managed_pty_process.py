@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 
 class ManagedPtyProcess:
-
     def __init__(
         self,
         proc: _PtyProcessLike,

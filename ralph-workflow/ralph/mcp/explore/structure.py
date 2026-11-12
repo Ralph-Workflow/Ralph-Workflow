@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ast
@@ -27,14 +26,11 @@ _MARKDOWN_REF_LINK_RE = re.compile(r"\[([^\]\n]+)\]\[([^\]\n]+)\]")
 
 @dataclass(frozen=True, slots=True)
 class StructureExtraction:
-
     path: str
     content_hash: str
     spans: tuple[SpanRow, ...]
     symbols: tuple[SymbolRow, ...]
     edges: tuple[EdgeRow, ...]
-
-
 
 
 def _stable_id(*parts: str) -> str:
@@ -86,8 +82,6 @@ def derive_edge_id(
     return _stable_id("edge", source_id, target_id, relation, path, span_id or "")
 
 
-
-
 def detect_language(path: str) -> str | None:
     lowered = path.lower()
     if lowered.endswith(".py"):
@@ -95,8 +89,6 @@ def detect_language(path: str) -> str | None:
     if lowered.endswith(".md") or lowered.endswith(".markdown"):
         return "markdown"
     return None
-
-
 
 
 def _line_col(node: ast.AST) -> tuple[int, int, int, int]:
@@ -1013,8 +1005,6 @@ def _attr_name(node: ast.AST) -> str | None:
     return None
 
 
-
-
 _HEADING_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -1338,8 +1328,6 @@ def extract_markdown(
         symbols=tuple(symbols),
         edges=tuple(edges),
     )
-
-
 
 
 def extract_structure(

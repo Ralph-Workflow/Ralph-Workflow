@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import Enum
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class RecoveryAction(Enum):
-
     Continue = "continue"
     Retry = "retry"
     Abort = "abort"

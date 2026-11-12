@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class ActivityProvider(StrEnum):
-
     AGY = "agy"
     CLAUDE = "claude"
     CLAUDE_INTERACTIVE = "claude_interactive"

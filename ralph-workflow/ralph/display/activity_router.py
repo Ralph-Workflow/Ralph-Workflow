@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -44,15 +43,9 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
         ActivityProvider.CODEX: CodexParser,
         ActivityProvider.CURSOR: CursorParser,
         ActivityProvider.GEMINI: GeminiParser,
-        ActivityProvider.NANOCODER: cast(
-            "type[AgentParser]", NanocoderParser
-        ),
-        ActivityProvider.PI: cast(
-            "type[AgentParser]", PiParser
-        ),
-        ActivityProvider.GENERIC: cast(
-            "type[AgentParser]", GenericParser
-        ),
+        ActivityProvider.NANOCODER: cast("type[AgentParser]", NanocoderParser),
+        ActivityProvider.PI: cast("type[AgentParser]", PiParser),
+        ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
     }
 
 
@@ -63,9 +56,7 @@ def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
     if parser_cls is None:
         from ralph.agents.parsers import GenericParser
 
-        parser_cls = cast(
-            "type[AgentParser]", GenericParser
-        )
+        parser_cls = cast("type[AgentParser]", GenericParser)
     return parser_cls()
 
 
@@ -116,7 +107,6 @@ def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
 
 
 class ActivityRouter:
-
     def __init__(
         self,
         *,

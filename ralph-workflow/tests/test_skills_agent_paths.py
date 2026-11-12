@@ -54,9 +54,6 @@ def test_canonical_root_matches_existing_claude_layout(
     assert canonical.resolve() == fake_home / ".claude" / "skills"
 
 
-# RALPH-TEST-REASON: two user-global roots are registered for Codex's current and Antigravity's all-surfaces skill locations
-
-
 def test_sibling_root_count_matches_supported_agents_minus_canonical() -> None:
     siblings = sibling_agent_skill_roots()
     assert len(siblings) == len(AGENT_SKILL_ROOTS) - 1
@@ -75,12 +72,10 @@ def test_agent_skill_roots_excludes_project_local_roots() -> None:
             )
         assert entry.resolve().is_absolute(), (
             f"resolved path must be absolute for {entry.agent}: {entry.resolve()}"
-            # RALPH-TEST-REASON: two user-global roots are registered for Codex's current and Antigravity's all-surfaces skill locations
         )
 
 
 def test_agent_skill_roots_returns_six_total_entries() -> None:
-    """Four original roots plus Codex's current and Antigravity's all-surfaces roots."""
     assert len(AGENT_SKILL_ROOTS) == 6
     assert len(agent_skill_roots()) == 6
 

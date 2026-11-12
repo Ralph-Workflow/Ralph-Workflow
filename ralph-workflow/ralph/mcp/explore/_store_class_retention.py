@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -17,11 +16,9 @@ from ralph.mcp.explore._store_types import (
 
 
 class _RetentionMethods:
-
     _conn: sqlite3.Connection
     _db_path: Path
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
-
 
     def record_job(
         self,
@@ -80,7 +77,6 @@ class _RetentionMethods:
         cur = self._conn.execute("SELECT * FROM jobs ORDER BY started_at DESC LIMIT 1")
         row: sqlite3.Row | None = cur.fetchone()
         return row
-
 
     def record_tombstone(
         self,
@@ -146,7 +142,6 @@ class _RetentionMethods:
         )
         row: sqlite3.Row | None = cur.fetchone()
         return row
-
 
     def index_storage_bytes(self) -> int:
         total = 0

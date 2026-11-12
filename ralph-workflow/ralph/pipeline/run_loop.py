@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -191,7 +190,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class LoopContext:
-
     policy_bundle: PolicyBundle
     workspace_scope: WorkspaceScope
     config: UnifiedConfig
@@ -510,9 +508,7 @@ def _emit_run_start(
         return
     with suppress(Exception):
         _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
-        _prompt_path: str | None = cast(
-            "str | None", _prompt_path_raw
-        )
+        _prompt_path: str | None = cast("str | None", _prompt_path_raw)
         _dev_para = next(
             (
                 p.parallelization
@@ -535,12 +531,8 @@ def _emit_run_start(
         target_worktree_path = _target_worktree_path(ctx)
         _orientation = RunStartOrientation(
             prompt_path=_prompt_path,
-            developer_agent=cast(
-                "str | None", _dev_agent_raw
-            ),
-            developer_model=cast(
-                "str | None", _dev_model_raw
-            ),
+            developer_agent=cast("str | None", _dev_agent_raw),
+            developer_model=cast("str | None", _dev_model_raw),
             developer_iters=ctx.config.general.developer_iters,
             parallel_max_workers=_parallel_max_workers,
             plan_present=_plan_present,
@@ -941,7 +933,6 @@ _public_save_recovered_rebase_checkpoint_dispatch = save_recovered_rebase_checkp
 
 @dataclass(frozen=True)
 class _RunCollaborators:
-
     policy_bundle: PolicyBundle
     registry: _RegistryLike
     state: PipelineState
@@ -983,13 +974,9 @@ def _resolve_registry(
     registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
 ) -> _RegistryLike:
     if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
-        return cast(
-            "_RegistryLike", pipeline_deps.registry_factory(config)
-        )
+        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
     if pro_hooks is not None and pro_hooks.registry_factory is not None:
-        return cast(
-            "_RegistryLike", pro_hooks.registry_factory(config)
-        )
+        return cast("_RegistryLike", pro_hooks.registry_factory(config))
     if registry_factory is not None:
         return registry_factory(config)
     return _runner_module.AgentRegistry.from_config(config)
@@ -3303,9 +3290,7 @@ def _run_inner_loop_after_startup(
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]
         iter_pipeline_deps = _iteration_pipeline_deps(ctx, _live_connectivity, _live_is_waiting)
-        runner_step = cast(
-            "_RunPipelineStepFn", _runner_module.run_pipeline_step
-        )
+        runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
         planning_baseline = _capture_planning_baseline_if_entry(state, ctx)
         step_result = runner_step(
             state=state,
@@ -3352,9 +3337,7 @@ def _run_inner_loop_after_startup(
         )
         if hasattr(ctx.active_display, "begin_phase"):
             with suppress(Exception):
-                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(
-                    state.phase
-                )
+                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(state.phase)
     return state, prev_phase, None
 
 
@@ -3367,9 +3350,7 @@ def _emit_post_loop_result(
 ) -> None:
     if not is_quiet and hasattr(active_display, "emit_run_end"):
         with suppress(Exception):
-            total_agent_calls = cast(
-                "int", getattr(state.metrics, "total_agent_calls", 0)
-            )
+            total_agent_calls = cast("int", getattr(state.metrics, "total_agent_calls", 0))
             _exit_trigger = "completed" if exit_code == 0 else "failed"
             _outer_dev = next(
                 (
@@ -3379,9 +3360,7 @@ def _emit_post_loop_result(
                 ),
                 None,
             )
-            cast(
-                "_RunEndDisplay", active_display
-            ).emit_run_end(
+            cast("_RunEndDisplay", active_display).emit_run_end(
                 phase=state.phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=state.pr_url,
@@ -3673,9 +3652,7 @@ def _cleanup_pipeline(
         emit_final_summary(
             state,
             loop_ctx.workspace_scope.root,
-            subscriber=cast(
-                "PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber
-            ),
+            subscriber=cast("PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber),
             display=loop_ctx.active_display,
             display_context=loop_ctx.display_context,
         )
@@ -3742,9 +3719,7 @@ def _execute_with_cleanup(
             _emit_run_start(loop_ctx, state)
             if hasattr(loop_ctx.active_display, "begin_phase"):
                 with suppress(Exception):
-                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(
-                        state.phase
-                    )
+                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(state.phase)
             _push_status_bar_if_changed(
                 loop_ctx.active_display,
                 state,

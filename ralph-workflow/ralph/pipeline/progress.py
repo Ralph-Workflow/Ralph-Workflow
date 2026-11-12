@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -36,7 +35,6 @@ def review_issues_found(state: PipelineState, policy: PipelinePolicy | None = No
 
 @dataclass(frozen=True)
 class AnalysisLoopCounter:
-
     completed: int
     cap: int
 

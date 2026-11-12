@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -16,7 +15,6 @@ MAX_PENDING_CHANGES = 4096
 
 
 class WorkspaceChangeCoalescer:
-
     def __init__(
         self,
         deliver: Callable[[str], None],

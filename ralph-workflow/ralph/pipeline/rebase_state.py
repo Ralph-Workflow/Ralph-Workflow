@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -24,7 +23,6 @@ _LEGACY_AGENT_FAILURE_REASON = "resolution_agent_failure"
 
 
 class _StartupRetentionReason(StrEnum):
-
     FAILED_ABORT = "FAILED_ABORT"
     FAILED_RESET = "FAILED_RESET"
     TARGET_POINTER_UNREFRESHABLE = "TARGET_POINTER_UNREFRESHABLE"
@@ -41,7 +39,6 @@ StartupRetentionReason = _StartupRetentionReason
 
 
 class RebaseState(RalphBaseModel):
-
     model_config = _FROZEN
 
     pending: bool = False
@@ -201,7 +198,6 @@ class RebaseState(RalphBaseModel):
 
     last_planning_obstruction: str | None = None
 
-
     last_decision: str | None = None
 
     last_publication_decision: str | None = None
@@ -212,11 +208,15 @@ class RebaseState(RalphBaseModel):
 
     @model_validator(mode="after")
     def _populate_operation_display_state(self) -> Self:
-        if self.last_decision is None:
-            if self.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION:
-                object.__setattr__(self, "last_decision", "block_for_recovery")
-            elif self.integration_unresolved or self.recovery_record_retained:
-                object.__setattr__(self, "last_decision", "block_for_recovery")
+        if (
+            self.last_decision is None
+            and (
+                self.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
+                or self.integration_unresolved
+                or self.recovery_record_retained
+            )
+        ):
+            object.__setattr__(self, "last_decision", "block_for_recovery")
         if self.operation_display_state is None:
             state = _resolve_operation_display_state(self)
             if state is not None:

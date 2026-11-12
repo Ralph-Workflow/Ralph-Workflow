@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -8,7 +7,6 @@ if TYPE_CHECKING:
 
 
 class AgentInvocationError(Exception):
-
     def __init__(
         self,
         agent_name: str,

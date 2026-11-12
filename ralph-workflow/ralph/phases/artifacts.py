@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -187,9 +186,7 @@ def artifact_contract_for_drain(
             and contract_drain == drain
             and contract_artifact_type == artifact_type
         ):
-            return cast(
-                "ArtifactContract", contract
-            )
+            return cast("ArtifactContract", contract)
     return None
 
 

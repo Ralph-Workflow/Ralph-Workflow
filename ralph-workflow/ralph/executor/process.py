@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -43,7 +42,6 @@ _POST_TERMINATE_DRAIN_SECONDS: Final[float] = 5.0
 
 
 class ProcessExecutionError(RuntimeError):
-
     def __init__(
         self,
         command: tuple[str, ...],

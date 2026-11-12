@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -9,17 +8,12 @@ from ralph.pipeline.config_file_fingerprint import compute_config_file_fingerpri
 
 
 class ConfigFileFingerprintWatcher:
-
     def __init__(self, default_path: Path | str | None = None) -> None:
         self._default_path: Path | None = (
             Path(default_path).resolve() if default_path is not None else None
         )
-        self._last_fingerprints: dict[
-            Path, str | None
-        ] = {}
-        self._attempted_fingerprints: dict[
-            Path, set[str | None]
-        ] = {}
+        self._last_fingerprints: dict[Path, str | None] = {}
+        self._attempted_fingerprints: dict[Path, set[str | None]] = {}
         if self._default_path is not None:
             self.record_failure(self._default_path)
 

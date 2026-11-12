@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RecoveryControllerOptions:
-
     cycle_cap: int = 200
     classifier: FailureClassifier | None = None
     event_bus: FailureEventBus | None = None

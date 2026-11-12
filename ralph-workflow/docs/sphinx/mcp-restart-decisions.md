@@ -1,7 +1,7 @@
 # MCP restart decisions: operator playbook
 
 This page complements the technical reference at
-:doc:`mcp-architecture` (sections *Restart-decision durability* and
+:doc:`mcp-architecture` (sections *Restart-choice durability* and
 *Startup serving bound and platform contract*). Where the technical
 reference describes what the runtime writes, this page describes what
 to do with the evidence during a runaway-restart incident.
@@ -28,7 +28,7 @@ The stream records two distinct shapes:
    - `exit_status`: OS exit status from `process.poll()` (for `process_exited`), or `null`.
    - `probe_duration_s`: wall-clock probe duration in seconds (for `probe_failed`), or `null`.
    - `log_tail`: list of up to 10 captured child log lines, or `null` if the log was unavailable.
-   - `stage`: always `"process_exited"` (when `reason` is `"process_exited"`) or `"probe_failed"` (when `reason` is `"probe_failed"`). The value records the restart trigger, **not** the child's startup-progress label. Startup-stage information for the child at decision time lives in the per-spawn stage file described in the next section. See `lifecycle.py:632-638`.
+   - `stage`: always `"process_exited"` (when `reason` is `"process_exited"`) or `"probe_failed"` (when `reason` is `"probe_failed"`). The value records the restart trigger, **not** the child's startup-progress label. Startup-stage information for the child at choice time lives in the per-spawn stage file described in the next section. See `lifecycle.py:632-638`.
 
    The two restart reasons classify the restart trigger:
    - `PROCESS_EXITED` (`reason="process_exited"`) — the child process died
@@ -49,7 +49,7 @@ The stream records two distinct shapes:
 
    **Crucially, contention deferrals represent NO restart.** The bridge
    detects a host-contention signal (e.g. an inotify watch-exhaustion event)
-   alongside a probe failure and *conservatively defers* the restart decision,
+   alongside a probe failure and *conservatively defers* the restart choice,
    incrementing `deferral_count` and backing off probe timeouts. The signal
    indicates the probe failed *in the presence of* contention, but does not
    prove the failure was caused by host starvation rather than a wedged
@@ -62,7 +62,7 @@ The table below summarizes what each record type proves:
 | Did the child crash? | `reason == "process_exited"` | The child died; `exit_status` carries the OS exit code. |
 | Did the child hang? | `reason == "probe_failed"` | The child is alive but unresponsive; `probe_duration_s` is the wall-clock duration of the failed probe. |
 | Was a probe failure deferred under load? | `reason == "probe_deferred_contention"` | Host contention was detected; NO restart occurred. `deferral_count` tracks consecutive deferred misses. |
-| Why was the restart triggered? | `stage` | For restart decisions, `stage` is always `"process_exited"` or `"probe_failed"` — it records the restart trigger, not the child's startup step. For contention deferrals, `stage` is `"probe_deferred_contention"`. What the child was actually doing at decision time is answered by the per-spawn stage file (see below), not by the JSONL `stage` field. |
+| Why was the restart triggered? | `stage` | For restart decisions, `stage` is always `"process_exited"` or `"probe_failed"` — it records the restart trigger, not the child's startup step. For contention deferrals, `stage` is `"probe_deferred_contention"`. What the child was actually doing at choice time is answered by the per-spawn stage file (see below), not by the JSONL `stage` field. |
 
 ## Triage procedure on the next incident
 
@@ -117,7 +117,7 @@ so correlation is operator-driven based on retained evidence.
      within the incident bracket (e.g. two nonzero-exit events), attributing
      a specific PID to a specific bridge spawn is ambiguous.
    - A `PROBE_FAILED` record without a concurrent process-manager exit log
-     indicates the child process was still alive when the restart decision
+     indicates the child process was still alive when the restart choice
      was executed; `probe_duration_s` serves as the primary quantitative
      record.
 
@@ -275,7 +275,7 @@ above resolves the trigger on the next run.
 
 ## Closed vocabulary for the JSONL record
 
-The per-bridge JSONL restart-decision record carries exactly five fields:
+The per-bridge JSONL restart-choice record carries exactly five fields:
 `reason`, `exit_status`, `probe_duration_s`, `log_tail`, `stage`.
 The set is closed: a future change that adds a `spawn_id`, `pid`,
 or `timestamp` field is an explicit test edit
@@ -286,7 +286,7 @@ left to a future operator to discover.
 
 Contention deferral records emitted by `lifecycle.py:_record_contention_deferral`
 carry six fields: `reason`, `exit_status`, `probe_duration_s`,
-`deferral_count`, `log_tail`, `stage`. Like the restart-decision record,
+`deferral_count`, `log_tail`, `stage`. Like the restart-choice record,
 contention deferrals contain neither `spawn_id`, `pid`, nor `timestamp`,
 ensuring all health stream analysis respects the manual correlation
 and attribution guidelines defined above.

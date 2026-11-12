@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib
@@ -201,9 +200,7 @@ def _load_upstreams_for_agent(
             return claude_loader(_workspace_path if isinstance(_workspace_path, Path) else None)
         elif agent_name == "agy":
             mod = importlib.import_module("ralph.mcp.transport.agy")
-            paths = cast(
-                "tuple[Path, ...]", mod._agy_mcp_config_paths(_workspace_path)
-            )
+            paths = cast("tuple[Path, ...]", mod._agy_mcp_config_paths(_workspace_path))
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_agy_server_entry,
@@ -214,9 +211,7 @@ def _load_upstreams_for_agent(
             )
         elif agent_name == "cursor":
             mod = importlib.import_module("ralph.mcp.transport.cursor")
-            paths = cast(
-                "tuple[Path, ...]", mod._cursor_paths_to_consider(_workspace_path)
-            )
+            paths = cast("tuple[Path, ...]", mod._cursor_paths_to_consider(_workspace_path))
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_cursor_server_entry,
@@ -227,9 +222,7 @@ def _load_upstreams_for_agent(
             )
         elif agent_name == "kimi":
             mod = importlib.import_module("ralph.mcp.transport.kimi")
-            paths = cast(
-                "tuple[Path, ...]", mod._kimi_paths_to_consider(_workspace_path)
-            )
+            paths = cast("tuple[Path, ...]", mod._kimi_paths_to_consider(_workspace_path))
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_kimi_server_entry,
@@ -240,9 +233,7 @@ def _load_upstreams_for_agent(
             )
         else:
             mod = importlib.import_module("ralph.mcp.transport.nanocoder")
-            paths = cast(
-                "tuple[Path, ...]", mod._nanocoder_mcp_config_paths(_workspace_path)
-            )
+            paths = cast("tuple[Path, ...]", mod._nanocoder_mcp_config_paths(_workspace_path))
             servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
         servers.pop(RALPH_MCP_SERVER_NAME, None)
         return normalize_upstream_mcp_servers(servers)

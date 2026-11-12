@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,7 +23,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class FailureContext:
-
     phase: str
     agent: str | None = None
     retry_in_session: bool = False

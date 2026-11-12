@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +9,5 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class SessionModelOpts:
-
     model_identity: MultimodalModelIdentity | None = None
     model_flag: str | None = None

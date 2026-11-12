@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import replace
@@ -44,7 +43,6 @@ if TYPE_CHECKING:
 
 
 class ManagedAgentSessionRuntime:
-
     def __init__(
         self,
         *,

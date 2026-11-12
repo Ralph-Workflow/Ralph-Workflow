@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -276,6 +275,3 @@ def _worktree(repo: Repo) -> Path:
     if repo.working_tree_dir:
         return Path(repo.working_tree_dir)
     return _git_dir(repo).parent
-
-
-

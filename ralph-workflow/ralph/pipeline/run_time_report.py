@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -30,7 +29,6 @@ _MAX_DEGRADED_REASON_CHARACTERS = 500
 
 
 class _RunTimeReportValidationError(ValueError):
-
     def __init__(self, reason: str) -> None:
         self.reason = reason
         super().__init__(f"run_time_report validation failed: {reason}")

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -22,12 +21,8 @@ if TYPE_CHECKING:
     from ralph.process.manager import ProcessManager
 
 
-_DEFAULT_SIGNAL_GETTER = cast(
-    "SignalGetter", signal.getsignal
-)
-_DEFAULT_SIGNAL_SETTER = cast(
-    "SignalSetter", signal.signal
-)
+_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
+_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
 
 INTERRUPT_EXIT_CODE = 130
 _INTERRUPT_EXIT_CODE_REQUIRED: int = 130
@@ -39,7 +34,6 @@ if INTERRUPT_EXIT_CODE != _INTERRUPT_EXIT_CODE_REQUIRED:
 
 @dataclass(frozen=True)
 class InterruptController:
-
     shutdown_all: Callable[[float], None]
     record_interrupt: Callable[[], None] = request_user_interrupt
     stop_connectivity: Callable[[], None] | None = None
@@ -69,9 +63,7 @@ class InterruptController:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        bridge_pids_legacy = cast(
-            "Iterable[int]", kwargs.pop("bridge_pids", ())
-        )
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         del bridge_pgids, bridge_pids_legacy
@@ -87,9 +79,7 @@ class InterruptController:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        bridge_pids_legacy = cast(
-            "Iterable[int]", kwargs.pop("bridge_pids", ())
-        )
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)

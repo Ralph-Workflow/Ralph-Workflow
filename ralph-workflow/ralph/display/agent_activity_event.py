@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class AgentActivityEvent:
-
     provider: ActivityProvider
     kind: ActivityEventKind
     content: str | None = None

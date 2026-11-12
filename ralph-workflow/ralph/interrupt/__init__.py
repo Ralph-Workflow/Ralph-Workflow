@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.interrupt.asyncio_bridge import install_signal_handlers

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -214,9 +213,7 @@ def _claim_scope_sentence_count(cell: str) -> int:
     clean = re.sub(r"[.!?]+$", "", stripped).strip()
     if not clean:
         return 1
-    raw_segments: list[str] = _CLAIM_SCOPE_SENTENCE_BOUNDARY_RE.split(
-        clean
-    )
+    raw_segments: list[str] = _CLAIM_SCOPE_SENTENCE_BOUNDARY_RE.split(clean)
     segments: list[str] = [s.strip() for s in raw_segments if s.strip()]
     return max(1, len(segments))
 

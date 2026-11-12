@@ -1,4 +1,3 @@
-
 from ralph.checkpoint.builder import CheckpointBuilder
 from ralph.checkpoint.checkpoint_payload import CheckpointPayload
 from ralph.checkpoint.execution_history import ExecutionHistory

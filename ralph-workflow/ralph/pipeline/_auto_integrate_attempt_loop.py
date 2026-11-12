@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -41,34 +40,27 @@ MAX_INTEGRATION_ATTEMPTS = 3
 
 
 class _ResolveContext(Protocol):
-
     def __call__(
         self,
         config: UnifiedConfig,
         workspace_scope: WorkspaceScope,
-    ) -> tuple[Path, str | None, str | None, str | None] | None:
-        ...
+    ) -> tuple[Path, str | None, str | None, str | None] | None: ...
 
 
 class _EarlySkips(Protocol):
-
     def __call__(
         self,
         ctx: tuple[Path, str | None, str | None, str | None] | None,
         *,
         missing_target: str,
-    ) -> tuple[RebaseState | None, tuple[Path, str, str] | None]:
-        ...
+    ) -> tuple[RebaseState | None, tuple[Path, str, str] | None]: ...
 
 
 class _ObserveConflictIdentity(Protocol):
-
-    def __call__(self, root: Path, target: str) -> ConflictIdentity:
-        ...
+    def __call__(self, root: Path, target: str) -> ConflictIdentity: ...
 
 
 class _ConfiguredResolverAllowed(Protocol):
-
     def __call__(
         self,
         state: RebaseState,
@@ -77,12 +69,10 @@ class _ConfiguredResolverAllowed(Protocol):
         *,
         ledger: AgentFailureLedger | None = None,
         candidates: Sequence[str] = (),
-    ) -> bool:
-        ...
+    ) -> bool: ...
 
 
 class _RecoverBeforeAttempt(Protocol):
-
     def __call__(
         self,
         config: UnifiedConfig,
@@ -90,12 +80,10 @@ class _RecoverBeforeAttempt(Protocol):
         record: RebaseState | None,
         conflict_resolver: ConflictResolver | None,
         rebase_stop_resolver: RebaseStopResolver | None,
-    ) -> RebaseState | None:
-        ...
+    ) -> RebaseState | None: ...
 
 
 class _FreshenAttemptTarget(Protocol):
-
     def __call__(
         self,
         config: UnifiedConfig,
@@ -109,12 +97,10 @@ class _FreshenAttemptTarget(Protocol):
         force_refresh: bool = False,
         ledger: AgentFailureLedger | None = None,
         candidates: Sequence[str] = (),
-    ) -> tuple[RebaseState | None, str | None]:
-        ...
+    ) -> tuple[RebaseState | None, str | None]: ...
 
 
 class _IntegrateOnce(Protocol):
-
     def __call__(
         self,
         config: UnifiedConfig,
@@ -129,31 +115,25 @@ class _IntegrateOnce(Protocol):
         publish: bool = True,
         require_in_sync: bool = False,
         clock: Clock | None = None,
-    ) -> tuple[RebaseState | None, bool]:
-        ...
+    ) -> tuple[RebaseState | None, bool]: ...
 
 
 class _WaitBeforeRetry(Protocol):
-
     def __call__(
         self,
         attempt: int,
         *,
         sleep: Callable[[float], None],
         jitter: Callable[[], float],
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 class _ReadRecordOutcome(Protocol):
-
-    def __call__(self, workspace_root: Path) -> RecordReadOutcome:
-        ...
+    def __call__(self, workspace_root: Path) -> RecordReadOutcome: ...
 
 
 @dataclass(frozen=True, slots=True)
 class AttemptLoopSeams:
-
     resolve_context: _ResolveContext
     early_skips: _EarlySkips
     observe_conflict_identity: _ObserveConflictIdentity

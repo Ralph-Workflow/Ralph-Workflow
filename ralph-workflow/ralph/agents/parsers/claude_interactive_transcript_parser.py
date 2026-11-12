@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -197,7 +196,6 @@ _IDLE_TUI_GLYPH_MAX_LEN = 20
 
 
 class ClaudeInteractiveTranscriptParser:
-
     def __init__(self, *, max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS) -> None:
         self.session_id: str | None = None
         self._last_emitted_signature: tuple[str, str, object] | None = None

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -33,7 +32,6 @@ def command_binary_name(cmd: str) -> str:
 
 
 class AgentConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     cmd: str

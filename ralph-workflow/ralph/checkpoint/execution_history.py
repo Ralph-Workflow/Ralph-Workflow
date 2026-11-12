@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import deque
@@ -9,7 +8,6 @@ from ralph.checkpoint.execution_step import ExecutionStep
 
 @dataclass(frozen=True)
 class ExecutionHistory:
-
     steps: tuple[ExecutionStep, ...] = ()
     file_snapshots: dict[str, str] = field(default_factory=dict)
 

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -315,7 +314,6 @@ def _persist_commit_review_context(
 
 @dataclass
 class CommitReviewParsedArtifact:
-
     verdict: str | None
     tree_sha: str | None
     actions: list[CommitReviewAction] = field(default_factory=list)

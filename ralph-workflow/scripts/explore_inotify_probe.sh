@@ -36,7 +36,6 @@ from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
 from ralph.workspace.fs import FsWorkspace
 
-# Seed at least one file so the workload is non-trivial.
 (WORKSPACE / "sample.py").write_text("def sample():\n    return 1\n")
 
 store = ExploreStore(INDEX_DIR)
@@ -78,7 +77,6 @@ for _ in range(5):
     )
 store2.close()
 
-# Read /proc/self/fdinfo and tally inotify watches.
 fd_dir = Path("/proc/self/fd")
 total = 0
 for entry in fd_dir.iterdir():

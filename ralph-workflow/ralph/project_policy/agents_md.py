@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -23,7 +22,6 @@ _READINESS_DIMENSIONS_RE: Final[re.Pattern[str]] = re.compile(
 
 
 class _ManagedBlock(NamedTuple):
-
     begin_marker: str
     begin_index: int
     end_index: int
@@ -79,7 +77,6 @@ _RALPH_MANAGED_SIGNATURE = "Readiness reports THREE dimensions, not two:"
 
 
 class _AgentsReadyTemplate(str):
-
     def format(self, *args: object, **kwargs: object) -> str:
         kwargs.setdefault("structure_complete", "unknown")
         kwargs.setdefault("implementation_verified", "unknown")

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 UNSAFE_EXTENSIONS: frozenset[str] = frozenset(

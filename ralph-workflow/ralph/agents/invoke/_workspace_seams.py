@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import weakref
@@ -28,23 +27,17 @@ SharedAwarenessSidecarRemover = Callable[[Path], None]
 
 
 class _CrossProcessWatchLockProtocol(Protocol):
+    def try_acquire(self, workspace_root: Path) -> str | None: ...
 
-    def try_acquire(self, workspace_root: Path) -> str | None:
-        ...
+    def claimed_owner_id(self, workspace_root: Path) -> str | None: ...
 
-    def claimed_owner_id(self, workspace_root: Path) -> str | None:
-        ...
+    def last_released_holder(self, workspace_root: Path) -> str | None: ...
 
-    def last_released_holder(self, workspace_root: Path) -> str | None:
-        ...
-
-    def release(self, workspace_root: Path, owner_id: str) -> None:
-        ...
+    def release(self, workspace_root: Path, owner_id: str) -> None: ...
 
 
 @dataclass(frozen=True)
 class WorkspaceWatchSeams:
-
     watch_lock: _CrossProcessWatchLockProtocol | None = None
     observer_factory: WatchObserverFactory | None = None
     sidecar_factory: SharedAwarenessSidecarFactory | None = None
@@ -53,7 +46,6 @@ class WorkspaceWatchSeams:
 
 
 class _SharedWorkspaceWatch:
-
     def __init__(
         self,
         observer: _WatchObserverProtocol,

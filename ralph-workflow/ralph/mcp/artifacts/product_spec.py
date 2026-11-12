@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -22,7 +21,6 @@ _PRODUCT_SPEC_MARKDOWN_PATH = ".agent/artifacts/product_spec.md"
 
 
 class ProductSpec(RalphBaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(..., min_length=1)

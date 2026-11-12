@@ -1,4 +1,3 @@
-
 from .detection import (
     current_platform,
     detect_architecture,

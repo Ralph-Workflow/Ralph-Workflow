@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -53,7 +52,6 @@ def _step_frame_message_id(envelope: dict[str, object]) -> str | None:
 
 
 class OpenCodeExecutionStrategy(BaseExecutionStrategy):
-
     def __init__(
         self,
         *,
@@ -66,9 +64,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         self._registry = registry
         self._subagent_activity_sink = subagent_activity_sink
         self._scoped_records_seen = False
-        self._open_step_messages: set[str] = (
-            set()
-        )
+        self._open_step_messages: set[str] = set()
         self._anonymous_open_steps = 0
 
     def _active_label_prefix(self) -> str | None:
@@ -93,9 +89,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
     def observe_line(self, line: str) -> None:
         self._update_open_step_liveness(line)
-        registry = cast(
-            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
-        )
+        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
         child_id: str | None = parse_opencode_child_id(line)
         if self._subagent_activity_sink is not None or _has_subagent_sink():
             signal = _classify_opencode_child_signal(line)
@@ -176,9 +170,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
         scoped_child_evidence_stale = False
 
-        registry = cast(
-            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
-        )
+        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
         if registry is not None:
             had_scoped_records = registry.has_records(probe_prefix)
             if had_scoped_records:
@@ -217,9 +209,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
-        registry = cast(
-            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
-        )
+        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
         label_prefix = self._active_label_prefix()
         if self._scoped_records_seen:
             return _evidence_precedence(

@@ -9,20 +9,20 @@
 
 Previous iterations of Ralph Workflow accumulated multiple competing representations of truth across the pipeline:
 1. **Drifting authorities**: Pipeline phase progression, startup recovery, commit handling, parallel worker joins, and terminal success independently inspected diverse indicators — checkpoint fields, presence/absence of `.agent/integration_record.json`, live Git markers (`MERGE_HEAD`, `REBASE_HEAD`), worktree cleanliness, or agent exit statuses.
-2. **Prose-driven control flow**: Decision paths parsed human-readable diagnostic strings (`last_reason`, `phase == "integrating"`), conflating user-facing presentation with internal lifecycle state.
+2. **Prose-driven control flow**: Choice paths parsed human-readable diagnostic strings (`last_reason`, `phase == "integrating"`), conflating user-facing presentation with internal lifecycle state.
 3. **Collapsing UNKNOWN into negative**: Query failures, unreadable Git states, timeout, or missing remote information were frequently collapsed into false negatives that authorized inappropriate dispatch, cleanup, or abandonment.
 4. **Transient retry counters**: Retry budgets and backoff cooldowns resided in volatile process memory or were reset on restart, allowing infinite spiral retry loops across process invocations.
-5. **Observation vs Authority conflation**: Live Git commands, filesystem queries, and network responses acted as ad-hoc decision authorities rather than input facts to an authoritative state machine.
+5. **Observation vs Authority conflation**: Live Git commands, filesystem queries, and network responses acted as ad-hoc choice authorities rather than input facts to an authoritative state machine.
 
 [ADR-0007](adr-0007-integration-source-of-truth.md) and [ADR-0008](adr-0008-integration-lifecycle-consolidation.md) introduced initial scoping for integration evidence, `IntegrationAction`, and `RebaseOutcomeKind`. This ADR establishes the complete, unified architectural model of source-of-truth ownership, dependency injection boundaries, and the authoritative lifecycle domain matrix across the entire pipeline.
 
-## Decision
+## Choice
 
 We establish four fundamental principles and an authoritative per-fact ownership model:
 
 ### 1. One Authority Per Domain Fact
 
-Every pipeline and integration fact has exactly one authoritative owner, one state machine governing its valid transitions, and explicit one-way projections. Callers never infer progression independently; they request a transition from the authority and receive a typed decision:
+Every pipeline and integration fact has exactly one authoritative owner, one state machine governing its valid transitions, and explicit one-way projections. Callers never infer progression independently; they request a transition from the authority and receive a typed choice:
 - **Pipeline progression & phase boundaries**: `ralph.pipeline._pipeline_state_machine.decide_phase_transition` is the sole authority for whether a phase continues, advances, waits, or blocks.
 - **Integration lifecycle**: the integration owner seam (`ralph.pipeline.integration_owner`: `decide_integration` / `decide_integration_verdict`, reached from the pipeline boundaries through `ralph.pipeline._integration_owner_seam.decide_seam_action`) is the sole authority for integration progression (`IntegrationAction`). `ralph.pipeline._integration_action.next_integration_action` is the typed projection onto that closed vocabulary — it fails closed to `REQUIRE_INTERVENTION` and is not an authority.
 - **Terminal eligibility**: `ralph.pipeline._terminal_authority.is_terminal_success_eligible` is the sole authority governing whether the pipeline may report terminal completion.
@@ -55,7 +55,7 @@ The following table documents the complete 8-field architectural contract for ev
 | **Phase Progression** | `_pipeline_state_machine` (`PhaseDecision`); waiting entry via `PipelineState.set_waiting` | `run_loop._run_inner_loop`, `runner._apply_step_integration_outcome` | `run_loop`, `runner`, CLI commands | `PipelineState.current_phase`, `PipelineState.wait_reason`, status bar | `CONTINUE_PHASE` &rarr; `ADVANCE_PHASE` &rarr; `REPORT_TERMINAL_SUCCESS` / `BLOCK_FOR_RECOVERY`; waits recorded via `set_waiting` with closed `WaitReason` vocabulary (`ALL_AGENTS_UNAVAILABLE`, `EXHAUSTED_RETRY`, `COOLDOWN`); `PhaseDecision` closed vocabulary: `CONTINUE_PHASE`, `ADVANCE_PHASE`, `BLOCK_FOR_RECOVERY`, `REPORT_TERMINAL_SUCCESS`, `REPORT_TERMINAL_FAILURE`, `REPORT_INTERVENTION_REQUIRED` | Reconstituted from checkpoint; resume at current phase | `UNKNOWN` phase raises validation error; halts run loop | Unfinished phase, retained recovery, or unresolved integration blocks terminal success |
 | **Integration Obligation** | `IntegrationRecordStore` (`IntegrationRecord`) | `store.transition()` (`START_INTEGRATING`, `PROMOTE_TO_INTEGRATED`, `CLEAR`) | `recover_incomplete_integration`, `inspect_integration_resolution`, `runner` | `is_integrated`, `reintegrate_pending`, `owning_worktree` | `START_INTEGRATING` &rarr; `MARK_RESOLVING_*` &rarr; `PROMOTE_TO_INTEGRATED` &rarr; `CLEAR` | Atomic `.agent/integration_record.json` reloaded; crash before/after is idempotent | Corrupt or invalid JSON yields `UNREADABLE` (typed `RecordReadOutcome.UNREADABLE` with reason `corrupt_json` / `unsupported_schema` / `backend_read_failure`); `clear_record` and `transition` refuse mutation on `UNREADABLE` and raise `RecordUnreadableError` &rarr; `REQUIRE_INTERVENTION` | Presence of un-cleared record blocks normal phase dispatch and terminal success |
 | **Integration Action** | `integration_owner` (owner seam: `decide_integration` / `decide_integration_verdict`) projecting onto the `_integration_action` `IntegrationAction` vocabulary; promotion applied exclusively by `commit_completion` — the `complete_commit()` authority at `ralph/pipeline/_commit_completion_authority.py:28` — whose result is applied by the reducer via `IntegrationRecord.with_transition` `PROMOTE_TO_INTEGRATED` | Owner seam `decide_integration` / `decide_integration_verdict` (durable ledger writes through `charge_integration_attempt`); the retired pure projection `next_integration_action()` has no production callers and is exercised by tests only; `_integration_continuation._legacy_completed_rebase` applies `complete_commit` instead | `run_loop`, `runner`, `prepare_commit_integration`, `recover_incomplete_integration` | Operator logs, dispatch decisions | Closed 8-enum transitions (`RESOLVE_ACTIVE_OPERATION`, `CONTINUE_GIT_OPERATION`, `REINTEGRATE_AGAINST_TARGET`, `LAND_TARGET`, `PUBLISH_AFTER_LANDING`, `WAIT_FOR_BOUNDED_RETRY`, `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`) | Recomputed from durable record and `RebaseState` on startup | Unrecognized outcome or unreadable evidence &rarr; `REQUIRE_INTERVENTION` | Any action other than `COMPLETE_WITH_PROOF` blocks terminal success |
-| **Resolution Outcome** | `RebaseState` (`last_outcome: RebaseOutcomeKind`); publication decision via `RebaseState.set_publication_decision(value: PublicationDecision)`; Git-state classification via `classify_git_operation(record) -> GitOperationKind` and `is_in_active_resolution_state(record)` (both in `ralph/pipeline/_git_operation_authority.py`); `GitOperationKind`: `RESOLVING_REBASE`, `RESOLVING_MERGE`, `AWAITING_CONTINUE`, `AWAITING_MERGE_COMMIT`, `NONE`; live-git probes combined with record flags remain observations at the caller (e.g. `_integration_continuation.py`) | Seam handlers in `auto_integrate_*.py`, `conflict_resolution/driver.py` | `decide_seam_action` (owner seam), `inspect_integration_resolution`, `classify_git_operation`, `is_in_active_resolution_state`, display | `last_action` (backward-compat property), `last_publication_decision`, `is_landing()` | 19 closed verbs (`REBASED`, `MERGED`, `FAST_FORWARDED`, `CONFLICT`, `INTERVENTION_REQUIRED`, etc.); publication decisions constrained to the closed `PublicationDecision` enum | Loaded from checkpoint `rebase` dictionary via `from_legacy_payload` | `RebaseOutcomeKind.UNKNOWN` and `GitOperationKind.NONE` on unreadable evidence route to `REQUIRE_INTERVENTION` | Non-terminal outcome or `INTERVENTION_REQUIRED` blocks dispatch and terminal success |
+| **Resolution Outcome** | `RebaseState` (`last_outcome: RebaseOutcomeKind`); publication choice via `RebaseState.set_publication_decision(value: PublicationDecision)`; Git-state classification via `classify_git_operation(record) -> GitOperationKind` and `is_in_active_resolution_state(record)` (both in `ralph/pipeline/_git_operation_authority.py`); `GitOperationKind`: `RESOLVING_REBASE`, `RESOLVING_MERGE`, `AWAITING_CONTINUE`, `AWAITING_MERGE_COMMIT`, `NONE`; live-git probes combined with record flags remain observations at the caller (e.g. `_integration_continuation.py`) | Seam handlers in `auto_integrate_*.py`, `conflict_resolution/driver.py` | `decide_seam_action` (owner seam), `inspect_integration_resolution`, `classify_git_operation`, `is_in_active_resolution_state`, display | `last_action` (backward-compat property), `last_publication_decision`, `is_landing()` | 19 closed verbs (`REBASED`, `MERGED`, `FAST_FORWARDED`, `CONFLICT`, `INTERVENTION_REQUIRED`, etc.); publication decisions constrained to the closed `PublicationDecision` enum | Loaded from checkpoint `rebase` dictionary via `from_legacy_payload` | `RebaseOutcomeKind.UNKNOWN` and `GitOperationKind.NONE` on unreadable evidence route to `REQUIRE_INTERVENTION` | Non-terminal outcome or `INTERVENTION_REQUIRED` blocks dispatch and terminal success |
 | **Resolution Failure Cause** | `RebaseState` / `IntegrationRecord` (`ResolutionFailureCause`) | `auto_integrate_budget_seam.py`, `merge.py`, `driver.py` | `_integration_diagnostic.py`, failure classification, logs | Human-readable diagnostic summaries | Typed enum: `NONE`, `AGENT_FAILURE`, `UNRESOLVED_CONFLICT`, `CONTEXT_FAILURE` | Serialized in record and checkpoint; defaults to `NONE` | Unmapped causes default to `ResolutionFailureCause.NONE` | Causes requiring intervention halt automatic resolution |
 | **Landing & Remote Publication** | `_publication_state_machine` & `auto_integrate_remote_sync` | `RebaseState.set_publication_decision` (callers `push_target_after_landing`, `auto_integrate_ff`) | `is_terminal_success_eligible`, `run_loop` | `last_publication_decision`, `last_remote_sync`, `last_push` | `PUBLISH_NOW` &rarr; `REMOTE_PUSHED` / `publish_deferred_remote` / `PUBLICATION_TERMINAL` | Landing (`fast_forwarded`) preserved; publication deferred if offline | Remote timeout/unreachable &rarr; `publish_deferred_remote` (does NOT revert landing) | Pending publication requirement blocks terminal success |
 | **Parallel Worker Fan-Out** | `_fan_out_authority` (`FanOutDecision`) | `RebaseState.set_fan_out_decision` (the one former raw `model_copy` site in `_fan_out_authority.py`) | `reducer`, `run_loop`, `_integrate_after_fan_out` | `WorkerStatus`, `RebaseState.last_fan_out_decision` | `JOIN_PENDING` &rarr; `JOIN_COMPLETE` / `JOIN_PARTIAL_FAILURE` / `JOIN_BLOCKED` | Rebuilt from `worker_states` in checkpoint; running workers reset to pending | Unknown worker status &rarr; `JOIN_BLOCKED` | `JOIN_PENDING` or `JOIN_BLOCKED` blocks reducer and terminal success |
@@ -84,7 +84,7 @@ The retention reason `"diagnostic evidence changed; original evidence must be re
 
 ### Run-loop consumption of record outcomes (U4b)
 
-`ralph.pipeline.run_loop` consumes the typed outcomes decision-completely:
+`ralph.pipeline.run_loop` consumes the typed outcomes choice-completely:
 
 - `UNREADABLE` routes through `_handoff_retained_failure`, which persists the intervention projection exactly once (a label distinct from evidence diagnosis) and never launches a new diagnostic agent or unlinks the evidence — a corrupt or unsupported record cannot answer `diagnostic_needed`, so re-running the diagnostic would loop forever.
 - `BUSY` authorizes bounded retry ONLY with a valid, unexpired persisted retry deadline; otherwise it routes to intervention.
@@ -98,7 +98,7 @@ Rebase backup refs are operation-scoped: `refs/rebase-backup/<wt8>-<sha8>-<sha>`
 
 ### Closed operator display label taxonomy (U8)
 
-The operator surface exposes exactly seven integration display labels — `conflict resolution`, `evidence diagnosis`, `integration`, `landing`, `publication`, `waiting`, `intervention` — defined in `ralph.display.integration_display_label.IntegrationDisplayLabel`. Pairwise distinctness of all seven is verified by `tests/test_display_lifecycle_label_taxonomy.py`. These labels are pure display projections (Decision §1 / matrix row "Operator Surface Display") and never gate dispatch or terminal success.
+The operator surface exposes exactly seven integration display labels — `conflict resolution`, `evidence diagnosis`, `integration`, `landing`, `publication`, `waiting`, `intervention` — defined in `ralph.display.integration_display_label.IntegrationDisplayLabel`. Pairwise distinctness of all seven is verified by `tests/test_display_lifecycle_label_taxonomy.py`. These labels are pure display projections (Choice §1 / matrix row "Operator Surface Display") and never gate dispatch or terminal success.
 
 ### Closed-transition loader + recovery release guarantee (U9)
 
@@ -143,7 +143,7 @@ unrelated worktree's branch advance.
 
 ## Writer inventory
 
-Every `RebaseState` decision-field writer is a typed setter. Raw
+Every `RebaseState` choice-field writer is a typed setter. Raw
 `model_copy` writers of fan-out and operation display were migrated:
 10 operation-display sites (`run_loop.py` and `runner.py`) and 1
 fan-out site (`_fan_out_authority.py`). The conflict-strategy /
@@ -159,7 +159,7 @@ the typed `FailureCategory.INTEGRATION` field of `PhaseFailureEvent`
 prefix `"integration conflict requires resolution:"` is no longer
 consulted by the reducer.
 
-| Decision field | Single writer (signature) | Owning authority |
+| Choice field | Single writer (signature) | Owning authority |
 |---|---|---|
 | `last_publication_decision` | `RebaseState.set_publication_decision(value: PublicationDecision) -> Self` | `_publication_state_machine.next_publication_action` |
 | `last_fan_out_decision` | `RebaseState.set_fan_out_decision(value: FanOutDecision) -> Self` | `_fan_out_authority.fan_out_decision` |
@@ -185,7 +185,7 @@ intervention setters that replaced the live raw writers in
 `runner.py`, and `auto_integrate_resolution_state.py`.
 
 Ad-hoc `model_copy(update=...)` on any of the 11 fields named in
-this table is forbidden (Decision §1 / §3). The audit that enforces
+this table is forbidden (Choice §1 / §3). The audit that enforces
 this is `tests/test_no_superseded_paths_typed_setter_contract.py`
 (method-body-scoped allowlist of the 7 setter bodies plus
 variable-backed `update=<Name|Call|Subscript>` detection); the

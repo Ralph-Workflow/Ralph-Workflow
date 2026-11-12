@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,7 +5,6 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RustGuidelines:
-
     quality_checks: list[str] = field(
         default_factory=lambda: [
             "Code follows consistent style and formatting",

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,9 +18,7 @@ if TYPE_CHECKING:
     from ralph.agents.parsers.base import AgentParser
 
 
-_DYNAMIC_ALIAS_HELP_BY_PREFIX: dict[
-    str, Callable[[], str]
-] = {}
+_DYNAMIC_ALIAS_HELP_BY_PREFIX: dict[str, Callable[[], str]] = {}
 
 _EMPTY_OUTPUT_DIAGNOSTIC_FACTORY_BY_PREFIX: dict[
     str, Callable[[list[str], Path | None], str | None]
@@ -30,7 +27,6 @@ _EMPTY_OUTPUT_DIAGNOSTIC_FACTORY_BY_PREFIX: dict[
 
 @dataclass(frozen=True, slots=True)
 class AgentSupport:
-
     name: str
     spec: AgentSpec
     parser_factory: Callable[[], AgentParser]

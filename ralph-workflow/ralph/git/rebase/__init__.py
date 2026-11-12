@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.git.rebase._rebase_lock import RebaseLock

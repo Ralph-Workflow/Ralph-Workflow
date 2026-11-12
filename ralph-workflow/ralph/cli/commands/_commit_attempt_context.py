@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitAttemptContext:
-
     repo_root: Path
     verbose: bool
     extra_env: dict[str, str]

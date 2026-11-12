@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,7 +14,6 @@ DEFAULT_FULL_TIMEOUT_MS: Final[int] = 60_000
 
 @dataclass(frozen=True, slots=True)
 class ReindexResult:
-
     job_id: str
     generation: int
     status: str
@@ -29,7 +27,6 @@ class ReindexResult:
 
 @dataclass(frozen=True, slots=True)
 class ReindexOptions:
-
     mode: str = "changed"
     timeout_ms: int = DEFAULT_TIMEOUT_MS
     path_scope: tuple[str, ...] = ()
@@ -43,7 +40,6 @@ class FileReadError(Exception):
 
 @dataclass
 class _ReindexState:
-
     job_id: str
     started_at: float
     deadline: float
@@ -61,5 +57,4 @@ class _ReindexTimeoutError(Exception):
 
 
 class _ReindexCancelledError(Exception):
-
     pass

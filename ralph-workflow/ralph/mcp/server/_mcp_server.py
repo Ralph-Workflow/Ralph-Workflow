@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import base64 as _base64
@@ -93,16 +92,12 @@ def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]
             serialized.append(cast("dict[str, object]", block))
             continue
 
-        to_dict = cast(
-            "_ToDict | None", getattr(block, "to_dict", None)
-        )
+        to_dict = cast("_ToDict | None", getattr(block, "to_dict", None))
         if callable(to_dict):
             serialized.append(to_dict())
             continue
 
-        model_dump = cast(
-            "_ModelDump | None", getattr(block, "model_dump", None)
-        )
+        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
         if callable(model_dump):
             serialized.append(model_dump(exclude_none=True, by_alias=True))
             continue
@@ -140,7 +135,6 @@ _SLOW_PRE_DISPATCH_S: Final[float] = 5.0
 
 
 class McpServer:
-
     def __init__(
         self,
         session: McpSession,
@@ -614,9 +608,7 @@ class McpServer:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
-        to_dict = cast(
-            "_ToDict | None", getattr(raw_result, "to_dict", None)
-        )
+        to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
         payload_source = to_dict() if callable(to_dict) else raw_result
         payload = self._build_tools_call_payload(payload_source)
         self._maybe_append_notice(

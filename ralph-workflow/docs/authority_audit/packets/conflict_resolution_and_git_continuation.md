@@ -70,7 +70,7 @@ replay queue (`auto_integrate_transition.py:152`) and is consumed by
 
 ## Conflict-strategy and intervention typed setters (2026)
 
-The conflict-strategy / deadline / intervention decision fields on
+The conflict-strategy / deadline / intervention choice fields on
 `RebaseState` are owned by seven typed setters
 (`rebase_state.py:491-622`):
 
@@ -108,7 +108,7 @@ The conflict-strategy / deadline / intervention decision fields on
   (`_maybe_auto_integrate`) checks `rebase.is_intervention_required`
   and refuses to dispatch ordinary work.
 
-Ad-hoc `model_copy(update=...)` on any of these decision fields
+Ad-hoc `model_copy(update=...)` on any of these choice fields
 outside the seven setter bodies is forbidden
 (`tests/test_no_superseded_paths_typed_setter_contract.py`).
 

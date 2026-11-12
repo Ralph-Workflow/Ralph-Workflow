@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -39,7 +38,6 @@ __all__ = (
 )
 
 
-
 def _empty_baseline_metrics() -> dict[str, float]:
     return dict.fromkeys(_R6_2_METRICS, 0.0)
 
@@ -65,8 +63,6 @@ def _median_metrics(samples: Sequence[Mapping[str, float]]) -> dict[str, float]:
         else:
             out[metric] = (values[mid - 1] + values[mid]) / 2.0
     return out
-
-
 
 
 def measure_cold_build(

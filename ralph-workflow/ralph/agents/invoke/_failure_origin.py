@@ -1,4 +1,3 @@
-
 from typing import Literal
 
 type FailureOrigin = Literal[

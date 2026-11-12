@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -271,9 +270,7 @@ def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
     module = import_module("ralph.display.parallel_display")
-    return cast(
-        "type[ParallelDisplay]", module.ParallelDisplay
-    )
+    return cast("type[ParallelDisplay]", module.ParallelDisplay)
 
 
 def _fan_out_display_and_subscriber(
@@ -285,9 +282,7 @@ def _fan_out_display_and_subscriber(
     if isinstance(display, parallel_display_cls):
         parallel_display = display
     else:
-        console = cast(
-            "Console | None", getattr(display, "console", None)
-        )
+        console = cast("Console | None", getattr(display, "console", None))
         parallel_display = parallel_display_cls(make_display_context(console=console))
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_subscriber is None and hasattr(parallel_display, "subscriber"):
@@ -306,13 +301,9 @@ def build_session_mcp_plan_for_phase(
 ) -> tuple[SessionMcpPlan, str]:
     phase_def = policy_bundle.pipeline.phases.get(effect.phase)
 
-    _effect_drain = cast(
-        "str | None", getattr(effect, "drain", None)
-    )
+    _effect_drain = cast("str | None", getattr(effect, "drain", None))
     drain: str = (
-        cast(
-            "str", _effect_drain
-        )
+        cast("str", _effect_drain)
         or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
         or effect.phase
         or "development"
@@ -333,13 +324,9 @@ def build_session_mcp_plan_for_phase(
         agent_config = registry.get(agent_name)
 
     _transport_raw = cast("object", getattr(agent_config, "transport", None))
-    transport = (
-        cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
-    )
+    transport = cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
     _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
-    model_flag = (
-        cast("str | None", _model_flag_raw) if agent_config is not None else None
-    )
+    model_flag = cast("str | None", _model_flag_raw) if agent_config is not None else None
     chain_transport, chain_is_ambiguous = resolve_phase_session_transport(candidate_agents, config)
     transport, model_flag = phase_session_identity(
         transport, model_flag, chain_transport, chain_is_ambiguous=chain_is_ambiguous
@@ -369,16 +356,12 @@ def _fan_out_worker_context(
     _executor_cls = (
         executor_cls
         if executor_cls is not None
-        else cast(
-            "_ExecutorFactory", SubprocessAgentExecutor
-        )
+        else cast("_ExecutorFactory", SubprocessAgentExecutor)
     )
     _mcp_factory_cls = (
         mcp_factory_cls
         if mcp_factory_cls is not None
-        else cast(
-            "_McpFactory", DynamicBindingMcpServerFactory
-        )
+        else cast("_McpFactory", DynamicBindingMcpServerFactory)
     )
     executor = _executor_cls(_parallel_worker_command(), signal_bridge=bridge)
     workspace = FsWorkspace(
@@ -479,9 +462,7 @@ def _resume_fan_out_state(
     _reduce = (
         reducer_reduce_fn
         if reducer_reduce_fn is not None
-        else cast(
-            "_ReducerReduceFn", reducer_reduce
-        )
+        else cast("_ReducerReduceFn", reducer_reduce)
     )
     resumed_state, _ = _reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
@@ -515,9 +496,7 @@ async def _run_post_fanout_verification(
     _run = (
         run_process_async_fn
         if run_process_async_fn is not None
-        else cast(
-            "_RunProcessAsyncFn", run_process_async
-        )
+        else cast("_RunProcessAsyncFn", run_process_async)
     )
     verify_result = await _run(
         "make",
@@ -553,9 +532,7 @@ async def _run_verify_phase(
     _reduce = (
         ctx.reducer_reduce_fn
         if ctx.reducer_reduce_fn is not None
-        else cast(
-            "_ReducerReduceFn", reducer_reduce
-        )
+        else cast("_ReducerReduceFn", reducer_reduce)
     )
     current, _ = _reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
@@ -571,16 +548,12 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
     _reduce = (
         ctx.reducer_reduce_fn
         if ctx.reducer_reduce_fn is not None
-        else cast(
-            "_ReducerReduceFn", reducer_reduce
-        )
+        else cast("_ReducerReduceFn", reducer_reduce)
     )
     _install = (
         ctx.install_signal_handlers_fn
         if ctx.install_signal_handlers_fn is not None
-        else cast(
-            "_InstallSignalHandlersFn", install_signal_handlers
-        )
+        else cast("_InstallSignalHandlersFn", install_signal_handlers)
     )
     teardown_fn: Callable[[], None] | None = None
     try:
@@ -727,41 +700,19 @@ def execute_fan_out_sync(
     pipeline_deps: PipelineDeps | None = None,
     **opts: object,
 ) -> PipelineState:
-    policy_bundle = cast(
-        "PolicyBundle", opts["policy_bundle"]
-    )
-    workspace_scope = cast(
-        "WorkspaceScope", opts["workspace_scope"]
-    )
-    pipeline_subscriber = cast(
-        "_PipelineSubscriberLike | None", opts.get("pipeline_subscriber")
-    )
-    dashboard_subscriber = cast(
-        "_PipelineSubscriberLike | None", opts.get("dashboard_subscriber")
-    )
-    config = cast(
-        "UnifiedConfig | None", opts.get("config")
-    )
-    config_path = cast(
-        "Path | None", opts.get("config_path")
-    )
+    policy_bundle = cast("PolicyBundle", opts["policy_bundle"])
+    workspace_scope = cast("WorkspaceScope", opts["workspace_scope"])
+    pipeline_subscriber = cast("_PipelineSubscriberLike | None", opts.get("pipeline_subscriber"))
+    dashboard_subscriber = cast("_PipelineSubscriberLike | None", opts.get("dashboard_subscriber"))
+    config = cast("UnifiedConfig | None", opts.get("config"))
+    config_path = cast("Path | None", opts.get("config_path"))
     cli_overrides = cast("dict[str, object] | None", opts.get("cli_overrides"))
     monitor_stop_cb = cast("Callable[[], None] | None", opts.get("_monitor_stop_cb"))
-    install_fn = cast(
-        "_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers")
-    )
-    executor_cls = cast(
-        "_ExecutorFactory | None", opts.get("_executor_cls")
-    )
-    mcp_factory_cls = cast(
-        "_McpFactory | None", opts.get("_mcp_factory_cls")
-    )
-    run_process_fn = cast(
-        "_RunProcessAsyncFn | None", opts.get("_run_process_async")
-    )
-    reducer_fn = cast(
-        "_ReducerReduceFn | None", opts.get("_reducer_reduce")
-    )
+    install_fn = cast("_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers"))
+    executor_cls = cast("_ExecutorFactory | None", opts.get("_executor_cls"))
+    mcp_factory_cls = cast("_McpFactory | None", opts.get("_mcp_factory_cls"))
+    run_process_fn = cast("_RunProcessAsyncFn | None", opts.get("_run_process_async"))
+    reducer_fn = cast("_ReducerReduceFn | None", opts.get("_reducer_reduce"))
     on_successful_completion = cast(
         "Callable[[PipelineState], PipelineState] | None", opts.get("_on_successful_completion")
     )

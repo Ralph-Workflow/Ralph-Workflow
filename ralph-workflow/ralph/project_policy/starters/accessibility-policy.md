@@ -13,7 +13,7 @@ This policy governs functional accessibility for user-facing interfaces.
 
 Required for project-owned web, graphical, or interactive UI. Record platform,
 conformance scope, and exclusions; uncertainty requires owner confirmation. If
-the surface disappears, retain the file with a dated inactive decision and
+the surface disappears, retain the file with a dated inactive choice and
 reactivation trigger, or remove it through reviewed policy cleanup.
 
 ## Default requirements

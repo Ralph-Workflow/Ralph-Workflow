@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, NamedTuple
@@ -10,6 +9,5 @@ __all__ = ["GitOutcome"]
 
 
 class GitOutcome(NamedTuple):
-
     kind: GitOutcomeKind
     cause: str | None = None

@@ -4,7 +4,7 @@
 
 **Goal:** Harden commit execution, artifact/proof validation relay, and reducer failure attribution so this failure family is black-box testable and materially harder to reintroduce.
 
-**Architecture:** Extract pure decision helpers inside the existing pipeline slice, keep repository I/O in thin wrappers, and add table-driven plus relay-path tests that prove failure provenance stays correct from phase validation through commit failure handling.
+**Architecture:** Extract pure choice helpers inside the existing pipeline slice, keep repository I/O in thin wrappers, and add table-driven plus relay-path tests that prove failure provenance stays correct from phase validation through commit failure handling.
 
 **Tech Stack:** Python 3.12, pytest, mypy, ruff, existing Ralph pipeline/recovery infrastructure.
 

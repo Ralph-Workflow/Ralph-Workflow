@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -82,11 +81,8 @@ _DEGRADED_RUNGS: frozenset[NextAction] = frozenset(
 )
 
 
-
-
 @dataclass(frozen=True)
 class PlanningBaseline:
-
     head_sha: str
     status_blob: str
     tracked_diff_hash: str
@@ -97,7 +93,6 @@ class PlanningBaseline:
 
 @dataclass(frozen=True)
 class PlanningResidue:
-
     fingerprint: str
     tracked_paths: tuple[str, ...]
     ambiguous_paths: tuple[str, ...]
@@ -109,7 +104,6 @@ class PlanningResidue:
 
 @dataclass(frozen=True)
 class ResidueCleanupOutcome:
-
     clean: bool = False
     unreadable: bool = False
     flag_probe_unknown: bool = False
@@ -277,41 +271,28 @@ def residue_attribution(residue: PlanningResidue) -> DirtAttribution:
     return DirtAttribution.UNOWNED
 
 
-
-
 class CleanupGitPort(Protocol):
+    def porcelain_status_z(self, root: Path) -> str | None: ...
 
-    def porcelain_status_z(self, root: Path) -> str | None:
-        ...
+    def tracked_diff_hash(self, root: Path) -> str | None: ...
 
-    def tracked_diff_hash(self, root: Path) -> str | None:
-        ...
+    def head_sha(self, root: Path) -> str | None: ...
 
-    def head_sha(self, root: Path) -> str | None:
-        ...
+    def in_progress_kind(self, root: Path) -> Reading[InProgressKind]: ...
 
-    def in_progress_kind(self, root: Path) -> Reading[InProgressKind]:
-        ...
+    def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]: ...
 
-    def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
-        ...
+    def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool: ...
 
-    def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
-        ...
+    def snapshot_worktree(self, root: Path, *, head_sha: str) -> str: ...
 
-    def snapshot_worktree(self, root: Path, *, head_sha: str) -> str:
-        ...
+    def ref_exists(self, root: Path, ref: str) -> bool: ...
 
-    def ref_exists(self, root: Path, ref: str) -> bool:
-        ...
-
-    def restore_paths(self, root: Path, *, source: str, paths: Sequence[str]) -> bool:
-        ...
+    def restore_paths(self, root: Path, *, source: str, paths: Sequence[str]) -> bool: ...
 
     def preserve_dirt_commit(
         self, root: Path, *, head_sha: str, paths: Sequence[str]
-    ) -> str | None:
-        ...
+    ) -> str | None: ...
 
     def quarantine_paths(
         self,
@@ -319,39 +300,27 @@ class CleanupGitPort(Protocol):
         paths: Sequence[str],
         *,
         quarantine_dir: Path,
-    ) -> tuple[str, ...]:
-        ...
+    ) -> tuple[str, ...]: ...
 
-    def incoming_overwrite_paths(self, root: Path, target: str | None) -> frozenset[str]:
-        ...
+    def incoming_overwrite_paths(self, root: Path, target: str | None) -> frozenset[str]: ...
 
-    def load_state(self, root: Path) -> Mapping[str, object] | None:
-        ...
+    def load_state(self, root: Path) -> Mapping[str, object] | None: ...
 
-    def store_state(self, root: Path, payload: Mapping[str, object]) -> None:
-        ...
+    def store_state(self, root: Path, payload: Mapping[str, object]) -> None: ...
 
-    def clear_state(self, root: Path) -> None:
-        ...
+    def clear_state(self, root: Path) -> None: ...
 
-    def path_exists(self, path: Path) -> bool:
-        ...
+    def path_exists(self, path: Path) -> bool: ...
 
-    def move_path(self, source: str, destination: Path) -> None:
-        ...
+    def move_path(self, source: str, destination: Path) -> None: ...
 
 
 class ResidueLedgerPort(Protocol):
-
-    def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction:
-        ...
-
-
+    def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction: ...
 
 
 @dataclass
 class _CleanupProgress:
-
     fingerprint: str = ""
     head_sha: str = ""
     backup_ref: str | None = None
@@ -405,8 +374,6 @@ def _str_dict(value: object) -> dict[str, str]:
     if not isinstance(value, dict):
         return {}
     return {str(key): str(item) for key, item in value.items() if isinstance(item, str)}
-
-
 
 
 def capture_planning_baseline(
@@ -851,10 +818,7 @@ def restore_quarantined_untracked(
     return tuple(restored)
 
 
-
-
 class RunGitCleanupPort:
-
     def porcelain_status_z(self, root: Path) -> str | None:
         result = run_git(
             ("status", "--porcelain", "-z"),
@@ -1069,7 +1033,6 @@ class RunGitCleanupPort:
 
 
 class OwnerResidueLedgerPort:
-
     def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction:
         from ralph.pipeline.integration_owner import (
             charge_integration_attempt,

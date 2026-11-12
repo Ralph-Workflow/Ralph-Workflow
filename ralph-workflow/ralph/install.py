@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -56,17 +55,14 @@ _UV_INSTALL_URL = "https://docs.astral.sh/uv/getting-started/installation/"
 
 
 class LauncherWriter(Protocol):
-
     def __call__(self, path: Path, content: str) -> None: ...
 
 
 class InstallLockFactory(Protocol):
-
     def __call__(self, path: Path) -> AbstractContextManager[None]: ...
 
 
 class GenerationPublisher(Protocol):
-
     def __call__(
         self, candidate: Path, generations: Path, *, publish_launcher: Callable[[Path], None]
     ) -> Path: ...

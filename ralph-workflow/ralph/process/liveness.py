@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.process._default_liveness_probe import DefaultLivenessProbe
@@ -7,7 +6,6 @@ from ralph.process.child_liveness import ChildActivitySnapshot
 
 
 class FakeLivenessProbe:
-
     def __init__(
         self,
         *,

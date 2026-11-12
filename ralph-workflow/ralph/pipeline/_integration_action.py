@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -9,7 +8,6 @@ from ralph.pipeline.auto_integrate_backoff import retry_deadline_is_live
 
 
 class IntegrationAction(StrEnum):
-
     RESOLVE_ACTIVE_OPERATION = "resolve_active_operation"
     CONTINUE_GIT_OPERATION = "continue_git_operation"
     REINTEGRATE_AGAINST_TARGET = "reintegrate_against_target"

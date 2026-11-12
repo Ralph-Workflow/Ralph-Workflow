@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import tomllib
@@ -45,7 +44,6 @@ _ANALYSIS_DECISION_VOCABULARY: frozenset[str] = _load_analysis_decision_vocabula
 
 
 class Issues(RalphBaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["issues_found", "no_issues"]

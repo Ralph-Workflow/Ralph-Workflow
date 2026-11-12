@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class GuidelineSource(Protocol):
-
     quality_checks: Sequence[str]
     security_checks: Sequence[str]
     performance_checks: Sequence[str]

@@ -33,7 +33,7 @@ The committed production code (`fix(interrupt): restore two-quick
 ctrl-c via pgids`) is the result. This ADR documents the four
 architectural decisions that produced it.
 
-## Decision
+## Choice
 
 ### D1. InterruptController / InterruptDispatcher split
 

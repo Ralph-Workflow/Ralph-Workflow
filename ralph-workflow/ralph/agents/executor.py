@@ -1,4 +1,3 @@
-
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
@@ -10,7 +9,6 @@ from ralph.pipeline.worker_state import WorkerStatus
 
 @runtime_checkable
 class AgentExecutor(Protocol):
-
     async def run(
         self,
         unit: WorkUnit,

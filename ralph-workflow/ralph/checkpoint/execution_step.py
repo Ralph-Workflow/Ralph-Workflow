@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,7 +12,6 @@ def _timestamp() -> str:
 
 @dataclass(frozen=True)
 class ExecutionStep:
-
     phase: str
     iteration: int
     step_type: str

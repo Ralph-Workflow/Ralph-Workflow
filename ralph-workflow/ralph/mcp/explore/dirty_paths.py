@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -10,7 +9,6 @@ from ralph.mcp.explore.store import ExploreStore, normalize_index_path
 
 
 class _SymbolLike(Protocol):
-
     @property
     def qualified_name(self) -> str: ...
 
@@ -25,22 +23,18 @@ class _SymbolLike(Protocol):
 
 
 class ExploreIndexLike(Protocol):
-
     def mark_dirty(
         self, paths: list[str], *, source_tool: str, reason: str = "mutated"
     ) -> None: ...
 
     @property
-    def store(self) -> ExploreStoreLike | None:
-        ...
+    def store(self) -> ExploreStoreLike | None: ...
 
     @property
-    def reindex_in_progress(self) -> bool:
-        ...
+    def reindex_in_progress(self) -> bool: ...
 
 
 class ExploreStoreLike(Protocol):
-
     def get_setting(self, key: str) -> str | None: ...
 
     def peek_dirty_paths(self) -> list[str]: ...
@@ -49,8 +43,7 @@ class ExploreStoreLike(Protocol):
 
     def count_deleted_files(self) -> int: ...
 
-    def iter_files(self) -> object:
-        ...
+    def iter_files(self) -> object: ...
 
     def iter_symbols(self, path: str | None = None) -> object: ...
 
@@ -75,7 +68,6 @@ class ExploreStoreLike(Protocol):
 
 
 class NoOpExploreIndex:
-
     def mark_dirty(self, paths: list[str], *, source_tool: str, reason: str = "mutated") -> None:
         del paths, source_tool, reason
 
@@ -96,9 +88,7 @@ def resolve_explore_index(session: object) -> ExploreIndexLike | None:
 
 
 _PENDING_LOCK = threading.Lock()
-_PENDING_MARKS: dict[
-    tuple[int, str], tuple[ExploreIndexLike, str, str]
-] = {}
+_PENDING_MARKS: dict[tuple[int, str], tuple[ExploreIndexLike, str, str]] = {}
 
 
 def _enqueue_mark(
@@ -174,9 +164,7 @@ def build_sqlite_index_handle(
 
         @property
         def store(self) -> ExploreStoreLike | None:
-            return cast(
-                "ExploreStoreLike | None", store
-            )
+            return cast("ExploreStoreLike | None", store)
 
         @property
         def reindex_in_progress(self) -> bool:

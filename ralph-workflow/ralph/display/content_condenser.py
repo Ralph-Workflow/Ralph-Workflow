@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -38,7 +37,6 @@ def _slice_to_cells(text: str, max_cells: int) -> str:
 
 @dataclass
 class CondenseOptions:
-
     soft_limit: int = _SOFT_LIMIT
     hard_limit: int = _HARD_LIMIT
     overflow_ref: str | None = None

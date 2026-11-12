@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -17,7 +16,6 @@ _SEARCH_PATH = "/search"
 
 @dataclass(frozen=True)
 class SearxngBackend:
-
     url: str
     timeout_seconds: float | None = None
 

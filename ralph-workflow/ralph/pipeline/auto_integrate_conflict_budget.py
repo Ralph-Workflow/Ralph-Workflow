@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -30,7 +29,6 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class ConflictIdentity:
-
     feature_sha: str | None = None
     target_sha: str | None = None
     conflicted_paths: tuple[str, ...] = ()
@@ -273,9 +271,7 @@ def apply_conflict_budget(
 
 
 _MAX_ACTIVE_CONFLICT_ATTEMPTS = 64
-_ACTIVE_CONFLICT_ATTEMPTS: OrderedDict[tuple[object, ...], None] = (
-    OrderedDict()
-)
+_ACTIVE_CONFLICT_ATTEMPTS: OrderedDict[tuple[object, ...], None] = OrderedDict()
 
 
 def _conflict_attempt_key(identity: ConflictIdentity) -> tuple[object, ...]:

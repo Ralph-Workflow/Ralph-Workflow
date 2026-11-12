@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PolicyExplanation:
-
     entry_phase: str
     terminal_phase: str
     entry_block: str | None = None

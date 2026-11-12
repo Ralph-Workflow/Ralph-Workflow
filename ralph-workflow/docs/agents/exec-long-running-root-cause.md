@@ -700,7 +700,7 @@ unreconciled against the spec's "killed at `stall_window` after activity stops"
 wording, and the spec-internal score / kill-time monotonicity stood as an open
 conflict. Both findings are proven mathematical limits of the spec's D2/D3
 architecture awaiting authoritative product reconciliation, recorded on
-`path:line` evidence, not decided or accepted by developer authority.
+`path:line` evidence, not resolved or accepted by developer authority.
 
 ### A. Ramp-offset timing — mathematical limit of spec D2/D3 wording (PENDING-RECONCILIATION)
 

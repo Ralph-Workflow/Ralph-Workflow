@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.explore._bench_types import BenchmarkFixture, ScriptedCall
@@ -186,8 +185,6 @@ REQUIRED_FIXTURES: tuple[BenchmarkFixture, ...] = (
     question_find_handler_tests(),
     question_estimate_rename_impact(),
 )
-
-
 
 
 def question_graph_callers() -> BenchmarkFixture:

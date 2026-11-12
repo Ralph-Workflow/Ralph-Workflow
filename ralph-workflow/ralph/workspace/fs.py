@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -28,7 +27,6 @@ def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
 
 
 class FsWorkspace:
-
     def __init__(
         self,
         root: Path | str,

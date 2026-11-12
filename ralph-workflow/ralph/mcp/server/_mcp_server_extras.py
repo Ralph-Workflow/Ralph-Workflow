@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpServerExtras:
-
     phase: str | None = None
     extra_env: dict[str, str] | None = None
     restart_policy: McpRestartPolicy | None = None

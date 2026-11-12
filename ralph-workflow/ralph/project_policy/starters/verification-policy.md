@@ -110,7 +110,7 @@ differently.
     path, HARD CAP 30 seconds. Startup alone exceeding the target is a
     defect to fix, not a reason to widen it; record the measured startup
     floor when it binds. Added cost and any budget breach require an
-    explicit decision and actionable escalation.
+    explicit choice and actionable escalation.
 17. Parallelism and caching are the two legitimate levers for holding the
     budget as the project grows, permitted only when they cannot produce a
     FALSE GREEN. Parallelism requires independent, order-insensitive checks.
@@ -181,7 +181,7 @@ where they decay silently.
 
 A check MUST NOT be moved into the named-profile lane to escape a red result
 or a budget breach, and a new check MUST NOT be born there for the same
-reason. Demotion is a design decision with an owner and a recorded reason,
+reason. Demotion is a design choice with an owner and a recorded reason,
 never a way to make the gate green today. The declared owner MUST be a named
 person or team, not a role the author occupies by default.
 
@@ -294,7 +294,7 @@ An agent MUST NOT:
   or shrink a per-step timeout past the proven floor to make a slow
   or failing run pass. The kernel's no-weakening rule (see
   `execution-kernel.md` §Kernel rules 4) applies in full to every
-  verification-specific decision below.
+  verification-specific choice below.
 * Move a check into a profile, create a new check in a profile, or narrow
   the selected subset, to avoid a red result or a budget breach.
 * Rely on a cache or selection mechanism that can report success without
@@ -372,7 +372,7 @@ listed under "Exceptions".
 ## Exceptions
 
 A documented bypass (e.g. a generated file with a `// @ts-nocheck`
-header) requires a documented rationale, scope, owner, and removal or
+header) requires a documented reason, scope, owner, and removal or
 review date. Undocumented bypasses are non-compliant.
 
 ## Maintenance triggers

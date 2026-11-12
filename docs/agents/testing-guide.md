@@ -47,7 +47,7 @@ def test_large_artifact_round_trip() -> None: ...
 
 Search the nearest existing policy, public scenario, and assertion before
 creating a test. For the affected control family, record one explicit
-`REMOVE`, `MERGE`, `REPLACE`, or `KEEP` decision. Admit new recurring
+`REMOVE`, `MERGE`, `REPLACE`, or `KEEP` choice. Admit new recurring
 coverage only when it has distinct fault sensitivity, uses the cheapest
 sufficient layer, has an owner and trigger, and declares marginal cost,
 inspectable evidence, and a lifecycle review condition.
@@ -480,7 +480,7 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 **mcp-bridge** — *gap:* the MCP bridge exposes restart/health transitions only through private handlers and private state. *Seam sketch:* route the continuity assertions through the bridge's public `check_health_and_restart_if_needed()` / `handle_request()` entry points (the E17 conversion already does this) and extend the same treatment to the remaining bridge files. *Follow-up owner:* mcp public-seam unit.
 
-**project-policy** — *gap:* project-policy tests assert on private authority/state fields. *Seam sketch:* return the authority decision through the public readiness/decision surface the policy module already publishes. *Follow-up owner:* policy public-seam unit.
+**project-policy** — *gap:* project-policy tests assert on private authority/state fields. *Seam sketch:* return the authority choice through the public readiness/choice surface the policy module already publishes. *Follow-up owner:* policy public-seam unit.
 
 **agents** — *gap:* agent registry and invoke wiring are asserted through private module state. *Seam sketch:* assert through the public registry/catalog API and the public invoke result object. *Follow-up owner:* agent public-seam unit.
 
@@ -488,7 +488,7 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 **integration** — *gap:* integration acceptance tests read private release/cleanup state. *Seam sketch:* assert through the public acceptance/lifecycle result objects. *Follow-up owner:* integration public-seam unit.
 
-**auto-integrate** — *gap:* auto-integrate seams are reached through private gate/resolver functions. *Seam sketch:* publish the gate and resolver decisions through the public auto-integrate seam module and assert on its public decision objects. *Follow-up owner:* auto-integrate public-seam unit.
+**auto-integrate** — *gap:* auto-integrate seams are reached through private gate/resolver functions. *Seam sketch:* publish the gate and resolver decisions through the public auto-integrate seam module and assert on its public choice objects. *Follow-up owner:* auto-integrate public-seam unit.
 
 **tool-exec** — *gap:* tool-exec tests assert private handle/process state. *Seam sketch:* return the execution outcome through the public handle result surface. *Follow-up owner:* tool public-seam unit.
 

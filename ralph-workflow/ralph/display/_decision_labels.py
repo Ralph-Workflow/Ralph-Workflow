@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 DECISION_BADGE_MAP: dict[str, str] = {

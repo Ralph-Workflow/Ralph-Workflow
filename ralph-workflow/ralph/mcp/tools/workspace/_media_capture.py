@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -50,10 +49,7 @@ _CAPTURE_STATE_ENV: str = "RALPH_CAPTURE_STATE"
 _CAPTURE_CELL_ID_ENV: str = "RALPH_CAPTURE_CELL_ID"
 
 
-
-
 class MediaCaptureError(RuntimeError):
-
     def __init__(
         self,
         *,
@@ -69,10 +65,7 @@ class MediaCaptureError(RuntimeError):
         super().__init__(reason)
 
 
-
-
 class _ExecutorLike(Protocol):
-
     def __call__(
         self,
         command: str,
@@ -82,11 +75,8 @@ class _ExecutorLike(Protocol):
     ) -> object: ...
 
 
-
-
 @dataclass(frozen=True)
 class _MediaCaptureCellResult:
-
     cell: CaptureCell
     artifact_id: str
     uri: str
@@ -104,7 +94,6 @@ MediaCaptureCellResult = _MediaCaptureCellResult
 
 @dataclass(frozen=True)
 class _MediaCaptureResult:
-
     target: str
     matrix_key: str
     cells: tuple[_MediaCaptureCellResult, ...]
@@ -113,8 +102,6 @@ class _MediaCaptureResult:
 _MediaCaptureResult.__name__ = "MediaCaptureResult"
 _MediaCaptureResult.__qualname__ = "MediaCaptureResult"
 MediaCaptureResult = _MediaCaptureResult
-
-
 
 
 def _png_dimensions(raw_bytes: bytes) -> tuple[int | None, int | None]:
@@ -132,8 +119,6 @@ def _png_dimensions(raw_bytes: bytes) -> tuple[int | None, int | None]:
     if width <= 0 or height <= 0:
         return (None, None)
     return (width, height)
-
-
 
 
 def _resolve_command(*, design_capture_command: str, target: str) -> tuple[str, tuple[str, ...]]:
@@ -203,8 +188,6 @@ def _relative_posix(path: Path, *, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-
-
 def _build_ledger_params(
     *,
     cell: CaptureCell,
@@ -234,8 +217,6 @@ def _build_ledger_params(
         "height": height,
         "output_path": output_path,
     }
-
-
 
 
 def handle_media_capture(

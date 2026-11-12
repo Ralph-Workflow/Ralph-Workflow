@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ToolMetadata:
-
     definition: ToolDefinition
     required_capability: str
     is_mutating: bool | None = None

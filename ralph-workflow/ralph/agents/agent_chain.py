@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class AgentChain:
-
     def __init__(
         self,
         agents: list[str],

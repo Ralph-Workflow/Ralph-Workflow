@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -212,7 +211,6 @@ def _compute_default_mode() -> Literal["default"]:
 
 @dataclass(frozen=True)
 class DisplayContext:
-
     console: Console
     theme: Theme
     width: int
@@ -424,20 +422,8 @@ def install_sigwinch_refresher(
     if threading.main_thread() is not threading.current_thread():
         return lambda: None
 
-    getter = (
-        signal_getter
-        if signal_getter is not None
-        else cast(
-            "SignalGetter", signal.getsignal
-        )
-    )
-    setter = (
-        signal_setter
-        if signal_setter is not None
-        else cast(
-            "SignalSetter", signal.signal
-        )
-    )
+    getter = signal_getter if signal_getter is not None else cast("SignalGetter", signal.getsignal)
+    setter = signal_setter if signal_setter is not None else cast("SignalSetter", signal.signal)
     previous = getter(signal.SIGWINCH)
     refresh_in_progress = False
 
@@ -512,6 +498,3 @@ __all__ = [
     "install_width_refresher",
     "make_display_context",
 ]
-
-
-

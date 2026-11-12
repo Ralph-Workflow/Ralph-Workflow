@@ -94,7 +94,7 @@ internal helper module.
     `telemetry._sentry.is_telemetry_disabled_by_config`),
   - `RALPH_DISABLE_UPDATE_CHECK` truthy (new, same truthy set),
   - `update_check_enabled = false` in config (new key).
-- Rationale: a version check is an outbound call, so honoring the telemetry
+- Reason: a version check is an outbound call, so honoring the telemetry
   opt-out is correct; the dedicated knob lets a user silence the nag without
   giving up telemetry.
 

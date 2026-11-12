@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,7 +21,6 @@ class _ExploreIndexOwner(Protocol):
 
 @dataclass(frozen=True)
 class WorkerSessionBundle:
-
     session: AgentSession
     mcp_handle: McpServerHandle
     workspace_scope: WorkspaceScope

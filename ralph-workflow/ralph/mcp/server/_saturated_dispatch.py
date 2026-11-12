@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import atexit
@@ -33,13 +32,11 @@ SATURATION_MESSAGE: str = "server saturated: try again later"
 
 @dataclass(frozen=True)
 class SaturatedResponse:
-
     code: int
     message: str
 
 
 class _SaturatedDispatch:
-
     def __init__(
         self,
         max_workers: int = DEFAULT_MAX_WORKERS,

@@ -305,7 +305,6 @@ def test_autowire_hardlink_alias_to_agents_file_routes_through_safe_writer(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A hardlink alias pointing to an agents file routes through write_agents_toml."""
     _init_repo_with_initial_commit(tmp_path)
     agents_path = tmp_path / "ralph-workflow-agents.toml"
     agents_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
@@ -333,7 +332,6 @@ def test_autowire_hardlink_alias_to_agents_file_routes_through_safe_writer(
 
     assert sorted(result or []) == ["claude"]
 
-    # Valid TOML in both the canonical agents path and the hardlink alias
     parsed = tomllib.loads(agents_path.read_text(encoding="utf-8"))
     assert isinstance(parsed, dict)
     chains = parsed.get("agent_chains")
@@ -346,18 +344,15 @@ def test_autowire_hardlink_alias_to_agents_file_routes_through_safe_writer(
     parsed_hardlink = tomllib.loads(hardlink_alias.read_text(encoding="utf-8"))
     assert parsed_hardlink.get("agent_chains") == chains
 
-    # Contractually correct .bak next to the target with recoverable old bytes
     bak_path = agents_path.with_name(f"{agents_path.name}.bak")
     assert bak_path.exists()
     assert bak_path.read_text(encoding="utf-8") == _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML
     assert not hardlink_alias.with_name(f"{hardlink_alias.name}.bak").exists()
 
-    # Safe-writer trigger log
     assert "ralph --init: autowire agent chains" in caplog.text
     assert str(bak_path) in caplog.text
     assert str(agents_path) in caplog.text
 
-    # No agents-file chore commit created
     subjects = _git_log_subjects(tmp_path)
     assert subjects[0] == "seed agents configs"
     assert "chore(config): update agent configuration" not in subjects
@@ -368,7 +363,6 @@ def test_autowire_custom_named_symlink_alias_to_agents_target_uses_safe_writer(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A custom-named symlink pointing to an agents backing file uses write_agents_toml."""
     _init_repo_with_initial_commit(tmp_path)
     custom_backing = tmp_path / "custom-shared-backing.toml"
     custom_backing.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
@@ -406,7 +400,6 @@ def test_autowire_custom_named_symlink_alias_to_agents_target_uses_safe_writer(
 
     assert sorted(result or []) == ["claude"]
 
-    # Valid TOML published through the symlink to the backing file
     parsed = tomllib.loads(custom_backing.read_text(encoding="utf-8"))
     assert isinstance(parsed, dict)
     chains = parsed.get("agent_chains")
@@ -419,17 +412,14 @@ def test_autowire_custom_named_symlink_alias_to_agents_target_uses_safe_writer(
     alias_parsed = tomllib.loads(symlink_alias.read_text(encoding="utf-8"))
     assert alias_parsed.get("agent_chains") == chains
 
-    # Contractually correct .bak next to the agents target
     bak_path = agents_path.with_name(f"{agents_path.name}.bak")
     assert bak_path.exists()
     assert bak_path.read_text(encoding="utf-8") == _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML
     assert not symlink_alias.with_name(f"{symlink_alias.name}.bak").exists()
 
-    # Safe-writer trigger log
     assert "ralph --init: autowire agent chains" in caplog.text
     assert str(bak_path) in caplog.text
 
-    # No agents-file chore commit created
     subjects = _git_log_subjects(tmp_path)
     assert subjects[0] == "seed symlink configs"
     assert "chore(config): update agent configuration" not in subjects
@@ -440,7 +430,6 @@ def test_autowire_custom_named_symlink_alias_to_xdg_agents_config(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A custom-named symlink alias to the user-global XDG agents config uses write_agents_toml."""
     xdg_dir = tmp_path / "xdg-config"
     xdg_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
@@ -476,24 +465,20 @@ def test_autowire_custom_named_symlink_alias_to_xdg_agents_config(
 
     assert sorted(result or []) == ["claude"]
 
-    # Valid TOML in the global agents file
     parsed = tomllib.loads(global_agents.read_text(encoding="utf-8"))
     assert isinstance(parsed, dict)
     chains = parsed.get("agent_chains")
     assert isinstance(chains, dict)
     assert chains["planning"] == ["codex"]
 
-    # Contractually correct .bak next to the global agents config
     bak_path = global_agents.with_name(f"{global_agents.name}.bak")
     assert bak_path.exists()
     assert bak_path.read_text(encoding="utf-8") == _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML
     assert not alias_path.with_name(f"{alias_path.name}.bak").exists()
 
-    # Safe-writer trigger log
     assert "ralph --init: autowire agent chains" in caplog.text
     assert str(bak_path) in caplog.text
 
-    # No chore commit in project repo
     subjects = _git_log_subjects(project_dir)
     assert subjects[0] == "seed custom alias"
     assert "chore(config): update agent configuration" not in subjects

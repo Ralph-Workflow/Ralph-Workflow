@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -32,13 +31,9 @@ def _resolve_mode(target: Path) -> int:
 
 def _publish_backup(bak_path: Path, previous_bytes: bytes, directory: Path) -> None:
     staging = directory / f".{bak_path.name}.stage.{os.urandom(8).hex()}"
-    descriptor = os.open(
-        staging, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
-    )
+    descriptor = os.open(staging, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
-        staged = os.fdopen(
-            descriptor, "wb"
-        )
+        staged = os.fdopen(descriptor, "wb")
     except BaseException:
         os.close(descriptor)
         raise
@@ -49,9 +44,7 @@ def _publish_backup(bak_path: Path, previous_bytes: bytes, directory: Path) -> N
         staging.replace(bak_path)
     except BaseException:
         with contextlib.suppress(OSError):
-            staging.unlink(
-                missing_ok=True
-            )
+            staging.unlink(missing_ok=True)
         raise
 
 
@@ -73,9 +66,7 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
 
     file_mode = _resolve_mode(write_target)
 
-    write_target.parent.mkdir(
-        parents=True, exist_ok=True
-    )
+    write_target.parent.mkdir(parents=True, exist_ok=True)
     tmp_path: Path | None = None
     try:
         fd, tmp_path_str = tempfile.mkstemp(
@@ -83,23 +74,17 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
             prefix=f".{write_target.name}.tmp.",
         )
         tmp_path = Path(tmp_path_str)
-        with os.fdopen(
-            fd, "wb"
-        ) as handle:
+        with os.fdopen(fd, "wb") as handle:
             handle.write(new_bytes)
             handle.flush()
-        tmp_path.chmod(
-            file_mode
-        )
+        tmp_path.chmod(file_mode)
         if existing_bytes is not None:
             _publish_backup(bak_path, existing_bytes, write_target.parent)
         tmp_path.replace(write_target)
     except BaseException:
         if tmp_path is not None:
             with contextlib.suppress(OSError):
-                tmp_path.unlink(
-                    missing_ok=True
-                )
+                tmp_path.unlink(missing_ok=True)
         raise
 
     logger.info("Wrote {} (trigger: {}, backup: {})", path, trigger, bak_path)

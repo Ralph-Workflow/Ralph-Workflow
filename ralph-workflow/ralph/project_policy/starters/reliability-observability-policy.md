@@ -14,7 +14,7 @@ failure handling, and diagnostic signals.
 
 Required for project-owned long-running operational processes. One-shot tools
 and build-only containers are excluded unless they have an operational service.
-If operations cease, retain a dated inactive decision and reactivation trigger,
+If operations cease, retain a dated inactive choice and reactivation trigger,
 or remove the policy through reviewed cleanup.
 
 ## Default requirements

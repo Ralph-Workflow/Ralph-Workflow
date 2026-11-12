@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ipaddress
@@ -41,7 +40,6 @@ _MAX_REDIRECTS = 10
 
 @dataclass(frozen=True)
 class FetchOutcome:
-
     status: FetchStatus
     effective_url: str | None = None
     http_status: int | None = None

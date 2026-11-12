@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -13,9 +12,7 @@ if TYPE_CHECKING:
 
 _MAX_FALLBACK_WARNING_REGISTRY_ENTRIES = 256
 
-_FALLBACK_WARNING_REGISTRY: dict[
-    tuple[Path, str | type[BaseException]], None
-] = {}
+_FALLBACK_WARNING_REGISTRY: dict[tuple[Path, str | type[BaseException]], None] = {}
 
 
 def reset_fallback_warning_registry() -> None:

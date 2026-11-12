@@ -24,7 +24,7 @@ A deterministic tier exercises the machinery against fixture capture
 sets; a judgement tier exercises it against a real renderer and a
 real vision model on demand.
 
-## Decision
+## Choice
 
 ### D1. Renderer is a bounded declared capture command for web UI only
 

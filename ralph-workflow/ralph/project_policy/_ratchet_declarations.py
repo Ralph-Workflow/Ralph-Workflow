@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -66,9 +65,7 @@ def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
     in_excluded = False
     in_table = False
     in_comment = False
-    control_re: re.Pattern[str] = re.compile(
-        markers.CONTROL_TOKEN_RE
-    )
+    control_re: re.Pattern[str] = re.compile(markers.CONTROL_TOKEN_RE)
     phrase_alts = "|".join(re.escape(p) for p in markers.RATCHET_DECLARATION_PHRASES)
     phrase_re = re.compile(rf"(?i)(?:{phrase_alts})")
     lines = content.splitlines()
@@ -132,9 +129,7 @@ def _scan_body_line(
     out: list[tuple[str, str]],
 ) -> tuple[bool, str, list[tuple[str, str]]]:
     line_has_phrase = bool(phrase_re.search(stripped))
-    line_tokens: list[str] = control_re.findall(
-        stripped
-    )
+    line_tokens: list[str] = control_re.findall(stripped)
     visible_text = re.sub(r"<!--.*?-->", "", stripped, flags=re.DOTALL)
     ends_sentence = _line_ends_sentence(stripped)
     sentence_texts = _split_visible_into_sentences(visible_text)

@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class McpCapability(StrEnum):
-
     FILE_READ = "FileRead"
     FILE_WRITE = "FileWrite"
     GIT_READ = "GitRead"

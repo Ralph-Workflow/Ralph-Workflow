@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import deque
@@ -17,14 +16,9 @@ _OBSERVATION_LOG_CAPACITY: int = 512
 
 
 class CapabilityObservationRecorder:
-
     def __init__(self) -> None:
-        self._observations: deque[CapabilityObservation] = deque(
-            maxlen=_OBSERVATION_LOG_CAPACITY
-        )
-        self._observed_capabilities: set[DisplayCapability] = (
-            set()
-        )
+        self._observations: deque[CapabilityObservation] = deque(maxlen=_OBSERVATION_LOG_CAPACITY)
+        self._observed_capabilities: set[DisplayCapability] = set()
 
     def record(self, observation: CapabilityObservation) -> None:
         self._observations.append(observation)

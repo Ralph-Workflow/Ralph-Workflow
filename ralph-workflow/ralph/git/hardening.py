@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -55,7 +54,6 @@ def pinned_argv(args: Iterable[str]) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class PorcelainEntry:
-
     xy: str
     path: str
     rename_source: str | None = None
@@ -161,6 +159,3 @@ def _selftest() -> None:
 if __name__ == "__main__":
     _selftest()
     print("hardening self-test: ok")
-
-
-

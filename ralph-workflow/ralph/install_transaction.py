@@ -1,4 +1,3 @@
-
 import fcntl
 import os
 import shutil
@@ -20,13 +19,9 @@ def install_lock(path: Path) -> Iterator[None]:
     _ensure_private_root(path.parent)
     if path.is_symlink():
         raise InstallLockUnavailableError(f"installer lock must not be a symlink: {path}")
-    descriptor = os.open(
-        path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600
-    )
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     path.chmod(0o600)
-    with os.fdopen(
-        descriptor, "w", encoding="utf-8"
-    ) as handle:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         acquired = False
         try:
             try:
@@ -50,9 +45,7 @@ def create_candidate(staging: Path) -> Path:
 def finalize_generation(candidate: Path, generations: Path) -> Path:
     _ensure_private_root(generations)
     generation = generations / candidate.name
-    candidate.replace(
-        generation
-    )
+    candidate.replace(generation)
     return generation
 
 
@@ -82,9 +75,7 @@ def point_current(current: Path, generation: Path) -> None:
     staging = current.with_name(f".{current.name}.next")
     staging.unlink(missing_ok=True)
     staging.symlink_to(generation, target_is_directory=True)
-    staging.replace(
-        current
-    )
+    staging.replace(current)
 
 
 def _ensure_private_root(root: Path) -> None:

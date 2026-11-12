@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class McpAuditRecord:
-
     timestamp_nanos: int
     session_id: str
     tool_name: str

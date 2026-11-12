@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class RebasePhase(StrEnum):
-
     NotStarted = "not_started"
     PreRebaseCheck = "pre_rebase_check"
     RebaseInProgress = "rebase_in_progress"

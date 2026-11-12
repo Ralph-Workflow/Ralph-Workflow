@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -43,9 +42,7 @@ FULL_READ_DEFAULT_MAX_BYTES = 5_000_000
 def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
-    return cast(
-        "object | None", getattr(obj, attribute_name, default)
-    )
+    return cast("object | None", getattr(obj, attribute_name, default))
 
 
 def required_string_param(params: dict[str, object], name: str) -> str:
@@ -155,7 +152,6 @@ def infer_image_mime_type(path: str) -> str | None:
 
 
 class _ReadSelector(NamedTuple):
-
     start: int | None
     end: int | None
     off: int | None

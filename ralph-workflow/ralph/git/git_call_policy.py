@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import subprocess
@@ -48,7 +47,6 @@ GitQuarantineReason = Literal["same_state_timeout_threshold"]
 
 @dataclass(frozen=True)
 class GitCallPolicy:
-
     call_class: GitCallClass
     deadline_seconds: float
     kill_policy: GitKillPolicy

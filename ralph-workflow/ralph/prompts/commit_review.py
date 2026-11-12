@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -71,9 +70,7 @@ def render_commit_review_prompt(
         )
         if context_file.is_file():
             try:
-                raw = cast(
-                    "object", json.loads(context_file.read_text(encoding="utf-8"))
-                )
+                raw = cast("object", json.loads(context_file.read_text(encoding="utf-8")))
                 if isinstance(raw, dict):
                     raw_dict = cast("dict[str, object]", raw)
                     if proposal_ref is None:

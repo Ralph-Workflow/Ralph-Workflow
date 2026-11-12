@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import cast
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class RecoveryPolicy(_FrozenPolicyModel):
-
     cycle_cap: int = Field(default=200, ge=1)
     failed_route: str = Field(
         default="failed_terminal",

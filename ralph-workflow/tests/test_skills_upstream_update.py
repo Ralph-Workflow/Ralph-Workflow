@@ -1,16 +1,3 @@
-"""Behavioural tests for the universal upstream skill updater.
-
-The upstream seam is injected through the public ``http`` parameter, so the
-whole path is exercised without a network socket: a release payload, the
-archive bytes, the archive validation, the install into the user-global
-roots and the marker that records the installed digests.
-
-Every filesystem path the updater touches lives under ``tmp_path``, and the
-fixture points ``HOME`` and ``XDG_CACHE_HOME`` at that sandbox, so the
-canonical root, the sibling roots, the attempt cache and the installed-tag
-state file are all isolated from the developer's real home.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -67,27 +54,22 @@ _SKILL_FILES: dict[str, dict[str, bytes]] = {
 
 
 def _canonical_root() -> Path:
-    """Return the canonical user-global skill root."""
     return canonical_skills_root()
 
 
 def _sibling_roots() -> tuple[Path, ...]:
-    """Return the registered sibling user-global skill roots."""
     return sibling_skills_roots()
 
 
 def _release_body(tag: str) -> bytes:
-    """Return the release payload the upstream API answers with."""
     return json.dumps({"tag_name": tag}).encode("utf-8")
 
 
 def _archive_url(tag: str) -> str:
-    """Return the archive URL the updater requests for ``tag``."""
     return ARCHIVE_URL_TEMPLATE.format(tag=tag)
 
 
 def _member(name: str, data: bytes, *, mode: int = 0o644) -> tarfile.TarInfo:
-    """Return a regular-file member carrying ``data``."""
     info = tarfile.TarInfo(name)
     info.size = len(data)
     info.mode = mode
@@ -100,11 +82,6 @@ def _skill_members(
     *,
     top_dir: str | None = None,
 ) -> list[tuple[tarfile.TarInfo, bytes | None]]:
-    """Return the members of the three universal skills for ``tag``.
-
-    The archive directory name follows the upstream spelling: the leading
-    ``v`` of the tag is absent from the directory name.
-    """
     root = top_dir if top_dir is not None else f"superpowers-{tag.lstrip('v')}"
     members: list[tuple[tarfile.TarInfo, bytes | None]] = []
     for skill, files in skills.items():
@@ -115,7 +92,6 @@ def _skill_members(
 
 
 def _archive_bytes(members: Sequence[tuple[tarfile.TarInfo, bytes | None]]) -> bytes:
-    """Return the archive bytes for ``members``."""
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for info, data in members:
@@ -127,7 +103,6 @@ def _archive_bytes(members: Sequence[tuple[tarfile.TarInfo, bytes | None]]) -> b
 
 
 def _release_archive(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes:
-    """Return the archive bytes of a release carrying ``skills``."""
     return _archive_bytes(_skill_members(tag, skills))
 
 
@@ -137,7 +112,6 @@ def _fake_client(
     *,
     error: Exception | None = None,
 ) -> HttpClient:
-    """Return a fake HTTP client that answers from ``responses``."""
 
     def _get(url: str, timeout: float) -> HttpResponse:
         calls.append(url)
@@ -151,7 +125,6 @@ def _fake_client(
 def _client_for(
     tag: str, skills: Mapping[str, Mapping[str, bytes]]
 ) -> tuple[HttpClient, list[str]]:
-    """Return a fake client serving one release, plus its request log."""
     calls: list[str] = []
     responses = {
         RELEASES_API_URL: (200, _release_body(tag)),
@@ -161,7 +134,6 @@ def _client_for(
 
 
 def _tree_snapshot(root: Path) -> dict[str, str]:
-    """Return a content snapshot of every file below ``root``."""
     snapshot: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root).as_posix()
@@ -175,7 +147,6 @@ def _tree_snapshot(root: Path) -> dict[str, str]:
 
 @pytest.fixture
 def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point the user-global roots, the cache and the state file at a sandbox."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -339,7 +310,6 @@ def test_a_symlink_member_keeps_the_installed_skills_byte_identical(sandbox: Pat
 
 
 def _failing_client(failure: str) -> HttpClient:
-    """Return a client that reproduces one upstream failure mode."""
     calls: list[str] = []
     if failure == "release-500":
         return _fake_client({RELEASES_API_URL: (500, b"upstream failure")}, calls)

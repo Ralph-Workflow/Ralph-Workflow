@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class OperationDisplayState(StrEnum):
-
     INTEGRATING = "integrating"
     LANDING = "landing"
     PUBLISHING = "publishing"

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import atexit
@@ -22,7 +21,6 @@ _PROBE_THREAD_NAME_PREFIX = "ralph-git-lock-probe"
 
 @dataclass(frozen=True)
 class ProbeExecutorStatus:
-
     max_workers: int
     worker_count: int
     is_initialized: bool
@@ -37,7 +35,6 @@ class ProbeExecutorStatus:
 
 
 class _ProbeExecutorHolder:
-
     def __init__(self, max_workers: int = _PROBE_MAX_WORKERS) -> None:
         self._max_workers = max_workers
         self._executor: ThreadPoolExecutor | None = None

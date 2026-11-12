@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -368,13 +367,9 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         backup = _backup_path(target)
         if backup.exists():
             backup.unlink()
-        shutil.move(
-            str(target), str(backup)
-        )
+        shutil.move(str(target), str(backup))
 
-    shutil.copy2(
-        str(source), str(target)
-    )
+    shutil.copy2(str(source), str(target))
     action: Literal["created", "skipped", "regenerated"] = (
         "regenerated" if pre_existed else "created"
     )

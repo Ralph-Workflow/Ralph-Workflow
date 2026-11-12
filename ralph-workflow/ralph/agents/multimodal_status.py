@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -7,7 +6,6 @@ from ralph.config.agent_transport import AgentTransport
 
 
 class MultimodalStatus(StrEnum):
-
     COVERED = "covered"
     EXCLUDED = "excluded"
     NO_MCP = "no_mcp"

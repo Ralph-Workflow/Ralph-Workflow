@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,7 +7,6 @@ MAX_SECONDARY_LANGUAGES = 6
 
 @dataclass
 class ProjectStack:
-
     primary_language: str = "Unknown"
     secondary_languages: list[str] = field(default_factory=list)
     frameworks: list[str] = field(default_factory=list)

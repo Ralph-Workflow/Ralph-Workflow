@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import dataclasses
@@ -128,7 +127,6 @@ _COMMIT_RUN_ID = "commit-plumbing"
 
 
 class CommitAgentOutcome(Enum):
-
     COMPLETED = "completed"
     SKIPPED = "skipped"
     FAILED = "failed"
@@ -136,7 +134,6 @@ class CommitAgentOutcome(Enum):
 
 @dataclass(frozen=True)
 class CommitAgentResult:
-
     message: str = ""
     skipped: bool = False
     failure_details: list[str] = field(default_factory=list)
@@ -235,9 +232,7 @@ def _resolve_effective_commit_deps(
             "display_context is required when pipeline_deps and pipeline_core are not provided"
         )
     effective_pipeline_deps = _commit_pipeline_deps(
-        cast(
-            "UnifiedConfig", chain_config.general_config
-        ),
+        cast("UnifiedConfig", chain_config.general_config),
         display_context,
         materializer=None,
         registry=chain_config.registry,
@@ -616,9 +611,7 @@ def _run_commit_agent_attempt_with_recovery(
             effective_general_config,
             effective_pipeline_deps,
             workspace_scope,
-            bridge=cast(
-                "RestartAwareMcpBridge", attempt_context.bridge
-            ),
+            bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
             display_context=display_context,
             run_id=_COMMIT_RUN_ID,
             required_artifact=_commit_required_artifact(),
@@ -635,9 +628,7 @@ def _run_commit_agent_attempt_with_recovery(
             parser_type=resolve_parser_key(
                 agent.cmd,
                 agent.json_parser,
-                cast(
-                    "AgentTransport", agent.transport
-                ),
+                cast("AgentTransport", agent.transport),
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -821,9 +812,7 @@ def invoke_commit_agent_attempt(
             parser_type=resolve_parser_key(
                 agent.cmd,
                 agent.json_parser,
-                cast(
-                    "AgentTransport", agent.transport
-                ),
+                cast("AgentTransport", agent.transport),
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,

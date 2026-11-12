@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -167,45 +166,69 @@ def evaluate_inner(
     if self._config.profile.value == "activity_only":
         return _evaluate_activity_only(self, now)
 
-    fire_reason: WatchdogFireReason | None = None
-    if self._config.max_session_seconds is not None:
-        session_elapsed = now - self._session_started_at
-        if session_elapsed >= self._config.max_session_seconds:
-            fire_reason = WatchdogFireReason.SESSION_CEILING_EXCEEDED
-    if fire_reason is None and self._repetition_tracker.tripped():
-        if self._repetition_tracker.tripped_tool_dimension():
-            fire_reason = WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
-        else:
-            fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
+    fire_reason = _detect_fire_reason(self, now)
     if fire_reason is not None:
-        idle_elapsed = now - self._last_activity
-        gate_verdict = self._gate_fire(fire_reason, now=now, idle_elapsed=idle_elapsed)
-        if gate_verdict == WatchdogVerdict.FIRE:
-            self._emit_fire_log(
-                fire_reason,
-                now=now,
-                idle_elapsed=idle_elapsed,
-                message_suffix=(
-                    f" session_elapsed={round(now - self._session_started_at, 1)}s"
-                    if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-                    else ""
-                ),
-            )
-            self._last_fire_reason = fire_reason
-            return WatchdogVerdict.FIRE
-        return WatchdogVerdict.CONTINUE
+        return _fire_verdict_for_reason(self, fire_reason, now)
 
     idle_elapsed = now - self._last_activity
     quiet_state = classify_quiet()
+
     no_output_at_start_verdict = self._evaluate_no_output_at_start(
         now, idle_elapsed, classify_quiet
     )
     if no_output_at_start_verdict is not None:
         return no_output_at_start_verdict
 
-    if self._config.idle_timeout_seconds is None:
+    idle_timeout = self._config.idle_timeout_seconds
+    if idle_timeout is None:
         return WatchdogVerdict.CONTINUE
 
+    return _settled_verdict(self, now, idle_elapsed, quiet_state, idle_timeout, classify_quiet)
+
+
+def _detect_fire_reason(self: IdleWatchdog, now: float) -> WatchdogFireReason | None:
+    if self._config.max_session_seconds is not None:
+        session_elapsed = now - self._session_started_at
+        if session_elapsed >= self._config.max_session_seconds:
+            return WatchdogFireReason.SESSION_CEILING_EXCEEDED
+    if self._repetition_tracker.tripped():
+        if self._repetition_tracker.tripped_tool_dimension():
+            return WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+        return WatchdogFireReason.REPEATED_ERROR_LOOP
+    return None
+
+
+def _fire_verdict_for_reason(
+    self: IdleWatchdog,
+    fire_reason: WatchdogFireReason,
+    now: float,
+) -> WatchdogVerdict:
+    idle_elapsed = now - self._last_activity
+    gate_verdict = self._gate_fire(fire_reason, now=now, idle_elapsed=idle_elapsed)
+    if gate_verdict == WatchdogVerdict.FIRE:
+        self._emit_fire_log(
+            fire_reason,
+            now=now,
+            idle_elapsed=idle_elapsed,
+            message_suffix=(
+                f" session_elapsed={round(now - self._session_started_at, 1)}s"
+                if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+                else ""
+            ),
+        )
+        self._last_fire_reason = fire_reason
+        return WatchdogVerdict.FIRE
+    return WatchdogVerdict.CONTINUE
+
+
+def _settled_verdict(
+    self: IdleWatchdog,
+    now: float,
+    idle_elapsed: float,
+    quiet_state: AgentExecutionState,
+    idle_timeout: float,
+    classify_quiet: Callable[[], AgentExecutionState],
+) -> WatchdogVerdict:
     strictly_stuck_verdict = self._evaluate_strictly_stuck(
         now,
         idle_elapsed,
@@ -222,12 +245,11 @@ def evaluate_inner(
         if no_progress_verdict is not None:
             return no_progress_verdict
 
-    if idle_elapsed < self._config.idle_timeout_seconds:
+    if idle_elapsed < idle_timeout:
         self._accumulate_waiting_run(now)
         return WatchdogVerdict.CONTINUE
 
-    verdict = self._evaluate_final_verdict(now, idle_elapsed, classify_quiet)
-    return verdict
+    return self._evaluate_final_verdict(now, idle_elapsed, classify_quiet)
 
 
 def _evaluate_activity_only(self: IdleWatchdog, now: float) -> WatchdogVerdict:

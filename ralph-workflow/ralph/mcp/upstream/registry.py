@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import concurrent.futures
@@ -40,10 +39,7 @@ if not (1 <= _MAX_PROBE_WORKERS <= _MAX_PROBE_WORKERS_MAX):
     )
 
 
-class _BudgetExhaustedError(
-    Exception
-):
-
+class _BudgetExhaustedError(Exception):
     __slots__ = ("server",)
 
     def __init__(self, server: UpstreamMcpServer) -> None:
@@ -262,7 +258,6 @@ def _log_unreached_servers_on_expiry(
 
 
 class UpstreamRegistry:
-
     def __init__(
         self,
         proxied_tools: list[ProxiedTool],
@@ -447,9 +442,7 @@ class UpstreamRegistry:
         workspace: Workspace | None,
     ) -> object:
         if isinstance(raw_result, (list, tuple)):
-            blocks: list[object] = list(
-                cast("Sequence[object]", raw_result)
-            )
+            blocks: list[object] = list(cast("Sequence[object]", raw_result))
             wrapper: JsonObject = {"content": blocks}
             normalize_upstream_content_blocks(
                 wrapper, proxied.server_name, proxied.tool.name, session, workspace

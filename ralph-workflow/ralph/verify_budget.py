@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -64,7 +63,6 @@ class _Descendant:
 
 
 class _OrphanedCpuTracker:
-
     def __init__(
         self,
         root: _ProcessTree,
@@ -209,7 +207,6 @@ def orphaned_cpu_tracker(
 
 @dataclass(frozen=True, slots=True)
 class SuiteBudgetReport:
-
     wall_seconds: float
     suite_cpu_seconds: float
     host_busy_seconds: float

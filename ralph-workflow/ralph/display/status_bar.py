@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -40,13 +39,11 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
 
     class _StatusBarHost(Protocol):
-
         _ctx: DisplayContext
         _is_quiet: bool
 
         @property
-        def watchdog_attention(self) -> str | None:
-            ...
+        def watchdog_attention(self) -> str | None: ...
 
 
 _STATUS_BAR_REFRESH_PER_SECOND: float = 4.0
@@ -188,7 +185,6 @@ def _attention_slot_reserved_width(ctx: DisplayContext) -> int:
 
 @dataclass(frozen=True)
 class StatusBarModel:
-
     workspace_root: str
     phase_label: str
     phase_style: str
@@ -267,7 +263,6 @@ def _iteration_segment_width(
 
 @dataclass(frozen=True)
 class _FieldBudgets:
-
     phase_budget: int
     path_budget: int
     outer_dev_label_max_chars: int
@@ -829,7 +824,6 @@ def _append_path_segment(
 
 
 class StatusBar:
-
     __slots__ = (
         "_clock",
         "_display",

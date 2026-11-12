@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,7 +9,6 @@ from ralph.pipeline.state import PipelineState
 
 @dataclass(frozen=True)
 class CheckpointPayload:
-
     state: PipelineState
     run_context: RunContext
     execution_history: ExecutionHistory = field(default_factory=ExecutionHistory.new)

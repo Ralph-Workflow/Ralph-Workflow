@@ -1,9 +1,7 @@
-
 from __future__ import annotations
 
 
 class CycleCap:
-
     def __init__(self, cap: int) -> None:
         if cap < 1:
             raise ValueError(f"CycleCap must be >= 1, got {cap}")

@@ -1,4 +1,3 @@
-
 from ralph.telemetry._sentry import (
     ScrubPolicy,
     init_sentry,

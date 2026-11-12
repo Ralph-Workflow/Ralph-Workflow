@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -11,7 +10,6 @@ RALPH_MCP_SERVER_NAME = "ralph"
 
 
 class RalphToolName(StrEnum):
-
     READ_FILE = "read_file"
     WRITE_FILE = "write_file"
     LIST_DIRECTORY = "list_directory"

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CLIOverrideInput:
-
     developer_agent: str | None = None
     developer_model: str | None = None
     git_user_name: str | None = None

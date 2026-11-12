@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -45,7 +44,6 @@ def _normalize_commit_submission(
 
 @dataclass(frozen=True)
 class SubmitResult:
-
     artifact_path: Path | None
     receipt_path: Path | None
     handoff_path: Path | None

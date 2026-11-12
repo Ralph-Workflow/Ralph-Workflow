@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -103,6 +102,4 @@ def stringify_text_blocks(value: object, *, require_text_type: bool = False) -> 
 
 @runtime_checkable
 class AgentParser(Protocol):
-
-    def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
-        ...
+    def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]: ...

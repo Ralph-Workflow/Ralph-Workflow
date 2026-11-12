@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class UpstreamProxyHandler:
-
     def __init__(self, alias: str, upstream_registry: UpstreamRegistry) -> None:
         self._alias = alias
         self._upstream_registry = upstream_registry
@@ -26,12 +24,8 @@ class UpstreamProxyHandler:
         result = self._upstream_registry.call_tool(
             self._alias,
             params,
-            session=cast(
-                "HasMediaManifest | None", host_session
-            ),
-            workspace=cast(
-                "Workspace | None", workspace
-            ),
+            session=cast("HasMediaManifest | None", host_session),
+            workspace=cast("Workspace | None", workspace),
         )
         if workspace is not None and host_session is not None and isinstance(result, dict):
             mod = import_module("ralph.mcp.tools.workspace")

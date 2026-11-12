@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -8,7 +7,6 @@ from ralph.mcp.explore._bench_product_baseline import nearest_rank_p95
 
 
 class _QueryCallable(Protocol):
-
     def __call__(
         self,
         session: object,

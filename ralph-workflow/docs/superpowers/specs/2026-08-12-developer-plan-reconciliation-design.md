@@ -65,7 +65,7 @@ Development analysis answers whether the implementation satisfies every unchange
 and plan acceptance criterion using fresh evidence.
 
 The analyzer independently evaluates the request, plan, and current workspace.
-It must not use the implementer's summary, rationale, proof, or completion claim
+It must not use the implementer's summary, reason, proof, or completion claim
 as evidence. A literal departure from an inaccurate implementation route is not
 itself a defect. Uncovered necessary work requires changes.
 
@@ -75,7 +75,7 @@ no necessary work remains, including after a partial or failed developer
 handoff. It returns `request_changes` only for localized work another developer
 iteration can perform. It returns terminal `failed` when the current plan is
 impossible, contradictory, not evaluable, or has no actionable developer route.
-That terminal decision ends the current planning/development cycle; it does not
+That terminal choice ends the current planning/development cycle; it does not
 declare the overall objective permanently impossible and does not end the run
 while global cycle budget remains.
 

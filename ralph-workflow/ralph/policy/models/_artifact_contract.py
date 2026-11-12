@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import cast
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class ArtifactContract(_FrozenPolicyModel):
-
     drain: str = Field(..., description="Drain this artifact is submitted at")
     artifact_type: str = Field(
         ...,

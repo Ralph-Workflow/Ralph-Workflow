@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -47,7 +46,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AgentExecutionDeps:
-
     pipeline_deps: PipelineDeps
     invoke_agent: _InvokeAgentFn
     agent_invocation_error: type[Exception]

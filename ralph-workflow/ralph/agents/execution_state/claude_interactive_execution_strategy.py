@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -32,7 +31,6 @@ def _interactive_tool_use_raw(event: InteractiveTranscriptEvent) -> str:
 
 
 class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
-
     def __init__(self, **kwargs: object) -> None:
         del kwargs
         self._transcript_parser = ClaudeInteractiveTranscriptParser()

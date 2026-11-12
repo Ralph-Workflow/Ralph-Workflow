@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -7,7 +6,6 @@ from dataclasses import dataclass, field
 
 @dataclass
 class McpMetrics:
-
     post_header_failures: int = 0
     terminal_frame_emissions: int = 0
     health_probe_outcomes: dict[str, int] = field(
@@ -52,22 +50,20 @@ class McpMetrics:
             }
 
 
-_default_metrics: McpMetrics | None = None
+_default_metrics_holder: list[McpMetrics | None] = [None]
 _default_metrics_lock = threading.Lock()
 
 
 def get_default_metrics() -> McpMetrics:
-    global _default_metrics
     with _default_metrics_lock:
-        if _default_metrics is None:
-            _default_metrics = McpMetrics()
-        return _default_metrics
+        if _default_metrics_holder[0] is None:
+            _default_metrics_holder[0] = McpMetrics()
+        return _default_metrics_holder[0]
 
 
 def reset_default_metrics() -> None:
-    global _default_metrics
     with _default_metrics_lock:
-        _default_metrics = None
+        _default_metrics_holder[0] = None
 
 
 __all__ = [

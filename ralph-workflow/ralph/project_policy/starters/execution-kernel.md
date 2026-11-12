@@ -179,7 +179,7 @@ slice is what a phase reads.
 |---|---|---|---|
 | Planner | `planning` | Plan scaling (9), acceptance criteria, Check first (1) | a plan whose items name the check that decides each one |
 | Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Regression tests from the spec (4), Handoff by artifact (6), Smallest change (7), Context hygiene (8), Human checkpoints (11), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
-| Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a decision artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
+| Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a choice artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
 | Commit agent | `development_commit` | Commit-level hygiene (10) | one commit per logical change, its message listing the verification evidence and the unverified items |
 | Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (12) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
 
@@ -201,7 +201,7 @@ is deterministic owns a guard-inventory row, and that row's
 whose enforcer does not exist yet stays advisory with a review
 trigger; it is never marked `deterministic` on the strength of an
 enforcer that is planned but not wired. The status column below is the
-decision for every rule, including the advisory ones that own no
+choice for every rule, including the advisory ones that own no
 inventory row.
 
 | Rule | Enforcement level | Enforcer | Enforcement status |
@@ -517,6 +517,6 @@ here so they are not re-litigated without new evidence.
 * Model routing and single-vendor automation — a configuration
   recommendation, not a shipped rule.
 * Mutation testing, property-based testing, duplication metrics,
-  diff-size caps and decision logs — no direct evidence found; they stay
+  diff-size caps and choice logs — no direct evidence found; they stay
   advisory candidates until evidence exists.
 

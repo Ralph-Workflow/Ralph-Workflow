@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -119,9 +118,7 @@ def _walk_locks(base: Path) -> list[Path]:
         dirpath,
         dirnames,
         filenames,
-    ) in os.walk(
-        base, followlinks=False, onerror=lambda _e: None
-    ):
+    ) in os.walk(base, followlinks=False, onerror=lambda _e: None):
         here = Path(dirpath)
         dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
         found.extend(here / f for f in filenames if f.endswith(".lock"))

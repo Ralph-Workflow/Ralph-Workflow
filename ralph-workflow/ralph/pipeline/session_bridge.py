@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -16,7 +15,6 @@ from ralph.workspace.fs import FsWorkspace
 
 
 class _ResetScopeState:
-
     scope: str | None = None
 
 
@@ -35,7 +33,6 @@ if TYPE_CHECKING:
 
 
 class BuildSessionMcpPlanFn(Protocol):
-
     def __call__(
         self,
         transport: AgentTransport | None,
@@ -48,7 +45,6 @@ class BuildSessionMcpPlanFn(Protocol):
 
 
 class StartMcpServerFn(Protocol):
-
     def __call__(
         self,
         session: AgentSession,
@@ -58,12 +54,10 @@ class StartMcpServerFn(Protocol):
 
 
 class WorkspaceFactoryFn(Protocol):
-
     def __call__(self, root: Path) -> Workspace: ...
 
 
 class BridgeFactory(Protocol):
-
     def __call__(
         self,
         *,

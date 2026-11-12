@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,7 +7,6 @@ from ralph.visual.capture_cell import CaptureCell
 
 @dataclass(frozen=True, slots=True, eq=False)
 class CaptureSet:
-
     target: str
     cells: tuple[CaptureCell, ...]
     run_id: str
@@ -53,7 +51,6 @@ class CaptureSet:
             )
         object.__setattr__(self, "_ids", frozenset[str](seen))
 
-
     @property
     def cell_ids(self) -> frozenset[str]:
         return self._ids
@@ -81,7 +78,6 @@ class CaptureSet:
 
     def themes_covered(self) -> frozenset[str]:
         return frozenset(cell.theme for cell in self.cells)
-
 
     def __eq__(self, other: object) -> bool:
         return self is other

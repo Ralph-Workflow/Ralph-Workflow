@@ -1,9 +1,7 @@
-
 from __future__ import annotations
 
 
 class AgentSessionId:
-
     __slots__ = ("_value",)
 
     def __init__(self, value: str) -> None:

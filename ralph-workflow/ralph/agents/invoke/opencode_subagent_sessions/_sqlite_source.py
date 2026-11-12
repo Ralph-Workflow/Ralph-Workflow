@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -34,7 +33,6 @@ _CHILD_PART_QUERY: str = (
 
 
 class SqliteOpenCodeChildPartSource:
-
     def __init__(
         self,
         db_path: Path,

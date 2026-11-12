@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -18,9 +17,7 @@ def _looks_like_chat_template_marker(line: str) -> bool:
 
 
 def _prompt_edge_sentences(prompt: str) -> tuple[str, ...]:
-    parts = cast(
-        "list[str]", _SENTENCE_BOUNDARY.split(prompt)
-    )
+    parts = cast("list[str]", _SENTENCE_BOUNDARY.split(prompt))
     sentences = tuple(sentence.strip() for sentence in parts if sentence.strip())
     if len(sentences) < _MIN_SENTENCE_PAIR:
         return ()
@@ -60,9 +57,7 @@ def _event_role(event: object) -> str | None:
 
 def is_user_prompt_event_line(line: str) -> bool:
     try:
-        raw_event = cast(
-            "object", json.loads(line)
-        )
+        raw_event = cast("object", json.loads(line))
         event = as_mapping(raw_event)
     except (json.JSONDecodeError, TypeError, ValueError):
         return False

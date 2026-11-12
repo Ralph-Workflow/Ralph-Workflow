@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class PostExitVerdict(StrEnum):
-
     CONTINUE = "continue"
     FIRE_PROCESS_EXIT_HANG = "fire_process_exit_hang"
 

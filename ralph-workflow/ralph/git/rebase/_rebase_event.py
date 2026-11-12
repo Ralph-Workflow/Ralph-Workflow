@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import Enum
 
 
 class RebaseEvent(Enum):
-
     START_REBASE = "start_rebase"
     CONFLICT_DETECTED = "conflict_detected"
     START_RESOLUTION = "start_resolution"

@@ -1,5 +1,2 @@
-
-
 class ProductSpecValidationError(Exception):
-
     pass

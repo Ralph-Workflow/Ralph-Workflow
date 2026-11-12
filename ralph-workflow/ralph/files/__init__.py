@@ -1,4 +1,3 @@
-
 from ralph.files.operations import (
     DEFAULT_TRACKED_FILES,
     FileSnapshot,

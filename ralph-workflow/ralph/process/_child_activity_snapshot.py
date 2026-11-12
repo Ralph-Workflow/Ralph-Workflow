@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ChildActivitySnapshot:
-
     scope_prefix: str
     has_process: bool
     has_fresh_label: bool

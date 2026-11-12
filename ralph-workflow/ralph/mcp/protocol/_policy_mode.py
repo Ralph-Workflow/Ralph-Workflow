@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -7,7 +6,6 @@ from ralph.mcp.protocol._access_mode import AccessMode
 
 
 class PolicyMode(StrEnum):
-
     PLANNING = "planning"
     DEVELOPMENT = "development"
     ANALYSIS = "analysis"

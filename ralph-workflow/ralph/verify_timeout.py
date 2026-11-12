@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -104,7 +103,6 @@ _POLICY_FIX_MESSAGE = (
 
 
 class SuiteTimeoutError(RuntimeError):
-
     def __init__(self, timeout_seconds: float) -> None:
         super().__init__(
             f"Test suite exceeded the {timeout_seconds}s wall-clock limit.\n{_POLICY_FIX_MESSAGE}"
@@ -167,12 +165,8 @@ def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:
     parser.add_argument("--suite-timeout", type=float, default=DEFAULT_SUITE_TIMEOUT_SECONDS)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     parsed = parser.parse_args(list(argv))
-    suite_timeout = cast(
-        "float", parsed.suite_timeout
-    )
-    command = cast(
-        "list[str]", parsed.command
-    )
+    suite_timeout = cast("float", parsed.suite_timeout)
+    command = cast("list[str]", parsed.command)
     if command and command[0] == "--":
         command = command[1:]
     if not command:

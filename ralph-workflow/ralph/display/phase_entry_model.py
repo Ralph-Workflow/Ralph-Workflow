@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +11,6 @@ from ralph.display.phase_status import (
 
 @dataclass(frozen=True)
 class PhaseEntryModel:
-
     phase_name: str
     phase_role: str | None = None
     agent_name: str | None = None

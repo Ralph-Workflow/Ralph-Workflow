@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -21,7 +20,6 @@ SIDECAR_FAILURE_CAUSE = "shared_awareness_io_failed"
 
 
 class ThrottledSidecarPublisher:
-
     def __init__(
         self,
         sidecar: Callable[[], SharedAwarenessSidecar],

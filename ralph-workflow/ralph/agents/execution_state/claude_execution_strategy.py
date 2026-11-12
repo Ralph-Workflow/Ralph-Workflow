@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -16,7 +15,6 @@ from .generic_execution_strategy import GenericExecutionStrategy
 
 
 class ClaudeExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
-
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         stripped = line.strip()
         if not stripped:

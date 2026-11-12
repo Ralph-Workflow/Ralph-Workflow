@@ -15,7 +15,7 @@ the project against security defects: secret exposure, unsafe handling
 of untrusted input, unsafe API usage, and weakened security controls.
 It applies to every change that adds or modifies an input surface, a
 dependency, a subprocess or filesystem interaction, an authentication
-or authorization decision, or any handling of credentials.
+or authorization choice, or any handling of credentials.
 
 Security requirements differ radically by application type: a C library
 bans unsafe string functions, a web application defends against CSRF
@@ -47,7 +47,7 @@ These requirements hold regardless of application type:
   scanner, validation, authentication, and sandbox lanes.
 * Security-relevant suppressions (scanner finding waivers, unsafe-block
   annotations, `nosec`-style comments) MUST carry the specific finding
-  identifier AND a documented rationale. Blanket suppressions are
+  identifier AND a documented reason. Blanket suppressions are
   forbidden.
 * Facts that cannot be verified from the repository MUST come from the
   project owner and MUST NOT be guessed. When owner input is unavailable,
@@ -219,10 +219,10 @@ To follow this policy, an agent making any change MUST:
   that surface's rules before claiming the change complies, and say
   which surfaces the change touched.
 * RECORD owner-supplied facts from the project owner's input; never guess
-  them. When unavailable, report the pending owner decision, use a separate
+  them. When unavailable, report the pending owner choice, use a separate
   conservative operating assumption, and block safety-dependent work.
 * TREAT scanner findings by fixing the cause. A waiver requires the
-  finding identifier, a rationale, an owner, and a review date under
+  finding identifier, a reason, an owner, and a review date under
   Exceptions — never a bare suppression comment.
 * PREFER maintained ecosystem security and secret scanners that support the
   project's language/version and produce actionable findings. Product names
@@ -232,7 +232,7 @@ To follow this policy, an agent making any change MUST:
   claiming the change complies.
 * UPDATE this policy (surfaces, facts, commands, requirements) in the
   same workflow that adds an input surface, a language, a subprocess or
-  filesystem interaction, an auth decision, or a deployment target.
+  filesystem interaction, an auth choice, or a deployment target.
 
 An agent MUST NOT:
 
@@ -240,7 +240,7 @@ An agent MUST NOT:
   credentials or published test vectors MUST be unmistakably non-production,
   isolated, non-reusable outside the test system, documented, and narrowly
   suppressed when a secret scanner flags them.
-* Suppress or waive a scanner finding without an identifier, rationale,
+* Suppress or waive a scanner finding without an identifier, reason,
   owner, and review date.
 * Weaken, disable, or bypass any security control to obtain a passing
   result.
@@ -297,17 +297,17 @@ failure, report the finding identifier, the affected file, and the
 category (secret, injection, unsafe API, unsafe deserialization,
 subprocess, filesystem, crypto). Security scanners produce false
 positives by design: triage every finding and either fix it or waive it
-with a documented rationale under Exceptions — never silence it to
+with a documented reason under Exceptions — never silence it to
 obtain green.
 
 ## Exceptions
 
 A waived scanner finding or an accepted risk requires a documented
-rationale, the finding identifier or risk description, the scope, the
+reason, the finding identifier or risk description, the scope, the
 owner, and a review or removal date. An inapplicable threat surface
 requires a recorded reason that names the stack facts it depends on.
 Exceptions expire at the next policy review; an expired exception
-without an updated rationale is treated as a violation.
+without an updated reason is treated as a violation.
 
 ## Maintenance triggers
 

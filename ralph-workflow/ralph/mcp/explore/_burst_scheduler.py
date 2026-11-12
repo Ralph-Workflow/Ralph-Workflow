@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -6,7 +5,6 @@ from threading import Lock
 
 
 class BurstDebounceScheduler:
-
     def __init__(
         self,
         *,
@@ -18,9 +16,7 @@ class BurstDebounceScheduler:
         self._on_fire = on_fire
         self._debounce_window = debounce_window
         self._lock = Lock()
-        self._pending: list[
-            Callable[[], None]
-        ] = []
+        self._pending: list[Callable[[], None]] = []
         self._last_mark_at: float | None = None
         self._suppressed = False
 

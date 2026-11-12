@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_observation import Reading
 
     class _GitRunner(Protocol):
-
         def __call__(
             self,
             args: Sequence[str],
@@ -45,7 +43,6 @@ _LS_TREE_META_FIELDS: Final[int] = 3
 
 @dataclass(frozen=True, slots=True)
 class IndexFlagDirt:
-
     assume_unchanged: frozenset[str]
     skip_worktree: frozenset[str]
     changed_paths: frozenset[str]

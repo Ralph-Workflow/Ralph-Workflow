@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -62,7 +61,6 @@ def record_supervisor_tick_lateness(
 
 
 class McpSupervisor:
-
     def __init__(
         self,
         bridge: RestartAwareMcpBridge,

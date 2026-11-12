@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 _GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field
@@ -7,7 +6,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class WebVisitConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = True

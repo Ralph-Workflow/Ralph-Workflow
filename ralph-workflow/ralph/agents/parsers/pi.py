@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, cast
@@ -100,7 +99,6 @@ def _make_passthrough(
 
 
 class _PiDispatch:
-
     def __init__(self, owner: PiParser) -> None:
         self._owner = owner
         self._top_level_handlers: dict[
@@ -550,7 +548,6 @@ class _PiDispatch:
 
 
 class PiParser(NdjsonParserBase):
-
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(

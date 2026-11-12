@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class FailureCategory(StrEnum):
-
     INTEGRATION = "integration"
     ENVIRONMENTAL = "environmental"
     AGENT = "agent"

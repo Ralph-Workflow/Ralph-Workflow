@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ChildLivenessRecord:
-
     child_id: str
     scope_prefix: str
     pid: int | None

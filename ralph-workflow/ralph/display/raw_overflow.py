@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import atexit
@@ -16,7 +15,6 @@ from typing import TYPE_CHECKING, BinaryIO, Final, cast
 from loguru import logger
 
 from ralph.display._raw_log_break import RawLogBreak
-
 from ralph.display.raw_log_breaks import (
     HARNESS_PTY_INPUT_ECHO_LINES,
     MAX_REPORTED_BREAKS,
@@ -47,9 +45,7 @@ CONDENSED_LOG_SUFFIX: Final = ".overflow"
 
 
 _REGISTRY_LOCK = threading.Lock()
-_REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = (
-    weakref.WeakValueDictionary()
-)
+_REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = weakref.WeakValueDictionary()
 
 
 _PATH_STATE_LOCK = threading.Lock()
@@ -91,9 +87,7 @@ def _is_live_foreign_capture(path: Path, key: str) -> bool:
         return True
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(
-            path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
-        )
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError:
         return True
     except OSError:
@@ -276,7 +270,6 @@ atexit.register(close_all_raw_overflow_logs)
 
 
 class RawOverflowLog:
-
     def __init__(
         self,
         workspace_root: Path,
@@ -364,9 +357,7 @@ class RawOverflowLog:
                         self._file_bytes = 0
                     mode = "wb" if self._first_write else "ab"
                     handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
-                    self._fh = cast(
-                        "BinaryIO", handle_obj
-                    )
+                    self._fh = cast("BinaryIO", handle_obj)
                     self._first_write = False
                 fh: BinaryIO | None = self._fh
                 if fh is None:

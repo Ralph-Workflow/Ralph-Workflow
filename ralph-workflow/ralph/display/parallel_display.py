@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import collections
@@ -317,7 +316,6 @@ def _extract_terminal_theme(ctx: object) -> tuple[bool | None, str | None]:
 
 
 class ParallelDisplay:
-
     __slots__ = (
         "_active_block",
         "_active_block_chars",
@@ -401,12 +399,8 @@ class ParallelDisplay:
             else CapabilityObservationRecorder()
         )
         self._salience_allocator = SalienceAllocator()
-        self._salience_last_token: dict[
-            str, tuple[str, ...]
-        ] = {}
-        self._salience_lit_event_roles: dict[
-            str, bool
-        ] = {}
+        self._salience_last_token: dict[str, tuple[str, ...]] = {}
+        self._salience_lit_event_roles: dict[str, bool] = {}
         self._salience_decisions: collections.deque[AllocationDecision] = collections.deque(
             maxlen=_SALIENCE_DECISIONS_MAXLEN
         )
@@ -457,28 +451,16 @@ class ParallelDisplay:
         self._phase_close_emitted: bool = False
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
-        self._last_emitted_tool_signature: dict[
-            str, tuple[str, str, str, int | None]
-        ] = {}
-        self._last_recorded_body: dict[
-            str, tuple[ActivityEventKind, str]
-        ] = {}
-        self._recorded_tool_call_ids: dict[
-            str, tuple[str, ...]
-        ] = {}
-        self._last_tool_result_content: dict[
-            str, tuple[str | None, str]
-        ] = {}
+        self._last_emitted_tool_signature: dict[str, tuple[str, str, str, int | None]] = {}
+        self._last_recorded_body: dict[str, tuple[ActivityEventKind, str]] = {}
+        self._recorded_tool_call_ids: dict[str, tuple[str, ...]] = {}
+        self._last_tool_result_content: dict[str, tuple[str | None, str]] = {}
         self._pending_tool_results: dict[
             str, tuple[str, dict[str, object], str | None, str | None, float, int]
         ] = {}
-        self._last_text_thinking_block_close: dict[
-            str, tuple[ActivityEventKind, str]
-        ] = {}
+        self._last_text_thinking_block_close: dict[str, tuple[ActivityEventKind, str]] = {}
 
-        self._last_phase_per_unit: dict[
-            str, tuple[str, int | None, str | None]
-        ] = {}
+        self._last_phase_per_unit: dict[str, tuple[str, int | None, str | None]] = {}
 
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
@@ -486,13 +468,9 @@ class ParallelDisplay:
         self._overflow_warned: set[str] = set()
         self._drop_last_warned: dict[str, float] = {}
 
-        self._rendered_writers: dict[
-            str, RenderedRecordWriter
-        ] = {}
+        self._rendered_writers: dict[str, RenderedRecordWriter] = {}
 
-        self._pending_phase_headers: list[
-            dict[str, object]
-        ] = []
+        self._pending_phase_headers: list[dict[str, object]] = []
 
         self._activity_router: ActivityRouter = ActivityRouter(
             on_event=self._on_activity_router_event,
@@ -527,7 +505,6 @@ class ParallelDisplay:
     @property
     def salience_decisions(self) -> tuple[AllocationDecision, ...]:
         return tuple(self._salience_decisions)
-
 
     def _format_timestamp(self, ts: datetime) -> str:
         return ts.strftime("%H:%M:%S")
@@ -843,7 +820,6 @@ class ParallelDisplay:
         line = _strip_markup(line)
         return strip_terminal_control(line)
 
-
     def emit_activity_line(
         self,
         unit_id: str,
@@ -1063,7 +1039,6 @@ class ParallelDisplay:
             _strip_control_chars_for_render(message),
             kind="warning",
         )
-
 
     def _update_counters(self, kind: str, is_new_block: bool) -> None:
         if kind == "text" and is_new_block:
@@ -1308,7 +1283,6 @@ class ParallelDisplay:
             self._close_block(ctx.unit_id, ctx.timestamp)
             return self._handle_new_streaming_block(ctx, start_tag)
         return self._continue_streaming_block(ctx, accumulated, continue_tag, start_tag)
-
 
     def _snapshot_texts(self, snapshot: PipelineSnapshot) -> list[Text]:
         timestamp = self._format_timestamp(self._clock())
@@ -2992,7 +2966,6 @@ class ParallelDisplay:
                 )
                 self._console.print(group, markup=False, highlight=False)
 
-
     def emit_phase_start(
         self,
         phase: str,
@@ -3278,7 +3251,6 @@ class ParallelDisplay:
         else:
             console.print(Rule(style=style))
 
-
     def emit_plan_artifact(self, workspace_root: Path) -> None:
         if self._is_quiet:
             return
@@ -3458,7 +3430,6 @@ class ParallelDisplay:
             )
         )
         self._console.print(Rule(style=_phase_style(style_phase)))
-
 
     def emit_first_run_panel(self, content: list[RenderableType]) -> None:
         if self._is_quiet:
@@ -3710,7 +3681,6 @@ class ParallelDisplay:
                     markup=False,
                     highlight=False,
                 )
-
 
     def emit_blank_line(self) -> None:
         if self._is_quiet:
@@ -4068,9 +4038,7 @@ def subscriber_for_display(
 ) -> PipelineSubscriber | None:
     if display is None:
         return None
-    return cast(
-        "PipelineSubscriber | None", getattr(display, "subscriber", None)
-    )
+    return cast("PipelineSubscriber | None", getattr(display, "subscriber", None))
 
 
 __all__ = [

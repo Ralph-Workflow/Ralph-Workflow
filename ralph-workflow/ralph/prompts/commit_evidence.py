@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from ralph.prompts import _commit_evidence as _impl

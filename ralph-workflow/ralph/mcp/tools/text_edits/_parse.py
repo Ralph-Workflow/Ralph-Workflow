@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import cast
@@ -11,16 +10,12 @@ def parse_text_edits(params: dict[str, object]) -> list[TextEdit]:
     edits_param = params.get("edits")
     if not isinstance(edits_param, list) or len(edits_param) == 0:
         raise InvalidParamsError("Missing 'edits' parameter as non-empty list")
-    entries: list[object] = cast(
-        "list[object]", edits_param
-    )
+    entries: list[object] = cast("list[object]", edits_param)
     parsed: list[TextEdit] = []
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
             raise InvalidParamsError(f"Edit {index}: missing 'oldText' string")
-        fields: dict[str, object] = cast(
-            "dict[str, object]", entry
-        )
+        fields: dict[str, object] = cast("dict[str, object]", entry)
         old_text = fields.get("oldText")
         new_text = fields.get("newText", "")
         if not isinstance(old_text, str):

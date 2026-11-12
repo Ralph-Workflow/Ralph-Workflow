@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -83,7 +82,6 @@ def _write_state_file(workspace_root: Path, state: _RecoveryState) -> None:
 
 @dataclass
 class RecoveryScheduler:
-
     workspace_root: Path
     initial_attempts: int = 0
     initial_health: HealthState = HealthState.HEALTHY
@@ -219,9 +217,7 @@ class RecoveryScheduler:
             pass
 
 
-_LAST_ADVISORY_LOCK_FD: list[int | None] = [
-    None
-]
+_LAST_ADVISORY_LOCK_FD: list[int | None] = [None]
 
 
 def advisory_lock_path(workspace_root: Path) -> Path:
@@ -231,9 +227,7 @@ def advisory_lock_path(workspace_root: Path) -> Path:
 def try_advisory_lock(workspace_root: Path) -> bool:
     lock_path = advisory_lock_path(workspace_root)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(
-        str(lock_path), os.O_CREAT | os.O_RDWR, 0o644
-    )
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
     try:
         import fcntl
 
@@ -375,9 +369,7 @@ def run_recovery_action(
 
 
 _PENDING_RECOVERY_CAP: int = 64
-_PENDING_RECOVERY: dict[
-    str, str
-] = {}
+_PENDING_RECOVERY: dict[str, str] = {}
 _PENDING_LOCK = threading.Lock()
 
 _RECOVERABLE_QUERY_CODES: frozenset[str] = frozenset(
@@ -462,9 +454,7 @@ def enqueue_recovery(
 
 
 _DRAIN_WAKEUP = threading.Event()
-_DRAIN_THREAD: list[threading.Thread | None] = [
-    None
-]
+_DRAIN_THREAD: list[threading.Thread | None] = [None]
 _DRAIN_TIMEOUT_MS = 15_000
 
 

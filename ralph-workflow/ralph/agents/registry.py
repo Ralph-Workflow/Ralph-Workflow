@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib
@@ -222,7 +221,6 @@ def _seed_catalog_with_builtins(catalog: AgentCatalog) -> None:
 
 
 class AgentRegistry:
-
     def __init__(
         self,
         *,

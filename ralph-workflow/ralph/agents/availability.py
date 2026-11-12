@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import shutil
@@ -13,7 +12,6 @@ __all__ = ["AgentEntry", "AgentStatus", "HasListAgents", "check_agent_availabili
 
 @runtime_checkable
 class HasListAgents(Protocol):
-
     def list_agents(self) -> list[str]: ...
 
     def get(self, name: str) -> AgentEntry | None: ...

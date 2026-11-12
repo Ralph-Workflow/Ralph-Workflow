@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class _ProcessManagerModule(Protocol):
-
     def get_process_manager(self) -> ProcessManager: ...
 
 
@@ -33,9 +31,7 @@ _LOG = logging.getLogger(__name__)
 _MAX_ANCESTOR_WALK: int = 32
 
 _SESSION_REGISTRY_MAX: int = 256
-_SESSION_REGISTRY: OrderedDict[int, int] = (
-    OrderedDict()
-)
+_SESSION_REGISTRY: OrderedDict[int, int] = OrderedDict()
 _SESSION_REGISTRY_LOCK = threading.Lock()
 
 
@@ -144,13 +140,10 @@ def _resolve_target(host_pid: int, pgid: int | None) -> tuple[psutil.Process | N
 
 @runtime_checkable
 class ProcessTeardown(Protocol):
-
-    def teardown_subtree(self, host_pid: int, *, issuer: str) -> None:
-        ...
+    def teardown_subtree(self, host_pid: int, *, issuer: str) -> None: ...
 
 
 class DefaultProcessTeardown:
-
     def __init__(
         self,
         kill_escalation_ms: float = KILL_ESCALATION_CEILING_MS,

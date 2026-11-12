@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.git.rebase._invalid_transition_error import InvalidTransitionError
@@ -39,7 +38,6 @@ DEFAULT_MAX_RECOVERY_ATTEMPTS = 3
 
 
 class RebaseStateMachine:
-
     def __init__(
         self,
         checkpoint: RebaseCheckpoint,

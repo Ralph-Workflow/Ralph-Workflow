@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,7 +31,6 @@ _KIND_TO_LEGACY_KEY: dict[str, str] = {
 
 @dataclass(frozen=True)
 class OperationFact:
-
     kind: str
     value: str
     scope: str | None = None

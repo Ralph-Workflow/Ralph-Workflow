@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class LazyToolHandler:
-
     def __init__(
         self,
         *,
@@ -35,7 +33,5 @@ class LazyToolHandler:
     ) -> object:
         del host_session, workspace
         module: ModuleType = import_module(self._module_name)
-        handler = cast(
-            "ToolHandler", getattr(module, self._handler_name)
-        )
+        handler = cast("ToolHandler", getattr(module, self._handler_name))
         return handler(self._session, self._workspace, params, **self._extra_kwargs)

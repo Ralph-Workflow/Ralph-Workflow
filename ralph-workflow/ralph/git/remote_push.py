@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -38,7 +37,6 @@ PushStatus = StrEnum(
 
 @dataclass(frozen=True, slots=True)
 class PushResult:
-
     status: PushStatus
     remote: str
     branch: str

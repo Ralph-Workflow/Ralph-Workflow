@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from ralph.pipeline.integration_resolution_status import IntegrationResolutionSt
 
 @dataclass(frozen=True)
 class IntegrationResolutionVerdict:
-
     status: IntegrationResolutionStatus
     reasons: tuple[str, ...] = ()
     recovery_executor: str | None = None

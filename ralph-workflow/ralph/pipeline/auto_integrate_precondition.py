@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,7 +36,6 @@ _read_post_integration_head_sha = read_post_integration_head_sha
 
 @dataclass(frozen=True)
 class PreconditionReclaimResult:
-
     succeeded: bool
     skip_state: RebaseState | None = None
 

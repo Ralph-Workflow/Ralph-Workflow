@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -24,7 +23,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class CorroborationSnapshot:
-
     workspace_event_count: int | None = None
     oldest_child_seconds: float | None = None
     scoped_child_active: bool | None = None

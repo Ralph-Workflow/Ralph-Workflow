@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import functools
@@ -15,7 +14,6 @@ _VOLUME_PATH_PARTS_FOR_EXTERNAL = 3
 
 
 class _SubprocessRunner(Protocol):
-
     def __call__(
         self,
         args: list[str],
@@ -111,7 +109,6 @@ def _run_subprocess_mdutil(
 
 @dataclass
 class FsHealth:
-
     volume_root: str
     spotlight_indexing_enabled: bool | None = None
     fsevents_journal_bytes: int | None = None

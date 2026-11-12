@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import enum
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 
 class HealthState(enum.StrEnum):
-
     HEALTHY = "healthy"
     BUILDING = "building"
     STALE = "stale"
@@ -16,7 +14,6 @@ class HealthState(enum.StrEnum):
 
 @dataclass
 class _RecoveryState:
-
     health: HealthState = HealthState.HEALTHY
     last_failure_code: str | None = None
     last_failure_message: str | None = None

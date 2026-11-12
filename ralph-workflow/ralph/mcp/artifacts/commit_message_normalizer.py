@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -34,7 +33,6 @@ _SUBJECT_PART_COUNT = 2
 
 @dataclass(frozen=True)
 class NormalizationResult:
-
     content: str
     transformations: tuple[NormalizationTransformation, ...]
     confidence: Confidence

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,6 +11,5 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PreflightTcpDeps:
-
     connect_to_endpoint_fn: Callable[[str, tuple[str, int], timedelta], socket.socket] | None = None
     list_tools_fn: Callable[[socket.socket, timedelta], list[str]] | None = None

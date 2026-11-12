@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from ralph.display.activity_visibility_hint import ActivityVisibilityHint
 
 @dataclass(frozen=True, slots=True)
 class EventOptions:
-
     content: str | None = None
     metadata: dict[str, object] | None = None
     visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE

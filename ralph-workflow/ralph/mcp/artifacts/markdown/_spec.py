@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -32,7 +31,6 @@ _BODY_GRAMMAR_RULES = frozenset({"MD001", "MD002", "MD003", "MD004"})
 
 @dataclass(frozen=True)
 class MdArtifactSpec:
-
     artifact_type: str
     required_frontmatter: frozenset[str]
     sections: Mapping[str, SectionRule]

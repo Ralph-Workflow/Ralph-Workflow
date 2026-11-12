@@ -1,4 +1,3 @@
-
 from ralph.workspace.context import WorkspaceContext, workspace_context
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace

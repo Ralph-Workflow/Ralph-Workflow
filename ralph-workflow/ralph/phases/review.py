@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from contextlib import suppress
@@ -105,8 +104,6 @@ def _has_new_commits_since_baseline(ctx: PhaseContext, baseline: str) -> bool:
         return True
 
 
-
-
 def _production_read_baseline(ctx: PhaseContext) -> str | None:
     return _read_review_baseline(ctx)
 
@@ -125,7 +122,6 @@ def _production_write_baseline(ctx: PhaseContext, sha: str) -> None:
 
 @dataclass(frozen=True)
 class ReviewCollaborators:
-
     read_baseline: Callable[[PhaseContext], str | None] = _production_read_baseline
 
     has_new_commits: Callable[[PhaseContext, str], bool] = _production_has_new_commits

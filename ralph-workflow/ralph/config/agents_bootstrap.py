@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,7 +20,6 @@ __all__ = ["BootstrapResult", "write_agents_with_backup"]
 
 @dataclass(frozen=True)
 class BootstrapResult:
-
     path: Path
     action: Literal["created", "skipped", "regenerated"]
     backup: Path | None = None
@@ -29,7 +27,6 @@ class BootstrapResult:
 
 @dataclass(frozen=True)
 class _ConfigCommitPlan:
-
     routing: str
     repo_root: Path | None
     pre_contents: dict[str, str | None]

@@ -1,7 +1,7 @@
 # Advanced Artifact Configuration
 
 This page is for operators who want to change the **typed outputs Ralph Workflow expects and records**.
-Use it when you need to edit contracts, decision vocabularies, or summary paths without guessing how those outputs connect back to the workflow.
+Use it when you need to edit contracts, choice vocabularies, or summary paths without guessing how those outputs connect back to the workflow.
 The core loop stays simple, but the artifact layer is where you make the workflow reviewable and predictable for your team.
 
 Treat artifacts as operator-facing contracts, not generic notes.
@@ -30,7 +30,7 @@ It owns:
 
 - which artifact each drain must submit
 - artifact types
-- decision vocabularies for analysis artifacts
+- choice vocabularies for analysis artifacts
 - summary markdown output paths
 - which prompt template is responsible for producing that artifact
 
@@ -55,18 +55,18 @@ prompt_template = "development_analysis.jinja"
 markdown_summary_path = ".agent/DEVELOPMENT_ANALYSIS_DECISION.md"
 ```
 
-## Decision vocabulary vs routing
+## Choice vocabulary vs routing
 
 This is an important distinction:
 
-- `artifacts.toml` defines the **allowed decision strings**
+- `artifacts.toml` defines the **allowed choice strings**
 - `pipeline.toml` defines **where those decisions route**
 
-If you add or rename a decision in `artifacts.toml`, you must update the matching analysis-phase decision routing in `pipeline.toml` too.
+If you add or rename a choice in `artifacts.toml`, you must update the matching analysis-phase choice routing in `pipeline.toml` too.
 
 ## Common advanced user stories
 
-### I want to add a new analysis decision
+### I want to add a new analysis choice
 
 1. update `decision_vocabulary` in `artifacts.toml`
 2. update the matching `[phases.<name>.decisions.*]` routing in `pipeline.toml`
@@ -82,7 +82,7 @@ Add a new `[artifacts.<name>]` block and ensure the matching drain/phase expects
 
 ## What usually goes wrong
 
-- changing decision vocabulary without updating policy routing
+- changing choice vocabulary without updating policy routing
 - renaming an artifact block without updating the phase/drain that expects it
 - treating `artifacts.toml` like generic docs instead of a strict contract file
 

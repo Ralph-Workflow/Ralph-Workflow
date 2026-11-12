@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -43,7 +42,6 @@ def _normalise_modalities_input(raw: object | None) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class ModelEntry:
-
     id: str
     name: str | None = None
     provider: str | None = None

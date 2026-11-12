@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import atexit
@@ -20,7 +19,6 @@ def _register_exit_handler(handler: Callable[[], None]) -> object:
 
 @dataclass(frozen=True)
 class TelemetryLifecycle:
-
     is_disabled: Callable[[], bool]
     is_disabled_by_config: Callable[[], bool]
     is_active: Callable[[], bool]

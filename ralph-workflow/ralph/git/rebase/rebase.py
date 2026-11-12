@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,7 +29,6 @@ _RENAME_LIMIT_RETRY_ARGS = ("-c", "merge.renameLimit=0")
 
 @dataclass(frozen=True)
 class RebaseFailed:
-
     kind: RebaseErrorKind
 
 
@@ -337,6 +335,3 @@ __all__ = [
     "rebase_in_progress",
     "rebase_onto",
 ]
-
-
-

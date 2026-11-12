@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -72,7 +71,6 @@ def _close_repo(repo: Repo | None) -> None:
 
 @dataclass(frozen=True)
 class _RepoQueueView:
-
     git: object
     git_dir: str
 
@@ -84,9 +82,7 @@ def _is_queue_view(candidate: object) -> bool:
 def _queue_routing_target(repo_root: Path | str, repo: Repo) -> Repo:
     if not _is_queue_view(repo) and not hasattr(repo, "git_dir"):
         view = _RepoQueueView(git=repo.git, git_dir=str(repo_root))
-        return cast(
-            "Repo", view
-        )
+        return cast("Repo", view)
     return repo
 
 
@@ -659,9 +655,7 @@ def create_commit(
         try:
             message = _run_prepare_commit_hooks(Path(repo_root), str(repo.git_dir), message_path)
         finally:
-            message_path.unlink(
-                missing_ok=True
-            )
+            message_path.unlink(missing_ok=True)
 
         candidate_tree_sha = _candidate_commit_tree(Path(repo_root))
 
@@ -712,7 +706,6 @@ def create_commit(
 
 
 class CommitTreeMismatchError(GitOperationError):
-
     def __init__(self, message: str) -> None:
         super().__init__("create_commit", message)
 
@@ -812,9 +805,7 @@ def create_commit_with_hooks(
 
         with tempfile.TemporaryDirectory(prefix="ralph-commit-") as scratch:
             message_path = Path(scratch) / "COMMIT_EDITMSG"
-            message_path.write_text(
-                message, encoding="utf-8"
-            )
+            message_path.write_text(message, encoding="utf-8")
             commit_result = run_git(
                 (
                     "commit",

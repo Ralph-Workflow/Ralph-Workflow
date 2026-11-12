@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -20,7 +19,6 @@ _ACTIVITY_RELAY_CREDENTIAL_ENV = "RALPH_MCP_ACTIVITY_RELAY_CREDENTIAL"
 
 
 class ActivityRelaySender:
-
     def __init__(self, endpoint: str, credential: str) -> None:
         self._host, self._port = _parse_endpoint(endpoint)
         self._credential = credential

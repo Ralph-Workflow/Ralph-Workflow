@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Protocol, cast, runtime_checkable
@@ -62,7 +61,6 @@ class _CapturedStderrHandle(Protocol):
 
 @runtime_checkable
 class _ReadableTextPipe(Protocol):
-
     def read(self, size: int = -1, /) -> str: ...
 
 

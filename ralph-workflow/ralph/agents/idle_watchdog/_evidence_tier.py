@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,13 +9,11 @@ if TYPE_CHECKING:
 
 
 class EvidenceTier(StrEnum):
-
     FIRST_PARTY = "first_party"
     SIDE_CHANNEL = "side_channel"
 
 
 class ChannelName(StrEnum):
-
     STDOUT = "stdout"
     MCP_TOOL = "mcp_tool"
     SUBAGENT_OUTPUT = "subagent_output"
@@ -26,7 +23,6 @@ class ChannelName(StrEnum):
 
 @dataclass(frozen=True)
 class ChannelEvidenceSummary:
-
     channel_name: ChannelName
     tier: EvidenceTier
     last_at: float | None
@@ -78,7 +74,6 @@ CHANNEL_DEFERS_BY_DEFAULT: dict[ChannelName, bool] = {
 
 @dataclass(frozen=True)
 class EvidenceSummary:
-
     channels: tuple[ChannelEvidenceSummary, ...] = field(default_factory=tuple)
 
     def by_name(self, name: ChannelName) -> ChannelEvidenceSummary | None:

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.multimodal._delivery_mode import DeliveryMode

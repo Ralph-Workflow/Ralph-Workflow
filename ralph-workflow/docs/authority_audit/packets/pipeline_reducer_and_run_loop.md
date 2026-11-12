@@ -58,9 +58,9 @@ authoritative ownership surface.
   (`_pipeline_state_machine.py:56-99`).
 - A `rebase_state.integration_unresolved is True` or
   `rebase_state.recovery_record_retained is True` blocks dispatch.
-- A non-terminal publication decision (not `PUBLICATION_TERMINAL`)
+- A non-terminal publication choice (not `PUBLICATION_TERMINAL`)
   blocks terminal success (`_terminal_authority.py:44`).
-- A non-complete fan-out decision (not `JOIN_COMPLETE`) blocks
+- A non-complete fan-out choice (not `JOIN_COMPLETE`) blocks
   terminal success (`_terminal_authority.py:45`).
 
 ## Typed `FailureCategory` seam (2026)

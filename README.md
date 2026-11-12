@@ -78,7 +78,7 @@ or manual Git operation.
 ## Give it a task. Let the graph work.
 
 The graph begins with the Ralph loop and expands only where the work demands
-it. A phase can select a different agent, revisit an earlier decision, request
+it. A phase can select a different agent, revisit an earlier choice, request
 new evidence, recover from interruption, or route completed work into Git
 integration. The agents do not need a shared conversation: the workflow carries
 forward the task, artifacts, repository state, and proof.

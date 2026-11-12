@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 
 class ResolutionAction(StrEnum):
-
     CONTINUE_AGENT_ROUND = "CONTINUE_AGENT_ROUND"
     ESCALATE_TO_INTERVENTION = "ESCALATE_TO_INTERVENTION"
     ACCEPT_WORKTREE_REPAIR = "ACCEPT_WORKTREE_REPAIR"

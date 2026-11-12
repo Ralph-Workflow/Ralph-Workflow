@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib
@@ -14,22 +13,16 @@ MAX_WATCHDOG_EVENT_QUEUE = 4096
 
 
 class _WatchObserverProtocol(Protocol):
+    def schedule(self, event_handler: object, path: str, **kwargs: object) -> None: ...
 
-    def schedule(self, event_handler: object, path: str, **kwargs: object) -> None:
-        ...
+    def start(self) -> None: ...
 
-    def start(self) -> None:
-        ...
+    def stop(self) -> None: ...
 
-    def stop(self) -> None:
-        ...
-
-    def join(self, timeout: float | None = None) -> None:
-        ...
+    def join(self, timeout: float | None = None) -> None: ...
 
 
 class ObserverProtocol(Protocol):
-
     _event_queue: Queue[object]
 
     @property

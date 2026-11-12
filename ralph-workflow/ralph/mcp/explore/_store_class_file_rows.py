@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -14,7 +13,6 @@ from ralph.mcp.explore._store_types import (
 
 
 class _FileRowMethods:
-
     _conn: sqlite3.Connection
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
 
@@ -62,9 +60,7 @@ class _FileRowMethods:
             f"SELECT * FROM files WHERE path IN ({placeholders})",
             tuple(paths),
         )
-        all_rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
         result: dict[str, FileRow] = {}
         for row in all_rows:
             file_row = _row_to_file(row)
@@ -80,9 +76,7 @@ class _FileRowMethods:
             f"WHERE is_deleted = 0 AND path IN ({placeholders})",
             tuple(paths),
         )
-        all_rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
         result: dict[str, tuple[int, int]] = {}
         for row in all_rows:
             typed_row = cast("Mapping[str, int | str]", row)
@@ -181,9 +175,7 @@ class _FileRowMethods:
 
     def iter_files(self) -> Iterator[FileRow]:
         cur = self._conn.execute("SELECT * FROM files WHERE is_deleted = 0")
-        all_rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
         for row in all_rows:
             yield _row_to_file(row)
 

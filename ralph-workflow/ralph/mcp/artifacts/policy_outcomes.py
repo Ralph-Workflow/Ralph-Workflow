@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import cast
@@ -9,9 +8,7 @@ APPROVED_POLICY_OUTCOMES = frozenset({"approved", "allow", "allowed"})
 def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
-    return cast(
-        "object | None", getattr(obj, attribute_name, default)
-    )
+    return cast("object | None", getattr(obj, attribute_name, default))
 
 
 def is_policy_approved(outcome: object | None) -> bool:

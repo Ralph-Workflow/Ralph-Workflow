@@ -52,7 +52,7 @@ The lines below are the verified project facts that agents rely on and keep
 current.
 
 <!-- REPLACE-ME: record verified paths and rules; for an unsettled fact record
-the current decision and its review trigger, then delete this comment. -->
+the current choice and its review trigger, then delete this comment. -->
 
 RALPH-FACT: architecture_style: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: component_map: PROJECT-FACT-UNRESOLVED
@@ -82,7 +82,7 @@ private method or adding a wrapper solely to satisfy a test is a
 violation there, not a fitting architectural response here.
 
 Agents MUST inspect the component map before moving responsibilities, preserve
-dependency direction, update affected decision records, and remove superseded
+dependency direction, update affected choice records, and remove superseded
 architecture rather than leaving parallel paths. Agents MUST identify affected
 quality attributes, runtime/data-flow views, and tradeoffs before claiming an
 architectural change is fit.
@@ -101,7 +101,7 @@ contract break.
 
 ## Exceptions
 
-An exception requires scope, rationale, owner, and a removal or review trigger.
+An exception requires scope, reason, owner, and a removal or review trigger.
 
 ## Maintenance triggers
 

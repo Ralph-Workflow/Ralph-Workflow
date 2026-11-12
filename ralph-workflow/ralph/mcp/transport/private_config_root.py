@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import shutil
@@ -20,8 +19,6 @@ def prepare_private_config_root(
         target.write_bytes(payload)
 
     def cleanup() -> None:
-        shutil.rmtree(
-            root, ignore_errors=True
-        )
+        shutil.rmtree(root, ignore_errors=True)
 
     return root, cleanup

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.pipeline._integration_diagnostic import (

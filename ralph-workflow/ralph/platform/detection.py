@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
 
 
 class DetectPlatformKwargs(TypedDict, total=False):
-
     system_name: str | None
     machine_name: str | None
     env: Mapping[str, str] | None

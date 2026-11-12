@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -50,7 +49,6 @@ _VALID_WORKSPACE_CHANGE_WEIGHT_VALUES: frozenset[float] = frozenset({0.0, 1.0})
 
 @dataclass(frozen=True)
 class TimeoutPolicy:
-
     idle_timeout_seconds: float | None
     profile: TimeoutProfile = TimeoutProfile.STANDARD
     activity_only_operator_cap_seconds: float | None = None

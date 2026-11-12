@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -17,7 +16,6 @@ _MAX_TRACKED_KEYS = 64
 
 
 class BoundaryRefreshThrottle:
-
     def __init__(
         self,
         *,
@@ -28,9 +26,7 @@ class BoundaryRefreshThrottle:
         self._min_interval_seconds = min_interval_seconds
         self._clock = clock
         self._max_tracked_keys = max(1, max_tracked_keys)
-        self._last_refresh: OrderedDict[
-            tuple[str, str], tuple[float, float | None]
-        ] = OrderedDict()
+        self._last_refresh: OrderedDict[tuple[str, str], tuple[float, float | None]] = OrderedDict()
 
     def should_refresh(self, root: Path | str, target: str) -> bool:
         timestamps = self._last_refresh.get(self._key(root, target))

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -99,7 +98,6 @@ def busy_refusal_outcome(
 
 
 class _StartupRecoveryRoute(StrEnum):
-
     RECOVERY_OWNS_OPERATION = "recovery_owns_operation"
     LANDING_CONTINUATION = "landing_continuation"
     DEFER_INTERVENTION = "defer_intervention"
@@ -422,5 +420,3 @@ __all__ = [
     "recover_incomplete_integration",
     "recovery_retained_record",
 ]
-
-

@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class SessionDrain(StrEnum):
-
     PLANNING = "planning"
     DEVELOPMENT = "development"
     DEVELOPMENT_ANALYSIS = "development_analysis"

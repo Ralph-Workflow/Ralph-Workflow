@@ -1,9 +1,7 @@
-
 from __future__ import annotations
 
 
 class ProcessTerminationError(RuntimeError):
-
     def __init__(
         self,
         pid: int,

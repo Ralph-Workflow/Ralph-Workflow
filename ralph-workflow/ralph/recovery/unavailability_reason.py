@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from enum import StrEnum
 
 
 class UnavailabilityReason(StrEnum):
-
     OUT_OF_CREDITS = "out_of_credits"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     CONTEXT_EXHAUSTED = "context_exhausted"
@@ -22,7 +20,6 @@ class UnavailabilityReason(StrEnum):
 
 @dataclass(frozen=True)
 class ReasonBackoffPolicy:
-
     base_backoff_ms: int
     max_backoff_ms: int
 

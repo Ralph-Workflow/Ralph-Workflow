@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PhaseDecisionRoute(_FrozenPolicyModel):
-
     target: str = Field(...)
     reset_loop: bool = False
     cycle_outcome: Literal["completed", "failed"] | None = Field(

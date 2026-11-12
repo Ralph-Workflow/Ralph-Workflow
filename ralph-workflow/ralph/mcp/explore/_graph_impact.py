@@ -1,4 +1,3 @@
-
 import sqlite3
 
 from ralph.mcp.explore.graph import (

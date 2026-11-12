@@ -256,7 +256,7 @@ The v6 revision reframes the shipped policy as a small outcome-oriented
 execution kernel plus evidence-backed, selectively applicable controls,
 and adds the `Enforcement` column so every guard names the gate that owns
 it; see the v6 history entry in `ralph/project_policy/markers.py` for the
-rationale and the v5-to-v6 consequence. The revision's outcomes are
+reason and the v5-to-v6 consequence. The revision's outcomes are
 measured against v5 in a paired replay; see
 `docs/plans/policy-v5-paired-replay-plan.md` for the plan.
 

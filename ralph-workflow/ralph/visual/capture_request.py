@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,8 +31,6 @@ def _default_viewports() -> tuple[Viewport, ...]:
             height=VIEWPORT_DEFAULT_HEIGHT_WIDE,
         ),
     )
-
-
 
 
 def _validate_string_tuple(
@@ -140,11 +137,8 @@ def _verify_required_states(states: tuple[str, ...]) -> None:
         )
 
 
-
-
 @dataclass(frozen=True)
 class CaptureRequest:
-
     target: str
     viewports: tuple[Viewport, ...]
     themes: tuple[str, ...]

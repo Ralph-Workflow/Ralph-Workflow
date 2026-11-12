@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _RoutingTiming:
-
     total_elapsed_seconds: float
     development_elapsed_seconds: float | None = None
     current_epoch: float | None = None
@@ -26,7 +24,6 @@ RoutingTiming = _RoutingTiming
 
 @dataclass(frozen=True)
 class CycleTimeboxDecision:
-
     state: PipelineState
     target_phase: str
     redirected: bool = False

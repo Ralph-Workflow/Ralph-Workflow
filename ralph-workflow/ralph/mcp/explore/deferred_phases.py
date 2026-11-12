@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,7 +8,6 @@ from ralph.mcp.explore.audit_register import AUDIT_REGISTER
 
 @dataclass(frozen=True, slots=True)
 class DeferredPhase:
-
     phase_id: str
     title: str
     deliverables: tuple[str, ...]
@@ -80,7 +78,6 @@ DEFERRED_PHASES: Final[tuple[DeferredPhase, ...]] = _DEFERRED
 
 
 class DeferredPhaseRegistry:
-
     @staticmethod
     def phases() -> tuple[DeferredPhase, ...]:
         return DEFERRED_PHASES

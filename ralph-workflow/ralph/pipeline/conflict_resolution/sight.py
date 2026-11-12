@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -74,7 +73,6 @@ def escalate_on_sight(
 
 
 class ConflictSight(StrEnum):
-
     MECHANICAL = "mechanical"
     AGENT = "agent"
     AGENT_DECISION = "agent_decision"

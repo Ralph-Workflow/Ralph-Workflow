@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -38,7 +37,6 @@ from ralph.display.tool_args import format_tool_input, friendly_tool_name
 if TYPE_CHECKING:
     from ralph.agents.parsers.agent_output_line import AgentOutputLine
     from ralph.display.context import DisplayContext
-
 
 
 _STYLE_KEY = "style"
@@ -83,7 +81,6 @@ def _normalized_event_content(event: AgentActivityEvent) -> str:
 
 
 class EventRenderer(Protocol):
-
     def __call__(
         self,
         event: AgentActivityEvent,
@@ -92,8 +89,6 @@ class EventRenderer(Protocol):
         unit_id: str | None = None,
         escape_body: bool = True,
     ) -> Text: ...
-
-
 
 
 _FENCED_BLOCK_RE = re.compile(
@@ -448,7 +443,6 @@ def _render_unknown_event(
     return text
 
 
-
 EVENT_RENDERERS: dict[ActivityEventKind, EventRenderer] = {
     ActivityEventKind.TEXT: _render_text_event,
     ActivityEventKind.THINKING: _render_text_event,
@@ -540,8 +534,6 @@ def make_event_for_emit(
         sequence=0,
         timestamp=timestamp or datetime.now(UTC).isoformat(),
     )
-
-
 
 
 _METADATA_SUMMARY_MAX_PARTS: int = 3

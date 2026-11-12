@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ast
@@ -30,7 +29,6 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     class ShardProcess(Protocol):
-
         def poll(self) -> int | None: ...
 
         def communicate(
@@ -44,7 +42,6 @@ if TYPE_CHECKING:
         def cleanup_orphans(self) -> None: ...
 
     class ShardSpawner(Protocol):
-
         def __call__(
             self,
             command: Sequence[str],
@@ -1129,9 +1126,7 @@ def _run_shards(
                 flush=True,
             )
             shard_basetemp = basetemp_root / f"shard-{shard_index}"
-            shard_basetemp.mkdir(
-                mode=0o700, parents=True, exist_ok=True
-            )
+            shard_basetemp.mkdir(mode=0o700, parents=True, exist_ok=True)
             processes.append(
                 spawner(
                     _shard_command(

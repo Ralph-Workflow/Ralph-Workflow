@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class WatchdogFireReason(StrEnum):
-
     NO_OUTPUT_DEADLINE = "no_output_deadline"
     CONFLICT_INACTIVITY = "conflict_inactivity"
     OPERATOR_CAP_REACHED = "operator_cap_reached"

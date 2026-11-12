@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,5 +8,4 @@ EmptyCommitPhaseRole = Literal["commit", "commit_review"]
 
 @dataclass(frozen=True)
 class EmptyCommitEffect:
-
     phase_role: EmptyCommitPhaseRole = "commit"

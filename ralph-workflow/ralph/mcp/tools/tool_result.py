@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,7 +26,6 @@ type ContentBlock = (
 
 @dataclass(frozen=True)
 class ToolResult:
-
     content: list[ContentBlock]
     is_error: bool | None = None
 

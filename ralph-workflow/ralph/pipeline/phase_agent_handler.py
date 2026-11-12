@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -68,16 +67,12 @@ if TYPE_CHECKING:
 
 
 def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
-    module = cast(
-        "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
-    )
+    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
     return module.read_latest_analysis_decision
 
 
 def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
-    module = cast(
-        "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
-    )
+    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
     return module.read_plan_artifact
 
 
@@ -397,9 +392,7 @@ def _render_success_artifact(
     def _emit_close(produced: str) -> None:
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(
-                    produced
-                )
+                cast("ParallelDisplay", display).record_artifact_outcome(produced)
 
     def _with_verdict(produced: str) -> str:
         try:

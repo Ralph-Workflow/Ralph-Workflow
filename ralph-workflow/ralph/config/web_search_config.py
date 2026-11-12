@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Self
@@ -11,7 +10,6 @@ from ralph.timeout_defaults import WEBSEARCH_BACKEND_TIMEOUT_SECONDS
 
 
 class WebSearchConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = True

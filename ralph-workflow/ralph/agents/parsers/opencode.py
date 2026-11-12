@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 
 
 class _OpenCodeDispatch:
-
     def __init__(self, owner: OpenCodeParser) -> None:
         self._owner = owner
 
@@ -228,7 +226,6 @@ class _OpenCodeDispatch:
 
 
 class OpenCodeParser(NdjsonParserBase):
-
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
 
     def __init__(

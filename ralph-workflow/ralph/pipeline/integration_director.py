@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -65,17 +64,12 @@ __all__ = [
 ]
 
 
-
-
 @dataclass(frozen=True)
 class DirectorDecision:
-
     action: NextAction
     observation: Observation
     attempts: AttemptLedgerState
     release_applied: bool
-
-
 
 
 def _read_porcelain(root: Path) -> Reading[str]:
@@ -182,8 +176,6 @@ def _brief_reason(reason: str | None) -> str:
     if reason is None:
         return ""
     return reason.strip()[:_PROBE_REASON_MAX_LEN]
-
-
 
 
 type _AncestryRelation = Literal["equal", "behind", "ahead", "diverged", "unknown"]
@@ -424,8 +416,6 @@ def _project_record(
     return IntegrationRecordState.STALE
 
 
-
-
 def _build_observation(
     root: Path,
     *,
@@ -497,10 +487,7 @@ def _build_observation(
     )
 
 
-
-
 class IntegrationDirector:
-
     def __init__(
         self,
         root: Path,

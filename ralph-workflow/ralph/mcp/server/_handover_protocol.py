@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -324,7 +323,6 @@ def _validate_init_metadata(
 
 @dataclass(frozen=True)
 class CandidateReadiness:
-
     ok: bool
     failure_stage: str | None = None
     detail: str | None = None

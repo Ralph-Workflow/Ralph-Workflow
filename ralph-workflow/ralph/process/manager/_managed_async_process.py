@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 
 
 class ManagedAsyncProcess:
-
     def __init__(
         self,
         proc: _AsyncProcessLike,

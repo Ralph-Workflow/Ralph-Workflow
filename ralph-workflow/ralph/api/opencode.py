@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -23,7 +22,6 @@ if TYPE_CHECKING:
 
 
 class ProcessRunner(Protocol):
-
     def __call__(
         self,
         command: str,
@@ -42,7 +40,6 @@ _TTL_SECONDS: float = 300.0
 
 
 class _CatalogFetcher:
-
     def __init__(self, *, clock: _ClockProtocol | None = None) -> None:
         self._cache: list[ModelEntry] | None = None
         self._cached_at: float | None = None

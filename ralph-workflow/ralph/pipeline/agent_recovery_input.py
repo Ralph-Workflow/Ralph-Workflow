@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AgentRecoveryInput:
-
     exc: Exception
     attempt_index: int
     max_recovery_attempts: int

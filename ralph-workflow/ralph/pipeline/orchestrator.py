@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
 
 
 class PhaseHandlerNotFoundError(Exception):
-
     def __init__(self, phase: str) -> None:
         self.phase = phase
         msg = (

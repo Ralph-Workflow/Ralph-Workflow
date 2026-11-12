@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Final, Protocol
@@ -14,7 +13,6 @@ _IMPLEMENTATIONS: Final[frozenset[str]] = frozenset({IMPL_SCALAR, IMPL_ACCELERAT
 
 
 class PythonStructureExtractor(Protocol):
-
     def __call__(
         self,
         *,
@@ -72,9 +70,7 @@ def _accelerated_extract_python(
     )
 
 
-_IMPL_REGISTRY: Final[
-    dict[str, PythonStructureExtractor]
-] = {
+_IMPL_REGISTRY: Final[dict[str, PythonStructureExtractor]] = {
     IMPL_SCALAR: _scalar_extract_python,
     IMPL_ACCELERATED: _accelerated_extract_python,
 }

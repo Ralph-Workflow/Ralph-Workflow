@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -25,7 +24,6 @@ def _derive_evidence_id_for_span(
 
 
 class _EvidenceRowBuilder:
-
     def __init__(
         self,
         *,

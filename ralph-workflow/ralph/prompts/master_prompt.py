@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -14,7 +13,6 @@ from ralph.prompts.template_registry import _packaged_template_cache, packaged_t
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
     from pathlib import Path
 
 
@@ -86,6 +84,7 @@ def _sync_product_criteria_file(
     )
     source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     if source_prompt_path.exists():
+
         def _stat(path: Path) -> tuple[int, int] | None:
             if not path.exists():
                 return None

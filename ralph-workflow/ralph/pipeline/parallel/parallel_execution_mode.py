@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class ParallelExecutionMode(StrEnum):
-
     SAME_WORKSPACE = "same_workspace"
 
 

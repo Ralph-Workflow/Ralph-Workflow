@@ -1,9 +1,7 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Final, Literal
-
 
 VISUAL_DIMENSIONS: Final[tuple[str, ...]] = (
     "hierarchy",
@@ -43,11 +41,8 @@ REGION_MAX_PIXELS: Final[int] = 32_000_000
 _NARRATIVE_MAX_LEN: Final[int] = 8 * 1024
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class Region:
-
     x: int
     y: int
     w: int
@@ -91,7 +86,6 @@ class Region:
 
 @dataclass(frozen=True, slots=True)
 class _VisualFinding:
-
     capture_id: str
     region: Region
     dimension: str

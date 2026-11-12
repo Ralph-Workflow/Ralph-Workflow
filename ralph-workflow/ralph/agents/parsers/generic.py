@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -29,7 +28,6 @@ def _classify_plaintext_tool_line(stripped: str) -> tuple[str, str] | None:
 
 
 class GenericParser(NdjsonParserBase):
-
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
     def __init__(

@@ -7,7 +7,7 @@
 
 Workspace observation, indexed search, and Ralph-managed storage must remain useful without scaling host watch registrations, repeated scans, or retained data with workflow count. A failed observer must not cause search to claim current knowledge.
 
-## Decision
+## Choice
 
 `WorkspaceMonitor` owns the single recursive watch per process-local workspace and shares it across monitor leases. `WorkspaceAwareness` coalesces the bounded dirty set, records explicit watch or live-fallback freshness, and hands changes to the persisted Explore dirty queue at lifecycle boundaries. `ReindexWriter` remains the single-writer coalescing boundary and only publishes completed generations.
 
@@ -17,7 +17,7 @@ Retention sweeps coalesce through `RetentionPassCoordinator` — one inner pass 
 
 ## Consequences
 
-Unchanged warm refreshes retain zero-parse behavior. Watch-capacity failure is visible as `live_fallback`, never `current`; a later workspace lease can recover observation. Process-local sharing is the current safe coordination boundary; cross-process watch leasing and independent-process retention coordination (B6) remain explicitly outside this decision until a durable owner protocol has deterministic proof.
+Unchanged warm refreshes retain zero-parse behavior. Watch-capacity failure is visible as `live_fallback`, never `current`; a later workspace lease can recover observation. Process-local sharing is the current safe coordination boundary; cross-process watch leasing and independent-process retention coordination (B6) remain explicitly outside this choice until a durable owner protocol has deterministic proof.
 
 ## Verification
 

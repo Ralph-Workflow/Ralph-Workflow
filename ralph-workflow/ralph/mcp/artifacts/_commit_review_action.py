@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -12,7 +11,6 @@ _PRINTABLE_ASCII_PATTERN = r"^[\x21-\x7e]+$"
 
 
 class CommitReviewAction(RalphBaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["delete_file", "add_to_gitignore", "add_to_git_exclude"]

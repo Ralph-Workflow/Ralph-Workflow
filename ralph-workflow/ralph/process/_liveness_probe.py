@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -9,9 +8,6 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class LivenessProbe(Protocol):
+    def any_agent_active(self, label_prefix: str) -> bool: ...
 
-    def any_agent_active(self, label_prefix: str) -> bool:
-        ...
-
-    def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
-        ...
+    def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot: ...

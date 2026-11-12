@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import codecs
@@ -187,7 +186,6 @@ def _tool_use_display_name(
 
 
 class _ReadLoopSetup(NamedTuple):
-
     reader: threading.Thread
     transcript_reader: threading.Thread
     sentinel_reader: threading.Thread
@@ -202,9 +200,7 @@ class _ReadLoopSetup(NamedTuple):
 def _resolve_pre_existing_transcript_names(
     extras: PtyExtras, workspace_path: Path | None
 ) -> frozenset[str]:
-    snapshot = cast(
-        "frozenset[str] | None", getattr(extras, "pre_existing_transcript_names", None)
-    )
+    snapshot = cast("frozenset[str] | None", getattr(extras, "pre_existing_transcript_names", None))
     if snapshot is not None:
         return snapshot
     if workspace_path is not None:
@@ -242,9 +238,7 @@ class PtyLineReader:
             )
         )
         self._monitor = ctx.monitor
-        self._workspace_path = cast(
-            "Path | None", getattr(ctx, "workspace_path", None)
-        )
+        self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
         self._pre_existing_transcript_names: frozenset[str] = (
             _resolve_pre_existing_transcript_names(_extras, self._workspace_path)
         )
@@ -267,9 +261,7 @@ class PtyLineReader:
         )
         self._configure_runtime_hooks(ctx, _extras)
         self._completion_run_id = completion_run_id_from_extra_env(
-            cast(
-                "dict[str, str] | None", getattr(ctx, "extra_env", None)
-            )
+            cast("dict[str, str] | None", getattr(ctx, "extra_env", None))
         )
         self._evaluate_completion_fn = cast(
             "_EvalCompletionFn | None",
@@ -307,9 +299,7 @@ class PtyLineReader:
         self._pending_permission_prompt_line: str | None = None
         self._pending_permission_prompt_started_at: float | None = None
         recent_choice_cap = _RECENT_CHOICE_LINES_MAX
-        self._recent_choice_lines: deque[str] = deque(
-            maxlen=recent_choice_cap
-        )
+        self._recent_choice_lines: deque[str] = deque(maxlen=recent_choice_cap)
         cap = _MAX_TRANSCRIPT_SESSION_IDS
         self._transcript_session_ids: deque[str] = deque(maxlen=cap)
         self._transcript_session_ids_lock = threading.Lock()
@@ -462,9 +452,7 @@ class PtyLineReader:
             scoped_child_active = None
         scoped_child_count_int: int | None = scoped_child_count
         alive_by: AliveBy | None = None
-        registry = cast(
-            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
-        )
+        registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if registry is not None:
             try:
                 label_prefix = cast(
@@ -840,9 +828,7 @@ class PtyLineReader:
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
             if self._handle.poll() is None:
                 self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid, issuer="invoke:pty")
@@ -888,9 +874,7 @@ class PtyLineReader:
                 terminal = self._durable_completion_is_terminal()
         if not terminal:
             return False
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid, issuer="invoke:pty")
@@ -955,9 +939,7 @@ class PtyLineReader:
             self._lines_queue.clear()
         self._record_terminal_reason("conflict_inactivity")
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
         resume_safe = _is_resumable_fire_reason(fire_reason)
@@ -1003,9 +985,7 @@ class PtyLineReader:
         wrapper = _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
-            diagnostic=cast(
-                "_MergedDiagType", merged_diag
-            ),
+            diagnostic=cast("_MergedDiagType", merged_diag),
         )
         wrapper.__cause__ = typed_exc
         return pending_lines, wrapper
@@ -1146,9 +1126,7 @@ class PtyLineReader:
             self._handle.close()
         with contextlib.suppress(Exception):
             self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid, issuer="invoke:pty")
@@ -1183,9 +1161,7 @@ class PtyLineReader:
         self._quota_error = QuotaExhaustedError(self._agent_name, detail)
         self._record_terminal_reason("quota_exhausted")
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
         self._lines_event.set()
@@ -1221,9 +1197,7 @@ class PtyLineReader:
         self._record_terminal_reason("terminal_startup_error")
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
             self._handle.terminate(grace_period_s=0.5)
-        pid = cast(
-            "int | None", getattr(self._handle, "pid", None)
-        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
         raise AgentInvocationError(

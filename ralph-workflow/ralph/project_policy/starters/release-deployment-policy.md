@@ -16,7 +16,7 @@ Required when the project publishes packages, binaries, images, or deploys an
 operational service. Library-only and deployment-only facts may be explicitly
 inapplicable to the other project type. Encode a fact-level non-applicability
 as `inapplicable: <reason>; review trigger: <condition>`. If all
-release/deployment surfaces cease, retain a dated inactive decision or remove
+release/deployment surfaces cease, retain a dated inactive choice or remove
 the policy through reviewed cleanup.
 
 ## Default requirements

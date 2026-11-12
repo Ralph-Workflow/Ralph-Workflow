@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -19,8 +18,8 @@ __all__ = [
     "AgentSupport",
     "default_catalog",
     "invoke_agent",
-    "register_my_agent",
     "register_agent_support",
+    "register_my_agent",
 ]
 
 

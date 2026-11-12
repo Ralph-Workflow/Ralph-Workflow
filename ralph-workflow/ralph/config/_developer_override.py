@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy

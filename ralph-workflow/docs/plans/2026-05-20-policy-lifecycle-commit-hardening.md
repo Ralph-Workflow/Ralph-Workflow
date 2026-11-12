@@ -55,7 +55,7 @@ These are hard requirements for implementation:
 
 ## Target Model
 
-### Required execution-model decision
+### Required execution-model choice
 
 This plan now explicitly chooses the execution model:
 
@@ -65,7 +65,7 @@ This plan now explicitly chooses the execution model:
 - That flat compiled form remains what reducer/orchestrator/handlers execute, checkpoint, and display.
 - The authoring model is block-oriented and UI-grade; the runtime model is compiled-phase execution with no hidden semantic dependence on commit placement.
 
-This decision is mandatory because too many current product surfaces (`loader`, `state`, `checkpoint`, `display`, `explain-policy`, handler registration) are phase-based today. A compiled representation gives us the composable authoring model without requiring a one-shot runtime rewrite.
+This choice is mandatory because too many current product surfaces (`loader`, `state`, `checkpoint`, `display`, `explain-policy`, handler registration) are phase-based today. A compiled representation gives us the composable authoring model without requiring a one-shot runtime rewrite.
 
 ### UI-grade block-oriented policy semantics
 
@@ -96,7 +96,7 @@ The new policy system should support a structure conceptually like, and this str
   - development execution block
   - inner development-analysis feedback block
     - owns loop counter: `development_analysis_iteration`
-    - owns decision routes: completed / request_changes / failed
+    - owns choice routes: completed / request_changes / failed
   - optional pre-completion commit hook block
   - optional post-completion/finalization hook block
 - lifecycle completion of the nested workflow increments the outer developer-iteration counter

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 
 class RecheckPolicy(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     healthy_recheck_hours: float = 24.0

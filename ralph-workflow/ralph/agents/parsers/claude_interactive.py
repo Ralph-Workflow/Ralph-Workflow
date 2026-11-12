@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -27,7 +26,6 @@ _ToolMap = OrderedDict[str, str]
 
 
 class ClaudeInteractiveParser:
-
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,

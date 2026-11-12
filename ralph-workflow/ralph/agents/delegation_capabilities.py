@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,7 +18,6 @@ DelegationStance = StrEnum(
 
 @dataclass(frozen=True, slots=True)
 class DelegationCapability:
-
     transport: AgentTransport
     stance: DelegationStance
     mechanism: str

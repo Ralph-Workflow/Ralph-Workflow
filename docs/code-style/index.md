@@ -74,7 +74,7 @@ These requirements are non-negotiable and enforced by CI/CD gates.
 - `# noqa: PLW0603` at `ralph/cli/commands/run.py:_get_run_func` is the
   sanctioned mutation pattern for the typed `run_module._run_func`
   test seam. It is a Ruff-rule suppression, not a type-checker
-  suppression, carries a same-line rationale, and is not counted by
+  suppression, carries a same-line reason, and is not counted by
   the maintained-tree suppression inventory.
 - `[tool.ruff.lint.per-file-ignores]` in `ralph-workflow/pyproject.toml`
   exempts `"tests/**" = ["ANN", "PLC0415"]`. Tests can omit

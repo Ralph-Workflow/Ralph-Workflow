@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import signal
@@ -23,7 +22,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class SignalBridge:
-
     _interrupt_count: int = field(default=0, init=False)
     _connectivity_stop: Callable[[], None] | None = field(default=None, init=False)
 

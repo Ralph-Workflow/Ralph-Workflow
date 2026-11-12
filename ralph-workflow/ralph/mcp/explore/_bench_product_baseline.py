@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -181,7 +180,6 @@ def representative_calls() -> dict[str, ScriptedCall]:
 
 
 class _BaselineSession:
-
     session_id = "product-baseline-session"
     run_id = "product-baseline-run"
     broker_secret: str | None = None

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -28,7 +27,6 @@ _READ_CHUNK_SIZE = 1024 * 1024
 
 @dataclass(frozen=True)
 class FileSystemState:
-
     root: Path
     files: dict[Path, FileSnapshot]
 

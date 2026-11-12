@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class JavaGuidelines:
-
     frameworks: tuple[str, ...] = ()
     quality_checks: tuple[str, ...] = field(init=False)
     security_checks: tuple[str, ...] = field(init=False)

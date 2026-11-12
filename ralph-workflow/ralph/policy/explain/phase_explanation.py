@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PhaseExplanation:
-
     name: str
     role: str | None
     drain: str

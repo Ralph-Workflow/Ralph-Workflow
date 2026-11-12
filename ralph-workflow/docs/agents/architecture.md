@@ -46,11 +46,11 @@ registration  →  parser  →  strategy  →  CommandBuilder
 
 ## Pipeline source-of-truth ownership
 
-Every pipeline decision fact has exactly one authority, and every durable
+Every pipeline choice fact has exactly one authority, and every durable
 state change has exactly one writer:
 
-- **Decision authorities** (each returning a typed
-  decision): `decide_phase_transition`
+- **Choice authorities** (each returning a typed
+  choice): `decide_phase_transition`
   (`ralph.pipeline._pipeline_state_machine`), the integration owner seam
   (`decide_integration` / `decide_integration_verdict` in
   `ralph.pipeline.integration_owner`, reached from the pipeline boundaries
@@ -64,12 +64,12 @@ state change has exactly one writer:
   `next_integration_action` (`ralph.pipeline._integration_action`) is not one
   of them: it is the typed projection helper onto the closed
   `IntegrationAction` vocabulary, and it fails closed to
-  `REQUIRE_INTERVENTION` — it is not a decision authority.
+  `REQUIRE_INTERVENTION` — it is not a choice authority.
 - **Single durable writer**: `IntegrationRecord.with_transition`
   (`ralph.pipeline.auto_integrate_record`) is the only path that mutates
   the durable integration record; ad-hoc `model_copy(update=...)` on
   record-bearing state is forbidden.
-- **Decision-field writers**: `set_publication_decision`,
+- **Choice-field writers**: `set_publication_decision`,
   `set_fan_out_decision`, and `set_operation_display_state` are the
   writers of `last_publication_decision`, `last_fan_out_decision`, and
   `operation_display_state`. Raw `model_copy` writers of fan-out (1

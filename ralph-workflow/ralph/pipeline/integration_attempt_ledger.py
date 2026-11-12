@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -68,14 +67,12 @@ _RUNG_VALUES: Final[frozenset[str]] = frozenset(rung.value for rung in LADDER_OR
 
 @dataclass(frozen=True)
 class LedgerRebuildFacts:
-
     proven_rung: EscalationRung | None = None
 
     proven_repeats: tuple[tuple[str, str, int], ...] = ()
 
 
 class LedgerLoadStatus(Enum):
-
     FRESH = "fresh"
 
     RESTORED = "restored"
@@ -85,7 +82,6 @@ class LedgerLoadStatus(Enum):
 
 @dataclass(frozen=True)
 class AttemptLedgerState:
-
     rung: EscalationRung = EscalationRung.REPAIR
     repeat_counts: OrderedDict[tuple[str, str], int] = field(
         default_factory=OrderedDict,
@@ -217,7 +213,6 @@ def _release_lock(handle: object) -> None:
 
 
 class AttemptLedger:
-
     def __init__(
         self,
         workspace_root: Path,
@@ -596,9 +591,7 @@ class AttemptLedger:
         lock_path = self._ledger_path.with_name(self._ledger_path.name + _LOCK_SUFFIX)
         try:
             lock_path.parent.mkdir(parents=True, exist_ok=True)
-            handle = lock_path.open(
-                "a+", encoding="utf-8"
-            )
+            handle = lock_path.open("a+", encoding="utf-8")
         except OSError:
             yield False
             return

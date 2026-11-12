@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field
@@ -13,7 +12,6 @@ from .web_service_configs import WebVisitConfig
 
 
 class McpConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     mcp_servers: dict[str, McpServerSpec] = Field(default_factory=dict)

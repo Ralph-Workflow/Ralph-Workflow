@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -46,7 +45,6 @@ if TYPE_CHECKING:
 
 
 class _InvokeCompatibilitySeam(Protocol):
-
     def _apply_upstream_env(
         self,
         upstreams: tuple[UpstreamMcpServer, ...],
@@ -111,7 +109,6 @@ class _InvokeCompatibilitySeam(Protocol):
 
 @runtime_checkable
 class _InvokeModule(Protocol):
-
     def _apply_upstream_env(
         self,
         upstreams: tuple[object, ...],
@@ -176,7 +173,6 @@ class _InvokeModule(Protocol):
 
 @runtime_checkable
 class RuntimeResolver(Protocol):
-
     def resolve(
         self,
         config: AgentConfig,
@@ -186,8 +182,7 @@ class RuntimeResolver(Protocol):
         base_env: Mapping[str, str] | None = None,
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
-    ) -> ResolvedInvocationRuntime:
-        ...
+    ) -> ResolvedInvocationRuntime: ...
 
 
 def _invoke_module() -> _InvokeCompatibilitySeam:
@@ -320,7 +315,6 @@ def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, o
 
 
 class OpencodeRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -332,9 +326,7 @@ class OpencodeRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -366,7 +358,6 @@ class OpencodeRuntimeResolver:
 
 
 class NanocoderRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -378,9 +369,7 @@ class NanocoderRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -422,7 +411,6 @@ class NanocoderRuntimeResolver:
 
 
 class CodexRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -434,9 +422,7 @@ class CodexRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -479,7 +465,6 @@ class CodexRuntimeResolver:
 
 
 class ClaudeRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -491,9 +476,7 @@ class ClaudeRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         configured_depth = runtime_env.get("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH") or _env.get(
             "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "3"
@@ -543,15 +526,12 @@ def _project_agy_auth(source_root: Path, destination_root: Path) -> None:
         destination = destination_root / artifact_name
         try:
             destination_root.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(
-                source, destination
-            )
+            shutil.copy2(source, destination)
         except FileNotFoundError:
             continue
 
 
 class AgyRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -563,9 +543,7 @@ class AgyRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
@@ -609,7 +587,6 @@ class AgyRuntimeResolver:
 
 
 class DefaultRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -620,9 +597,7 @@ class DefaultRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
 
@@ -638,7 +613,6 @@ class DefaultRuntimeResolver:
 
 
 class PiRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -649,9 +623,7 @@ class PiRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
         runtime_env.pop(MCP_ENDPOINT_ENV, None)
@@ -671,7 +643,6 @@ class PiRuntimeResolver:
 
 
 class CursorRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -682,9 +653,7 @@ class CursorRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         source_config_home = Path(
             _env.get("XDG_CONFIG_HOME") or source_home / ".config"
@@ -759,7 +728,6 @@ class CursorRuntimeResolver:
 
 
 class KimiRuntimeResolver:
-
     def resolve(
         self,
         config: AgentConfig,
@@ -770,9 +738,7 @@ class KimiRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = (
-            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
-        )
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)

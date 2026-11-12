@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -21,7 +20,6 @@ if TYPE_CHECKING:
     from ralph.mcp.protocol.startup import WorkspaceLike
 
     class StartServer(Protocol):
-
         def __call__(
             self,
             session: AgentSession,
@@ -35,7 +33,6 @@ _log = logging.getLogger(__name__)
 
 
 class DynamicBindingMcpServerFactory(McpServerFactory):
-
     def __init__(
         self,
         workspace: WorkspaceLike,

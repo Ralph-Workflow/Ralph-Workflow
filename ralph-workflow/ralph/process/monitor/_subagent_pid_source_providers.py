@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 
 class _RegistryBackedSubagentPidSource:
-
     __slots__ = ("_registry", "_source_label")
 
     def __init__(self, registry: SubagentPidRegistry, source_label: str) -> None:

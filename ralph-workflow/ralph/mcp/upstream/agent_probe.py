@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -49,7 +48,6 @@ _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
 
 @dataclass(frozen=True)
 class AgentProbeReport:
-
     transport: AgentTransport
     server_name: str
     ok: bool

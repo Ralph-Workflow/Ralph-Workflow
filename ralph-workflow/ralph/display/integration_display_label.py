@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class IntegrationDisplayLabel(StrEnum):
-
     CONFLICT_RESOLUTION = "conflict resolution"
     EVIDENCE_DIAGNOSIS = "evidence diagnosis"
     INTEGRATION = "integration"

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 EXTENSION_TO_LANGUAGE: dict[str, str] = {

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from contextlib import suppress
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class DroppingEventQueue(Queue[object]):
-
     def __init__(self, maxsize: int) -> None:
         super().__init__(maxsize=maxsize)
         self._on_overflow: Callable[[], None] | None = None

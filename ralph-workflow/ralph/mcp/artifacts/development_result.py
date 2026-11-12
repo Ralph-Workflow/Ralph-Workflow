@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal, cast
@@ -13,7 +12,6 @@ DEVELOPMENT_RESULT_ARTIFACT_TYPE = "development_result"
 
 
 class DevelopmentResult(RalphBaseModel):
-
     model_config = ConfigDict(extra="ignore")
 
     status: str = Field(..., min_length=1)

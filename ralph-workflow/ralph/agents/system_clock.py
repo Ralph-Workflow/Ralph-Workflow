@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -11,7 +10,6 @@ __all__ = ["SystemClock"]
 
 
 class SystemClock(Clock):
-
     def monotonic(self) -> float:
         return time.monotonic()
 

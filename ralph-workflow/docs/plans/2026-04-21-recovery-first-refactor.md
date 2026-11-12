@@ -79,7 +79,7 @@ Expected: all reducer recovery tests pass.
 Change development/review analysis handlers so `FAILURE` and `ESCALATE` produce `PipelineEvent.ANALYSIS_LOOPBACK` instead of a terminal phase failure.
 
 **Step 2: Preserve reason in logs/handoffs**
-Keep the decision visible in logging and `last_error`-style context where possible, but do not terminate.
+Keep the choice visible in logging and `last_error`-style context where possible, but do not terminate.
 
 **Step 3: Run focused analysis tests**
 Run: `uv run pytest tests/test_phases_development.py tests/test_phases_review.py -q`

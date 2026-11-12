@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib
@@ -26,7 +25,6 @@ if TYPE_CHECKING:
     from ralph.interrupt.signal_getter import SignalGetter
     from ralph.interrupt.signal_setter import SignalSetter
     from ralph.process.manager import ProcessManager, ProcessRecord
-
 
 
 INTERRUPT_HARD_KILL_BUDGET_SECONDS: float = 1.5
@@ -70,12 +68,8 @@ if (
     )
 
 
-_DEFAULT_SIGNAL_GETTER = cast(
-    "SignalGetter", signal.getsignal
-)
-_DEFAULT_SIGNAL_SETTER = cast(
-    "SignalSetter", signal.signal
-)
+_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
+_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
 
 
 class _CpuTimes(Protocol):
@@ -93,9 +87,7 @@ class _PsutilModule(Protocol):
 
 def _psutil_pid_cpu_time(pid: int) -> float:
     try:
-        psutil = cast(
-            "_PsutilModule", importlib.import_module("psutil")
-        )
+        psutil = cast("_PsutilModule", importlib.import_module("psutil"))
     except Exception:
         return 0.0
     try:
@@ -189,7 +181,6 @@ def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]
 
 @dataclass(frozen=True)
 class InterruptDispatcher:
-
     controller: InterruptController
     process_manager: ProcessManager
     hard_exit: Callable[[int], None] | None
@@ -247,9 +238,7 @@ class InterruptDispatcher:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        bridge_pids_legacy = cast(
-            "Iterable[int]", kwargs.pop("bridge_pids", ())
-        )
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)

@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitChainConfig:
-
     registry: AgentRegistry
     agents: list[str]
     verbose: bool

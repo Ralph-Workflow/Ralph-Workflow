@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -32,7 +31,6 @@ if TYPE_CHECKING:
 
 
 class ManagedProcess:
-
     def __init__(
         self,
         proc: _SyncProcessLike,

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ReadinessAssessment:
-
     structure_complete: bool = False
     implementation_verified: bool = False
     outcome_evidence_reviewed: bool = False

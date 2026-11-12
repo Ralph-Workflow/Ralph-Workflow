@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
@@ -7,7 +6,6 @@ from uuid import uuid4
 
 @dataclass(frozen=True)
 class RunContext:
-
     run_id: str
     parent_run_id: str | None = None
     resume_count: int = 0

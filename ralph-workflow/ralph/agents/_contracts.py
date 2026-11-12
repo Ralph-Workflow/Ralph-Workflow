@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
@@ -17,7 +16,6 @@ __all__ = ["AgentParser", "Clock", "StrategyFactory", "SystemClock"]
 
 
 class StrategyFactory(Protocol):
-
     def __call__(
         self,
         *,

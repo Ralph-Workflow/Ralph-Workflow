@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -30,9 +29,7 @@ _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    return cast(
-        "AgentTransport", config.transport
-    )
+    return cast("AgentTransport", config.transport)
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
@@ -298,20 +295,17 @@ def _append_transport_prompt_arg(
 
 @runtime_checkable
 class CommandBuilder(Protocol):
-
     def build(
         self,
         config: AgentConfig,
         prompt_file: str,
         *,
         options: _BuildCommandOptions,
-    ) -> list[str]:
-        ...
+    ) -> list[str]: ...
 
 
 @dataclass(frozen=True, slots=True)
 class CommandBuilderSpec:
-
     base_argv: tuple[str, ...]
     format_flag: tuple[str, str] | None
     output_flag: str | None
@@ -327,7 +321,6 @@ class CommandBuilderSpec:
 
 
 class ConfigurableCommandBuilder:
-
     def __init__(self, spec: CommandBuilderSpec) -> None:
         self.spec = spec
 
@@ -428,7 +421,6 @@ class ConfigurableCommandBuilder:
 
 
 class OpencodeCommandBuilder(ConfigurableCommandBuilder):
-
     SPEC = CommandBuilderSpec(
         base_argv=("opencode", "run"),
         format_flag=("--format", "json"),
@@ -446,7 +438,6 @@ class OpencodeCommandBuilder(ConfigurableCommandBuilder):
 
 
 class NanocoderCommandBuilder(ConfigurableCommandBuilder):
-
     SPEC = CommandBuilderSpec(
         base_argv=("nanocoder",),
         format_flag=None,
@@ -463,7 +454,6 @@ class NanocoderCommandBuilder(ConfigurableCommandBuilder):
 
 
 class CodexCommandBuilder(ConfigurableCommandBuilder):
-
     SPEC = CommandBuilderSpec(
         base_argv=("codex", "exec"),
         format_flag=None,
@@ -481,7 +471,6 @@ class CodexCommandBuilder(ConfigurableCommandBuilder):
 
 
 class ClaudeInteractiveCommandBuilder:
-
     def build(
         self,
         config: AgentConfig,
@@ -510,7 +499,6 @@ class ClaudeInteractiveCommandBuilder:
 
 
 class AgyCommandBuilder(ConfigurableCommandBuilder):
-
     SPEC = CommandBuilderSpec(
         base_argv=("agy",),
         format_flag=None,
@@ -530,7 +518,6 @@ class AgyCommandBuilder(ConfigurableCommandBuilder):
 
 
 class CursorCommandBuilder(ConfigurableCommandBuilder):
-
     SPEC = CommandBuilderSpec(
         base_argv=("agent",),
         format_flag=None,
@@ -548,7 +535,6 @@ class CursorCommandBuilder(ConfigurableCommandBuilder):
 
 
 class PiCommandBuilder(ConfigurableCommandBuilder):
-
     SPEC = CommandBuilderSpec(
         base_argv=("pi",),
         format_flag=None,
@@ -595,7 +581,6 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
 
 
 class KimiCommandBuilder(ConfigurableCommandBuilder):
-
     SPEC = CommandBuilderSpec(
         base_argv=("kimi",),
         format_flag=None,
@@ -613,7 +598,6 @@ class KimiCommandBuilder(ConfigurableCommandBuilder):
 
 
 class DefaultCommandBuilder:
-
     def build(
         self,
         config: AgentConfig,

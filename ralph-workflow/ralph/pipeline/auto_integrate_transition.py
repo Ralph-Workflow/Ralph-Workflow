@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class Transition:
-
     __slots__ = ("_field_map", "_from_state_guard", "_name")
 
     ALL: tuple[Transition, ...] = ()
@@ -53,7 +51,6 @@ class Transition:
                 )
             update[self._field_map[key]] = value
         return record.model_copy(update=update)
-
 
 
 DIAGNOSTIC_BUDGET_SPENT_REASON: str = (

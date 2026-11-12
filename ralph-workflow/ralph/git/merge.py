@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -138,14 +137,12 @@ UNMERGED_PATH_QUERY_FAILED = "<unmerged-path-query-failed>"
 
 @dataclass(frozen=True)
 class UnmergedPathsObservation:
-
     paths: tuple[str, ...] = ()
     query_ok: bool = True
 
 
 @dataclass(frozen=True)
 class MergeResult:
-
     outcome: str
     reason: str | None = None
     blocked_paths: tuple[str, ...] = ()
@@ -505,6 +502,3 @@ __all__ = [
     "worktree_for_branch",
     "worktree_lookup",
 ]
-
-
-

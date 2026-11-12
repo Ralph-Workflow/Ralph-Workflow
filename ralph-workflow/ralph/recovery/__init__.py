@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.recovery.agent_failure_ledger import (

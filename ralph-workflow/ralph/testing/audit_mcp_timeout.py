@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -37,7 +37,7 @@ _TIMEOUT_KEYWORD_METHODS: frozenset[str] = frozenset({"communicate", "communicat
 _PACKAGE_DIR: Path = Path(__file__).resolve().parent.parent
 _PACKAGE_PARENT: Path = _PACKAGE_DIR.parent
 
-_ExemptionKey: TypeAlias = tuple[str, str, str, int]
+type _ExemptionKey = tuple[str, str, str, int]
 
 STRUCTURAL_EXEMPTIONS: dict[_ExemptionKey, str] = {
     (

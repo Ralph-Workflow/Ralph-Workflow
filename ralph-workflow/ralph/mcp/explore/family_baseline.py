@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +11,6 @@ from ralph.mcp.explore.audit_register import (
 
 @dataclass(frozen=True, slots=True)
 class FamilyBaselineFlow:
-
     family: AuditFamily
     name: str
     current_operation_script: tuple[str, ...]

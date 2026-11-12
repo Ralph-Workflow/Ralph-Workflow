@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.explore.audit_register import (

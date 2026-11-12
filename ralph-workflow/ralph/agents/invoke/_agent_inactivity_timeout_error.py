@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
@@ -7,7 +6,6 @@ from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 
 
 class AgentInactivityTimeoutError(AgentInvocationError):
-
     def __init__(
         self,
         agent_name: str,

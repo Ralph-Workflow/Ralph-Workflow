@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RunCompletionModel:
-
     final_phase: str
     is_failure: bool
     exit_trigger: str = "exited"

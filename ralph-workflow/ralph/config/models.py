@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field, model_validator
@@ -39,7 +38,6 @@ def _normalize_drain_value(value: object) -> AgentDrainConfig:
 
 
 class UnifiedConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)

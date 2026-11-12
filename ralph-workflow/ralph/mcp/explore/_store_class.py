@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -71,7 +70,6 @@ class ExploreStore(
     _InitializeMethods,
     _RetentionMethods,
 ):
-
     def __init__(
         self,
         index_dir: Path,
@@ -96,7 +94,6 @@ class ExploreStore(
         )
         self._conn.row_factory = sqlite3.Row
         self._initialize()
-
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Cursor]:
@@ -123,7 +120,6 @@ class ExploreStore(
             cur.close()
 
     transaction = _transaction
-
 
     @property
     def db_path(self) -> Path:
@@ -160,7 +156,6 @@ class ExploreStore(
             return False
         self.reopen()
         return True
-
 
     def upsert_chunk(self, chunk: ChunkRow, text: str) -> None:
         with self._transaction() as cur:
@@ -290,14 +285,10 @@ class ExploreStore(
         cur = self._conn.execute(sql, params)
         try:
             if glob_filter is None:
-                return cast(
-                    "list[sqlite3.Row]", cur.fetchall()
-                )
+                return cast("list[sqlite3.Row]", cur.fetchall())
             selected: list[sqlite3.Row] = []
             while len(selected) < limit:
-                page = cast(
-                    "list[sqlite3.Row]", cur.fetchmany(_FTS_GLOB_PAGE_ROWS)
-                )
+                page = cast("list[sqlite3.Row]", cur.fetchmany(_FTS_GLOB_PAGE_ROWS))
                 if not page:
                     break
                 for row in page:
@@ -309,7 +300,6 @@ class ExploreStore(
             return selected
         finally:
             cur.close()
-
 
     def insert_evidence(self, row: EvidenceRow) -> None:
         with self._transaction() as cur:
@@ -399,7 +389,6 @@ class ExploreStore(
         if row is None:
             return None
         return _row_to_evidence(row)
-
 
     def replace_structure_rows(
         self,
@@ -517,9 +506,7 @@ class ExploreStore(
                 "SELECT * FROM spans WHERE path = ? ORDER BY start_line, start_col",
                 (path,),
             )
-        rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
         for span_row in rows:
             yield _row_to_span(span_row)
 
@@ -553,9 +540,7 @@ class ExploreStore(
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, qualified_name, kind"
         cur = self._conn.execute(sql, tuple(params))
-        rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
         return [_row_to_symbol(row) for row in rows]
 
     def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
@@ -566,9 +551,7 @@ class ExploreStore(
                 "SELECT * FROM symbols WHERE path = ? ORDER BY qualified_name",
                 (path,),
             )
-        rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
         for sym_row in rows:
             yield _row_to_symbol(sym_row)
 
@@ -591,9 +574,7 @@ class ExploreStore(
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, relation, source_id, target_id"
         cur = self._conn.execute(sql, params)
-        rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
         for edge_row in rows:
             yield _row_to_edge(edge_row)
 
@@ -604,7 +585,6 @@ class ExploreStore(
             row: sqlite3.Row | None = cur.fetchone()
             counts[table] = _row_int_opt(row, 0) if row is not None else 0
         return counts
-
 
     def mark_dirty(
         self,
@@ -635,9 +615,7 @@ class ExploreStore(
     def consume_dirty_paths(self) -> list[str]:
         with self._transaction() as cur:
             cur.execute("SELECT path FROM dirty_paths")
-            rows = cast(
-                "list[sqlite3.Row]", cur.fetchall()
-            )
+            rows = cast("list[sqlite3.Row]", cur.fetchall())
             paths = [_row_str(row, "path") for row in rows]
             cur.execute("DELETE FROM dirty_paths")
             return paths
@@ -652,11 +630,8 @@ class ExploreStore(
 
     def peek_dirty_paths(self) -> list[str]:
         cur = self._conn.execute("SELECT path FROM dirty_paths")
-        rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
         return [_row_str(row, "path") for row in rows]
-
 
     def get_setting(self, key: str) -> str | None:
         self.maybe_reopen_after_swap()

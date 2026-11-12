@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -53,7 +52,6 @@ def _count_uncommitted_changes(git_probe: GitProbe) -> int:
 
 @dataclass
 class SystemInfo:
-
     os: str
     arch: str
     working_directory: str | None

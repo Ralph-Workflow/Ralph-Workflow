@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -19,7 +18,6 @@ __all__ = [
 
 
 class ChainManager:
-
     def __init__(self, agents_policy: AgentsPolicy) -> None:
         self._policy = agents_policy
 

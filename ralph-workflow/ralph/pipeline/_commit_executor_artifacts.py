@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -59,12 +58,8 @@ def clear_phase_output_artifacts(
     phase: str,
     **opts: object,
 ) -> None:
-    drain = cast(
-        "str | None", opts.get("drain")
-    )
-    policy_bundle = cast(
-        "PolicyBundle | None", opts.get("policy_bundle")
-    )
+    drain = cast("str | None", opts.get("drain"))
+    policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
     effective_drain = drain or phase
     required_artifact = (
         resolve_phase_required_artifact(

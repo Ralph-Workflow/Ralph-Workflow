@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.pipeline.conflict_resolution._operator_command import (

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from ralph.mcp.multimodal._failure_kind import MultimodalFailureKind
 
 @dataclass(frozen=True)
 class MultimodalFailure:
-
     kind: MultimodalFailureKind
     message: str
     modality: str | None = None

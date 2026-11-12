@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Protocol
@@ -8,7 +7,6 @@ from ralph.mcp.websearch.backends._web_search_error import WebSearchError
 
 
 class WebSearchBackend(Protocol):
-
     def search(self, query: str, *, limit: int = 10) -> list[SearchResult]: ...
 
 

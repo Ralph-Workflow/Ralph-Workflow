@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class AgentSpec:
-
     name: str
     transport: AgentTransport
     interactive: bool = False
@@ -43,9 +41,7 @@ class AgentSpec:
     ) -> AgentSpec:
         return cls(
             name=config.cmd,
-            transport=cast(
-                "AgentTransport", config.transport
-            ),
+            transport=cast("AgentTransport", config.transport),
             interactive=interactive,
             requires_pty=interactive,
             session_resume_template=config.session_flag,

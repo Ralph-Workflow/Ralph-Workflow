@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -19,7 +18,6 @@ _MAX_KNOWN_CHILDREN: int = 64
 
 
 class OpenCodeSubagentSessionProbe:
-
     def __init__(
         self,
         *,
@@ -45,12 +43,8 @@ class OpenCodeSubagentSessionProbe:
         self._last_status_at: float | None = None
         self._updates_since_status = 0
         self._latest_summary: str | None = None
-        self._seen: OrderedDict[tuple[str, int], None] = (
-            OrderedDict()
-        )
-        self._known_children: OrderedDict[str, None] = (
-            OrderedDict()
-        )
+        self._seen: OrderedDict[tuple[str, int], None] = OrderedDict()
+        self._known_children: OrderedDict[str, None] = OrderedDict()
         self._closed = False
 
     def poll(self) -> int:

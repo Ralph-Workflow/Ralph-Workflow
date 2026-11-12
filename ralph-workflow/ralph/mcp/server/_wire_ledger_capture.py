@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ __all__ = ["WireLedgerCapture"]
 
 @dataclass(frozen=True)
 class WireLedgerCapture:
-
     method: str
     tool_name: str | None
     run_id: str

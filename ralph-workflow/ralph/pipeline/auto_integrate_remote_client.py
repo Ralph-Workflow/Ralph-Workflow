@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -56,7 +55,6 @@ __all__ = [
 
 
 class _DefaultRemoteClient:
-
     def refresh_target(
         self,
         repo_root: Path,
@@ -424,8 +422,6 @@ def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | Non
     return result.stdout.strip() or None
 
 
-
-
 def _arm_throttle(
     repo_root: Path,
     remote: str,
@@ -441,8 +437,6 @@ def _consume_throttle_signal_unhealthy(repo_root: Path, remote: str, target: str
     from ralph.pipeline.auto_integrate_remote_sync import _REMOTE_PULL_THROTTLE
 
     _REMOTE_PULL_THROTTLE.invalidate(repo_root, remote, target)
-
-
 
 
 def _record_remote_state(

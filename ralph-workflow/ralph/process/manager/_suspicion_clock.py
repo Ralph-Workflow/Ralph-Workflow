@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph import timeout_defaults as _td
@@ -7,7 +6,6 @@ _SUSPICIOUS_RULES: frozenset[str] = frozenset({"R4", "R7"})
 
 
 class SuspicionClock:
-
     __slots__ = ("_streak_s", "_threshold_s")
 
     def __init__(self, *, threshold_s: float | None = None) -> None:

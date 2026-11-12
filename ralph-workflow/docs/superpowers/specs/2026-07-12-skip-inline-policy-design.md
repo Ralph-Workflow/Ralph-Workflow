@@ -14,7 +14,7 @@ offered the choice up front, with clear messaging: Ralph's policy is a good
 default if you are not confident in your existing setup, but you can keep
 yours if you prefer.
 
-## Decision summary
+## Choice summary
 
 * The choice surfaces during `ralph run` preflight, before the managed block
   is appended, and only when stdin AND stdout are TTYs. Non-interactive runs
@@ -31,7 +31,7 @@ yours if you prefer.
 1. AGENTS.md exists in the workspace.
 2. It contains NO Ralph markers: no `AGENTS_BLOCK_BEGIN`, no
    `AGENTS_BLOCK_END`, no `OPT_OUT_MARKER`. Any marker means the repo has
-   already been bootstrapped or already decided.
+   already been bootstrapped or already resolved.
 3. Its content is *significant*: at least one markdown heading line
    (a line starting with `#`) OR at least 10 non-empty lines. Both
    thresholds are deterministic constants in

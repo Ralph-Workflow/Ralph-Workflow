@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -45,9 +44,7 @@ _MAX_RETAINED_TOOL_TARGETS = 128
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
-    module = cast(
-        "_ParallelDisplayModule", import_module("ralph.display.parallel_display")
-    )
+    module = cast("_ParallelDisplayModule", import_module("ralph.display.parallel_display"))
     return module.ParallelDisplay
 
 
@@ -68,18 +65,10 @@ def stream_parsed_agent_activity(
     agent_config: AgentConfig | None = None,
     **kwargs: object,
 ) -> None:
-    transport = cast(
-        "AgentTransport | None", kwargs.get("transport")
-    )
-    display_context = cast(
-        "DisplayContext | None", kwargs.get("display_context")
-    )
-    raw_output_sink = cast(
-        "deque[str] | list[str] | None", kwargs.get("raw_output_sink")
-    )
-    rendered_output_sink = cast(
-        "deque[str] | list[str] | None", kwargs.get("rendered_output_sink")
-    )
+    transport = cast("AgentTransport | None", kwargs.get("transport"))
+    display_context = cast("DisplayContext | None", kwargs.get("display_context"))
+    raw_output_sink = cast("deque[str] | list[str] | None", kwargs.get("raw_output_sink"))
+    rendered_output_sink = cast("deque[str] | list[str] | None", kwargs.get("rendered_output_sink"))
     session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
     raw_line_sink = cast("Callable[[str], None] | None", kwargs.get("raw_line_sink"))
     subagent_pid_registry = cast(
@@ -95,9 +84,7 @@ def stream_parsed_agent_activity(
         parser_key = resolve_parser_key(
             agent_config.cmd,
             agent_config.json_parser,
-            cast(
-                "AgentTransport", agent_config.transport
-            ),
+            cast("AgentTransport", agent_config.transport),
         )
     else:
         parser_key = (
@@ -311,8 +298,6 @@ def _format_metadata_value(value: object) -> str | None:
     if isinstance(value, str) and value:
         return value
     return None
-
-
 
 
 render_agent_activity_line = _render_agent_activity_line

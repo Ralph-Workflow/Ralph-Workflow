@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import atexit
@@ -35,12 +34,8 @@ _CODEX_TOOL_TIMEOUT_SEC: Final[int] = math.ceil(
 _DEFAULT_CODEX_HOME_CAP: int = 64
 _ALL_CODEX_HOMES_CAP: Final[int] = 1024
 
-_allocated_codex_homes: collections.deque[str] = collections.deque(
-    maxlen=_DEFAULT_CODEX_HOME_CAP
-)
-_all_allocated_codex_homes: set[str] = (
-    set()
-)
+_allocated_codex_homes: collections.deque[str] = collections.deque(maxlen=_DEFAULT_CODEX_HOME_CAP)
+_all_allocated_codex_homes: set[str] = set()
 
 
 def cleanup_codex_homes() -> None:

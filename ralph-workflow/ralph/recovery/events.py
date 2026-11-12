@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -17,7 +16,6 @@ _AnyListener = Callable[[FailureEvent | FalloverEvent], None]
 
 
 class FailureEventBus:
-
     def __init__(self) -> None:
         self._listeners: list[_AnyListener] = []
 

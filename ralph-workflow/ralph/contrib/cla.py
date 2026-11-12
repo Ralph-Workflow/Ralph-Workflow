@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -36,7 +35,6 @@ _CODEBERG_PULL_REQUEST_EVENTS = frozenset({"pull_request", "pull_request_metadat
 
 @dataclass(frozen=True)
 class ClaCheckResult:
-
     ok: bool
     message: str
 

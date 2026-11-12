@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -494,9 +493,7 @@ def _execute_effect_with_optional_display(
         "run_id": run_id,
     }
     supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
-    return cast("_ExecuteEffectKwargsFn", fn)(
-        effect, config, workspace_scope, **supported
-    )
+    return cast("_ExecuteEffectKwargsFn", fn)(effect, config, workspace_scope, **supported)
 
 
 def execute_effect_with_optional_display(

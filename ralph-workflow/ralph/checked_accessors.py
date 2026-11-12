@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -20,8 +19,6 @@ __all__ = [
     "optional_str",
     "optional_str_list",
 ]
-
-
 
 
 def as_str(value: object, *, field: str | None = None) -> str:
@@ -108,8 +105,6 @@ def as_sequence(value: object, *, field: str | None = None) -> Sequence[object]:
     return value
 
 
-
-
 def optional_str(value: object, *, field: str | None = None) -> str | None:
     del field
     if not isinstance(value, str) or not value:
@@ -148,8 +143,6 @@ def optional_str_list(value: object, *, field: str | None = None) -> list[str] |
             return None
         result.append(item)
     return result
-
-
 
 
 def _field_message(field: str | None, message: str) -> str:

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class RuntimeEventRecorder:
-
     _latest: FailureOrigin | None = None
     detail: str | None = None
 

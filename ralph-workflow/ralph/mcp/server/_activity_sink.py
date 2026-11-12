@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -29,7 +28,6 @@ def invoke_active_sink(tool_name: str) -> None:
         sink(tool_name)
     except Exception:
         return
-
 
 
 _subagent_sink: ContextVar[ActivitySink | None] = ContextVar(

@@ -24,9 +24,9 @@ post-fix state, the residual fixes that close invariant 7 / 13, and the
 defensive `RuntimeError` that fails closed if a future contributor
 reintroduces a repository-global evidence key.
 
-## Decision
+## Choice
 
-The architecture is **not extended** by this ADR. The decision is
+The architecture is **not extended** by this ADR. The choice is
 **closure**: the two residual prose-comparison sites are replaced with
 typed enum-identity checks, the operation-scoped evidence collector
 gains a fail-closed `RuntimeError` boundary, and the audit tables
@@ -58,7 +58,7 @@ and the adjacent
 matching (`"diagnos" in norm or "evidence" in norm`) to flip the
 operator surface to the `EVIDENCE_DIAGNOSIS` label. A free-form string
 that happened to contain those substrings could flip the label without
-a typed authority decision. This violated invariant 13
+a typed authority choice. This violated invariant 13
 ("UI and logs describe the actual authoritative state rather than the
 helper currently executing").
 

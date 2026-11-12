@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
 
 
 class ReadingVariant(Enum):
-
     KNOWN_GOOD = "known_good"
     KNOWN_BLOCKED = "known_blocked"
     UNKNOWN = "unknown"
@@ -28,7 +26,6 @@ class ReadingVariant(Enum):
 
 @dataclass(frozen=True, slots=True)
 class Reading[T]:
-
     variant: ReadingVariant
     value: T | None = None
     reason: str | None = None
@@ -83,7 +80,6 @@ def reading_from_callable[
 
 
 class TargetVsFeature(Enum):
-
     EQUAL = "equal"
     BEHIND = "behind"
     AHEAD = "ahead"
@@ -92,7 +88,6 @@ class TargetVsFeature(Enum):
 
 
 class TargetVsRemote(Enum):
-
     EQUAL = "equal"
     BEHIND = "behind"
     AHEAD = "ahead"
@@ -102,7 +97,6 @@ class TargetVsRemote(Enum):
 
 
 class WorktreeState(Enum):
-
     CLEAN = "clean"
     TRACKED_CHANGES = "tracked_changes"
     STAGED = "staged"
@@ -112,7 +106,6 @@ class WorktreeState(Enum):
 
 
 class DirtShape(Enum):
-
     NONE = "none"
     UNSTAGED_MODIFICATION = "unstaged_modification"
     STAGED_ONLY = "staged_only"
@@ -132,21 +125,18 @@ class DirtShape(Enum):
 
 @dataclass(frozen=True, slots=True)
 class DirtEvidence:
-
     mode_only_paths: frozenset[str] = frozenset()
     empty_diff_paths: frozenset[str] = frozenset()
     incoming_overwrite_paths: frozenset[str] = frozenset()
 
 
 class HeadState(Enum):
-
     ATTACHED = "attached"
     DETACHED = "detached"
     UNKNOWN = "unknown"
 
 
 class InProgressKind(Enum):
-
     NONE = "none"
     REBASE = "rebase"
     MERGE = "merge"
@@ -157,14 +147,12 @@ class InProgressKind(Enum):
 
 
 class InProgressOwnership(Enum):
-
     OWNED = "owned"
     FOREIGN = "foreign"
     UNKNOWN = "unknown"
 
 
 class IntegrationRecordState(Enum):
-
     NONE = "none"
     CONSISTENT = "consistent"
     STALE = "stale"
@@ -175,7 +163,6 @@ class IntegrationRecordState(Enum):
 
 @dataclass(frozen=True, slots=True)
 class Observation:
-
     target_vs_feature: TargetVsFeature
     target_vs_remote: TargetVsRemote
     worktree: WorktreeState
@@ -203,10 +190,7 @@ class Observation:
         return self._has_unknown
 
 
-
-
 class WorktreeDispatch(Enum):
-
     ALLOWED = "allowed"
     BLOCKED = "blocked"
     UNKNOWN = "unknown"
@@ -214,7 +198,6 @@ class WorktreeDispatch(Enum):
 
 @dataclass(frozen=True, slots=True)
 class WorktreeVerdict:
-
     state: WorktreeState
     is_clean: bool
     dispatch: WorktreeDispatch
@@ -359,8 +342,6 @@ def classify_worktree(
             dirt_shape=DirtShape.UNKNOWN,
         )
     return _verdict_for_porcelain(observation.value or "", evidence, index_flag_dirt)
-
-
 
 
 def _unreadable(what: str, detail: str) -> Reading[str]:

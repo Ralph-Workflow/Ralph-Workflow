@@ -1,4 +1,3 @@
-
 from typing import Self
 
 from pydantic import Field, model_validator
@@ -10,7 +9,6 @@ from ralph.policy.models._pipeline_policy import PipelinePolicy
 
 
 class PolicyBundle(_FrozenPolicyModel):
-
     agents: AgentsPolicy = Field(..., description="Agent chains and drain bindings")
     pipeline: PipelinePolicy = Field(..., description="Phase graph and routing")
     artifacts: ArtifactsPolicy = Field(..., description="Artifact contracts per drain")

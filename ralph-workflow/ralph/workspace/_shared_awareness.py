@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -56,20 +55,16 @@ def _document_bool(document: dict[str, object], key: str, default: bool = False)
 
 
 class SharedAwarenessSidecar:
-
     def __init__(self, workspace_root: Path) -> None:
         self._workspace_root = workspace_root.absolute()
         self._path = self._workspace_root / SIDECAR_RELPATH
         self._lock = threading.Lock()
         self._owner_id: str | None = None
         self._epoch = 0
-        self._paths: list[
-            str
-        ] = []
+        self._paths: list[str] = []
         self._overflowed = False
         self._polled_epoch = _POLL_NEVER
         self._last_claimed_epoch = _CLAIM_NEVER
-
 
     def begin_ownership(self, owner_id: str, *, prior_holder: str | None) -> int:
         with self._lock:
@@ -129,7 +124,6 @@ class SharedAwarenessSidecar:
             self._paths = []
             self._overflowed = False
 
-
     def poll(self) -> SharedAwarenessState:
         with self._lock:
             document = self._read_document()
@@ -150,7 +144,6 @@ class SharedAwarenessSidecar:
     def claim_epoch(self, epoch: int) -> None:
         with self._lock:
             self._last_claimed_epoch = max(epoch, self._last_claimed_epoch)
-
 
     def _reset_locked(self) -> None:
         self._owner_id = None
@@ -198,9 +191,7 @@ class SharedAwarenessSidecar:
             return max(self._epoch, self._polled_epoch)
 
 
-_sidecars: dict[
-    str, SharedAwarenessSidecar
-] = {}
+_sidecars: dict[str, SharedAwarenessSidecar] = {}
 _sidecars_lock = threading.Lock()
 
 

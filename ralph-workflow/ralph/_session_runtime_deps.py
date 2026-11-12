@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -106,7 +105,6 @@ def _shutdown_bridge(bridge: SessionBridgeLike) -> None:
 
 @dataclass(frozen=True)
 class ManagedAgentSessionDeps:
-
     build_session_mcp_plan: BuildSessionMcpPlanFn = _build_session_mcp_plan
     start_mcp_server: StartMcpServerFn = _start_mcp_server
     invoke_agent: InvokeAgentFn = _invoke_agent

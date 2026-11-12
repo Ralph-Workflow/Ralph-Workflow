@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -40,9 +39,7 @@ _WINDOWS_DRIVE_LETTER_PREFIX_LEN: int = 3
 
 _TRUE_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 
-_PHASE_ROLES: frozenset[str] = frozenset(
-    cast("tuple[str, ...]", get_args(PhaseRole))
-)
+_PHASE_ROLES: frozenset[str] = frozenset(cast("tuple[str, ...]", get_args(PhaseRole)))
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
 _POLICY_SCHEMA_STATES: frozenset[str] = frozenset({"current", "outdated", "absent", "unknown"})
 _SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
@@ -63,7 +60,6 @@ _AGENT_STATS_MAX_KEYS = 128
 
 @dataclass
 class TelemetryState:
-
     initialized: bool = False
     started_at: float | None = None
     started_at_utc: datetime | None = None
@@ -231,9 +227,7 @@ def _sentry_environment() -> str:
 
 def _add_breadcrumb(*, category: str, message: str, data: Mapping[str, object]) -> None:
     with contextlib.suppress(Exception):
-        add_breadcrumb = cast(
-            "_BreadcrumbRecorder", sentry_sdk.add_breadcrumb
-        )
+        add_breadcrumb = cast("_BreadcrumbRecorder", sentry_sdk.add_breadcrumb)
         payload: dict[str, object] = dict(data)
         add_breadcrumb(
             category=category,
@@ -250,9 +244,7 @@ def _metric_count(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        count = cast(
-            "_MetricCounter", sentry_metrics.count
-        )
+        count = cast("_MetricCounter", sentry_metrics.count)
         payload: dict[str, object] = dict(attributes)
         count(name, value, attributes=payload)
 
@@ -265,9 +257,7 @@ def _metric_distribution(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        distribution = cast(
-            "_MetricDistribution", sentry_metrics.distribution
-        )
+        distribution = cast("_MetricDistribution", sentry_metrics.distribution)
         payload: dict[str, object] = dict(attributes)
         distribution(name, value, unit=unit, attributes=payload)
 
@@ -338,9 +328,7 @@ def _scrub_frames(frames: object) -> None:
         filename = d_frame.get("filename")
         if not _is_path_like_filename(filename):
             continue
-        d_frame["filename"] = _basename_of_path_like(
-            cast("str", filename)
-        )
+        d_frame["filename"] = _basename_of_path_like(cast("str", filename))
 
 
 def scrub_event(

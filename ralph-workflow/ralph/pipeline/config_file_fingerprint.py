@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +7,6 @@ from typing import NamedTuple
 
 
 class ConfigFileFingerprint(NamedTuple):
-
     path: Path
     content_hash: str | None
 

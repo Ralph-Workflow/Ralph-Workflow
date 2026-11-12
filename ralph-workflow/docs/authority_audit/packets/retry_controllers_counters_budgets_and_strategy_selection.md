@@ -22,7 +22,7 @@ attempt caps, the authority is
   injected clock (`auto_integrate_backoff.py:106-122`).
 - `ralph.pipeline._integration_action._conflict_action` returns the
   typed `IntegrationAction.WAIT_FOR_BOUNDED_RETRY` or
-  `IntegrationAction.REQUIRE_INTERVENTION` decision based on the
+  `IntegrationAction.REQUIRE_INTERVENTION` choice based on the
   `retry_deadline` and the injected clock
   (`_integration_action.py:111-141`).
 
@@ -38,7 +38,7 @@ attempt caps, the authority is
 ## Derived projections
 - `IntegrationAction.WAIT_FOR_BOUNDED_RETRY` and
   `IntegrationAction.REQUIRE_INTERVENTION` are the typed projections
-  of the retry decision (`_integration_action.py:25-26`).
+  of the retry choice (`_integration_action.py:25-26`).
 
 ## Valid transitions
 - `BUMP_DIAGNOSTIC_ATTEMPT` and `RAISE_DIAGNOSTIC_INTERVENTION` are

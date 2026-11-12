@@ -15,7 +15,7 @@ collection, use, disclosure, retention, and deletion.
 Required when the project collects, receives, derives, transmits, or retains
 personal, sensitive, telemetry, or regulated data. Legal conclusions require
 owner or qualified review and MUST NOT be inferred by an agent. If governed
-data handling ceases, retain a dated inactive decision and reactivation
+data handling ceases, retain a dated inactive choice and reactivation
 trigger, or remove the policy through reviewed cleanup.
 
 ## Default requirements

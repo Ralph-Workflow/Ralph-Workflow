@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ResolvedInvocationRuntime:
-
     agent_env: dict[str, str] | None = None
     server_env: dict[str, str] | None = None
     mcp_endpoint: str | None = None

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -44,7 +43,6 @@ def bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
 
 @dataclass(frozen=True)
 class BridgeDiagnostics:
-
     restart_count: int
     restart_attempt_count: int
     generation: int

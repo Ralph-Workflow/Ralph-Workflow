@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -46,14 +45,11 @@ def _raise_template_error(message: str) -> str:
 
 
 class TemplateRenderer:
-
     def __init__(self, partials: Mapping[str, str]) -> None:
         templates = {
             f"{name}.j2": _normalize_static_spacing(content) for name, content in partials.items()
         }
-        strict_undefined = cast(
-            "type[Undefined]", StrictUndefined
-        )
+        strict_undefined = cast("type[Undefined]", StrictUndefined)
         self._environment = Environment(
             loader=DictLoader(templates),
             autoescape=False,
@@ -220,9 +216,7 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
                 outside.append(line)
                 continue
             flush_outside()
-            fence = cast(
-                "str", match.group("fence")
-            )
+            fence = cast("str", match.group("fence"))
             fence_character = fence[0]
             fence_length = len(fence)
             output.append(line)
@@ -231,9 +225,7 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
         output.append(line)
         if match is None:
             continue
-        fence = cast(
-            "str", match.group("fence")
-        )
+        fence = cast("str", match.group("fence"))
         if fence[0] == fence_character and len(fence) >= fence_length:
             fence_character = ""
             fence_length = 0

@@ -102,7 +102,7 @@ the project maintains and can statically check them.
   compatibility, first-party source coverage, diagnostic quality, and CI
   suitability. No product is universally preferred by this policy.
 * Suppressions MUST carry the narrowest tool-supported diagnostic identifier
-  and a documented rationale. Blanket suppressions are forbidden.
+  and a documented reason. Blanket suppressions are forbidden.
 * A suppression is a last resort after fixing the type, narrowing the dynamic
   boundary, adding validation, or improving a local adapter/stub has been tried.
   Every new suppression MUST name the tool limitation or external boundary,
@@ -195,9 +195,9 @@ To follow this policy, an agent making any change MUST:
 An agent MUST NOT:
 
 * Add `ignore_missing_imports`, `follow_imports = silent`, or similar
-  global silencers without a per-dependency rationale.
+  global silencers without a per-dependency reason.
 * Use a blanket suppression. Require the narrowest tool-supported identifier
-  plus rationale; when no identifier exists, use the narrowest scope and
+  plus reason; when no identifier exists, use the narrowest scope and
   document that tool limitation.
 * Add a suppression merely to make the checker pass, silence first-party
   design errors globally, or expand the established unchecked baseline.

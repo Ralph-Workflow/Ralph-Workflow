@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,7 +25,6 @@ def is_structurally_small_bounded_output(bounded_output: list[str]) -> bool:
 
 @dataclass
 class CircumstantialEvidence:
-
     process_alive: bool
     has_stdout_bytes: bool
     has_meaningful_output: bool

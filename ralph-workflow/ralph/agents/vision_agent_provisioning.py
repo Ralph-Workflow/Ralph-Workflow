@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,7 +19,6 @@ VISION_VERDICT_AGENT_NAME: str = "vision-verdict"
 
 @dataclass(frozen=True)
 class VisionVerdictDispatch:
-
     target: str
     intent: str
     before_handles: tuple[str, ...]

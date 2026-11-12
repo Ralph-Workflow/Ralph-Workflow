@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ _MAX_LINKS = 100
 
 @dataclass(frozen=True)
 class ExtractedPage:
-
     title: str | None
     text: str
     links: tuple[str, ...]

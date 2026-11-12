@@ -126,7 +126,7 @@ the regression.
 ## Exceptions
 
 A new visual primitive introduced outside the design system requires a
-documented rationale, scope, owner, and review date.
+documented reason, scope, owner, and review date.
 
 ## Maintenance triggers
 

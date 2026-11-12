@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -77,9 +76,7 @@ def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKind
 
     return (
         cast("type[_WaitingEventLike]", WaitingStatusEvent),
-        cast(
-            "type[_WaitingKindLike]", WaitingStatusKind
-        ),
+        cast("type[_WaitingKindLike]", WaitingStatusKind),
     )
 
 
@@ -170,7 +167,6 @@ def _now_iso() -> str:
 
 
 class PipelineSubscriber:
-
     def __init__(
         self,
         *,

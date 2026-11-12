@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import atexit
@@ -116,9 +115,7 @@ _typer_get_command = typer.main.get_command
 
 
 def _as_click_command(command: object) -> click.Command:
-    return cast(
-        "click.Command", command
-    )
+    return cast("click.Command", command)
 
 
 def _get_cli_context() -> DisplayContext:
@@ -512,8 +509,6 @@ def _dispatch_maintenance_flags(
             config=_config_path(config), display_context=display_context
         )
         raise typer.Exit(code=exit_code)
-
-
 
 
 class _CLIRestoreState:

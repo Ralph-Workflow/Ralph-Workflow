@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -36,7 +35,6 @@ _METADATA_LOCK_RELPATH = ".agent/.retention-metadata.lock"
 
 
 class RetentionPassCoordinator:
-
     def __init__(self, *, on_wave_acquired: Callable[[], None] | None = None) -> None:
         self._condition = threading.Condition()
         self._pass_count = 0

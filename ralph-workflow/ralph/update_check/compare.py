@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from packaging.version import InvalidVersion, Version

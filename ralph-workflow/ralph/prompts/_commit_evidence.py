@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -27,7 +26,6 @@ _CHANGE_AREA_DEPTH: Final = 2
 
 @dataclass(frozen=True)
 class CommitEvidenceBundle:
-
     diff: str
     changed_files: tuple[str, ...]
     change_areas: tuple[str, ...]

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, cast
@@ -163,7 +162,6 @@ def _cursor_tool_result_is_error(obj: dict[str, object]) -> bool:
 
 
 class _CursorDispatch:
-
     def __init__(self, owner: CursorParser) -> None:
         self._owner = owner
 
@@ -323,7 +321,6 @@ class _CursorDispatch:
 
 
 class CursorParser(NdjsonParserBase):
-
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"result"})
 
     def __init__(

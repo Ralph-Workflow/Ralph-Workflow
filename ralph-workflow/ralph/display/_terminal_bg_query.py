@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -35,7 +34,6 @@ _HEX_DIGITS_PER_BYTE: Final[int] = 2
 
 
 class _BackgroundCacheState:
-
     background: str | None = None
     probed: bool = False
 
@@ -92,9 +90,7 @@ def _tty_fd() -> tuple[int, bool] | None:
         if isinstance(stdin, IOBase) and stdin.isatty():
             return stdin.fileno(), False
         return (
-            os.open(
-                "/dev/tty", os.O_RDWR | os.O_NOCTTY
-            ),
+            os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY),
             True,
         )
     except Exception:

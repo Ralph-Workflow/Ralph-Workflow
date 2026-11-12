@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class MultimodalSidecarEntry:
-
     artifact_id: str
     uri: str
     mime_type: str

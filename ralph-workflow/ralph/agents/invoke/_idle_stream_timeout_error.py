@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
 
 
 class _IdleStreamTimeoutError(RuntimeError):
-
     def __init__(
         self,
         timeout_seconds: float,

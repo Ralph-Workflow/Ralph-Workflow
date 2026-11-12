@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,7 +33,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PhaseContext:
-
     workspace: Workspace
     registry: AgentRegistry
     chain_manager: ChainManager

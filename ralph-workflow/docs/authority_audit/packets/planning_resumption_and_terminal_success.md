@@ -7,7 +7,7 @@ the single authority for terminal-success eligibility
 
 ## Writers
 - `ralph.pipeline._terminal_authority` is the only writer of the
-  terminal-success decision; the run loop consults it once per
+  terminal-success choice; the run loop consults it once per
   cycle and routes the result to the typed
   `PhaseDecision.REPORT_TERMINAL_SUCCESS` or
   `PhaseDecision.REPORT_TERMINAL_FAILURE` outcomes.
@@ -45,13 +45,13 @@ On restart, the run loop re-reads the integration record, the
 authority re-derives eligibility from those sources. The previous
 turn's `last_decision` is NOT consulted (avoiding feedback-loop
 regression where a settled obligation remains blocked because the
-previous turn decided to block).
+previous turn resolved to block).
 
 ## UNKNOWN representation
 - `last_publication_decision is None` or
   `last_fan_out_decision is None` means the corresponding authority
-  has not yet decided; the terminal authority treats `None` as
-  eligible — an absent decision does NOT block terminal success
+  has not yet resolved; the terminal authority treats `None` as
+  eligible — an absent choice does NOT block terminal success
   (`_terminal_authority.py:44-45`).
 
 ## What blocks dispatch / terminal success

@@ -1,4 +1,3 @@
-
 from pathlib import PurePosixPath
 
 from ralph.pipeline.work_units import WorkUnit

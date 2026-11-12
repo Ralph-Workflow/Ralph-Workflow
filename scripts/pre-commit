@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# pre-commit — Fabrication guard (Level 1) for Ralph Workflow
-#
-# This hook runs automatically before every commit. It blocks any commit
-# that introduces banned patterns in staged markdown files.
-#
-# To bypass in an emergency (NOT for routine use):
-#   git commit --no-verify -m "message"
-#
-# Installed by: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '.')"
 
-# Only run if there are staged markdown files
 STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM | grep '\.md$' || true)
 if [ -z "$STAGED_MD" ]; then
     exit 0

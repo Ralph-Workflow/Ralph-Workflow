@@ -3,7 +3,7 @@
 - **Status:** Draft proposal (no implementation)
 - **Date:** 2026-06-13
 - **Scope target:** Option 3 — live injection across *all* transports (with an honest capability gate)
-- **Trigger (decided):** reuse the watchdog `SUSPECTED_FROZEN` signal
+- **Trigger (resolved):** reuse the watchdog `SUSPECTED_FROZEN` signal
 
 ## 1. Problem
 
@@ -102,14 +102,14 @@ a per-transport implementation, plus the kill+restart floor for the rest.
 
 ## 5. Proposed architecture
 
-### 5.1 Trigger — reuse `SUSPECTED_FROZEN` (decided)
+### 5.1 Trigger — reuse `SUSPECTED_FROZEN` (resolved)
 
 The watchdog already emits `WaitingStatusKind.SUSPECTED_FROZEN` once per waiting
 run at `agent_suspect_waiting_on_child_seconds`, *before* the hard
 `CHILDREN_PERSIST_TOO_LONG` fire (`idle_watchdog.py:990`). It flows to the reader
 via `_pty_line_reader._on_waiting_event` (line 158). The live nag hooks there.
 
-> **Coverage caveat we must surface for the decision-maker.**
+> **Coverage caveat we must surface for the choice-maker.**
 > `SUSPECTED_FROZEN` only fires on the **WAITING_ON_CHILD** branch (the agent
 > spawned children and is quiet). The **pure-idle** path (no children, the model
 > itself silent — e.g. an interactive agent that *finished its turn and is sitting
@@ -117,7 +117,7 @@ via `_pty_line_reader._on_waiting_event` (line 158). The live nag hooks there.
 > drain-window → straight to `FIRE` with **no** pre-fire event. Reusing only
 > `SUSPECTED_FROZEN` therefore does **not** cover the sit-at-prompt case. See
 > §9 Open Question O1 — recommended fast-follow is a parallel pre-fire warning on
-> the pure-idle path. Phase 1 honors the decision (SUSPECTED_FROZEN only) and
+> the pure-idle path. Phase 1 honors the choice (SUSPECTED_FROZEN only) and
 > documents the gap rather than silently missing it.
 
 ### 5.2 `LiveNagInjector` strategy (the core abstraction)
@@ -161,7 +161,7 @@ watchdog SUSPECTED_FROZEN
   progress), the watchdog leaves the waiting run and the flag resets — no banner
   to retract because the nag is a one-shot turn, not a sticky banner.
 
-### 5.4 Nag content (decided earlier: generic continue/finish prod)
+### 5.4 Nag content (resolved earlier: generic continue/finish prod)
 
 ```
 ⚠️ You appear idle. If you are still working, continue toward your goal.
@@ -229,7 +229,7 @@ latency and whether the in-flight context survives.
 
 - **O1 (recommended fast-follow):** add a pure-idle pre-fire warning event so the
   most common "model finished, sitting at prompt" freeze is live-nagged. Without
-  it, Phase 1 only covers waiting-on-child stalls. *Decision: defer to Phase 4, or
+  it, Phase 1 only covers waiting-on-child stalls. *Choice: defer to Phase 4, or
   pull into Phase 1?*
 - **O2:** for Codex, inject-this-turn (Enter) vs queue-next-turn (Tab) — default?
 - **O3:** Claude headless — accept kill+restart floor permanently, or invest in the

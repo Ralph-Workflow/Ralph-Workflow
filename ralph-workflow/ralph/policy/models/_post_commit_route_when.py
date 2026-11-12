@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PostCommitRouteWhen(_FrozenPolicyModel):
-
     phase: str = Field(
         ...,
         description="Commit phase that this route applies to",

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -59,7 +58,6 @@ _KV_PATTERN = re.compile(r"(\w+)=([^,)\s]+)")
 
 @dataclass(frozen=True)
 class CompletionSummaryOptions:
-
     workspace_root: Path | None = None
     dropped_count: int = 0
     content_block_count: int = 0

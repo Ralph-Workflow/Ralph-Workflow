@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import errno
@@ -51,9 +50,7 @@ def _walk_lock_files(base: Path) -> list[Path]:
         dirpath,
         dirnames,
         filenames,
-    ) in os.walk(
-        base, followlinks=False, onerror=lambda _e: None
-    ):
+    ) in os.walk(base, followlinks=False, onerror=lambda _e: None):
         here = Path(dirpath)
         dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
         found.extend(here / name for name in filenames if name.endswith(".lock"))
@@ -109,7 +106,6 @@ def reap_ladder_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
 
 
 class _ProductionGitPlumbing:
-
     def changed_paths(self, root: Path) -> tuple[str, ...] | None:
         from ralph.git.hardening import parse_porcelain_z
         from ralph.git.subprocess_runner import run_git
@@ -480,7 +476,6 @@ class _ProductionGitPlumbing:
 
 
 class _ProductionFileQuarantine:
-
     def rename_into_quarantine(self, root: Path, quarantine_dir: Path, path: str) -> str | None:
         source = root / path
         dest = quarantine_dir / path
@@ -527,7 +522,6 @@ class _ProductionFileQuarantine:
 
 
 class _ProductionEnvironmentProbe:
-
     def failure_class(self, root: Path, *, remote: str) -> EnvironmentFailure | None:
         from ralph.git.subprocess_runner import run_git
 

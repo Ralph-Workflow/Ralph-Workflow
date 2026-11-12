@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -8,7 +7,6 @@ from typing import Protocol, runtime_checkable
 
 @dataclass(frozen=True, slots=True)
 class ScriptedCall:
-
     tool: str
     params: Mapping[str, object]
     expected_evidence_ids: tuple[str, ...] = ()
@@ -16,7 +14,6 @@ class ScriptedCall:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkFixture:
-
     question_id: str
     description: str
     workspace_files: Mapping[str, str]
@@ -32,7 +29,6 @@ class BenchmarkFixture:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkCounters:
-
     tool_calls: int
     returned_bytes: int
     transcript_tokens: int
@@ -44,7 +40,6 @@ class BenchmarkCounters:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkResult:
-
     question_id: str
     baseline: BenchmarkCounters
     indexed: BenchmarkCounters
@@ -67,14 +62,12 @@ class BenchmarkResult:
 
 @runtime_checkable
 class ToolResultLike(Protocol):
-
     content: Sequence[object]
     is_error: bool
 
 
 @dataclass(frozen=True, slots=True)
 class FlowTiming:
-
     flow_id: str
     samples_seconds: tuple[float, ...]
     p95_seconds: float

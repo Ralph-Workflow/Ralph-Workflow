@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -32,7 +31,6 @@ _MINTED_BLOCK_TYPES: frozenset[str] = frozenset(
 )
 
 
-
 _PROVIDER_UNSUPPORTED_MODALITIES: dict[str, frozenset[str]] = {
     "claude": frozenset({"audio", "video"}),
     "anthropic": frozenset({"audio", "video"}),
@@ -47,7 +45,6 @@ _PROVIDER_UNSUPPORTED_REASON: dict[str, str] = {
     "openai": "OpenAI does not accept this modality via Ralph's managed MCP path",
     "codex": "Codex does not accept this modality via Ralph's managed MCP path",
 }
-
 
 
 _INLINE_IMAGE_ROUNDTRIP_UNSAFE_TRANSPORTS: frozenset[str] = frozenset({"codex"})
@@ -295,7 +292,6 @@ def _delivery_for_provider(
 
 @dataclass
 class ResolvedCapabilityProfile:
-
     identity: MultimodalModelIdentity
     verdicts: dict[str, CapabilityVerdict]
 

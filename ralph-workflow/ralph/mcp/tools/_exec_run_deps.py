@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -18,7 +17,6 @@ type OutputChunkCallback = Callable[[str], None]
 
 @dataclass(frozen=True)
 class ExecRunDeps:
-
     runner: CommandRunner | None = None
     cwd_provider: CwdProvider | None = None
     process_manager: ProcessManager | None = None
@@ -28,11 +26,9 @@ class ExecRunDeps:
 
 @runtime_checkable
 class _SessionWithStreaming(Protocol):
-
     def current_thread_tool_output_sink(
         self,
-    ) -> Callable[[dict[str, object]], None] | None:
-        ...
+    ) -> Callable[[dict[str, object]], None] | None: ...
 
 
 def build_effective_exec_deps(

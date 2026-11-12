@@ -126,7 +126,7 @@ verification gate.
 ## Exceptions
 
 A specific automation may omit only a named gate that is technically
-irrelevant to its bounded scope, with rationale, owner, and review date.
+irrelevant to its bounded scope, with reason, owner, and review date.
 Kernel rules are non-exemptible per `execution-kernel.md`.
 
 ## Maintenance triggers

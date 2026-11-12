@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import uuid
@@ -74,7 +73,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerRuntimePaths:
-
     checkpoint_path: Path
     product_criteria_path: Path
     prompt_dump_path: Path

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -57,7 +56,6 @@ ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 
 @dataclass
 class ResolutionSession:
-
     started_at: float | None = None
     unresolved_paths: tuple[str, ...] = ()
     inactivity_timeout_seconds: float | None = None

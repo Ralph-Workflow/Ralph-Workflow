@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -13,12 +12,9 @@ if TYPE_CHECKING:
 
 
 class FakeConnectivityMonitor:
-
     def __init__(self, initial_state: ConnectivityState = ConnectivityState.ONLINE) -> None:
         self._state: ConnectivityState = initial_state
-        self._listeners: list[
-            Callable[[ConnectivityEvent], None]
-        ] = []
+        self._listeners: list[Callable[[ConnectivityEvent], None]] = []
         self._online_event: asyncio.Event = asyncio.Event()
         if initial_state == ConnectivityState.ONLINE:
             self._online_event.set()

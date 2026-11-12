@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class WorkerSnapshot:
-
     unit_id: str
     description: str
     status: str

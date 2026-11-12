@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -73,7 +72,6 @@ def has_machine_global_skills() -> bool:
 
 
 class SkillsProcessView(AbstractContextManager[Path]):
-
     def __init__(self, target_dir: Path | None = None) -> None:
         self._target_dir = target_dir
         self._tempdir: tempfile.TemporaryDirectory[str] | None = None

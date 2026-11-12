@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass
 class PhaseCounters:
-
     content_blocks: int = 0
     thinking_blocks: int = 0
     tool_calls: int = 0

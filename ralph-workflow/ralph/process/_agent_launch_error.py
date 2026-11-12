@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 _E2BIG_ERRNO = 7
 
 
 class AgentLaunchError(OSError):
-
     def __init__(self, agent_name: str, exc: OSError, payload_bytes: int) -> None:
         self.agent_name = agent_name
         self.returncode = -1

@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from pathlib import Path
 
 
 class WorkspaceContextError(Exception):
-
     def __init__(self, file: Path, reason: str, fix: str | None = None) -> None:
         self.file = Path(file)
         self.reason = reason

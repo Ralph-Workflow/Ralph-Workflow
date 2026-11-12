@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -110,7 +109,6 @@ if _RECORD_FACT_OUTCOMES_WITHOUT_RUNG:
 
 @dataclass(frozen=True)
 class IntegrationOwnerDecision:
-
     action: IntegrationAction
     reason: str
     observation: Observation

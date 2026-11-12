@@ -16,7 +16,6 @@ def test_planning_templates_delegate_to_shared_contract() -> None:
 def test_plan_skill_teaches_current_artifact_flow() -> None:
     skill = get_skill_content("submit-plan-artifact")
 
-    # RALPH-TEST-REASON: the retired writing-plans skill is removed; the plan contract is taught by submit-plan-artifact
     assert "ralph_edit_md_artifact" in skill
     assert "ralph_submit_md_artifact" in skill
     assert "ralph_edit_md_plan_step" not in skill

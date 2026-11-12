@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib
@@ -67,11 +66,7 @@ class _CatalogModule(Protocol):
 
 
 def _catalog_module() -> _CatalogModule:
-    return cast(
-        "_CatalogModule", importlib.import_module("ralph.agents.catalog")
-    )
-
-
+    return cast("_CatalogModule", importlib.import_module("ralph.agents.catalog"))
 
 
 def __getattr__(name: str) -> object:
@@ -97,9 +92,7 @@ def __getattr__(name: str) -> object:
 
 
 def _view(name: str) -> Mapping[str, _ParserFactory]:
-    return cast(
-        "Mapping[str, _ParserFactory]", getattr(sys.modules[__name__], name)
-    )
+    return cast("Mapping[str, _ParserFactory]", getattr(sys.modules[__name__], name))
 
 
 def resolve_parser_key(

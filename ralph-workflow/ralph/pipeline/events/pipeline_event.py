@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class PipelineEvent(StrEnum):
-
     AGENT_SUCCESS = "agent_success"
     AGENT_FAILURE = "agent_failure"
     AGENT_RETRY = "agent_retry"

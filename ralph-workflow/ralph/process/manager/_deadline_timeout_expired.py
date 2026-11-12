@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import subprocess
@@ -6,7 +5,6 @@ from typing import Literal
 
 
 class DeadlineTimeoutExpired(subprocess.TimeoutExpired):
-
     def __init__(
         self,
         cmd: list[str],

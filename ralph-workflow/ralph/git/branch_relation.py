@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -12,7 +11,6 @@ from ralph.git.rebase import rebase as rebase_module
 
 
 class BranchRelation(StrEnum):
-
     SYNCED = "synced"
     TARGET_AHEAD = "target_ahead"
     FEATURE_AHEAD = "feature_ahead"

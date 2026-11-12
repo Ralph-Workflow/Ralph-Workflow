@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PhaseExitModel:
-
     phase_name: str
     phase_role: str | None = None
     agent_name: str | None = None

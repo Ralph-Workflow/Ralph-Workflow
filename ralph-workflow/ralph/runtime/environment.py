@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -35,7 +34,6 @@ if TYPE_CHECKING:
         def name(self) -> str: ...
 
     class SysModuleProtocol(Protocol):
-
         @property
         def version_info(self) -> _VersionInfoProtocol: ...
 
@@ -63,7 +61,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RuntimeEnvironment:
-
     python: PythonVersionInfo
     executable: Path
     prefix: Path

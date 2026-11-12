@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -743,6 +742,3 @@ def _escalate_unreachable_remainder(
         f"the resolvable conflicts are repaired, but no resolver can repair {paths}",
     )
     return True
-
-
-

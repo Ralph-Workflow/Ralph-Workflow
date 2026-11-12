@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -19,11 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 class ReindexWriter:
-
     _lock_factory: Callable[[], threading.Lock] = threading.Lock
-    _active: dict[
-        str, ReindexWriter
-    ] = {}
+    _active: dict[str, ReindexWriter] = {}
     _active_lock: threading.Lock = threading.Lock()
 
     @classmethod

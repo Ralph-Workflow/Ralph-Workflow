@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -19,7 +18,6 @@ _ENABLED_IGNORED_WARNING = (
 
 
 class MediaConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = True

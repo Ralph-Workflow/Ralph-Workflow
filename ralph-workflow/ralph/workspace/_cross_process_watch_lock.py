@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -23,13 +22,8 @@ _WATCHDOG_LOCK_RELPATH = ".agent/.watchdog.lock"
 
 
 class CrossProcessWatchLock:
-
-    _holds: ClassVar[
-        dict[str, tuple[TextIO, str]]
-    ] = {}
-    _last_released: ClassVar[
-        dict[str, str]
-    ] = {}
+    _holds: ClassVar[dict[str, tuple[TextIO, str]]] = {}
+    _last_released: ClassVar[dict[str, str]] = {}
     _counter_lock: ClassVar[threading.Lock] = threading.Lock()
     _counter: ClassVar[int] = 0
 

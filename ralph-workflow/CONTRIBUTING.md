@@ -238,7 +238,7 @@ the default gate. The full schema and evidence contract live in
 [`docs/ralph-workflow-policy/verification-policy.md`](../docs/ralph-workflow-policy/verification-policy.md#bounded-policy-portfolio).
 
 Existing schema v3 installations change only through Ralph Workflow's single
-upgrade-or-freeze decision. Upgrade seeds the manifest and v4 policies
+upgrade-or-freeze choice. Upgrade seeds the manifest and v4 policies
 together; freeze leaves the existing files unchanged.
 
 ## Required verification
@@ -342,7 +342,7 @@ watchdog controllers, both using Clock-injected time for deterministic FakeClock
   - Descendant-quiesce window (`wait_descendant_quiesce`).
 
 **Forbidden:** No ad-hoc `clock.monotonic()` / `clock.sleep()` loops are allowed in
-`invoke.py`. Every wall-clock decision must route through one of the two watchdogs to
+`invoke.py`. Every wall-clock choice must route through one of the two watchdogs to
 remain testable. The `FakeClock` / `Clock` seam is the only mechanism for deterministic
 timeout testing; real `time.sleep()` in production tests is a test-smell that indicates
 a missing watchdog seam.
@@ -566,7 +566,7 @@ When working on `ralph/mcp/server/` or `ralph/pipeline/runner.py`, preserve thes
 
 ## Recovery architecture contract
 
-Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. Agent unproductivity, retry bounds, and demotion decisions are owned exclusively by `AgentFailureLedger` (`ralph/recovery/agent_failure_ledger.py`); no secondary tracker, counter, or ad-hoc retry cap elsewhere may make an overlapping demotion decision. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
+Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. Agent unproductivity, retry bounds, and demotion decisions are owned exclusively by `AgentFailureLedger` (`ralph/recovery/agent_failure_ledger.py`); no secondary tracker, counter, or ad-hoc retry cap elsewhere may make an overlapping demotion choice. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
 
 ### Technical retry contract (mandatory)
 

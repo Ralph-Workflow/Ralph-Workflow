@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -83,10 +82,8 @@ _REDIRECTION_CHARS = frozenset("<>")
 
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
-
     @property
-    def root(self) -> Path:
-        ...
+    def root(self) -> Path: ...
 
 
 def _reject_nul_params(params: Mapping[str, object]) -> None:

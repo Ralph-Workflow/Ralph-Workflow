@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ToolContent:
-
     type: str
     text: str
 

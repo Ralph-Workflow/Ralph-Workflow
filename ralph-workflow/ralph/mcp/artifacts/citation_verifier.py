@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -253,7 +252,6 @@ _NUMBER_TOKEN_RE: re.Pattern[str] = re.compile(r"^(?:\d+|\d{1,3}(?:,\d{3})+)$")
 
 @dataclass(frozen=True)
 class _DiffSummary:
-
     paths: frozenset[str]
     basenames: frozenset[str]
     deleted: frozenset[str]

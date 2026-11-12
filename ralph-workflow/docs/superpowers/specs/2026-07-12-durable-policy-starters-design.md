@@ -20,7 +20,7 @@ easy-to-follow instructions for an AI agent to FOLLOW and ENFORCE that
 policy — nothing else. The starter must remain detailed enough to produce
 a very good policy, and obviously a template meant to be overwritten.
 
-## Decision
+## Choice
 
 Content-level fix, no schema break:
 

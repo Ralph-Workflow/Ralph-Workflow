@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,7 +29,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class InvokeRuntimeOptions:
-
     verbose: bool = False
     show_progress: bool = True
     workspace_path: Path | None = None
@@ -135,9 +133,7 @@ def build_invoke_options_from_config(
 def _get_os_descendant_field(value: float | None | object, fallback: float | None) -> float | None:
     if value is _INVOKE_OPTS_UNSET:
         return fallback
-    return cast(
-        "float | None", value
-    )
+    return cast("float | None", value)
 
 
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:

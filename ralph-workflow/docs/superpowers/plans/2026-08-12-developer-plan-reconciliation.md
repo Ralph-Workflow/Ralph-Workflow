@@ -3,7 +3,7 @@
 > **SUPERSEDED** -- This plan implemented the disposition-artifact iteration
 > described in `specs/2026-08-12-developer-plan-reconciliation-design.md`.
 > The current contract is **free-form**: the development-result and
-> development-analysis-decision artifacts validate only the frontmatter
+> development-analysis-choice artifacts validate only the frontmatter
 > `status` enum, the body is free-form markdown for the next agent, and
 > parallel work is the default. Steps S-1 through S-8 below are preserved
 > as the historical implementation record of the disposition iteration and
@@ -38,7 +38,7 @@ on observable shared behavior and ordering rather than duplicated prose.
 Have the analyzer derive plan applicability independently from the request,
 plan, and workspace while keeping request-criterion verification independent
 of implementer narrative. Reject unjustified omissions without prescribing a
-fix; never use the developer's disposition or rationale as evidence.
+fix; never use the developer's disposition or reason as evidence.
 
 Verify: render the analyzer and assert that it separates request satisfaction
 from disposition auditing and retains the evidence-first verdict contract.
@@ -70,7 +70,7 @@ localized gap, and fail terminally when the request is impossible, not
 evaluable, or blocked without a developer route. Route analysis `failed` to the
 failure terminal instead of repeating development.
 
-Verify: render the analyzer decision rules, assert all developer-result
+Verify: render the analyzer choice rules, assert all developer-result
 statuses still reach analysis, and prove `failed` analysis enters the terminal
 failure phase while `request_changes` alone returns to development.
 

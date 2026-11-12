@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import subprocess
@@ -121,7 +120,6 @@ type _LeaseVerdict = Literal["acquired", "held", "unknown"]
 
 @dataclass
 class CatchupLedgerFailureBudget:
-
     consecutive_failures: int = 0
 
     def record_failure(self) -> int:
@@ -134,7 +132,6 @@ class CatchupLedgerFailureBudget:
 
 @dataclass(frozen=True)
 class _CatchupObservation:
-
     target: str
     current: str
     target_sha: str
@@ -205,9 +202,7 @@ def _worktree_is_clean(root: Path) -> bool:
     repo: Repo | None = None
     try:
         repo = Repo(root)
-        status_out = cast(
-            "str", repo.git.status("--porcelain", "--untracked-files=no")
-        )
+        status_out = cast("str", repo.git.status("--porcelain", "--untracked-files=no"))
         return not status_out.strip()
     except Exception:
         return False
@@ -809,14 +804,12 @@ def _observe_strictly_behind(
 
 @dataclass(frozen=True)
 class _CatchupStallState:
-
     cause: str
     elapsed_seconds: float
     window_seconds: float
 
 
 class AutoIntegrateCatchupWorker:
-
     def __init__(
         self,
         config: UnifiedConfig,

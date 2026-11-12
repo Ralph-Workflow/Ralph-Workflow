@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sys
@@ -417,7 +416,6 @@ def _dispatch_preflight_result(
             active_display,
             display_context,
         )
-
 
     display_scope = nullcontext(active_display) if display is not None else active_display
     resumed_phase = (

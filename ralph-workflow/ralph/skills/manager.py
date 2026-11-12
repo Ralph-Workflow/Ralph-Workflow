@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib.metadata
@@ -7,13 +6,19 @@ from datetime import UTC, datetime
 from importlib import import_module
 from typing import TYPE_CHECKING
 
+from loguru import logger as _logger
+
 from ralph.config.mcp_loader import McpConfigError, load_mcp_config
+from ralph.git.operations import create_commit
+from ralph.git.scoped_auto_commit import ScopedCommitStatus
+from ralph.skills._auto_commit import commit_skill_writes
 from ralph.skills._capability_entry import CapabilityEntry
 from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._docs_mcp_probe import is_supported_docs_mcp_url, probe_docs_mcp
 from ralph.skills._installer import (
     check_skills_update_available,
     install_baseline_skills,
+    install_project_baseline_skills_with_diff,
 )
 from ralph.skills._recheck_policy import DEFAULT_POLICY, RecheckPolicy, needs_recheck
 from ralph.skills._state_store import load_capability_state, save_capability_state
@@ -65,7 +70,6 @@ def _visit_url_is_available() -> bool:
 
 
 class SkillManager:
-
     def __init__(
         self,
         state_path: Path | None = None,
@@ -177,15 +181,6 @@ class SkillManager:
 
     def reinstall_baseline_skills(self, workspace_root: Path) -> tuple[CapabilityState, list[str]]:
         try:
-            from ralph.git.operations import (
-                create_commit,
-            )
-            from ralph.git.scoped_auto_commit import ScopedCommitStatus
-            from ralph.skills._auto_commit import commit_skill_writes
-            from ralph.skills._installer import (
-                install_project_baseline_skills_with_diff,
-            )
-
             user_entry, user_failures = install_baseline_skills()
             project_outcome = install_project_baseline_skills_with_diff(workspace_root)
             project_entry = project_outcome.entry
@@ -200,15 +195,11 @@ class SkillManager:
                         intentional_transitions=project_outcome.intentional_transitions,
                     )
                     if result.status is ScopedCommitStatus.FAILED:
-                        from loguru import logger as _logger
-
                         _logger.warning(
                             "Skill auto-commit during --force-init-skills failed (non-fatal): {}",
                             result.error,
                         )
                 except Exception as exc:
-                    from loguru import logger as _logger
-
                     _logger.warning(
                         "Skill auto-commit during --force-init-skills raised (non-fatal): {}",
                         exc,

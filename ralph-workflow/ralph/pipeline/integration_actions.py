@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -36,33 +35,23 @@ __all__ = [
 
 @runtime_checkable
 class GitOps(Protocol):
+    def rebase_onto(self, root: Path, target: str) -> RebaseResult: ...
 
-    def rebase_onto(self, root: Path, target: str) -> RebaseResult:
-        ...
+    def abort_rebase(self, root: Path) -> None: ...
 
-    def abort_rebase(self, root: Path) -> None:
-        ...
+    def continue_rebase(self, root: Path) -> None: ...
 
-    def continue_rebase(self, root: Path) -> None:
-        ...
+    def abort_merge(self, root: Path) -> bool: ...
 
-    def abort_merge(self, root: Path) -> bool:
-        ...
+    def continue_merge(self, root: Path) -> bool: ...
 
-    def continue_merge(self, root: Path) -> bool:
-        ...
+    def abort_cherry_pick(self, root: Path) -> bool: ...
 
-    def abort_cherry_pick(self, root: Path) -> bool:
-        ...
+    def continue_cherry_pick(self, root: Path) -> bool: ...
 
-    def continue_cherry_pick(self, root: Path) -> bool:
-        ...
+    def stage_all(self, root: Path) -> bool: ...
 
-    def stage_all(self, root: Path) -> bool:
-        ...
-
-    def commit(self, root: Path, *, on_failure: Callable[[str], None] | None = None) -> bool:
-        ...
+    def commit(self, root: Path, *, on_failure: Callable[[str], None] | None = None) -> bool: ...
 
     def fast_forward_target(
         self,
@@ -72,8 +61,7 @@ class GitOps(Protocol):
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
-        ...
+    ) -> tuple[bool, str]: ...
 
     def land_feature(
         self,
@@ -83,32 +71,25 @@ class GitOps(Protocol):
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
-        ...
+    ) -> tuple[bool, str]: ...
 
     def create_backup_ref(
         self,
         root: Path,
         pre_feature_sha: str | None,
         owning_worktree: str | None = None,
-    ) -> str | None:
-        ...
+    ) -> str | None: ...
 
-    def delete_backup_ref(self, root: Path, backup_ref: str | None) -> None:
-        ...
+    def delete_backup_ref(self, root: Path, backup_ref: str | None) -> None: ...
 
-    def reattach_head(self, root: Path, branch: str) -> bool:
-        ...
+    def reattach_head(self, root: Path, branch: str) -> bool: ...
 
 
 @runtime_checkable
 class _Clock(Protocol):
+    def now(self) -> float: ...
 
-    def now(self) -> float:
-        ...
-
-    def sleep(self, seconds: float) -> None:
-        ...
+    def sleep(self, seconds: float) -> None: ...
 
 
 Clock = _Clock
@@ -116,7 +97,6 @@ Clock = _Clock
 
 @runtime_checkable
 class _AgentRunner(Protocol):
-
     def resolve_rebase(
         self,
         root: Path,
@@ -124,15 +104,13 @@ class _AgentRunner(Protocol):
         resolver: RebaseStopResolver,
         *,
         session: ResolutionSession,
-    ) -> bool:
-        ...
+    ) -> bool: ...
 
 
 AgentRunner = _AgentRunner
 
 
 class _ProductionGitOps:
-
     def rebase_onto(self, root: Path, target: str) -> RebaseResult:
         from ralph.git.rebase.rebase import rebase_onto
 
@@ -266,7 +244,6 @@ class _ProductionGitOps:
 
 
 class _ProductionAgentRunner:
-
     def resolve_rebase(
         self,
         root: Path,
@@ -281,7 +258,6 @@ class _ProductionAgentRunner:
 
 
 class _SystemClock:
-
     def now(self) -> float:
         return time.monotonic()
 
@@ -306,11 +282,8 @@ def default_clock() -> Clock:
     return current_clock()
 
 
-
-
 @dataclass(frozen=True)
 class _Executors:
-
     git_ops: GitOps
     agent_runner: AgentRunner
     clock: Clock
@@ -365,8 +338,6 @@ def current_agent_runner() -> AgentRunner:
 def current_clock() -> Clock:
     executors = _EXECUTORS.get()
     return executors.clock if executors is not None else _DEFAULT_CLOCK
-
-
 
 
 def create_backup_ref(

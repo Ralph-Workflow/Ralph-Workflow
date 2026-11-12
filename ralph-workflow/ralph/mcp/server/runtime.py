@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -108,7 +107,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpServerExtras:
-
     session: McpSession | None = None
     upstream_registry: UpstreamRegistry | None = None
     mcp_config: McpConfig | None = None
@@ -225,9 +223,7 @@ def _poll_bounded_pre_serve(
     effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
-        allowed_roots = cast(
-            "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
-        )
+        allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
         ws = (
             workspace
             if workspace is not None
@@ -659,19 +655,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     exit_when_owner_exits(os.environ)
     args = parse_args(argv)
     run_standalone_server(
-        cast(
-            "Path", args.workspace
-        ),
+        cast("Path", args.workspace),
         transport=DEFAULT_TRANSPORT,
-        host=cast(
-            "str", args.host
-        ),
-        port=cast(
-            "int", args.port
-        ),
-        agent_transport=cast(
-            "str | None", args.agent_transport
-        ),
+        host=cast("str", args.host),
+        port=cast("int", args.port),
+        agent_transport=cast("str | None", args.agent_transport),
     )
 
 

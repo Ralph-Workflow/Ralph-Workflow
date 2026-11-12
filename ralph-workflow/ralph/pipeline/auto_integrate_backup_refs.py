@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -42,9 +41,7 @@ def create_rebase_backup_ref(
         if common is not None:
             ref_file = common / backup_name
             ref_file.parent.mkdir(parents=True, exist_ok=True)
-            ref_file.write_text(
-                f"{pre_feature_sha}\n", encoding="utf-8"
-            )
+            ref_file.write_text(f"{pre_feature_sha}\n", encoding="utf-8")
             return backup_name
     except OSError:
         pass
@@ -126,9 +123,7 @@ def create_stale_resolution_snapshot(
         if common is not None:
             ref_file = common / backup_ref
             ref_file.parent.mkdir(parents=True, exist_ok=True)
-            ref_file.write_text(
-                f"{snapshot_sha}\n", encoding="utf-8"
-            )
+            ref_file.write_text(f"{snapshot_sha}\n", encoding="utf-8")
             return backup_ref, feature_sha
     except OSError:
         pass

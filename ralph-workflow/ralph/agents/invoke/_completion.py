@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -98,9 +97,7 @@ def _teardown_subtree_if_pid_available(
     issuer: str,
     teardown: ProcessTeardown | None = None,
 ) -> None:
-    pid = cast(
-        "int | None", getattr(handle, "pid", None)
-    )
+    pid = cast("int | None", getattr(handle, "pid", None))
     if pid is not None:
         if teardown is None:
             teardown_subtree(pid, issuer=issuer)

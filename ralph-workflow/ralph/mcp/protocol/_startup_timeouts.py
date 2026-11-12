@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -384,9 +383,7 @@ if not (_configured_ceiling.total_seconds() > _PROBE_SAFETY_S):
     )
 
 
-if not (
-    mcp_discovery_budget_from_env() < mcp_preflight_timeout_from_env()
-):
+if not (mcp_discovery_budget_from_env() < mcp_preflight_timeout_from_env()):
     raise RuntimeError(
         "import-time invariant violated: mcp_discovery_budget_from_env() "
         "must be strictly less than mcp_preflight_timeout_from_env()"

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     class _DdgsTextClient(Protocol):
-
         def text(self, query: str, max_results: int) -> Iterable[Mapping[str, object]] | None: ...
 
 
@@ -24,13 +22,10 @@ except ImportError:
 else:
     _ddgs_module = _loaded_ddgs_module
 
-DDGS = cast(
-    "Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS", None)
-)
+DDGS = cast("Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS", None))
 
 
 class DdgsBackend:
-
     def __init__(self, *, timeout_seconds: float | None = None) -> None:
         self._timeout_seconds = timeout_seconds
 

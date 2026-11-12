@@ -1,44 +1,3 @@
-"""Artifact-skill type audit: the shipped skills must match the artifact types.
-
-The pipeline's artifact types are the single source of truth. The markdown
-spec registry (:func:`ralph.mcp.artifacts.markdown.registry.registered_specs`)
-names every type an agent may submit, and the bundled format docs
-(``ralph/mcp/artifacts/format_docs/<type>.md``) describe each one. The
-shipped skills in ``ralph/skills/content`` must cover exactly that set: the
-``submit-artifact`` umbrella plus one ``submit-<kebab>-artifact`` skill per
-registered type.
-
-Everything here is DERIVED. No artifact-type name is hand-listed, so a type
-that is added to or removed from the registry changes the expected skill set
-without touching this module.
-
-The audit fails on drift in BOTH directions:
-
-- a registered type without its skill, or a skill file for a type that no
-  longer exists;
-- a skill whose declared ``artifact_type`` disagrees with the type its
-  filename derives;
-- a skill that points at a format doc that does not exist;
-- a skill whose submission/reference classification contradicts the contract
-  its own format doc states (a reference-only artifact must not be submitted;
-  a submission artifact must carry its ``artifact_type`` instruction);
-- a ``metadata.json`` whose ``skills`` list disagrees with the derived set
-  (extra, missing, or duplicated entries).
-
-The submission/reference-only classification is derived from the format doc
-itself: a doc that states the RUNTIME writes the artifact AND that agents do
-not submit it describes a reference-only artifact. A future type whose doc
-says the same is classified automatically, with no change to this module.
-
-Usage:
-    python -m ralph.testing.audit_artifact_skill_types [content_root]
-
-Exit codes:
-    0 = clean.
-    1 = violations found.
-    2 = the skills content root is not a directory.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -54,36 +13,22 @@ from ralph.mcp.artifacts.markdown.registry import registered_specs
 
 __all__ = ["audit_artifact_skill_types", "main"]
 
-# Importing the specs package registers every markdown artifact spec in the
-# shared registry. The registry is this audit's single source of truth, so the
-# registration side effect must have happened before the registry is read.
 importlib.import_module("ralph.mcp.artifacts.markdown.specs")
 
-#: The umbrella skill every artifact skill set contains.
 UMBRELLA_SKILL_NAME = "submit-artifact"
 
-#: The skills manifest that must mirror the derived skill set.
 METADATA_FILE_NAME = "metadata.json"
 
-#: The glob that finds every per-type skill file (the umbrella does not match
-#: it, because the umbrella has no ``-<type>`` segment).
 SKILL_FILE_GLOB = "submit-*-artifact.md"
 
-#: The bundled format docs, one file per artifact type.
 _FORMAT_DOC_DIR = Path(__file__).resolve().parents[1] / "mcp" / "artifacts" / "format_docs"
 
-#: A workspace path to a bundled format doc, e.g.
-#: ``.agent/artifact-formats/issues.md``.
 _FORMAT_DOC_REFERENCE_RE = re.compile(r"\.agent/artifact-formats/([A-Za-z0-9_-]+)\.md")
 
-#: An ``artifact_type`` declaration, quoted or bare:
-#: ``artifact_type: issues`` / ``artifact_type: "commit_message"``.
 _ARTIFACT_TYPE_RE = re.compile(r"artifact_type\"?\s*:\s*\"?([A-Za-z0-9_]+)")
 
-#: A ``## Submit`` heading, which only a submission-class skill may carry.
 _SUBMIT_HEADING_RE = re.compile(r"^##\s+Submit\b", re.MULTILINE)
 
-#: Phrases a format doc uses when the RUNTIME writes the artifact.
 _RUNTIME_AUTHORSHIP_MARKERS = (
     "runtime-generated",
     "runtime generated",
@@ -93,7 +38,6 @@ _RUNTIME_AUTHORSHIP_MARKERS = (
     "the runtime writes",
 )
 
-#: Phrases a format doc uses when AGENTS do not submit the artifact.
 _NO_SUBMIT_MARKERS = (
     "do not submit",
     "does not submit",
@@ -105,8 +49,6 @@ _NO_SUBMIT_MARKERS = (
     "no submission",
 )
 
-#: Phrases that mark a mention of the submit tool as a PROHIBITION rather
-#: than an instruction to use it.
 _PROHIBITION_MARKERS = (
     "do not",
     "does not",
@@ -119,35 +61,28 @@ _PROHIBITION_MARKERS = (
     "prohibit",
 )
 
-#: The submission tool a submission-class skill teaches and a reference-only
-#: skill must never instruct the agent to use.
 SUBMIT_TOOL_NAME = "ralph_submit_md_artifact"
 
 
 def _skill_name_for_type(artifact_type: str) -> str:
-    """Return the skill file name (without suffix) that covers ``artifact_type``."""
     return f"submit-{artifact_type.replace('_', '-')}-artifact"
 
 
 def _expected_skill_names(artifact_types: tuple[str, ...]) -> set[str]:
-    """Return every skill name the derived artifact types require."""
     names = {UMBRELLA_SKILL_NAME}
     names.update(_skill_name_for_type(artifact_type) for artifact_type in artifact_types)
     return names
 
 
 def _registered_artifact_types() -> tuple[str, ...]:
-    """Return every registered artifact type, in registry order."""
     return tuple(spec.artifact_type for spec in registered_specs())
 
 
 def _format_doc_path(artifact_type: str) -> Path:
-    """Return the bundled format doc path for ``artifact_type``."""
     return _FORMAT_DOC_DIR / f"{artifact_type}.md"
 
 
 def _format_doc_text(artifact_type: str) -> str:
-    """Return the bundled format doc text, or an empty string when it is missing."""
     path = _format_doc_path(artifact_type)
     try:
         return path.read_text(encoding="utf-8")
@@ -156,14 +91,6 @@ def _format_doc_text(artifact_type: str) -> str:
 
 
 def _is_reference_only(format_doc_text: str) -> bool:
-    """Return True when the format doc states the runtime writes the artifact.
-
-    The rule is derived from the doc's own contract statement: a doc that
-    says the RUNTIME generates the artifact AND that agents do not submit it
-    describes a reference-only artifact. No artifact-type name appears in
-    this predicate, so a future type whose doc says the same is classified
-    automatically.
-    """
     lowered = format_doc_text.lower()
     written_by_runtime = any(marker in lowered for marker in _RUNTIME_AUTHORSHIP_MARKERS)
     not_submitted_by_agents = any(marker in lowered for marker in _NO_SUBMIT_MARKERS)
@@ -171,11 +98,6 @@ def _is_reference_only(format_doc_text: str) -> bool:
 
 
 def _regex_groups(pattern: re.Pattern[str], text: str) -> list[str]:
-    """Return every first capture group of ``pattern`` in ``text`` as a string.
-
-    ``re`` types a capture group as ``str | Any``, so each group is narrowed
-    with a runtime check instead of being asserted into a typed value.
-    """
     groups: list[str] = []
     for match in pattern.finditer(text):
         group = match.group(1)
@@ -185,7 +107,6 @@ def _regex_groups(pattern: re.Pattern[str], text: str) -> list[str]:
 
 
 def _paragraphs(text: str) -> list[str]:
-    """Return the blank-line separated paragraphs of ``text``."""
     paragraphs: list[str] = []
     current: list[str] = []
     for line in text.splitlines():
@@ -201,17 +122,10 @@ def _paragraphs(text: str) -> list[str]:
 
 
 def _declares_artifact_type(text: str, artifact_type: str) -> bool:
-    """Return True when the skill text declares ``artifact_type``."""
     return artifact_type in _regex_groups(_ARTIFACT_TYPE_RE, text)
 
 
 def _mentions_submit_tool_as_instruction(text: str) -> bool:
-    """Return True when the skill text tells the agent to use the submit tool.
-
-    A mention counts as an instruction unless its paragraph states a
-    prohibition, so a reference-only skill may name the tool only while
-    forbidding its use.
-    """
     for paragraph in _paragraphs(text):
         if SUBMIT_TOOL_NAME not in paragraph:
             continue
@@ -222,7 +136,6 @@ def _mentions_submit_tool_as_instruction(text: str) -> bool:
 
 
 def _audit_skill_text(skill_name: str, artifact_type: str, text: str) -> list[str]:
-    """Return the violations found in one per-type skill file."""
     violations: list[str] = []
     reference_only = _is_reference_only(_format_doc_text(artifact_type))
 
@@ -265,7 +178,6 @@ def _audit_skill_text(skill_name: str, artifact_type: str, text: str) -> list[st
 
 
 def _audit_skill_files(content_root: Path, artifact_types: tuple[str, ...]) -> list[str]:
-    """Return the violations found in the per-type skill files."""
     violations: list[str] = []
     for artifact_type in artifact_types:
         skill_name = _skill_name_for_type(artifact_type)
@@ -282,7 +194,6 @@ def _audit_skill_files(content_root: Path, artifact_types: tuple[str, ...]) -> l
 
 
 def _audit_metadata(content_root: Path, expected_names: set[str]) -> list[str]:
-    """Return the violations found in the skills metadata manifest."""
     metadata_path = content_root / METADATA_FILE_NAME
     if not metadata_path.is_file():
         return [f"missing skills metadata manifest: {METADATA_FILE_NAME}"]
@@ -320,22 +231,12 @@ def _audit_metadata(content_root: Path, expected_names: set[str]) -> list[str]:
 
 
 def _resolve_content_root(root: Path | None) -> Path:
-    """Return the skills content directory to audit."""
     if root is not None:
         return Path(root)
     return Path(str(files("ralph.skills") / "content"))
 
 
 def audit_artifact_skill_types(root: Path | None = None) -> list[str]:
-    """Return every artifact-skill drift violation (empty when the bundle is clean).
-
-    Args:
-        root: The skills content directory to audit. Defaults to the bundled
-            ``ralph.skills/content`` directory.
-
-    Returns:
-        A list of human-readable violation strings; empty means clean.
-    """
     content_root = _resolve_content_root(root)
     artifact_types = _registered_artifact_types()
     expected_names = _expected_skill_names(artifact_types)
@@ -372,7 +273,6 @@ def audit_artifact_skill_types(root: Path | None = None) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the artifact-skill type audit and return an exit code."""
     args = list(argv) if argv is not None else list(sys.argv[1:])
     if len(args) > 1:
         print(

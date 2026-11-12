@@ -37,10 +37,12 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {% include 'shared/_subagents.j2' %}
 
+## PARALLEL EXECUTION (required by default)
 
 {% include 'shared/_parallel_execution.j2' %}
 
 {% if not IS_CONTINUATION %}
+## FIRST-ITERATION COVERAGE CHECK (request versus plan)
 
 Launch a read-only coverage check subagent alongside the initial dispatch wave.
 The main session must not take a ready implementation unit. Map **every concrete deliverable in the request** to a
@@ -74,6 +76,7 @@ declare completion.
 
 {% include 'shared/_no_exemption_for_failures.j2' %}
 
+## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 
 {% include 'shared/_development_result_proof.j2' %}
 
@@ -83,6 +86,7 @@ type: development_result
 status: completed
 ---
 
+## Summary
 - Implemented the requested fix and verified it.
 
 Wrote what I did, what changed, and how I verified it. The validator

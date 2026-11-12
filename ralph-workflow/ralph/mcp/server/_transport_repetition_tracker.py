@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -146,7 +145,6 @@ def _decode_carried_state(raw: bytes) -> tuple[str, int, float] | None:
 
 @dataclass
 class TransportRepetitionTracker:
-
     window_seconds: float = WINDOW_SECONDS
     threshold: int = THRESHOLD
     state_path: Path | None = None

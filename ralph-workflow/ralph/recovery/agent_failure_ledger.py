@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import threading
@@ -26,7 +25,6 @@ _DEFAULT_BACKOFF_FACTOR: Final[float] = 2.0
 
 @dataclass(frozen=True)
 class _AttemptFact:
-
     phase: str
     agent: str
     artifact_valid: bool
@@ -35,7 +33,6 @@ class _AttemptFact:
 
 
 class _AgentStatus:
-
     @property
     def is_eligible(self) -> bool:
         return isinstance(self, _Eligible)
@@ -56,20 +53,17 @@ class _Eligible(_AgentStatus):
 
 @dataclass(frozen=True)
 class _Cooldown(_AgentStatus):
-
     until_ms: int
     reason: str
 
 
 @dataclass(frozen=True)
 class _Spent(_AgentStatus):
-
     reason: str
 
 
 @dataclass(frozen=True)
 class _AttemptOutcome:
-
     status: _AgentStatus
     consecutive_unproductive: int
     total_unproductive: int
@@ -95,7 +89,6 @@ AttemptOutcome = _AttemptOutcome
 
 @dataclass
 class _LedgerEntry:
-
     consecutive_unproductive: int = 0
     total_unproductive: int = 0
     cooldown_until_ms: int | None = None
@@ -111,7 +104,6 @@ _SPENT_REASON_TOTAL = "total_unproductive_limit_reached"
 
 @dataclass(frozen=True)
 class _LegacyGuardSource:
-
     payload: object
     phase: str
     agent: str | None = None
@@ -120,7 +112,6 @@ class _LegacyGuardSource:
 
 
 class AgentFailureLedger:
-
     def __init__(
         self,
         *,
@@ -157,9 +148,7 @@ class AgentFailureLedger:
         self._max_cooldown_seconds: float = max_cooldown_seconds
         self._backoff_factor: float = backoff_factor
         self._lock = threading.Lock()
-        self._entries: dict[
-            tuple[str, str], _LedgerEntry
-        ] = {}
+        self._entries: dict[tuple[str, str], _LedgerEntry] = {}
 
     @property
     def consecutive_limit(self) -> int:

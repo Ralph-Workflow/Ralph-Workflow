@@ -3,10 +3,12 @@ You are a documentation agent. Make the policy corpus under {{ canonical_dir }} 
 
 {% include 'shared/_unattended_mode.j2' %}
 
+## Authoritative findings
 
 {{ findings_block }}
 
 {% if analysis_feedback_block %}
+## Prior analysis feedback
 
 Summary: {{ analysis_feedback_summary }}
 Resolve this feedback with repository evidence:
@@ -18,6 +20,7 @@ FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how
 
 Resolve every finding with repository evidence. Preserve established stricter rules and policy intent. Record applicable unfinished work as a dated deferral with a concrete review trigger.
 
+## Work from evidence
 
 Before recording facts or commands, inspect the project's languages, manifests, contributor guidance, installed tools, authoritative verification entry point, and effective policy portfolio. Load only the portfolio kernel, selected profiles, local tightening, and valid exceptions; do not copy every conditional policy into every project. Do not use repository size or fixed test counts to select controls. Do not ignore diagnostic text: distinguish evidence from remediation orders, then identify the actual failure from repository evidence. Delegate independent investigations to concurrent read-only subagents; reconcile their findings and edit in the main session.
 
@@ -35,6 +38,7 @@ For gate plumbing, follow `{{ gate_script_policy_path }}`. Use installed tools a
 
 Approved tools: {{ approved_tools }}. The first token of each command must be an approved tool.
 
+## Marker forms
 
 The readiness validator reads these byte-exact forms:
 
@@ -54,14 +58,17 @@ RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); review trig
 
 Start each `RALPH-COMMAND` with an approved tool. A truthful `RALPH-PENDING` entry is an explicit accepted deferral, not an unresolved placeholder. Use `RALPH-INAPPLICABLE` for a permanently irrelevant requirement. For each applicable lint or typecheck language, add `RALPH-LANG: <Language>` and its command, inapplicability declaration, or deferral.
 
+## Complete the corpus
 
 Replace every `RALPH-FACT:` placeholder with verified policy. Remove applied `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions. Finish with no unresolved or completion marker. Resolve Guard inventory Enforcement cells using the enforcement ladder: prefer `deterministic: <id>` where `<id>` resolves to a declared `RALPH-COMMAND:` value or an approved gate command; justify `advisory: <reason>; review: <trigger>` when no deterministic enforcer exists or is feasible. Keep instruction surfaces lean: delete inferable lines first, state qualitative findings rather than unverified numbers or bloat, exclude LLM-generated bulk summaries of the codebase, and do not repeat kernel rules in domain policies. Add a `## Research basis` citation block; give inactive conditional domains dated reactivation triggers; retain `{{ migrated_marker }}` in conventional locations; and keep each policy in its canonical file.
 
 Integrate one concise, short managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md so agents discover {{ canonical_dir }}; do not leave it as an invisible appended section. If CLAUDE.md exists, point it to AGENTS.md. Preserve standard SECURITY.md and CONTRIBUTING.md headings with the migrated marker.
 
+## Report
 
 Finish after resolving every listed finding. Report changed files, migrations, evidence sources, probes, and residual blockers. The runtime then reruns the readiness validator; do not claim completion when a listed finding remains unresolved.
 
+## Three-state readiness (v6)
 
 Current readiness: structure_complete={{ readiness_structure_complete | default('unknown') }}, implementation_verified={{ readiness_implementation_verified | default('unknown') }}, outcome_evidence_reviewed={{ readiness_outcome_evidence_reviewed | default('unknown') }}.
 The runtime reports THREE dimensions, not two: structure complete (the validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), and outcome evidence reviewed (every declared gate recorded). A structural READY is the caching gate; structural READY is NOT semantic correctness. Your job closes the structural dimension; the runtime and the analysis phase own the other two and surface them in the CLI emit and the status bar footer as `Policy: S*/I*/O*`. Do not present a structural-READY remediation as semantic correctness.

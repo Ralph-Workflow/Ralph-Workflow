@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,14 +13,12 @@ if TYPE_CHECKING:
 
 
 class _CommitReviewLike(Protocol):
-
     @property
     def actions(self) -> Sequence[CommitReviewAction]: ...
 
 
 @dataclass
 class CommitReviewApplyReport:
-
     declined_delete_paths: list[str] = field(default_factory=list)
     failed_delete_paths: list[str] = field(default_factory=list)
     applied_delete_paths: list[str] = field(default_factory=list)

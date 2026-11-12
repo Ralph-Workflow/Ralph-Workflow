@@ -48,7 +48,7 @@ projection and never gates dispatch or terminal success
   default label (the `DISPLAY_LABEL_MAP.get` default).
 - `rebase_state.last_outcome is None` and
   `rebase_state.last_fan_out_decision is None` mean the
-  corresponding authority has not yet decided; the display
+  corresponding authority has not yet resolved; the display
   reflects this as "no projection yet" rather than
   misrepresenting it as a known state.
 

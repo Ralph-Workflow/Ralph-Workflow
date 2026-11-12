@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class GroupPolicyBlock(_FrozenPolicyModel):
-
     kind: Literal["group"] = "group"
     child_blocks: list[str] = Field(
         default_factory=list,

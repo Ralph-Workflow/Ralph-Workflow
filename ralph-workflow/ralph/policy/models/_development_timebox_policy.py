@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import math
@@ -13,7 +12,6 @@ DEFAULT_DEVELOPMENT_WARNING_SECONDS: float = 4200.0
 
 
 class DevelopmentTimeboxPolicy(_FrozenPolicyModel):
-
     model_config = ConfigDict(extra="forbid")
 
     duration_seconds: float = Field(default=DEFAULT_DEVELOPMENT_TIMEBOX_SECONDS)

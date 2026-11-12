@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final, Literal
@@ -71,15 +70,10 @@ def _priority_key(bid: RoleBid) -> tuple[int, str]:
 
 
 class SalienceAllocator:
-
     def __init__(self) -> None:
         self._frame_index = 0
-        self._steady_frames: dict[
-            str, int
-        ] = {}
-        self._was_lit: dict[
-            str, bool
-        ] = {}
+        self._steady_frames: dict[str, int] = {}
+        self._was_lit: dict[str, bool] = {}
 
     @property
     def frame_index(self) -> int:

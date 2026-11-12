@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import enum
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class LivenessResult(enum.Enum):
-
     ALIVE = "alive"
     GONE = "gone"
     ZOMBIE = "zombie"

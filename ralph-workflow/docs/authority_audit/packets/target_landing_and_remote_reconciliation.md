@@ -3,7 +3,7 @@
 ## Authoritative owner
 `ralph.pipeline.auto_integrate_ff.maybe_push_target` is the local
 landing + remote publication authority
-(`auto_integrate_ff.py:391`); the typed publication decision is
+(`auto_integrate_ff.py:391`); the typed publication choice is
 written by
 `ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing`
 (`auto_integrate_remote_sync.py:609-649`) via the single-writer

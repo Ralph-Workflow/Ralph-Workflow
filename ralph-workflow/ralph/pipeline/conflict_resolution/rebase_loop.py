@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
@@ -97,7 +96,6 @@ _worktree_dirty_paths = worktree_dirty_paths
 
 @dataclass(frozen=True)
 class RebaseStop:
-
     sha: str
     subject: str
     conflicted_files: tuple[str, ...]
@@ -604,6 +602,3 @@ def _rebase_head_subject(root: Path) -> str:
     if result.returncode != 0:
         return _UNKNOWN_SUBJECT
     return result.stdout.strip() or _UNKNOWN_SUBJECT
-
-
-

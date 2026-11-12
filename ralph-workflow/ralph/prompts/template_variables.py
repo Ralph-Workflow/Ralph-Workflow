@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time as _time
@@ -28,7 +27,6 @@ def default_capability_identifiers_for_drain(drain: SessionDrain) -> set[str]:
 
 @dataclass(frozen=True)
 class SessionCapabilities:
-
     capabilities: CapabilitySet
     policy_flags: PolicyFlagSet
     tool_name_prefix: str = ""

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -7,7 +6,6 @@ from ralph.project_policy.pipeline_graph import PHASE_ANALYSIS, PHASE_REMEDIATIO
 
 
 class PolicyMode(StrEnum):
-
     NORMAL = "normal"
     REDO = "redo"
     REDO_ONLY = "redo_only"

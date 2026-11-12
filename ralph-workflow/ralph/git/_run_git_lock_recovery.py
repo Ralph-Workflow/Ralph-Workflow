@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import subprocess
@@ -65,7 +64,6 @@ _Attempt = tuple["GitRunResult | None", "subprocess.CalledProcessError | None"]
 
 
 class SpawnGit(Protocol):
-
     def __call__(
         self,
         args: Sequence[str],

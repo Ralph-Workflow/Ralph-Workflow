@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,7 +21,6 @@ def elapsed_seconds(start: float) -> int:
 
 @dataclass(frozen=True)
 class PhaseTimer:
-
     phase: str
     iteration: int
     started_at: float

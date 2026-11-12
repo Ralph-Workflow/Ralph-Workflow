@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class LaunchContext:
-
     is_windows: bool
     has_terminal_session_marker: bool
     parent_process_name: str | None

@@ -1,16 +1,28 @@
-
 from __future__ import annotations
 
 import json
-from typing import Final
+from importlib import import_module
+from typing import Final, Protocol, TypeGuard, cast
+
+_SESSION_MODULE_NAME: Final = "ralph.agents.invoke._session"
+
+
+class _TransportSessionIdExtractor(Protocol):
+    def __call__(self, raw_output: list[str] | tuple[str, ...]) -> str | None: ...
+
+
+def _is_transport_session_id_extractor(value: object) -> TypeGuard[_TransportSessionIdExtractor]:
+    return callable(value)
 
 
 def _extract_transport_session_id_inline(
     raw_output: list[str] | tuple[str, ...],
 ) -> str | None:
-    from ralph.agents.invoke._session import extract_transport_session_id
-
-    return extract_transport_session_id(raw_output)
+    module_namespace = cast("dict[str, object]", import_module(_SESSION_MODULE_NAME).__dict__)
+    extractor = module_namespace.get("extract_transport_session_id")
+    if not _is_transport_session_id_extractor(extractor):
+        return None
+    return extractor(raw_output)
 
 
 LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(

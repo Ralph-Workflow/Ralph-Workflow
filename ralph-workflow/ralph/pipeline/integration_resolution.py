@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -47,21 +46,18 @@ EXHAUSTED = IntegrationResolutionStatus.EXHAUSTED
 
 
 class IntegrationBlockKind(StrEnum):
-
     UNMERGED_PATHS = "unmerged_paths"
     REBASE_IN_PROGRESS = "rebase_in_progress"
     MERGE_IN_PROGRESS = "merge_in_progress"
 
 
 class UnknownKind(StrEnum):
-
     PORCELAIN_UNREADABLE = "porcelain_unreadable"
     REBASE_STATE_UNREADABLE = "rebase_state_unreadable"
     MERGE_STATE_UNREADABLE = "merge_state_unreadable"
 
 
 class IntegrationState(StrEnum):
-
     KNOWN_GOOD = "known_good"
     KNOWN_BLOCKED = "known_blocked"
     UNKNOWN = "unknown"
@@ -74,14 +70,12 @@ class KnownGood:
 
 @dataclass(frozen=True)
 class KnownBlocked:
-
     kind: IntegrationBlockKind
     detail: str
 
 
 @dataclass(frozen=True)
 class Unknown:
-
     kind: UnknownKind
 
 
@@ -90,7 +84,6 @@ ProbeOutcome = KnownGood | KnownBlocked | Unknown
 
 @dataclass(frozen=True)
 class TreeReadinessAssessment:
-
     development_dispatch_allowed: bool
     integration_ready: bool
     blocking_reasons: tuple[str, ...] = ()
@@ -100,7 +93,6 @@ class TreeReadinessAssessment:
 
 @dataclass(frozen=True)
 class _AssessedIntegrationResolutionVerdict(IntegrationResolutionVerdict):
-
     development_dispatch_allowed: bool = True
     integration_ready: bool = True
     blocking_reasons: tuple[str, ...] = ()
@@ -451,7 +443,6 @@ def inspect_integration_resolution(
 
 @dataclass(frozen=True)
 class _RetainedRecord:
-
     reason: str | None = None
     already_landed: bool = False
 

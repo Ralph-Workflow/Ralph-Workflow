@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class DrainClass(StrEnum):
-
     PLANNING = "planning"
     DEVELOPMENT = "development"
     ANALYSIS = "analysis"

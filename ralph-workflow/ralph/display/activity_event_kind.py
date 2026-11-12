@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class ActivityEventKind(StrEnum):
-
     TEXT = "text"
     THINKING = "thinking"
     STATUS = "status"

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -60,17 +59,13 @@ def _freshness_payload_from_handle(
     *,
     paths: list[str],
 ) -> dict[str, object]:
-    typed_handle = cast(
-        "ExploreIndexLike | None", handle
-    )
+    typed_handle = cast("ExploreIndexLike | None", handle)
     if typed_handle is None:
         return {}
     store_obj: ExploreStoreLike | None = getattr(typed_handle, "store", None)
     if store_obj is None:
         return {}
-    store: ExploreStore = cast(
-        "ExploreStore", store_obj
-    )
+    store: ExploreStore = cast("ExploreStore", store_obj)
     generation_raw = store.get_setting("current_generation") or "0"
     try:
         generation_int = int(generation_raw)
@@ -219,9 +214,7 @@ def handle_edit_file(
                     content=[ToolContent.text_content(_tool_json(target_resolution_error))],
                     is_error=True,
                 )
-            store: ExploreStore = cast(
-                "ExploreStore", store_obj
-            )
+            store: ExploreStore = cast("ExploreStore", store_obj)
             evidence_id = target_param.get("evidence_id")
             span_id = target_param.get("span_id")
             symbol_name = target_param.get("symbol")
@@ -390,11 +383,7 @@ def handle_edit_file(
                         and isinstance(target_symbol_name, str)
                         and target_symbol_name
                     ):
-                        symbols = list(
-                            cast(
-                                "ExploreStore", impact_store_obj
-                            ).iter_symbols()
-                        )
+                        symbols = list(cast("ExploreStore", impact_store_obj).iter_symbols())
                         scoped_symbols = [
                             s for s in symbols if target_symbol_name in (s.name, s.qualified_name)
                         ]
@@ -406,9 +395,7 @@ def handle_edit_file(
                                 target_path = scoped_symbols[0].path
                     if impact_store_obj is not None and target_symbol_id is not None:
                         result = run_query(
-                            cast(
-                                "ExploreStore", impact_store_obj
-                            ),
+                            cast("ExploreStore", impact_store_obj),
                             query_type="impact",
                             target=target_symbol_id,
                             change_kind="behavior",
@@ -479,9 +466,7 @@ def handle_edit_file(
                 )
 
                 reindex(
-                    cast(
-                        "ExploreStore", edit_store_obj
-                    ),
+                    cast("ExploreStore", edit_store_obj),
                     workspace_root_path,
                     options=ReindexOptions(
                         mode="changed",

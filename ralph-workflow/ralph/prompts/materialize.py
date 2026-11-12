@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -130,7 +129,6 @@ Repo: _RepoFactoryProtocol | None = None
 
 @dataclass(frozen=True)
 class PromptPhaseOptions:
-
     artifacts_policy: ArtifactsPolicy | None = None
 
     worker_namespace: Path | None = None
@@ -166,42 +164,22 @@ def materialize_prompt_for_phase(
 ) -> str:
     if context is None:
         context = PromptPhaseContext(
-            phase=cast(
-                "str", kwargs["phase"]
-            ),
-            workspace=cast(
-                "Workspace", kwargs["workspace"]
-            ),
-            pipeline_policy=cast(
-                "PipelinePolicy", kwargs["pipeline_policy"]
-            ),
-            session_caps=cast(
-                "SessionCapabilities", kwargs["session_caps"]
-            ),
-            workspace_root=cast(
-                "Path", kwargs["workspace_root"]
-            ),
+            phase=cast("str", kwargs["phase"]),
+            workspace=cast("Workspace", kwargs["workspace"]),
+            pipeline_policy=cast("PipelinePolicy", kwargs["pipeline_policy"]),
+            session_caps=cast("SessionCapabilities", kwargs["session_caps"]),
+            workspace_root=cast("Path", kwargs["workspace_root"]),
         )
     if options is None:
         opts = PromptPhaseOptions(
-            artifacts_policy=cast(
-                "ArtifactsPolicy | None", kwargs.get("artifacts_policy")
-            ),
-            worker_namespace=cast(
-                "Path | None", kwargs.get("worker_namespace")
-            ),
-            previous_phase=cast(
-                "str | None", kwargs.get("previous_phase")
-            ),
-            resume_existing_phase=cast(
-                "bool", kwargs.get("resume_existing_phase", False)
-            ),
+            artifacts_policy=cast("ArtifactsPolicy | None", kwargs.get("artifacts_policy")),
+            worker_namespace=cast("Path | None", kwargs.get("worker_namespace")),
+            previous_phase=cast("str | None", kwargs.get("previous_phase")),
+            resume_existing_phase=cast("bool", kwargs.get("resume_existing_phase", False)),
             multimodal_entries=cast(
                 "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
             ),
-            work_unit=cast(
-                "WorkUnit | None", kwargs.get("work_unit")
-            ),
+            work_unit=cast("WorkUnit | None", kwargs.get("work_unit")),
             proposal_ref=optional_str(kwargs.get("proposal_ref")),
             tree_sha=optional_str(kwargs.get("tree_sha")),
             soft_tripwires=cast(
@@ -222,9 +200,7 @@ def materialize_prompt_for_phase(
             proposal_ref=options.proposal_ref or optional_str(kwargs.get("proposal_ref")),
             tree_sha=options.tree_sha or optional_str(kwargs.get("tree_sha")),
             soft_tripwires=options.soft_tripwires
-            or cast(
-                "list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")
-            ),
+            or cast("list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")),
             last_review_rejection_reason=options.last_review_rejection_reason
             or optional_str(kwargs.get("last_review_rejection_reason")),
             rollback_ref=options.rollback_ref or optional_str(kwargs.get("rollback_ref")),

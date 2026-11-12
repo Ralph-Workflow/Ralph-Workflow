@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -28,7 +27,6 @@ def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | Non
 
 
 class _DefaultRemoteClient(RemoteOps):
-
     def refresh_target(
         self,
         repo_root: Path,

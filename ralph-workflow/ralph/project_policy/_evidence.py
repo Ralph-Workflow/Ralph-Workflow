@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class EvidenceEntry:
-
     rel_path: str
     exists: bool
     content_sha256: str | None = None

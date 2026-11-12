@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from ralph.mcp.server._mcp_server_error import McpServerError
 
 
 class McpOutcomeUnknownError(McpServerError, OSError):
-
     def __init__(
         self,
         message: str = "In-flight non-idempotent MCP tool call severed; outcome unknown",

@@ -16,7 +16,7 @@ diverge from normal phase behavior. It could omit configured fallbacks, discard
 chain retry/backoff semantics, or hide a launch, provider, tool-surface, or loop
 failure behind a conflict-level result.
 
-## Decision
+## Choice
 
 1. Conflict resolution remains an out-of-graph drain bound to
    `rebase_conflict_resolution` in `agents.toml`. Its default chain is the

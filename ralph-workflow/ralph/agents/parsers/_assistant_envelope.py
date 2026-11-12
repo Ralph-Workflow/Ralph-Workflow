@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ _TOP_LEVEL_API_ERROR_KEYS: frozenset[str] = frozenset({"isApiErrorMessage"})
 
 @dataclass(frozen=True)
 class AssistantEnvelopeDecision:
-
     envelope: str
     error_text: str = ""
     synthetic_text: str = ""

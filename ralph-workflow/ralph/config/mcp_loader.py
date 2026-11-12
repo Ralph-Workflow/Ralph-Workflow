@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import copy
@@ -25,7 +24,6 @@ _MCP_TOP_LEVEL_FIELDS = frozenset({"mcp_servers", "web_search", "web_visit", "me
 
 
 class McpConfigError(SystemExit):
-
     def __init__(self, message: str, *, code: int = 1) -> None:
         super().__init__(code)
         self.message = message

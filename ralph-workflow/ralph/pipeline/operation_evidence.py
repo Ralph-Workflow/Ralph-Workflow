@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -112,7 +111,6 @@ def _should_capture_repair_facts(
 
 
 class SubprocessOperationEvidenceCollector:
-
     def __init__(self, backend: FileBackend = DEFAULT_FILE_BACKEND) -> None:
         self._backend = backend
 

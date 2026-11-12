@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,7 +40,6 @@ def integration_target_branch(**opts: object) -> str | None:
 
 
 class WorktreeOccupancy(frozenset[str]):
-
     __slots__ = ("_query_failed",)
 
     _query_failed: bool

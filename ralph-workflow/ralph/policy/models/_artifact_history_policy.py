@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field
@@ -7,7 +6,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class ArtifactHistoryPolicy(_FrozenPolicyModel):
-
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     enabled: bool = Field(

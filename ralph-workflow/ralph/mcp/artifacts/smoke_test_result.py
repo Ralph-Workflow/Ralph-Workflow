@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -19,7 +18,6 @@ SMOKE_TEST_RESULT_ARTIFACT_TYPE = "smoke_test_result"
 
 
 class SmokeTestResult(RalphBaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     status: str = Field(..., min_length=1)

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -133,13 +132,9 @@ def _default_tty_stream() -> tuple[TextIO | object | None, bool]:
         except Exception:
             pass
     try:
-        fd = os.open(
-            "/dev/tty", os.O_WRONLY | os.O_NOCTTY
-        )
+        fd = os.open("/dev/tty", os.O_WRONLY | os.O_NOCTTY)
         return (
-            os.fdopen(
-                fd, "w"
-            ),
+            os.fdopen(fd, "w"),
             True,
         )
     except Exception:

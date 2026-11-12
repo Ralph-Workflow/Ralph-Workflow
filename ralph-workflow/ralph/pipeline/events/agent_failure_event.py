@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from ralph.pipeline.events.pipeline_event import PipelineEvent
 
 @dataclass(frozen=True, eq=False)
 class AgentFailureEvent:
-
     phase: str
     agent: str
     artifact_valid: bool = False

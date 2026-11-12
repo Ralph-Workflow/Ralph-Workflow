@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -26,7 +25,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ExaBackend:
-
     api_key: str | None = None
     api_key_env: str | None = None
     timeout_seconds: float | None = None
@@ -59,14 +57,10 @@ def _load_exa_type() -> _ExaType:
         raise WebSearchError(
             "backend 'exa' requires 'pip install ralph-workflow[web-search]'"
         ) from exc
-    exa_type = cast(
-        "object | None", getattr(module, "Exa", None)
-    )
+    exa_type = cast("object | None", getattr(module, "Exa", None))
     if exa_type is None:
         raise WebSearchError("exa backend is unavailable")
-    return cast(
-        "_ExaType", exa_type
-    )
+    return cast("_ExaType", exa_type)
 
 
 def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:

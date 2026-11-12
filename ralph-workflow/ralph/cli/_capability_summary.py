@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -64,7 +63,6 @@ def print_capability_summary(
 ) -> None:
     del console
     from ralph.cli.main import _get_cli_context
-
     from ralph.display.parallel_display import resolve_active_display
 
     ctx = display_context if display_context is not None else _get_cli_context()

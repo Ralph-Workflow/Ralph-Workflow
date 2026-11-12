@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -96,7 +95,6 @@ def _epoch_to_iso(value: float) -> str | None:
 
 
 class NdjsonParserBase(ParserTemplateBase):
-
     def __init__(self) -> None:
         super().__init__()
         self._subagent_pid_registry: SubagentPidRegistry | None = None
@@ -114,9 +112,7 @@ class NdjsonParserBase(ParserTemplateBase):
         try:
             registry.register(
                 pid,
-                source=cast(
-                    "_SubagentSourceLabel", self._subagent_source_label
-                ),
+                source=cast("_SubagentSourceLabel", self._subagent_source_label),
             )
         except ValueError:
             return

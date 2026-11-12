@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -18,7 +17,6 @@ _DEFAULT_URL = "https://api.search.brave.com/res/v1/web/search"
 
 @dataclass(frozen=True)
 class BraveBackend:
-
     api_key: str | None = None
     api_key_env: str | None = None
     url: str = _DEFAULT_URL

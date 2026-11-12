@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class DefaultLivenessProbe:
-
     def __init__(self, registry: ChildLivenessRegistry | None = None) -> None:
         self._registry = registry
 

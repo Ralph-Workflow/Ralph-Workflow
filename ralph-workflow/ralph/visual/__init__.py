@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.visual.capture_cell import CaptureCell

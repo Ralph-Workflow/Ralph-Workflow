@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ast
@@ -21,35 +20,27 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class UnavailabilityStore(Protocol):
-
     @property
-    def scope(self) -> Literal["session", "persistent"]:
-        ...
+    def scope(self) -> Literal["session", "persistent"]: ...
 
     def mark_unavailable(
         self,
         phase: str,
         agent: str,
         reason: UnavailabilityReason | None = None,
-    ) -> UnavailabilityEntry:
-        ...
+    ) -> UnavailabilityEntry: ...
 
-    def is_available(self, phase: str, agent: str) -> bool:
-        ...
+    def is_available(self, phase: str, agent: str) -> bool: ...
 
-    def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int:
-        ...
+    def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int: ...
 
-    def reset_backoff(self, phase: str, agent: str) -> None:
-        ...
+    def reset_backoff(self, phase: str, agent: str) -> None: ...
 
-    def snapshot(self) -> dict[str, dict[str, object]]:
-        ...
+    def snapshot(self) -> dict[str, dict[str, object]]: ...
 
 
 @dataclass(frozen=True)
 class UnavailabilityEntry:
-
     unavailable_until_ms: int
     reason: UnavailabilityReason | None
     attempt: int
@@ -62,7 +53,6 @@ DEFAULT_LEGACY_MAX_BACKOFF_MS = 300_000
 
 
 class AgentUnavailabilityTracker:
-
     def __init__(
         self,
         clock: Clock | None = None,
@@ -79,9 +69,7 @@ class AgentUnavailabilityTracker:
             backoff_policy if backoff_policy is not None else DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
         )
         self._entries: dict[str, UnavailabilityEntry] = dict(initial_entries or {})
-        self._backoff_attempts: dict[str, int] = dict(
-            initial_backoff_attempts or {}
-        )
+        self._backoff_attempts: dict[str, int] = dict(initial_backoff_attempts or {})
 
         if initial_timeouts:
             for key, timeout_ms in initial_timeouts.items():
@@ -196,7 +184,6 @@ class AgentUnavailabilityTracker:
 
 
 __all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityStore"]
-
 
 
 _ALLOWED_PUBLIC_MUTATORS: frozenset[str] = frozenset(

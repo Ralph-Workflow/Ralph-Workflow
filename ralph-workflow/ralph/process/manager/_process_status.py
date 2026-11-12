@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import Enum, auto
 
 
 class ProcessStatus(Enum):
-
     SPAWNED = auto()
     RUNNING = auto()
     EXITED = auto()

@@ -171,7 +171,7 @@ Expected: FAIL because presenter module does not exist and runner still hardcode
 
 **Step 3: Write minimal implementation**
 
-Extract the rendering decision tree from `runner.py` into a presenter module that consumes canonical activity events. Reduce `runner.py` to orchestration only.
+Extract the rendering choice tree from `runner.py` into a presenter module that consumes canonical activity events. Reduce `runner.py` to orchestration only.
 
 The presenter should own:
 - visible summary rules

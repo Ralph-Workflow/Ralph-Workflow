@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class ParserRegistryEntry:
-
     parser_factory: Callable[[], AgentParser]
     strategy_factory: StrategyFactory
     transport: AgentTransport

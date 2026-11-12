@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -12,7 +11,6 @@ _RELAY_FAULT = "SUPERVISION_INFRASTRUCTURE_FAILURE"
 
 
 class AttemptFault(StrEnum):
-
     AGENT_HEALTHY = "AGENT_HEALTHY"
     AGENT_EXITED = "AGENT_EXITED"
     AGENT_INFRASTRUCTURE_FAILURE = "AGENT_INFRASTRUCTURE_FAILURE"

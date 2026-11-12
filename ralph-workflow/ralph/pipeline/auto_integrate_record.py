@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import errno
@@ -62,7 +61,6 @@ _VALID_PHASES: frozenset[str] = frozenset({"integrating", "integrated"})
 
 
 class IntegrationRecord(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     phase: IntegrationPhase
@@ -133,7 +131,6 @@ class IntegrationRecord(RalphBaseModel):
         notification_key: tuple[str | None, tuple[str, ...], str | None] | None,
     ) -> IntegrationRecord:
         return self.model_copy(update={"waiting_notification_key": notification_key})
-
 
 
 _LEGACY_GLOBAL_EVIDENCE_KEYS: frozenset[str] = frozenset({"for-each-ref", "ls-files"})
@@ -269,7 +266,6 @@ class RecordUnreadableError(RuntimeError):
 
 
 class RecordReadOutcomeDisposition(StrEnum):
-
     ABSENT = "absent"
     PRESENT = "present"
     BUSY = "busy"
@@ -280,7 +276,6 @@ RecordUnreadableReason = Literal["corrupt_json", "unsupported_schema", "backend_
 
 
 class RecordReadOutcome(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     disposition: RecordReadOutcomeDisposition
@@ -628,6 +623,3 @@ __all__ = [
     "transition_by_name",
     "write_record",
 ]
-
-
-

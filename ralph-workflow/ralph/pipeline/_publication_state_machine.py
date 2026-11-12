@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class PublicationDecision(StrEnum):
-
     PUBLICATION_PENDING = "publication_pending"
     PUBLISH_NOW = "publish_now"
     PUBLISH_DEFERRED_FRESHNESS = "publish_deferred_freshness"

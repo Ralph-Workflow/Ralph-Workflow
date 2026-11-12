@@ -1,4 +1,3 @@
-
 from ralph.pro_support.env import (
     PROMPT_PATH,
     RALPH_WORKFLOW_PRO,

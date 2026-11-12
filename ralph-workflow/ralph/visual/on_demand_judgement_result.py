@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class OnDemandJudgementResult:
-
     verdict_id: str | None = None
     status: str | None = None
     blocker: str | None = None

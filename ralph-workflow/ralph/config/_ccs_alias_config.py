@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pydantic import ConfigDict
@@ -7,7 +6,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class CcsAliasConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     cmd: str

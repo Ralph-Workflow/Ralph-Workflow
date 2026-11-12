@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,7 +31,6 @@ def _canonicalize(path: Path | str) -> Path:
 
 @dataclass(frozen=True, init=False)
 class WorkspaceScope:
-
     root: Path
     allowed_roots: tuple[Path, ...]
     local_config_path: Path
@@ -140,9 +138,7 @@ class WorkspaceScope:
 
         scope = object.__new__(cls)
         object.__setattr__(scope, "root", canonical_root)
-        object.__setattr__(
-            scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots))
-        )
+        object.__setattr__(scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots)))
         object.__setattr__(scope, "local_config_path", _default_local_config_path(canonical_root))
         object.__setattr__(scope, "propagated_config_paths", ())
         return scope

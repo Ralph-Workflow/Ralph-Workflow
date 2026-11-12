@@ -1,4 +1,3 @@
-
 from pathlib import PurePosixPath
 from typing import Literal, cast
 
@@ -32,7 +31,6 @@ def _validate_allowed_directory_entry(entry: str) -> str:
 
 
 class PhaseDefinition(_FrozenPolicyModel):
-
     drain: str = Field(..., description="Drain binding for this phase")
     transitions: PhaseTransition = Field(..., description="Transition routing rules")
 

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -36,7 +35,6 @@ def parse_exec_uri(uri: str) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class ExecResourceEntry:
-
     uri: str
     name: str
     spill_path: Path
@@ -53,7 +51,6 @@ class ExecResourceEntry:
 
 
 class ExecResourceResolver:
-
     def register(self, spill_path: Path) -> str:
         spill_path = spill_path.resolve()
         if not self._is_under_trusted_root(spill_path):
@@ -77,9 +74,7 @@ class ExecResourceResolver:
 
     def __init__(self, spill_roots: tuple[Path, ...]) -> None:
         self._roots: tuple[Path, ...] = tuple(p.resolve() for p in spill_roots)
-        self._entries: OrderedDict[str, ExecResourceEntry] = (
-            OrderedDict()
-        )
+        self._entries: OrderedDict[str, ExecResourceEntry] = OrderedDict()
 
     @property
     def spill_roots(self) -> tuple[Path, ...]:

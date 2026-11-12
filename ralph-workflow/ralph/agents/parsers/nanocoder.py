@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -33,7 +32,6 @@ def _status_signature(text: str) -> str:
 
 
 class NanocoderParser(GenericParser):
-
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,

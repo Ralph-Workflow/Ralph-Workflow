@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,7 +14,6 @@ def clamp_tail(text: str, *, max_chars: int) -> str:
 
 @dataclass(slots=True)
 class BoundedTextBuffer:
-
     max_chars: int = DEFAULT_MAX_BUFFER_CHARS
     label: str = "text"
     _text: str = field(default="", init=False, repr=False)

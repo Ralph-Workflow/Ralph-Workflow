@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 
 class DisplayCapability(StrEnum):
-
     SYNTAX_HIGHLIGHTING = "syntax_preview"
     FILE_PREVIEW = "file_preview"
     EDIT_DIFF = "diff_preview"

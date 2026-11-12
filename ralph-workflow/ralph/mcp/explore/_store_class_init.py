@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -18,7 +17,6 @@ from ralph.mcp.explore._store_types import (
 
 
 class _InitializeMethods:
-
     _conn: sqlite3.Connection
     _db_path: Path
     _busy_timeout_ms: int
@@ -56,9 +54,7 @@ class _InitializeMethods:
                         check_same_thread=False,
                     )
                     self._conn.row_factory = sqlite3.Row
-                time.sleep(
-                    backoff
-                )
+                time.sleep(backoff)
                 backoff *= 2
 
     def _migrate_schema(self) -> None:
@@ -133,7 +129,5 @@ class _InitializeMethods:
                 attempts += 1
                 if attempts >= self._INIT_LOCK_ATTEMPTS:
                     raise
-                time.sleep(
-                    backoff
-                )
+                time.sleep(backoff)
                 backoff *= 2

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -17,8 +16,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-
 
 
 _HEARTBEAT_PORT_DEFAULT = 7432
@@ -95,7 +92,6 @@ def _default_heartbeat_factory() -> _HeartbeatFactory:
 
 
 class ProMarkerWatcher:
-
     def __init__(
         self,
         *,

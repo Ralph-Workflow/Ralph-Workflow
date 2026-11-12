@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -246,6 +245,3 @@ open_repo = _open_repo
 rebase_in_progress_impl = _rebase_in_progress_impl
 has_index_conflicts = _has_index_conflicts
 head_is_descendant = _head_is_descendant
-
-
-

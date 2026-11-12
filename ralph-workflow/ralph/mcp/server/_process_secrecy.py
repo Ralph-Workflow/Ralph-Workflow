@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ctypes
@@ -51,15 +50,9 @@ def _protect_windows_process() -> None:
     windows_library_loader = cast("_WindowsLibraryLoader", getattr(ctypes, "".join(("Win", "DLL"))))
     advapi32 = windows_library_loader("advapi32", use_last_error=True)
     kernel32 = windows_library_loader("kernel32", use_last_error=True)
-    initialize_acl = cast(
-        "_NativeFunction", advapi32.InitializeAcl
-    )
-    set_security_info = cast(
-        "_NativeFunction", advapi32.SetSecurityInfo
-    )
-    get_current_process = cast(
-        "_GetCurrentProcess", kernel32.GetCurrentProcess
-    )
+    initialize_acl = cast("_NativeFunction", advapi32.InitializeAcl)
+    set_security_info = cast("_NativeFunction", advapi32.SetSecurityInfo)
+    get_current_process = cast("_GetCurrentProcess", kernel32.GetCurrentProcess)
     initialize_acl.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong]
     initialize_acl.restype = ctypes.c_int
     set_security_info.argtypes = [

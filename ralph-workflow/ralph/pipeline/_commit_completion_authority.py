@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ from ralph.pipeline.auto_integrate_record import (
 
 @dataclass(frozen=True)
 class CommitCompletion:
-
     record: IntegrationRecord
     integrated_feature_sha: str | None
 

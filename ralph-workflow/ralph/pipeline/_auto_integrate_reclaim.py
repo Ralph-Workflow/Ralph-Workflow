@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,7 +34,6 @@ def target_worktree_lookup(repo_root: Path, target: str) -> tuple[str, Path | No
 
 @dataclass(frozen=True)
 class ReclaimResult:
-
     worktree_path: str
     snapshot_ref: str
     discarded_path_count: int
@@ -43,7 +41,6 @@ class ReclaimResult:
 
 @dataclass(frozen=True)
 class _Snapshot:
-
     ref: str
     staged_patch: str
     unstaged_patch: str

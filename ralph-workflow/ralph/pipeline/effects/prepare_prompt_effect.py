@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ else:
 
 @dataclass(frozen=True)
 class PreparePromptEffect:
-
     phase: PipelinePhase
     iteration: int | None = None
     drain: str | None = None

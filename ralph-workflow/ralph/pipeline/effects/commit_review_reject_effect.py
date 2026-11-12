@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ else:
 
 @dataclass(frozen=True)
 class CommitReviewRejectEffect:
-
     phase: PipelinePhase
     reason: str
     ref: str

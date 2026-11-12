@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -214,9 +213,7 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
-    details = cast(
-        "ValidationErrorDetails", exc.errors()
-    )
+    details = cast("ValidationErrorDetails", exc.errors())
     return [format_validation_error_detail(detail) for detail in details]
 
 
@@ -281,9 +278,7 @@ def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
 def _edge_declared_in_normalized(normalized: dict[str, object], source: str, target: str) -> bool:
     phases = normalized.get("phases")
     if isinstance(phases, Mapping):
-        typed_phases: Mapping[str, PhaseDefinition] = cast(
-            "Mapping[str, PhaseDefinition]", phases
-        )
+        typed_phases: Mapping[str, PhaseDefinition] = cast("Mapping[str, PhaseDefinition]", phases)
         phase_def = typed_phases.get(source)
         if phase_def is not None and _phase_def_declares_edge(phase_def, target):
             return True
@@ -307,9 +302,7 @@ def _disable_incompatible_inherited_timebox(
     phases = normalized.get("phases")
     if not isinstance(timebox, Mapping) or not isinstance(phases, Mapping):
         return normalized
-    phase_names = set(
-        cast("Mapping[str, PhaseDefinition]", phases)
-    )
+    phase_names = set(cast("Mapping[str, PhaseDefinition]", phases))
     for key in ("start_source", "start_entry", "guarded_entry", "end_entry", "finalization_target"):
         value = timebox.get(key)
         if not isinstance(value, str) or value not in phase_names:

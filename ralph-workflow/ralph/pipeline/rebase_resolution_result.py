@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import NamedTuple
@@ -9,7 +8,6 @@ __all__ = ["RebaseResolutionResult"]
 
 
 class RebaseResolutionResult(NamedTuple):
-
     succeeded: bool
     reason: str | None
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE

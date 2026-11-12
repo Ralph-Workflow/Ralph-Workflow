@@ -1,4 +1,3 @@
-
 from ralph.pipeline.operation_evidence import EvidenceVerdict
 
 EVIDENCE_CHANGED_REASON = "diagnostic evidence lease unparseable; manual recovery required"

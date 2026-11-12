@@ -1,10 +1,8 @@
-
 {% macro _render_payload_file_reference(label, path) -%}
 Read the complete {{ label|lower }} from file at `{{ path }}` before continuing.
 This file is the authoritative source for {{ label|lower }} in this prompt.
 Do not ask the user to paste it again, and do not claim the {{ label|lower }} is missing.
 {%- endmacro %}
-
 
 {% macro render_payload_section(label, content, path) -%}
 {{ label }}:
@@ -16,7 +14,6 @@ Do not ask the user to paste it again, and do not claim the {{ label|lower }} is
 {{ label }} END
 {% endif %}
 {%- endmacro %}
-
 
 {% macro render_payload_path(label, path) -%}
 {% if not path %}{{ raise_error("render_payload_path: path must not be empty for label=" ~ label) }}{% endif %}

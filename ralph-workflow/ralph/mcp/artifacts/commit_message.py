@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -101,15 +100,11 @@ def normalize_commit_message_content(content: dict[str, object]) -> dict[str, ob
 
 def render_commit_message_content(content: dict[str, object]) -> str:
     normalized = normalize_commit_message_content(content)
-    kind = cast(
-        "str", normalized["type"]
-    )
+    kind = cast("str", normalized["type"])
     if kind == _SKIP_KIND:
         return f"{_SKIP_PREFIX} {cast('str', normalized['reason'])}"
 
-    subject = cast(
-        "str", normalized["subject"]
-    )
+    subject = cast("str", normalized["subject"])
     body = _render_commit_body(normalized)
     return subject if not body else f"{subject}\n\n{body}"
 

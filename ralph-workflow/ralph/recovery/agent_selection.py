@@ -1,4 +1,3 @@
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -7,7 +6,6 @@ type AgentAvailability = tuple[str, bool, int, bool, str | None]
 
 @dataclass(frozen=True, slots=True)
 class AgentSelection:
-
     index: int | None
     agent: str | None
     skipped_reasons: tuple[tuple[str, str], ...]

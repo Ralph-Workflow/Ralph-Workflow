@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,7 +5,6 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class StepOutcome:
-
     kind: str
     output: str | None = None
     files_modified: list[str] = field(default_factory=list)

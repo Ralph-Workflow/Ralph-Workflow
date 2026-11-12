@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -12,12 +11,9 @@ if TYPE_CHECKING:
 
 
 class OpenCodeChildPartSource(Protocol):
+    def fetch(self, parent_session_id: str, since_ms: int) -> list[OpenCodeChildPart]: ...
 
-    def fetch(self, parent_session_id: str, since_ms: int) -> list[OpenCodeChildPart]:
-        ...
-
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 def default_opencode_db_path(

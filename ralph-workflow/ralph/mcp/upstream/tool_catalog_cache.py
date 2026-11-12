@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -24,9 +23,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_CACHE_ENTRIES: int = 32
 
-_CACHE: OrderedDict[str, dict[str, list[UpstreamTool]]] = (
-    OrderedDict()
-)
+_CACHE: OrderedDict[str, dict[str, list[UpstreamTool]]] = OrderedDict()
 
 _CATALOG_DIR_MODE: int = 0o700
 _CATALOG_FILE_MODE: int = 0o600
@@ -34,7 +31,6 @@ _CATALOG_FILE_MODE: int = 0o600
 
 @dataclass(frozen=True)
 class UpstreamToolCatalogSnapshot:
-
     present: bool
     value: dict[str, list[UpstreamTool]] = field(default_factory=dict)
 
@@ -59,9 +55,7 @@ def _write_catalog_file(workspace_root: Path, catalog: dict[str, list[UpstreamTo
         _ensure_catalog_dir(workspace_root)
         tmp = target.with_name(target.name + ".tmp")
         payload = serialize_upstream_tool_catalog(catalog)
-        fd = os.open(
-            tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _CATALOG_FILE_MODE
-        )
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _CATALOG_FILE_MODE)
         try:
             os.write(fd, payload.encode("utf-8"))
         finally:

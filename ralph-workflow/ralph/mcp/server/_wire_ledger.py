@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -62,9 +61,7 @@ _dropped_frames = itertools.count(1)
 
 _MAX_CACHED_INDEXES = 32
 _INDEXES_LOCK = threading.Lock()
-_INDEXES: OrderedDict[tuple[str, str], WireLedgerIndex] = (
-    OrderedDict()
-)
+_INDEXES: OrderedDict[tuple[str, str], WireLedgerIndex] = OrderedDict()
 
 
 def _ledger_path(workspace_root: Path, secret: str | None) -> Path:
@@ -76,7 +73,6 @@ def _ledger_path(workspace_root: Path, secret: str | None) -> Path:
 
 @dataclass(frozen=True)
 class WireLedgerRecord:
-
     method: str
     tool_name: str | None
     params_digest: str

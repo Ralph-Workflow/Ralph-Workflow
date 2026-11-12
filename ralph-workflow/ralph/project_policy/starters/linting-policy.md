@@ -37,9 +37,9 @@ the project maintains and can lint them.
   first-party code language, each followed by a `RALPH-COMMAND:` line or an
   explicit `RALPH-INAPPLICABLE:` line.
 * Inline suppressions MUST carry the narrowest tool-supported diagnostic
-  identifier and a documented rationale. Blanket suppressions are forbidden.
+  identifier and a documented reason. Blanket suppressions are forbidden.
 * The authoritative configuration or suppression inventory MUST identify
-  file-level disables and broad exclusions with their rationale; duplicating
+  file-level disables and broad exclusions with their reason; duplicating
   every entry in this policy is not required.
 
 ## Dead code — zero tolerance
@@ -58,7 +58,7 @@ again if demonstrated need returns than to retain unowned paths indefinitely.
   FFI callback, dynamic dispatch, conditional platform build, or external
   consumer MAY use the narrowest tool-supported live-entry annotation. This is
   not a dead-code exception: it requires observable consumer/entry-point
-  evidence, rationale, owner, and review trigger; speculative consumers do not qualify.
+  evidence, reason, owner, and review trigger; speculative consumers do not qualify.
 * Generated or vendored code is governed at its source boundary. A retained
   first-party compatibility path requires a verified consumer, owner, removal
   condition, and expiry/review date.
@@ -127,7 +127,7 @@ To follow this policy, an agent making any change MUST:
 * DECLARE one `RALPH-LANG:` block per language with the exact linter
   command.
 * PREFER existing tooling. Adding a new linter requires a documented
-  rationale.
+  reason.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies.
 * UPDATE this policy (facts, commands, requirements) in the same
@@ -137,9 +137,9 @@ To follow this policy, an agent making any change MUST:
 An agent MUST NOT:
 
 * Add `per-file-ignores`, `extend-per-file-ignores`, or any other
-  global rule silencing without a per-file rationale.
+  global rule silencing without a per-file reason.
 * Use an inline suppression without the narrowest tool-supported identifier,
-  when supported, and an adjacent rationale. Blanket or file-wide suppression
+  when supported, and an adjacent reason. Blanket or file-wide suppression
   requires a documented exception.
 * Lower the lint strictness level to obtain a passing result.
 * Retain verified dead code, suppress it, or add a fake use solely to make a

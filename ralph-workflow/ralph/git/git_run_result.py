@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -42,7 +41,6 @@ def unknown_outcome(reason: str = "indeterminate") -> GitOutcome:
 
 @dataclass(frozen=True)
 class GitRunResult:
-
     args: tuple[str, ...]
     returncode: int
     stdout: str

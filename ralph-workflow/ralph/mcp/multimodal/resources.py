@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -56,7 +55,6 @@ def build_media_identity(
 
 @dataclass
 class MediaManifest:
-
     _entries: OrderedDict[str, ManifestEntry] = field(
         default_factory=OrderedDict,
     )

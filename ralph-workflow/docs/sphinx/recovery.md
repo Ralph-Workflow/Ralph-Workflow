@@ -61,7 +61,7 @@ Recovery resumed after offline
 
 Each phase uses an agent chain. If an agent exhausts its retry budget or enters backoff, Ralph Workflow falls over to the preferred available agent in the chain.
 
-Provider failures enter cooldown before selection continues. Rate or quota limits and provider overloads start at 60 seconds; context exhaustion and otherwise unexplained non-zero agent exits start at 5 seconds. Pi's structured retry-exhaustion and context-length events keep their specific reason even when the Pi process exits non-zero. The activity transcript emits a `RECOVERING` line with the reason, cooldown, and fallback decision, so the terminal does not remain on a stale provider-error line while recovery proceeds.
+Provider failures enter cooldown before selection continues. Rate or quota limits and provider overloads start at 60 seconds; context exhaustion and otherwise unexplained non-zero agent exits start at 5 seconds. Pi's structured retry-exhaustion and context-length events keep their specific reason even when the Pi process exits non-zero. The activity transcript emits a `RECOVERING` line with the reason, cooldown, and fallback choice, so the terminal does not remain on a stale provider-error line while recovery proceeds.
 
 ### Priority-first reselection
 
@@ -276,7 +276,7 @@ This branch precedes the broader
 `FailureCategory.AMBIGUOUS` and the operator never sees the noisy
 `flagged_for_review=true` warning that the pre-fix code emitted.
 
-The recovery action is decided by
+The recovery action is resolved by
 `recovery_action_for_failure_reason(...)` in
 `ralph/agents/invoke/_session_resume.py`:
 
@@ -490,7 +490,7 @@ different contracts
 Both seams are operation-scoped: neither read can be invalidated by an
 unrelated worktree's branch advance.
 
-The decision fields those recoveries project are written only by
+The choice fields those recoveries project are written only by
 `set_publication_decision`, `set_fan_out_decision`, and
 `set_operation_display_state`. Raw `model_copy` writers of fan-out
 (1 site) and operation display (10 sites) were migrated onto the

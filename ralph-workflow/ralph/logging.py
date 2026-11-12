@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
     from loguru import Logger
 
     class SinkAdder(Protocol):
-
         def __call__(self, target: object, /, **kwargs: object) -> int: ...
 
 
@@ -124,9 +122,7 @@ def _configure_file_handlers(
     run_directory = log_directory / config.run_id if config.run_id else log_directory
     run_directory.mkdir(parents=True, exist_ok=True)
 
-    adder: SinkAdder = (
-        sink_adder if sink_adder is not None else cast("SinkAdder", logger.add)
-    )
+    adder: SinkAdder = sink_adder if sink_adder is not None else cast("SinkAdder", logger.add)
 
     text_log_path = run_directory / "ralph.log"
     _add_buffered_file_sink(
@@ -177,7 +173,6 @@ def get_logger() -> Logger:
 
 
 class RalphLogger:
-
     def __init__(self, base_logger: Logger | None = None) -> None:
         self._logger: Logger = base_logger if base_logger is not None else logger
 

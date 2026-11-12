@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -123,7 +122,6 @@ _CCS_SMOKE_RUN_ID = "interactive-ccs-smoke"
 
 @dataclass(frozen=True)
 class SmokeHarnessSpec:
-
     agent_name: str
     relative_dir: Path
     output_file: Path
@@ -301,9 +299,7 @@ _SMOKE_MAX_TURNS = 5
 _SMOKE_TRANSCRIPT_MAX_LINES = 400
 _MAX_MEANINGFUL_OUTPUT_LINES = 8
 _MIN_MEANINGFUL_OUTPUT_LINES = 3
-_MAX_VISIBLE_OUTPUT_LINES_BY_AGENT: dict[
-    str, int
-] = {
+_MAX_VISIBLE_OUTPUT_LINES_BY_AGENT: dict[str, int] = {
     "claude-headless": 250,
 }
 _MAX_VISIBLE_OUTPUT_LINES = 80
@@ -329,7 +325,6 @@ _AGY_CLI_LOG_PATH: Path = Path.home() / ".gemini" / "antigravity-cli" / "cli.log
 
 @dataclass(frozen=True)
 class SmokeRunResult:
-
     agent_name: str
     transport: str
     output_file: Path
@@ -356,7 +351,6 @@ class SmokeRunResult:
 
 @dataclass(frozen=True)
 class SubagentSmokeEvidence:
-
     dispatch_count: int = 0
     dispatch_seen: bool = False
     result_seen: bool = False
@@ -364,7 +358,6 @@ class SubagentSmokeEvidence:
 
 
 type EnvGetter = Callable[[str], str | None]
-
 
 
 CONFORMANCE_MATRIX_TRANSPORT_ORDER: Final[tuple[str, ...]] = (
@@ -832,9 +825,7 @@ def _parser_key_for_config(config: AgentConfig) -> str:
     return resolve_parser_key(
         config.cmd,
         config.json_parser,
-        cast(
-            "AgentTransport", config.transport
-        ),
+        cast("AgentTransport", config.transport),
     )
 
 
@@ -1038,9 +1029,7 @@ def _execute_smoke_turns(
                 params.unified_config,
                 pipeline_deps,
                 workspace_scope,
-                bridge=cast(
-                    "RestartAwareMcpBridge", params.bridge
-                ),
+                bridge=cast("RestartAwareMcpBridge", params.bridge),
                 display_context=params.display_context,
                 display=params.display,
                 run_id=run_id,

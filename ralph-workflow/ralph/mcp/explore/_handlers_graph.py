@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -46,14 +45,10 @@ _VALID_CHANGE_KINDS: tuple[str, ...] = (
 _GRAPH_LIMIT_MAX: int = 100
 _GRAPH_DEFAULT_TIMEOUT_MS: int = 5_000
 _GRAPH_TIMEOUT_MAX_MS: int = 30_000
-_GRAPH_CANCEL_FLAGS: dict[
-    str, bool
-] = {}
+_GRAPH_CANCEL_FLAGS: dict[str, bool] = {}
 _GRAPH_CANCEL_LOCK: threading.Lock = threading.Lock()
 
-_REINDEX_CANCEL_FLAGS: dict[
-    str, bool
-] = {}
+_REINDEX_CANCEL_FLAGS: dict[str, bool] = {}
 _REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 

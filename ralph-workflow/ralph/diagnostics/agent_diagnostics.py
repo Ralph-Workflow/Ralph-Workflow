@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import shutil
@@ -22,7 +21,6 @@ def _is_agent_available(cmd: str) -> bool:
 
 @dataclass
 class AgentDiagnostics:
-
     total_agents: int
     available_agents: int
     unavailable_agents: int

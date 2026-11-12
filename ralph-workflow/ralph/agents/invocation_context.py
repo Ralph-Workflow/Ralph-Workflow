@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class InvocationContext:
-
     clock: Clock
     liveness_registry: ChildLivenessRegistry
     label_scope: str | None = None

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -64,9 +63,7 @@ def load_existing_nanocoder_upstream_servers(
     *,
     env: dict[str, str] | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    active_env = (
-        env if env is not None else cast("dict[str, str]", os.environ)
-    )
+    active_env = env if env is not None else cast("dict[str, str]", os.environ)
     config_dir = active_env.get(_NANOCODER_CONFIG_DIR_ENV)
     paths: tuple[Path, ...]
     if config_dir:

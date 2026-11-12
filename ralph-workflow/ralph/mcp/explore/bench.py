@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -63,12 +62,10 @@ def _serialize_tool_spec(spec: object) -> str:
 
 
 class Clock(Protocol):
-
     def now(self) -> float: ...
 
 
 class SystemClock:
-
     def now(self) -> float:
         return time.monotonic()
 
@@ -111,9 +108,7 @@ def derive_visible_catalog(
     if mcp_config is None:
         cfg: McpConfig = McpConfig()
     else:
-        cfg = cast(
-            "McpConfig", mcp_config
-        )
+        cfg = cast("McpConfig", mcp_config)
     try:
         specs = _bridge_tool_specs(cfg)
     except Exception:
@@ -206,8 +201,6 @@ def _evidence_metrics(
     recall = len(matched) / len(expected)
     precision = len(matched) / len(returned)
     return recall, precision
-
-
 
 
 def run_benchmark(

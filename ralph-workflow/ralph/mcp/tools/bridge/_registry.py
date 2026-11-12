@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sys
@@ -58,7 +57,6 @@ _clock = time.monotonic
 
 
 class _ReadableWorkspace(Protocol):
-
     def read(self, path: str) -> str: ...
 
 
@@ -151,9 +149,7 @@ def build_ralph_tool_registry(
     timeout_s: float | None = None,
     clock_fn: Callable[[], float] | None = None,
 ) -> ToolBridge:
-    mcp_config_cls = cast(
-        "type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig
-    )
+    mcp_config_cls = cast("type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig)
     mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
     effective_clock = clock_fn if clock_fn is not None else _clock

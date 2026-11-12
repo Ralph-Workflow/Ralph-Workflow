@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class ReadinessResult:
-
     status: ReadinessStatus
     findings: list[PolicyFinding] = field(default_factory=list)
     changed_files: list[str] = field(default_factory=list)

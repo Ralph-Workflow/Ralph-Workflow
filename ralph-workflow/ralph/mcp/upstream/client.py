@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import base64
@@ -41,7 +40,6 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class HttpUpstreamClient:
-
     def __init__(
         self,
         server: UpstreamMcpServer,

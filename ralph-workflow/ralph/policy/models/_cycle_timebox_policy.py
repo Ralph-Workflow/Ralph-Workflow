@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import math
@@ -14,7 +13,6 @@ DEFAULT_FINALIZATION_CYCLE_OUTCOME: Literal["completed", "failed"] = "completed"
 
 
 class CycleTimeboxPolicy(_FrozenPolicyModel):
-
     model_config = ConfigDict(extra="forbid")
 
     duration_seconds: float = Field(

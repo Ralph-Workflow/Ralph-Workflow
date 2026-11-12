@@ -1,9 +1,7 @@
-
 from enum import StrEnum
 
 
 class AgentActivityKind(StrEnum):
-
     OUTPUT_LINE = "output_line"
     STREAM_DELTA = "stream_delta"
     TOOL_USE = "tool_use"

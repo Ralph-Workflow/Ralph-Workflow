@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class LeaseOutcome:
-
     kind: LeaseOutcomeKind
     reason: LeaseUnknownReason | None = None
     evidence: str | None = None
@@ -74,9 +72,7 @@ def integration_transaction(root: Path) -> Iterator[LeaseOutcome]:
     path = Path(observed.stdout.strip()) / "ralph-auto-integrate.lock"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        handle = path.open(
-            "a+", encoding="utf-8"
-        )
+        handle = path.open("a+", encoding="utf-8")
     except OSError as error:
         yield LeaseOutcome.unknown(LeaseUnknownReason.LOCK_IO_ERROR, evidence=str(error.errno))
         return

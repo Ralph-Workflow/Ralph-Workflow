@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import importlib
@@ -65,13 +64,11 @@ if TYPE_CHECKING:
 
 
 class RepoPath(Protocol):
-
     @property
     def git_dir(self) -> str | os.PathLike[str]: ...
 
 
 class GitMethodRepo(RepoPath, Protocol):
-
     @property
     def git(self) -> object: ...
 
@@ -106,7 +103,6 @@ def _is_spawn_module(value: object) -> TypeGuard[_SpawnModule]:
     return hasattr(value, "_spawn_git")
 
 
-
 _HEALTH_LOG_CAP: int = 256
 
 _MAX_CONSECUTIVE_TIMEOUTS: int = 64
@@ -116,13 +112,11 @@ _LEASE_STALE_SECONDS: float = 600.0
 
 @dataclass(frozen=True)
 class QueuedCallOutcome:
-
     kind: Literal["success", "timeout", "error"]
     outcome: GitOutcome = field(default_factory=lambda: GitOutcome(GitOutcomeKind.UNKNOWN))
 
 
 class GitCommandQueue:
-
     common_dir: Path
     execute_lock: threading.RLock
     consecutive_timeouts: int
@@ -132,9 +126,7 @@ class GitCommandQueue:
         self.common_dir = common_dir
         self.execute_lock = threading.RLock()
         self.consecutive_timeouts = 0
-        self.outcome_log = deque(
-            maxlen=_HEALTH_LOG_CAP
-        )
+        self.outcome_log = deque(maxlen=_HEALTH_LOG_CAP)
 
     def record_outcome(
         self,
@@ -170,11 +162,8 @@ if not (_LEASE_STALE_SECONDS > 0):
     raise RuntimeError(f"_LEASE_STALE_SECONDS must be positive; got {_LEASE_STALE_SECONDS!r}")
 
 
-
-
 @dataclass
 class _QueueRegistry:
-
     _queues: dict[str, GitCommandQueue] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -245,8 +234,6 @@ def get_queue_for_repo(repo_or_path: RepoPath | Path | str) -> GitCommandQueue:
 
 def reset_all_queues() -> None:
     _REGISTRY.reset_all()
-
-
 
 
 def route_git_method(
@@ -336,8 +323,6 @@ def _classify_exception(exc: BaseException) -> Literal["timeout", "error"]:
     return "error"
 
 
-
-
 def route_run_git(
     args: Sequence[str],
     *,
@@ -407,7 +392,6 @@ def _apply_call_class_deadline(
     )
 
 
-
 WorktreeLeaseHolder = _WorktreeLeaseHolder
 WorktreeLeaseUnavailableError = _WorktreeLeaseUnavailableError
 WorktreeLease = _WorktreeLease
@@ -468,8 +452,6 @@ def _repo_or_open(repo_or_path: RepoPath | Path | str) -> RepoPath:
     if isinstance(repo_or_path, (Path, str)):
         return Repo(Path(repo_or_path))
     return repo_or_path
-
-
 
 
 __all__ = [

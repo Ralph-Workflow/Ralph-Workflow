@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal, Self
@@ -10,7 +9,6 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class CommitReview(RalphBaseModel):
-
     model_config = ConfigDict(extra="forbid")
 
     verdict: Literal["approve", "reject"]

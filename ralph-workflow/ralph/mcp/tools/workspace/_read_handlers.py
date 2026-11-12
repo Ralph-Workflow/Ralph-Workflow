@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import fnmatch
@@ -45,8 +44,6 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 if TYPE_CHECKING:
     from ralph.mcp.explore.store import EvidenceRow, ExploreStore, SpanRow, SymbolRow
     from ralph.workspace import Workspace
-
-
 
 
 def _tombstone_replacement(tombstone: sqlite3.Row) -> str | None:
@@ -555,9 +552,7 @@ def _read_via_span(
             ],
             is_error=True,
         )
-    span_row: SpanRow = cast(
-        "SpanRow", span_obj
-    )
+    span_row: SpanRow = cast("SpanRow", span_obj)
     path = span_row.path
     start_line = int(span_row.start_line)
     end_line = int(span_row.end_line)
@@ -692,9 +687,7 @@ def _read_via_symbol(
             ],
             is_error=True,
         )
-    sym_row: SymbolRow = cast(
-        "SymbolRow", sym_obj
-    )
+    sym_row: SymbolRow = cast("SymbolRow", sym_obj)
     path = sym_row.path
     span_id = sym_row.span_id
     if span_id:
@@ -1264,9 +1257,7 @@ def handle_directory_tree(
     handle_obj_check: object = resolve_explore_index(session)
     handle2: ExploreIndexLike | None
     if handle_obj_check is not None and hasattr(handle_obj_check, "store"):
-        handle2 = cast(
-            "ExploreIndexLike | None", handle_obj_check
-        )
+        handle2 = cast("ExploreIndexLike | None", handle_obj_check)
     else:
         handle2 = None
     handle = handle2
@@ -1499,9 +1490,7 @@ def handle_search_files(
     if role != "any":
         from ralph.mcp.explore.ranking import matches_role
 
-        matches = [
-            m for m in matches if matches_role(m, role)
-        ]
+        matches = [m for m in matches if matches_role(m, role)]
 
     from ralph.mcp.explore.dirty_paths import resolve_explore_index
 

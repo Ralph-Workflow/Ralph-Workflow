@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 TURN_BOUNDARY_MARKER: str = "[claude turn boundary]"

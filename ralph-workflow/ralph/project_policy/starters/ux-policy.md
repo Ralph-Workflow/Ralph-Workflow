@@ -127,7 +127,7 @@ On failure, report the affected screen and the gap.
 ## Exceptions
 
 A documented UX exception (e.g. a wizard flow that diverges from the
-default) requires a documented rationale, scope, owner, and review
+default) requires a documented reason, scope, owner, and review
 date.
 
 ## Maintenance triggers

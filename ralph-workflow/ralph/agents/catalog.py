@@ -1,8 +1,7 @@
-
-
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypeVar, overload
+from importlib import import_module
+from typing import TYPE_CHECKING, Final, Protocol, TypeVar, cast, overload, runtime_checkable
 
 from ralph.agents._contracts import StrategyFactory
 from ralph.agents.execution_state._strategy_builders import (
@@ -31,6 +30,7 @@ from ralph.agents.parsers.pi import PiParser
 from ralph.agents.registry_types import ParserRegistryEntry
 from ralph.agents.support import AgentSupport
 from ralph.config.agent_config import AgentConfig
+from ralph.config.ccs_config import CcsConfig
 from ralph.config.enums import AgentTransport
 
 if TYPE_CHECKING:
@@ -53,9 +53,52 @@ _T = TypeVar("_T")
 
 _ParserRegistryEntry = ParserRegistryEntry
 
+_BUILTIN_MODULE: Final = "ralph.agents.builtin"
+_REGISTRY_MODULE: Final = "ralph.agents.registry"
+
+
+@runtime_checkable
+class _BuiltinSupportsProvider(Protocol):
+    def __call__(self) -> tuple[AgentSupport, ...]: ...
+
+
+@runtime_checkable
+class _DynamicAgentResolver(Protocol):
+    def __call__(
+        self,
+        name: str,
+        ccs_defaults: CcsConfig,
+        *,
+        base_lookup: Callable[[str], AgentConfig | None] | None = None,
+    ) -> AgentConfig | None: ...
+
+
+def _module_namespace(module_name: str) -> dict[str, object]:
+    return cast("dict[str, object]", import_module(module_name).__dict__)
+
+
+def _builtin_supports() -> tuple[AgentSupport, ...]:
+    provider = _module_namespace(_BUILTIN_MODULE).get("builtin_supports")
+    if not isinstance(provider, _BuiltinSupportsProvider):
+        msg = f"{_BUILTIN_MODULE}.builtin_supports is unavailable"
+        raise RuntimeError(msg)
+    return provider()
+
+
+def _resolve_dynamic_agent(
+    name: str,
+    ccs_defaults: CcsConfig,
+    *,
+    base_lookup: Callable[[str], AgentConfig | None] | None = None,
+) -> AgentConfig | None:
+    resolver = _module_namespace(_REGISTRY_MODULE).get("_resolve_dynamic_agent")
+    if not isinstance(resolver, _DynamicAgentResolver):
+        msg = f"{_REGISTRY_MODULE}._resolve_dynamic_agent is unavailable"
+        raise RuntimeError(msg)
+    return resolver(name, ccs_defaults, base_lookup=base_lookup)
+
 
 class _FlexibleFactory:
-
     __slots__ = ("_factory",)
 
     def __init__(self, factory: Callable[[], "AgentParser"]) -> None:
@@ -69,7 +112,6 @@ class _FlexibleFactory:
 
 
 class _CatalogBackedMapping(Mapping[K, V]):
-
     __slots__ = ("_getter",)
 
     def __init__(self, getter: Callable[[], Mapping[K, V]]) -> None:
@@ -115,7 +157,6 @@ class _CatalogBackedMapping(Mapping[K, V]):
         raise TypeError(msg)
 
 
-
 _DEFAULT_BUILTIN_PARSER_TYPES: dict[
     str, tuple[type["AgentParser"], "AgentTransport", "StrategyFactory"]
 ] = {
@@ -139,7 +180,6 @@ _DEFAULT_BUILTIN_PARSER_TYPES: dict[
 
 @dataclass
 class _AgentCatalogState:
-
     parsers: dict[str, "type[AgentParser] | _ParserRegistryEntry"] = field(default_factory=dict)
     commands: dict[str, "Callable[[], AgentParser] | _ParserRegistryEntry"] = field(
         default_factory=dict
@@ -164,20 +204,19 @@ def _default_strategy_factories() -> dict[AgentTransport, StrategyFactory]:
 
 @dataclass
 class AgentCatalog:
-
     _entries: dict[str, "AgentSupport"] = field(default_factory=dict)
     _by_command: dict[str, "AgentSupport"] = field(default_factory=dict)
     _state: _AgentCatalogState = field(default_factory=_AgentCatalogState)
 
     def _default_strategy_for_transport(self, transport: AgentTransport) -> "StrategyFactory":
-        factory = self._DEFAULT_STRATEGIES.get(transport)
+        factory = self._default_strategies.get(transport)
         if factory is None:
             msg = f"No default strategy registered for transport {transport!r}"
             raise ValueError(msg)
         return factory
 
     @property
-    def _DEFAULT_STRATEGIES(self) -> dict[AgentTransport, "StrategyFactory"]:
+    def _default_strategies(self) -> dict[AgentTransport, "StrategyFactory"]:
         return _default_strategy_factories()
 
     def add(self, support: "AgentSupport") -> None:
@@ -202,11 +241,7 @@ class AgentCatalog:
 
     @staticmethod
     def _is_built_in_parser_key(key: str) -> bool:
-        from ralph.agents.builtin import (
-            builtin_supports,
-        )
-
-        builtin_names = {s.name.lower() for s in builtin_supports()}
+        builtin_names = {s.name.lower() for s in _builtin_supports()}
         if key in builtin_names:
             return True
 
@@ -310,19 +345,16 @@ class AgentCatalog:
 def _seed_default_catalog(catalog: AgentCatalog) -> None:
     if catalog._state.parsers:
         return
-    from ralph.agents.builtin import (
-        builtin_supports,
-    )
 
     for name, (factory, _transport, _strategy) in _DEFAULT_BUILTIN_PARSER_TYPES.items():
         catalog._state.parsers[name] = factory
-    for support in builtin_supports():
+    for support in _builtin_supports():
         name_lower = support.name.lower()
         cmd_lower = support.cmd.lower()
         catalog._entries[name_lower] = support
         catalog._by_command[cmd_lower] = support
         catalog._state.commands[cmd_lower] = support.parser_factory
-    catalog._state.strategies.update(catalog._DEFAULT_STRATEGIES)
+    catalog._state.strategies.update(catalog._default_strategies)
 
 
 _catalog_holder: list[AgentCatalog] = []
@@ -342,13 +374,6 @@ def _reset_default_catalog(catalog: AgentCatalog) -> None:
 
 
 def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "AgentSupport | None":
-    from ralph.agents.registry import (
-        _resolve_dynamic_agent,
-    )
-    from ralph.config.ccs_config import (
-        CcsConfig,
-    )
-
     def _catalog_base_lookup(agent_name: str) -> AgentConfig | None:
         entry = catalog._entries.get(agent_name.lower())
         if entry is not None:

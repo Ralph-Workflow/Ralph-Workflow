@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
@@ -9,21 +8,15 @@ if TYPE_CHECKING:
 
 
 class ExecResourceEntryLike(Protocol):
-
-    def resource_list_entry(self) -> dict[str, object]:
-        ...
+    def resource_list_entry(self) -> dict[str, object]: ...
 
 
 class ExecResourceResolverLike(Protocol):
+    def read(self, uri: str) -> tuple[bytes, str, int] | None: ...
 
-    def read(self, uri: str) -> tuple[bytes, str, int] | None:
-        ...
+    def list_entries(self) -> Iterable[ExecResourceEntryLike]: ...
 
-    def list_entries(self) -> Iterable[ExecResourceEntryLike]:
-        ...
-
-    def register(self, spill_path: Path) -> str:
-        ...
+    def register(self, spill_path: Path) -> str: ...
 
 
 __all__ = [

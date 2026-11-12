@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -47,9 +46,7 @@ def capture_pre_planning_baseline(root: Path) -> PlanningBaseline | None:
 
     try:
         return capture_planning_baseline(root, git=RunGitCleanupPort())
-    except (
-        Exception
-    ) as exc:
+    except Exception as exc:
         logger.warning("pre-planning baseline capture failed: {}", exc)
         return None
 

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -13,7 +12,6 @@ __all__ = ["GitWorktreeConflictObserver"]
 
 
 class GitWorktreeConflictObserver:
-
     def unmerged_paths(self, root: Path) -> Sequence[str]:
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 

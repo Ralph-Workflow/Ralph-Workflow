@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,7 +7,6 @@ from ralph.project_policy.pipeline_graph import DECISION_COMPLETED
 
 @dataclass(frozen=True, slots=True)
 class AnalysisDecision:
-
     status: str
     summary: str = ""
     what_came_up_short: list[str] = field(default_factory=list[str])

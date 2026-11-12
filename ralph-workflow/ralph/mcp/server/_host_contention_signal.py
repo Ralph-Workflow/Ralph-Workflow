@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -6,6 +5,8 @@ from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+
+from ralph.mcp.server._mcp_health_event import record_host_contention_signal
 
 if TYPE_CHECKING:
     from ralph.process.manager._process_manager_types import _PsutilModuleLike
@@ -37,10 +38,6 @@ def record_d_state(
         try:
             status = psutil.Process(pid).status()
             if status.startswith("D") or status == "disk-sleep":
-                from ralph.mcp.server._mcp_health_event import (
-                    record_host_contention_signal,
-                )
-
                 record_host_contention_signal(f"d_state:{status}", _now=_now)
         except Exception:
             pass
@@ -55,10 +52,6 @@ def record_sigkill_survivor(
         try:
             status = psutil.Process(pid).status()
             if status in ("disk-sleep", "zombie"):
-                from ralph.mcp.server._mcp_health_event import (
-                    record_host_contention_signal,
-                )
-
                 record_host_contention_signal(f"sigkill_survivor:{status}", _now=_now)
         except Exception:
             pass
@@ -81,10 +74,6 @@ def record_psi_pressure(
                                 avg10_str = part.split("=", 1)[1]
                                 avg10 = float(avg10_str)
                                 if avg10 >= PSI_AVG10_THRESHOLD:
-                                    from ralph.mcp.server._mcp_health_event import (
-                                        record_host_contention_signal,
-                                    )
-
                                     record_host_contention_signal(
                                         f"psi_pressure:{name}:{avg10}", _now=_now
                                     )
@@ -101,8 +90,4 @@ def record_supervisor_tick_lateness(
 ) -> None:
     now_fn: Callable[[], float] = _now if _now is not None else time.monotonic
     if now_fn() - expected_at > check_interval.total_seconds() * 2.0:
-        from ralph.mcp.server._mcp_health_event import (
-            record_host_contention_signal,
-        )
-
         record_host_contention_signal("supervisor_tick_lateness", _now=_now)

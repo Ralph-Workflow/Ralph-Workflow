@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,7 +9,6 @@ from .operating_system import OperatingSystem
 
 @dataclass(frozen=True)
 class PlatformInfo:
-
     os: OperatingSystem = OperatingSystem.UNKNOWN
     architecture: Architecture = Architecture.UNKNOWN
     environment: EnvironmentInfo = field(default_factory=EnvironmentInfo)

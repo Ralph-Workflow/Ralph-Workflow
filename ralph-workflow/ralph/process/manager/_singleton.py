@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import atexit
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
 
 class _ProcessManagerState:
-
     instance: ProcessManager | None = None
     atexit_registered: bool = False
 

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -14,10 +13,8 @@ from ralph.mcp.explore._store_types import (
 
 
 class _ContentCacheMethods:
-
     _conn: sqlite3.Connection
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
-
 
     def lookup_content_cache(
         self,
@@ -80,9 +77,7 @@ class _ContentCacheMethods:
 
     def iter_content_cache(self) -> Iterator[ContentCacheRow]:
         cur = self._conn.execute("SELECT * FROM content_cache")
-        rows = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
         for cache_row in rows:
             yield _row_to_content_cache(cache_row)
 

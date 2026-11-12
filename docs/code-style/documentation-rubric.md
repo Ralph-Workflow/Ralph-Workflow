@@ -140,7 +140,7 @@ Judge all docs changes against all of these at once:
 
 Fail the docs system if any of these are true:
 
-- top-level/public docs lead with artifacts, transcript-vs-diff framing, merge-decision framing, handoff plumbing, or other internal process residue
+- top-level/public docs lead with artifacts, transcript-vs-diff framing, merge-choice framing, handoff plumbing, or other internal process residue
 - reviewable-output framing dominates the product story
 - README, START_HERE, docs map, and manual fight each other or duplicate each other without clear role separation
 - a common task is only answerable by wandering through many pages

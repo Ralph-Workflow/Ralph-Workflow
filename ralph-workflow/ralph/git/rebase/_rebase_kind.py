@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import Enum
 
 
 class RebaseKind(Enum):
-
     INVALID_REVISION = "invalid_revision"
     DIRTY_WORKING_TREE = "dirty_working_tree"
     CONCURRENT_OPERATION = "concurrent_operation"

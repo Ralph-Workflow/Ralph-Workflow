@@ -1,12 +1,3 @@
-"""Tests for the artifact-skill type audit.
-
-The audit derives the expected skill set from the registered artifact types,
-so these tests derive the same set and then inject each kind of drift into a
-temporary copy of the shipped skills content directory. Nothing here reads
-the live ``metadata.json``: the copy under ``tmp_path`` owns the manifest
-the assertions run against.
-"""
-
 from __future__ import annotations
 
 import json
@@ -24,40 +15,28 @@ from ralph.testing.audit_artifact_skill_types import audit_artifact_skill_types,
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-#: The shipped skills content directory in this checkout.
 _CONTENT_DIR = Path(__file__).resolve().parents[1] / "ralph" / "skills" / "content"
 
-#: The bundled format docs in this checkout.
 _FORMAT_DOC_DIR = (
     Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "artifacts" / "format_docs"
 )
 
-#: The ``artifact_type`` declaration in a skill, quoted or bare.
 _ARTIFACT_TYPE_RE = re.compile(r'("?artifact_type"?:\s*)"?[A-Za-z0-9_]+"?')
 
 
 def _artifact_types() -> tuple[str, ...]:
-    """Return every registered artifact type, sorted."""
     return tuple(sorted(spec.artifact_type for spec in registered_specs()))
 
 
 def _skill_name(artifact_type: str) -> str:
-    """Return the skill name that covers ``artifact_type``."""
     return f"submit-{artifact_type.replace('_', '-')}-artifact"
 
 
 def _expected_skill_names() -> set[str]:
-    """Return the skill names the registered artifact types derive."""
     return {"submit-artifact"} | {_skill_name(artifact_type) for artifact_type in _artifact_types()}
 
 
 def _format_doc_states_reference_only(artifact_type: str) -> bool:
-    """Return True when the format doc states the runtime writes the artifact.
-
-    This mirrors the contract the format docs state: the runtime generates
-    the artifact and agents do not submit it. The classification is read
-    from the doc, never from a hand-listed type name.
-    """
     text = (_FORMAT_DOC_DIR / f"{artifact_type}.md").read_text(encoding="utf-8").lower()
     written_by_runtime = "runtime-generated" in text or "the runtime writes" in text
     not_submitted_by_agents = "do not submit" in text
@@ -65,25 +44,21 @@ def _format_doc_states_reference_only(artifact_type: str) -> bool:
 
 
 def _reference_only_types() -> tuple[str, ...]:
-    """Return the artifact types the format docs classify as reference-only."""
     return tuple(t for t in _artifact_types() if _format_doc_states_reference_only(t))
 
 
 def _submission_types() -> tuple[str, ...]:
-    """Return the artifact types the format docs classify as submission-class."""
     reference_only = set(_reference_only_types())
     return tuple(t for t in _artifact_types() if t not in reference_only)
 
 
 def _copy_content_tree(tmp_path: Path) -> Path:
-    """Copy the shipped skills content directory into ``tmp_path``."""
     content_root = tmp_path / "content"
     shutil.copytree(_CONTENT_DIR, content_root)
     return content_root
 
 
 def _write_metadata(content_root: Path, names: list[str]) -> None:
-    """Rewrite the copied metadata manifest so it lists exactly ``names``."""
     path = content_root / "metadata.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["skills"] = names
@@ -91,24 +66,20 @@ def _write_metadata(content_root: Path, names: list[str]) -> None:
 
 
 def _correct_tree(tmp_path: Path) -> Path:
-    """Return a tmp copy whose manifest mirrors the derived skill set."""
     content_root = _copy_content_tree(tmp_path)
     _write_metadata(content_root, sorted(_expected_skill_names()))
     return content_root
 
 
 def _skill_text(content_root: Path, skill_name: str) -> str:
-    """Return the text of one skill in the tmp copy."""
     return (content_root / f"{skill_name}.md").read_text(encoding="utf-8")
 
 
 def _rewrite_skill(content_root: Path, skill_name: str, text: str) -> None:
-    """Replace the text of one skill in the tmp copy."""
     (content_root / f"{skill_name}.md").write_text(text, encoding="utf-8")
 
 
 def _skills_pointing_at_their_format_doc(content_root: Path) -> Iterator[str]:
-    """Yield the submission skills that name their own format doc."""
     for artifact_type in _submission_types():
         name = _skill_name(artifact_type)
         text = _skill_text(content_root, name)

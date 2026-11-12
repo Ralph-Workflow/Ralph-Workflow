@@ -1,7 +1,7 @@
 # MCP restart decisions: operator playbook
 
 This page complements the technical reference at
-:doc:`mcp-architecture` (sections *Restart-decision durability* and
+:doc:`mcp-architecture` (sections *Restart-choice durability* and
 *Startup serving bound and platform contract*). Where the technical
 reference describes what the runtime writes, this page describes what
 to do with the evidence during a runaway-restart incident.
@@ -35,7 +35,7 @@ The two values answer different questions:
 |---|---|---|
 | Did the child crash? | `reason == "process_exited"` | The child died; `exit_status` carries the OS exit code. |
 | Did the child hang? | `reason == "probe_failed"` | The child is alive but unresponsive; `probe_duration_s` is the wall-clock duration of the failed probe. |
-| What was the child doing when the decision was made? | `stage` | The label is `"process_exited"` or `"probe_failed"`; the per-spawn stage file (see below) is the source of truth for the child's startup stage. |
+| What was the child doing when the choice was made? | `stage` | The label is `"process_exited"` or `"probe_failed"`; the per-spawn stage file (see below) is the source of truth for the child's startup stage. |
 
 ## Triage procedure on the next incident
 
@@ -46,12 +46,12 @@ today, so the correlation is operator-driven, not automatic.
 
 1. **Classify the trigger from the per-bridge JSONL.** Read the
    file at `<workspace>/.agent/mcp-health-events-<bridge-id>.jsonl`.
-   The last line is the most recent restart decision. `reason`
+   The last line is the most recent restart choice. `reason`
    distinguishes `PROCESS_EXITED` from `PROBE_FAILED`; `exit_status`
    (for `process_exited`) and `probe_duration_s` (for `probe_failed`)
-   carry the per-decision quantitative evidence; `log_tail` carries
+   carry the per-choice quantitative evidence; `log_tail` carries
    the last 10 child log lines (or `null` when the log was
-   unavailable at decision time).
+   unavailable at choice time).
 
 2. **Find the matching child via the per-spawn stage file.** The
    parent sets `MCP_STAGE_ID_ENV` to a fresh UUID4 before each
@@ -64,7 +64,7 @@ today, so the correlation is operator-driven, not automatic.
 
 3. **List the stage files and inspect mtimes.** The child that was
    restarted is the one whose stage file mtime matches the
-   JSONL-record decision time AND whose content is a
+   JSONL-record choice time AND whose content is a
    `pre_ready_to_serve` label (one of the seven labels in
    `ralph.mcp.server._start_stage_tracker.RUNTIME_STAGES`:
    `env_loaded`, `session_ready`, `config_loading`,
@@ -78,9 +78,9 @@ today, so the correlation is operator-driven, not automatic.
    `<workspace>/.agent/tmp/mcp-server.log` with a stable
    `ralph.process.manager._process_manager_runtime:loguru_event_listener:68`
    source line. A child's exit timestamp in that log paired with a
-   restart-decision time in the JSONL sink identifies the PID that
+   restart-choice time in the JSONL sink identifies the PID that
    was killed; a `PROBE_FAILED` JSONL record without a matching log
-   line means the child was still alive at decision time (the
+   line means the child was still alive at choice time (the
    `probe_duration_s` value is the only timing anchor).
 
 ## Documented 2026-10 incident: trigger undetermined

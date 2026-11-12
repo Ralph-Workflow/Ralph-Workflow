@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import configparser
@@ -106,9 +105,7 @@ def _identity_lock(lock_path: Path) -> Iterator[None]:
                 continue
             if time.monotonic() - started >= _LOCK_TIMEOUT_SECONDS:
                 raise OSError("timed out acquiring telemetry identity lock") from None
-            time.sleep(
-                _LOCK_POLL_SECONDS
-            )
+            time.sleep(_LOCK_POLL_SECONDS)
     try:
         yield
     finally:

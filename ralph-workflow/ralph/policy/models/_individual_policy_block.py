@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -18,7 +17,6 @@ else:
 
 
 class IndividualPolicyBlock(_FrozenPolicyModel):
-
     kind: Literal["individual"] = "individual"
     phase_name: str = Field(..., description="Compiled runtime phase name for this block.")
     phase: PhaseDefinition = Field(..., description="Compiled runtime phase definition.")

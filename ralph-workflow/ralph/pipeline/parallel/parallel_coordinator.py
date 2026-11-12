@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -50,7 +49,6 @@ if TYPE_CHECKING:
 
 
 class ParallelCoordinator:
-
     def __init__(self, *, activity_router: ActivityRouter | None = None) -> None:
         self.activity_router = activity_router
 

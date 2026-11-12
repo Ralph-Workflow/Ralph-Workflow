@@ -10,7 +10,7 @@ the project against security defects: secret exposure, unsafe handling
 of untrusted input, unsafe API usage, and weakened security controls.
 It applies to every change that adds or modifies an input surface, a
 dependency, a subprocess or filesystem interaction, an authentication
-or authorization decision, or any handling of credentials.
+or authorization choice, or any handling of credentials.
 
 Security requirements differ radically by application type: a C library
 bans unsafe string functions, a web application defends against CSRF
@@ -38,7 +38,7 @@ These requirements hold regardless of application type:
   bypassed to obtain a passing result.
 * Security-relevant suppressions (scanner finding waivers, unsafe-block
   annotations, `nosec`-style comments) MUST carry the specific finding
-  identifier AND a documented rationale. Blanket suppressions are
+  identifier AND a documented reason. Blanket suppressions are
   forbidden.
 * Facts that cannot be verified from the repository (data sensitivity,
   deployment exposure, threat model) MUST be recorded from the project
@@ -54,7 +54,7 @@ These requirements hold regardless of application type:
   only through reviewed commits. Third-party MCP servers are pinned
   like dependencies and re-reviewed when their tool descriptions
   change. The data/instruction boundary, the third-party MCP pin, and
-  the hidden-Unicode scan over the instruction surfaces are decided by
+  the hidden-Unicode scan over the instruction surfaces are resolved by
   the instruction integrity gate; the reviewed-commit provenance and
   the tool-description re-review stay advisory, because neither is
   observable from the working tree offline — advisory: reviewed-commit
@@ -151,7 +151,7 @@ re-opens the question instead of silently missing it.
     "exec-as-string" path is forbidden by `tool_exec`).
   - The watchdog contract — `IdleWatchdog` +
     `PostExitWatchdog` (`ralph/agents/idle_watchdog/`) — owns every
-    wall-clock decision; ad-hoc `time.sleep()` loops in
+    wall-clock choice; ad-hoc `time.sleep()` loops in
     `ralph/agents/invoke/` are forbidden and detected by
     `ralph/testing/audit_di_seam.py`.
 
@@ -168,7 +168,7 @@ RALPH-FACT: secret_scan_command: uv run python -m ralph.testing.audit_secret_sca
 RALPH-FACT: secrets_management_mechanism: secrets are NEVER read from the source tree, committed config, or test fixtures. The CLI reads from the environment (`os.environ`) and from the user-installed agent CLIs' own credential stores (Claude Code / Codex / OpenCode / Cursor / etc. each manage their own secrets). Test fixtures MUST NOT contain realistic credentials — placeholders are required (`...`, `***`, environment-variable references).
 RALPH-FACT: fabrication_scan_command: `python3 scripts/fabrication_guard.py --level 1 <file>` for every public-facing markdown edit (the production pre-commit hook is level 1; level 2 / 3 are opt-in verification layers that also verify GitHub repo, npm package, and external URL existence). The same level-1 fabrication sweep is run across the repository's public-facing markdown tree by `python3 scripts/verify_social_proof.py` (a thin backward-compat wrapper around `fabrication_guard.py`) as a `make verify` step. This sweep is a fabrication / broken-link / stale-claim guard, NOT a credential secret scanner: it catches fabricated GitHub repos, fabricated npm packages, fabricated install counts, and banned wording. The credential sweep is a different tool — `uv run python -m ralph.testing.audit_secret_scan`, wired into `make verify` as the `secret scan audit (audit_secret_scan)` step — and it does NOT scan git history: it reports findings on lines that are new or changed against the committed HEAD baseline, so a credential that was already committed is not reported by it. A blanket bypass of the pre-commit hook (`--no-verify`) is itself fabrication (per AGENTS.md § Non-negotiables).
 RALPH-FACT: security_scanner_per_language: Python → Bandit (the language-scoped scanner called out in dependency-policy.md and Verification below). Bandit IS pinned as a dev dependency in `ralph-workflow/pyproject.toml` (`bandit>=1.9.4`), IS installed by `make dev`, and IS wired into `make -C ralph-workflow verify` as the `sast baseline-diff audit (audit_sast)` step, which runs `uv run python -m ralph.testing.audit_sast` and fails on every finding the change introduces. Other languages are recorded in the Verification section below as inapplicable.
-RALPH-FACT: finding_waiver_convention: a security finding waiver carries the finding identifier (e.g. `[B105:hardcoded_password_string]` for Bandit), a per-file scope, a rationale, an owner, and a removal or review date. Waivers are recorded inline (via `# nosec: <id>` next to the suppressed line for Bandit) and again under "Exceptions" below with the same fields; the inline comment is not a substitute for the section entry. There is currently no Bandit `nosec` blanket allowlist in this project; introducing one requires an audit-style allowlist entry.
+RALPH-FACT: finding_waiver_convention: a security finding waiver carries the finding identifier (e.g. `[B105:hardcoded_password_string]` for Bandit), a per-file scope, a reason, an owner, and a removal or review date. Waivers are recorded inline (via `# nosec: <id>` next to the suppressed line for Bandit) and again under "Exceptions" below with the same fields; the inline comment is not a substitute for the section entry. There is currently no Bandit `nosec` blanket allowlist in this project; introducing one requires an audit-style allowlist entry.
 RALPH-FACT: instruction_integrity_command: uv run python -m ralph.testing.audit_instruction_integrity (the instruction / MCP-config integrity gate, wired into `make -C ralph-workflow verify` as the `instruction integrity audit (audit_instruction_integrity)` step). It decides the data/instruction boundary, the third-party MCP server pin and its review trigger, and the hidden-Unicode scan over the instruction surfaces; it reports the reviewed-commit provenance and the tool-description re-review as advisory rules, because neither is observable from the working tree offline.
 RALPH-FACT: test_integrity_command: uv run python -m ralph.testing.audit_test_integrity (the test-integrity gate, wired into `make -C ralph-workflow verify` as the `test integrity audit (audit_test_integrity)` step). It reads the working-tree diff against HEAD and reports a test expectation that is removed or weakened beside the production code it covers, and a shipped module that reads the test runner's environment; the security policy declares it because a weakened test is a weakened control.
 
@@ -233,18 +233,18 @@ When working in this domain, the agent additionally MUST:
   labeled as an assumption pending owner confirmation, and raise the
   open confirmation at the next policy review.
 * TREAT scanner findings by fixing the cause. A waiver requires the
-  finding identifier, a rationale, an owner, and a review date under
+  finding identifier, a reason, an owner, and a review date under
   Exceptions — never a bare suppression comment.
 * PREFER the ecosystem's established scanners (e.g. `bandit` or
   `semgrep` for Python, `gitleaks` or `detect-secrets` for secrets,
   `gosec` for Go, `cargo geiger` for unsafe-Rust auditing) over novel
-  tooling; adding a new scanner requires a documented rationale.
+  tooling; adding a new scanner requires a documented reason.
 
 An agent MUST NOT:
 
 * Commit, log, or print a secret — including realistic-looking test or
   placeholder credentials.
-* Suppress or waive a scanner finding without an identifier, rationale,
+* Suppress or waive a scanner finding without an identifier, reason,
   owner, and review date.
 * Weaken, disable, or bypass any security control to obtain a passing
   result.
@@ -284,7 +284,7 @@ npm packages, fabricated install counts, and banned wording — it does
 not look for credentials. Failures list the affected claim, the file,
 and the verification target.
 
-The data/instruction boundary is decided by its own gate:
+The data/instruction boundary is resolved by its own gate:
 
 RALPH-COMMAND: uv run python -m ralph.testing.audit_instruction_integrity
 
@@ -336,17 +336,17 @@ failure, report the finding identifier, the affected file, and the
 category (secret, injection, unsafe API, unsafe deserialization,
 subprocess, filesystem, crypto). Security scanners produce false
 positives by design: triage every finding and either fix it or waive it
-with a documented rationale under Exceptions — never silence it to
+with a documented reason under Exceptions — never silence it to
 obtain green.
 
 ## Exceptions
 
 A waived scanner finding or an accepted risk requires a documented
-rationale, the finding identifier or risk description, the scope, the
+reason, the finding identifier or risk description, the scope, the
 owner, and a review or removal date. An inapplicable threat surface
 requires a recorded reason that names the stack facts it depends on.
 Exceptions expire at the next policy review; an expired exception
-without an updated rationale is treated as a violation.
+without an updated reason is treated as a violation.
 
 * Owner-unconfirmed facts: `data_sensitivity` and `deployment_exposure`
   are marked `(owner-supplied)` and run at the project-default

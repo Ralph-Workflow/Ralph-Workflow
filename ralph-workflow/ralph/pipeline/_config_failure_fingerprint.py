@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.pipeline.config_file_fingerprint import (

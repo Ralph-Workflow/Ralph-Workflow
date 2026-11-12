@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -108,7 +107,6 @@ def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
 
 @dataclass
 class RebaseCheckpoint:
-
     phase: RebasePhase = field(default_factory=lambda: RebasePhase.NotStarted)
     upstream_branch: str = ""
     conflicted_files: list[str] = field(default_factory=list)

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from importlib import import_module
@@ -683,9 +682,7 @@ def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) 
         file_label = Text()
         file_label.append(f"{file_path} ({description})\n{path}")
         if path.exists():
-            size = (
-                path.stat().st_size
-            )
+            size = path.stat().st_size
             rows.append(
                 (
                     file_label,

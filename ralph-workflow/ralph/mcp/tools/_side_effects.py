@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,7 +8,6 @@ SideEffectClassification = Literal["read", "mutate", "unknown"]
 
 @dataclass(frozen=True)
 class SideEffectContract:
-
     tool_name: str
     classification: SideEffectClassification
     idempotent: bool

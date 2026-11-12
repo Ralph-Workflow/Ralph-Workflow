@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -11,7 +10,6 @@ from ralph.git.rebase._rebase_kind import RebaseKind
 
 @dataclass(frozen=True)
 class RebaseErrorKind:
-
     kind: RebaseKind
     metadata: Mapping[str, object] = field(default_factory=dict)
 

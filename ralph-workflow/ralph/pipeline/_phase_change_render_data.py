@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _PhaseChangeRenderData:
-
     previous_phase: str
     current_phase: str
     exit_model: PhaseExitModel

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -59,7 +58,6 @@ def _retired_replacement(name: str) -> str | None:
 
 
 class ToolBridge:
-
     def __init__(self, session: object | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}
         self._session = session

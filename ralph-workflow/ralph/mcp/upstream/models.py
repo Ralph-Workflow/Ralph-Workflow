@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.upstream.upstream_tool import UpstreamTool

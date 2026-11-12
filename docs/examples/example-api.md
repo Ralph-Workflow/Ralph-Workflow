@@ -56,7 +56,7 @@ four:
 4. A test in `tests/` covers the endpoint
    (`tests/test_health.py::test_health_returns_ok`).
 
-The development-analysis decision that confirmed all four criteria
+The development-analysis choice that confirmed all four criteria
 pass is recorded at
 [`.agent/artifacts/history/development_analysis_decision/20260708T201119_development_analysis_decision.md`](../../.agent/artifacts/history/development_analysis_decision/20260708T201119_development_analysis_decision.md).
 That artifact reports `pytest tests/test_health.py -q` exiting `0`

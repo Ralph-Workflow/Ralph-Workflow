@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import shlex
@@ -19,7 +18,6 @@ _PACKAGE_FILE_SCRIPT = "import pathlib, ralph; print(pathlib.Path(ralph.__file__
 
 
 class ConflictResolution(StrEnum):
-
     CONTINUE = "continue"
     REMOVE = "remove"
     ABORT = "abort"

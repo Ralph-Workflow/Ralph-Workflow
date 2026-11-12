@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class OnDemandJudgementDeps:
-
     load_retained_capture: Callable[[str], tuple[str, ...]]
     load_fresh_capture: Callable[[str], tuple[str, ...]]
     delegated_agent_id: Callable[[], str | None]

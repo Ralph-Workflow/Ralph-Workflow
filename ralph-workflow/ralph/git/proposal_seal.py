@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -34,7 +33,6 @@ _PROPOSAL_ADDED_STATUSES: frozenset[str] = frozenset({"A", "R", "C"})
 
 @dataclass(frozen=True)
 class Seal:
-
     ref: str
     commit_sha: str
     tree_sha: str
@@ -57,9 +55,7 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_index_path = Path(tmp_dir) / "proposal_index"
-            real_index_path = Path(
-                repo.index.path
-            )
+            real_index_path = Path(repo.index.path)
             if DEFAULT_FILE_BACKEND.exists(real_index_path):
                 shutil.copy2(real_index_path, tmp_index_path)
 
@@ -114,9 +110,7 @@ def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Se
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_index_path = Path(tmp_dir) / "baseline_index"
-            real_index_path = Path(
-                repo.index.path
-            )
+            real_index_path = Path(repo.index.path)
             if DEFAULT_FILE_BACKEND.exists(real_index_path):
                 shutil.copy2(real_index_path, tmp_index_path)
 
@@ -272,9 +266,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
 
 def preflight(repo_root: Path | str, ref: str) -> None:
     root_path = Path(repo_root).resolve()
-    git_dir = (
-        root_path / ".git"
-    )
+    git_dir = root_path / ".git"
     if not git_dir.exists():
         raise ProposalPreflightError(f"Repository metadata missing or damaged at {git_dir}")
 

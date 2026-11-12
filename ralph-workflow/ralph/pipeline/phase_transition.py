@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from contextlib import suppress
@@ -412,9 +411,7 @@ def _build_phase_change_render_data(
         tool_calls = phase_counters.tool_calls
         errors = phase_counters.errors
     artifact_outcome = ""
-    raw_outcome = cast(
-        "str | None", getattr(display, "last_phase_artifact_outcome", None)
-    )
+    raw_outcome = cast("str | None", getattr(display, "last_phase_artifact_outcome", None))
     artifact_outcome = raw_outcome if raw_outcome else ""
     entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
     prev_phase_def = pipeline_policy.phases.get(previous_phase)

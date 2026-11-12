@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Literal
@@ -9,7 +8,6 @@ from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
 class PhaseParallelization(_FrozenPolicyModel):
-
     mode: Literal["same_workspace"] = Field(
         default="same_workspace",
         description="Parallelization mode; only 'same_workspace' is supported in v1",

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import io
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
     from ralph.mcp.server._mcp_server import McpServer
 
     class _HandlerWithBaseAttrs(_FallbackHttpHandler):
-
         rfile: io.BytesIO
         wfile: io.BytesIO
         headers: Message
@@ -32,7 +30,6 @@ if TYPE_CHECKING:
 
 
 class _InMemoryFallbackServer(_FallbackHttpServer):
-
     def __init__(self, mcp_server: McpServer, state: ServerState) -> None:
         self.mcp_server = mcp_server
         self.state = state

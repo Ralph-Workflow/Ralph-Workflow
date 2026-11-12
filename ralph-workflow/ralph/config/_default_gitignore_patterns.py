@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (

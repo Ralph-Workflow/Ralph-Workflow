@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import subprocess
@@ -7,7 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SpawnOptions:
-
     cwd: str | None = None
     env: dict[str, str] | None = None
     stdin: int | None = subprocess.DEVNULL

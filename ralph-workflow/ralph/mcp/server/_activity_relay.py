@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -30,7 +29,6 @@ _ACTIVITY_RELAY_CREDENTIAL_ENV = "RALPH_MCP_ACTIVITY_RELAY_CREDENTIAL"
 
 
 class ActivityRelay:
-
     def __init__(self) -> None:
         self._credential = secrets.token_urlsafe(32)
         self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -53,17 +51,13 @@ class ActivityRelay:
         self._sink: Callable[[str], None] | None = None
         self._active = False
         self._registered_once = False
-        self._pending_tools: deque[str] = deque(
-            maxlen=_RELAY_PENDING_EVENTS
-        )
+        self._pending_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)
         self._receiver_error: str | None = None
         self._sender_error: str | None = None
         self._next_sequence = 1
         self._delivered_events = 0
         self._ignored_events = 0
-        self._recent_tools: deque[str] = deque(
-            maxlen=_RELAY_PENDING_EVENTS
-        )
+        self._recent_tools: deque[str] = deque(maxlen=_RELAY_PENDING_EVENTS)
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
 

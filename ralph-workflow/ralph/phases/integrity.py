@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -23,7 +22,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class IntegrityResult:
-
     ok: bool
     restored: bool
     prompt_path: str = DEFAULT_PROMPT_PATH

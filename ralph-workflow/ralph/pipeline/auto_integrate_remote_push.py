@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -54,8 +53,6 @@ __all__ = [
 
 
 _MAX_REMOTE_SYNC_ATTEMPTS = 3
-
-
 
 
 def _safe_target_sha(repo_root: Path, target: str) -> str | None:
@@ -275,11 +272,8 @@ def _remote_sync_status(status: _remote_push_module.PushStatus) -> str:
     return outcomes[status]
 
 
-
-
 @dataclass
 class _PushOutcome:
-
     success: bool
     summary: str
     pushed: bool
@@ -559,5 +553,3 @@ def _attempt_reconcile_and_push(
         status=typed_result.status,
         created_remote_branch=typed_result.status is _remote_push_module.PushStatus.CREATED,
     )
-
-

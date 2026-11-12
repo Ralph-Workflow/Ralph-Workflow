@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -39,7 +38,6 @@ if TYPE_CHECKING:
 
 
 class ScopedCommitStatus(Enum):
-
     CREATED = "created"
     NOOP = "noop"
     NOT_REPO = "not_repo"
@@ -49,7 +47,6 @@ class ScopedCommitStatus(Enum):
 
 @dataclass(frozen=True)
 class ScopedCommitResult:
-
     status: ScopedCommitStatus
     sha: str | None = None
     skipped_paths: tuple[str, ...] = ()
@@ -185,10 +182,7 @@ def capture_pre_write_contents(
     return recorded
 
 
-
 TargetCommitClass = Literal["tracked", "untracked_ignored", "untracked_new", "not_repo"]
-
-
 
 
 def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass | None:
@@ -243,8 +237,6 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
         close = cast("Callable[[], object] | None", getattr(repo, "close", None))
         if callable(close):
             close()
-
-
 
 
 def commit_deterministic_writes(
@@ -365,8 +357,6 @@ def _scoped_commit_failure(
     )
 
 
-
-
 def commit_scoped_updates(
     repo_root: Path | str,
     *,
@@ -388,7 +378,6 @@ def commit_scoped_updates(
                 repo_root_path,
             )
             return ScopedCommitResult(status=ScopedCommitStatus.NOT_REPO)
-
 
         try:
             all_dirty = _select_scoped_paths(repo, scopes, exclude, path_filter)

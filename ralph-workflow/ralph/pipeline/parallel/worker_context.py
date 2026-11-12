@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerContext:
-
     log: WorkerLog | None = None
     same_workspace: SameWorkspaceContext | None = None
     activity_router: ActivityRouter | None = None

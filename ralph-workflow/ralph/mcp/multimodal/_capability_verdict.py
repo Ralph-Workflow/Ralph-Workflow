@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from ralph.mcp.multimodal._delivery_mode import DeliveryMode
 
 @dataclass(frozen=True)
 class CapabilityVerdict:
-
     modality: str
     delivery: DeliveryMode
     provider: str

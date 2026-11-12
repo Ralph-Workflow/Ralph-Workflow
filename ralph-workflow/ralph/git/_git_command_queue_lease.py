@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -28,7 +27,6 @@ _AGENT_LEASE_FILENAME: str = "agent-lease.lock"
 
 @dataclass(frozen=True)
 class _WorktreeLeaseHolder:
-
     name: str
     acquired_at_unix: float = 0.0
 
@@ -46,7 +44,6 @@ class _WorktreeLeaseUnavailableError(RuntimeError):
 
 
 class _WorktreeLease:
-
     def __init__(self, lock_path: Path, holder: _WorktreeLeaseHolder) -> None:
         self._lock_path = lock_path
         self._holder = holder

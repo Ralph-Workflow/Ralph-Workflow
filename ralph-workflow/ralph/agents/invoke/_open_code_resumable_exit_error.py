@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from ralph.agents.invoke._errors import AgentInvocationError
 
 
 class OpenCodeResumableExitError(AgentInvocationError):
-
     def __init__(
         self,
         agent_name: str,

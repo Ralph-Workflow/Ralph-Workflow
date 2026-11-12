@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 
 class PhaseHandlerNotFoundError(Exception):
-
     def __init__(self, phase: str) -> None:
         self.phase = phase
         msg = (
@@ -32,9 +30,7 @@ def _is_phase_handler(value: object) -> TypeGuard[PhaseHandler]:
     return callable(value)
 
 
-HANDLERS: dict[
-    str, PhaseHandler
-] = {}
+HANDLERS: dict[str, PhaseHandler] = {}
 
 
 def register_handler(phase_name: str) -> Callable[[PhaseHandler], PhaseHandler]:

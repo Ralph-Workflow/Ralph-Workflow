@@ -366,3 +366,97 @@ def test_the_module_runs_as_a_script(
 
     assert excinfo.value.code == 1, reason
     assert "COMMENT-POLICY FINDINGS" in output, reason
+
+
+def test_a_toml_hash_after_a_value_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "config.toml", "key = 1# a comment\n", capsys)
+
+    assert code == 1, reason
+
+
+def test_a_makefile_hash_after_a_value_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    code, _output = _run(tmp_path, "Makefile", "target = 1# a comment\n", capsys)
+
+    assert code == 1, reason
+
+
+def test_a_makefile_recipe_hash_without_spacing_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "all:\n\t@echo value#literal\n"
+
+    code, _output = _run(tmp_path, "Makefile", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_a_docstring_in_an_except_handler_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = (
+        "def run() -> int:\n"
+        "    try:\n"
+        "        return 1\n"
+        "    except ValueError:\n"
+        '        "Handler documentation."\n'
+    )
+
+    code, output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+    assert "Handler documentation." in output, reason
+
+
+def test_a_docstring_in_a_nested_block_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = (
+        "def run(flag: bool) -> int:\n"
+        "    if flag:\n"
+        '        "Block documentation."\n'
+        "        return 1\n"
+        "    return 0\n"
+    )
+
+    code, output = _run(tmp_path, "mod.py", source, capsys)
+
+    assert code == 1, reason
+    assert "Block documentation." in output, reason
+
+
+def test_a_yaml_block_scalar_literal_text_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "script: |\n  #!/bin/sh\n  echo ready\n"
+
+    code, _output = _run(tmp_path, "config.yaml", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_a_yaml_comment_after_a_block_indicator_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate replaces the permissive fixtures"
+    source = "script: | # a comment\n  echo ready\n"
+
+    code, _output = _run(tmp_path, "config.yaml", source, capsys)
+
+    assert code == 1, reason

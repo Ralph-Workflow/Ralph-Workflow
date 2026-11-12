@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -20,12 +19,8 @@ def _reserve_listening_socket() -> tuple[str, int, socket.socket]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     sock.listen(128)
-    host = cast(
-        "str", sock.getsockname()[0]
-    )
-    port = cast(
-        "int", sock.getsockname()[1]
-    )
+    host = cast("str", sock.getsockname()[0])
+    port = cast("int", sock.getsockname()[1])
     return host, port, sock
 
 

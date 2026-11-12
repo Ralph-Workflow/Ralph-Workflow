@@ -93,7 +93,7 @@ The architecture policy owns:
 * public and persisted contracts that constrain internal changes;
 * error propagation across boundaries;
 * extension points and the evidence required for new abstractions;
-* triggers for an architecture decision record or equivalent durable decision;
+* triggers for an architecture choice record or equivalent durable choice;
 * architecture verification, such as import checks, cycle detection, contract
   tests, or a documented review gate.
 

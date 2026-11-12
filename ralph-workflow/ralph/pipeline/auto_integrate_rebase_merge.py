@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import replace
@@ -635,6 +634,3 @@ def _abort_rebase_after_conflict(root: Path, git_ops: GitOps | None = None) -> N
             abort_rebase_discarding_progress(root)
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)
-
-
-

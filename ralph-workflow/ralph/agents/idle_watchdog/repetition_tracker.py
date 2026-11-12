@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -50,7 +49,6 @@ def _tool_args_preview(tool_args: object) -> str:
 
 
 class RepetitionTracker:
-
     def __init__(
         self,
         clock: Clock,
@@ -64,14 +62,10 @@ class RepetitionTracker:
         self._window_count = window_count
         self._window_seconds = window_seconds
         self._event_maxlen: int = _derive_event_maxlen(window_count)
-        self._events: deque[tuple[str, float]] = deque(
-            maxlen=self._event_maxlen
-        )
+        self._events: deque[tuple[str, float]] = deque(maxlen=self._event_maxlen)
         self._last_fingerprint: str | None = None
         self._consecutive = 0
-        self._tool_events: deque[tuple[str, float]] = deque(
-            maxlen=self._event_maxlen
-        )
+        self._tool_events: deque[tuple[str, float]] = deque(maxlen=self._event_maxlen)
         self._last_tool_fingerprint: str | None = None
         self._last_tool_name: str | None = None
         self._last_tool_args_preview: str | None = None

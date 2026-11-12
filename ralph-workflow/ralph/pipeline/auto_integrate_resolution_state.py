@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,7 +34,6 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class ContainmentVerdict:
-
     contained: bool
     target: str | None
     feature_sha: str | None

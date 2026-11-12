@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from ralph.mcp.explore._store_types_chunk import ContentCacheChunk
 
 @dataclass(frozen=True, slots=True)
 class ContentCachePayload:
-
     content_hash: str
     extractor_version: str
     chunks: tuple[ContentCacheChunk, ...]

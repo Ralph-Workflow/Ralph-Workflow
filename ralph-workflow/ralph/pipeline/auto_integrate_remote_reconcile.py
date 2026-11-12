@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -49,7 +48,6 @@ CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
 
 @dataclass(frozen=True)
 class ReconciliationOutcome:
-
     reconciled: bool
     reason: str
     cleanly_aborted: bool = False
@@ -268,12 +266,8 @@ def _cleanup_temporary_worktree(
             label="reconciliation:remove-temp-worktree",
         )
 
-    if (
-        temp_dir.exists()
-    ):
-        shutil.rmtree(
-            temp_dir, ignore_errors=True
-        )
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     with contextlib.suppress(Exception):
         run_git(
@@ -352,9 +346,7 @@ def _reconcile_in_temporary_workspace(
     )
     if add_res.returncode != 0:
         if temp_dir.exists():
-            shutil.rmtree(
-                temp_dir, ignore_errors=True
-            )
+            shutil.rmtree(temp_dir, ignore_errors=True)
         with contextlib.suppress(Exception):
             run_git(
                 ("worktree", "prune"),

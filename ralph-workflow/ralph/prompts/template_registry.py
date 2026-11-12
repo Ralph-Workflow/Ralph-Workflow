@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,7 +25,6 @@ _DEFAULT_READER: Callable[[Path], str] = _default_reader
 
 
 class _PackagedTemplateCache:
-
     def __init__(
         self,
         *,
@@ -64,7 +62,6 @@ _packaged_template_cache = _PackagedTemplateCache()
 
 
 class TemplateRegistry:
-
     def __init__(
         self,
         *,

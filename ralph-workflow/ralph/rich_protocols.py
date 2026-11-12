@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Protocol
@@ -8,7 +7,6 @@ from ralph._rich_panel_proto import RichPanelProto
 
 
 class RichTextProto(Protocol):
-
     def __call__(self, text: str = "", *, style: str = "") -> object: ...
 
 

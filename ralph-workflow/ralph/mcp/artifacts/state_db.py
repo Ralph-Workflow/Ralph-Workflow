@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -10,7 +9,6 @@ if TYPE_CHECKING:
 
 
 class _Missing:
-
     __slots__ = ()
 
     def __repr__(self) -> str:
@@ -53,7 +51,6 @@ def _coerce_hmac(row: object) -> str | None:
 
 
 class RunStateDB:
-
     def __init__(self, workspace_root: Path) -> None:
         db_path = workspace_root / DB_RELPATH
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,7 +84,6 @@ class RunStateDB:
     @classmethod
     def _raise_upsert_fail(cls, run_id: str, artifact_type: str, hmac_hex: str | None) -> None:
         raise RuntimeError("simulated db upsert failure")
-
 
     def upsert_receipt(
         self,
@@ -150,7 +146,6 @@ class RunStateDB:
         with self._conn:
             self._conn.execute("DELETE FROM receipts WHERE run_id = ?", (run_id,))
 
-
     def upsert_completion_sentinel(self, run_id: str, hmac_hex: str | None) -> None:
         with self._conn:
             params: tuple[str | None, ...] = (run_id, hmac_hex)
@@ -186,7 +181,6 @@ class RunStateDB:
                 "ON CONFLICT(run_id) DO UPDATE SET hmac=excluded.hmac",
                 params,
             )
-
 
     def prune_older_than(
         self,

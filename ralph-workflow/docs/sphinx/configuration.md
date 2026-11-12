@@ -69,7 +69,7 @@ If you already know you want the deeper docs, use this map instead of scanning t
 |---|---|
 | agent selection, retry behavior, verbosity, or drain bindings | this page: [Configuration Reference](configuration.md) |
 | workflow phases, loopbacks, commit routes, fan-out, counters, or recovery | [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) |
-| artifact contracts, decision vocabularies, summary files, or commit-message artifacts | [Advanced Artifact Configuration](advanced-artifact-configuration.md) |
+| artifact contracts, choice vocabularies, summary files, or commit-message artifacts | [Advanced Artifact Configuration](advanced-artifact-configuration.md) |
 | MCP servers, web search, crawl, or media/web-visit integrations | [Advanced MCP Configuration](advanced-mcp-configuration.md) |
 | what the active policy means after all config layers resolve | [Policy Explanation](configuration.md#inspecting-the-active-policy) |
 | legacy worker-orchestration settings (`max_parallel_workers`, `work_unit`, `worker_namespace`, `dispatch_mode`) | [Deprecated: Ralph-orchestrated workers](concepts.md#deprecated-ralph-orchestrated-workers) |
@@ -568,7 +568,7 @@ Edit `.agent/pipeline.toml`, not `ralph-workflow.toml`. Then read [Advanced Pipe
 
 Edit `ralph-workflow-mcp.toml` or `.agent/mcp.toml`. Then read [Advanced MCP Configuration](advanced-mcp-configuration.md).
 
-### I want to change artifact contracts, decision vocabularies, or summary file outputs
+### I want to change artifact contracts, choice vocabularies, or summary file outputs
 
 Edit `.agent/artifacts.toml`. Then read [Advanced Artifact Configuration](advanced-artifact-configuration.md).
 
@@ -694,14 +694,14 @@ The explanation covers the ASCII workflow diagram, the entry block, the entry ph
 
 ### Why the diagram matters
 
-Every routing decision the pipeline makes traces back to a single declared field in `pipeline.toml`. When a run routes somewhere unexpected, run `ralph --explain-policy` and find the corresponding `Explanation:` sentence — it names the exact policy field that produced the route. If the field is wrong, update `pipeline.toml`; if the field is correct but the runtime ignores it, that is a bug. The explanation output is deterministic for the same `pipeline.toml`; pin it in a review artifact, CI log, or runbook to record the exact workflow a run used.
+Every routing choice the pipeline makes traces back to a single declared field in `pipeline.toml`. When a run routes somewhere unexpected, run `ralph --explain-policy` and find the corresponding `Explanation:` sentence — it names the exact policy field that produced the route. If the field is wrong, update `pipeline.toml`; if the field is correct but the runtime ignores it, that is a bug. The explanation output is deterministic for the same `pipeline.toml`; pin it in a review artifact, CI log, or runbook to record the exact workflow a run used.
 
 ## When to read further
 
 - [Concepts](concepts.md) — terms like phase, drain, and artifact
 - [CLI Reference](cli.md) — runtime flags and shortcuts
 - [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) — phases, routing, counters, recovery, and fan-out
-- [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
+- [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, choice vocabularies, and summaries
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
 - [Developer Reference](developer-internals.md) — implementation-oriented detail
 - [Agent Compatibility Guide](agent-compatibility.md) — per-agent CLI, transport, and model-string reference

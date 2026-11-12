@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -16,7 +15,6 @@ _PROGRESS_NAME = "conflict-resolution-progress.json"
 
 @dataclass(slots=True)
 class RebaseResolutionProgress:
-
     landed_shas: list[str] = field(default_factory=list)
     remaining_paths: list[str] = field(default_factory=list)
     feature_sha: str | None = None

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,7 +9,6 @@ from ralph.checkpoint.size_thresholds import SizeThresholds
 
 @dataclass(frozen=True)
 class CheckpointSizeMonitor:
-
     thresholds: SizeThresholds = field(default_factory=SizeThresholds)
 
     @classmethod

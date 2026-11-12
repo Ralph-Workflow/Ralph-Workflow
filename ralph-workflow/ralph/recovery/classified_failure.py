@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ClassifiedFailure:
-
     category: FailureCategory
     reason: str
     attributed_agent: str | None

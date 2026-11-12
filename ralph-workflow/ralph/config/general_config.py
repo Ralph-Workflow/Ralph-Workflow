@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from typing import Self
 
@@ -46,7 +45,6 @@ from ralph.timeout_defaults import (
 
 
 class GeneralConfig(RalphBaseModel):
-
     model_config = ConfigDict(frozen=True)
 
     verbosity: int = 2

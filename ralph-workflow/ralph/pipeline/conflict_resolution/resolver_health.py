@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from contextlib import suppress
@@ -28,7 +27,6 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class ResolverChoice:
-
     agent: str | None
     wait_ms: int
 

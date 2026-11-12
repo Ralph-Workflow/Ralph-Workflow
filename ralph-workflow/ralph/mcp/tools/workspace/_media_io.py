@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -41,7 +40,6 @@ _MEDIA_PRUNE_INTERVAL: int = 32
 
 
 class _MediaPruneCounter:
-
     def __init__(self, counter: Iterator[int] | int | None = None) -> None:
         self._counter = count(1) if counter is None else counter
         self._workspace_key: str | None = None

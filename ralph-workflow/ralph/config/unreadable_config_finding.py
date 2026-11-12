@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import tomllib
@@ -37,7 +36,6 @@ def _is_strict_config_file(path: Path, kind: str) -> bool:
 
 @dataclass(frozen=True)
 class UnreadableConfigFinding:
-
     path: Path
     kind: str
     error: BaseException

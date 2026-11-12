@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
@@ -13,25 +12,21 @@ if TYPE_CHECKING:
 
 
 class OperationEvidenceCollector(Protocol):
-
-    def snapshot(self, root: Path, record: IntegrationRecord) -> tuple[OperationFact, ...]:
-        ...
+    def snapshot(self, root: Path, record: IntegrationRecord) -> tuple[OperationFact, ...]: ...
 
     def evaluate(
         self,
         root: Path,
         record: IntegrationRecord,
         observed: tuple[OperationFact, ...],
-    ) -> EvidenceVerdict:
-        ...
+    ) -> EvidenceVerdict: ...
 
     def verify(
         self,
         root: Path,
         record: IntegrationRecord,
         observed: tuple[OperationFact, ...],
-    ) -> bool:
-        ...
+    ) -> bool: ...
 
 
 __all__ = ["EvidenceVerdict", "OperationEvidenceCollector"]

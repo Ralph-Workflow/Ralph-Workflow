@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerSessionConfig:
-
     worker_artifact_dir: Path | None = None
     worker_namespace: Path | None = None
     session_drain: str = ""

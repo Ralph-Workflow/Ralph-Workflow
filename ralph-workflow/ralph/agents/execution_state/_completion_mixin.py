@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 
 
 class CompletionEnforcingStrategy:
-
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         class_dict = cast("Mapping[str, object]", cls.__dict__)

@@ -1,11 +1,9 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class RebaseOutcomeKind(StrEnum):
-
     REBASED = "rebased"
     MERGED = "merged"
     FAST_FORWARDED = "fast_forwarded"

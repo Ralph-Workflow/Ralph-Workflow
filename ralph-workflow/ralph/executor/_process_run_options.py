@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ProcessRunOptions:
-
     cwd: str | Path | None = None
     env: Mapping[str, str] | None = None
     timeout: float | None = None

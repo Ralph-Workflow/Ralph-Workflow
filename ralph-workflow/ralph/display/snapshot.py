@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,7 +26,6 @@ _STATUS_TO_SEMANTIC: dict[str, str] = {
 
 @dataclass(frozen=True)
 class SnapshotContext:
-
     prompt_path: str | None = None
     prompt_preview: tuple[str, ...] = ()
     run_id: str | None = None

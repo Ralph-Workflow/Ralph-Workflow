@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -18,7 +17,6 @@ _CACHE_RELATIVE = Path("ralph-workflow") / "version-check.json"
 
 @dataclass(frozen=True)
 class VersionCheckState:
-
     last_checked: float
     latest_version: str | None
 

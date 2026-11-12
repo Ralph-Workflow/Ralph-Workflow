@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,7 +25,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Evidence:
-
     holds: bool
     provenance: Provenance
     detail: str

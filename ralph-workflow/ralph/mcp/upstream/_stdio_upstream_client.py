@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import contextlib
@@ -22,7 +21,6 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class StdioUpstreamClient:
-
     def __init__(
         self,
         server: UpstreamMcpServer,

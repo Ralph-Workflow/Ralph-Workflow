@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph import _BASE_VERSION

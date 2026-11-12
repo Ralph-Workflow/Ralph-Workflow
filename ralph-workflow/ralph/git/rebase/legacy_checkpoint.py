@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ __all__ = ["LegacyCheckpointInspection"]
 
 @dataclass(frozen=True)
 class _LegacyCheckpointInspection:
-
     status: LegacyCheckpointStatus
     checkpoint: RebaseCheckpoint | None = None
     reason: str | None = None
@@ -23,7 +21,6 @@ LegacyCheckpointInspection = _LegacyCheckpointInspection
 
 
 class LegacyCheckpointStatus(StrEnum):
-
     ABSENT = "absent"
     TERMINAL = "terminal"
     ACTIONABLE_CONFLICT = "actionable_conflict"

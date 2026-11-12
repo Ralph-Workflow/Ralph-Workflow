@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import re
@@ -13,7 +12,6 @@ _ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
 
 class StableIdNode(Protocol):
-
     @property
     def identifier(self) -> str: ...
 

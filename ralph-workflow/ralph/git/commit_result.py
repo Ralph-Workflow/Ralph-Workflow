@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +7,6 @@ from ralph.git._commit_status import CommitCreationStatus
 
 @dataclass(frozen=True)
 class CommitCreationResult:
-
     status: CommitCreationStatus
     sha: str | None = None
     error: str | None = None

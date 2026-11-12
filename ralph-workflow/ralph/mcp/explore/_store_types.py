@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import hashlib
@@ -31,7 +30,6 @@ TOMBSTONE_RETENTION_SECONDS: Final[int] = 30 * 24 * 60 * 60
 DEFAULT_BUSY_TIMEOUT_MS: Final[int] = 5_000
 
 DEFAULT_MAX_CHUNK_BYTES: Final[int] = 16 * 1024
-
 
 
 _SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
@@ -72,9 +70,7 @@ def _parse_add_column(sql: str) -> tuple[str, str]:
 
 def _column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
     pragma_cur = cur.execute(f"PRAGMA table_info({table})")
-    info_rows = cast(
-        "list[sqlite3.Row]", pragma_cur.fetchall()
-    )
+    info_rows = cast("list[sqlite3.Row]", pragma_cur.fetchall())
     for row in info_rows:
         value_obj: object = row["name"]
         if isinstance(value_obj, str) and value_obj == column:
@@ -245,11 +241,8 @@ _DDL: tuple[str, ...] = (
 )
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class FileRow:
-
     path: str
     content_hash: str
     size_bytes: int
@@ -262,7 +255,6 @@ class FileRow:
 
 @dataclass(frozen=True, slots=True)
 class ChunkRow:
-
     chunk_id: str
     path: str
     start_line: int
@@ -274,7 +266,6 @@ class ChunkRow:
 
 @dataclass(frozen=True, slots=True)
 class EvidenceRow:
-
     evidence_id: str
     path: str
     start_line: int
@@ -291,7 +282,6 @@ class EvidenceRow:
 
 @dataclass(frozen=True, slots=True)
 class SpanRow:
-
     span_id: str
     path: str
     start_line: int
@@ -306,7 +296,6 @@ class SpanRow:
 
 @dataclass(frozen=True, slots=True)
 class SymbolRow:
-
     symbol_id: str
     name: str
     qualified_name: str
@@ -321,7 +310,6 @@ class SymbolRow:
 
 @dataclass(frozen=True, slots=True)
 class EdgeRow:
-
     edge_id: str
     source_id: str
     target_id: str
@@ -336,14 +324,12 @@ class EdgeRow:
 
 @dataclass(frozen=True, slots=True)
 class ContentCacheRow:
-
     content_hash: str
     language: str | None
     extractor_version: str
     extracted_at: float
     extraction_status: str
     error_summary: str | None
-
 
 
 __all__ = [
@@ -353,20 +339,16 @@ __all__ = [
 
 
 class Clock(Protocol):
-
     def now(self) -> float: ...
 
 
 class SystemClock:
-
     def now(self) -> float:
         return time.monotonic()
 
 
 def real_clock_seconds() -> float:
     return time.time()
-
-
 
 
 def normalize_index_path(path: str) -> str:
@@ -387,10 +369,6 @@ def normalize_index_path(path: str) -> str:
     return normalized
 
 
-
-
-
-
 def _row_str(row: sqlite3.Row, key: str) -> str:
     value: object = row[key]
     if not isinstance(value, str):
@@ -407,9 +385,7 @@ def _row_int(row: sqlite3.Row, key: str) -> int:
         return int(bool(value))
     if isinstance(value, int):
         return value
-    return int(
-        cast("int | str | float", value)
-    )
+    return int(cast("int | str | float", value))
 
 
 def _row_float(row: sqlite3.Row, key: str) -> float:
@@ -418,9 +394,7 @@ def _row_float(row: sqlite3.Row, key: str) -> float:
         return float(value)
     if isinstance(value, (int, float)):
         return float(value)
-    return float(
-        cast("int | str | float", value)
-    )
+    return float(cast("int | str | float", value))
 
 
 def _row_bool(row: sqlite3.Row, key: str) -> bool:
@@ -447,9 +421,7 @@ def _row_int_opt(row: sqlite3.Row | None, idx: int) -> int:
         return int(bool(value))
     if isinstance(value, int):
         return value
-    return int(
-        cast("int | str | float", value)
-    )
+    return int(cast("int | str | float", value))
 
 
 def _row_to_file(row: sqlite3.Row) -> FileRow:
@@ -689,8 +661,6 @@ def assert_within_workspace(workspace_root: Path, full_path: Path) -> None:
         is_relative = str(resolved).startswith(str(root) + os.sep) or resolved == root
     if not is_relative:
         raise ValueError(f"Path escapes workspace: {full_path}")
-
-
 
 
 __all__ = [

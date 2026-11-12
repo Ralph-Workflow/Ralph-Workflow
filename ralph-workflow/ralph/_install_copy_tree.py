@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ast
@@ -33,7 +32,6 @@ _IGNORED_NAMES = frozenset(
 
 @dataclass(frozen=True)
 class SnapshotIdentity:
-
     source_path: str
     source_commit: str
     version: str

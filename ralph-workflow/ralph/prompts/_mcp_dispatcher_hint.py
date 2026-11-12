@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import ast
@@ -16,7 +15,6 @@ PreviewOperation = Literal["read", "write", "append", "replace", "patch"]
 
 @dataclass(frozen=True)
 class _PreviewHunk:
-
     old_text: str = ""
     new_text: str = ""
     start_line: int | None = None
@@ -25,7 +23,6 @@ class _PreviewHunk:
 
 @dataclass(frozen=True)
 class _PreviewPayload:
-
     path: str | None
     language_hint: str | None
     operation: PreviewOperation

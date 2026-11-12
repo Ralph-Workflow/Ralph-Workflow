@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -75,7 +74,6 @@ def session_identity_from_payload(
 
 
 class FileBackedSession:
-
     def __init__(
         self,
         path: Path,

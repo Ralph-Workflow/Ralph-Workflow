@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -9,7 +8,6 @@ ByteLoader = Callable[[], bytes | None]
 
 @dataclass
 class ManifestEntry:
-
     artifact_id: str
     uri: str
     mime_type: str

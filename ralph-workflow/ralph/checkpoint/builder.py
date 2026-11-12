@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CheckpointBuilder:
-
     _state: PipelineState | None = None
     _run_context: RunContext | None = None
     _execution_history: ExecutionHistory = field(default_factory=ExecutionHistory.new)

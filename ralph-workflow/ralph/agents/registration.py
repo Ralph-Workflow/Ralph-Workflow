@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, cast
@@ -23,18 +22,14 @@ if TYPE_CHECKING:
 
 
 class _ParserFactory(Protocol):
-
     def __call__(self) -> AgentParser: ...
 
 
 class _AnyKwargsStrategyFactory(Protocol):
-
     def __call__(self, **kwargs: object) -> object: ...
 
 
 _UserStrategyFactory = StrategyFactory | object
-
-
 
 
 def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactory:
@@ -44,8 +39,6 @@ def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactor
         msg = f"No default strategy registered for transport {transport!r}"
         raise ValueError(msg)
     return factory
-
-
 
 
 def _validate_and_materialize_support(
@@ -77,9 +70,7 @@ def _validate_and_materialize_support(
         name,
         transport=transport,
         parser_factory=parser_factory,
-        strategy_factory=cast(
-            "StrategyFactory", strategy_factory
-        ),
+        strategy_factory=cast("StrategyFactory", strategy_factory),
         agent_registry=agent_registry,
         json_parser=json_parser,
         interactive=interactive,
@@ -204,9 +195,7 @@ def register_my_agent(
     return register_agent_support(
         name,
         transport=transport,
-        parser_factory=cast(
-            "_ParserFactory", parser
-        ),
+        parser_factory=cast("_ParserFactory", parser),
         strategy_factory=resolved_strategy,
         agent_registry=agent_registry,
         json_parser=json_parser,

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -10,7 +9,6 @@ from ralph.visual.on_demand_judgement_result import OnDemandJudgementResult
 
 
 class JudgementTier(StrEnum):
-
     DETERMINISTIC = "deterministic"
     ON_DEMAND = "on-demand"
 

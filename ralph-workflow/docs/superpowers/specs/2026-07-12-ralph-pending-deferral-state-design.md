@@ -35,7 +35,7 @@ and never ties the `review trigger:` convention to a per-cycle obligation to
 resolve fired triggers or record newly-discovered facts. Deferred items would
 be recorded but never deterministically resurfaced.
 
-## Decision
+## Choice
 
 Add one new marker, **`RALPH-PENDING`**, as the single deterministic deferral
 state for **both gates and facts**. It:
@@ -111,7 +111,7 @@ its validation.
 ## Guardrails (why it cannot become a permanent hollow gate)
 
 `RALPH-PENDING` is accepted on **every** policy — including the testing and
-verification gates. The project owner's decision: trust dev-cycle agents to
+verification gates. The project owner's choice: trust dev-cycle agents to
 resolve deferrals later rather than block a new project. The looser validator
 acceptance is balanced by a *harder* dev-cycle obligation (below), not by a
 per-policy prohibition. What keeps a deferral honest:

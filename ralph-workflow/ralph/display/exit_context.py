@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ExitContext:
-
     elapsed_seconds: float = 0.0
     exit_trigger: str | None = None
     content_blocks: int | None = None

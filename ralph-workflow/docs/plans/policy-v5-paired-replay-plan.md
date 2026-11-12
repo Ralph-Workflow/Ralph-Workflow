@@ -68,7 +68,7 @@ From `ralph/project_policy/starters/policy-portfolio.toml:2` (verbatim TOML key)
 
 The B5 experiment measures both limits independently.
 
-`browser_budget_seconds` (the `RALPH-FACT` key at `testing-policy.md:422`) is the **default-lane BROWSER time budget** — the measured value used for the BELOW / AT-or-OVER admission decision for distinct browser journeys. Each pack declares its own resolved value at `docs/ralph-workflow-policy/testing-policy.md` under the same `RALPH-FACT: browser_budget_seconds:` key.
+`browser_budget_seconds` (the `RALPH-FACT` key at `testing-policy.md:422`) is the **default-lane BROWSER time budget** — the measured value used for the BELOW / AT-or-OVER admission choice for distinct browser journeys. Each pack declares its own resolved value at `docs/ralph-workflow-policy/testing-policy.md` under the same `RALPH-FACT: browser_budget_seconds:` key.
 
 `default_budget_seconds` (the TOML key at `policy-portfolio.toml:2`, value `60.0`) is the **AGGREGATE test-budget ceiling** — the never-raised cap on total default-lane test execution time (covering browser, unit, and integration tests combined), carried by the portfolio. The plan holds this constant at `60.0` for both packs; the experiment does NOT raise it.
 
@@ -145,7 +145,7 @@ Each individual agent run (one task, one pack) is capped at **30 minutes wall-cl
 
 ### 7.1 Per-metric definition
 
-Every metric is graded by a blind reviewer (or, where the metric is mechanical, by the planned scoring aggregator script `scripts/policy_v5_replay_score.py`, an explicit future prerequisite whose decision logic is specified in §9 and verified by `tests/test_policy_v5_replay_decision.py`). Each row names the artifact that produces the value.
+Every metric is graded by a blind reviewer (or, where the metric is mechanical, by the planned scoring aggregator script `scripts/policy_v5_replay_score.py`, an explicit future prerequisite whose choice logic is specified in §9 and verified by `tests/test_policy_v5_replay_decision.py`). Each row names the artifact that produces the value.
 
 | # | Metric | Unit | Scale | Direction | Source artifact | Blind-scoring rubric (0–3) |
 |---|---|---|---|---|---|---|
@@ -159,7 +159,7 @@ Every metric is graded by a blind reviewer (or, where the metric is mechanical, 
 | M8 | **Elapsed time** | seconds (wall-clock) | float ≥ 0 | lower = better | `tmp/policy-v5-replay-runs/<run_id>/timing.jsonl` — `start_wallclock`, `end_wallclock` recorded by the runner | Reported as raw value, not graded on a band; used as a secondary input to the keep/restore rule (§9) |
 | M9 | **Inference cost** | tokens (prompt + completion) | integer ≥ 0 | lower = better | `tmp/policy-v5-replay-runs/<run_id>/tokens.jsonl` — one row per `handle_exec_command` invocation with the agent's reported token count, summed at run end | Reported as raw value, not graded on a band; used as a secondary input to the keep/restore rule (§9) |
 
-### 7.2 Per-metric keep / restore / redesign decision
+### 7.2 Per-metric keep / restore / redesign choice
 
 The direction of improvement is metric-specific:
 - **Higher is better:** M1 (correctness), M3 (security), M4 (abstractions), M6 (truthfulness).
@@ -320,7 +320,7 @@ No new tool, no new seam, no new persisted state. The decorator is one Python fi
 
 ## 9. Keep-or-restore rule (code-expressible)
 
-The decision rule is implemented and verified by the executable test suite `tests/test_policy_v5_replay_decision.py`, planned for packaging into the scoring aggregator script `scripts/policy_v5_replay_score.py` (explicit future prerequisite), and expressible as:
+The choice rule is implemented and verified by the executable test suite `tests/test_policy_v5_replay_decision.py`, planned for packaging into the scoring aggregator script `scripts/policy_v5_replay_score.py` (explicit future prerequisite), and expressible as:
 
 ```python
 from collections.abc import Mapping
@@ -429,7 +429,7 @@ The reviewer panel receives a **redacted input package** that does not disclose 
 
 ## 11. Timebox
 
-Replay is a **separate phase** with its own timebox. It is not part of the v5 implementation timebox. The implementation timebox covers steps A–C; the replay timebox covers step D and must conclude before any v5 ship decision.
+Replay is a **separate phase** with its own timebox. It is not part of the v5 implementation timebox. The implementation timebox covers steps A–C; the replay timebox covers step D and must conclude before any v5 ship choice.
 
 ---
 

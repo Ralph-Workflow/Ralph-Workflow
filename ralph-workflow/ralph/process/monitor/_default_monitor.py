@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -22,14 +21,12 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _ClassifiedProcess:
-
     pid: int
     role: ProcessRole
     cmdline: list[str] | None
 
 
 class DefaultProcessMonitor(ProcessMonitor):
-
     def __init__(
         self,
         host_pid: int,

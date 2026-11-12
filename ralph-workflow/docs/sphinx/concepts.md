@@ -138,7 +138,7 @@ The composed shape accepts three costs: a **two-file minimum** (even the smalles
 
 ## Phase routing
 
-A **phase** is one unit of work in the Ralph Workflow pipeline. A **route** is the decision about which agent handles the phase. A **drain** is the named terminal condition a phase produces. Together they define the run lifecycle.
+A **phase** is one unit of work in the Ralph Workflow pipeline. A **route** is the choice about which agent handles the phase. A **drain** is the named terminal condition a phase produces. Together they define the run lifecycle.
 
 ### What a phase is
 
@@ -221,9 +221,9 @@ The runtime then consults the artifact contract for the current phase and decide
 | `fix_result`        | fix cycle                 | Same shape as `development_result`, scoped to the fix             |
 | `commit_message`    | commit phase              | Conventional-commit subject + structured payload                  |
 | `commit_review`    | commit review phase       | Verdict (approve/reject), actions to delete/gitignore/git-exclude, reason citations |
-| `planning_analysis_decision` | planning analysis | analysis decision for a plan section                              |
-| `review_analysis_decision`   | review analysis   | analysis decision for a review section                           |
-| `development_analysis_decision` | development analysis | analysis decision for a development section                |
+| `planning_analysis_decision` | planning analysis | analysis choice for a plan section                              |
+| `review_analysis_decision`   | review analysis   | analysis choice for a review section                           |
+| `development_analysis_decision` | development analysis | analysis choice for a development section                |
 | `smoke_test_result` | smoke-test commands       | Black-box test summary                                           |
 | `product_spec`      | product spec phase        | Spec the run was built against                                   |
 
@@ -465,7 +465,7 @@ sentence, and the pre-submit review render unconditionally.
 - [Configuration](configuration.md) — operator-facing reference
 - [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) — workflow graph and per-phase overrides
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP and web tooling
-- [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts and decision vocabularies
+- [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts and choice vocabularies
 - [Diagnostics](diagnostics.md) — pre-flight checks
 - [Troubleshooting](troubleshooting.md) — common failure modes
 - [Developer Internals](developer-internals.md) — implementation-oriented material

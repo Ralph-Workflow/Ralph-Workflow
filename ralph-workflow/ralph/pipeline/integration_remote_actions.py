@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -17,7 +16,6 @@ __all__ = [
 
 @runtime_checkable
 class RemoteOps(Protocol):
-
     def refresh_target(
         self,
         repo_root: Path,
@@ -25,8 +23,7 @@ class RemoteOps(Protocol):
         *,
         remote: str,
         timeout_seconds: float,
-    ) -> str:
-        ...
+    ) -> str: ...
 
     def push_branch(
         self,
@@ -35,8 +32,7 @@ class RemoteOps(Protocol):
         *,
         remote: str,
         timeout_seconds: float,
-    ) -> PushResult:
-        ...
+    ) -> PushResult: ...
 
     def observe_remote_sha(
         self,
@@ -44,8 +40,7 @@ class RemoteOps(Protocol):
         target: str,
         *,
         remote: str,
-    ) -> str | None:
-        ...
+    ) -> str | None: ...
 
 
 def default_remote_ops() -> RemoteOps:

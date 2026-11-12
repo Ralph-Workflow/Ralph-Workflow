@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import collections
@@ -26,12 +25,9 @@ from ralph.mcp.protocol.capability_mapping import (
 if TYPE_CHECKING:
 
     class AuditSink(Protocol):
+        def emit(self, record: McpAuditRecord) -> None: ...
 
-        def emit(self, record: McpAuditRecord) -> None:
-            ...
-
-        def flush(self) -> None:
-            ...
+        def flush(self) -> None: ...
 
 
 def outcome_from_decision(decision: AccessDecision) -> PolicyOutcome:
@@ -105,13 +101,10 @@ _DEFAULT_AUDIT_RECORD_CAP: int = 4096
 
 
 class RalphAuditSinkAdapter:
-
     def __init__(self, cap: int = _DEFAULT_AUDIT_RECORD_CAP) -> None:
         if not isinstance(cap, int) or cap <= 0:
             raise ValueError(f"cap must be a positive int, got {cap!r}")
-        self._records: collections.deque[RalphAuditRecord] = collections.deque(
-            maxlen=cap
-        )
+        self._records: collections.deque[RalphAuditRecord] = collections.deque(maxlen=cap)
         self._lock = Lock()
 
     def emit(self, record: McpAuditRecord) -> None:
