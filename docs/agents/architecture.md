@@ -78,8 +78,7 @@ dispatch view reflects the change automatically.
 
 The 6 wire-format NDJSON parsers (`claude`, `opencode`, `codex`, `gemini`,
 `generic`, `pi`) share a common base class `NdjsonParserBase` in
-`ralph/agents/parsers/_ndjson_base.py`. The base owns 6 behaviors that
-used to be duplicated across every parser's `classify_line`:
+`ralph/agents/parsers/_ndjson_base.py`. The base owns 6 behaviors:
 
 1. strip the SSE `data:` prefix
 2. short-circuit on `[DONE]` (yields `AgentOutputLine(type='stop')`)

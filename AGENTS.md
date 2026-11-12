@@ -58,9 +58,8 @@ weaken the gate, do not proceed.
 **Corollary — every check MUST be wired into `make verify`.** A check that runs
 only in an opt-in suite the default gate excludes WILL rot unnoticed: either
 wire it into `_VERIFY_STEPS`, or delete it. `ralph/testing/audit_repo_structure.py`
-exists because its rules previously lived only in a `subprocess_e2e`-marked test
-that `make verify` never ran — the repo-structure policy decayed silently while
-the gate stayed green.
+runs in the default gate as the verify step "repo structure audit
+(audit_repo_structure)".
 
 Detail: `docs/agents/verification.md` §'No unrelated-failure exemption'.
 

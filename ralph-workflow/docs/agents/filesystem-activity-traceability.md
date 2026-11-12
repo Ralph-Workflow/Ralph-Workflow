@@ -11,6 +11,12 @@ uv run python -m ralph.testing.audit_filesystem_read_consolidation
 uv run python -m ralph.testing.audit_filesystem_polling_invocation
 ```
 
+This is an internal traceability and operator-reference page, rather than a
+first-run route. It consolidates the durable filesystem contract, approved
+boundaries, exception syntax, and verification commands in one place; it does
+not duplicate onboarding documentation. Unresolved rows are marked `GAP` in the
+table.
+
 ## Matrix
 
 | Criterion | Public boundary | Current evidence | Status / gap |
@@ -128,12 +134,3 @@ process-local watcher owner does not claim cross-process watch sharing. Retentio
 ownership is coordinated separately through shared active-run and temporary-path maps. A constrained
 host falls back visibly to `live_fallback` and keeps the last committed index
 distinct from current live content.
-
-## Documentation review note
-
-This is an internal traceability and operator-reference page, rather than a
-first-run route. It consolidates the durable filesystem contract, approved
-boundaries, exception syntax, and verification commands in one place; it does
-not duplicate onboarding documentation or add public-product claims. Unresolved
-rows are intentionally retained as the implementation backlog so operators and
-maintainers can distinguish present proof from planned closure.

@@ -436,7 +436,7 @@ Replay is a **separate phase** with its own timebox. It is not part of the v5 im
 ## 12. References
 
 - Gloaguen et al., *Evaluating AGENTS.md*, v3. Available: <https://arxiv.org/abs/2602.11988v3>
-- `ralph/project_policy/markers.py:65-99` v5 history entry: the five changes and the v4→v5 consequence for existing projects.
+- `ralph/project_policy/markers.py:8` (`SCHEMA_VERSION`) and `:355` (`VERSION_SPECS`) — the policy schema source: the current schema version constant and the per-version core manifest, guard inventory header, and portfolio schema version specs.
 - `ralph/project_policy/starters/testing-policy.md:263-281` (B5 browser-budget admission rule, two-limit structure).
 - `ralph/project_policy/starters/policy-portfolio.toml:2` (`default_budget_seconds = 60.0`).
 - `ralph/mcp/tools/workspace/_read_handlers.py:221` (`handle_read_file`) and `:844` (`handle_read_multiple_files`) — the actual agent-context file-read seam.
@@ -482,7 +482,7 @@ The `Enforcement` column uses the v6 guard-inventory grammar: `deterministic: <i
 
 ## D. Task snapshots and immutable behavioral checks
 
-Each category uses a real pinned snapshot: a real commit ref, a real working-copy command, a real test-file oracle. Snapshots are constructed following the fixture-construction procedure defined below in §D.0 (planned as `scripts/policy_v5_replay_freeze.sh`, an explicit future prerequisite script whose reference implementation is provided below). After construction, the snapshot is hashed; the hash is the only artifact reviewed. No `locked/*` branches are referenced; the previous draft's `locked/feature-add-feature-flag` etc. did not exist in the tree and were replaced with concrete pinned commands.
+Each category uses a real pinned snapshot: a real commit ref, a real working-copy command, a real test-file oracle. Snapshots are constructed following the fixture-construction procedure defined below in §D.0 (planned as `scripts/policy_v5_replay_freeze.sh`, an explicit future prerequisite script whose reference implementation is provided below). After construction, the snapshot is hashed; the hash is the only artifact reviewed. No `locked/*` branches are referenced.
 
 > [!NOTE] Working directory convention
 > All test-suite commands below execute in the Python package root (`<snapshot>/ralph-workflow/`, or equivalently prefix `ralph-workflow/` when executing from the repository root). Python one-liners and git commands execute from the snapshot root (`<snapshot>`).

@@ -51,15 +51,15 @@ oracle, and independent verdict.
 
 **Preventing regressions outranks finishing the task in hand.** If a pre-existing failure blocks you, fix the failure first and finish your original task afterwards. Never report your own work as verified while any gate is red; if a repair is genuinely out of scope, stop and surface it as an active blocker rather than working around it.
 
-A corollary for anyone adding a check: **wire it into `make verify`.** A check that lives only in an opt-in suite the default gate skips will rot silently. `audit_repo_structure` exists precisely because its rules previously lived only in `tests/integration/test_policy_file_rules.py`, which is `subprocess_e2e`-marked and therefore excluded from `make test` — the policy decayed for weeks while the gate stayed green.
+A corollary for anyone adding a check: **wire it into `make verify`.** A check that lives only in an opt-in suite the default gate skips will rot silently. `audit_repo_structure` runs in the default gate as the verify step "repo structure audit (audit_repo_structure)".
 
 ## Fabrication guardrails
 
-Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx operator manual) is in scope for the [fabrication guard](fabrication-guard.md). USERS.md is the single canonical community directory; the previous near-duplicate community surfaces (`SHOWCASE.md`, `ECOSYSTEM.md`, `COMPARISONS.md`, `CREDIT_TEMPLATE.md`) were removed in the 2026-07-07 docs cleanup. The guard runs as a pre-commit hook at Level 1; re-run it explicitly with `./scripts/fabrication_guard.py --level 1 <file>` or `--level 2 <file>` for network existence checks. Bypassing the guard (for example with `--no-verify`) is itself fabrication.
+Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx operator manual) is in scope for the [fabrication guard](fabrication-guard.md). USERS.md is the single canonical community directory. The guard runs as a pre-commit hook at Level 1; re-run it explicitly with `./scripts/fabrication_guard.py --level 1 <file>` or `--level 2 <file>` for network existence checks. Bypassing the guard (for example with `--no-verify`) is itself fabrication.
 
 ## Total test budget
 
-The combined total test budget is **pinned**: 60 seconds of wall clock net of host contention, and 700 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The previously serial "production-clock workspace baseline" preflight has been removed: those files now join the same LPT partition as every other selected file, distributed across the parallel shards (`ralph/test_suites.py:1958-1969`). A dedicated Python process no longer runs serially before the fan-out, so the critical path is the slowest shard rather than a serial preflight + parallel shards.
+The combined total test budget is **pinned**: 60 seconds of wall clock net of host contention, and 700 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. All selected files join the same LPT partition, distributed across the parallel shards (`ralph/test_suites.py:1958-1969`). The critical path is the slowest shard.
 
 Wall clock on a shared host also measures every other process, so `ralph/verify.py` judges the tracked steps once they have all passed (`ralph/verify_budget.py` documents the rule):
 

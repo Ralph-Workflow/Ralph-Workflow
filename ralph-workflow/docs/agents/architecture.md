@@ -95,14 +95,6 @@ and [ADR-0009](../architecture/adr-0009-pipeline-source-of-truth-ownership.md)
 operator pages are [Pipeline states](../sphinx/operator-states.md) and
 [Recovery](../sphinx/recovery.md).
 
-### Documentation review note
-
-- **What changed:** The ownership section now names the three `RebaseState` setters, the 10 display plus 1 fan-out migration, the eight-column domain inventory, and the two crash-recovery reflog contracts.
-- **Why here:** This page is the agent-facing map next to the stack overview; the matrix and seam detail stay in ADR-0009.
-- **What stayed elsewhere:** State meanings stay on the pipeline-states page; recovery procedure stays on the recovery page.
-- **Duplication:** This section names the contracts and links onward. It does not copy the writer table or the operator state list.
-- **Clearer route:** From the stack overview, the next click is ADR-0009 for the inventory, or the operator pages for states and recovery.
-
 ## Registration
 
 The single canonical entry point for adding, updating, or removing an agent is

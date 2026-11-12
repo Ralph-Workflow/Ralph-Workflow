@@ -132,14 +132,6 @@ max_cycles = 3
 
 This prevents a persistently failing workflow from retrying forever without making progress.
 
-### Documentation review note
-
-- **What changed:** Documentation covers single-owner agent failure tracking via `AgentFailureLedger`, consecutive and total unproductive bounds (`agent_max_consecutive_unproductive`, `agent_max_total_unproductive`), provider overload, context exhaustion, non-zero exits, and the operator-visible recovery line.
-- **Why here:** This page owns retry, cooldown, and fallover behavior.
-- **What stayed elsewhere:** Provider-specific command and configuration guidance remains on the agent and configuration pages.
-- **Duplication:** The reason-specific delays are stated once in the recovery flow rather than repeated across troubleshooting pages.
-- **Clearer route:** Operators can now distinguish active recovery from a frozen run directly from this reference.
-
 ## Checkpoints
 
 Ralph Workflow saves a checkpoint after each successful phase transition so a run can continue from the last completed step after an interruption or crash.
@@ -521,12 +513,3 @@ displays remain synchronized with the underlying state machine.
 
 For an operator-facing summary of these states alongside the seven
 `IntegrationDisplayLabel` values, see [Pipeline states](operator-states.md).
-
-### Documentation review note
-
-- **What changed:** The recovery-boundaries section now states the two crash-recovery reflog contracts separately, and points at the ADR-0009 writer inventory (10 display sites and 1 fan-out site) without copying the table.
-- **Why here:** `recovery.md` is the canonical reference for workflow recovery, failure categorization, checkpoints, and intervention states.
-- **What stayed elsewhere:** The domain matrix, setter signatures, and eight-column inventory remain in ADR-0009. Display-state meanings remain on the pipeline-states page.
-- **Duplication:** This page names the two contracts and the three setters. It does not repeat the writer table or the per-state operator notes.
-- **Clearer route:** An operator can tell a shared-branch completion proof apart from worktree-private branch reconstruction, then open ADR-0009 for the writer inventory.
-

@@ -30,6 +30,75 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
         "docs/superpowers/specs/2026-07-14-telemetry-identity-lifecycle-design.md",
         ("Documentation review note:",),
     ),
+    (
+        "docs/ralph-workflow-policy/verification-policy.md",
+        ("exists because its rules previously lived only in",),
+    ),
+    (
+        "docs/ralph-workflow-policy/policy-portfolio.toml",
+        (
+            "documented retirement decisions (wt-026 docs/dedup)",
+            "names the canonical Sphinx routes as the surviving evidence location",
+        ),
+    ),
+    (
+        "docs/ralph-workflow-policy/linting-policy.md",
+        (
+            "shell-script `scripts/verify_social_proof.py`",
+            "per its module docstring",
+        ),
+    ),
+    (
+        "AGENTS.md",
+        ("exists because its rules previously lived only in",),
+    ),
+    (
+        "docs/agents/verification.md",
+        (
+            "exists precisely because its rules previously lived only in",
+            "were removed in the 2026-07-07 docs cleanup",
+            "The previously serial",
+        ),
+    ),
+    (
+        "docs/ralph-workflow-policy/verification-policy.md",
+        (
+            "It is wired into `_VERIFY_STEPS` precisely because",
+            "rotted undetected",
+            "formerly three separate steps merged",
+        ),
+    ),
+    (
+        "docs/ralph-workflow-policy/gate-script-policy.md",
+        (
+            "is no longer present after wt-038",
+            "closed the strict-mode gap",
+        ),
+    ),
+    (
+        "docs/agents/architecture.md",
+        ("used to be duplicated across every parser's",),
+    ),
+    (
+        "ralph-workflow/docs/agents/architecture.md",
+        ("Documentation review note",),
+    ),
+    (
+        "ralph-workflow/docs/agents/filesystem-activity-traceability.md",
+        ("Documentation review note",),
+    ),
+    (
+        "ralph-workflow/docs/architecture/adr-0009-pipeline-source-of-truth-ownership.md",
+        ("Documentation review note",),
+    ),
+    (
+        "ralph-workflow/docs/sphinx/operator-states.md",
+        ("Documentation review note",),
+    ),
+    (
+        "ralph-workflow/docs/sphinx/recovery.md",
+        ("Documentation review note",),
+    ),
 )
 
 

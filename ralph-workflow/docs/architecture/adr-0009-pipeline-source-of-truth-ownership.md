@@ -240,23 +240,6 @@ remaining closed-vocabulary scans at
 allowed because they consult a closed vocabulary, not free-form
 prose.
 
-### Documentation review note
-
-- **What changed:** Added 7 typed setters to the writer inventory
-  (`set_retry_deadline`, `record_consecutive_conflicts`,
-  `advance_conflict_strategy`, `project_conflict_strategy_from`,
-  `clear_conflict_strategy`, `clear_resolution_exhausted`,
-  `set_intervention_required`), plus the closed
-  `PlanningObstructionKind` vocabulary, the `last_planning_obstruction`
-  state field, the typed `FailureCategory.INTEGRATION` seam on the
-  reducer, and the `attempt_fault.py:154` exact-match trust boundary.
-  The forbidden-fields sentence is updated to name the 11
-  enforced fields.
-- **Why here:** ADR-0009 is the ownership record for authorities, writers, readers, projections, transitions, restart, UNKNOWN, and blocking.
-- **What stayed elsewhere:** Operator wording lives on the pipeline-states and recovery pages; those pages point here instead of copying the table.
-- **Duplication:** Seam file locations are stated once in this section; the operator pages keep the contract distinction without a second inventory table.
-- **Clearer route:** A reader can separate the shared-branch completion proof from worktree-private branch reconstruction, can grep the seven new setter names, and can verify the closed `PlanningObstructionKind` vocabulary against `_planning_obstruction.py`.
-
 ## Dependency Injection Boundaries
 
 To ensure complete black-box testability without live Git or filesystem side-effects in unit suites:

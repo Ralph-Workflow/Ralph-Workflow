@@ -435,8 +435,8 @@ it does not fall back to direct execution. AGY supports native subagent
 dispatch on the measured v1.1.10-v1.1.13 stream-json transport
 (`define_subagent` / `invoke_subagent` / `manage_subagents`; see
 `tests/display/_fixtures/agy_wire_provenance.md`), so `smoke-interactive-agy
---subagents` exercises the same lifecycle contract and no longer depends on
-an `agy agents` listing. A passing supported-transport run shows exactly one
+--subagents` exercises the same lifecycle contract without an `agy agents`
+listing. A passing supported-transport run shows exactly one
 native subagent
 dispatch, its correlated result, later main-agent activity, and normal smoke
 completion. Use a non-empty UTF-8 task file inside the current workspace when

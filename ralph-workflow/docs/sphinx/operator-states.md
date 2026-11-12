@@ -99,11 +99,3 @@ The same ADR records the defensive `RuntimeError` boundary on
 matrix-extension regression coverage. The operator surface is now
 strictly typed: every label you see in the activity line comes
 from a closed enum and an `is_diagnosis` flag, never from prose.
-
-### Documentation review note
-
-- **What changed:** The closed-ownership section names all three setters, the 10 display plus 1 fan-out migration, and the two distinct crash-recovery reflog contracts.
-- **Why here:** This is the operator reference for what the activity line means and which writer owns each displayed choice.
-- **What stayed elsewhere:** The domain matrix and setter signatures stay in ADR-0009. Seam locations stay on the recovery page.
-- **Duplication:** This page keeps one-line state notes and points at Recovery for the reflog contracts.
-- **Clearer route:** An operator can match a displayed state to its setter, then open Recovery for how a crash is reconstructed.
