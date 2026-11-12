@@ -172,6 +172,14 @@ def _find_conflicts(target_dir: Path) -> list[str]:
     return conflicts
 
 
+def _unknown_ownership_failure_codes(target_dir: Path) -> list[str]:
+    return [
+        f"skills-unknown-ownership-{name}"
+        for name in BASELINE_SKILL_NAMES
+        if classify_entry(target_dir / name) is Ownership.UNKNOWN
+    ]
+
+
 def _compute_skill_hash(name: str) -> str:
     return hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
 
@@ -180,17 +188,20 @@ def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = Fal
     path.symlink_to(target, target_is_directory=target_is_directory)
 
 
+def _may_mirror_sibling_entry(sibling_dir: Path, canonical_target: Path) -> bool:
+    if not sibling_dir.exists() and not sibling_dir.is_symlink():
+        return True
+    if sibling_dir.is_symlink():
+        return _may_replace_sibling_symlink(sibling_dir, canonical_target)
+    return may_replace(sibling_dir)
+
+
 def _mirror_skill_to_sibling_root(
     *, skill_name: str, sibling_root: AgentSkillRoot, canonical_root: Path
 ) -> str | None:
     sibling_dir = sibling_root.resolve() / skill_name
-    marker = sibling_dir / _MANAGED_MARKER
-    if sibling_dir.exists() and not marker.exists():
-        skill_file = sibling_dir / "SKILL.md"
-        if skill_file.exists() and skill_file.read_text(encoding="utf-8") != get_skill_content(
-            skill_name
-        ):
-            return f"sibling-conflict-{skill_name}"
+    if not _may_mirror_sibling_entry(sibling_dir, canonical_root / skill_name):
+        return f"sibling-conflict-{skill_name}"
     sibling_dir.parent.mkdir(parents=True, exist_ok=True)
     if sibling_dir.is_symlink():
         sibling_dir.unlink()
@@ -245,6 +256,7 @@ def install_baseline_skills(
             ),
             [f"skills-conflict-{name}" for name in canonical_failures],
         )
+    unknown_failures = _unknown_ownership_failure_codes(resolved_target_dir)
     try:
         materialize_skills_to_claude_dir(resolved_target_dir)
     except OSError:
@@ -257,13 +269,14 @@ def install_baseline_skills(
         )
     if target_dir is not None:
         prune_failures = _prune_failure_codes(_prune_removed_baseline_skills(resolved_target_dir))
-        if prune_failures:
+        failures = _dedupe_failure_codes([*unknown_failures, *prune_failures])
+        if failures:
             return (
                 CapabilityEntry(
                     status=CapabilityStatus.NEEDS_REPAIR,
                     last_check_fail_iso=_now_iso(),
                 ),
-                prune_failures,
+                failures,
             )
         return (
             CapabilityEntry(
@@ -274,7 +287,7 @@ def install_baseline_skills(
         )
     sibling_failures = _mirror_baseline_skills_to_siblings(resolved_target_dir)
     prune_failures = _prune_user_global_skill_roots()
-    failures = _dedupe_failure_codes([*sibling_failures, *prune_failures])
+    failures = _dedupe_failure_codes([*unknown_failures, *sibling_failures, *prune_failures])
     if failures:
         return (
             CapabilityEntry(
@@ -405,6 +418,7 @@ def install_project_baseline_skills(
             ),
             [f"skills-conflict-{name}" for name in canonical_failures],
         )
+    unknown_failures = _unknown_ownership_failure_codes(canonical)
     try:
         materialize_skills_to_claude_dir(canonical)
     except OSError:
@@ -438,7 +452,7 @@ def install_project_baseline_skills(
             )
             if failure is not None:
                 sibling_failures.append(failure)
-    failures = _dedupe_failure_codes([*prune_failures, *sibling_failures])
+    failures = _dedupe_failure_codes([*unknown_failures, *prune_failures, *sibling_failures])
     if failures:
         return (
             CapabilityEntry(

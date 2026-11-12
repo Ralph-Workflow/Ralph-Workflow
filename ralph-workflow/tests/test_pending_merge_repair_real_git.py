@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from git import Repo
 from rich.console import Console
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.git import subprocess_runner
+from ralph.git.git_run_result import GitRunResult
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._pending_merge_repair import repair_pending_merge
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
@@ -20,15 +22,42 @@ from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
-from tests.test_pending_merge_commit_recovery import _git, _prepared
+from tests.test_pending_merge_commit_recovery import _git as _base_git
+from tests.test_pending_merge_commit_recovery import _prepared
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ralph.git.git_run_result import GitRunResult
     from ralph.git.subprocess_runner import GitRunOptions
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
+
+_REPO_CACHE: dict[Path, Repo] = {}
+
+
+def _repo(root: Path) -> Repo:
+    cached = _REPO_CACHE.get(root)
+    if cached is not None:
+        return cached
+    repo = Repo(root)
+    _REPO_CACHE[root] = repo
+    return repo
+
+
+def _git(root: Path, *args: str) -> GitRunResult:
+    if args == ("write-tree",):
+        try:
+            tree = _repo(root).index.write_tree()
+        except Exception:
+            return _base_git(root, *args)
+        return GitRunResult(args=("git", *args), stdout=tree.hexsha + "\n", stderr="", returncode=0)
+    if len(args) == 2 and args[0] == "add":
+        try:
+            _repo(root).index.add([args[1]])
+        except Exception:
+            return _base_git(root, *args)
+        return GitRunResult(args=("git", *args), stdout="", stderr="", returncode=0)
+    return _base_git(root, *args)
 
 
 def _install_validation_hook(root: Path, *, custom: bool) -> Path:

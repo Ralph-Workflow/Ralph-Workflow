@@ -147,6 +147,28 @@ def test_materialize_skills_to_claude_dir_writes_managed_marker_with_content_has
     assert marker["installed_content_sha256"] == expected_sha
 
 
+def test_materialize_skills_to_claude_dir_preserves_a_skill_with_unknown_ownership(
+    tmp_path: Path,
+) -> None:
+    name = BASELINE_SKILL_NAMES[0]
+    skill_dir = tmp_path / name
+    skill_dir.mkdir(parents=True)
+    skill_body = b"# my own version of the skill\n"
+    marker_body = b"{ this is not valid json\n"
+    (skill_dir / "SKILL.md").write_bytes(skill_body)
+    (skill_dir / MANAGED_MARKER_NAME).write_bytes(marker_body)
+
+    written = materialize_skills_to_claude_dir(tmp_path)
+
+    assert name not in written
+    assert (skill_dir / "SKILL.md").read_bytes() == skill_body, (
+        "an unknown-ownership skill must survive materialization byte-for-byte"
+    )
+    assert (skill_dir / MANAGED_MARKER_NAME).read_bytes() == marker_body, (
+        "an unknown-ownership marker must survive materialization byte-for-byte"
+    )
+
+
 def test_materialize_skills_to_claude_dir_skips_manually_edited_skill(
     tmp_path: Path,
 ) -> None:

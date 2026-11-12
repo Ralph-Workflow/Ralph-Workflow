@@ -35,7 +35,69 @@ _VARIANTS: dict[str, tuple[str, bool]] = {
 }
 
 
+_REPO_CACHE: dict[Path, Repo] = {}
+
+
+def _repo(path: Path) -> Repo | None:
+    cached = _REPO_CACHE.get(path)
+    if cached is not None:
+        return cached
+    try:
+        repo = Repo(path)
+    except Exception:
+        return None
+    _REPO_CACHE[path] = repo
+    return repo
+
+
+def _refreshed_repo(path: Path) -> Repo | None:
+    stale = _REPO_CACHE.pop(path, None)
+    if stale is not None:
+        try:
+            stale.close()
+        except Exception:
+            pass
+    try:
+        repo = Repo(path)
+    except Exception:
+        return None
+    _REPO_CACHE[path] = repo
+    return repo
+
+
+def _in_process_git(cwd: Path, args: tuple[str, ...]) -> str | None:
+    for repo in (_repo(cwd), _refreshed_repo(cwd)):
+        if repo is None:
+            continue
+        try:
+            if len(args) == 2 and args[0] == "rev-parse":
+                return repo.rev_parse(args[1]).hexsha
+            if len(args) == 2 and args[0] == "symbolic-ref":
+                return str(repo.head.ref)
+            if (
+                len(args) == 4
+                and args[0] == "log"
+                and args[1] == "-1"
+                and args[2] == "--format=%s"
+            ):
+                return str(repo.commit(args[3]).message).splitlines()[0]
+            if len(args) == 3 and args[0] == "log" and args[1] == "--format=%s":
+                return "\n".join(
+                    str(commit.message).splitlines()[0]
+                    for commit in repo.iter_commits(args[2])
+                )
+            if args == ("remote",):
+                return "\n".join(remote.name for remote in repo.remotes)
+            return None
+        except Exception:
+            continue
+    return None
+
+
 def _git(cwd: Path, *args: str) -> str:
+    in_process = _in_process_git(cwd, args)
+    if in_process is not None:
+        return in_process
     result = subprocess.run(
         ("git", *args),
         cwd=str(cwd),
@@ -50,36 +112,31 @@ def _git(cwd: Path, *args: str) -> str:
 
 def _commit(repo: Path, filename: str, content: str, message: str) -> str:
     (repo / filename).write_text(content, encoding="utf-8")
-    git_repo = Repo(repo)
-    try:
-        git_repo.index.add([filename])
-        return git_repo.index.commit(message).hexsha
-    finally:
-        git_repo.close()
+    git_repo = _repo(repo)
+    assert git_repo is not None
+    git_repo.index.add([filename])
+    return git_repo.index.commit(message).hexsha
 
 
 def _identify(repo: Path) -> None:
-    git_repo = Repo(repo)
+    git_repo = _repo(repo)
+    assert git_repo is not None
+    writer = git_repo.config_writer()
     try:
-        writer = git_repo.config_writer()
-        try:
-            writer.set_value("user", "email", "test@example.com")
-            writer.set_value("user", "name", "Test User")
-        finally:
-            writer.release()
+        writer.set_value("user", "email", "test@example.com")
+        writer.set_value("user", "name", "Test User")
     finally:
-        git_repo.close()
+        writer.release()
 
 
 def _publish_commit(writer: Path, bare: Path, filename: str, content: str, message: str) -> str:
     (writer / filename).write_text(content, encoding="utf-8")
-    git_repo = Repo(writer)
-    try:
-        git_repo.index.add([filename])
-        commit = git_repo.index.commit(message)
-        _copy_objects(git_repo, Repo(bare), commit)
-    finally:
-        git_repo.close()
+    writer_repo = _repo(writer)
+    bare_repo = _repo(bare)
+    assert writer_repo is not None and bare_repo is not None
+    writer_repo.index.add([filename])
+    commit = writer_repo.index.commit(message)
+    _copy_objects(writer_repo, bare_repo, commit)
     _set_ref(bare, f"refs/heads/{_TARGET}", commit.hexsha)
     return commit.hexsha
 

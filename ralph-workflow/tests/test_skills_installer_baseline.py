@@ -14,6 +14,19 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_install_baseline_skills_preserves_an_unmarked_identical_skill": (
+        "the user-owned adoption path was removed: writing a marker into a "
+        "user-owned directory makes Ralph treat that directory as MANAGED and prune "
+        "it on retirement, so a user-owned directory must be preserved unmarked"
+    ),
+    "test_install_baseline_skills_updates_ralph_managed_skill_in_place": (
+        "the planted marker now records the installed content digest, because a "
+        "marker without a verifiable digest is UNKNOWN ownership and must be "
+        "preserved and reported instead of overwritten"
+    ),
+}
+
 _INSTALLED_HEALTHY = "installed_healthy"
 _NEEDS_REPAIR = "needs_repair"
 
@@ -78,9 +91,16 @@ def test_install_baseline_skills_updates_ralph_managed_skill_in_place(tmp_path: 
     managed_skill_dir = target_dir / "submit-artifact"
     managed_skill_dir.mkdir(parents=True)
     skill_file = managed_skill_dir / "SKILL.md"
-    skill_file.write_text("# old ralph version\n", encoding="utf-8")
+    installed = "# old ralph version\n"
+    skill_file.write_text(installed, encoding="utf-8")
     (managed_skill_dir / ".ralph-managed.json").write_text(
-        '{"managed_by": "ralph-workflow", "skill": "submit-artifact"}\n',
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": "submit-artifact",
+                "installed_content_sha256": hashlib.sha256(installed.encode("utf-8")).hexdigest(),
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -123,7 +143,7 @@ def test_install_baseline_skills_preserves_manually_edited_managed_skill(
     assert skill_file.read_text(encoding="utf-8") == user_edited_content
 
 
-def test_install_baseline_skills_adopts_unmarked_identical_skill(tmp_path: Path) -> None:
+def test_install_baseline_skills_preserves_an_unmarked_identical_skill(tmp_path: Path) -> None:
     target_dir = tmp_path / "skills"
     skill_dir = target_dir / "submit-artifact"
     skill_dir.mkdir(parents=True)
@@ -131,6 +151,11 @@ def test_install_baseline_skills_adopts_unmarked_identical_skill(tmp_path: Path)
 
     entry, failures = install_baseline_skills(target_dir=target_dir)
 
+    assert failures == [], f"Expected no failures, got {failures!r}"
     assert entry.status == _INSTALLED_HEALTHY
-    assert failures == []
-    assert (skill_dir / ".ralph-managed.json").exists()
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == get_skill_content(
+        "submit-artifact"
+    )
+    assert not (skill_dir / ".ralph-managed.json").exists(), (
+        "a user-owned directory must never be adopted as managed"
+    )

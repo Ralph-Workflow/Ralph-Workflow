@@ -220,6 +220,115 @@ def test_project_skills_need_install_when_canonical_is_file(tmp_path: Path) -> N
 
 
 @pytest.mark.timeout_seconds(5)
+def test_install_project_baseline_skills_preserves_a_baseline_skill_with_unknown_ownership(
+    tmp_path: Path,
+) -> None:
+    home = _fake_user_global_home(tmp_path)
+    canonical = tmp_path / ".opencode" / "skills"
+    name = BASELINE_SKILL_NAMES[0]
+    other_name = BASELINE_SKILL_NAMES[1]
+    skill_dir = canonical / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_body = b"# my own version of the skill\n"
+    marker_body = b"{ this is not valid json\n"
+    (skill_dir / "SKILL.md").write_bytes(skill_body)
+    (skill_dir / ".ralph-managed.json").write_bytes(marker_body)
+
+    with patch("pathlib.Path.home", return_value=home):
+        entry, failures = install_project_baseline_skills(tmp_path)
+
+    assert (skill_dir / "SKILL.md").read_bytes() == skill_body, (
+        "an unknown-ownership skill must survive the install byte-for-byte"
+    )
+    assert (skill_dir / ".ralph-managed.json").read_bytes() == marker_body, (
+        "an unknown-ownership marker must survive the install byte-for-byte"
+    )
+    assert f"skills-unknown-ownership-{name}" in failures, failures
+    assert entry.status == CapabilityStatus.NEEDS_REPAIR
+    assert (canonical / other_name / "SKILL.md").exists(), (
+        "an unknown-ownership skill must not abort the rest of the install"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_install_project_baseline_skills_preserves_a_baseline_skill_with_an_unverifiable_marker(
+    tmp_path: Path,
+) -> None:
+    home = _fake_user_global_home(tmp_path)
+    canonical = tmp_path / ".opencode" / "skills"
+    name = BASELINE_SKILL_NAMES[0]
+    skill_dir = canonical / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_body = b"# my own version of the skill\n"
+    marker_body = json.dumps({"managed_by": "ralph-workflow", "skill": name}).encode("utf-8")
+    (skill_dir / "SKILL.md").write_bytes(skill_body)
+    (skill_dir / ".ralph-managed.json").write_bytes(marker_body)
+
+    with patch("pathlib.Path.home", return_value=home):
+        entry, failures = install_project_baseline_skills(tmp_path)
+
+    assert (skill_dir / "SKILL.md").read_bytes() == skill_body, (
+        "a skill whose marker records no digest must survive the install byte-for-byte"
+    )
+    assert (skill_dir / ".ralph-managed.json").read_bytes() == marker_body, (
+        "a skill whose marker records no digest must keep its marker byte-for-byte"
+    )
+    assert f"skills-unknown-ownership-{name}" in failures, failures
+    assert entry.status == CapabilityStatus.NEEDS_REPAIR
+
+
+@pytest.mark.timeout_seconds(5)
+def test_install_project_baseline_skills_installs_every_baseline_skill_with_a_valid_marker(
+    tmp_path: Path,
+) -> None:
+    home = _fake_user_global_home(tmp_path)
+
+    with patch("pathlib.Path.home", return_value=home):
+        entry, failures = install_project_baseline_skills(tmp_path)
+
+    assert failures == [], f"Expected no failures, got {failures!r}"
+    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    canonical = tmp_path / ".opencode" / "skills"
+    for name in BASELINE_SKILL_NAMES:
+        marker_path = canonical / name / ".ralph-managed.json"
+        assert marker_path.exists(), f"Missing managed marker: {marker_path}"
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        expected_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
+        assert marker["installed_content_sha256"] == expected_sha
+
+
+@pytest.mark.timeout_seconds(5)
+def test_install_project_baseline_skills_updates_a_managed_baseline_skill(tmp_path: Path) -> None:
+    home = _fake_user_global_home(tmp_path)
+    canonical = tmp_path / ".opencode" / "skills"
+    name = BASELINE_SKILL_NAMES[0]
+    skill_dir = canonical / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    installed = "# the version Ralph installed earlier\n"
+    (skill_dir / "SKILL.md").write_text(installed, encoding="utf-8")
+    (skill_dir / ".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": name,
+                "installed_content_sha256": hashlib.sha256(installed.encode("utf-8")).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=home):
+        entry, failures = install_project_baseline_skills(tmp_path)
+
+    assert failures == [], f"Expected no failures, got {failures!r}"
+    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == get_skill_content(name)
+    marker = json.loads((skill_dir / ".ralph-managed.json").read_text(encoding="utf-8"))
+    expected_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
+    assert marker["installed_content_sha256"] == expected_sha
+
+
+@pytest.mark.timeout_seconds(5)
 def test_install_overwrites_stale_canonical_skill(tmp_path: Path) -> None:
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"

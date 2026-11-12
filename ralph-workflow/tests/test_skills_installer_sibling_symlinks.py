@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 from pathlib import Path
@@ -15,6 +17,19 @@ from ralph.skills._installer import (
 )
 
 pytestmark = pytest.mark.timeout_seconds(5)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_install_baseline_skills_preserves_an_unmarked_real_sibling_directory": (
+        "the sibling mirror now applies the same ownership allow-list as the "
+        "canonical root, so a user-owned sibling directory is preserved and reported "
+        "as a conflict instead of being deleted and replaced"
+    ),
+    "test_install_baseline_skills_replaces_existing_managed_symlink": (
+        "the stale symlink target is now a verified Ralph-managed skill directory, "
+        "because a symlink to a directory Ralph does not own is USER_OWNED and must "
+        "be preserved instead of being silently re-pointed"
+    ),
+}
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -158,8 +173,23 @@ def test_install_baseline_skills_replaces_existing_managed_symlink(
 ) -> None:
     canonical_dir, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
-    stale_target = tmp_path / "stale-canonical"
+    stale_target = tmp_path / "stale-canonical" / "submit-plan-artifact"
     stale_target.mkdir(parents=True)
+    (stale_target / "SKILL.md").write_text(
+        get_skill_content("submit-plan-artifact"), encoding="utf-8"
+    )
+    (stale_target / ".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": "submit-plan-artifact",
+                "installed_content_sha256": hashlib.sha256(
+                    get_skill_content("submit-plan-artifact").encode("utf-8")
+                ).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
     (codex_dir / "submit-plan-artifact").symlink_to(stale_target, target_is_directory=True)
 
     entry, failures = install_baseline_skills()
@@ -170,16 +200,68 @@ def test_install_baseline_skills_replaces_existing_managed_symlink(
     assert entry_path.resolve() == (canonical_dir / "submit-plan-artifact").resolve()
 
 
-def test_install_baseline_skills_replaces_existing_real_directory_at_sibling(
+def test_install_baseline_skills_preserves_an_unmarked_real_sibling_directory(
     fake_roots: tuple[Path, tuple[AgentSkillRoot, ...]],
 ) -> None:
-    canonical_dir, all_roots = fake_roots
+    _, all_roots = fake_roots
     codex_dir = all_roots[1].resolve()
     user_skill = codex_dir / "submit-plan-artifact"
     user_skill.mkdir(parents=True)
     (user_skill / "stale.txt").write_text("old", encoding="utf-8")
 
     entry, failures = install_baseline_skills()
+
+    assert entry.status.value == "needs_repair"
+    assert "sibling-conflict-submit-plan-artifact" in failures
+    assert (user_skill / "stale.txt").read_text(encoding="utf-8") == "old"
+    assert not (user_skill / "SKILL.md").exists()
+
+
+def test_install_baseline_skills_preserves_a_sibling_skill_with_unknown_ownership(
+    fake_roots: tuple[Path, tuple[AgentSkillRoot, ...]],
+) -> None:
+    _, all_roots = fake_roots
+    codex_dir = all_roots[1].resolve()
+    unknown_skill = codex_dir / "submit-plan-artifact"
+    unknown_skill.mkdir(parents=True)
+    skill_body = b"# my own version of the skill\n"
+    marker_body = b"{ this is not valid json\n"
+    (unknown_skill / "SKILL.md").write_bytes(skill_body)
+    (unknown_skill / ".ralph-managed.json").write_bytes(marker_body)
+
+    entry, failures = install_baseline_skills()
+
+    assert entry.status.value == "needs_repair"
+    assert "sibling-conflict-submit-plan-artifact" in failures
+    assert (unknown_skill / "SKILL.md").read_bytes() == skill_body
+    assert (unknown_skill / ".ralph-managed.json").read_bytes() == marker_body
+
+
+def test_install_baseline_skills_replaces_a_managed_real_sibling_directory(
+    fake_roots: tuple[Path, tuple[AgentSkillRoot, ...]],
+) -> None:
+    canonical_dir, all_roots = fake_roots
+    codex_dir = all_roots[1].resolve()
+    managed_skill = codex_dir / "submit-plan-artifact"
+    managed_skill.mkdir(parents=True)
+    (managed_skill / "SKILL.md").write_text(
+        get_skill_content("submit-plan-artifact"), encoding="utf-8"
+    )
+    (managed_skill / ".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": "submit-plan-artifact",
+                "installed_content_sha256": hashlib.sha256(
+                    get_skill_content("submit-plan-artifact").encode("utf-8")
+                ).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entry, failures = install_baseline_skills()
+
     assert entry.status.value == "installed_healthy"
     assert failures == []
     entry_path = codex_dir / "submit-plan-artifact"

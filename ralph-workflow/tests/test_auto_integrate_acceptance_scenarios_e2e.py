@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TextIO
 
 import pytest
+from git import Repo
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.remote_push import PushStatus
@@ -62,6 +63,16 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
     return None
 
 
+def _write_local_config(repo_root: Path, key: str, value: str) -> bool:
+    try:
+        repo = _repo(repo_root)
+        with repo.config_writer() as config:
+            config.set_value("user", key.split(".", 1)[1], value)
+    except Exception:
+        return False
+    return True
+
+
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     if args == ("branch", "--show-current"):
         name = _fast_branch_name(repo_root)
@@ -75,6 +86,12 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(
                 args=("git", *args), stdout=sha + "\n", stderr="", returncode=0
             )
+    if len(args) == 3 and args[0] == "config" and args[1] in {"user.email", "user.name"}:
+        written = _write_local_config(repo_root, args[1], args[2])
+        if written:
+            return subprocess.CompletedProcess(
+                args=("git", *args), stdout="", stderr="", returncode=0
+            )
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -85,13 +102,23 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+_REPO_CACHE: dict[Path, Repo] = {}
+
+
+def _repo(repo_root: Path) -> Repo:
+    cached = _REPO_CACHE.get(repo_root)
+    if cached is not None:
+        return cached
+    repo = Repo(repo_root)
+    _REPO_CACHE[repo_root] = repo
+    return repo
+
+
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    from git import Repo
-
-    repo = Repo(repo_root)
+    repo = _repo(repo_root)
     repo.index.add([filename])
     commit = repo.index.commit(message)
     assert commit.hexsha

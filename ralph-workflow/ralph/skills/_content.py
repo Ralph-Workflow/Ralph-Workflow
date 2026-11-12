@@ -87,7 +87,7 @@ def _may_materialize_skill_dir(skill_dir: Path) -> bool:
     if skill_dir.is_symlink():
         return False
     ownership = classify_entry(skill_dir)
-    return ownership not in (Ownership.USER_EDITED, Ownership.FOREIGN)
+    return ownership in (Ownership.ABSENT, Ownership.MANAGED)
 
 
 def materialize_skills_to_claude_dir(
