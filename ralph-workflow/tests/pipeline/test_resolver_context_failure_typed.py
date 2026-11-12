@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 from loguru import logger
+from rich.console import Console
 
+from ralph.display.context import make_display_context
+from ralph.display.status_bar import StatusBar, render_status_bar
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.git.subprocess_runner import run_git
 from ralph.pipeline import (
     RebaseOutcomeKind,
     RebaseResolutionResult,
@@ -25,8 +30,15 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.run_loop import integration_alert_for_state
+from ralph.pipeline.run_loop import (
+    LoopContext,
+    _build_status_bar_model,
+    _resolve_paused_rebase,
+    integration_alert_for_state,
+    log_waiting_state,
+)
 from ralph.pipeline.state import PipelineState
+from ralph.workspace.context import WorkspaceContextError
 from ralph.workspace.scope import WorkspaceScope
 
 
@@ -258,18 +270,186 @@ def test_resolve_conflicted_rebase_carries_context_failure_not_exhausted(
     assert short_circuit.consecutive_conflicts == 0
 
 
+def _setup_paused_rebase_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_git(["init", "-b", "main"], cwd=repo, label="test:setup:init")
+    run_git(["config", "user.name", "Test User"], cwd=repo, label="test:setup:user")
+    run_git(["config", "user.email", "test@example.com"], cwd=repo, label="test:setup:email")
+    run_git(["config", "gc.auto", "0"], cwd=repo, label="test:setup:gc")
+    run_git(["config", "core.fsync", "none"], cwd=repo, label="test:setup:fsync")
+    run_git(["config", "commit.gpgSign", "false"], cwd=repo, label="test:setup:gpg")
+    (repo / "conflict.txt").write_text("base content\n", encoding="utf-8")
+    run_git(["add", "conflict.txt"], cwd=repo, label="test:setup:add")
+    run_git(["commit", "-m", "base commit"], cwd=repo, label="test:setup:commit")
+
+    run_git(["checkout", "-b", "feature"], cwd=repo, label="test:setup:checkout-feature")
+    (repo / "conflict.txt").write_text("feature content\n", encoding="utf-8")
+    run_git(["commit", "-am", "feature commit"], cwd=repo, label="test:setup:commit-feature")
+
+    run_git(["checkout", "main"], cwd=repo, label="test:setup:checkout-main")
+    (repo / "conflict.txt").write_text("main content\n", encoding="utf-8")
+    run_git(["commit", "-am", "main commit"], cwd=repo, label="test:setup:commit-main")
+
+    run_git(["checkout", "feature"], cwd=repo, label="test:setup:checkout-feature-2")
+    run_git(["rebase", "main"], cwd=repo, label="test:setup:rebase")
+    return repo
+
+
+def _make_loop_context(repo: Path) -> MagicMock:
+    mock_ctx = MagicMock(spec=LoopContext)
+    mock_ctx.workspace_scope = WorkspaceScope(root=repo)
+    mock_ctx.policy_bundle = MagicMock()
+    mock_ctx.policy_bundle.pipeline = MagicMock()
+    mock_ctx.registry = MagicMock()
+    mock_ctx.active_display = MagicMock()
+    mock_ctx.config = MagicMock()
+    mock_ctx.config.conflict_resolution = None
+    mock_ctx.pipeline_deps = MagicMock()
+    mock_ctx.display_context = None
+    mock_ctx.controller = MagicMock()
+    mock_ctx.controller.waiting_state_payload.return_value = [("agent1", 5000, 1)]
+    mock_ctx.last_waiting_state_sig = None
+    mock_ctx.last_waiting_state_phase = None
+    return mock_ctx
+
+
 def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
     tmp_path: Path,
 ) -> None:
-    reason_str = "target worktree context failed: disk I/O error"
-    rebase = RebaseState(
-        last_outcome=RebaseOutcomeKind.CONFLICT,
-        last_reason=reason_str,
-        last_failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
-    )
-    state = PipelineState(phase="planning", rebase=rebase)
+    repo = _setup_paused_rebase_repo(tmp_path)
+    mock_ctx = _make_loop_context(repo)
 
-    alert = integration_alert_for_state(state)
-    assert alert is not None
-    assert "CONTEXT_FAILURE: target worktree context failed: disk I/O error" in alert
-    assert "resolution required" in alert
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
+
+    try:
+        with patch(
+            "ralph.pipeline.auto_integrate_agent.workspace_context",
+            side_effect=RuntimeError("boom"),
+        ):
+            resolved = _resolve_paused_rebase(mock_ctx, "main")
+
+        assert resolved is False
+
+        paused_rebase_warns = [
+            r["message"]
+            for r in records
+            if "the paused rebase for 'main' was not resolved" in r["message"]
+        ]
+        assert len(paused_rebase_warns) == 1
+        assert "target worktree context failed: boom" in paused_rebase_warns[0]
+        assert "cause: CONTEXT_FAILURE" in paused_rebase_warns[0]
+        assert "no terminal evidence" not in paused_rebase_warns[0]
+
+        chain_warns = [
+            r["message"]
+            for r in records
+            if "without the resolver chain being spent" in r["message"]
+        ]
+        assert len(chain_warns) == 1
+        assert "ended on CONTEXT_FAILURE" in chain_warns[0]
+        assert "no terminal evidence" not in chain_warns[0]
+
+        rebase_state = RebaseState(
+            last_outcome=RebaseOutcomeKind.CONFLICT,
+            last_reason="target worktree context failed: boom",
+            last_failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+            operation_display_state="waiting",
+        )
+        state = PipelineState(phase="planning", rebase=rebase_state)
+
+        alert = integration_alert_for_state(state)
+        assert alert is not None
+        assert "CONTEXT_FAILURE: target worktree context failed: boom" in alert
+        assert "resolution required" in alert
+        assert "no terminal evidence" not in alert
+
+        model = _build_status_bar_model(state, mock_ctx.policy_bundle, repo, attention="waiting")
+        console = Console(file=io.StringIO(), width=100, force_terminal=True, color_system=None)
+        ctx_disp = make_display_context(console=console, env={})
+        rendered = render_status_bar(model, ctx_disp, home=str(tmp_path))
+        plain_status = rendered.plain
+        assert "target worktree context failed: boom" in " ".join(plain_status.split())
+        assert "no terminal evidence" not in plain_status
+
+        display_mock = MagicMock()
+        display_mock.terminal_width = 100
+        sb = StatusBar(display_mock)
+        sb.update(model)
+        assert sb._model == model
+
+        log_waiting_state(state, mock_ctx, "planning", rebase_state.last_reason, 5000)
+        waiting_records = [r["message"] for r in records if "WAITING state" in r["message"]]
+        assert len(waiting_records) == 1
+        assert "target worktree context failed: boom" in waiting_records[0]
+        assert "no terminal evidence" not in waiting_records[0]
+    finally:
+        logger.remove(sink_id)
+
+
+def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar(
+    tmp_path: Path,
+) -> None:
+    repo = _setup_paused_rebase_repo(tmp_path)
+    mock_ctx = _make_loop_context(repo)
+
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
+
+    try:
+        bad_cfg = repo / ".agent" / "ralph-workflow.toml"
+        fix_msg = f"fix {bad_cfg} then run ralph --check-config"
+
+        with patch(
+            "ralph.pipeline.auto_integrate_agent.workspace_context",
+            side_effect=WorkspaceContextError(
+                file=bad_cfg,
+                reason="syntax error",
+                fix=fix_msg,
+            ),
+        ):
+            resolved = _resolve_paused_rebase(mock_ctx, "main")
+
+        assert resolved is False
+
+        cfg_rebase_warns = [
+            r["message"]
+            for r in records
+            if "the paused rebase for 'main' was not resolved" in r["message"]
+        ]
+        assert len(cfg_rebase_warns) == 1
+        assert fix_msg in cfg_rebase_warns[0]
+        assert "cause: CONFIG_FAILURE" in cfg_rebase_warns[0]
+        assert "no terminal evidence" not in cfg_rebase_warns[0]
+
+        rebase_state_cfg = RebaseState(
+            last_outcome=RebaseOutcomeKind.CONFLICT,
+            last_reason=fix_msg,
+            last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+            operation_display_state="waiting",
+        )
+        state_cfg = PipelineState(phase="planning", rebase=rebase_state_cfg)
+
+        alert_cfg = integration_alert_for_state(state_cfg)
+        assert alert_cfg is not None
+        assert "CONFIG_FAILURE" in alert_cfg
+        assert fix_msg in alert_cfg
+        assert "no terminal evidence" not in alert_cfg
+
+        model_cfg = _build_status_bar_model(
+            state_cfg, mock_ctx.policy_bundle, repo, attention="waiting"
+        )
+        console = Console(file=io.StringIO(), width=100, force_terminal=True, color_system=None)
+        ctx_disp = make_display_context(console=console, env={})
+        rendered_cfg = render_status_bar(model_cfg, ctx_disp, home=str(tmp_path))
+        assert fix_msg in " ".join(rendered_cfg.plain.split())
+        assert "no terminal evidence" not in rendered_cfg.plain
+
+        log_waiting_state(state_cfg, mock_ctx, "planning", rebase_state_cfg.last_reason, 5000)
+        waiting_records_cfg = [r["message"] for r in records if "WAITING state" in r["message"]]
+        assert len(waiting_records_cfg) == 1
+        assert fix_msg in waiting_records_cfg[0]
+        assert "no terminal evidence" not in waiting_records_cfg[0]
+    finally:
+        logger.remove(sink_id)

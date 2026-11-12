@@ -1,3 +1,4 @@
+__doc__ = "Ralph execution orchestration."
 from .process import (
     ProcessExecutionError,
     ProcessResult,

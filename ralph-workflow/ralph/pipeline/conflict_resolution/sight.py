@@ -130,19 +130,21 @@ def classify_stage_map(
     binary: bool,
     has_markers: bool = True,
 ) -> ConflictSight:
-    if binary:
-        return ConflictSight.AGENT_DECISION
     ours = stages.get(2)
     theirs = stages.get(3)
     if ours is None and theirs is None:
-        return ConflictSight.AGENT
+        return ConflictSight.AGENT_DECISION if binary else ConflictSight.AGENT
     if ours is None or theirs is None:
-        return _classify_one_sided(ours if ours is not None else theirs)
+        present = ours if ours is not None else theirs
+        if present is not None and present[0] == _GITLINK_MODE:
+            return ConflictSight.OUT_OF_REACH
+        return ConflictSight.AGENT_DECISION if binary else _classify_one_sided(present)
+
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs
     if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
         return _classify_gitlink(ours_mode, ours_blob, theirs_mode, theirs_blob, stages.get(1))
-    if _is_tree(ours_mode) != _is_tree(theirs_mode):
+    if binary or (_is_tree(ours_mode) != _is_tree(theirs_mode)):
         return ConflictSight.AGENT_DECISION
     return _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
 

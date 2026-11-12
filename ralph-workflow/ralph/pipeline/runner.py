@@ -1903,6 +1903,10 @@ def _finalize_step_state(
     )
 
 
+def _with_phase_step_timing(result: PipelineState | int, timer: PhaseTimer) -> PipelineState | int:
+    return result.with_phase_timing(timer.finish()) if isinstance(result, PipelineState) else result
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -1923,14 +1927,8 @@ def _run_pipeline_step(
     _development_sample_box: list[float | None] | None = None,
 ) -> PipelineState | int:
     _phase_role, _phase_drain, _phase_timer = _start_phase_telemetry(state, policy_bundle.pipeline)
+    _ = determine_effect_from_policy
     _phase_outcome = "crashed"
-
-    def _with_phase_timing(result: PipelineState | int) -> PipelineState | int:
-        return (
-            result.with_phase_timing(_phase_timer.finish())
-            if isinstance(result, PipelineState)
-            else result
-        )
 
     (
         state,
@@ -1985,11 +1983,11 @@ def _run_pipeline_step(
                 display_context=display_context,
             )
             _phase_outcome = "skipped"
-            return _with_phase_timing(inline_result)
+            return _with_phase_step_timing(inline_result, _phase_timer)
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
-            return _with_phase_timing(
+            return _with_phase_step_timing(
                 _run_fan_out_phase(
                     effect=effect,
                     state=state,
@@ -2005,7 +2003,8 @@ def _run_pipeline_step(
                     registry=registry,
                     display_context=display_context,
                     routing_timing=_effective_routing_timing,
-                )
+                ),
+                _phase_timer,
             )
 
         with process_phase_scope(state.phase):
@@ -2043,14 +2042,15 @@ def _run_pipeline_step(
                 )
             except MissingPlanHandoffError as exc:
                 _phase_outcome = "skipped"
-                return _with_phase_timing(
+                return _with_phase_step_timing(
                     _recover_missing_plan_handoff(
                         state=state,
                         pipeline_policy=policy_bundle.pipeline,
                         checkpoint_path=_checkpoint_path(workspace_scope),
                         subscriber=pipeline_subscriber,
                         exc=exc,
-                    )
+                    ),
+                    _phase_timer,
                 )
             run_id = str(uuid.uuid4())
             event = invoke_execute_effect_with_optional_display(
@@ -2154,7 +2154,7 @@ def _run_pipeline_step(
             ),
             path=_checkpoint_path(workspace_scope),
         )
-        return _with_phase_timing(next_state)
+        return _with_phase_step_timing(next_state, _phase_timer)
     except KeyboardInterrupt:
         raise
     except (Exception, SystemExit) as exc:
@@ -2210,7 +2210,7 @@ def _run_pipeline_step(
             message="Checkpoint save failed while recording recovery in phase={phase}: {err}",
             path=_checkpoint_path(workspace_scope),
         )
-        return _with_phase_timing(recovered_state)
+        return _with_phase_step_timing(recovered_state, _phase_timer)
     finally:
         withdraw_cycle_deadline_env()
         with contextlib.suppress(Exception):

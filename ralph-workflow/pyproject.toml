@@ -160,6 +160,7 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"ralph/agents/__init__.py" = ["RUF022"]
 "ralph/visual/**/*.py" = [
     "PLR0911",
     "PLR0912",

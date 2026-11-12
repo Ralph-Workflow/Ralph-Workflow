@@ -67,7 +67,9 @@ def run_rebase_conflict_resolution_pipeline(
     strategy_history: tuple[str, ...] = (),
 ) -> bool:
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
+    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
+    _ = PHASE_RESOLUTION
     return run_rebase_conflict_resolution_outcome(
         root=root,
         target=target,

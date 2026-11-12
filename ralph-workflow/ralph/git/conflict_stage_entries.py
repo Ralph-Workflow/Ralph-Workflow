@@ -31,17 +31,26 @@ def _parse_stage_records_into(
     failures: dict[str, str],
     *,
     default_path: str | None = None,
+    queried_paths: Sequence[str] | None = None,
 ) -> None:
     for record in stdout.split("\0"):
         if not record:
             continue
         try:
-            if "\t" in record:
-                metadata, path = record.split("\t", 1)
-            elif default_path is not None:
-                metadata, path = record, default_path
-            else:
+            if "\t" not in record:
+                targets: Sequence[str]
+                if default_path is not None:
+                    targets = (default_path,)
+                elif queried_paths is not None:
+                    targets = tuple(queried_paths)
+                else:
+                    targets = ()
+                for p in targets:
+                    failures[p] = f"malformed index stage record for {p}: {record!r}"
+                    entries.pop(p, None)
                 continue
+
+            metadata, path = record.split("\t", 1)
             mode, blob, raw_stage = metadata.split()
             stage = int(raw_stage)
             if path in failures:
@@ -54,6 +63,10 @@ def _parse_stage_records_into(
                     f"malformed index stage record for {target_path}: {record!r}"
                 )
                 entries.pop(target_path, None)
+            elif queried_paths is not None:
+                for p in queried_paths:
+                    failures[p] = f"malformed index stage record for {p}: {record!r}"
+                    entries.pop(p, None)
 
 
 def conflict_stage_entries(repo_root: Path | str, paths: Sequence[str]) -> ConflictStageEntries:
@@ -72,7 +85,10 @@ def conflict_stage_entries(repo_root: Path | str, paths: Sequence[str]) -> Confl
 
     if result.returncode != 0:
         if "not a git repository" in result.stderr.lower():
-            return ConflictStageEntries({})
+            return ConflictStageEntries(
+                {},
+                failures={p: f"could not read unmerged index stages for {p}" for p in paths},
+            )
         if len(paths) > 1:
             for p in paths:
                 single_res = run_git(
@@ -83,7 +99,13 @@ def conflict_stage_entries(repo_root: Path | str, paths: Sequence[str]) -> Confl
                 if single_res.returncode != 0:
                     failures[p] = f"could not read unmerged index stages for {p}"
                 else:
-                    _parse_stage_records_into(single_res.stdout, entries, failures, default_path=p)
+                    _parse_stage_records_into(
+                        single_res.stdout,
+                        entries,
+                        failures,
+                        default_path=p,
+                        queried_paths=(p,),
+                    )
             return ConflictStageEntries(entries, failures=failures)
         return ConflictStageEntries(
             {},
@@ -95,5 +117,6 @@ def conflict_stage_entries(repo_root: Path | str, paths: Sequence[str]) -> Confl
         entries,
         failures,
         default_path=paths[0] if len(paths) == 1 else None,
+        queried_paths=paths,
     )
     return ConflictStageEntries(entries, failures=failures)

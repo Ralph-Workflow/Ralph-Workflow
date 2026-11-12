@@ -599,7 +599,6 @@ def test_ralph_graph_clears_cancel_flag_map_after_each_call(
 
 
 def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
-    from ralph.mcp.explore import graph as graph_module
     from ralph.mcp.explore import handlers
 
     workspace = _seed_workspace(tmp_path)
@@ -617,7 +616,7 @@ def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
             "timeout_ms": 5_000,
         }
         with (
-            patch.object(graph_module, "run_query", side_effect=_explode),
+            patch("ralph.mcp.explore._handlers_graph.run_query", side_effect=_explode),
             pytest.raises(RuntimeError),
         ):
             handle_ralph_graph_local(call_session, _Workspace(workspace), params)

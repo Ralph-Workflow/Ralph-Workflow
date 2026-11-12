@@ -45,6 +45,9 @@ def _install_seams(
     *,
     unmerged: Sequence[str] = _CONFLICTED,
 ) -> None:
+    from ralph.git.conflict_stage_entries import ConflictStageEntries
+    from ralph.pipeline.conflict_resolution import sight as sight_module
+
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
     monkeypatch.setattr(
         driver_module,
@@ -61,6 +64,11 @@ def _install_seams(
     )
     monkeypatch.setattr(driver_module, "_restore_status_bar", lambda *_args: None)
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    monkeypatch.setattr(
+        sight_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: ConflictStageEntries({}),
+    )
 
 
 def test_transport_loop_detected_is_a_typed_attempt_failure() -> None:

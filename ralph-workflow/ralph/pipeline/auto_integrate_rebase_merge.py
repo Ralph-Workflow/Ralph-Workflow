@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+__doc__ = "Resolve conflicted rebase in place before fall back to endpoint merge."
+
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -294,6 +296,9 @@ def run_rebase_or_merge(
             return resolved
 
     return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
+
+
+run_rebase_or_merge.__doc__ = "Resolve rebase in place before endpoint merge on unresolved failure."
 
 
 def range_routing_reason(root: Path, target: str) -> str | None:

@@ -1124,11 +1124,13 @@ class RecoveryController:
             )
         return failed_state, [], failure_evt
 
-    def earliest_available_wait_ms(self, phase: str, agents: list[str]) -> int:
+    def earliest_available_wait_ms(self, phase: str, agents: Sequence[str]) -> int:
         if any(self._is_agent_available(phase, agent) for agent in agents):
             return 0
         waits: list[int] = []
         for agent in agents:
+            if self._is_agent_spent(phase, agent):
+                continue
             if not self._unavailability_tracker.is_available(phase, agent):
                 tracker_wait = self._unavailability_tracker.earliest_unavailable_wait_ms(
                     phase, [agent]

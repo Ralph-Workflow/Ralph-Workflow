@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+__doc__ = "Ralph prompt templates and builders."
+
 from typing import cast
 
 _TEMPLATE_VARIABLE_EXPORTS = frozenset(

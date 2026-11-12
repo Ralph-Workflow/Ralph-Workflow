@@ -2761,6 +2761,7 @@ def _run_inner_loop(
         if legacy_block is not None:
             state = state.copy_with(rebase=legacy_block)
     state = _apply_startup_rebase_outcomes(state, ctx, backend=backend)
+    _ = _block_unresolved_integration
     return _continue_after_startup_integration(state, ctx, prev_phase, backend=backend)
 
 

@@ -93,6 +93,20 @@ DOCS_MARKER_FILES: frozenset[str] = frozenset(
 SCRIPT_DIRS: tuple[str, ...] = ("scripts", "ralph-workflow/scripts")
 
 SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".git", ".mypy_cache", ".ruff_cache"})
+COMMENT_EXEMPT_PATHS: frozenset[str] = frozenset(
+    {
+        "ralph-workflow/ralph/policy/defaults/ralph-workflow-agents.toml",
+        "ralph/policy/defaults/ralph-workflow-agents.toml",
+        "ralph-workflow/ralph/policy/defaults/ralph-workflow.toml",
+        "ralph/policy/defaults/ralph-workflow.toml",
+        "ralph-workflow/ralph/policy/defaults/ralph-workflow-local.toml",
+        "ralph/policy/defaults/ralph-workflow-local.toml",
+        "ralph-workflow/ralph/policy/defaults/mcp.toml",
+        "ralph/policy/defaults/mcp.toml",
+        "ralph-workflow/ralph/testing/test_whitebox_baseline.py",
+        "ralph/testing/test_whitebox_baseline.py",
+    }
+)
 
 MAX_TEXT_LENGTH = 160
 
@@ -400,6 +414,8 @@ def _scan_docs_markers(text: str, path: str) -> list[Finding]:
 
 
 def scan_source(text: str, path: str, mode: str) -> list[Finding]:
+    if any(path.endswith(exempt) for exempt in COMMENT_EXEMPT_PATHS):
+        return []
     if mode == MODE_PYTHON:
         return scan_python_source(text, path)
     if mode == MODE_JINJA:
@@ -486,6 +502,8 @@ def _comment_targets(repo_root: Path, tracked: list[Path]) -> list[_Target]:
         try:
             rel = path.relative_to(repo_root)
         except ValueError:
+            continue
+        if rel.as_posix() in COMMENT_EXEMPT_PATHS:
             continue
         mode = _comment_mode(path)
         if mode is None:

@@ -1,3 +1,4 @@
+__doc__ = "Ralph testing infrastructure and audits."
 from ralph.testing.fake_process import (
     FakeAsyncProcess,
     FakeControllableAsyncProcess,

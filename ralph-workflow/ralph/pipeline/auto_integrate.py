@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+__doc__ = "First resolve the rebase in place; then merge on unresolved conflict."
+
 import random
 from pathlib import Path
 from typing import TYPE_CHECKING

@@ -1,3 +1,4 @@
+__doc__ = "Ralph platform primitives."
 from .detection import (
     current_platform,
     detect_architecture,

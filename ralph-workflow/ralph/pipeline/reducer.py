@@ -970,8 +970,6 @@ def _handle_skip_same_agent_retries(
     recovery: RecoveryController | None,
 ) -> tuple[PipelineState, list[Effect]]:
     if recovery is not None:
-        current_agent = chain.agents[chain.current_index]
-        recovery.note_retry_exhaustion(state.phase, current_agent)
         selection = recovery.preferred_agent_index(
             state.phase,
             chain.agents,

@@ -74,6 +74,13 @@ def seed_starter_into(workspace: Workspace, name: str) -> bool:
     return True
 
 
+__doc__ = (
+    "Bundled starter policy loader. Mirrors the resource-access pattern used by "
+    "ralph.skills._content: the starter .md files are bundled inside the installed package. "
+    "STARTER_NAMES provides the bundled starter policy names, while CORE_POLICY_FILES provides "
+    "the core policies."
+)
+
 __all__ = [
     "PORTFOLIO_STARTER_NAME",
     "STARTER_NAMES",

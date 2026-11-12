@@ -18,6 +18,9 @@ _ENABLED_IGNORED_WARNING = (
 
 
 class MediaConfig(RalphBaseModel):
+    __doc__ = (
+        "Media configuration with multimodal support for images, PDFs, audio, video, and documents."
+    )
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = True

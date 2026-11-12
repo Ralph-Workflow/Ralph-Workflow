@@ -34,6 +34,7 @@ from ralph.recovery.events import FailureEventBus
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.policy.models import PolicyBundle
 
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
@@ -54,6 +55,9 @@ def _install_seams(
     *,
     unmerged: Sequence[str] = _CONFLICTED,
 ) -> None:
+    from ralph.git.conflict_stage_entries import ConflictStageEntries
+    from ralph.pipeline.conflict_resolution import sight as sight_module
+
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: list(unmerged))
     monkeypatch.setattr(
         driver_module,
@@ -67,6 +71,55 @@ def _install_seams(
         driver_module,
         "render_conflict_prompt",
         lambda *, root, **_kwargs: root / "resolution-prompt.md",
+    )
+    monkeypatch.setattr(
+        sight_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: ConflictStageEntries({}),
+    )
+
+
+class _TestSessionRunner:
+    def __init__(self, persistent_session: ResolutionSession, invoke: Any = None) -> None:
+        self.persistent_session = persistent_session
+        self.invoke = invoke
+
+    def resolve_rebase(
+        self,
+        root: Path,
+        target: str,
+        resolver: Any,
+        *,
+        session: ResolutionSession,
+    ) -> bool:
+        session.__dict__ = self.persistent_session.__dict__
+        return run_conflict_resolution_pipeline(
+            root=root,
+            target=target,
+            config=_CONFIG,
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=self.invoke,
+            session=session,
+        )
+
+
+def drive_conflict_resolution_session(
+    root: Path,
+    session: ResolutionSession,
+    *,
+    invoke: Any = None,
+) -> RebaseResolutionResult:
+    runner = _TestSessionRunner(session, invoke=invoke)
+    return resolve_rebase_with_config(
+        root,
+        "main",
+        lambda *args: False,
+        config=None,
+        agent_runner=runner,
     )
 
 
@@ -379,3 +432,87 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     )
     assert isinstance(status3, str) and "WAITING" in status3
     assert resolver_invocations[0] == 1
+
+
+def test_sequential_dead_launch_to_spent_repeat_exhaustion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_seams(monkeypatch)
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            policy_bundle=_policy_bundle(),
+            event_bus=FailureEventBus(),
+        )
+    )
+    session = ResolutionSession(recovery_controller=controller)
+    invoked: list[str] = []
+
+    def _dead_invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
+        invoked.append(agent_name)
+        session.last_attempt_saw_activity = True
+        return ResolutionOutcome(
+            succeeded=False,
+            reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,
+            duration_seconds=1.0,
+            last_activity_kind="process_exit",
+            last_activity_at=clock.monotonic(),
+            unresolved_paths=tuple(_CONFLICTED),
+            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
+        )
+
+    result1 = drive_conflict_resolution_session(tmp_path, session, invoke=_dead_invoke)
+    assert result1.succeeded is False
+    assert invoked == ["primary", "fallback"]
+    assert session.terminal_reason == ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert result1.reason is None
+
+    controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
+    controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
+
+    result2 = drive_conflict_resolution_session(tmp_path, session)
+    assert result2.succeeded is False
+    assert session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert result2.failure_cause == ResolutionFailureCause.AGENT_FAILURE
+    assert result2.reason is not None
+    assert "spent/unavailable" in result2.reason
+    assert "git add -- a.py b.py" in result2.reason
+
+
+def test_stale_cooldown_overlap_with_controller_spent() -> None:
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            policy_bundle=_policy_bundle(),
+            event_bus=FailureEventBus(),
+        )
+    )
+
+    controller.unavailability_store.mark_unavailable(
+        PHASE_RESOLUTION, "primary", UnavailabilityReason.NO_OUTPUT_AT_START
+    )
+    controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
+
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary"]) == 0
+    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary"]) is True
+
+    controller.unavailability_store.mark_unavailable(
+        PHASE_RESOLUTION, "fallback", UnavailabilityReason.NO_OUTPUT_AT_START
+    )
+    controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
+
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == 0
+    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is True
+
+    controller.reset_backoff(PHASE_RESOLUTION, "fallback")
+    controller.unavailability_store.mark_unavailable(
+        PHASE_RESOLUTION, "fallback", UnavailabilityReason.NO_OUTPUT_AT_START
+    )
+
+    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"])
+    assert wait_ms > 0
+    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is False

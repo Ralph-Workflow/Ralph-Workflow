@@ -69,6 +69,10 @@ ALLOWLIST: list[tuple[str, str]] = [
         "runs read-only bounded lsof and fuser probes with check=False and 0.5s timeout for lock liveness discovery",
     ),
     (
+        "testing/audit_comments.py",
+        "uses read-only git rev-parse and git ls-files to enumerate tracked files for comment auditing",
+    ),
+    (
         "git/_lock_recovery.py",
         "runs read-only lsof and fuser to probe git lock liveness with check=False and bounded timeout; no shell, no user input",
     ),

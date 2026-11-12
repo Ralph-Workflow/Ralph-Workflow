@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.conflict_stage_entries import ConflictStageEntries
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline.conflict_resolution import sight as sight_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -53,6 +55,11 @@ def _install_seams(
         lambda *, root, **_kwargs: root / "PROMPT.md",
     )
     monkeypatch.setattr(driver_module, "_restore_status_bar", lambda *_args: None)
+    monkeypatch.setattr(
+        sight_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: ConflictStageEntries({}),
+    )
 
     def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:
         index = min(len(scans), len(surviving_per_round) - 1)

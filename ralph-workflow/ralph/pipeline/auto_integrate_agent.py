@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+__doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
+
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger

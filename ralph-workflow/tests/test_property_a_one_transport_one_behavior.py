@@ -112,15 +112,7 @@ def test_ralph_mcp_server_public_surface_has_no_fastmcp_symbol() -> None:
 
 _ABSENCE_MARKER = "Property A: there is no alternate FastMCP path"
 
-_ABSENCE_DOCUMENTING_TESTS: frozenset[str] = frozenset(
-    {
-        "test_mcp_server_file_backed_session_capability_profile.py",
-        "test_mcp_server_file_backed_session_worker_artifact_dir.py",
-        "test_mcp_server_image_content_serialization.py",
-        "test_mcp_server_file_backed_session_model_identity.py",
-        "test_mcp_server_load_runtime_upstream_servers.py",
-    }
-)
+_ABSENCE_DOCUMENTING_TESTS: frozenset[str] = frozenset()
 
 
 def _line_is_absence_asserting(line: str, rel: str) -> bool:

@@ -103,30 +103,30 @@ FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
 
 
 REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
-    ("ralph/mcp/server/exec_sse_streaming.py", 62, "def extract_progress_token"),
-    ("ralph/mcp/server/exec_sse_streaming.py", 123, '"method": "notifications/progress"'),
-    ("ralph/mcp/server/exec_sse_streaming.py", 231, '"method": "notifications/message"'),
-    ("ralph/process/manager/_managed_process.py", 315, "last_output_at_ref[0] = _time.monotonic()"),
-    ("ralph/process/manager/_managed_process.py", 392, 'timeout_cause = "inactivity"'),
-    ("ralph/mcp/tools/exec.py", 809, "job_id = effective_registry.start("),
-    ("ralph/mcp/tools/exec.py", 819, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
-    ("ralph/mcp/tools/exec.py", 636, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
-    ("ralph/mcp/tools/_exec_jobs.py", 252, "EXEC_JOB_CEILING_MAX_S"),
-    ("ralph/mcp/tools/_exec_jobs.py", 544, "job.ceiling_ms / 1000.0"),
-    ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
-    ("ralph/mcp/server/lifecycle.py", 3434, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/exec_sse_streaming.py", 46, "def extract_progress_token"),
+    ("ralph/mcp/server/exec_sse_streaming.py", 101, '"method": "notifications/progress"'),
+    ("ralph/mcp/server/exec_sse_streaming.py", 157, '"method": "notifications/message"'),
+    ("ralph/process/manager/_managed_process.py", 279, "last_output_at_ref[0] = _time.monotonic()"),
+    ("ralph/process/manager/_managed_process.py", 355, 'timeout_cause = "inactivity"'),
+    ("ralph/mcp/tools/exec.py", 590, "job_id = effective_registry.start("),
+    ("ralph/mcp/tools/exec.py", 600, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
+    ("ralph/mcp/tools/exec.py", 477, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
+    ("ralph/mcp/tools/_exec_jobs.py", 195, "EXEC_JOB_CEILING_MAX_S"),
+    ("ralph/mcp/tools/_exec_jobs.py", 448, "job.ceiling_ms / 1000.0"),
+    ("ralph/mcp/transport/pi.py", 58, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
+    ("ralph/mcp/server/lifecycle.py", 2156, '"ralph.mcp.server",'),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
-        55,
+        38,
         "terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)",
     ),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
-        57,
+        40,
         "self.process.wait(timeout=SHUTDOWN_REAP_WAIT_S)",
     ),
-    ("ralph/mcp/server/runtime.py", 939, "exit_process(0)"),
-    ("ralph/mcp/server/runtime.py", 984, "exit_when_owner_exits(os.environ)"),
+    ("ralph/mcp/server/runtime.py", 638, "exit_process(0)"),
+    ("ralph/mcp/server/runtime.py", 655, "exit_when_owner_exits(os.environ)"),
 )
 
 

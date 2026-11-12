@@ -19,3 +19,6 @@ __all__ = ["refresh_target"]
 def refresh_target(config: UnifiedConfig, root: Path, target: str) -> str:
     del config
     return REFRESH_LOCAL_FLEET if observe_target_sha(root, target) is not None else REFRESH_DISABLED
+
+
+refresh_target.__doc__ = "Observe target without contacting a remote."

@@ -56,34 +56,34 @@ _RETIRED_DISPLAY_KEYS: Final = frozenset(
 )
 
 _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
-    ("pipeline/auto_integrate_transition.py", 266): (
+    ("pipeline/auto_integrate_transition.py", 202): (
         "RAISE_DIAGNOSTIC_INTERVENTION = Transition(",
         "retired transition definition kept ONLY as a legacy-payload parsing input",
     ),
-    ("pipeline/auto_integrate_transition.py", 267): (
+    ("pipeline/auto_integrate_transition.py", 203): (
         '"RAISE_DIAGNOSTIC_INTERVENTION"',
         "retired transition definition kept ONLY as a legacy-payload parsing input",
     ),
-    ("pipeline/auto_integrate_transition.py", 311): (
+    ("pipeline/auto_integrate_transition.py", 247): (
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "registration of the retired transition into the closed Transition.ALL set",
     ),
-    ("pipeline/auto_integrate_transition.py", 358): (
+    ("pipeline/auto_integrate_transition.py", 287): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ export of the retired transition name",
     ),
-    ("pipeline/auto_integrate_record.py", 50): (
+    ("pipeline/auto_integrate_record.py", 38): (
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "import of the retired transition name for re-export via __all__ (legacy parsing surface)",
     ),
-    ("pipeline/auto_integrate_record.py", 962): (
+    ("pipeline/auto_integrate_record.py", 601): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ re-export of the retired transition name (parsing surface)",
     ),
 }
 
 _ALLOW_PHASE_DECISION_PRODUCERS: Final = {
-    ("pipeline/_pipeline_state_machine.py", 199): (
+    ("pipeline/_pipeline_state_machine.py", 102): (
         "return PhaseDecision.REPORT_INTERVENTION_REQUIRED",
         "reachable only from legacy checkpoint outcome values (retired "
         "INTERVENTION_REQUIRED / DIAGNOSTIC_INTERVENTION_REQUIRED / UNKNOWN) "
@@ -93,44 +93,44 @@ _ALLOW_PHASE_DECISION_PRODUCERS: Final = {
 }
 
 _ALLOW_DISPLAY_MAPPINGS: Final = {
-    ("display/status_bar.py", 324): (
+    ("display/status_bar.py", 138): (
         '"intervention_required": ("INTERVENTION_REQUIRED", "error", "theme.status.error")',
         "ATTENTION_PRESENTATION retains the retired attention key for legacy "
         "checkpoint rendering; live ladder escalation renders as evidence_diagnosis",
     ),
-    ("display/auto_integrate_message.py", 163): (
+    ("display/auto_integrate_message.py", 109): (
         '"intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value',
         "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for legacy-payload parsing only",
     ),
-    ("display/auto_integrate_message.py", 164): (
+    ("display/auto_integrate_message.py", 110): (
         '"intervention": OperationDisplayState.INTERVENTION_REQUIRED.value',
         "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for legacy-payload parsing only",
     ),
-    ("display/auto_integrate_message.py", 167): (
+    ("display/auto_integrate_message.py", 113): (
         '"diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value',
         "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for legacy-payload parsing only",
     ),
-    ("display/auto_integrate_message.py", 182): (
+    ("display/auto_integrate_message.py", 125): (
         '"unknown": OperationDisplayState.INTERVENTION_REQUIRED.value',
         "fail-closed rendering of an unrecognised legacy action string; the "
         "live ladder escalation maps to EVIDENCE_DIAGNOSIS",
     ),
-    ("display/auto_integrate_message.py", 203): (
+    ("display/auto_integrate_message.py", 146): (
         '"require_intervention": OperationDisplayState.INTERVENTION_REQUIRED',
         "_ACTION_TO_DISPLAY_STATE retains the retired action name so legacy "
         "records display without inventing behavior",
     ),
-    ("display/auto_integrate_message.py", 204): (
+    ("display/auto_integrate_message.py", 147): (
         '"intervention": OperationDisplayState.INTERVENTION_REQUIRED',
         "_ACTION_TO_DISPLAY_STATE retains the retired action name so legacy "
         "records display without inventing behavior",
     ),
-    ("display/auto_integrate_message.py", 205): (
+    ("display/auto_integrate_message.py", 148): (
         '"intervention_required": OperationDisplayState.INTERVENTION_REQUIRED',
         "_ACTION_TO_DISPLAY_STATE retains the retired action name so legacy "
         "records display without inventing behavior",
     ),
-    ("display/auto_integrate_message.py", 206): (
+    ("display/auto_integrate_message.py", 149): (
         '"diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED',
         "_ACTION_TO_DISPLAY_STATE retains the retired action name so legacy "
         "records display without inventing behavior",

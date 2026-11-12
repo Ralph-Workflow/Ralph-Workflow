@@ -10,3 +10,6 @@ class AgentOutputLine:
     raw: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
     timestamp: str | None = None
+
+
+AgentOutputLine.__doc__ = "Legacy parser output line representation."

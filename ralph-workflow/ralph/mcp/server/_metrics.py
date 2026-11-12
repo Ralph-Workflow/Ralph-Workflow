@@ -50,11 +50,14 @@ class McpMetrics:
             }
 
 
+_default_metrics: McpMetrics | None = None
 _default_metrics_holder: list[McpMetrics | None] = [None]
 _default_metrics_lock = threading.Lock()
 
 
 def get_default_metrics() -> McpMetrics:
+    if _default_metrics is not None:
+        return _default_metrics
     with _default_metrics_lock:
         metrics = _default_metrics_holder[0]
         if metrics is None:

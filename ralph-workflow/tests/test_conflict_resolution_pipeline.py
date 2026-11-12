@@ -8,10 +8,12 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.parallel_display import phase_style_for_phase
+from ralph.git.conflict_stage_entries import ConflictStageEntries
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline.conflict_resolution import sight as sight_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -48,6 +50,11 @@ pytestmark = pytest.mark.timeout_seconds(5)
 @pytest.fixture(autouse=True)
 def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    monkeypatch.setattr(
+        sight_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: ConflictStageEntries({}),
+    )
 
 
 class _FakeStatusBar:
@@ -91,6 +98,11 @@ def _install_seams(
         lambda *, root, **_kwargs: root / "PROMPT.md",
     )
     monkeypatch.setattr(driver_module, "_restore_status_bar", lambda *_args: None)
+    monkeypatch.setattr(
+        sight_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: ConflictStageEntries({}),
+    )
 
     def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:
         index = min(len(scans), len(surviving_per_round) - 1)

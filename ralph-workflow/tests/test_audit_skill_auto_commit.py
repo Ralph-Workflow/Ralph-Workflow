@@ -114,7 +114,7 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     real_read = audit_module._read
-    run_path = "cli/commands/run.py"
+    run_path = "cli/commands/_run_start_setup.py"
 
     def _read_with_failure_log_removed(rel_path: str) -> str:
         content = real_read(rel_path)

@@ -35,6 +35,8 @@ class _FakeStrategy(BaseExecutionStrategy):
 
 _HEADLESS_SPEC = AgentSpec(name="fake-headless", transport=AgentTransport.GENERIC)
 
+_CANONICAL_RECIPE_DOC = "docs/agents/adding-a-new-agent.md"
+
 _INTERACTIVE_SPEC = AgentSpec(
     name="fake-interactive",
     transport=AgentTransport.CLAUDE_INTERACTIVE,
