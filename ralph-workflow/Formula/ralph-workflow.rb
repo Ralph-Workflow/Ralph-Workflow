@@ -24,7 +24,6 @@ class RalphWorkflow < Formula
   homepage "https://ralphworkflow.com"
   license "AGPL-3.0-or-later"
 
-  # TODO: Update URL and sha256 after first release (see banner above)
   # url "https://github.com/Ralph-Workflow/Ralph-Workflow/releases/download/vVERSION/ralph-darwin-universal2.tar.gz"
   # sha256 "SHA256"
 

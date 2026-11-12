@@ -160,7 +160,7 @@ uv run pytest -q tests/test_parallel_worker_runtime.py tests/integration/test_pa
 uv run pytest -q tests/test_process_manager_pty.py tests/test_claude_interactive_pty.py tests/test_claude_interactive_session_resume.py tests/test_claude_interactive_parser.py
 
 # Recovery tests
-uv run pytest -x tests/recovery/ tests/test_recovery_first_invariant.py tests/test_reducer.py tests/test_pipeline_runner.py
+uv run pytest -x tests/recovery/ tests/test_recovery_first_invariant.py tests/test_pipeline_runner.py
 
 # Offline real-process install smoke: drives the public `make install`
 # transaction with isolated HOME/PATH and a fail-closed fake `uv`.

@@ -1,32 +1,25 @@
 # Developer plan reconciliation implementation plan
 
-> **SUPERSEDED** -- This plan implemented the disposition-artifact iteration
-> described in `specs/2026-08-12-developer-plan-reconciliation-design.md`.
 > The current contract is **free-form**: the development-result and
 > development-analysis-choice artifacts validate only the frontmatter
 > `status` enum, the body is free-form markdown for the next agent, and
-> parallel work is the default. Steps S-1 through S-8 below are preserved
-> as the historical implementation record of the disposition iteration and
-> no longer describe current obligations. See
+> parallel work is the default. See
 > `ralph/mcp/artifacts/format_docs/development_result.md` and
 > `ralph/mcp/artifacts/format_docs/development_analysis_decision.md` for
-> the current contract.
+> the current contract, and
+> `specs/2026-08-12-developer-plan-reconciliation-design.md` for the
+> reconciliation model.
 
-**Outcome (historical):** Development agents execute plans of different sizes, reconcile
+**Outcome:** Development agents execute plans of different sizes, reconcile
 inaccurate plan items without weakening the request, and submit an evidence-backed
 result that development analysis audits independently.
-
-### [S-1] Characterize the artifact contract (superseded)
-
-The disposition and canonical-ID coverage rules originally implemented in S-1 and S-2 have been
-removed. See `ralph/mcp/artifacts/format_docs/development_result.md` and
-`ralph/mcp/artifacts/format_docs/development_analysis_decision.md` for the current free-form contract.
 
 ### [S-3] Give every developer prompt one progress and reconciliation loop
 
 Single-source concise guidance that inventories plan IDs, processes ready
-items, checks premises when ready, records one disposition, changes tack after
-a failed approach, and reports a partial result when necessary work is blocked.
+items, checks premises when ready, records the outcome of each ready item in
+the result body, changes tack after a failed approach, and reports a partial
+result when necessary work is blocked.
 Keep compact plans direct and large independent groups concurrent. Include the
 same verified-delivery and run-budget commitments in continuation prompts.
 
@@ -38,19 +31,11 @@ on observable shared behavior and ordering rather than duplicated prose.
 Have the analyzer derive plan applicability independently from the request,
 plan, and workspace while keeping request-criterion verification independent
 of implementer narrative. Reject unjustified omissions without prescribing a
-fix; never use the developer's disposition or reason as evidence.
+fix; never use the developer's summary, reason, proof, or completion claim as
+evidence.
 
 Verify: render the analyzer and assert that it separates request satisfaction
-from disposition auditing and retains the evidence-first verdict contract.
-
-### [S-5] Align format documentation and examples
-
-Update the development-result format reference and examples with disposition
-syntax, valid N/A evidence, invalid excuses, and the completed/partial rule.
-Keep documentation concise and remove contradictory wording.
-
-Verify: run the fabrication guard before and after edits, artifact-format
-documentation tests, and the documentation build through the full gate.
+from implementer narrative and retains the evidence-first verdict contract.
 
 ### [S-6] Review and verify the integrated behavior
 
@@ -62,17 +47,16 @@ commit workflow for the final commit.
 Verify: both pre-rebase and post-rebase authoritative gates exit zero with no
 warnings or errors; the final worktree records the Ralph-generated commit.
 
-### [S-7] Terminate non-actionable analysis outcomes
+### [S-7] Route non-actionable analysis outcomes
 
 Make analysis interpret every developer result from fresh evidence: complete
-when criteria are already satisfied, request changes only for an actionable
-localized gap, and fail terminally when the request is impossible, not
-evaluable, or blocked without a developer route. Route analysis `failed` to the
-failure terminal instead of repeating development.
+when criteria are already satisfied, and request changes only for an actionable
+localized gap. An analysis `failed` verdict records why no safe actionable
+continuation exists and returns to development for another iteration.
 
 Verify: render the analyzer choice rules, assert all developer-result
-statuses still reach analysis, and prove `failed` analysis enters the terminal
-failure phase while `request_changes` alone returns to development.
+statuses still reach analysis, and prove `failed` and `request_changes`
+verdicts both return to development.
 
 ### [S-8] Trace prompting rules to research evidence
 

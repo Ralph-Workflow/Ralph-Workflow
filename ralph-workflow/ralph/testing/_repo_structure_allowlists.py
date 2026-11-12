@@ -28,9 +28,6 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/agents/test_idle_watchdog_1.py",
         "tests/agents/test_idle_watchdog.py",
         "tests/recovery/test_agent_unavailable_tracker.py",
-        "tests/test_agents_invoke_1.py",
-        "tests/test_agents_invoke_2.py",
-        "tests/test_agents_invoke_4.py",
         "tests/test_agents_invoke.py",
         "tests/test_cli_commands_1.py",
         "tests/test_cli_commands_2.py",
@@ -72,7 +69,6 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/pipeline/reducer.py",
         "tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py",
         "tests/agents/test_register_agent_support.py",
-        "tests/display/test_status_bar.py",
         "tests/test_cli_smoke.py",
         "tests/test_explore_pipeline.py",
         "tests/test_harness_run_diagnosis.py",
@@ -122,7 +118,6 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/agents/invoke/_command_builders/__init__.py",
         "ralph/agents/invoke/_runtime_resolvers/__init__.py",
         "ralph/install.py",
-        "ralph/mcp/artifacts/plan/_acceptance_criteria.py",
         "ralph/mcp/artifacts/plan/_size_limits.py",
         "ralph/mcp/protocol/session.py",
         "ralph/pipeline/factory.py",
@@ -139,7 +134,6 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/testing/audit_mcp_timeout.py",
         "ralph/testing/audit_test_policy.py",
         "ralph/testing/audit_terminal_escape_containment.py",
-        "tests/agents/idle_watchdog/test_activity_aware.py",
         "tests/agents/invoke/test_invoke_dispatch_parity.py",
         "tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py",
         "tests/agents/parsers/test_flush_invariants_consolidated.py",
@@ -398,11 +392,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_make_stdio_caller",),
         ),
         (
-            "tests/test_opencode_session_executioncheck_process_result_completion_seam.py",
-            "ralph.agents.invoke",
-            ("_completion",),
-        ),
-        (
             "tests/test_pipeline_runner_execute_agent_effect_2_a.py",
             "ralph.pipeline",
             ("_runner_session",),
@@ -570,41 +559,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/agents/test_agent_spawn_detaches_tty.py",
             "ralph.agents.invoke._agent_run_ctx",
             ("AgentRunCtx",),
-        ),
-        (
-            "tests/display/test_log_sink_terminal_containment.py",
-            "ralph.cli.main",
-            ("_configure_logging",),
-        ),
-        (
-            "tests/display/test_terminal_escape_containment.py",
-            "ralph.display._plain_constants",
-            ("_sanitize",),
-        ),
-        (
-            "tests/display/test_markup_parse_containment.py",
-            "ralph.display._plain_constants",
-            ("_sanitize",),
-        ),
-        (
-            "tests/display/test_accessibility_matrix.py",
-            "ralph.display.theme",
-            ("_identity_slot",),
-        ),
-        (
-            "tests/display/test_identity_collision_aware.py",
-            "ralph.display.agent_event_renderer",
-            ("_identity_style_for",),
-        ),
-        (
-            "tests/display/test_record_writer.py",
-            "ralph.display.record_writer",
-            ("_DEFAULT_BUFFER_CAP",),
-        ),
-        (
-            "tests/display/test_presented_entry_canonical.py",
-            "ralph.display.record_writer",
-            ("_format_entry_line",),
         ),
         (
             "tests/project_policy/test_cli_integration_helpers.py",
@@ -817,31 +771,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_classify_generic_child_signal",),
         ),
         (
-            "tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py",
-            "ralph.agents.invoke._monitor_factory",
-            ("_discovery_strategy_for_config",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_tool_result_routing.py",
-            "ralph.agents.invoke._process_reader",
-            ("ProcessLineReader",),
-        ),
-        (
             "tests/test_cli_smoke.py",
             "ralph.agents.invoke._process_reader",
             ("_subprocess_env",),
         ),
         (
-            "tests/agents/idle_watchdog/test_opencode_step_frames.py",
-            "ralph.agents.invoke._process_reader",
-            ("ProcessLineReader",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_both_repetition_dimensions.py",
-            "ralph.agents.invoke._process_reader",
-            ("ProcessLineReader",),
-        ),
-        (
             "tests/agents/invoke/test_line_reader_queue_bound.py",
             "ralph.agents.invoke._process_reader",
             ("ProcessLineReader",),
@@ -860,41 +794,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/agents/invoke/test_cpu_baseline_pruning.py",
             "ralph.agents.invoke._types",
             ("ProcessReaderCtx",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_non_resumable_end_to_end.py",
-            "ralph.agents.invoke._errors",
-            ("_IdleStreamTimeoutError",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_non_resumable_end_to_end.py",
-            "ralph.pipeline.effect_executor",
-            ("_failure_requires_fresh_session",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_resume_after_kill_contract.py",
-            "ralph.agents.invoke._errors",
-            ("_IdleStreamTimeoutError",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py",
-            "ralph.agents.idle_watchdog.idle_watchdog",
-            ("_EXPECTED_FIRE_REASONS",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_resume_contract_invariant.py",
-            "ralph.agents.invoke._process_reader",
-            ("_RESUMABLE_FIRE_REASONS",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_resume_session_id_threading.py",
-            "ralph.agents.invoke._errors",
-            ("_IdleStreamTimeoutError",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_runtime_session_resume_safe_mapping.py",
-            "ralph.agents.invoke._session",
-            ("_bounded_output_lines",),
         ),
         (
             "tests/agents/test_idle_watchdog.py",
@@ -957,21 +856,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_prompt_changed_since_last_materialization",),
         ),
         (
-            "tests/agents/idle_watchdog/test_mark_tool_call_runtime_reachability.py",
-            "ralph.agents.execution_state._factory",
-            ("_make_cursor_strategy", "_make_pi_strategy"),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_mark_tool_call_runtime_reachability.py",
-            "ralph.agents.invoke._idle_stream_timeout_error",
-            ("_IdleStreamTimeoutError",),
-        ),
-        (
-            "tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py",
-            "ralph.agents.idle_watchdog._subagent_identity",
-            ("_MAX_REGISTRY_ENTRIES",),
-        ),
-        (
             "tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py",
             "ralph.agents.idle_watchdog._subagent_identity",
             ("_MAX_REGISTRY_ENTRIES",),
@@ -1005,11 +889,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/agents/invoke/test_kimi_command_for_log.py",
             "ralph.agents.invoke._commands",
             ("_build_command", "_command_for_log"),
-        ),
-        (
-            "tests/display/test_parallel_display_streaming_bound.py",
-            "ralph.display._streaming_ctx",
-            ("_StreamingCtx",),
         ),
         (
             "tests/integration/test_codex_home_release_path.py",

@@ -45,13 +45,13 @@ The guard system is a multi-level fabrication defense implemented in
   run).** Verifies every GitHub repo URL, every npm package
   reference, and every external link in the public-facing markdown
   actually exists. Uses GitHub API and npm registry; results are
-  cached in `.git/fabrication-cache.json`. Run with
-  `--level 2`.
+  cached in `fabrication-cache.json` under the resolved git
+  directory (`.git/` in a normal checkout, `.git/worktrees/<name>/`
+  in a linked worktree). Run with `--level 2`.
 - **Level 3 — Quantitative claim verification (network,
   authenticated, ~30s).** Cross-references specific claims (star
-  counts, fork counts, file line counts, issue numbers) against
-  live GitHub API data. Requires `GITHUB_TOKEN`. Run with
-  `--level 3`.
+  counts, issue numbers) against live GitHub API data. Requires
+  `GITHUB_TOKEN`. Run with `--level 3`.
 
 ## Mandatory protocol — DO NOT SKIP
 
@@ -128,11 +128,12 @@ write it.
 
 The guard is a hard invariant, not a configurable check:
 
-- There is no whitelist of "safe" files — every `.md` file is in
-  scope.
-- There is no per-file opt-out — exemption requires updating
-  `EXEMPT_FILES` in `scripts/fabrication_guard.py` and submitting
-  that change through review.
+- Every `.md` file is in scope except the markdown exemptions in
+  `EXEMPT_FILES` in `scripts/fabrication_guard.py` — `AGENTS.md`,
+  `CLAUDE.md`, `CHANGELOG.md`, and `scripts/README.md`.
+- There is no per-file opt-out mechanism — exemption requires
+  updating `EXEMPT_FILES` in `scripts/fabrication_guard.py` and
+  submitting that change through review.
 - The pre-commit hook blocks any commit that fails Level 1.
 - The CI gate runs the make-verify path, which the pre-commit hook
   protects; `make docs` is now a `make verify` prerequisite (see

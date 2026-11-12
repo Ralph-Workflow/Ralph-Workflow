@@ -162,13 +162,9 @@ def test_media_read_capability_present_in_every_drain() -> None:
 
 
 def test_shipped_agent_policy_carries_multimodal_assumption_clause() -> None:
-    root_policy = (
+    shipped = (
         Path(__file__).resolve().parents[2] / "docs" / "ralph-workflow-policy" / "agent-policy.md"
     )
-    nested_policy = (
-        Path(__file__).resolve().parents[1] / "docs" / "ralph-workflow-policy" / "agent-policy.md"
-    )
-    shipped = nested_policy if nested_policy.exists() else root_policy
     text = shipped.read_text(encoding="utf-8")
     assert "Ralph's multimodal MCP endpoints work" in text, (
         "shipped agent-policy.md must state the multimodal-assumption clause"

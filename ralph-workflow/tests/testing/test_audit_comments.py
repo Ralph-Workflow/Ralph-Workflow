@@ -248,6 +248,21 @@ def test_a_jinja_text_hash_passes(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert code == 0, reason
 
 
+@pytest.mark.parametrize("suffix", [".j2", ".txt"])
+def test_a_jinja_block_comment_fails_in_a_template_suffix(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    suffix: str,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate scans every rendered template suffix"
+    source = "{# a jinja comment #}\n<prompt></prompt>\n"
+
+    code, output = _run(tmp_path, f"prompt{suffix}", source, capsys)
+
+    assert code == 1, reason
+    assert "a jinja comment" in output, reason
+
+
 @pytest.mark.parametrize(
     "marker",
     ["decision", "decided", "do not reopen", "rationale", "non-adoption", "we chose"],

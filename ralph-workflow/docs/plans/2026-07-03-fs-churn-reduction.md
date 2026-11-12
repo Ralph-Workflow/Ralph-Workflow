@@ -689,7 +689,7 @@ Expected: `test_worker_sink_uses_block_buffering` FAILS (record visible immediat
         )
 ```
 
-Leave the `text_log_path` handler unchanged (line-buffered, operators tail it). Trade-off accepted: on SIGKILL up to 8 KB of worker/JSONL tail is lost; on clean exit and `logger.remove()` everything flushes.
+Leave the `text_log_path` handler unchanged (line-buffered, operators tail it). On SIGKILL up to 8 KB of worker/JSONL tail is lost; on clean exit and `logger.remove()` everything flushes.
 
 - [ ] **Step 4: Run tests**
 

@@ -1,17 +1,16 @@
 # Developer plan reconciliation
 
-> **SUPERSEDED** -- This design introduced a closed `Disposition:` vocabulary
-> (`completed` / `adapted` / `not_applicable` / `blocked`), canonical-ID proof
-> coverage, and compact-vs-large execution guidance for the development
-> artifact. The current contract (see
+> This document specifies the reconciliation model between the request, the
+> plan, and repository evidence: the request and its acceptance criteria stay
+> authoritative, the plan is the default execution route, and development
+> analysis judges the delivered behavior independently.
+>
+> The `development_result` and `development_analysis_decision` artifacts are
+> **free-form**: the validator mechanically checks only the frontmatter `status`
+> enum, the body is the next agent's reading matter, and parallel work is the
+> default. See
 > `ralph/mcp/artifacts/format_docs/development_result.md` and
-> `ralph/mcp/artifacts/format_docs/development_analysis_decision.md`) is
-> **free-form**: the validator mechanically checks only the frontmatter
-> `status` enum, the body is the next agent's reading matter, and parallel
-> work is the default. The text below is preserved as the historical
-> narrative of the disposition iteration and no longer reflects current
-> requirements. Do not treat any rule in this document as a current
-> obligation.
+> `ralph/mcp/artifacts/format_docs/development_analysis_decision.md`.
 
 ## Goal
 
@@ -32,8 +31,7 @@ The developer follows the plan unless fresh workspace evidence shows that a
 step's route or premise is inaccurate. It must not rewrite the request,
 acceptance criteria, or intended outcome to fit the implementation.
 
-The disposition-based reconciliation rules and evidence contracts originally defined here
-have been removed. The current contract is free-form: see
+The current contract is free-form: see
 `ralph/mcp/artifacts/format_docs/development_result.md` and
 `ralph/mcp/artifacts/format_docs/development_analysis_decision.md`.
 
@@ -49,11 +47,12 @@ execution shape from the plan's real dependency structure:
 
 The agent reconciles a plan item only when the item becomes ready. This avoids
 an unbounded up-front plan audit. For each ready item it checks the immediate
-premise, selects a disposition, implements the smallest useful increment, runs
-the narrowest relevant proof, records evidence, and moves to the next ready
-item. After a failed approach it changes the hypothesis or route; it does not
-repeat the same attempt without new evidence. When no necessary item can make
-progress, it submits a partial result with the blocker and next step.
+premise, records the outcome of each ready item in the result body, implements
+the smallest useful increment, runs the narrowest relevant proof, records
+evidence, and moves to the next ready item. After a failed approach it changes
+the hypothesis or route; it does not repeat the same attempt without new
+evidence. When no necessary item can make progress, it submits a partial result
+with the blocker and next step.
 
 Continuation prompts preserve this same execution, reconciliation, verified
 delivery, and run-budget contract. Prior partial narrative is handoff context,
@@ -69,15 +68,15 @@ It must not use the implementer's summary, reason, proof, or completion claim
 as evidence. A literal departure from an inaccurate implementation route is not
 itself a defect. Uncovered necessary work requires changes.
 
-The analyzer selects its cycle outcome from fresh evidence rather than the
+The analyzer selects its outcome from fresh evidence rather than the
 developer's label. It returns `completed` when the request criteria are met and
 no necessary work remains, including after a partial or failed developer
 handoff. It returns `request_changes` only for localized work another developer
-iteration can perform. It returns terminal `failed` when the current plan is
-impossible, contradictory, not evaluable, or has no actionable developer route.
-That terminal choice ends the current planning/development cycle; it does not
-declare the overall objective permanently impossible and does not end the run
-while global cycle budget remains.
+iteration can perform. It returns `failed` when the current plan is impossible,
+contradictory, not evaluable, or has no actionable developer route. A `failed`
+verdict records that no safe actionable continuation exists under the current
+evidence and routes back to the `development` phase; it is not a terminal phase
+outcome and does not end the run.
 
 ## Cycle-terminal invariant
 
@@ -91,19 +90,22 @@ cycle outcome follows the same lifecycle:
 4. end the run only when global cycle budget is exhausted or the operator
    explicitly cancels it.
 
-Development-analysis `failed` therefore routes through the same cleanup and
-commit boundary as `completed`, while carrying a failed cycle outcome into
-post-commit routing. `request_changes` alone remains inside the current cycle.
+Development-analysis `failed` routes back to the `development` phase, the same
+target as `request_changes`, so both stay inside the current cycle and reach
+no commit boundary. Only `completed` leaves the cycle, through
+`development_final_commit_review` and `development_final_commit`.
 Runtime faults that exhaust their bounded technical recovery also close and
 commit the current cycle before the budget router decides whether another
 planning cycle can start. Policy names such as `failed_terminal`, terminal
 roles, terminal outcome rendering, and prompt prose must use this cycle-scoped
 meaning consistently.
 
-## Compatibility and scope
+## Scope
 
-The original disposition field and required proof structure have been removed.
-See `ralph/mcp/artifacts/format_docs/development_result.md` for the current contract.
+This document covers the reconciliation model, the execution shape, the analyzer
+contract, and cycle-terminal semantics. Artifact-level obligations live in
+`ralph/mcp/artifacts/format_docs/development_result.md` and
+`ralph/mcp/artifacts/format_docs/development_analysis_decision.md`.
 
 ## Verification design
 
@@ -113,7 +115,7 @@ Black-box tests cover:
 - initial, continuation, worker, and fallback prompts share the execution
   loop and do not duplicate divergent rules;
 - the analyzer independently audits the implementation against request criteria;
-- terminal analyzer outcomes close and commit the current cycle, then route to
+- a `completed` analyzer outcome closes and commits the current cycle, then routes to
   fresh planning whenever global cycle budget remains;
 - exhausted global budget and explicit cancellation are the only run-ending
   conditions;
@@ -191,7 +193,7 @@ research basis and a bounded interpretation:
 | Require focused tool evidence and a final repository gate | CRITIC; Cannot Self-Correct Yet | External feedback is safer than relying on intrinsic self-correction alone. |
 | Have analysis independently re-derive criteria | CRITIC; Cannot Self-Correct Yet | A separate evidence pass reduces reliance on an implementer's unsupported self-assessment; it does not guarantee correctness. |
 | Approve partial/failed handoffs when fresh evidence shows no necessary work remains | ReAct; CRITIC | Outcome should follow observed task state, not the producer's label. |
-| Retry only actionable localized gaps inside one cycle; close the cycle and replan impossible or non-evaluable outcomes | PlanBench; long-software-task measurements; Reflexion | Replanning and recovery are fallible and should be bounded; repeating unchanged work without a new evidence-based action is unsupported, while a fresh plan may expose a different route. |
+| Retry only actionable localized gaps inside one cycle; a `failed` verdict routes back to development and re-audits against the request | PlanBench; long-software-task measurements; Reflexion | Replanning and recovery are fallible and should be bounded; repeating unchanged work without a new evidence-based action is unsupported, while a fresh plan may expose a different route. |
 
 Artifact grammar, stable IDs, routing names, and commit mechanics are local
 workflow constraints rather than empirical claims about model cognition. They

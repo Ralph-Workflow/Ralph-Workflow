@@ -46,6 +46,7 @@ MODE_DOCS = "docs"
 
 _COMMENT_MODES: dict[str, str] = {
     ".bash": MODE_SHELL,
+    ".j2": MODE_JINJA,
     ".jinja": MODE_JINJA,
     ".jinja2": MODE_JINJA,
     ".mk": MODE_MAKE,
@@ -53,6 +54,7 @@ _COMMENT_MODES: dict[str, str] = {
     ".pyi": MODE_PYTHON,
     ".sh": MODE_SHELL,
     ".toml": MODE_TOML,
+    ".txt": MODE_JINJA,
     ".yaml": MODE_YAML,
     ".yml": MODE_YAML,
 }

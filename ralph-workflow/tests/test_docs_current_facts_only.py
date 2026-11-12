@@ -205,6 +205,40 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
             "no longer cites a local-source URL",
         ),
     ),
+    (
+        "ralph-workflow/docs/sphinx/troubleshooting.md",
+        (
+            "was historically returned as a tool result",
+            "A relay sender failure now also fails MCP health probes",
+            "Silence still ends the session as `CONFLICT_INACTIVITY`",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/superpowers/specs/2026-08-12-developer-plan-reconciliation-design.md",
+        (
+            "originally defined here",
+            "**SUPERSEDED**",
+            "This design introduced a closed `Disposition:` vocabulary",
+            "the disposition iteration and no longer reflects current",
+            "The original disposition field and required proof structure",
+            "It returns terminal `failed`",
+            "That terminal choice ends the current planning/development cycle",
+            "selects its cycle outcome from fresh evidence",
+            "routes through the same cleanup and",
+            "carrying a failed cycle outcome into",
+            "`request_changes` alone remains inside the current cycle",
+            "selects a disposition",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/superpowers/plans/2026-08-12-developer-plan-reconciliation.md",
+        (
+            "historical implementation record",
+            "Outcome (historical)",
+            "**SUPERSEDED**",
+            "originally implemented in S-1 and S-2",
+        ),
+    ),
 )
 
 

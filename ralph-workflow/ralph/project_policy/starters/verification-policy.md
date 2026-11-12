@@ -62,11 +62,11 @@ differently.
    - **Guide:** roughly **1 second per 1k LOC**.
    - **HARD CAP: 2 minutes**, whatever the size — a gate slower than that
      destroys the edit/verify loop humans and agents depend on, so past
-     ~120k LOC the cap, not the rate, binds. The wider industry guideline
-     for a commit build is about ten minutes; this cap is far stricter
-     because an agent BLOCKS on this gate many times per task, paying the
-     cost per iteration rather than per commit — a five-iteration task
-     reaches ten minutes at this cap.
+     ~120k LOC the cap, not the rate, binds. This cap is far stricter than
+     commonly cited industry guidance for a commit build, because an agent
+     BLOCKS on this gate many times per task, paying the cost per iteration
+     rather than per commit — a five-iteration task reaches ten minutes at
+     this cap.
    - **Nesting:** the suite is ONE STEP inside this budget, not a parallel
      allowance. The testing policy caps the default suite at 60 seconds so
      type checking, linting, formatting, and audits fit in the remainder. A

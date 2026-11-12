@@ -279,7 +279,7 @@ omit optional data or retain malformed input as an unknown event; the presenter
 still supplies timestamps, indentation, role markers, and the shared
 size-based condensation rule rather than falling back to an unstructured dump.
 
-The replay matrix in ``tests/display/test_universality_replay.py`` exercises
+The replay matrix in ``tests/test_parsers_1.py`` exercises
 parser-native Claude, Claude Headless, Claude Interactive, Codex, OpenCode,
 Pi, Cursor, AGY, Nanocoder, generic, and Gemini captures through this path.
 It keeps fallback behavior and shipped agents on the same presentation contract.

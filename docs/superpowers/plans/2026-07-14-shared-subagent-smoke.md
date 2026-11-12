@@ -62,7 +62,7 @@
 - Modify: `ralph-workflow/docs/sphinx/cli.md`
 - Modify: `ralph-workflow/docs/agents/adding-a-new-agent.md`
 
-- [ ] Run `./scripts/fabrication_guard.py --level 1` on both files before editing.
+- [ ] Run `./scripts/fabrication_guard.py --level 1 ralph-workflow/docs/sphinx/cli.md ralph-workflow/docs/agents/adding-a-new-agent.md` before editing.
 - [ ] Document the exact `--subagents` and `--subagent-prompt-file` commands, ordered pass criteria, supported shared harness behavior, token cost, and intended use for parser/activity/watchdog debugging.
 - [ ] Re-run the level-1 fabrication guard on both files and build the docs with warnings treated as errors.
 

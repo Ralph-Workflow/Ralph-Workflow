@@ -10,9 +10,9 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -420,14 +420,8 @@ def level2_scan(path: Path, cache: dict) -> list[Finding]:
 STAR_CLAIM_RE = re.compile(
     r"(?:^|\s)(\d+(?:\.\d+)?[kK]?)\s*[★\u2605](?:\s|,|\.|$)"
 )
-FORK_CLAIM_RE = re.compile(
-    r"(\d+)\s+forks?"
-)
 ISSUE_CLAIM_RE = re.compile(
     r"github\.com/([\w\-\.]+)/([\w\-\.]+)/issues/(\d+)"
-)
-FILE_LINE_CLAIM_RE = re.compile(
-    r"(\d+)[\- ]line\s+([\w\-_/]+\.(?:py|js|ts|sh|md|json))"
 )
 
 

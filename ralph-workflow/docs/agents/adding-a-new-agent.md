@@ -407,7 +407,7 @@ Use these tests as a checklist:
   `tests/test_<agent>_parser.py` or
   `tests/agents/parsers/test_<agent>_parser.py`
 - MCP/tool watchdog parity:
-  `tests/agents/idle_watchdog/test_mark_tool_call_runtime_reachability.py`
+  `tests/agents/idle_watchdog/test_watchdog_spec_docs_pin_parity.py`
 - PTY/prompt/session behavior:
   `tests/test_claude_interactive_pty.py`,
   `tests/agents/invoke/test_pty_*`

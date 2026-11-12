@@ -63,7 +63,6 @@ _GUARD_ALLOWLIST: dict[str, str] = {
             "ralph/testing/audit_mcp_agent_boundary.py",
             "ralph/testing/audit_parallelization_dormant.py",
             "ralph/testing/audit_project_policy.py",
-            "ralph/testing/audit_public_docstrings.py",
             "ralph/testing/audit_prompt_single_sourcing.py",
             "ralph/testing/audit_repo_structure.py",
             "ralph/testing/audit_regression_test_elimination.py",

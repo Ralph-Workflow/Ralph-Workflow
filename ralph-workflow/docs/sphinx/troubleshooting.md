@@ -250,7 +250,7 @@ From the human operator shell, `ralph --inspect-checkpoint` shows what the curre
 
 **Symptom:** Ralph Workflow shows *"Background child work still active"* for a long time even after the agent subprocess has returned. The run never completes.
 
-**Cause:** Ralph Workflow now uses an evidence-backed liveness model instead of assuming that an existing child PID means useful work is still happening. A child is treated as alive only when it renews its progress or heartbeat lease within the configured TTL. If a process still exists but no fresh evidence remains, Ralph Workflow stops treating it as healthy active work and moves toward retry or recovery.
+**Cause:** A child counts as alive only when it renews its progress or heartbeat lease within the configured TTL. If a process still exists but no fresh evidence remains, Ralph Workflow stops treating it as healthy active work and moves toward retry or recovery.
 
 The waiting status log line includes `alive_by=` to explain the active evidence:
 
@@ -286,9 +286,9 @@ The detailed completion-evidence walkthrough (canonical SQLite store, fallback p
 
 **Symptom:** The agent appears wedged (no output for > the idle timeout). Pressing Ctrl+C once does not interrupt the run. The user has to press Ctrl+C a second time to force a kill, which terminates the entire pipeline.
 
-**Cause:** Before the fix, the first SIGINT routed through `handle_keyboard_interrupt` and the `InterruptController.begin_interrupt(grace_period_s=...)` path, which called the generic `shutdown_all` callback. On a wedged PTY agent run, the generic shutdown did not target the agent's process group quickly enough, so the first SIGINT appeared to be ignored.
+**Cause:** On a wedged PTY agent run, a shutdown that does not target the agent's process group does not interrupt the run quickly enough, so the first SIGINT appears to be ignored.
 
-**Fix:** `InterruptController` now has a `shutdown_all_for_label` field and a `kill_label` keyword argument on `begin_interrupt`. The factory `controller_from_process_manager` wires a closure that calls `manager.shutdown_all_for_label(label_prefix, grace_period_s=...)`. The runner passes `kill_label="invoke:"` so the first SIGINT targets the agent's specific label (e.g. `invoke:claude`). The controller is the single source of truth for interrupt-driven shutdown — there is no parallel `kill_label` mechanism in `handle_keyboard_interrupt`.
+**Fix:** `InterruptController` has a `shutdown_all_for_label` field and a `kill_label` keyword argument on `begin_interrupt`. The factory `controller_from_process_manager` wires a closure that calls `manager.shutdown_all_for_label(label_prefix, grace_period_s=...)`. The runner passes `kill_label="invoke:"` so the first SIGINT targets the agent's specific label (e.g. `invoke:claude`). The controller is the single source of truth for interrupt-driven shutdown — there is no parallel `kill_label` mechanism in `handle_keyboard_interrupt`.
 
 ## Successful tool result, then wedge
 
@@ -306,7 +306,7 @@ See [Recovery](recovery.md#tool-availability-failures) for the three additive ca
 
 **Symptom:** Status shows recent activity, the unresolved file count does not fall, and the run later reports an unresolvable conflict.
 
-**Cause:** A dead tool surface or `transport_loop_detected` / supervision-relay failure was historically returned as a tool result and counted as liveness. A relay sender failure now also fails MCP health probes, allowing Ralph Workflow to interrupt the affected attempt even without agent output. Repeated fault markers in agent activity provide a fallback after five observations; a single quoted marker does not end the attempt. Conflict resolution hands over to the next chain candidate without charging the conflict budget. Fresh error output cannot keep a confirmed failing attempt alive. Elapsed child-wait time does not kill a progressing resolver. Silence still ends the session as `CONFLICT_INACTIVITY` after `inactivity_timeout_seconds` (default 900s). The optional `total_resolution_cap_seconds` is off by default and is named `OPERATOR_CAP_REACHED` when it fires.
+**Cause:** A dead tool surface or `transport_loop_detected` / supervision-relay failure does not count as liveness. A relay sender failure fails MCP health probes, allowing Ralph Workflow to interrupt the affected attempt even without agent output. Repeated fault markers in agent activity provide a fallback after five observations; a single quoted marker does not end the attempt. Conflict resolution hands over to the next chain candidate without charging the conflict budget. Fresh error output cannot keep a confirmed failing attempt alive. Elapsed child-wait time does not kill a progressing resolver. Silence ends the session as `CONFLICT_INACTIVITY` after `inactivity_timeout_seconds` (default 900s). The optional `total_resolution_cap_seconds` is off by default and is named `OPERATOR_CAP_REACHED` when it fires.
 
 **Fix:** Read the ending line for the typed reason, last activity vs last progress, candidates tried, and unresolved paths. If the chain has a single agent, add a fallback in `[agent_chains.rebase_conflict_resolution]` — load warns when there is no fallback. If output says the conflict budget is exhausted, Ralph Workflow has stopped starting rebases for that identity; a distinct remote conflict can still run because it uses `scope=remote`.
 
