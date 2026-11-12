@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from ralph.phases.required_artifacts import (
     build_retry_hint,
     build_validation_retry_hint,
     retry_hint_fingerprint,
     validation_retry_fingerprint,
 )
+from ralph.pipeline.effect_executor import write_agent_retry_prompt
 from ralph.prompts import commit_review, materialize
 from ralph.recovery.retry_prompt import (
     PREMISE_CHECK_LINE,
@@ -16,37 +19,17 @@ from ralph.recovery.retry_prompt import (
     premise_check_line,
 )
 
-RALPH_TEST_CHANGE_REASONS = {
-    "test_premise_check_reland": (
-        "the premise-check rule was re-landed, restoring premise check exports and tests"
-    ),
-    "test_premise_check_anchor_is_not_exported": (
-        "the premise-check rule was re-landed, so the retry prompt exposes the premise check contract"
-    ),
-    "test_validation_retry_hint_omits_the_premise_line_even_on_an_identical_repeat": (
-        "the premise-check rule was re-landed, so an identical repeat renders the premise line"
-    ),
-    "test_generic_retry_hint_omits_the_premise_line_even_on_an_identical_repeat": (
-        "the premise-check rule was re-landed, so an identical repeat renders the premise line"
-    ),
-    "test_persisted_hint_history_keeps_the_premise_line_off_every_attempt": (
-        "the premise-check rule was re-landed, so an identical repeat carries the premise line"
-    ),
-    "test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies": (
-        "the premise-check rule was re-landed, so the retry history ends with the premise line"
-    ),
-    "test_persisted_hint_from_the_retired_format_parses_into_the_same_attempts": (
-        "the premise-check rule was re-landed, making the retired-format test obsolete"
-    ),
-    "test_generic_technical_retry_prompt_renders_premise_line_only_on_identical_repeat": (
-        "the retired premise-check line was removed from effect executor and retry prompts"
-    ),
-    "test_generic_technical_retry_prompt_without_drain_renders_premise_line_only_on_identical_repeat": (
-        "the retired premise-check line was removed from effect executor and retry prompts"
-    ),
-    "test_execution_retry_hint_renders_premise_line_only_on_identical_repeat": (
-        "the retired premise-check line was removed from effect executor and retry prompts"
-    ),
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_retry_prompt_exposes_the_premise_check_contract": "the premise-check rule is re-landed, so the retry prompt exposes the premise-check contract again",
+    "test_retry_prompt_still_exposes_the_formatter_contract": "the premise-check rule is re-landed, so the ordinary formatter contract stays exported",
+    "test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures": "the premise-check rule is re-landed on runtime fingerprints, which stay stable per failure and differ across failures",
+    "test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_repeat": "the retirement-era expectation that no attempt carries the premise line was wrong: the rule is re-landed, so an identical repeat renders the line",
+    "test_generic_retry_hint_renders_the_premise_line_only_on_an_identical_repeat": "the retirement-era expectation that no attempt carries the premise line was wrong: the rule is re-landed, so an identical repeat renders the line",
+    "test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure": "the retirement-era expectation that the persisted history keeps the line off every attempt was wrong: the rule is re-landed, so an identical repeat carries it",
+    "test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies": "the retirement-era expectation that the rendered history ends with the trailer was wrong: the rule is re-landed, so the history ends with the premise line",
+    "test_generic_technical_retry_prompt_renders_premise_line_only_on_identical_repeat": "new black-box coverage: the direct agent-retry prompt carries the premise line exactly once on an identical repeat and never on a first or changed failure",
+    "test_generic_technical_retry_prompt_without_drain_renders_premise_line_only_on_identical_repeat": "new black-box coverage: without a drain the fingerprint scope falls back to the reason, so an identical repeat carries the premise line exactly once",
+    "test_prompt_readers_stay_read_only": "the premise-check rule is re-landed, so the runtime owns the retry state and the hint readers stay read-only",
 }
 
 
@@ -154,6 +137,75 @@ def test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_
 
     assert repeat.count(build_validation_retry_footer()) == 1
     assert repeat.endswith(PREMISE_CHECK_LINE)
+
+
+def test_generic_technical_retry_prompt_renders_premise_line_only_on_identical_repeat(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("# Original task prompt\n", encoding="utf-8")
+
+    first = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_file),
+        reason="AgentTimeout",
+        detail="same detail",
+        context_lines=["the agent produced no output"],
+        drain="development",
+    )
+    repeat = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_file),
+        reason="AgentTimeout",
+        detail="same detail",
+        context_lines=["the agent produced no output"],
+        drain="development",
+    )
+    changed = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_file),
+        reason="AgentTimeout",
+        detail="a different detail",
+        context_lines=["the agent produced no output"],
+        drain="development",
+    )
+
+    assert PREMISE_CHECK_LINE not in Path(first).read_text(encoding="utf-8")
+    assert Path(repeat).read_text(encoding="utf-8").count(PREMISE_CHECK_LINE) == 1
+    assert PREMISE_CHECK_LINE not in Path(changed).read_text(encoding="utf-8")
+
+
+def test_generic_technical_retry_prompt_without_drain_renders_premise_line_only_on_identical_repeat(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("# Original task prompt\n", encoding="utf-8")
+
+    first = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_file),
+        reason="AgentTimeout",
+        detail="same detail",
+        context_lines=["the agent produced no output"],
+    )
+    repeat = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_file),
+        reason="AgentTimeout",
+        detail="same detail",
+        context_lines=["the agent produced no output"],
+    )
+    changed = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_file),
+        reason="AgentTimeout",
+        detail="a different detail",
+        context_lines=["the agent produced no output"],
+    )
+
+    assert PREMISE_CHECK_LINE not in Path(first).read_text(encoding="utf-8")
+    assert Path(repeat).read_text(encoding="utf-8").count(PREMISE_CHECK_LINE) == 1
+    assert PREMISE_CHECK_LINE not in Path(changed).read_text(encoding="utf-8")
 
 
 def test_prompt_readers_stay_read_only() -> None:

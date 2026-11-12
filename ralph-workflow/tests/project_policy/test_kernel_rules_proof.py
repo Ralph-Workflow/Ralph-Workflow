@@ -7,23 +7,25 @@ import pytest
 
 from ralph.project_policy import markers, starters
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_kernels_declare_exactly_the_twelve_agent_rules": (
-        "the kernel ships twelve agent rules; the retired premise-check rule is "
-        "not one of them, so the count contract is twelve"
+RALPH_TEST_CHANGE_REASONS = {
+    "test_kernels_declare_exactly_the_thirteen_agent_rules": (
+        "the retired contract froze the shipped kernel at twelve agent rules; the "
+        "premise rule is re-landed as numbered rule 7, so the kernel declares "
+        "thirteen agent rules"
     ),
-    "test_kernels_do_not_state_the_retired_premise_check_rule": (
-        "the premise-check rule is retired from both kernels, so the proof pins "
-        "its absence instead of its presence"
+    "test_kernels_state_the_premise_check_rule": (
+        "the retired contract asserted the kernel must not state the premise rule; "
+        "the premise rule is re-landed, so the kernel must state it with its "
+        "anecdotal evidence tag and its advisory enforcement with a review trigger"
     ),
     "test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules": (
-        "the rule-to-phase table covers the twelve surviving numbered rules"
+        "the retired contract required the rule-to-phase table to cover twelve "
+        "numbered rules; the re-landed premise rule makes the table carry thirteen "
+        "numbered rules"
     ),
     "test_kernels_number_the_agent_rules_to_match_the_contract": (
-        "the kernel numbers the twelve surviving agent rules in contract order"
-    ),
-    "test_every_agent_rule_has_a_research_basis_supports_line": (
-        "every surviving agent rule carries a research-basis supports line that names its number"
+        "the retired contract compared the kernel rule count against a twelve-rule "
+        "list; the re-landed premise rule makes the contract thirteen numbered rules"
     ),
 }
 
@@ -76,12 +78,13 @@ AGENT_RULES: tuple[tuple[int, str], ...] = (
     (4, "Regression tests from the spec"),
     (5, "Independent review"),
     (6, "Handoff by artifact"),
-    (7, "Smallest change"),
-    (8, "Context hygiene"),
-    (9, "Plan scaling"),
-    (10, "Commit-level hygiene"),
-    (11, "Human checkpoints"),
-    (12, "Rule-to-enforcer ladder"),
+    (7, "Premise check"),
+    (8, "Smallest change"),
+    (9, "Context hygiene"),
+    (10, "Plan scaling"),
+    (11, "Commit-level hygiene"),
+    (12, "Human checkpoints"),
+    (13, "Rule-to-enforcer ladder"),
 )
 
 INSTRUCTION_AUDIT_TRIGGER = "A model or harness generation change"
@@ -471,7 +474,6 @@ def test_kernel_starter_and_root_step_3_names() -> None:
 
 def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules() -> None:
     table_heading = "## Rule-to-phase table"
-    contract_numbers = {number for number, _rule in AGENT_RULES}
     for source_name, content in (("starter", _kernel()), ("root", _root_kernel())):
         assert table_heading in content, f"{source_name} missing {table_heading!r}"
         start = content.index(table_heading) + len(table_heading)
@@ -485,19 +487,9 @@ def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules()
             if pattern.search(section):
                 found_rules.add(num)
 
-        missing = contract_numbers - found_rules
+        missing = set(range(1, len(AGENT_RULES) + 1)) - found_rules
         assert not missing, (
             f"{source_name} rule-to-phase table is missing numbered rule(s): {sorted(missing)}"
-        )
-        referenced = {
-            int(token)
-            for token in section.replace("(", " ").replace(")", " ").split()
-            if token.isdigit()
-        }
-        unexpected = referenced - contract_numbers
-        assert not unexpected, (
-            f"{source_name} rule-to-phase table references numbered rule(s) outside "
-            f"the contract: {sorted(unexpected)}"
         )
 
 
@@ -669,7 +661,7 @@ SKILL_TECHNIQUE_PRECEDENCE = "the kernel (policy) wins"
 LIBRARY_DOCUMENTATION_CLAUSE = "that library's own documentation"
 
 
-def test_kernels_declare_exactly_the_twelve_agent_rules() -> None:
+def test_kernels_declare_exactly_the_thirteen_agent_rules() -> None:
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         statements = _agent_rule_statements(content)
         assert len(statements) == len(AGENT_RULES), (
@@ -717,21 +709,29 @@ def _enforcer_status_rows(content: str) -> dict[str, str]:
     return rows
 
 
-RETIRED_PREMISE_RULE_PATTERN = re.compile(r"premise[-_ ]check", re.IGNORECASE)
-
-
-def test_kernels_do_not_state_the_retired_premise_check_rule() -> None:
+def test_kernels_state_the_premise_check_rule() -> None:
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         statements = _agent_rule_statements(content)
-        assert "premise check" not in statements, (
-            f"{source_name} kernel still declares the retired premise-check agent rule"
+        statement = statements.get("premise check")
+        assert statement is not None, (
+            f"{source_name} kernel does not state the premise-check agent rule"
         )
-        ladder_rules = _enforcer_status_rows(content)
-        assert not any(RETIRED_PREMISE_RULE_PATTERN.search(rule) for rule in ladder_rules), (
-            f"{source_name} kernel rule-to-enforcer ladder still carries a premise-check row"
+        assert _evidence_tag(statement) == "anecdotal", (
+            f"{source_name} kernel premise-check rule carries evidence tag "
+            f"{_evidence_tag(statement)!r}; the rule rests on practitioner "
+            f"experience, so the tag is 'anecdotal'"
         )
-        assert not RETIRED_PREMISE_RULE_PATTERN.search(_normalized(content)), (
-            f"{source_name} kernel still states premise-check text"
+        status = _enforcer_status_rows(content).get("Premise check")
+        assert status is not None, (
+            f"{source_name} kernel rule-to-enforcer ladder has no row for the premise-check rule"
+        )
+        assert status.startswith("advisory:"), (
+            f"{source_name} kernel premise-check rule must keep its advisory "
+            f"enforcement; observed: {status!r}"
+        )
+        assert "; review:" in status, (
+            f"{source_name} kernel premise-check rule must name its review trigger; "
+            f"observed: {status!r}"
         )
 
 

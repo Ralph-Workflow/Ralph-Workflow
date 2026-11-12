@@ -4,7 +4,7 @@ import json
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from loguru import logger
 
@@ -24,6 +24,7 @@ from ralph.phases.artifacts import (
     unwrap_phase_artifact_content,
 )
 from ralph.phases.required_artifacts import (
+    PREMISE_CHECK_LINE,
     build_missing_input_hint,
     build_required_artifacts,
     build_retry_hint,
@@ -40,6 +41,7 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
+from ralph.recovery.retry_prompt import premise_check_line
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -446,6 +448,41 @@ def _validate_output_artifact(
     ], None
 
 
+class PersistedRetryHint(NamedTuple):
+    hint: str
+    fingerprint: str
+
+
+def _strip_premise_check_line(text: str) -> str:
+    kept = [line for line in text.splitlines() if line.strip() != PREMISE_CHECK_LINE]
+    return "\n".join(kept).strip()
+
+
+def compose_persisted_retry_hint(
+    phase: str,
+    detail: str,
+    *,
+    prior_hint: str = "",
+    prior_fingerprint: str = "",
+    registry: dict[str, RequiredArtifact] | None = None,
+    unsubmitted_draft: bool = False,
+) -> PersistedRetryHint:
+    fingerprint = retry_hint_fingerprint(phase, detail, registry=registry)
+    block = build_retry_hint(
+        phase,
+        detail,
+        registry=registry,
+        unsubmitted_draft=unsubmitted_draft,
+        validation=True,
+    )
+    history = _strip_premise_check_line(prior_hint)
+    hint = f"{history}\n\n{block}" if history else block
+    premise = premise_check_line(fingerprint, prior_fingerprint or None)
+    if premise:
+        hint = f"{hint}\n\n{premise}"
+    return PersistedRetryHint(hint=hint, fingerprint=fingerprint)
+
+
 def _write_retry_hint(
     ctx: PhaseContext,
     phase: str,
@@ -462,27 +499,24 @@ def _write_retry_hint(
     except AttributeError:
         registry = None
     prior_fingerprint = ""
+    prior_hint = ""
     with suppress(Exception):
         if ctx.workspace.exists(fingerprint_path):
             prior_fingerprint = ctx.workspace.read(fingerprint_path).strip()
-    hint = build_retry_hint(
-        phase,
-        detail,
-        registry=registry,
-        unsubmitted_draft=unsubmitted_draft,
-        validation=True,
-        prior_fingerprint=prior_fingerprint or None,
-    )
     with suppress(Exception):
         if preserve_existing and ctx.workspace.exists(hint_path):
-            existing = ctx.workspace.read(hint_path).strip()
-            if existing:
-                hint = f"{existing}\n\n{hint}"
-        ctx.workspace.write(hint_path, hint)
-        ctx.workspace.write(
-            fingerprint_path,
-            retry_hint_fingerprint(phase, detail, registry=registry),
-        )
+            prior_hint = ctx.workspace.read(hint_path)
+    persisted = compose_persisted_retry_hint(
+        phase,
+        detail,
+        prior_hint=prior_hint,
+        prior_fingerprint=prior_fingerprint,
+        registry=registry,
+        unsubmitted_draft=unsubmitted_draft,
+    )
+    with suppress(Exception):
+        ctx.workspace.write(hint_path, persisted.hint)
+        ctx.workspace.write(fingerprint_path, persisted.fingerprint)
 
 
 def _worker_retry_hint_path(
