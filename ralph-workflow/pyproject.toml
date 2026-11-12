@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "An autonomous coding-agent orchestrator: hand off a well-specified task and return to reviewable, tested work."
+description = "AI agent orchestrator and software factory: give it a spec and your own checks, and it runs plan, build, verify, fix as a configurable workflow graph across Git worktrees with the coding agent you already use."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }

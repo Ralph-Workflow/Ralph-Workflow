@@ -1,104 +1,143 @@
-# Ralph Workflow
+# Ralph Workflow — the AI agent orchestrator and software factory for autonomous coding
 
-## Move beyond pull requests.
+**Move beyond pull requests.**
 
 **Multiple coding agents. Separate worktrees. One mainline.**
 
-Ralph Workflow began as a simple orchestrator for the Ralph loop: give an
-agent a task, let it work, verify the result, and iterate. It has grown into a
-graph engineering framework for autonomous coding workflows.
+Coding agents write code fast; the handoffs around them — babysitting a session,
+re-explaining context, resolving conflicts, waiting in a review queue — do not scale
+the same way. A software factory removes that bottleneck.
 
-Ralph Workflow is the **operating system for autonomous coding**: a free,
-open-source AI agent orchestrator that connects planning, development, review,
-repair, and integration in one configurable workflow. Its core remains the
-simple **Ralph loop: plan → build → verify → fix**. Around that core, Ralph
-Workflow adds agent review, retries, fallback agents, durable handoffs, recovery,
-and Git integration.
+**Ralph Workflow is the operating system for autonomous coding: a free, open-source AI agent orchestrator and software factory that anybody can use — you give it a spec and your own checks, it runs plan → build → verify → fix as a configurable workflow graph across Git worktrees, and hands you integrated software to judge.**
 
-The result is a different coordination model. Independent runs can work in
-separate Git worktrees without sharing agent context. Ralph Workflow coordinates
-their committed changes through the repository: it synchronizes feature work
-with the configured mainline, routes conflicts for resolution, checks the Git
-result, and integrates successful work so the next run builds on it.
+It runs on your machine: no account, no hosted service, nothing to pay. Your
+specifications, configuration, and Git history stay yours.
 
-**Our vision is to move software development beyond pull requests as the
-primary handoff mechanism.** Review and integration move inside the execution
-graph, where they can be continuous, evidence-backed, and tied to the original
-task. You define the outcome and the checks. Ralph Workflow runs the workflow.
-You judge the software.
+**Ralph Workflow manages the harness, not the models.** The coding agents — Claude
+Code, Codex, Cursor, and the rest — are harnesses around models; Ralph Workflow is
+the harness around those: workflow, review, recovery, and Git integration on top of
+whichever agent CLIs you already have. A harness of harnesses.
+
+In plain terms: it is the workflow layer that runs your coding agents, checks their
+work, and lands the result on your mainline — not a model provider.
+
+No vendor lock-in. Nine built-in agent backends ship with it — Claude Code, Codex,
+Cursor, and more — and agent chains can mix them and fall back to the next one when
+an attempt fails: switching or combining vendors is a configuration change, not a
+rewrite. Ralph Workflow needs no API key of its own; it launches the agent CLI you
+installed and authenticated. Each agent defines its own authentication (a login, an
+API key, or either), and its vendor determines model access, rate limits, and cost.
 
 [**Start your first run →**](START_HERE.md)
 
+## A software factory you configure
+
+You supply the specification and the checks you trust; the factory returns
+integrated software for you to judge:
+
+- **Stations.** Phases are stations on the line: planning, development, review, fix,
+  commit.
+- **Gates.** Checks are gates: a station that does not produce the evidence it owes
+  returns `fix-needed`, `blocked`, or `retry` instead of opening the next gate.
+- **Interchangeable workers.** An agent chain is the worker pool for a station: you
+  choose the agent, and which one takes over when an attempt fails.
+- **Parallel lines.** Worktrees are the production lines: independent runs work in
+  separate Git worktrees without sharing agent context.
+- **Shipping.** Git integration ships successful work to the configured mainline.
+
+Adopt the bundled default graph as-is first — a strong default for writing software.
+Its phases and routes are in the
+[pipeline configuration reference](ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md);
+each phase's output contract is in the
+[artifacts reference](ralph-workflow/docs/sphinx/artifacts.md).
+
 ## From a loop to a workflow graph
 
-A loop keeps one task moving. A workflow graph connects the decisions around
-it: which phase runs next, which agent handles it, what evidence must be
-produced, what happens when a check fails, and how work resumes after an
-interruption.
+A plain agent loop repeats one prompt until the work stops changing: give an agent a
+task, let it work, check the result, iterate — that is the whole Ralph loop. By hand,
+you supply every decision: the next prompt, the retry, the merge.
 
-Ralph Workflow ships a strong default graph for writing software. Use it as-is
-first. As your needs grow, configure the phases, routes, agent chains, tools,
-and artifact contracts instead of rebuilding the orchestration around every
-agent. Within a run, the executing agent can delegate independent work to its
-native subagents. Across separate worktrees, Ralph Workflow coordinates through
-Git integration and durable workflow state.
+A workflow graph keeps that loop and moves those decisions into configuration:
 
-## Independent work. A shared mainline.
+- **Which phase runs next.** A phase ends in a drain: `done` advances, `fix-needed`
+  routes into a fix cycle, `blocked` waits for a human, `retry` re-attempts.
+- **Which agent handles it.** Routing is policy, not code — a phase is bound to an
+  agent chain, so planning can go to one agent and development to another.
+- **What evidence is produced.** Each phase declares a contract for what it must
+  produce, and the runtime validates it before the phase ends.
+- **What happens on failure.** A failed attempt retries, falls over to the next agent
+  in the chain, and a stuck or crashed agent is caught by the watchdog.
+- **How work resumes.** Checkpoints and durable recovery state carry an interrupted
+  run forward, including a half-finished Git operation.
 
-Separate worktrees give agents room to work. Ralph Workflow handles the Git coordination
-that makes their work converge.
+Drain semantics, routing, and recovery are described in the
+[concepts reference](ralph-workflow/docs/sphinx/concepts.md).
 
-- **Keep work connected to main.** Automatic integration synchronizes feature
-  branches with the configured mainline at startup, after commits, and at phase
-  boundaries. Other worktrees can pick up those integrated changes at their
-  next synchronization.
+## Independent work, shared mainline
+
+Separate worktrees give agents room to work. Ralph Workflow handles the Git
+coordination that makes that work converge.
+
+- **Synchronize automatically.** Feature work syncs with the configured mainline at
+  startup, after commits, and at phase boundaries.
 - **Resolve conflicts in the workflow.** Ralph Workflow rebases onto the target and
-  routes conflicts to coding agents for resolution, with an endpoint merge
-  fallback when rebase resolution cannot finish.
-- **Land changes automatically.** Ralph Workflow fast-forwards the local target to the
-  integrated feature tip and can synchronize it with the configured remote.
-  Local integration is enabled by default; the default target is `main`.
-- **Recover interrupted integration.** Durable recovery state lets Ralph Workflow
-  continue an unfinished Git operation before ordinary development resumes.
+  routes conflicts to a resolution agent chain, with an endpoint-merge fallback.
+- **Land automatically.** The local target fast-forwards to the integrated tip.
+  Local integration is on by default and the target defaults to `main`; remote
+  sync publishes to the configured remote when one exists, and can be turned
+  off for local-only operation.
+- **Recover interrupted integration.** Durable recovery state continues an unfinished
+  Git operation before ordinary development resumes.
 
-This is the foundation for moving beyond pull requests: independent work
-converges on the same codebase at defined synchronization and integration
-points. Your repository's
-branch protections and required checks still determine what it permits;
-Ralph Workflow does not bypass them.
+Two facts worth stating plainly. Your repository's branch protections and required
+checks still determine what is permitted — Ralph Workflow does not bypass them. And
+the worktree that holds `main` is integration infrastructure: when uncommitted content
+there blocks an advance, it can be snapshotted to a recoverable ref and reset by
+default. Keep active edits in feature worktrees.
 
-Automatic integration can advance local main and publish to `origin` when
-available. The worktree holding main is treated as integration infrastructure:
-by default, blocking uncommitted content there can be snapshotted and reset.
-Keep active edits in feature worktrees. Read the
-[auto-integration guide](ralph-workflow/docs/sphinx/configuration.md#auto-integration)
-for synchronization, recovery, snapshot restoration, and settings for local-only
-or manual Git operation.
+The [auto-integration guide](ralph-workflow/docs/sphinx/configuration.md#auto-integration)
+covers synchronization, recovery, snapshot restoration, and local-only or manual
+Git operation.
 
-## Give it a task. Let the graph work.
+## Bring your own agent
 
-The graph begins with the Ralph loop and expands only where the work demands
-it. A phase can select a different agent, revisit an earlier choice, request
-new evidence, recover from interruption, or route completed work into Git
-integration. The agents do not need a shared conversation: the workflow carries
-forward the task, artifacts, repository state, and proof.
+Nine backends ship with Ralph Workflow. Authenticate each one yourself; the agent's
+own flow is what runs, and Ralph Workflow never reads, stores, or proxies it.
 
-Start with a bounded feature, a refactor with tests, or a mechanical migration.
-Write what done means in `PROMPT.md`, include the checks you trust, and let
-Ralph Workflow carry the task through the workflow. When it returns, inspect the summary
-and exercise the changed software yourself.
+- **Claude Code** (`claude`) — `claude login` or an Anthropic API key.
+- **Claude Code (headless)** (`claude`) — the same binary without a PTY; the same
+  `claude login` or an Anthropic API key.
+- **Codex** (`codex`) — `codex login` or an OpenAI API key.
+- **OpenCode** (`opencode`) — provider-specific keys, per provider.
+- **Nanocoder** (`nanocoder`) — local-only TUI, no remote authentication.
+- **AGY (Google Anti Gravity)** (`agy`) — `agy login` with a Google account.
+- **Pi** (`pi`) — provider configuration inside Pi.
+- **Cursor** (`agent`) — `CURSOR_API_KEY` or a file-backed Cursor login.
+- **Kimi Code** (`kimi`) — an interactive `kimi` login wires the managed Kimi Code
+  subscription.
 
-Adopt the defaults first. As your needs grow, compose larger workflows by
-changing the agents, phases, tools, and output contracts in configuration.
+The [agent guide](ralph-workflow/docs/sphinx/agents.md) covers the CLI lifecycle; the
+[compatibility reference](ralph-workflow/docs/sphinx/agent-compatibility.md) lists
+every CLI and model syntax.
+
+## Is Ralph Workflow for you?
+
+**For** developers and teams who want to run autonomous coding work across Git
+worktrees, keep the mainline moving, and spend less time coordinating agents and
+merges — and who have tasks with a clear finish line and checks they trust.
+
+**Not (yet) for** open-ended exploration with no defined finish line, or for
+repositories with no reliable tests or checks. If the finish line is fuzzy, write
+it down first: one sentence saying what "done" means. If the repository has no
+checks you trust, build that first — a test suite, a script, or a recognizable diff.
 
 ## Get started
 
-You need **Python 3.12+**, **Git**, **pipx**, and at least one supported coding
-agent CLI installed and authenticated. Ralph Workflow runs locally; the agent
-you choose determines model access and usage costs. The executable is named
-`ralph`.
+You need **Python 3.12+**, **Git**, **pipx**, and one coding agent CLI installed and
+authenticated. Ralph Workflow runs locally; the agent you choose determines model
+access and cost. The executable is named `ralph`.
 
-Run these commands in your own terminal, inside the project you want to work on:
+Run these in your own terminal, inside the project you want to work on:
 
 ```bash
 pipx install ralph-workflow
@@ -109,13 +148,13 @@ ralph --list-agents
 ralph --diagnose
 ```
 
-Confirm your agent appears and fix any diagnostic problems before continuing.
-Then edit the generated `PROMPT.md`: replace the starter with your task,
-acceptance criteria, and verification commands. Remove the
-`<!-- ralph:starter-prompt ... -->` marker at the top; Ralph Workflow refuses to run
-while it remains. Keep any existing task specification you still need.
+Confirm your agent appears and every diagnostic line is green. Then edit the
+`PROMPT.md` that `ralph --init` created: replace the starter with your task,
+acceptance criteria, and verification commands, and remove the
+`<!-- ralph:starter-prompt ... -->` marker at the top — Ralph Workflow refuses to run
+while it remains.
 
-For example, in a Python project with pytest, a focused first task might be:
+A small first task in a Python project with pytest:
 
 ```markdown
 # Goal
@@ -130,64 +169,52 @@ Reject an empty email address in the signup validator with a clear error.
 - Run python -m pytest and fix any failures.
 ```
 
+A ready-made first task is in the
+[Flask `/health` starter](example-api/README.md).
+
 Start the run:
 
 ```bash
 ralph
 ```
 
-When it finishes, read what changed and which checks ran, then try the result.
+A successful first run looks like this: the run completes, the changes are committed
+on a branch in a worktree, and the work is either integrated onto the mainline or
+reported with the evidence it produced — what changed, which checks ran, what to
+review. Then exercise the software and decide what to keep.
+
+No pipx? Use `pip install ralph-workflow` in a Python 3.12+ virtual environment; from
+a source checkout, see the
+[source installation guide](ralph-workflow/CONTRIBUTING.md#dev-build-vs-stable-build).
 The [first-run walkthrough](START_HERE.md) covers each step; the
-[getting-started tutorial](ralph-workflow/docs/sphinx/getting-started.md)
-helps you choose a task and write its specification.
-
-No pipx? Use `pip install ralph-workflow` in a Python 3.12+ virtual environment.
-Working from this checkout? See the
-[source installation guide](ralph-workflow/CONTRIBUTING.md#dev-build-vs-stable-build)
-for `make install` / `make dev` and the separate `rdev` launcher.
-
-## Bring your coding agent
-
-Ralph Workflow ships nine built-in backends: **Claude Code**, **Claude Code headless**,
-**Codex**, **OpenCode**, **Nanocoder**, **AGY (Google Anti Gravity)**, **Pi**,
-**Cursor**, and **Kimi Code**.
-
-Authenticate your agent on your machine and Ralph Workflow uses it. Configure agent
-chains to choose which agents handle each kind of work and which take over
-when an attempt fails. See the
-[agent guide](ralph-workflow/docs/sphinx/agents.md) for setup and the
-[compatibility reference](ralph-workflow/docs/sphinx/agent-compatibility.md)
-for CLI and model details.
-
-## Is Ralph Workflow for you?
-
-Ralph Workflow fits developers and teams who want to run autonomous coding work across
-Git worktrees, keep main moving, and spend less time coordinating agents and
-merges. It works best with clear tasks and tests or other checks that can
-establish whether the software works.
-
-If your task is still open-ended exploration, define its finish line first.
-If your repository has no reliable checks, build that foundation before
-entrusting it with unattended changes.
+[getting-started tutorial](ralph-workflow/docs/sphinx/getting-started.md) covers task
+picking.
 
 ## Make it yours
 
 | You want to… | Go here |
 |---|---|
 | Complete your first run | [Start here](START_HERE.md) |
-| Choose agents, configure Git sync, or change `ralph-workflow.toml` | [Configuration](ralph-workflow/docs/sphinx/configuration.md) |
-| Customize workflow phases in `pipeline.toml` | [Pipeline configuration](ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md) |
-| Configure tools in `mcp.toml` or outputs in `artifacts.toml` | [MCP configuration](ralph-workflow/docs/sphinx/advanced-mcp-configuration.md) · [Artifact configuration](ralph-workflow/docs/sphinx/advanced-artifact-configuration.md) |
+| Set agents, Git sync, and project settings in `ralph-workflow.toml` | [Configuration reference](ralph-workflow/docs/sphinx/configuration.md) |
+| Change phases and routing in `pipeline.toml` | [Pipeline configuration](ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md) |
+| Set the tool surface in `mcp.toml` | [MCP configuration](ralph-workflow/docs/sphinx/advanced-mcp-configuration.md) |
+| Define output contracts in `artifacts.toml` | [Artifact configuration](ralph-workflow/docs/sphinx/advanced-artifact-configuration.md) |
 | Find an answer or troubleshoot a run | [Docs map](docs/README.md) · [Operator manual](ralph-workflow/docs/sphinx/index.rst) |
+
+Those four names are configurable policy files, not top-level repository files.
 
 ## Open source
 
-Ralph Workflow is licensed under **AGPL-3.0-or-later**.
+Ralph Workflow is free and open source under **AGPL-3.0-or-later**: you may run,
+read, and modify it, and if you offer a modified version over a network you publish
+your changes.
 
-[PyPI](https://pypi.org/project/ralph-workflow/) ·
-[Report an issue](https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new) ·
-[Contribute](CONTRIBUTING.md)
+- [LICENSE](LICENSE) · [PyPI package page](https://pypi.org/project/ralph-workflow/) ·
+  [Report an issue](https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new)
+- [Contribute](CONTRIBUTING.md) — the contributor guide, the
+  [code of conduct](CODE_OF_CONDUCT.md), and the
+  [Contributor License Agreement](CLA.md) that every pull request must agree to.
 
-The Ralph Loop pattern is attributed to
-[Geoffrey Huntley](https://ghuntley.com/ralph). Ralph Workflow is an independent
-implementation that builds on that core.
+The Ralph Loop pattern is credited to [Geoffrey Huntley](https://ghuntley.com/ralph);
+Ralph Workflow is an independent implementation built on that core, and it is
+independent of the agent vendors it drives.
