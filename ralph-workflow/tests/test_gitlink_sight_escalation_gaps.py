@@ -645,3 +645,136 @@ def test_mixed_stop_malformed_record_and_text_conflict(
     assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
     assert outcome.exhaustion_message is not None
     assert "malformed index stage record for P" in outcome.exhaustion_message
+
+
+@pytest.mark.timeout_seconds(5)
+def test_conflict_stage_entries_batch_no_tab_isolates_and_retains_valid_sibling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path
+
+    from ralph.git import conflict_stage_entries as stage_entries_mod
+
+    orig_run_git = stage_entries_mod.run_git
+
+    def fake_run_git(args: Any, *a: Any, **kw: Any) -> GitRunResult:
+        if "ls-files" in args:
+            if "P" in args and "Q" in args:
+                output = (
+                    "corrupted_stage_record_without_tab\0"
+                    "100644 1111111111111111111111111111111111111111 2\tQ\0"
+                    "100644 2222222222222222222222222222222222222222 3\tQ\0"
+                )
+                return GitRunResult(args=tuple(args), returncode=0, stdout=output, stderr="")
+            if "P" in args:
+                return GitRunResult(
+                    args=tuple(args),
+                    returncode=0,
+                    stdout="corrupted_stage_record_without_tab\0",
+                    stderr="",
+                )
+            if "Q" in args:
+                output_q = (
+                    "100644 1111111111111111111111111111111111111111 2\tQ\0"
+                    "100644 2222222222222222222222222222222222222222 3\tQ\0"
+                )
+                return GitRunResult(args=tuple(args), returncode=0, stdout=output_q, stderr="")
+        return orig_run_git(args, *a, **kw)
+
+    monkeypatch.setattr(stage_entries_mod, "run_git", fake_run_git)
+
+    entries = conflict_stage_entries(repo, ["P", "Q"])
+    assert "Q" in entries
+    assert entries["Q"] == {
+        2: ("100644", "1111111111111111111111111111111111111111"),
+        3: ("100644", "2222222222222222222222222222222222222222"),
+    }
+    assert "P" not in entries
+    assert "P" in entries.failures
+    assert "Q" not in entries.failures
+    assert "malformed index stage record for P" in entries.failures["P"]
+
+
+@pytest.mark.timeout_seconds(5)
+def test_mixed_stop_no_tab_record_and_text_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _setup_test_repo(tmp_path)
+    _add_unmerged_path(repo, "P", content="conflict P\n")
+    _add_unmerged_path(
+        repo,
+        "Q",
+        content="<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n",
+    )
+
+    from ralph.git import conflict_stage_entries as stage_entries_mod
+
+    orig_run_git = stage_entries_mod.run_git
+
+    def fake_run_git(args: Any, *a: Any, **kw: Any) -> GitRunResult:
+        if "ls-files" in args:
+            if "P" in args and "Q" in args:
+                output = (
+                    "corrupted_stage_record_without_tab\0"
+                    "100644 1111111111111111111111111111111111111111 2\tQ\0"
+                    "100644 2222222222222222222222222222222222222222 3\tQ\0"
+                )
+                return GitRunResult(args=tuple(args), returncode=0, stdout=output, stderr="")
+            if "P" in args:
+                return GitRunResult(
+                    args=tuple(args),
+                    returncode=0,
+                    stdout="corrupted_stage_record_without_tab\0",
+                    stderr="",
+                )
+            if "Q" in args:
+                output_q = (
+                    "100644 1111111111111111111111111111111111111111 2\tQ\0"
+                    "100644 2222222222222222222222222222222222222222 3\tQ\0"
+                )
+                return GitRunResult(args=tuple(args), returncode=0, stdout=output_q, stderr="")
+        return orig_run_git(args, *a, **kw)
+
+    monkeypatch.setattr(stage_entries_mod, "run_git", fake_run_git)
+
+    stop = RebaseStop(
+        stop_index=1,
+        stop_cap=1,
+        conflicted_files=("P", "Q"),
+        sha="deadbeef",
+        subject="mixed stop with no-tab malformed P",
+    )
+
+    agent_invocations: list[str] = []
+
+    def mock_invoker(agent_name: str, _prompt_path: Path, _round_index: int) -> bool:
+        agent_invocations.append(agent_name)
+        (repo / "Q").write_text("resolved Q\n", encoding="utf-8")
+        return True
+
+    repo_root = Path(__file__).resolve().parents[1]
+    policy_bundle = load_policy(repo_root / "ralph" / "policy" / "defaults")
+    config = UnifiedConfig.model_validate({"general": {}})
+    session = ResolutionSession()
+
+    outcome = run_rebase_conflict_resolution_outcome(
+        root=repo,
+        target="main",
+        stop=stop,
+        config=config,
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=policy_bundle,
+        display=None,
+        display_context=None,
+        invoke=mock_invoker,
+        session=session,
+    )
+
+    assert len(agent_invocations) > 0, "reachable path Q must be offered to agent chain"
+    assert outcome.succeeded is False
+    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert outcome.exhaustion_message is not None
+    assert "malformed index stage record for P" in outcome.exhaustion_message
+    assert "git add -- P" in outcome.exhaustion_message
+    assert "gitlink" not in outcome.exhaustion_message.lower(), "must not use gitlink wording"

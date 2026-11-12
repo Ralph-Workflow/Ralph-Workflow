@@ -58,6 +58,10 @@ class ConflictStageEntries(dict[str, dict[int, tuple[str, str]]]):
         self.failures: dict[str, str] = dict(failures or {})
 
 
+class _UnattributableStageRecordError(Exception):
+    pass
+
+
 def _parse_stage_records_into(
     stdout: str,
     entries: dict[str, dict[int, tuple[str, str]]],
@@ -74,8 +78,10 @@ def _parse_stage_records_into(
                 targets: Sequence[str]
                 if default_path is not None:
                     targets = (default_path,)
-                elif queried_paths is not None:
-                    targets = tuple(queried_paths)
+                elif queried_paths is not None and len(queried_paths) == 1:
+                    targets = (queried_paths[0],)
+                elif queried_paths is not None and len(queried_paths) > 1:
+                    raise _UnattributableStageRecordError(record)
                 else:
                     targets = ()
                 for p in targets:
@@ -89,17 +95,45 @@ def _parse_stage_records_into(
             if path in failures:
                 continue
             entries.setdefault(path, {})[stage] = (mode, blob)
-        except ValueError:
+        except ValueError as err:
             target_path = path if "\t" in record else default_path
             if target_path is not None:
                 failures[target_path] = (
                     f"malformed index stage record for {target_path}: {record!r}"
                 )
                 entries.pop(target_path, None)
-            elif queried_paths is not None:
-                for p in queried_paths:
-                    failures[p] = f"malformed index stage record for {p}: {record!r}"
-                    entries.pop(p, None)
+            elif queried_paths is not None and len(queried_paths) > 1:
+                raise _UnattributableStageRecordError(record) from err
+            elif queried_paths is not None and len(queried_paths) == 1:
+                p = queried_paths[0]
+                failures[p] = f"malformed index stage record for {p}: {record!r}"
+                entries.pop(p, None)
+
+
+def _query_individual_paths(
+    runner: _GitRunner,
+    root: Path,
+    paths: Sequence[str],
+) -> ConflictStageEntries:
+    failures: dict[str, str] = {}
+    entries: dict[str, dict[int, tuple[str, str]]] = {}
+    for p in paths:
+        single_res = runner(
+            ("ls-files", "-u", "-z", "--", p),
+            cwd=root,
+            label="git-conflict-stage-entries",
+        )
+        if single_res.returncode != 0:
+            failures[p] = f"could not read unmerged index stages for {p}"
+        else:
+            _parse_stage_records_into(
+                single_res.stdout,
+                entries,
+                failures,
+                default_path=p,
+                queried_paths=(p,),
+            )
+    return ConflictStageEntries(entries, failures=failures)
 
 
 def conflict_stage_entries(
@@ -119,9 +153,6 @@ def conflict_stage_entries(
         label="git-conflict-stage-entries",
     )
 
-    failures: dict[str, str] = {}
-    entries: dict[str, dict[int, tuple[str, str]]] = {}
-
     if result.returncode != 0:
         err_obj: object = getattr(result, "stderr", "")
         result_stderr = str(err_obj) if err_obj is not None else ""
@@ -131,33 +162,23 @@ def conflict_stage_entries(
                 failures={p: f"could not read unmerged index stages for {p}" for p in paths},
             )
         if len(paths) > 1:
-            for p in paths:
-                single_res = runner(
-                    ("ls-files", "-u", "-z", "--", p),
-                    cwd=root,
-                    label="git-conflict-stage-entries",
-                )
-                if single_res.returncode != 0:
-                    failures[p] = f"could not read unmerged index stages for {p}"
-                else:
-                    _parse_stage_records_into(
-                        single_res.stdout,
-                        entries,
-                        failures,
-                        default_path=p,
-                        queried_paths=(p,),
-                    )
-            return ConflictStageEntries(entries, failures=failures)
+            return _query_individual_paths(runner, root, paths)
         return ConflictStageEntries(
             {},
             failures={paths[0]: f"could not read unmerged index stages for {paths[0]}"},
         )
 
-    _parse_stage_records_into(
-        result.stdout,
-        entries,
-        failures,
-        default_path=paths[0] if len(paths) == 1 else None,
-        queried_paths=paths,
-    )
+    failures: dict[str, str] = {}
+    entries: dict[str, dict[int, tuple[str, str]]] = {}
+    try:
+        _parse_stage_records_into(
+            result.stdout,
+            entries,
+            failures,
+            default_path=paths[0] if len(paths) == 1 else None,
+            queried_paths=paths,
+        )
+    except _UnattributableStageRecordError:
+        return _query_individual_paths(runner, root, paths)
+
     return ConflictStageEntries(entries, failures=failures)

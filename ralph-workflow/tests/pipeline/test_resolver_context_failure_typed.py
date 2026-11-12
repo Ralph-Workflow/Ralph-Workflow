@@ -110,6 +110,59 @@ def test_resolver_generic_context_failure_populates_all_sinks(tmp_path: Path) ->
     assert session.exhaustion_reason == "target worktree context failed: simulated filesystem error"
 
 
+def test_resolver_workspace_path_with_project_name_retains_context_failure(
+    tmp_path: Path,
+) -> None:
+    session = ResolutionSession()
+    mock_display = MagicMock()
+    mock_policy = MagicMock()
+    mock_registry = MagicMock()
+    mock_config = MagicMock()
+    mock_deps = MagicMock()
+    mock_scope = WorkspaceScope(root=tmp_path)
+
+    resolver = build_agent_rebase_stop_resolver(
+        policy_bundle=mock_policy,
+        registry=mock_registry,
+        display=mock_display,
+        config=mock_config,
+        pipeline_deps=mock_deps,
+        workspace_scope=mock_scope,
+    )
+
+    stop = RebaseStop(
+        sha="deadbeef",
+        subject="test rebase stop",
+        conflicted_files=("file.txt",),
+        stop_index=1,
+        stop_cap=10,
+    )
+
+    err_msg = "workspace /srv/Ralph-Workflow target is inaccessible"
+    with (
+        patch(
+            "ralph.pipeline.auto_integrate_agent._resolve_within_target_context",
+            side_effect=RuntimeError(err_msg),
+        ),
+        bind_active_rebase_resolution_session(session),
+    ):
+        outcome = resolver(tmp_path, "main", stop)
+
+    assert isinstance(outcome, ResolutionOutcome)
+    assert outcome.succeeded is False
+    assert outcome.failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
+    expected_reason = f"target worktree context failed: {err_msg}"
+    assert outcome.reason == expected_reason
+    assert "ralph --check-config" not in str(outcome.reason)
+    assert "CONFIG_FAILURE" not in str(outcome.reason)
+
+    assert session.charge_conflict_budget is False
+    assert session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE
+    assert session.last_failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
+    assert session.exhaustion_reason == expected_reason
+    assert "ralph --check-config" not in str(session.exhaustion_reason)
+
+
 def test_resolver_config_related_exception_classifies_as_config_failure(
     tmp_path: Path,
 ) -> None:

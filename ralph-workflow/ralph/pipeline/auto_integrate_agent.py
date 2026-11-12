@@ -328,6 +328,11 @@ _COULD_NOT_READ_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_CONFIG_FILE_PATTERN = re.compile(
+    r"""ralph-workflow(?:-[^\s'"`()\[\]:;,<>]+)?\.toml""",
+    re.IGNORECASE,
+)
+
 
 def _extract_config_path(exc: BaseException) -> str | None:
     for attr in ("file", "path"):
@@ -396,7 +401,7 @@ def _is_config_exception(exc: BaseException) -> bool:
     cfg_keywords = (
         "check-config",
         "configuration",
-        "ralph-workflow",
+        "ralph-workflow.toml",
         "agents.toml",
         "pipeline.toml",
         "artifacts.toml",
@@ -404,9 +409,11 @@ def _is_config_exception(exc: BaseException) -> bool:
         "portfolio.toml",
     )
     for e in chain:
-        if isinstance(e, WorkspaceContextError):
+        if isinstance(e, WorkspaceContextError) or (config_types and isinstance(e, config_types)):
             return True
         msg = str(e).lower()
         if any(kw in msg for kw in cfg_keywords):
+            return True
+        if _CONFIG_FILE_PATTERN.search(msg) is not None:
             return True
     return False
