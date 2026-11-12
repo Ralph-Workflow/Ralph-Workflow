@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases import PhaseContext
-from ralph.phases.required_artifacts import PREMISE_CHECK_LINE, retry_hint_path
+from ralph.phases.required_artifacts import retry_hint_path
 from ralph.phases.verification import handle_verification_phase
 from ralph.pipeline.effect_executor import write_agent_retry_prompt
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -29,11 +29,21 @@ from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.recovery.retry_prompt import build_validation_retry_footer
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 from tests._tool_artifact_2_helper_mocksession import MockSession
 from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
+
+RALPH_TEST_CHANGE_REASONS = {
+    "test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_failure": (
+        "the retired premise-check line is no longer rendered, so the persisted hint is "
+        "asserted against the rendered validation trailer and the accumulated attempt history"
+    ),
+}
+
+_RETIRED_PERSISTED_TRAILER_LINE = "test the premise shared by the failed fixes before another patch"
 
 _INVALID_PRODUCT_SPEC = "---\ntype: product_spec\n---\n"
 _VALID_PRODUCT_SPEC = """---
@@ -216,7 +226,7 @@ def test_regression_s2_successful_submit_reports_recovery_and_clears_hint(tmp_pa
     assert not backend.exists(hint_path)
 
 
-def test_persisted_hint_renders_the_premise_line_only_on_an_identical_repeat(
+def test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_failure(
     tmp_path: Path,
 ) -> None:
     session = MockSession(drain="development")
@@ -237,6 +247,30 @@ def test_persisted_hint_renders_the_premise_line_only_on_an_identical_repeat(
     repeat = submit(_INVALID_PRODUCT_SPEC)
     changed = submit(changed_spec)
 
-    assert first.count(PREMISE_CHECK_LINE) == 0
-    assert repeat.count(PREMISE_CHECK_LINE) == 1
-    assert changed.count(PREMISE_CHECK_LINE) == 0
+    trailer = build_validation_retry_footer()
+
+    assert _RETIRED_PERSISTED_TRAILER_LINE not in first
+    assert _RETIRED_PERSISTED_TRAILER_LINE not in repeat
+    assert _RETIRED_PERSISTED_TRAILER_LINE not in changed
+
+    assert first.count(trailer) == 1
+    assert first.endswith(trailer)
+    assert first.count("ATTEMPT 1") == 1
+    assert "ATTEMPT 2" not in first
+
+    assert repeat.count(trailer) == 1
+    assert repeat.endswith(trailer)
+    assert repeat.count("ATTEMPT 1") == 1
+    assert repeat.count("ATTEMPT 2") == 1
+    assert "THIS VALIDATION HAS FAILED 2 TIMES" in repeat
+
+    assert changed.count(trailer) == 1
+    assert changed.endswith(trailer)
+    assert changed.count("ATTEMPT 1") == 1
+    assert changed.count("ATTEMPT 2") == 1
+    assert changed.count("ATTEMPT 3") == 1
+    assert "THIS VALIDATION HAS FAILED 3 TIMES" in changed
+
+    changed_attempt_bodies = changed[: changed.index(trailer)]
+    assert trailer not in changed_attempt_bodies
+    assert changed_attempt_bodies.count("PREVIOUS ATTEMPT FAILED") == 3

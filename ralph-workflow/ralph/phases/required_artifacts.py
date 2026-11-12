@@ -284,7 +284,7 @@ def _validation_retry_attempts(hint: str) -> list[str]:
 
 
 def _validation_retry_attempt_region(hint: str) -> str:
-    region = hint.removesuffix(PREMISE_CHECK_LINE).rstrip()
+    region = hint.rstrip()
     footer_index = region.rfind(build_validation_retry_footer())
     return region if footer_index < 0 else region[:footer_index]
 

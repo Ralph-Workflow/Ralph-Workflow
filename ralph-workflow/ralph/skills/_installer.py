@@ -11,10 +11,7 @@ from typing import TYPE_CHECKING, cast
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.checked_accessors import optional_str
-from ralph.git.scoped_auto_commit import (
-    capture_pre_write_contents,
-    snapshot_dirty_paths_strict,
-)
+from ralph.git.scoped_auto_commit import capture_pre_write_contents, snapshot_dirty_paths_strict
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._agent_paths import (
@@ -34,10 +31,7 @@ from ralph.skills._content import (
     managed_skill_marker,
     materialize_skills_to_claude_dir,
 )
-from ralph.skills._installer_candidates import (
-    _candidate_skill_paths,
-    _diff_written_paths,
-)
+from ralph.skills._installer_candidates import _candidate_skill_paths, _diff_written_paths
 from ralph.skills._ownership import Ownership, classify_entry, may_replace
 from ralph.skills._prune import (
     _prune_failure_codes,

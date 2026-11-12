@@ -19,7 +19,22 @@ RALPH_TEST_CHANGE_REASONS = {
         "rule is re-landed, so the retry formatter must expose the anchor and render "
         "the premise line on an identical repeat"
     ),
+    "test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure": (
+        "the retry history is delimited by the rendered validation footer, so the "
+        "accumulated attempt count and the rendered trailer are asserted next to the "
+        "premise line"
+    ),
+    "test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies": (
+        "the retry history is delimited by the rendered validation footer, so the "
+        "accumulated attempt count is asserted with the rendered trailer"
+    ),
+    "test_persisted_hint_from_the_retired_format_parses_into_the_same_attempts": (
+        "removing the premise-check dependency must not change how an already "
+        "persisted hint is parsed"
+    ),
 }
+
+_RETIRED_PERSISTED_TRAILER_LINE = "test the premise shared by the failed fixes before another patch"
 
 
 class _Diagnostic:
@@ -112,6 +127,12 @@ def test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure() -
     assert first.count(PREMISE_CHECK_LINE) == 0
     assert repeat.count(PREMISE_CHECK_LINE) == 1
     assert changed.count(PREMISE_CHECK_LINE) == 0
+    assert first.count("ATTEMPT 1") == 1
+    assert repeat.count("ATTEMPT 1") == 1
+    assert repeat.count("ATTEMPT 2") == 1
+    assert changed.count("ATTEMPT 3") == 1
+    assert changed.count(build_validation_retry_footer()) == 1
+    assert _RETIRED_PERSISTED_TRAILER_LINE not in changed
 
 
 def test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies() -> None:
@@ -128,6 +149,25 @@ def test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_
 
     assert repeat.count(build_validation_retry_footer()) == 1
     assert repeat.endswith(PREMISE_CHECK_LINE)
+    assert repeat.count("ATTEMPT 1") == 1
+    assert repeat.count("ATTEMPT 2") == 1
+
+
+def test_persisted_hint_from_the_retired_format_parses_into_the_same_attempts() -> None:
+    failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
+
+    first = build_validation_retry_hint("development_result", failure_a)
+    persisted_before_removal = f"{first}\n\n{_RETIRED_PERSISTED_TRAILER_LINE}"
+    repeat = build_validation_retry_hint(
+        "development_result",
+        failure_a,
+        prior_hint=persisted_before_removal,
+    )
+
+    assert repeat.count("ATTEMPT 1") == 1
+    assert repeat.count("ATTEMPT 2") == 1
+    assert repeat.count(build_validation_retry_footer()) == 1
+    assert _RETIRED_PERSISTED_TRAILER_LINE not in repeat
 
 
 def test_prompt_readers_stay_read_only() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -26,14 +26,18 @@ class _GitRunner(Protocol):
     ) -> GitRunResult: ...
 
 
+def _is_git_runner(value: object) -> TypeGuard[_GitRunner]:
+    return callable(value)
+
+
 def _resolve_runner() -> _GitRunner:
     if run_git is not _ORIGINAL_RUN_GIT:
         return run_git
     merge_mod = sys.modules.get("ralph.git.merge")
     if merge_mod is not None:
         cand: object = getattr(merge_mod, "run_git", None)
-        if callable(cand) and cand is not _ORIGINAL_RUN_GIT:
-            return cast("_GitRunner", cand)
+        if _is_git_runner(cand) and cand is not _ORIGINAL_RUN_GIT:
+            return cand
     return run_git
 
 

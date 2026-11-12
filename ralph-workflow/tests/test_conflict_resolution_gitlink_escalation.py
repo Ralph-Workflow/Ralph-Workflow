@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -211,6 +212,15 @@ def test_gitlink_submodule_absent_objects_fetchable_resolved(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
+    assert os.environ["GIT_CONFIG_GLOBAL"] == str(allow_file_transport)
+    file_transport = run_git(
+        ("config", "--global", "--get", "protocol.file.allow"),
+        cwd=tmp_path,
+        label="git-file-transport-config",
+    )
+    assert file_transport.returncode == 0
+    assert file_transport.stdout.strip() == "always"
+
     sub_origin, base, sha_a, _sha_b = submodule_remote
     sha_desc = _add_descendant_commit(sub_origin)
 

@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, get_args, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, get_args, runtime_checkable
 
 import sentry_sdk
 import sentry_sdk.metrics as sentry_metrics
@@ -150,6 +150,14 @@ class _SentryInit(Protocol):
 
 class _SentrySetUser(Protocol):
     def __call__(self, user: dict[str, object] | None) -> None: ...
+
+
+def _is_sentry_init(value: object) -> TypeGuard[_SentryInit]:
+    return callable(value)
+
+
+def _is_sentry_set_user(value: object) -> TypeGuard[_SentrySetUser]:
+    return callable(value)
 
 
 def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
@@ -392,7 +400,9 @@ def _before_send(event: Event, _hint: dict[str, object]) -> Event | None:
 def init_sentry(user_id: str, session_id: str) -> None:
     _STATE.extra_scrub_prefixes = _build_extra_scrub_prefixes()
 
-    sentry_init = cast("_SentryInit", sentry_sdk.init)
+    sentry_init: object = sentry_sdk.init
+    if not _is_sentry_init(sentry_init):
+        raise TypeError("sentry_sdk.init is not callable")
     sentry_init(
         dsn=_DSN,
         send_default_pii=False,
@@ -411,7 +421,9 @@ def init_sentry(user_id: str, session_id: str) -> None:
         before_send=_before_send,
         before_send_transaction=_before_send,
     )
-    set_user = cast("_SentrySetUser", sentry_sdk.set_user)
+    set_user: object = sentry_sdk.set_user
+    if not _is_sentry_set_user(set_user):
+        raise TypeError("sentry_sdk.set_user is not callable")
     set_user({"id": user_id})
     sentry_sdk.set_tag("session_id", session_id)
     _STATE.initialized = True

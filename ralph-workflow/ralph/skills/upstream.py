@@ -124,11 +124,13 @@ except AttributeError:
 
 _ATTEMPT_LOCK = threading.Lock()
 
-_REFERENCE_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`\n]+)`|\]\(([^)\n]+)\)")
-
-_FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,8}$"
+_REFERENCE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"`([^`\n]+)`|\]\(([^)\n]+)\)|^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(\S+)", re.MULTILINE
 )
+
+_FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[a-z]+$")
+
+_URL_SCHEME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 _TAG_NUMBER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+")
 
@@ -636,8 +638,7 @@ def _missing_reference(content: _SkillPayload) -> str | None:
                 continue
             if resolved in content.files:
                 continue
-            if Path(resolved).suffix.lower() in ALLOWED_FILE_SUFFIXES:
-                return f"it references {resolved}, which the archive does not carry"
+            return f"it references {resolved}, which the archive does not carry"
     return None
 
 
@@ -670,20 +671,23 @@ def _destination_path(raw: str) -> str:
 
 def _iter_references(text: str) -> Iterator[str]:
     for match in _REFERENCE_PATTERN.finditer(text):
-        raw1: object = match.group(1)
-        raw2: object = match.group(2)
+        raw_code: object = match.group(1)
+        raw_link: object = match.group(2)
+        raw_definition: object = match.group(3)
         candidate: str
-        if isinstance(raw1, str):
-            candidate = raw1.strip()
-            if not candidate or " " in candidate:
-                continue
-        elif isinstance(raw2, str):
-            candidate = _destination_path(raw2)
-            if not candidate:
-                continue
+        if isinstance(raw_code, str):
+            candidate = raw_code.strip()
+        elif isinstance(raw_link, str):
+            candidate = _destination_path(raw_link)
+        elif isinstance(raw_definition, str):
+            candidate = _destination_path(raw_definition)
         else:
             continue
-        if candidate.startswith(("http://", "https://", "/", "~", "#")):
+        if not candidate or " " in candidate:
+            continue
+        if _is_external_reference(candidate):
+            continue
+        if candidate.endswith("/"):
             continue
         parts: list[str] = [part for part in candidate.split("/") if part]
         if not parts:
@@ -691,6 +695,12 @@ def _iter_references(text: str) -> Iterator[str]:
         if not _FILE_NAME_PATTERN.match(parts[-1]):
             continue
         yield "/".join(parts)
+
+
+def _is_external_reference(candidate: str) -> bool:
+    if candidate.startswith(("/", "~", "#")):
+        return True
+    return _URL_SCHEME_PATTERN.match(candidate) is not None
 
 
 def _mirror_installed(canonical_root: Path, installed: list[str], messages: list[str]) -> None:

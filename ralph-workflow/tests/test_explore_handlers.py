@@ -605,6 +605,7 @@ def test_ralph_graph_clears_cancel_flag_map_after_each_call(
 
 
 def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
+    from ralph.mcp.explore import graph as graph_module
     from ralph.mcp.explore import handlers
 
     workspace = _seed_workspace(tmp_path)
@@ -622,10 +623,14 @@ def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
             "timeout_ms": 5_000,
         }
         with (
-            patch("ralph.mcp.explore.graph.run_query", side_effect=_explode),
+            patch.object(graph_module, "run_query", side_effect=_explode) as patched_run_query,
             pytest.raises(RuntimeError),
         ):
             handle_ralph_graph_local(call_session, _Workspace(workspace), params)
+        assert patched_run_query.called, (
+            "the graph handler must resolve run_query through "
+            "ralph.mcp.explore.graph for the query-error path to be exercised"
+        )
         assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size, (
             "Cancel-flag map leaked entries after a query error: "
             f"{dict(handlers._GRAPH_CANCEL_FLAGS)}"

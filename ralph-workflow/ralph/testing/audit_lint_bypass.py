@@ -60,12 +60,6 @@ _SKIP_DIRS: frozenset[str] = frozenset(
 )
 
 _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
-    "RUF022": {
-        "pattern": "ralph/agents/__init__.py",
-        "reason": (
-            "Discoverability: register_my_agent (the 90% recipe) must precede register_agent_support."
-        ),
-    },
     "PLR2004": {
         "pattern": [
             "tests/**/*.py",
@@ -167,7 +161,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/tools/_validation_retry_hints.py",
             "ralph/mcp/tools/coordination.py",
-            "ralph/supervising.py",
             "tests/**/*.py",
         ],
         "reason": (
