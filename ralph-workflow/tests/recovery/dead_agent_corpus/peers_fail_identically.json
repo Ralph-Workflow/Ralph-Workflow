@@ -1,0 +1,37 @@
+{
+  "id": "peers_fail_identically",
+  "label": "negative",
+  "agent": "codex",
+  "transport": "codex",
+  "incident": null,
+  "expected_attribution": "task_or_environment",
+  "expected_bench": false,
+  "expected_verdict": "not_agent_fault",
+  "captured_lines": [
+    "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"uv run pytest -q\",\"status\":\"in_progress\"}}",
+    "{\"type\":\"item.completed\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"uv run pytest -q\",\"status\":\"failed\",\"exit_code\":1,\"error\":\"collection error: missing module build_config\"}}"
+  ],
+  "tool_calls": [
+    "bash"
+  ],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "peers_fail_identically": true,
+  "peers": [
+    "codex",
+    "claude",
+    "agy"
+  ],
+  "elapsed_to_terminal_ms": 11000,
+  "exit_status": "exit_1",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "agent_exit",
+    "observed_returncode": 1,
+    "reported_returncode": 1,
+    "liveness_observed": true
+  },
+  "notes": "Every agent in the chain failed identically, so the failure belongs to the task or the environment. Benching the agents one after another is the defect this case pins."
+}

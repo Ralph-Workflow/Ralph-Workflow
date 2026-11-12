@@ -4,7 +4,7 @@ import contextlib
 import json
 import re
 from dataclasses import KW_ONLY, dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -14,7 +14,12 @@ from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     is_prompt_echo_line,
 )
-from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, TimeoutPolicy
+from ralph.agents.idle_watchdog import (
+    PostExitVerdict,
+    PostExitWatchdog,
+    TimeoutPolicy,
+    WatchdogFireReason,
+)
 from ralph.agents.idle_watchdog._circumstantial_evidence import (
     is_structurally_small_bounded_output,
 )
@@ -61,6 +66,7 @@ from ralph.pipeline import retryable_failure as _retry
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.teardown import ProcessTeardown, teardown_subtree
+from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.failure_classifier import (
     SESSION_NOT_FOUND_SUBSTRINGS,
     FailureClassifier,
@@ -71,10 +77,18 @@ from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 __all__ = (
     "_MAX_STDERR_CAPTURE_BYTES",
     "CompletionCheckOptions",
+    "TerminationRecorder",
     "_truncation_marker",
+    "attach_attempt_facts",
+    "attempt_facts_for_failure",
+    "attempt_facts_from_exception",
     "check_process_result",
     "completion_run_id_from_extra_env",
+    "observed_returncode",
     "read_bounded_stderr",
+    "termination_issuer_for_exception",
+    "termination_issuer_for_fire_reason",
+    "termination_issuer_for_teardown_issuer",
 )
 
 
@@ -85,6 +99,234 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._agent_run_ctx import _EvalCompletionFn
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+
+
+_SUPERVISOR_IDLE_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
+    {
+        WatchdogFireReason.CONFLICT_INACTIVITY,
+        WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+        WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER,
+        WatchdogFireReason.NO_OUTPUT_AT_START,
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        WatchdogFireReason.NO_PROGRESS_QUIET,
+        WatchdogFireReason.REPEATED_ERROR_LOOP,
+        WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL,
+        WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
+        WatchdogFireReason.STRICTLY_STUCK,
+    }
+)
+
+_RECOVERY_TIMEOUT_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
+    {
+        WatchdogFireReason.DESCENDANT_HANG,
+        WatchdogFireReason.PROCESS_EXIT_HANG,
+        WatchdogFireReason.SESSION_CEILING_EXCEEDED,
+    }
+)
+
+_OPERATOR_TEARDOWN_ISSUERS: frozenset[str] = frozenset(
+    {
+        "interactive_completion",
+        "invoke:process",
+        "invoke:pty",
+        "managed_process.terminate",
+        "operator_cancellation",
+    }
+)
+
+_COMPLETION_ISSUER_PREFIX = "invoke:completion:"
+
+_SIGNAL_RETURN_CODES: frozenset[int] = frozenset({-15, 143})
+
+_EXCEPTION_CHAIN_LIMIT = 8
+
+
+def _fire_reason_from_value(value: str) -> WatchdogFireReason | None:
+    try:
+        return WatchdogFireReason(value)
+    except ValueError:
+        return None
+
+
+def termination_issuer_for_fire_reason(
+    reason: WatchdogFireReason | str | None,
+) -> TerminationIssuer:
+    if reason is None:
+        return TerminationIssuer.UNKNOWN
+    value = reason.value if isinstance(reason, WatchdogFireReason) else str(reason)
+    fire_reason = _fire_reason_from_value(value)
+    if fire_reason is None:
+        return TerminationIssuer.UNKNOWN
+    if fire_reason in _SUPERVISOR_IDLE_FIRE_REASONS:
+        return TerminationIssuer.SUPERVISOR_IDLE
+    if fire_reason in _RECOVERY_TIMEOUT_FIRE_REASONS:
+        return TerminationIssuer.RECOVERY_TIMEOUT
+    return TerminationIssuer.UNKNOWN
+
+
+def termination_issuer_for_teardown_issuer(issuer: str | None) -> TerminationIssuer:
+    if issuer is None:
+        return TerminationIssuer.UNKNOWN
+    label = issuer.strip()
+    if not label:
+        return TerminationIssuer.UNKNOWN
+    if label == "quota_exhausted":
+        return TerminationIssuer.QUOTA_DETECTOR
+    if label in _OPERATOR_TEARDOWN_ISSUERS or label.startswith(_COMPLETION_ISSUER_PREFIX):
+        return TerminationIssuer.OPERATOR
+    if _fire_reason_from_value(label) is not None:
+        return termination_issuer_for_fire_reason(label)
+    return TerminationIssuer.UNKNOWN
+
+
+def _exception_chain(exc: BaseException) -> tuple[BaseException, ...]:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and len(chain) < _EXCEPTION_CHAIN_LIMIT:
+        chain.append(current)
+        cause = current.__cause__
+        current = cause if isinstance(cause, BaseException) else None
+    return tuple(chain)
+
+
+def _exception_issuer_label(exc: BaseException) -> str | None:
+    for candidate in _exception_chain(exc):
+        label = cast("object", getattr(candidate, "issuer", None))
+        if isinstance(label, str) and label:
+            return label
+    return None
+
+
+def _exception_fire_reason(exc: BaseException) -> WatchdogFireReason | str | None:
+    for candidate in _exception_chain(exc):
+        reason = cast("object", getattr(candidate, "reason", None))
+        if isinstance(reason, WatchdogFireReason):
+            return reason
+        if isinstance(reason, str) and reason:
+            return reason
+    return None
+
+
+def _exception_returncode(exc: BaseException) -> int | None:
+    returncode = cast("object", getattr(exc, "returncode", None))
+    if isinstance(returncode, bool) or not isinstance(returncode, int):
+        return None
+    return returncode
+
+
+def _exception_exit_status(exc: BaseException) -> str | None:
+    for candidate in _exception_chain(exc):
+        status = cast("object", getattr(candidate, "failure_origin", None))
+        if isinstance(status, str) and status:
+            return status
+    return None
+
+
+def termination_issuer_for_exception(exc: BaseException) -> TerminationIssuer:
+    label = _exception_issuer_label(exc)
+    if label is not None:
+        return termination_issuer_for_teardown_issuer(label)
+    reason = _exception_fire_reason(exc)
+    if reason is not None:
+        return termination_issuer_for_fire_reason(reason)
+    if _exception_returncode(exc) in _SIGNAL_RETURN_CODES:
+        return TerminationIssuer.UNKNOWN
+    return TerminationIssuer.AGENT_EXIT
+
+
+def observed_returncode(handle: object) -> int | None:
+    poll = cast("Callable[[], int | None] | None", getattr(handle, "poll", None))
+    if poll is None:
+        return None
+    try:
+        returncode = poll()
+    except Exception:
+        return None
+    if isinstance(returncode, bool) or not isinstance(returncode, int):
+        return None
+    return returncode
+
+
+@dataclass
+class _TerminationRecorder:
+    _values: list[object] = field(default_factory=lambda: [None] * 7)
+
+    def record_issuer(self, issuer: TerminationIssuer) -> None:
+        if self._values[0] is None:
+            self._values[0] = issuer
+
+    def record_observed_returncode(self, returncode: int | None) -> None:
+        if returncode is not None:
+            self._values[1] = returncode
+
+    def record_reported_returncode(self, returncode: int | None) -> None:
+        if returncode is not None:
+            self._values[2] = returncode
+
+    def record_liveness(self, observed: bool | None) -> None:
+        if observed is not None and self._values[3] is None:
+            self._values[3] = observed
+
+    def record_subagent_activity(self, observed: bool | None) -> None:
+        if observed is not None and self._values[4] is None:
+            self._values[4] = observed
+
+    def record_elapsed_to_terminal(self, milliseconds: int | None) -> None:
+        if milliseconds is not None:
+            self._values[5] = milliseconds
+
+    def record_exit_status(self, status: str | None) -> None:
+        if status is not None:
+            self._values[6] = status
+
+    def termination(self) -> TerminationRecord:
+        return TerminationRecord.create(
+            cast("TerminationIssuer | None", self._values[0]) or TerminationIssuer.UNKNOWN,
+            observed_returncode=cast("int | None", self._values[1]),
+            reported_returncode=cast("int | None", self._values[2]),
+            liveness_observed=cast("bool | None", self._values[3]),
+        )
+
+    def facts(self) -> AttemptFacts:
+        return AttemptFacts(
+            liveness_observed=cast("bool | None", self._values[3]),
+            subagent_activity_observed=cast("bool | None", self._values[4]),
+            elapsed_to_terminal_ms=cast("int | None", self._values[5]),
+            exit_status=cast("str | None", self._values[6]),
+            termination=self.termination(),
+        )
+
+
+@runtime_checkable
+class _AttemptFactsCarrier(Protocol):
+    attempt_facts: AttemptFacts
+
+
+def attach_attempt_facts(exc: BaseException, recorder: _TerminationRecorder) -> None:
+    recorder.record_reported_returncode(_exception_returncode(exc))
+    carrier = cast("_AttemptFactsCarrier", exc)
+    carrier.attempt_facts = recorder.facts()
+
+
+def attempt_facts_from_exception(exc: BaseException) -> AttemptFacts | None:
+    facts = cast("AttemptFacts | None", getattr(exc, "attempt_facts", None))
+    return facts if isinstance(facts, AttemptFacts) else None
+
+
+def attempt_facts_for_failure(exc: BaseException) -> AttemptFacts:
+    attached = attempt_facts_from_exception(exc)
+    if attached is not None:
+        return attached
+    return AttemptFacts(
+        exit_status=_exception_exit_status(exc),
+        termination=TerminationRecord.create(
+            termination_issuer_for_exception(exc),
+            reported_returncode=_exception_returncode(exc),
+        ),
+    )
+
+
+TerminationRecorder = _TerminationRecorder
 
 
 def _completion_run_id(opts: CompletionCheckOptions) -> str | None:
@@ -474,12 +716,22 @@ def _handle_non_zero_returncode(
     stderr_text: str,
     stderr_available: bool,
     process_teardown: ProcessTeardown | None,
+    *,
+    termination_recorder: _TerminationRecorder | None = None,
 ) -> None:
     issuer_method = cast(
         "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
     )
     issuer = issuer_method() if issuer_method is not None else None
     intentional = returncode in {-15, 143} and isinstance(issuer, str)
+    if termination_recorder is not None:
+        termination_recorder.record_observed_returncode(observed_returncode(handle))
+        termination_recorder.record_reported_returncode(returncode)
+        termination_recorder.record_issuer(
+            termination_issuer_for_teardown_issuer(issuer)
+            if returncode in _SIGNAL_RETURN_CODES
+            else TerminationIssuer.AGENT_EXIT
+        )
     bounded_output = _bounded_output_lines(
         parsed_output or [],
         explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
@@ -553,8 +805,49 @@ def check_process_result(
     *,
     _clock: Clock | None = None,
     process_teardown: ProcessTeardown | None = None,
+    termination_recorder: _TerminationRecorder | None = None,
+) -> None:
+    try:
+        _check_process_result(
+            handle,
+            agent_name,
+            parsed_output,
+            check_options,
+            _clock=_clock,
+            process_teardown=process_teardown,
+            termination_recorder=termination_recorder,
+        )
+    except BaseException as exc:
+        if termination_recorder is not None:
+            attach_attempt_facts(exc, termination_recorder)
+        raise
+
+
+def _record_exit_termination(
+    recorder: _TerminationRecorder | None,
+    handle: object,
+    returncode: int | None,
+) -> None:
+    if recorder is None:
+        return
+    recorder.record_observed_returncode(observed_returncode(handle))
+    recorder.record_reported_returncode(returncode)
+    recorder.record_issuer(TerminationIssuer.AGENT_EXIT)
+    recorder.record_liveness(False)
+
+
+def _check_process_result(
+    handle: ManagedProcess | ManagedPtyProcess,
+    agent_name: str,
+    parsed_output: list[str] | None = None,
+    check_options: CompletionCheckOptions | None = None,
+    *,
+    _clock: Clock | None = None,
+    process_teardown: ProcessTeardown | None = None,
+    termination_recorder: _TerminationRecorder | None = None,
 ) -> None:
     if _has_interactive_completion_bypass(handle, parsed_output, check_options):
+        _record_exit_termination(termination_recorder, handle, None)
         return
 
     returncode = terminal_returncode(handle, agent_name=agent_name)
@@ -571,8 +864,11 @@ def check_process_result(
             stderr_text,
             stderr_available,
             process_teardown,
+            termination_recorder=termination_recorder,
         )
         return
+
+    _record_exit_termination(termination_recorder, handle, returncode)
 
     _raise_quota_unless_agy_completed(
         agent_name,

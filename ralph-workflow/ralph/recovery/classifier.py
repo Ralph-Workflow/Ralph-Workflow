@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.failure_category import FailureCategory
@@ -9,6 +10,9 @@ from ralph.recovery.failure_classifier import (
     FailureClassifier,
     is_missing_artifact_message,
 )
+
+if TYPE_CHECKING:
+    from ralph.recovery.attempt_facts import AttemptFacts
 
 __all__ = [
     "SESSION_NOT_FOUND_SUBSTRINGS",
@@ -27,6 +31,7 @@ class FailureContext:
     agent: str | None = None
     retry_in_session: bool = False
     classified_failure: ClassifiedFailure | None = None
+    facts: AttemptFacts | None = None
 
 
 def is_retryable_without_budget(failure: ClassifiedFailure) -> bool:

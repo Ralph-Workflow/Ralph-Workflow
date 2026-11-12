@@ -1,0 +1,33 @@
+{
+  "id": "codex_quote_kill",
+  "label": "negative",
+  "agent": "codex",
+  "transport": "codex",
+  "incident": 2,
+  "expected_attribution": "runtime",
+  "expected_bench": false,
+  "expected_verdict": "healthy",
+  "captured_lines": [
+    "{\"type\":\"item.started\",\"item\":{\"id\":\"mcp-1\",\"type\":\"mcp_tool_call\",\"tool\":\"read_multiple_files\",\"arguments\":{\"paths\":[\"README.md\"]},\"status\":\"in_progress\"}}",
+    "{\"type\":\"item.completed\",\"item\":{\"id\":\"mcp-1\",\"type\":\"mcp_tool_call\",\"tool\":\"read_multiple_files\",\"arguments\":{\"paths\":[\"README.md\"]},\"status\":\"completed\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Your account has credits exhausted for this period.\"}]}}}",
+    "{\"error\":null,\"content\":\"Your account has credits exhausted for this period.\"}",
+    "failed with code 0: {\"type\":\"item.completed\",\"item\":{\"type\":\"file_read\",\"path\":\"README.md\"}}"
+  ],
+  "tool_calls": [
+    "read_multiple_files"
+  ],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 15000,
+  "exit_status": "killed_sigterm",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "quota_detector",
+    "observed_returncode": -15,
+    "reported_returncode": 143,
+    "liveness_observed": true
+  },
+  "notes": "Incidents 2 and 3. codex made one read-only MCP call and was killed about fifteen seconds later. The quota detector read the tool output, whose own error field is null, and called _terminate_for_quota. The quoted wording is audit material only; the agent was healthy."
+}

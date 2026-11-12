@@ -1,0 +1,36 @@
+{
+  "id": "opencode_subagent_kill",
+  "label": "negative",
+  "agent": "opencode",
+  "transport": "opencode",
+  "incident": 4,
+  "expected_attribution": "unknown",
+  "expected_bench": false,
+  "expected_verdict": "unknown",
+  "captured_lines": [
+    "{\"type\":\"tool_use\",\"sessionID\":\"s_0001\",\"part\":{\"type\":\"tool\",\"tool\":\"task\",\"callID\":\"c_0001\",\"state\":{\"status\":\"running\",\"input\":{\"description\":\"map the repository layout\",\"prompt\":\"map the repository layout\",\"subagent_type\":\"explorer\"}}}}",
+    "{\"type\":\"tool_use\",\"sessionID\":\"s_0001\",\"part\":{\"type\":\"tool\",\"tool\":\"task\",\"callID\":\"c_0002\",\"state\":{\"status\":\"running\",\"input\":{\"description\":\"map the test tree\",\"prompt\":\"map the test tree\",\"subagent_type\":\"explorer\"}}}}",
+    "{\"type\":\"tool_use\",\"sessionID\":\"s_0001\",\"part\":{\"type\":\"tool\",\"tool\":\"task\",\"callID\":\"c_0003\",\"state\":{\"status\":\"running\",\"input\":{\"description\":\"map the recovery package\",\"prompt\":\"map the recovery package\",\"subagent_type\":\"explorer\"}}}}",
+    "origin=agent issuer=None runtime error failed with code 0: {\"type\":\"tool_use\",\"part\":{\"type\":\"tool\",\"tool\":\"task\"}}"
+  ],
+  "tool_calls": [
+    "task",
+    "task",
+    "task"
+  ],
+  "workspace_changed": "unknown",
+  "workspace_changed_by_tool": "unknown",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 18000,
+  "exit_status": "killed_sigterm",
+  "liveness_observed": true,
+  "subagent_activity_observed": true,
+  "runtime_probe_log": "33 store update(s) across 3 child session(s)",
+  "termination": {
+    "issuer": "unknown",
+    "observed_returncode": -15,
+    "reported_returncode": 143,
+    "liveness_observed": true
+  },
+  "notes": "Incident 4. The opencode parent delegated to three explorer subagents through task and the runtime probe logged 33 store updates across 3 child sessions. The parent was killed eighteen seconds later with an unattributed issuer. No workspace change verdict was recorded for the parent, so the workspace change stays unknown."
+}

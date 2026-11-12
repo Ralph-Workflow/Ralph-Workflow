@@ -1,0 +1,32 @@
+{
+  "id": "outcome_already_exists",
+  "label": "negative",
+  "agent": "codex",
+  "transport": "codex",
+  "incident": null,
+  "expected_attribution": "task_or_environment",
+  "expected_bench": false,
+  "expected_verdict": "not_agent_fault",
+  "captured_lines": [
+    "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"ls .ralph/outcomes\",\"status\":\"in_progress\"}}",
+    "{\"type\":\"text\",\"text\":\"the outcome for this phase already exists at .ralph/outcomes/development.json\"}"
+  ],
+  "tool_calls": [
+    "bash"
+  ],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "outcome_exists": true,
+  "elapsed_to_terminal_ms": 7000,
+  "exit_status": "exit_0",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "agent_exit",
+    "observed_returncode": 0,
+    "reported_returncode": 0,
+    "liveness_observed": true
+  },
+  "notes": "No artifact because the outcome already exists. A satisfied outcome is not a failure and must not bench the agent."
+}

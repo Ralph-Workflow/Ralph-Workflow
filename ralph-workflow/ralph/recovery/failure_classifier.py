@@ -3,7 +3,7 @@ from __future__ import annotations
 import errno
 import socket
 import urllib.error
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -13,6 +13,26 @@ from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
 from .failure_details import contains_casefolded_marker, failure_detail_parts
 from .unavailability_reason import UnavailabilityReason
+
+if TYPE_CHECKING:
+    from .attempt_facts import AttemptFacts
+
+TYPED_SIGNAL_NAMES: frozenset[str] = frozenset(
+    {
+        "QuotaExhaustedError",
+        "MissingCredentialsError",
+        "BrokenAgentExitError",
+    }
+)
+
+_PROVIDER_ORIGINATED_TYPED_SIGNALS: frozenset[str] = frozenset(
+    {
+        "QuotaExhaustedError",
+        "MissingCredentialsError",
+    }
+)
+
+_PROMPT_ECHO_BROKEN_AGENT_REASON = "prompt_echo"
 
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
     {
@@ -300,6 +320,54 @@ def is_missing_artifact_message(raw_message: str) -> bool:
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
 
 
+def typed_signal_name(exc: BaseException | None) -> str | None:
+    if exc is None:
+        return None
+    name = type(exc).__name__
+    if name in TYPED_SIGNAL_NAMES:
+        return name
+    return None
+
+
+def typed_signal_provider_originated_for_reason(
+    signal_name: str | None,
+    reason: str | None,
+) -> bool:
+    if signal_name is None:
+        return False
+    if signal_name in _PROVIDER_ORIGINATED_TYPED_SIGNALS:
+        return True
+    if signal_name == "BrokenAgentExitError":
+        return reason == _PROMPT_ECHO_BROKEN_AGENT_REASON
+    return False
+
+
+def typed_signal_provider_originated(exc: BaseException | None) -> bool:
+    if exc is None:
+        return False
+    name = type(exc).__name__
+    if name not in TYPED_SIGNAL_NAMES:
+        return False
+    reason = cast("object", getattr(exc, "reason", None))
+    return typed_signal_provider_originated_for_reason(
+        name,
+        reason if isinstance(reason, str) else None,
+    )
+
+
+def _typed_signal_unavailability_reason(
+    signal_name: str | None,
+    signal_provider_originated: bool,
+) -> UnavailabilityReason | None:
+    if signal_name is None or not signal_provider_originated:
+        return None
+    if signal_name == "QuotaExhaustedError":
+        return UnavailabilityReason.OUT_OF_CREDITS
+    if signal_name == "MissingCredentialsError":
+        return UnavailabilityReason.AUTH_CONFIG
+    return None
+
+
 def is_unsubmitted_artifact_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
     return contains_casefolded_marker(
         detail_parts, tuple(_MISSING_ARTIFACT_SUBSTRINGS)
@@ -516,6 +584,38 @@ def _classify_unavailability_reason(
     return reason
 
 
+def _select_unavailability_reason(
+    *,
+    auth_config_failure: bool,
+    provider_unavailability: UnavailabilityReason | None,
+    typed_unavailability: UnavailabilityReason | None,
+    broken_agent: bool,
+    is_unavailable: bool,
+    watchdog_reason: str | None,
+    detail_parts: list[str],
+    raw_message: str,
+    connectivity_state: str | None,
+    child_alive: bool | None,
+) -> UnavailabilityReason | None:
+    if auth_config_failure:
+        return UnavailabilityReason.AUTH_CONFIG
+    if provider_unavailability is not None:
+        return provider_unavailability
+    if typed_unavailability is not None:
+        return typed_unavailability
+    if broken_agent:
+        return UnavailabilityReason.BROKEN_AGENT
+    if is_unavailable:
+        return _classify_unavailability_reason(
+            watchdog_reason,
+            detail_parts,
+            raw_message,
+            connectivity_state,
+            child_alive=child_alive,
+        )
+    return None
+
+
 def _connectivity_unavailability_reason(
     detail_parts: tuple[str, ...] | list[str],
     connectivity_state: str | None,
@@ -535,6 +635,7 @@ class FailureClassifier:
         phase: str,
         agent: str | None,
         connectivity_state: str | None = None,
+        facts: AttemptFacts | None = None,
     ) -> ClassifiedFailure:
         if isinstance(exc, str):
             raw_message = exc
@@ -548,6 +649,12 @@ class FailureClassifier:
             detail_parts = failure_detail_parts(exc)
 
         exc_obj = exc if isinstance(exc, BaseException) else None
+        signal_name = typed_signal_name(exc_obj)
+        signal_provider_originated = typed_signal_provider_originated(exc_obj)
+        typed_unavailability = _typed_signal_unavailability_reason(
+            signal_name,
+            signal_provider_originated,
+        )
         category, counts, reset_session = self._categorize(
             exc_obj,
             raw_message,
@@ -592,6 +699,7 @@ class FailureClassifier:
         base_unavailable = (
             provider_unavailability is not None
             or broken_agent
+            or typed_unavailability is not None
             or (
                 category == FailureCategory.AGENT
                 and (connectivity_state or "").casefold() == "online"
@@ -629,21 +737,18 @@ class FailureClassifier:
         auth_config_failure = _is_auth_config_failure(detail_parts)
         is_unavailable = (base_unavailable and not resumable_kill) or auth_config_failure
 
-        unavailability_reason: UnavailabilityReason | None = None
-        if auth_config_failure:
-            unavailability_reason = UnavailabilityReason.AUTH_CONFIG
-        elif provider_unavailability is not None:
-            unavailability_reason = provider_unavailability
-        elif broken_agent:
-            unavailability_reason = UnavailabilityReason.BROKEN_AGENT
-        elif is_unavailable:
-            unavailability_reason = _classify_unavailability_reason(
-                watchdog_reason,
-                detail_parts,
-                raw_message,
-                connectivity_state,
-                child_alive=child_alive,
-            )
+        unavailability_reason: UnavailabilityReason | None = _select_unavailability_reason(
+            auth_config_failure=auth_config_failure,
+            provider_unavailability=provider_unavailability,
+            typed_unavailability=typed_unavailability,
+            broken_agent=broken_agent,
+            is_unavailable=is_unavailable,
+            watchdog_reason=watchdog_reason,
+            detail_parts=detail_parts,
+            raw_message=raw_message,
+            connectivity_state=connectivity_state,
+            child_alive=child_alive,
+        )
 
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
@@ -668,6 +773,9 @@ class FailureClassifier:
             watchdog_reason=watchdog_reason,
             unavailability_reason=unavailability_reason,
             resumable_session_id=resumable_session_id,
+            typed_signal=signal_name,
+            typed_signal_provider_originated=signal_provider_originated,
+            facts=facts,
         )
 
     def _is_tool_availability_failure(

@@ -30,6 +30,7 @@ from ralph.agents.execution_state import (
     with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
+    ChannelName,
     CorroborationSnapshot,
     IdleWatchdog,
     PostExitVerdict,
@@ -44,10 +45,13 @@ from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import (
     _MAX_STDERR_CAPTURE_BYTES,
     CompletionCheckOptions,
+    _TerminationRecorder,
     _truncation_marker,
+    attach_attempt_facts,
     check_process_result,
     completion_run_id_from_extra_env,
     read_bounded_stderr,
+    termination_issuer_for_fire_reason,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -104,6 +108,7 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.teardown import teardown_subtree
+from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.failure_classifier import _is_subscription_limit_message
 from ralph.runtime_events import current_runtime_event
 from ralph.timeout_defaults import (
@@ -137,6 +142,39 @@ _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
 _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
     {ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED}
 )
+
+
+def _subagent_activity_observed(watchdog: IdleWatchdog) -> bool | None:
+    try:
+        channel = watchdog.last_evidence_summary(watchdog.clock.monotonic()).by_name(
+            ChannelName.SUBAGENT_LIVENESS
+        )
+    except Exception:
+        return None
+    if channel is None:
+        return None
+    counter = cast("int | None", getattr(channel, "counter", None))
+    if counter is None:
+        return False
+    return counter > 0
+
+
+def _record_watchdog_evidence(recorder: _TerminationRecorder, watchdog: object) -> None:
+    elapsed = cast("float | None", getattr(watchdog, "invocation_elapsed_seconds", None))
+    recorder.record_elapsed_to_terminal(int(elapsed * 1000) if elapsed is not None else None)
+    if isinstance(watchdog, IdleWatchdog):
+        recorder.record_subagent_activity(_subagent_activity_observed(watchdog))
+
+
+def _record_fire_termination(
+    reader: object, watchdog: object, fire_reason: WatchdogFireReason
+) -> None:
+    recorder = cast("_TerminationRecorder | None", getattr(reader, "_termination", None))
+    if recorder is None:
+        return
+    recorder.record_issuer(termination_issuer_for_fire_reason(fire_reason))
+    recorder.record_liveness(True)
+    _record_watchdog_evidence(recorder, watchdog)
 
 
 def _agent_command_name(config: AgentConfig) -> str:
@@ -220,11 +258,26 @@ def _exit_evidence_has_settled(watchdog: IdleWatchdog) -> bool:
     return settled_for is not None and settled_for >= _effective_exit_settle_seconds(watchdog)
 
 
+def _record_broken_agent_termination(
+    recorder: _TerminationRecorder | None,
+    watchdog: IdleWatchdog,
+    returncode: int | None,
+) -> None:
+    if recorder is None:
+        return
+    recorder.record_issuer(TerminationIssuer.SUPERVISOR_IDLE)
+    recorder.record_liveness(True)
+    recorder.record_observed_returncode(returncode)
+    _record_watchdog_evidence(recorder, watchdog)
+
+
 def check_broken_agent_timer(
     handle: ManagedProcess | ManagedPtyProcess,
     watchdog: IdleWatchdog,
     agent_name: str,
     process_teardown: ProcessTeardown | None = None,
+    *,
+    termination_recorder: _TerminationRecorder | None = None,
 ) -> None:
     if watchdog._config.profile.value == "activity_only":
         return
@@ -247,7 +300,8 @@ def check_broken_agent_timer(
         and watchdog.observed_output_is_structurally_small()
     ):
         returncode = handle.poll()
-        raise BrokenAgentExitError(
+        _record_broken_agent_termination(termination_recorder, watchdog, returncode)
+        error = BrokenAgentExitError(
             agent_name,
             reason="no_output",
             elapsed_seconds=elapsed_seconds,
@@ -255,6 +309,9 @@ def check_broken_agent_timer(
             returncode=0 if returncode is None else int(returncode),
             stderr=read_bounded_stderr(handle),
         )
+        if termination_recorder is not None:
+            attach_attempt_facts(error, termination_recorder)
+        raise error
     if (
         elapsed_seconds < max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, grace_seconds)
         or evidence.has_meaningful_output
@@ -262,6 +319,7 @@ def check_broken_agent_timer(
         return
     if not watchdog.observed_output_is_structurally_small():
         return
+    _record_broken_agent_termination(termination_recorder, watchdog, None)
     handle.terminate(grace_period_s=0.5)
     pid = cast("int | None", getattr(handle, "pid", None))
     if pid is not None:
@@ -269,12 +327,15 @@ def check_broken_agent_timer(
             teardown_subtree(pid, issuer="invoke:process")
         else:
             process_teardown.teardown_subtree(pid, issuer="invoke:process")
-    raise BrokenAgentExitError(
+    error = BrokenAgentExitError(
         agent_name,
         reason="no_llm_activity" if watchdog.has_any_output() else "no_output",
         elapsed_seconds=elapsed_seconds,
         grace_seconds=grace_seconds,
     )
+    if termination_recorder is not None:
+        attach_attempt_facts(error, termination_recorder)
+    raise error
 
 
 def make_line_reader(
@@ -398,6 +459,7 @@ class ProcessLineReader:
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._quota_error: QuotaExhaustedError | None = None
+        self._termination = _TerminationRecorder()
         self._stderr_lock = threading.Lock()
         self._stderr_capture = ""
         self._stderr_capture_truncated = False
@@ -439,6 +501,10 @@ class ProcessLineReader:
             and event.new_status in _TERMINAL_PROCESS_STATUSES
         ):
             self._terminal_counter[0] += 1
+
+    @property
+    def termination_recorder(self) -> _TerminationRecorder:
+        return self._termination
 
     def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
         registry, prefix = self._strategy_registry_and_prefix()
@@ -755,6 +821,8 @@ class ProcessLineReader:
             return
         self._quota_error = QuotaExhaustedError(_agent_command_name(self._config), detail)
         self._lines_event.set()
+        self._termination.record_issuer(TerminationIssuer.QUOTA_DETECTOR)
+        self._termination.record_liveness(True)
         self._handle.terminate(grace_period_s=0.5)
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
@@ -771,14 +839,19 @@ class ProcessLineReader:
         if _is_subscription_limit_message([tail]):
             self._terminate_for_quota(tail)
 
-    def _raise_if_quota_exhausted(self) -> None:
+    def _raise_if_quota_exhausted(self, watchdog: IdleWatchdog | None = None) -> None:
         self._raise_if_fresh_agy_log_has_quota()
         if self._quota_error is not None:
+            if watchdog is not None:
+                _record_watchdog_evidence(self._termination, watchdog)
+            attach_attempt_facts(self._quota_error, self._termination)
             raise self._quota_error
 
     def _terminate_completed_process(self) -> None:
         if self._completion_is_terminal is None:
             return
+        self._termination.record_issuer(TerminationIssuer.AGENT_EXIT)
+        self._termination.record_liveness(True)
         self._handle.terminate(grace_period_s=0.5)
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
@@ -838,6 +911,7 @@ class ProcessLineReader:
         with self._lines_lock:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
+        _record_fire_termination(self, watchdog, fire_reason)
         self._handle.terminate(grace_period_s=0.5)
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
@@ -902,6 +976,14 @@ class ProcessLineReader:
             with contextlib.suppress(Exception):
                 self._raw_overflow.append(line)
         return pending_lines
+
+    def _raise_timeout_result(
+        self, result: tuple[list[str], _IdleStreamTimeoutError]
+    ) -> Iterator[str]:
+        pending_lines, exc = result
+        yield from self._capture_pending(pending_lines)
+        attach_attempt_facts(exc, self._termination)
+        raise exc
 
     def _teardown_read_lines(
         self,
@@ -1097,7 +1179,7 @@ class ProcessLineReader:
             while True:
                 _raise_on_relay_health_error(self, _agent_command_name(self._config))
                 self._lines_event.clear()
-                self._raise_if_quota_exhausted()
+                self._raise_if_quota_exhausted(watchdog)
                 self._poll_opencode_subagent_probe()
                 queued_line: str | None = None
                 is_done = False
@@ -1118,17 +1200,13 @@ class ProcessLineReader:
                         watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
                     )
                     if result is not None:
-                        pending_lines, exc = result
-                        yield from self._capture_pending(pending_lines)
-                        raise exc
+                        yield from self._raise_timeout_result(result)
                     continue
 
                 if is_done:
                     result = self._finish_reader_done(watchdog)
                     if result is not None:
-                        pending_lines, exc = result
-                        yield from self._capture_pending(pending_lines)
-                        raise exc
+                        yield from self._raise_timeout_result(result)
                     break
 
                 if self._finish_terminal_completion():
@@ -1138,15 +1216,14 @@ class ProcessLineReader:
                     watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
                 )
                 if result is not None:
-                    pending_lines, exc = result
-                    yield from self._capture_pending(pending_lines)
-                    raise exc
+                    yield from self._raise_timeout_result(result)
 
                 check_broken_agent_timer(
                     self._handle,
                     watchdog,
                     _agent_command_name(self._config),
                     self._process_teardown,
+                    termination_recorder=self._termination,
                 )
                 self._clock.wait_for_event(
                     self._lines_event, self._policy.idle_poll_interval_seconds
@@ -1197,6 +1274,29 @@ def _agent_process_label(ctx: AgentRunCtx) -> str:
     if scope:
         return f"invoke:{scope}:{_agent_command_name(ctx.config)}"
     return f"invoke:{_agent_command_name(ctx.config)}"
+
+
+def _terminate_hung_process_exit(
+    handle: ManagedProcess,
+    ctx: AgentRunCtx,
+    recorder: _TerminationRecorder,
+    verdict: PostExitVerdict,
+) -> None:
+    if verdict != PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
+        return
+    recorder.record_issuer(termination_issuer_for_fire_reason(WatchdogFireReason.PROCESS_EXIT_HANG))
+    recorder.record_liveness(True)
+    handle.terminate(grace_period_s=0.5)
+    exit_pid = cast("int | None", getattr(handle, "pid", None))
+    if exit_pid is not None:
+        if ctx.process_teardown is None:
+            teardown_subtree(exit_pid, issuer="invoke:process")
+        else:
+            ctx.process_teardown.teardown_subtree(exit_pid, issuer="invoke:process")
+    raise _IdleStreamTimeoutError(
+        ctx.policy.process_exit_wait_seconds,
+        WatchdogFireReason.PROCESS_EXIT_HANG,
+    )
 
 
 def _run_subprocess_and_read_lines(
@@ -1319,27 +1419,18 @@ def _run_subprocess_and_read_lines(
             if ctx.policy.profile.value != "activity_only":
                 post_exit = PostExitWatchdog(ctx.policy, clock)
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
-                if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
-                    handle.terminate(grace_period_s=0.5)
-                    exit_pid = cast("int | None", getattr(handle, "pid", None))
-                    if exit_pid is not None:
-                        if ctx.process_teardown is None:
-                            teardown_subtree(exit_pid, issuer="invoke:process")
-                        else:
-                            ctx.process_teardown.teardown_subtree(exit_pid, issuer="invoke:process")
-                    raise _IdleStreamTimeoutError(
-                        ctx.policy.process_exit_wait_seconds,
-                        WatchdogFireReason.PROCESS_EXIT_HANG,
-                    )
+                _terminate_hung_process_exit(handle, ctx, reader.termination_recorder, verdict)
         except _IdleStreamTimeoutError as exc:
-            raise _convert_idle_stream_timeout_to_agent_error(
+            converted = _convert_idle_stream_timeout_to_agent_error(
                 _agent_command_name(ctx.config),
                 exc,
                 tuple(parsed_output),
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
                 expected_session_id=reader_ctx.expected_session_id,
-            ) from exc
+            )
+            attach_attempt_facts(converted, reader.termination_recorder)
+            raise converted from exc
 
         (
             evidence_summary_str,
@@ -1378,6 +1469,7 @@ def _run_subprocess_and_read_lines(
                 activity_only_supervision=ctx.policy.profile.value == "activity_only",
             ),
             _clock=clock,
+            termination_recorder=reader.termination_recorder,
         )
 
 

@@ -1,0 +1,31 @@
+{
+  "id": "wrote_then_failed",
+  "label": "negative",
+  "agent": "opencode",
+  "transport": "opencode",
+  "incident": null,
+  "expected_attribution": "agent",
+  "expected_bench": false,
+  "expected_verdict": "not_agent_fault",
+  "captured_lines": [
+    "{\"type\":\"tool_use\",\"sessionID\":\"s_0002\",\"part\":{\"type\":\"tool\",\"tool\":\"write\",\"callID\":\"c_0101\",\"state\":{\"status\":\"completed\",\"input\":{\"filePath\":\"/workspace/src/module.py\",\"content\":\"VALUE = 1\\n\"},\"output\":\"Wrote file successfully.\"}}}",
+    "{\"type\":\"error\",\"message\":\"the session ended before the phase artifact was submitted\"}"
+  ],
+  "tool_calls": [
+    "write"
+  ],
+  "workspace_changed": "true",
+  "workspace_changed_by_tool": "true",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 12000,
+  "exit_status": "exit_1",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "agent_exit",
+    "observed_returncode": 1,
+    "reported_returncode": 1,
+    "liveness_observed": true
+  },
+  "notes": "The session wrote files and then failed. Real progress means the attempt is ordinary and the agent is not dead."
+}

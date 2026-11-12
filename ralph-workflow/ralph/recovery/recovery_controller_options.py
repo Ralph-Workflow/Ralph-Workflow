@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ralph.agents.timeout_clock import SystemClock
 from ralph.checked_accessors import as_int, as_mapping, as_str_list
@@ -13,16 +13,33 @@ from ralph.timeout_defaults import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_unavailability_tracker import (
         UnavailabilityEntry,
         UnavailabilityStore,
     )
+    from ralph.recovery.attempt_facts import AttemptFacts
+    from ralph.recovery.attribution import AttributionVerdict
+    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.dead_agent_verdict import PersistedVerdict, TypedSignal
     from ralph.recovery.events import FailureEventBus
     from ralph.recovery.failure_classifier import FailureClassifier
     from ralph.recovery.unavailability_reason import ReasonBackoffPolicy, UnavailabilityReason
     from ralph.workspace.probe import WorkspaceChangeProbe
+
+
+class _DeadAgentVerdictRunner(Protocol):
+    def __call__(
+        self,
+        *,
+        facts: AttemptFacts | None,
+        attribution: AttributionVerdict | None,
+        probe_outcome: ProbeOutcome | None,
+        typed_signal: TypedSignal | None,
+    ) -> PersistedVerdict | None: ...
 
 
 @dataclass(frozen=True)
@@ -42,6 +59,8 @@ class RecoveryControllerOptions:
     clock: Clock | None = None
     unavailability_store: UnavailabilityStore | None = None
     spent_agents: dict[str, set[str]] | None = None
+    dead_agent_probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
+    dead_agent_verdict_runner: _DeadAgentVerdictRunner | None = None
 
     @classmethod
     def from_snapshot(

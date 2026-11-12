@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ralph.pipeline.events.pipeline_event import PipelineEvent
+from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
 
 
 @dataclass(frozen=True, eq=False)
@@ -13,6 +14,7 @@ class AgentFailureEvent:
     workspace_changed: bool | None = None
     reason: str = ""
     already_charged: bool = False
+    facts: AttemptFacts | None = None
 
     @property
     def value(self) -> str:
@@ -21,6 +23,13 @@ class AgentFailureEvent:
     @property
     def has_identity(self) -> bool:
         return bool(self.phase.strip()) and bool(self.agent.strip())
+
+    @property
+    def termination_issuer(self) -> str:
+        termination = self.facts.termination if self.facts is not None else None
+        if termination is None:
+            return TerminationIssuer.UNKNOWN.value
+        return termination.issuer.value
 
     def resolved_workspace_changed(self) -> bool:
         if not self.has_identity:

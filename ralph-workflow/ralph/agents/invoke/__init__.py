@@ -29,8 +29,14 @@ from ralph.agents.invoke._commands import (
 )
 from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
+    TerminationRecorder,
     _wait_for_descendants_then_recheck,
+    attempt_facts_for_failure,
+    attempt_facts_from_exception,
     check_process_result,
+    termination_issuer_for_exception,
+    termination_issuer_for_fire_reason,
+    termination_issuer_for_teardown_issuer,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -358,6 +364,7 @@ def _capture_failure_observation(
         artifact_valid=False,
         workspace_changed=workspace_changed,
         reason=type(exc).__name__,
+        facts=attempt_facts_for_failure(exc),
     )
     sink = opts.failure_observation_sink
     if sink is not None:
@@ -707,10 +714,13 @@ __all__ = [
     "PtyLineReader",
     "ResolvedInvocationRuntime",
     "SupervisionInfrastructureError",
+    "TerminationRecorder",
     "UnsupportedMcpTransportError",
     "WatchdogFireReason",
     "WorkspaceMonitor",
     "_parent_broker_secret",
+    "attempt_facts_for_failure",
+    "attempt_facts_from_exception",
     "bounded_output_lines",
     "build_command",
     "build_invoke_options_from_config",
@@ -756,5 +766,8 @@ __all__ = [
     "shutil",
     "starts_with_canonical_session_marker",
     "subprocess",
+    "termination_issuer_for_exception",
+    "termination_issuer_for_fire_reason",
+    "termination_issuer_for_teardown_issuer",
     "wait_for_descendants_then_recheck",
 ]

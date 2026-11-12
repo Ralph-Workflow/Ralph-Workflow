@@ -1,0 +1,34 @@
+{
+  "id": "slow_productive_midrun_error",
+  "label": "negative",
+  "agent": "codex",
+  "transport": "codex",
+  "incident": null,
+  "expected_attribution": "agent",
+  "expected_bench": false,
+  "expected_verdict": "healthy",
+  "captured_lines": [
+    "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"uv run pytest -q\",\"status\":\"in_progress\"}}",
+    "{\"type\":\"error\",\"message\":\"the upstream stream was reset and the turn was resumed\"}",
+    "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd-2\",\"type\":\"command_execution\",\"command\":\"git status --short\",\"status\":\"in_progress\"}}",
+    "{\"type\":\"item.completed\",\"item\":{\"id\":\"cmd-2\",\"type\":\"command_execution\",\"command\":\"git status --short\",\"status\":\"completed\",\"exit_code\":0}}"
+  ],
+  "tool_calls": [
+    "bash",
+    "bash"
+  ],
+  "workspace_changed": "true",
+  "workspace_changed_by_tool": "true",
+  "artifact_valid": true,
+  "elapsed_to_terminal_ms": 180000,
+  "exit_status": "exit_0",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "agent_exit",
+    "observed_returncode": 0,
+    "reported_returncode": 0,
+    "liveness_observed": true
+  },
+  "notes": "A slow productive session that hit a mid-run error event and kept working. Slowness plus an error event is not evidence that the agent is dead."
+}

@@ -87,6 +87,10 @@ from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseLoopPolicy
 from ralph.recovery.classifier import ClassifiedFailure, FailureContext
 from ralph.recovery.failure_category import FailureCategory
+from ralph.recovery.failure_classifier import (
+    TYPED_SIGNAL_NAMES,
+    typed_signal_provider_originated_for_reason,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -848,7 +852,7 @@ def _handle_owned_agent_failure(
     event: Event | None,
 ) -> tuple[PipelineState, list[Effect]]:
     if state.agent_retry_intent.skip_same_agent_retries:
-        return _handle_skip_same_agent_retries(state, chain, policy, recovery)
+        return _handle_skip_same_agent_retries(state, chain, policy, recovery, event)
 
     current_agent = (
         chain.agents[chain.current_index]
@@ -858,7 +862,7 @@ def _handle_owned_agent_failure(
     if current_agent is not None:
         observation = observation_from_event(event)
         if observation is None or not observation.already_charged:
-            workspace_changed: bool = (
+            workspace_changed: bool = bool(
                 observation.resolved_workspace_changed() if observation is not None else False
             )
             demoted_reason = recovery.record_attempt_fact(
@@ -963,13 +967,54 @@ def _handle_chain_exhausted(
     return _enter_failed_recovery(state, failure_reason, policy, failure_category=failure_category)
 
 
+def _typed_signal_from_retry_intent(intent: AgentRetryIntent) -> tuple[str | None, bool]:
+    name = intent.failure_reason if intent.failure_reason in TYPED_SIGNAL_NAMES else None
+    provider_originated = typed_signal_provider_originated_for_reason(
+        name,
+        intent.broken_agent_reason,
+    )
+    return name, provider_originated
+
+
 def _handle_skip_same_agent_retries(
     state: PipelineState,
     chain: AgentChainState,
     policy: PipelinePolicy | None,
     recovery: RecoveryController | None,
+    event: Event | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if recovery is not None:
+        current_agent = (
+            chain.agents[chain.current_index]
+            if chain.agents and chain.current_index < len(chain.agents)
+            else None
+        )
+        observation = observation_from_event(event)
+        if current_agent is not None:
+            if observation is None or not observation.already_charged:
+                workspace_changed: bool = bool(
+                    observation.resolved_workspace_changed() if observation is not None else False
+                )
+                demoted_reason = recovery.record_attempt_fact(
+                    state.phase,
+                    current_agent,
+                    artifact_valid=False,
+                    workspace_changed=workspace_changed,
+                    free_retry_category=True,
+                )
+                if demoted_reason is not None and len(chain.agents) == 1:
+                    logger.warning(demoted_reason)
+                    return _enter_failed_recovery(state, demoted_reason, policy)
+            signal_name, provider_originated = _typed_signal_from_retry_intent(
+                state.agent_retry_intent
+            )
+            recovery.record_confirmed_dead_agent(
+                state.phase,
+                current_agent,
+                facts=observation.facts if observation is not None else None,
+                signal_name=signal_name,
+                signal_provider_originated=provider_originated,
+            )
         selection = recovery.preferred_agent_index(
             state.phase,
             chain.agents,

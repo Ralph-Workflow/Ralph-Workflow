@@ -16,6 +16,7 @@ class UnavailabilityReason(StrEnum):
     SUSPICIOUS_TIMEOUT_NO_OUTPUT = "suspicious_timeout_no_output"
     STALE_CHILD_QUIET = "stale_child_quiet"
     STRICTLY_STUCK = "strictly_stuck"
+    DEAD_AGENT_NO_PROGRESS = "dead_agent_no_progress"
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,10 @@ DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {
     ),
     UnavailabilityReason.STRICTLY_STUCK: ReasonBackoffPolicy(
         base_backoff_ms=15_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
+    ),
+    UnavailabilityReason.DEAD_AGENT_NO_PROGRESS: ReasonBackoffPolicy(
+        base_backoff_ms=10_000,
         max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
 }

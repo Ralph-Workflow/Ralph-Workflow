@@ -1,0 +1,28 @@
+{
+  "id": "agy_quota_error_step",
+  "label": "positive",
+  "agent": "agy",
+  "transport": "agy",
+  "incident": 1,
+  "expected_attribution": "agent",
+  "expected_bench": true,
+  "expected_verdict": "agent_dead",
+  "captured_lines": [
+    "{\"event\":\"step_update\",\"step_update\":{\"conversation_id\":\"00000000-0000-0000-0000-0000000000a1\",\"step_index\":0,\"state\":\"DONE\",\"step_type\":\"error_message\",\"message\":\"the upstream admission gate refused this conversation before any step was admitted\"}}"
+  ],
+  "tool_calls": [],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 4000,
+  "exit_status": "exit_0",
+  "liveness_observed": false,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "agent_exit",
+    "observed_returncode": 0,
+    "reported_returncode": 0,
+    "liveness_observed": false
+  },
+  "notes": "Incident 1. agy emits one structured error_message step whose wording is never seen before, the process is gone after about four seconds, the exit status is 0, no work was produced and no artifact exists. The wording is audit material only; the verdict must not be derived from it."
+}

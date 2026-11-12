@@ -1,0 +1,32 @@
+{
+  "id": "transient_reconnecting_events",
+  "label": "negative",
+  "agent": "codex",
+  "transport": "codex",
+  "incident": null,
+  "expected_attribution": "agent",
+  "expected_bench": false,
+  "expected_verdict": "healthy",
+  "captured_lines": [
+    "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"uv run pytest -q\",\"status\":\"in_progress\"}}",
+    "{\"type\":\"error\",\"message\":\"Reconnecting...\"}",
+    "{\"type\":\"item.completed\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"uv run pytest -q\",\"status\":\"completed\",\"exit_code\":0}}"
+  ],
+  "tool_calls": [
+    "bash"
+  ],
+  "workspace_changed": "true",
+  "workspace_changed_by_tool": "true",
+  "artifact_valid": true,
+  "elapsed_to_terminal_ms": 9000,
+  "exit_status": "exit_0",
+  "liveness_observed": true,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "agent_exit",
+    "observed_returncode": 0,
+    "reported_returncode": 0,
+    "liveness_observed": true
+  },
+  "notes": "A healthy session that emitted transient Reconnecting error events and recovered. The error events are audit material only and must never bench a session that showed liveness and produced its artifact."
+}

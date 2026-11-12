@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .attempt_facts import AttemptFacts
     from .failure_category import FailureCategory
     from .unavailability_reason import UnavailabilityReason
 
@@ -23,3 +24,6 @@ class ClassifiedFailure:
     watchdog_reason: str | None = field(default=None)
     unavailability_reason: UnavailabilityReason | None = field(default=None)
     resumable_session_id: str | None = field(default=None)
+    typed_signal: str | None = field(default=None)
+    typed_signal_provider_originated: bool = field(default=False)
+    facts: AttemptFacts | None = field(default=None)
