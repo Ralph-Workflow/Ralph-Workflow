@@ -110,6 +110,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console, RenderableType
 
+    from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display._run_start_orientation import RunStartOrientation
     from ralph.display.completion_summary import CompletionSummaryOptions
@@ -3483,7 +3484,7 @@ class ParallelDisplay:
                 )
                 self._console.print(Group(banner_panel, welcome_text, tagline_text))
 
-    def emit_agents_table(self, agents: Mapping[str, object]) -> None:
+    def emit_agents_table(self, agents: Mapping[str, AgentConfig]) -> None:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
@@ -3498,10 +3499,7 @@ class ParallelDisplay:
                 table.add_row(Text("No agents configured", style="theme.text.muted"), "", "")
             else:
                 for name, agent in agents.items():
-                    cmd = getattr(agent, "cmd", "")
-                    parser = getattr(agent, "json_parser", None)
-                    parser_str = str(parser.value if parser is not None else "")
-                    table.add_row(name, cmd, parser_str)
+                    table.add_row(name, agent.cmd, agent.json_parser.value)
             self._console.print(table)
 
     def emit_providers_table(self, providers: list[str]) -> None:
@@ -3586,7 +3584,7 @@ class ParallelDisplay:
                 ("Web search (DuckDuckGo)", state.web_search),
                 ("Page retrieval (visit_url)", state.visit_url),
                 ("Docs MCP (localhost:6280)", state.docs_mcp),
-                ("Skill bundles", state.skills),
+                ("Skills", state.skills),
             ]
             for label, entry in managed_rows:
                 if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
@@ -4038,7 +4036,7 @@ def subscriber_for_display(
 ) -> PipelineSubscriber | None:
     if display is None:
         return None
-    return cast("PipelineSubscriber | None", getattr(display, "subscriber", None))
+    return display.subscriber
 
 
 __all__ = [

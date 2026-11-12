@@ -80,13 +80,13 @@ class _CountingBackend(FileBackend):
         return self._delegate.glob(path, pattern)
 
 
-def test_shipped_bundle_is_exactly_the_six_retained_artifact_skills() -> None:
+def test_shipped_skill_set_is_exactly_the_artifact_skills() -> None:
     assert BASELINE_SKILL_NAMES == EXPECTED_BUNDLE_SKILLS
     assert list_skill_names() == EXPECTED_BUNDLE_SKILLS
     assert len(BASELINE_SKILL_NAMES) == len(EXPECTED_BUNDLE_SKILLS)
 
 
-def test_shipped_bundle_metadata_lists_exactly_the_six_retained_skills() -> None:
+def test_shipped_skill_metadata_lists_exactly_the_artifact_skills() -> None:
     metadata = get_skill_metadata()
     assert tuple(metadata["skills"]) == EXPECTED_BUNDLE_SKILLS
     assert tuple(metadata["skills"]) == BASELINE_SKILL_NAMES
@@ -99,7 +99,7 @@ def test_shipped_bundle_metadata_carries_no_upstream_provenance() -> None:
     assert set(metadata) == {"skills"}
 
 
-def test_shipped_bundle_directory_holds_only_the_six_skill_files() -> None:
+def test_shipped_skill_directory_holds_only_the_artifact_skill_files() -> None:
     from importlib.resources import files
 
     content_dir = files("ralph.skills") / "content"

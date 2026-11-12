@@ -34,6 +34,7 @@ from ralph.skills._ownership import (
     MANAGED_MARKER_NAME,
     Ownership,
     classify_entry,
+    manifest_digest,
     may_delete,
     may_replace,
 )
@@ -383,3 +384,140 @@ def test_project_install_unlinks_the_sibling_link_to_a_just_pruned_canonical_ent
     assert not sibling_link.is_symlink(), (
         "the stale sibling link of the just-pruned canonical entry must be unlinked"
     )
+
+
+def test_prune_preserves_a_managed_retired_skill_that_carries_a_user_symlink(
+    tmp_path: Path,
+) -> None:
+    user_target = tmp_path / "user-notes.md"
+    user_target.write_text("# my notes\n", encoding="utf-8")
+    root = tmp_path / "skills"
+    root.mkdir()
+    skill_dir = _plant_managed_dir(root, RETIRED_NAME)
+    link = skill_dir / "my-notes.md"
+    link.symlink_to(user_target)
+
+    assert classify_entry(skill_dir) is Ownership.USER_EDITED
+    assert may_delete(skill_dir) is False
+    assert may_replace(skill_dir) is False
+
+    _entry, failures = install_baseline_skills(target_dir=root)
+
+    assert skill_dir.is_dir(), "a managed skill carrying a user symlink must survive"
+    assert link.is_symlink(), "the user symlink must survive the prune"
+    assert user_target.read_text(encoding="utf-8") == "# my notes\n"
+    assert f"skills-prune-preserved-{RETIRED_NAME}" in failures, failures
+
+
+def test_prune_preserves_a_managed_retired_skill_that_carries_a_broken_user_symlink(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "skills"
+    root.mkdir()
+    skill_dir = _plant_managed_dir(root, RETIRED_NAME)
+    link = skill_dir / "dangling.md"
+    link.symlink_to(root / "missing-target.md")
+
+    assert classify_entry(skill_dir) is Ownership.USER_EDITED
+    assert may_delete(skill_dir) is False
+
+    _entry, failures = install_baseline_skills(target_dir=root)
+
+    assert skill_dir.is_dir(), "a managed skill carrying a broken user symlink must survive"
+    assert link.is_symlink(), "the broken user symlink must survive the prune"
+    assert f"skills-prune-preserved-{RETIRED_NAME}" in failures, failures
+
+
+def test_prune_still_removes_a_managed_skill_whose_marker_records_its_symlink(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "skills"
+    root.mkdir()
+    content = "recorded\n"
+    digest = _digest(content)
+    recorded = {"SKILL.md": digest, "alias.md": digest}
+    skill_dir = root / RETIRED_NAME
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+    (skill_dir / MANAGED_MARKER_NAME).write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": RETIRED_NAME,
+                "files": recorded,
+                "installed_sha256": manifest_digest(recorded),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "alias.md").symlink_to(skill_dir / "SKILL.md")
+
+    assert classify_entry(skill_dir) is Ownership.MANAGED
+    assert may_delete(skill_dir) is True
+
+    _entry, failures = install_baseline_skills(target_dir=root)
+
+    assert not skill_dir.exists(), "a marker-recorded symlink stays managed content"
+    assert f"skills-prune-preserved-{RETIRED_NAME}" not in failures, failures
+
+
+def test_prune_still_preserves_a_managed_retired_skill_that_carries_a_user_file(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "skills"
+    root.mkdir()
+    skill_dir = _plant_managed_dir(root, RETIRED_NAME)
+    (skill_dir / "notes.md").write_text("# my notes\n", encoding="utf-8")
+
+    assert classify_entry(skill_dir) is Ownership.USER_EDITED
+
+    _entry, failures = install_baseline_skills(target_dir=root)
+
+    assert skill_dir.is_dir(), "a managed skill carrying a user file must survive"
+    assert (skill_dir / "notes.md").read_text(encoding="utf-8") == "# my notes\n"
+    assert f"skills-prune-preserved-{RETIRED_NAME}" in failures, failures
+
+
+def test_install_refuses_to_replace_a_managed_skill_that_carries_a_user_symlink(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    canonical = workspace / ".opencode" / "skills"
+    name = "submit-artifact"
+    skill_dir = canonical / name
+    skill_dir.mkdir(parents=True)
+    bundled = get_skill_content(name)
+    (skill_dir / "SKILL.md").write_text(bundled, encoding="utf-8")
+    (skill_dir / MANAGED_MARKER_NAME).write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": name,
+                "installed_content_sha256": _digest(bundled),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    user_target = tmp_path / "user-link-target.md"
+    user_target.write_text("# my link\n", encoding="utf-8")
+    link = skill_dir / "my-link.md"
+    link.symlink_to(user_target)
+
+    control_root = tmp_path / "control"
+    control_root.mkdir()
+    control = _plant_managed_dir(control_root, RETIRED_NAME)
+    assert may_replace(control) is True, "the control skill carries no user symlink"
+    assert may_replace(skill_dir) is False, "the user symlink must block the replace"
+    assert classify_entry(skill_dir) is Ownership.USER_EDITED
+
+    with patch("pathlib.Path.home", return_value=home):
+        install_project_baseline_skills(workspace)
+
+    assert link.is_symlink(), "the user symlink must survive the install"
+    assert user_target.read_text(encoding="utf-8") == "# my link\n"
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == bundled

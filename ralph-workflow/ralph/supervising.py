@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from importlib import import_module
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from ralph._supervising_tracker import WorkflowInstanceTracker
@@ -10,6 +10,12 @@ if TYPE_CHECKING:
     from ralph.instance_status import InstanceStatus
 else:
     InstanceStatus = import_module("ralph.instance_status").InstanceStatus
+
+
+@runtime_checkable
+class _TrackerModule(Protocol):
+    WorkflowInstanceTracker: type[WorkflowInstanceTracker]
+
 
 __all__ = [
     "InstanceStatus",
@@ -149,5 +155,6 @@ def _recent_activity(snapshot: PipelineSnapshot) -> tuple[str, ...]:
 def __getattr__(name: str) -> object:
     if name == "WorkflowInstanceTracker":
         tracker_module = import_module("ralph._supervising_tracker")
-        return tracker_module.WorkflowInstanceTracker
+        if isinstance(tracker_module, _TrackerModule):
+            return tracker_module.WorkflowInstanceTracker
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

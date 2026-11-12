@@ -56,9 +56,11 @@ _default_metrics_lock = threading.Lock()
 
 def get_default_metrics() -> McpMetrics:
     with _default_metrics_lock:
-        if _default_metrics_holder[0] is None:
-            _default_metrics_holder[0] = McpMetrics()
-        return _default_metrics_holder[0]
+        metrics = _default_metrics_holder[0]
+        if metrics is None:
+            metrics = McpMetrics()
+            _default_metrics_holder[0] = metrics
+        return metrics
 
 
 def reset_default_metrics() -> None:

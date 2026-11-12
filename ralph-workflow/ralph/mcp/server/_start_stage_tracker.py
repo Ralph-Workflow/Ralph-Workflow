@@ -8,13 +8,24 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+type EnvGetter = Callable[[str], str | None]
+
 _STAGE_FILE_NAME_COMPONENT: str = ".agent/.ralph_mcp_start_stage"
 
-_spawn_id_holder: list[str] = [os.environ.get(MCP_STAGE_ID_ENV) or str(uuid.uuid4())]
+
+def _initial_spawn_id(env_getter: EnvGetter = os.environ.get) -> str:
+    stage_id = env_getter(MCP_STAGE_ID_ENV)
+    return stage_id if stage_id else str(uuid.uuid4())
+
+
+_spawn_id_holder: list[str] = [_initial_spawn_id()]
 
 
 def _get_spawn_id() -> str:

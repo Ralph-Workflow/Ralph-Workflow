@@ -10,6 +10,12 @@ from ralph.display.activity_model import (
     AgentActivityEvent,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "legacy parser output docstring": (
+        "the comment-free source policy bans docstrings in source, so the legacy "
+        "parser output contract is pinned by the exported type and its fields"
+    ),
+}
 _VISIBLE_WAITING_SEQUENCE = 3
 
 
@@ -77,4 +83,11 @@ def test_agent_output_line_remains_available_as_legacy_parser_output() -> None:
     line = AgentOutputLine(type="text", content="hello")
 
     assert line.content == "hello"
-    assert "legacy" in (AgentOutputLine.__doc__ or "").lower()
+    assert {field.name for field in fields(AgentOutputLine)} == {
+        "type",
+        "content",
+        "raw",
+        "metadata",
+        "timestamp",
+    }
+    assert AgentOutputLine.__module__ == "ralph.agents.parsers.agent_output_line"

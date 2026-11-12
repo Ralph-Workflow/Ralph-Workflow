@@ -1,5 +1,3 @@
-"""Unmerged index entries mapping with per-path failure records."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,14 +15,6 @@ __all__ = [
 
 
 class ConflictStageEntries(dict[str, dict[int, tuple[str, str]]]):
-    """Unmerged index entries mapping with per-path failure records.
-
-    Inherits from dict so callers expecting a dict[str, dict[int, tuple[str, str]]]
-    continue to work seamlessly. Any path whose index stage query failed or
-    produced a malformed record is registered in ``failures`` and excluded
-    from the dictionary keys.
-    """
-
     def __init__(
         self,
         mapping: dict[str, dict[int, tuple[str, str]]] | None = None,
@@ -42,7 +32,6 @@ def _parse_stage_records_into(
     *,
     default_path: str | None = None,
 ) -> None:
-    """Parse NUL-delimited ls-files -u records into entries and failures."""
     for record in stdout.split("\0"):
         if not record:
             continue
@@ -68,13 +57,6 @@ def _parse_stage_records_into(
 
 
 def conflict_stage_entries(repo_root: Path | str, paths: Sequence[str]) -> ConflictStageEntries:
-    """Return unmerged index entries keyed by path and conflict stage.
-
-    The NUL-delimited ``ls-files -u`` format preserves paths with spaces,
-    newlines, or unicode. A failed query or malformed record records a
-    per-path failure in the returned ``ConflictStageEntries.failures``
-    mapping rather than degrading to a global empty dict.
-    """
     if not paths:
         return ConflictStageEntries({})
 

@@ -76,6 +76,13 @@ ALLOWLIST: list[tuple[str, str]] = [
         "testing/_audit_baseline.py",
         "materialises committed git baseline trees for diff-based audit gates with bounded timeout",
     ),
+    (
+        "testing/audit_comments.py",
+        "enumerates the tracked file list with read-only git queries "
+        "(git rev-parse --show-toplevel, git ls-files -z) so the comment audit can "
+        "scan the tree; check=False, no shell, no user input, and the same "
+        "bounded-git pattern as testing/_audit_baseline.py",
+    ),
 ]
 
 TESTS_ALLOWLIST: set[str] = {

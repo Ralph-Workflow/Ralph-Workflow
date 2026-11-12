@@ -49,7 +49,6 @@ def out_of_reach_escalation_message(
     paths: Sequence[str],
     reasons: Mapping[str, str] | None = None,
 ) -> str:
-    """Format the escalation message naming unreachable paths and operator command."""
     reasons_map = reasons or {}
     if not any(p in reasons_map for p in paths):
         return gitlink_escalation_message(paths)
@@ -108,7 +107,6 @@ class ConflictSight(StrEnum):
 
 
 def out_of_reach_reasons(kinds: dict[str, ConflictSight]) -> dict[str, str]:
-    """Return reasons for paths classified as OUT_OF_REACH, if known."""
     if isinstance(kinds, ConflictClassification):
         return dict(kinds.reasons)
     return {}

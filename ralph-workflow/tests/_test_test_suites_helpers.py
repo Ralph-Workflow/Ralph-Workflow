@@ -98,10 +98,6 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_spawn_early_failure_typed.py",
     "tests/test_exec_smoke_subprocess_e2e.py",
     "tests/test_exec_job_shutdown_subprocess_e2e.py",
-    # wt-05 WU-2: the universal skill updater's inter-process reservation
-    # proof drives REAL interpreters against a REAL loopback socket, so the
-    # file carries the module-level ``subprocess_e2e`` marker and must stay
-    # on the default ``make test`` profile.
     "tests/test_skills_upstream_transport.py",
 )
 

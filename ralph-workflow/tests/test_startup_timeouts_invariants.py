@@ -138,20 +138,19 @@ class TestPerStageBudgets:
             + mod._READY_TO_SERVE_BUDGET_S
         )
         assert whole < preflight
-        doc = mod.__doc__ or ""
-        for needle in (
+        for budget_name in (
             "_CONFIG_LOAD_BUDGET_S",
             "_REGISTRY_BUILD_BUDGET_S",
             "_READY_TO_SERVE_BUDGET_S",
+        ):
+            assert isinstance(getattr(mod, budget_name), float)
+        assert callable(mod.mcp_discovery_budget_from_env)
+        for stage in (
             "config_loaded",
             "upstream_catalog_or_discovery_done",
             "ready_to_serve",
-            "mcp_discovery_budget_from_env",
-            "preflight",
         ):
-            assert needle in doc, f"module docstring must document {needle!r}"
-        docstring = mod.record_stage_elapsed.__doc__ or ""
-        assert "monotonic" in docstring, "helper must document fake-clock friendliness"
+            assert record_stage_elapsed(stage, 0.0, budget_s=10.0) == 10.0
 
     def test_record_stage_elapsed_enforces_shared_deadline(self) -> None:
         result = record_stage_elapsed("config_loaded", 0.5, budget_s=1.0)

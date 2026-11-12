@@ -1,115 +1,20 @@
-"""Runtime updater for the universal skills published by ``obra/superpowers``.
-
-The three universal skills (``test-driven-development``,
-``systematic-debugging`` and ``verification-before-completion``) are installed
-USER-GLOBAL: into the canonical user-global skill root and into every
-registered sibling root. They are never written into the project tree.
-
-The content comes from ONE upstream origin: the ``obra/superpowers`` release
-tags. The release API names the newest tag; the matching ``codeload``
-tarball carries the whole skill directory, so the ``SKILL.md`` AND every
-companion file (``find-polluter.sh``, ``condition-based-waiting-example.ts``,
-...) are installed together.
-
-CONTRACT
-========
-
-:func:`maybe_update_universal_skills` is the single public entry point. It
-NEVER raises: every failure is reported through the returned
-:class:`UpdateOutcome`. The caller owns the kill switch (the ``enabled``
-argument) and the clock (the ``now`` argument); this module reads no
-configuration file and applies no policy of its own.
-
-TRANSPORT
-=========
-
-The production transport is BOUNDED. It NEVER follows a redirect: a 3xx
-answer is a refusal, because the upstream origin is the only origin this
-module talks to. A response that declares a ``Content-Length`` above its cap
-is refused before the body is read, and a body that grows past its cap WHILE
-IT STREAMS aborts the transfer mid-flight. The cap is
-:data:`MAX_RELEASE_BYTES` for the release JSON and :data:`MAX_ARCHIVE_BYTES`
-for the release archive. The timeout covers the connect AND the read phase.
-The :data:`HttpClient` seam stays injectable, so the whole path can be
-exercised without a socket.
-
-CADENCE
-=======
-
-At most ONE upstream attempt per 24 h. The attempt is RESERVED in the attempt
-cache BEFORE the first request, so a failed attempt still consumes the window
-and two concurrent starts still make exactly one attempt. The reservation is
-INTER-PROCESS safe: the cache is guarded by an exclusive advisory lock on a
-sidecar lock file, so two racing PROCESSES still make exactly one attempt.
-The cache lives at ``$XDG_CACHE_HOME/ralph-workflow/skill-updates.json``
-(falling back to ``~/.cache/ralph-workflow/skill-updates.json``) and is
-written atomically through a temp file plus ``os.replace``.
-
-TRANSACTIONAL INSTALL
-=====================
-
-Every payload is validated BEFORE anything is written: a payload without a
-``SKILL.md`` is refused, a markdown reference must resolve to an EXACT
-relative path of an installed file, and the archive as a whole is capped in
-member count and in total extracted bytes.
-
-The install itself is transactional. Each skill directory is staged in
-COMPLETE (every file plus the managed marker) inside a temporary staging
-directory in the target skills root, validated there, and then published
-with an atomic rename. A failure removes ONLY the staging directory and
-leaves the previous installation byte-identical; a failure after an earlier
-skill was published rolls that skill back. The installed-tag state file is
-written only after every skill published successfully. A publication that a
-killed process left half-finished is restored on the next start, BEFORE the
-attempt window is consulted, and the staging directories such a process left
-behind are reclaimed.
-
-WRITE CONTAINMENT
-=================
-
-Skill CONTENT is written ONLY under ``<user-global-root>/<skill-name>/`` of
-the canonical root and of every registered sibling root. The only other
-writes are the two state files: the installed-tag state file
-(``~/.config/ralph-workflow-universal-skills.json``) and the attempt cache
-with its lock sidecars. Nothing else is written anywhere, and the project's
-git tree is never touched.
-
-USER EDITS AND OWNERSHIP
-=========================
-
-A skill directory Ralph manages carries a ``.ralph-managed.json`` marker that
-records the sha256 of every installed file. Before an existing directory is
-overwritten, the on-disk digests are compared with the marker's manifest: a
-mismatch means the USER edited the skill, so the directory is left untouched
-and reported as preserved. A directory without a readable Ralph marker is
-treated as user-owned and preserved as well. The marker shape, the file
-manifest and the pristine-content check come from
-:mod:`ralph.skills._ownership`, so there is exactly ONE implementation of
-them in the repository.
-
-SIBLING MIRROR
-==============
-
-The sibling roots mirror the canonical installation with a symlink. A sibling
-entry that is not provably Ralph-managed is PRESERVED and reported: the
-mirror never removes an entry it cannot prove it owns.
-"""
-
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
+import sys
 import tempfile
 import threading
+import time
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from ralph.checked_accessors import as_mapping, as_str_dict, optional_str
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.skills._agent_paths import (
     canonical_agent_skill_root,
     sibling_agent_skill_roots,
@@ -162,30 +67,22 @@ UNIVERSAL_SKILL_NAMES: tuple[str, ...] = (
     "verification-before-completion",
 )
 
-#: The file every universal skill directory must carry.
 SKILL_FILE_NAME = "SKILL.md"
 
-#: ``managed_by`` value recorded in the marker of a universal skill.
 MANAGED_BY = UNIVERSAL_MANAGED_BY
 
 MAX_ARCHIVE_BYTES = 10 * 1024 * 1024
 
-#: Maximum size of the release API response, in bytes.
 MAX_RELEASE_BYTES = 1024 * 1024
 
-#: Maximum size of a single extracted file, in bytes.
 MAX_FILE_BYTES = 1024 * 1024
 
-#: Maximum number of members the release archive may carry.
 MAX_ARCHIVE_MEMBERS = 2048
 
-#: Maximum total size of every extracted file of the release archive, in bytes.
 MAX_EXTRACTED_BYTES = 32 * 1024 * 1024
 
-#: Maximum number of files one skill directory may carry.
 MAX_SKILL_FILES = 512
 
-#: File extensions the installer accepts inside a skill directory.
 ALLOWED_FILE_SUFFIXES: frozenset[str] = frozenset(
     {".json", ".md", ".py", ".sh", ".toml", ".ts", ".txt", ".yaml", ".yml"}
 )
@@ -194,15 +91,20 @@ REQUEST_TIMEOUT_SECONDS = 5.0
 
 ATTEMPT_WINDOW = timedelta(hours=24)
 
+LOCK_WAIT_SECONDS = 30.0
+
+LOCK_POLL_SECONDS = 0.05
+
+LOCK_STALE_SECONDS = 120.0
+
+LOCK_CLAIM_SUFFIX = ".claim"
+
 CACHE_FILE_NAME = "skill-updates.json"
 
-#: Suffix of the lock file that guards the attempt cache across processes.
 ATTEMPT_LOCK_SUFFIX = ".lock"
 
-#: Name of the lock file that guards the publication across processes.
 PUBLICATION_LOCK_NAME = "skill-publish.lock"
 
-#: State file name, relative to ``~/.config``.
 STATE_FILE_NAME = "ralph-workflow-universal-skills.json"
 
 type HttpResponse = tuple[int, bytes]
@@ -210,6 +112,11 @@ type HttpResponse = tuple[int, bytes]
 type HttpClient = Callable[[str, float], HttpResponse]
 
 HTTP_OK = 200
+
+try:
+    _NOFOLLOW_FLAG: int = os.O_NOFOLLOW
+except AttributeError:
+    _NOFOLLOW_FLAG = 0
 
 _ATTEMPT_LOCK = threading.Lock()
 
@@ -233,15 +140,6 @@ class UpdateOutcome:
 
 @dataclass(frozen=True)
 class _InstallPlan:
-    """The skills one release may install, after every payload was validated.
-
-    Attributes:
-        tag: The upstream release tag the plan belongs to.
-        skills: The skills to install, in installation order.
-        preserved: The skills the plan leaves untouched.
-        messages: Human-readable report lines for the preserved skills.
-    """
-
     tag: str
     skills: tuple[tuple[str, _SkillPayload], ...]
     preserved: tuple[str, ...]
@@ -262,20 +160,6 @@ def maybe_update_universal_skills(
 
 
 def default_http_client() -> HttpClient:
-    """Return the production HTTP client for the upstream seam.
-
-    The client is a callable that takes ``(url, timeout)`` and returns a
-    ``(status_code, body)`` pair. The transport is BOUNDED:
-
-    * a redirect is REFUSED, never followed;
-    * a declared ``Content-Length`` above the cap of the URL is refused
-      before the body is read;
-    * a body that grows past the cap WHILE IT STREAMS aborts the transfer;
-    * the timeout covers the connect AND the read phase.
-
-    Transport failures propagate to the caller, which swallows them and
-    reports a failed outcome.
-    """
     return streaming_client(_response_byte_cap)
 
 
@@ -294,13 +178,11 @@ def attempt_cache_path() -> Path:
 
 
 def attempt_lock_path() -> Path:
-    """Return the lock-file path that guards the attempt cache."""
     cache = attempt_cache_path()
     return cache.with_name(cache.name + ATTEMPT_LOCK_SUFFIX)
 
 
 def publication_lock_path() -> Path:
-    """Return the lock-file path that guards the publication."""
     return attempt_cache_path().parent / PUBLICATION_LOCK_NAME
 
 
@@ -309,12 +191,6 @@ def universal_state_path() -> Path:
 
 
 def _response_byte_cap(url: str) -> int:
-    """Return the byte cap that applies to ``url``.
-
-    The release API answers with a small JSON document, the archive with the
-    release tarball. An unknown URL falls back to the SMALLER cap: an
-    unknown origin is refused conservatively, never generously.
-    """
     if url == RELEASES_API_URL:
         return MAX_RELEASE_BYTES
     prefix = ARCHIVE_URL_TEMPLATE.split("{", 1)[0]
@@ -367,18 +243,6 @@ def _utc(now: datetime) -> datetime:
 
 
 def _reserve_attempt(cache_path: Path, now: datetime) -> bool:
-    """Reserve the 24 h attempt window.
-
-    The reservation is INTER-PROCESS safe: the cache is guarded by an
-    exclusive advisory lock on a sidecar lock file, so two racing PROCESSES
-    produce exactly ONE upstream attempt. The lock file is advisory: where
-    the platform cannot lock it, the in-process lock still orders the
-    threads of one process.
-
-    Returns:
-        True when this call owns the attempt, False when an attempt already
-        happened inside the window.
-    """
     with (
         _ATTEMPT_LOCK,
         _advisory_lock(cache_path.with_name(cache_path.name + ATTEMPT_LOCK_SUFFIX)),
@@ -392,32 +256,76 @@ def _reserve_attempt(cache_path: Path, now: datetime) -> bool:
 
 @contextmanager
 def _advisory_lock(lock_path: Path) -> Iterator[None]:
-    """Hold an exclusive advisory lock on ``lock_path``.
-
-    The lock is an ``fcntl`` advisory lock, so two racing PROCESSES
-    serialize on it. A platform that cannot lock the file degrades to the
-    in-process ordering of the caller.
-    """
     _ensure_dir(lock_path.parent)
-    descriptor = os.open(  # filesystem-write-ok: the advisory-lock sidecar carries no content; it exists only so flock() can serialize the attempt reservation.  # resource-lifecycle-ok: the descriptor is closed in this manager's finally block, so it never outlives the with-block.
-        lock_path,
-        os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW,
-        0o600,
-    )
+    descriptor = _open_lock_descriptor(lock_path, os.O_CREAT | os.O_RDWR | _NOFOLLOW_FLAG)
     try:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
-        except OSError:
-            # The platform cannot lock the file: the in-process lock still
-            # orders the threads of this process.
-            yield
+        release = _acquire_platform_lock(descriptor)
+        if release is not None:
+            try:
+                yield
+            finally:
+                release()
             return
-        try:
+        with _claim_lock(lock_path):
             yield
-        finally:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
     finally:
         os.close(descriptor)
+
+
+def _open_lock_descriptor(path: Path, flags: int) -> int:
+    return os.open(path, flags, 0o600)
+
+
+def _acquire_platform_lock(descriptor: int) -> Callable[[], None] | None:
+    if sys.platform == "win32":
+        return None
+    return _acquire_posix_lock(descriptor)
+
+
+def _acquire_posix_lock(descriptor: int) -> Callable[[], None] | None:
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+    except OSError:
+        return None
+
+    def _release() -> None:
+        with suppress(OSError):
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+
+    return _release
+
+
+@contextmanager
+def _claim_lock(lock_path: Path) -> Iterator[None]:
+    claim_path = lock_path.with_name(lock_path.name + LOCK_CLAIM_SUFFIX)
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            descriptor = _open_lock_descriptor(claim_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if _claim_is_stale(claim_path) or time.monotonic() >= deadline:
+                DEFAULT_FILE_BACKEND.unlink(claim_path, missing_ok=True)
+                continue
+            time.sleep(LOCK_POLL_SECONDS)
+            continue
+        os.close(descriptor)
+        break
+    try:
+        yield
+    finally:
+        DEFAULT_FILE_BACKEND.unlink(claim_path, missing_ok=True)
+
+
+def _claim_is_stale(claim_path: Path) -> bool:
+    try:
+        age = time.time() - claim_path.stat().st_mtime
+    except OSError:
+        return False
+    return age > LOCK_STALE_SECONDS
 
 
 def _read_attempt(cache_path: Path) -> datetime | None:
@@ -486,7 +394,6 @@ def _ensure_dir(path: Path) -> None:
 
 
 def _transport_error_reason(exc: Exception, prefix: str) -> str:
-    """Return the machine-readable reason of a transport failure."""
     if isinstance(exc, UpstreamResponseTooLargeError):
         return f"{prefix}-too-large"
     if isinstance(exc, UpstreamRedirectRefusedError):
@@ -533,7 +440,6 @@ def _load_release_payload(
 
 
 def _archive_limits() -> _ArchiveLimits:
-    """Return the limits one archive extraction runs under."""
     return _ArchiveLimits(
         skill_names=UNIVERSAL_SKILL_NAMES,
         allowed_suffixes=ALLOWED_FILE_SUFFIXES,
@@ -588,13 +494,6 @@ def _write_state(tag: str, installed: Mapping[str, str]) -> None:
 
 
 def _repair_publications(canonical_root: Path) -> None:
-    """Restore the publications a killed process left half-finished.
-
-    The repair runs BEFORE the attempt window is consulted: a publication
-    that was interrupted must not wait for the next daily attempt to be
-    repaired, and the staging directories such a process left behind are
-    reclaimed with it.
-    """
     with _advisory_lock(publication_lock_path()):
         for name in UNIVERSAL_SKILL_NAMES:
             recover_publication(canonical_root, name)
@@ -640,12 +539,6 @@ def _install_release(tag: str, payload: Mapping[str, _SkillPayload]) -> UpdateOu
 def _plan_install(
     canonical_root: Path, tag: str, payload: Mapping[str, _SkillPayload]
 ) -> _InstallPlan:
-    """Return the skills a release may install, after validating every payload.
-
-    Every payload is validated BEFORE the first write: a payload without a
-    ``SKILL.md``, a payload with a dangling markdown reference and a
-    directory the user edited are all preserved and reported here.
-    """
     skills: list[tuple[str, _SkillPayload]] = []
     preserved: list[str] = []
     messages: list[str] = []
@@ -675,7 +568,6 @@ def _plan_install(
 
 
 def _payload_refusal(content: _SkillPayload) -> str | None:
-    """Return why a skill payload must not be installed, or None."""
     if SKILL_FILE_NAME not in content.files:
         return f"the payload carries no {SKILL_FILE_NAME}"
     return _missing_reference(content)
@@ -684,17 +576,6 @@ def _payload_refusal(content: _SkillPayload) -> str | None:
 def _publish_plan(
     canonical_root: Path, plan: _InstallPlan
 ) -> tuple[list[str], dict[str, str], str | None]:
-    """Stage and publish every planned skill; roll the whole plan back on failure.
-
-    Every failure rolls the plan back: the skills this attempt published are
-    restored, and the staging directories it created are removed. A failure
-    that is not an I/O failure (an interrupt, an exit) is re-raised after the
-    rollback, so the caller sees it and the installation stays intact.
-
-    Returns:
-        The published skill names, their manifest digests and a failure
-        message. The failure message is None when the plan published.
-    """
     staged: list[_StagedSkill] = []
     published: list[tuple[str, Path | None]] = []
     digests: dict[str, str] = {}
@@ -727,12 +608,6 @@ def _publish_plan(
 
 
 def _preservation_reason(skill_dir: Path) -> str | None:
-    """Return why an existing skill directory must not be overwritten.
-
-    The marker shape, the file manifest and the pristine-content check come
-    from :mod:`ralph.skills._ownership`, so this decision and the sibling
-    mirror's decision share ONE implementation.
-    """
     if not skill_dir.exists():
         return None
     marker = read_managed_marker(skill_dir)
@@ -749,13 +624,6 @@ def _preservation_reason(skill_dir: Path) -> str | None:
 
 
 def _missing_reference(content: _SkillPayload) -> str | None:
-    """Return a reason when the skill references a file that is not installed.
-
-    A reference matches an installed file by its EXACT relative path: a
-    reference to ``docs/example.ts`` is satisfied only by the file at
-    ``docs/example.ts``, and a reference to ``example.ts`` only by the
-    top-level ``example.ts``.
-    """
     for relative in sorted(content.files):
         if not relative.endswith(".md"):
             continue
@@ -769,7 +637,6 @@ def _missing_reference(content: _SkillPayload) -> str | None:
 
 
 def _iter_references(text: str) -> Iterator[str]:
-    """Yield the relative file paths the markdown text references."""
     for match in _REFERENCE_PATTERN.finditer(text):
         token: str = match.group(1) or match.group(2) or ""
         candidate = token.strip()
@@ -786,7 +653,6 @@ def _iter_references(text: str) -> Iterator[str]:
 
 
 def _mirror_installed(canonical_root: Path, installed: list[str], messages: list[str]) -> None:
-    """Mirror every installed skill directory into the sibling roots."""
     siblings = sibling_skills_roots()
     for name in installed:
         try:

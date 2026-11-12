@@ -38,76 +38,7 @@ STATIC_BUILTIN_CAPABILITIES: tuple[BaselineCapability, ...] = (
     ),
 )
 
-MANDATORY_DEFAULTS: tuple[BaselineCapability, ...] = (
-    BaselineCapability(
-        "web_search",
-        "DuckDuckGo-backed web search, no API key required",
-        "mandatory",
-    ),
-    BaselineCapability(
-        "visit_url",
-        "Single-page HTTP/HTTPS retrieval with readable text extraction",
-        "mandatory",
-    ),
-    BaselineCapability(
-        "skills_bundle",
-        (
-            "Ralph Workflow mirrored upstream skill bundles "
-            "(core workflow + namespaced design add-ons)"
-        ),
-        "mandatory",
-    ),
-)
-
-CONDITIONAL_DEFAULTS: tuple[BaselineCapability, ...] = (
-    BaselineCapability(
-        "docs_mcp",
-        (
-            "arabold/docs-mcp-server documentation lookup on localhost:6280 "
-            "when configured and reachable"
-        ),
-        "conditional",
-    ),
-    BaselineCapability(
-        "vision_verdict_agent",
-        (
-            "In-process vision-verdict subagent that compares the retained "
-            "pre-change capture set against a fresh post-change capture set "
-            "and submits the criterion 8 design_verdict artifact; "
-            "provisioned only when the design-system policy is in scope"
-        ),
-        "conditional",
-    ),
-)
-
-NON_DEFAULTS: tuple[BaselineCapability, ...] = (
-    BaselineCapability(
-        "github",
-        "github/github-mcp-server - requires credentials",
-        "non_default",
-    ),
-    BaselineCapability(
-        "playwright",
-        "Playwright-style browser automation MCP servers",
-        "non_default",
-    ),
-    BaselineCapability(
-        "crawl4ai",
-        "Crawl4AI MCP server for advanced multi-page crawling",
-        "non_default",
-    ),
-    BaselineCapability(
-        "exa_search",
-        "Exa and other credentialed search providers",
-        "non_default",
-    ),
-)
-
-
 __all__ = [
-    "CONDITIONAL_DEFAULTS",
-    "MANDATORY_DEFAULTS",
-    "NON_DEFAULTS",
     "STATIC_BUILTIN_CAPABILITIES",
     "BaselineCapability",
 ]

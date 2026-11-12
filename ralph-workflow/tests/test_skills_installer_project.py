@@ -474,19 +474,6 @@ def test_project_root_outside_workspace_returns_none_on_clean_tree(tmp_path: Pat
 
 @pytest.mark.timeout_seconds(5)
 def test_install_overwrites_user_edited_canonical_skill(tmp_path: Path) -> None:
-    """PA-002 closure: project-scope reconcile OVERWRITES a PRISTINE managed copy.
-
-    OWNERSHIP CONTRACT (wt-05 WU-1): the project-scope reconcile refreshes
-    a canonical entry Ralph can PROVE it manages -- the marker records the
-    digest of the on-disk content, so the entry is a stale-but-pristine
-    Ralph-managed copy and the bundled content replaces it. The entry is
-    therefore refreshed to the bundled content and the managed marker is
-    updated to the new bundled sha.
-
-    A canonical entry whose recorded digest does NOT match the on-disk
-    content (a real user edit) is USER-EDITED: it is preserved and never
-    overwritten (see ``tests/test_skills_prune_ownership.py``).
-    """
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"
     name = BASELINE_SKILL_NAMES[0]
@@ -708,16 +695,6 @@ def test_install_preserves_retired_managed_skill_with_companion_file(tmp_path: P
 
 @pytest.mark.timeout_seconds(3)
 def test_prune_gates_broken_symlinks_on_ownership_evidence(tmp_path: Path) -> None:
-    """A broken symlink is unlinked ONLY when the prune can attribute it.
-
-    OWNERSHIP CONTRACT (wt-05 WU-1): the prune unlinks a broken symlink
-    ONLY when it can attribute the missing target to a Ralph-managed
-    canonical entry the SAME prune pass just removed. A link whose target
-    Ralph knows nothing about is PRESERVED and REPORTED through the
-    ``skills-prune-unknown-*`` surface; a LIVE link to a surviving retired
-    entry is left intact. The earlier unconditional unlink destroyed links
-    Ralph could not prove were its own.
-    """
     from ralph.skills._content import BASELINE_SKILL_NAMES
     from ralph.skills._installer import _prune_removed_baseline_skills
 
@@ -726,11 +703,9 @@ def test_prune_gates_broken_symlinks_on_ownership_evidence(tmp_path: Path) -> No
     retired_name = "submit-plan-step-edits"
     assert retired_name not in BASELINE_SKILL_NAMES
 
-    # A broken link whose target Ralph knows nothing about.
     unknown_link = root / "unknown-broken-link"
     unknown_link.symlink_to(root / "does-not-exist", target_is_directory=True)
 
-    # A managed retired entry plus the stale link that pointed at it.
     retired_dir = root / retired_name
     retired_dir.mkdir()
     (retired_dir / "SKILL.md").write_text("stale\n", encoding="utf-8")
@@ -747,8 +722,6 @@ def test_prune_gates_broken_symlinks_on_ownership_evidence(tmp_path: Path) -> No
     stale_link = root / "stale-sibling-link"
     stale_link.symlink_to(retired_dir, target_is_directory=True)
 
-    # A USER-EDITED retired entry survives the prune, so a LIVE link to it
-    # stays live and must be left intact.
     edited_dir = root / "edited-retired-entry"
     edited_dir.mkdir()
     (edited_dir / "SKILL.md").write_text("# user edited\n", encoding="utf-8")

@@ -1,14 +1,3 @@
-"""Tests for spent-aware candidate chain exhaustion in RecoveryController.
-
-Proves:
-(1) Prior dead launch records TOOL_SURFACE_DEAD;
-(2) When all candidates are controller-spent via note_retry_exhaustion,
-    repeat through driver yields CANDIDATE_EXHAUSTED, exhaustion recorded
-    by resolve_rebase_with_config, operator message names "spent/unavailable" + command;
-(3) Mixed spent/cooldown: wait > 0, CANDIDATE_UNAVAILABLE, no exhaustion;
-(4) Continuation gate key changes when agent transitions spent -> reset and admits exactly one retry.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -84,7 +73,6 @@ def _install_seams(
 def test_prior_dead_launch_records_tool_surface_dead(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(1) Prior dead launch records TOOL_SURFACE_DEAD."""
     _install_seams(monkeypatch)
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -131,11 +119,6 @@ def test_prior_dead_launch_records_tool_surface_dead(
 def test_all_controller_spent_repeat_yields_candidate_exhausted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(2) When all candidates are controller-spent via note_retry_exhaustion,
-
-    repeat through driver yields CANDIDATE_EXHAUSTED, exhaustion is recorded
-    by resolve_rebase_with_config, and operator message names 'spent/unavailable' + command.
-    """
     _install_seams(monkeypatch)
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -145,11 +128,9 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
             event_bus=FailureEventBus(),
         )
     )
-    # Mark every candidate controller-spent via note_retry_exhaustion
     controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
     controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
 
-    # Controller confirms exhaustion math
     assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is True
     assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == 0
 
@@ -167,7 +148,6 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
         assert session is not None
         captured_session.append(session)
         session.recovery_controller = controller
-        # Real prior launch was attempted in an earlier round/stop
         session.rounds_spent = 1
         session.charge_conflict_budget = True
 
@@ -194,10 +174,8 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
 
     assert result.succeeded is False
     assert result.reason is not None
-    # Operator message names "spent/unavailable" and the actionable git command
     assert "spent/unavailable" in result.reason
     assert "git add -- a.py b.py" in result.reason
-    # Exhaustion was recorded (result cause is AGENT_FAILURE, not dropped)
     assert result.failure_cause == ResolutionFailureCause.AGENT_FAILURE
     assert captured_session[0].terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert captured_session[0].terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
@@ -206,7 +184,6 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
 def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(3) Mixed spent/cooldown: wait > 0, CANDIDATE_UNAVAILABLE, no exhaustion."""
     _install_seams(monkeypatch)
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -216,14 +193,11 @@ def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
             event_bus=FailureEventBus(),
         )
     )
-    # primary is controller-spent
     controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
-    # fallback is on cooldown in the tracker
     controller.unavailability_store.mark_unavailable(
         PHASE_RESOLUTION, "fallback", UnavailabilityReason.NO_OUTPUT_AT_START
     )
 
-    # Exhaustion math checks
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"])
     assert wait_ms > 0
     assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is False
@@ -257,14 +231,12 @@ def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
 
     assert success is False
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    # CANDIDATE_UNAVAILABLE is in RESOLVER_NOT_SPENT_TERMINATION_REASONS -> no exhaustion recorded
     assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
 
 
 def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(4) Continuation gate key changes when agent transitions spent -> reset and admits exactly one retry."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -283,13 +255,11 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     )
     write_record(tmp_path, record)
 
-    # 1. Initially both agents are available
     avail_initial = controller.agents_now_available(
         "rebase_conflict_resolution", ["primary", "fallback"]
     )
     assert avail_initial == ["primary", "fallback"]
 
-    # 2. Mark primary controller-spent via note_retry_exhaustion
     controller.note_retry_exhaustion("rebase_conflict_resolution", "primary")
     avail_spent = controller.agents_now_available(
         "rebase_conflict_resolution", ["primary", "fallback"]
@@ -306,7 +276,6 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     )
     assert key_spent[1] == ("fallback",)
 
-    # 3. Reset backoff restores primary
     controller.reset_backoff("rebase_conflict_resolution", "primary")
     avail_reset = controller.agents_now_available(
         "rebase_conflict_resolution", ["primary", "fallback"]
@@ -322,10 +291,8 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
         stop_identity="stop-1",
     )
     assert key_reset[1] == ("fallback", "primary")
-    # Gate key changed on spent -> reset transition
     assert key_spent != key_reset
 
-    # 4. Continuation gate admits exactly one retry
     from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
 
     git_dir = tmp_path / ".git"
@@ -359,7 +326,6 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
 
     monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", _fake_resolve_rebase_in_progress)
 
-    # When record has key_spent and controller is still spent, gate is closed:
     controller.note_retry_exhaustion("rebase_conflict_resolution", "primary")
     record_spent = record.with_resolution_gate_key(key_spent)
     write_record(tmp_path, record_spent)
@@ -380,7 +346,6 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     assert isinstance(status1, str) and "WAITING" in status1
     assert resolver_invocations[0] == 0
 
-    # Reset backoff opens the gate: exactly one retry is admitted
     controller.reset_backoff("rebase_conflict_resolution", "primary")
 
     status2 = continue_retained_resolution(
@@ -399,7 +364,6 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     assert status2 is not None
     assert resolver_invocations[0] == 1
 
-    # Immediate next loop without changes hits the gate again (no hot loop)
     status3 = continue_retained_resolution(
         tmp_path,
         read_record(tmp_path) or record_spent,
@@ -414,4 +378,4 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
         stop_identity="stop-1",
     )
     assert isinstance(status3, str) and "WAITING" in status3
-    assert resolver_invocations[0] == 1  # not invoked again!
+    assert resolver_invocations[0] == 1

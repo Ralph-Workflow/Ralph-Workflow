@@ -156,7 +156,7 @@ def _show_phase_start_with_context(
         pipeline_policy,
         agent_name=agent_name,
     )
-    console = getattr(display_context, "console", None)
+    console: object = getattr(display_context, "console", None)
     display_obj: ParallelDisplay | None = None
     if console is not None:
         try:

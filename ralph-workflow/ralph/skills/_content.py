@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 from importlib.resources import files
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, TypedDict
 
+from ralph.checked_accessors import as_mapping, as_str_list
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
@@ -24,7 +25,9 @@ _MANAGED_MARKER = ".ralph-managed.json"
 def _read_skill_metadata() -> SkillMetadata:
     content_dir = files(__package__) / "content"
     raw = (content_dir / "metadata.json").read_text(encoding="utf-8")
-    return cast("SkillMetadata", json.loads(raw))
+    parsed: object = json.loads(raw)
+    document = as_mapping(parsed, field="skill metadata")
+    return {"skills": as_str_list(document.get("skills"), field="skill metadata skills")}
 
 
 BASELINE_SKILL_NAMES: tuple[str, ...] = tuple(_read_skill_metadata()["skills"])
@@ -95,10 +98,8 @@ def materialize_skills_to_claude_dir(
         if skill_file.exists() and marker_file.exists():
             stored_sha: str = ""
             try:
-                marker_data = cast(
-                    "dict[str, object]",
-                    json.loads(marker_file.read_text(encoding="utf-8")),
-                )
+                marker_raw: object = json.loads(marker_file.read_text(encoding="utf-8"))
+                marker_data = as_mapping(marker_raw, field="managed marker")
                 sha_val = marker_data.get("installed_content_sha256", "")
                 stored_sha = sha_val if isinstance(sha_val, str) else ""
             except Exception:

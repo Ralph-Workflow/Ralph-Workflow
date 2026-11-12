@@ -1,18 +1,3 @@
-"""Tests for gitlink and sight escalation gaps (G3).
-
-Assertions:
-(a) ls-files -u failure for path P -> P escalates OUT_OF_REACH with accurate
-    unreadable-index message and no agent invoked for P;
-(a2) mixed stop (P unreadable-index beside ordinary text conflict Q) -> P escalates,
-     Q is still offered to chain;
-(a3) single malformed ls-files -u record degrading whole parse -> per-path escalation,
-     not global {};
-(b) gitlink-vs-directory -> OUT_OF_REACH with command, no agent invoked;
-(c) endpoint-merge with diverged gitlink escalates on sight without consulting
-    resolver chain;
-(d) existing ancestor/descendant + fetchable resolution tests stay green.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -89,7 +74,6 @@ def _add_unmerged_path(repo: Path, path: str, *, content: str = "conflict\n") ->
 def test_unreadable_index_escalates_out_of_reach_without_gitlink_wording(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """(a) ls-files -u failure for path P escalates OUT_OF_REACH with accurate message."""
     repo = _setup_test_repo(tmp_path)
     _add_unmerged_path(repo, "file_p.txt", content="conflict\n")
 
@@ -150,7 +134,6 @@ def test_unreadable_index_escalates_out_of_reach_without_gitlink_wording(
 def test_mixed_stop_unreadable_index_and_text_conflict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """(a2) mixed stop (P unreadable, Q ordinary conflict) offers Q to chain."""
     repo = _setup_test_repo(tmp_path)
     _add_unmerged_path(repo, "P", content="conflict P\n")
     _add_unmerged_path(
@@ -165,7 +148,6 @@ def test_mixed_stop_unreadable_index_and_text_conflict(
 
     def fake_run_git(args: Any, *a: Any, **kw: Any) -> GitRunResult:
         if "ls-files" in args:
-            # If P is queried, fail; if Q is queried, return valid stages
             if "P" in args and "Q" not in args:
                 return GitRunResult(
                     args=tuple(args), returncode=1, stdout="", stderr="index corrupted for P"
@@ -177,7 +159,6 @@ def test_mixed_stop_unreadable_index_and_text_conflict(
                     stdout="100644 1111111111111111111111111111111111111111 2\tQ\0100644 2222222222222222222222222222222222222222 3\tQ\0",
                     stderr="",
                 )
-            # Batch query for both P and Q fails to force individual queries
             return GitRunResult(args=tuple(args), returncode=1, stdout="", stderr="batch failed")
         return orig_run_git(args, *a, **kw)
 
@@ -195,7 +176,6 @@ def test_mixed_stop_unreadable_index_and_text_conflict(
 
     def mock_invoker(agent_name: str, _prompt_path: Path, _round_index: int) -> bool:
         agent_invocations.append(agent_name)
-        # Agent resolves Q by clearing markers
         (repo / "Q").write_text("resolved Q\n", encoding="utf-8")
         return True
 
@@ -218,10 +198,8 @@ def test_mixed_stop_unreadable_index_and_text_conflict(
         session=session,
     )
 
-    # Q was offered to the chain, agent was invoked
     assert len(agent_invocations) > 0, "reachable path Q must be offered to agent chain"
 
-    # Outcome ends as OUT_OF_REACH because of remaining unreachable P
     assert outcome.succeeded is False
     assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
     assert outcome.exhaustion_message is not None
@@ -234,12 +212,10 @@ def test_mixed_stop_unreadable_index_and_text_conflict(
 def test_malformed_ls_files_record_isolates_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """(a3) single malformed record degrades only that path, not global {}."""
     repo = _setup_test_repo(tmp_path)
 
     from ralph.git import conflict_stage_entries as stage_entries_mod
 
-    # Stdout contains a malformed record for P and valid records for Q
     output = (
         "malformed_metadata\tP\0"
         "100644 1111111111111111111111111111111111111111 2\tQ\0"
@@ -255,13 +231,11 @@ def test_malformed_ls_files_record_isolates_path(
     )
 
     entries = conflict_stage_entries(repo, ["P", "Q"])
-    # Q must still be parsed!
     assert "Q" in entries
     assert entries["Q"] == {
         2: ("100644", "1111111111111111111111111111111111111111"),
         3: ("100755", "2222222222222222222222222222222222222222"),
     }
-    # P must be recorded as failure, not in valid entries
     assert "P" not in entries
     failures = getattr(entries, "failures", {})
     assert "P" in failures
@@ -270,8 +244,6 @@ def test_malformed_ls_files_record_isolates_path(
 
 @pytest.mark.timeout_seconds(5)
 def test_gitlink_vs_directory_escalates_out_of_reach() -> None:
-    """(b) gitlink-vs-directory escalates OUT_OF_REACH, not AGENT_DECISION."""
-    # ours is gitlink (160000), theirs is directory/tree (040000)
     stages_gitlink_ours = {
         2: ("160000", "aaaa" * 10),
         3: ("040000", "bbbb" * 10),
@@ -279,7 +251,6 @@ def test_gitlink_vs_directory_escalates_out_of_reach() -> None:
     sight1 = classify_stage_map(stages_gitlink_ours, binary=False, has_markers=False)
     assert sight1 is ConflictSight.OUT_OF_REACH, "gitlink vs directory must be OUT_OF_REACH"
 
-    # ours is directory/tree (040000), theirs is gitlink (160000)
     stages_gitlink_theirs = {
         2: ("040000", "aaaa" * 10),
         3: ("160000", "bbbb" * 10),
@@ -287,7 +258,6 @@ def test_gitlink_vs_directory_escalates_out_of_reach() -> None:
     sight2 = classify_stage_map(stages_gitlink_theirs, binary=False, has_markers=False)
     assert sight2 is ConflictSight.OUT_OF_REACH, "directory vs gitlink must be OUT_OF_REACH"
 
-    # file vs directory remains AGENT_DECISION
     stages_file_vs_dir = {
         2: ("100644", "aaaa" * 10),
         3: ("040000", "bbbb" * 10),
@@ -300,7 +270,6 @@ def test_gitlink_vs_directory_escalates_out_of_reach() -> None:
 def test_endpoint_merge_with_diverged_gitlink_escalates_on_sight_no_agents(
     tmp_path: Path,
 ) -> None:
-    """(c) endpoint_merge_with_resolution with diverged gitlink escalates without agent calls."""
     from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 

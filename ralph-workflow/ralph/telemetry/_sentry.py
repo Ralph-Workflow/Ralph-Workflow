@@ -31,6 +31,8 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from sentry_sdk.types import Event
+
     from ralph.config.agent_config import AgentConfig
 
 _DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
@@ -374,6 +376,11 @@ def _build_extra_scrub_prefixes() -> tuple[str, ...]:
     return tuple(prefixes)
 
 
+def _before_send(event: Event, _hint: dict[str, object]) -> Event | None:
+    scrub_event(event)
+    return event
+
+
 def init_sentry(user_id: str, session_id: str) -> None:
     _STATE.extra_scrub_prefixes = _build_extra_scrub_prefixes()
 
@@ -392,10 +399,11 @@ def init_sentry(user_id: str, session_id: str) -> None:
         profile_session_sample_rate=0.0,
         enable_logs=False,
         include_local_variables=False,
-        before_send=scrub_event,
-        before_send_transaction=scrub_event,
+        before_send=_before_send,
+        before_send_transaction=_before_send,
     )
-    sentry_sdk.set_user({"id": user_id})
+    user: dict[str, object] = {"id": user_id}
+    sentry_sdk.set_user(user)
     sentry_sdk.set_tag("session_id", session_id)
     _STATE.initialized = True
 

@@ -11,7 +11,7 @@ The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make 
 
 ## Verify steps and gates
 
-`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **48 steps**. The four gates that protect the supply chain and the test surface are:
+`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **47 steps**. The four gates that protect the supply chain and the test surface are:
 
 | Gate | Verify step label | Enforcing command |
 |---|---|---|
@@ -219,7 +219,7 @@ Enforcing command:
 uv run python -m ralph.testing.audit_terminal_escape_containment
 ```
 
-This audit is one of the 48 steps in the `ralph/verify_steps.py::_VERIFY_STEPS` registry (re-exported as `ralph.verify._VERIFY_STEPS`) — it is not the last entry; the last one is `audit_mcp_agent_boundary`. It is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
+This audit is one of the 47 steps in the `ralph/verify_steps.py::_VERIFY_STEPS` registry (re-exported as `ralph.verify._VERIFY_STEPS`) — it is not the last entry; the last one is `audit_mcp_agent_boundary`. It is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
 
 ## Terminal state restoration contract
 
@@ -278,7 +278,7 @@ If the change touches README, docs, START_HERE, the manual, or any public-doc ro
 
 ## Documentation Review Note — single canonical verification contract
 
-- *What changed.* This file is now the repository's single verification contract. A `## Verify steps and gates` section names the step registry (`ralph/verify_steps.py::_VERIFY_STEPS`, 48 steps) and lists the four supply-chain and test-surface gates with their real labels and enforcing commands; the stale pointer to `AGENTS.md` for the non-circumvention table now points at §'Non-circumvention table' in this file; and the "LAST entry in `_VERIFY_STEPS`" claim about the terminal-escape audit was corrected against the registry (the last entry is `audit_mcp_agent_boundary`).
+- *What changed.* This file is now the repository's single verification contract. A `## Verify steps and gates` section names the step registry (`ralph/verify_steps.py::_VERIFY_STEPS`, 47 steps) and lists the four supply-chain and test-surface gates with their real labels and enforcing commands; the stale pointer to `AGENTS.md` for the non-circumvention table now points at §'Non-circumvention table' in this file; and the "LAST entry in `_VERIFY_STEPS`" claim about the terminal-escape audit was corrected against the registry (the last entry is `audit_mcp_agent_boundary`).
 - *Why this surface owns it.* Root `AGENTS.md` names `docs/agents/verification.md` as the owner of the test budget, the import-time invariant table and the non-circumvention list, so the contract, the table it points at, and the gate inventory belong on one page.
 - *What was left alone.* The invariant table, the budget numbers, the MCP timeout contract, and the terminal contracts were not reworded. The policy layer above this contract stays in the root policy pack (`docs/ralph-workflow-policy/verification-policy.md`); the two layers answer different questions and are not merged.
 - *How duplication was contained.* `ralph-workflow/docs/agents/verification.md` was a divergent second copy (an older bullet form of the invariants plus a link into a deleted policy pack); it is now a pointer to this file, so the contract has one home.

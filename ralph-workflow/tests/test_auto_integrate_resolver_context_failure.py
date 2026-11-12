@@ -46,7 +46,6 @@ def test_unreadable_target_config_declines_instead_of_raising(
     resolver = _build_resolver(MagicMock(name="display"))
 
     outcome = resolver(tmp_path, "main", _stop())
-    # RALPH-TEST-REASON: resolver returns ResolutionOutcome(succeeded=False) conveying typed failure reason
     assert outcome is False or (
         isinstance(outcome, agent_module.ResolutionOutcome) and not outcome.succeeded
     )
@@ -69,7 +68,6 @@ def test_unreadable_target_config_is_reported_to_the_operator(
     resolver = _build_resolver(MagicMock(name="display"))
 
     outcome = resolver(tmp_path, "main", _stop())
-    # RALPH-TEST-REASON: resolver returns ResolutionOutcome(succeeded=False) conveying typed failure reason
     assert outcome is False or (
         isinstance(outcome, agent_module.ResolutionOutcome) and not outcome.succeeded
     )

@@ -208,13 +208,10 @@ class RebaseState(RalphBaseModel):
 
     @model_validator(mode="after")
     def _populate_operation_display_state(self) -> Self:
-        if (
-            self.last_decision is None
-            and (
-                self.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
-                or self.integration_unresolved
-                or self.recovery_record_retained
-            )
+        if self.last_decision is None and (
+            self.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
+            or self.integration_unresolved
+            or self.recovery_record_retained
         ):
             object.__setattr__(self, "last_decision", "block_for_recovery")
         if self.operation_display_state is None:

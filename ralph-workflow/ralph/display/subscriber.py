@@ -87,49 +87,83 @@ def _format_waiting_status_line(event: object) -> str:
     cum = f"{cast_event.cumulative_seconds:.0f}"
     ceil = f"{cast_event.ceiling_seconds:.0f}"
     run = f"{cast_event.current_run_seconds:.0f}"
-    subagent_part = _format_subagent_activity_suffix(cast_event.subagent_activity)
     kind = cast_event.kind
     if kind == waiting_kind_cls.ENTERED:
         return f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
     if kind == waiting_kind_cls.PROGRESS:
-        delta = cast_event.diagnostic.get("workspace_event_delta")
-        alive_by = cast_event.diagnostic.get("alive_by")
-        parts = [f"run={run}s", f"cumulative={cum}s", f"ceiling={ceil}s"]
-        if delta is not None:
-            parts.append(f"workspace_events_since_wait={delta}")
-        if alive_by is not None:
-            parts.append(f"alive_by={alive_by}")
-        base = f"Background child work still active ({', '.join(parts)})"
-        return base + subagent_part
+        return _format_waiting_progress_line(cast_event, cum, ceil, run)
     if kind == waiting_kind_cls.SUSPECTED_FROZEN:
-        evidence = str(cast_event.diagnostic.get("evidence", "unknown"))
-        alive_by = cast_event.diagnostic.get("alive_by")
-        suffix = f", alive_by={alive_by}" if alive_by is not None else ""
-        base = (
-            f"Background child work may be frozen"
-            f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence}{suffix})"
-        )
-        return base + subagent_part
+        return _format_waiting_frozen_line(cast_event, cum, ceil)
     if kind == waiting_kind_cls.EXITED:
         return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
     if kind == waiting_kind_cls.SUBAGENT_PROGRESS:
-        live_count = cast_event.diagnostic.get("live_subagent_count", 0)
-        live_label = f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
-        base = (
-            f"Background child work: subagent progress"
-            f" (cumulative={cum}s, ceiling={ceil}s, {live_label})"
-        )
-        return base + subagent_part
+        return _format_waiting_subagent_progress_line(cast_event, cum, ceil)
+    return _format_waiting_terminal_line(cast_event, waiting_kind_cls)
+
+
+def _format_waiting_progress_line(
+    event: _WaitingEventLike,
+    cum: str,
+    ceil: str,
+    run: str,
+) -> str:
+    delta = event.diagnostic.get("workspace_event_delta")
+    alive_by = event.diagnostic.get("alive_by")
+    parts = [f"run={run}s", f"cumulative={cum}s", f"ceiling={ceil}s"]
+    if delta is not None:
+        parts.append(f"workspace_events_since_wait={delta}")
+    if alive_by is not None:
+        parts.append(f"alive_by={alive_by}")
+    base = f"Background child work still active ({', '.join(parts)})"
+    return base + _format_subagent_activity_suffix(event.subagent_activity)
+
+
+def _format_waiting_frozen_line(
+    event: _WaitingEventLike,
+    cum: str,
+    ceil: str,
+) -> str:
+    evidence = str(event.diagnostic.get("evidence", "unknown"))
+    alive_by = event.diagnostic.get("alive_by")
+    suffix = f", alive_by={alive_by}" if alive_by is not None else ""
+    base = (
+        f"Background child work may be frozen"
+        f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence}{suffix})"
+    )
+    return base + _format_subagent_activity_suffix(event.subagent_activity)
+
+
+def _format_waiting_subagent_progress_line(
+    event: _WaitingEventLike,
+    cum: str,
+    ceil: str,
+) -> str:
+    live_count = event.diagnostic.get("live_subagent_count", 0)
+    live_label = f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
+    base = (
+        f"Background child work: subagent progress"
+        f" (cumulative={cum}s, ceiling={ceil}s, {live_label})"
+    )
+    return base + _format_subagent_activity_suffix(event.subagent_activity)
+
+
+def _format_waiting_terminal_line(
+    event: _WaitingEventLike,
+    waiting_kind_cls: type[_WaitingKindLike],
+) -> str:
+    kind = event.kind
     if kind == waiting_kind_cls.STALLED:
-        idle_secs = f"{cast_event.idle_elapsed_seconds:.0f}"
+        idle_secs = f"{event.idle_elapsed_seconds:.0f}"
         return f"Agent stalled (idle_elapsed={idle_secs}s, watchdog assessment)"
     if kind == waiting_kind_cls.STALL_RESUMED:
-        idle_secs = f"{cast_event.idle_elapsed_seconds:.0f}"
+        idle_secs = f"{event.idle_elapsed_seconds:.0f}"
         return f"Agent resumed after stall (idle_elapsed={idle_secs}s)"
-    scoped = cast_event.diagnostic.get("scoped_child_active", "?")
-    oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
+    cum = f"{event.cumulative_seconds:.0f}"
+    ceil = f"{event.ceiling_seconds:.0f}"
+    scoped = event.diagnostic.get("scoped_child_active", "?")
+    oldest_val = event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
-        f", oldest_child_seconds={float(cast('int | float', oldest_val)):.0f}s"
+        f", oldest_child_seconds={float(_oldest_child_seconds(oldest_val)):.0f}s"
         if oldest_val is not None
         else ""
     )
@@ -138,7 +172,16 @@ def _format_waiting_status_line(event: object) -> str:
         f" (cumulative={cum}s, ceiling={ceil}s,"
         f" scoped_child_active={scoped}{oldest_part})"
     )
-    return base + subagent_part
+    return base + _format_subagent_activity_suffix(event.subagent_activity)
+
+
+def _oldest_child_seconds(value: object) -> float:
+    if isinstance(value, str):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    msg = "oldest_child_seconds must be numeric"
+    raise TypeError(msg)
 
 
 _SUBAGENT_ACTIVITY_MAX = 80

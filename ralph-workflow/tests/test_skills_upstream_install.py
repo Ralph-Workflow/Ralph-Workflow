@@ -1,20 +1,10 @@
-"""Transactional-install tests for the universal upstream skill updater.
-
-The install path is exercised through the injected HTTP seam: no test opens
-a socket and no test touches a path outside its sandbox. The suite pins the
-three install guarantees of the updater: every payload is validated BEFORE
-the first write, each skill directory is published atomically, and a failure
-leaves the previously installed skills byte-identical. It also pins the
-ownership gate of the sibling mirror: an entry Ralph cannot prove it owns is
-preserved and reported, never removed.
-"""
-
 from __future__ import annotations
 
 import hashlib
 import io
 import json
 import os
+import shutil
 import tarfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,7 +12,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.mcp.artifacts.file_backend import PathFileBackend
 from ralph.skills import upstream
+from ralph.skills._ownership import (
+    managed_content_matches,
+    read_managed_marker,
+    verified_recorded_files,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -31,7 +27,6 @@ if TYPE_CHECKING:
 
 _NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 
-#: The companion files every universal skill of the fixture release carries.
 _SKILL_FILES: dict[str, dict[str, bytes]] = {
     "test-driven-development": {
         "SKILL.md": b"# Test driven development\n\nWrite the failing test first.\n",
@@ -52,12 +47,10 @@ _SKILL_FILES: dict[str, dict[str, bytes]] = {
 
 
 def _release_body(tag: str) -> bytes:
-    """Return the release payload the upstream API answers with."""
     return json.dumps({"tag_name": tag}).encode("utf-8")
 
 
 def _archive_bytes(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes:
-    """Return the archive bytes of a release carrying ``skills``."""
     root = f"superpowers-{tag.lstrip('v')}"
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
@@ -73,7 +66,6 @@ def _archive_bytes(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes
 def _client_for(
     tag: str, skills: Mapping[str, Mapping[str, bytes]]
 ) -> tuple[HttpClient, list[str]]:
-    """Return a fake client serving one release, plus its request log."""
     calls: list[str] = []
     responses = {
         upstream.RELEASES_API_URL: (200, _release_body(tag)),
@@ -91,7 +83,6 @@ def _client_for(
 
 
 def _tree_snapshot(root: Path) -> dict[str, str]:
-    """Return a content snapshot of every file below ``root``."""
     snapshot: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root).as_posix()
@@ -104,13 +95,19 @@ def _tree_snapshot(root: Path) -> dict[str, str]:
 
 
 def _root_entries(root: Path) -> list[str]:
-    """Return the names of the entries the skills root carries."""
     return sorted(path.name for path in root.iterdir())
+
+
+def _managed_manifest(skill_dir: Path) -> dict[str, str]:
+    marker = read_managed_marker(skill_dir)
+    assert marker is not None
+    recorded = verified_recorded_files(marker)
+    assert recorded is not None
+    return recorded
 
 
 @pytest.fixture
 def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point the user-global roots, the cache and the state file at a sandbox."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -119,7 +116,6 @@ def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _install_fixture_release(tag: str = "v-test-1") -> Path:
-    """Install the fixture release through the injected seam and return the root."""
     client, _calls = _client_for(tag, _SKILL_FILES)
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
     assert outcome.status == "updated"
@@ -171,15 +167,15 @@ def test_a_failure_that_is_not_an_io_failure_rolls_the_staging_back(
     before = _tree_snapshot(root)
     client, _calls = _client_for("v-test-2", _SKILL_FILES)
     writes: list[str] = []
-    real_write_bytes = Path.write_bytes
+    real_write_bytes = PathFileBackend.write_bytes
 
-    def _write_bytes(self: Path, data: bytes) -> int:
-        writes.append(self.name)
+    def _write_bytes(self: PathFileBackend, path: Path, data: bytes) -> None:
+        writes.append(path.name)
         if len(writes) > 2:
             raise ValueError("injected staging failure")
-        return real_write_bytes(self, data)
+        real_write_bytes(self, path, data)
 
-    monkeypatch.setattr(Path, "write_bytes", _write_bytes)
+    monkeypatch.setattr(PathFileBackend, "write_bytes", _write_bytes)
     outcome = upstream.maybe_update_universal_skills(
         enabled=True, now=_NOW + timedelta(hours=25), http=client
     )
@@ -294,10 +290,10 @@ def test_an_injected_write_failure_keeps_the_install_byte_identical(
     before = _tree_snapshot(root)
     client, _calls = _client_for("v-test-2", _SKILL_FILES)
 
-    def _write_bytes(self: Path, data: bytes) -> int:
+    def _write_bytes(self: PathFileBackend, path: Path, data: bytes) -> None:
         raise OSError("injected write failure")
 
-    monkeypatch.setattr(Path, "write_bytes", _write_bytes)
+    monkeypatch.setattr(PathFileBackend, "write_bytes", _write_bytes)
     outcome = upstream.maybe_update_universal_skills(
         enabled=True, now=_NOW + timedelta(hours=25), http=client
     )
@@ -336,6 +332,112 @@ def test_an_interrupted_publish_keeps_the_install_byte_identical(
     assert outcome.error is not None
     assert _tree_snapshot(root) == before
     assert _root_entries(root) == sorted(upstream.UNIVERSAL_SKILL_NAMES)
+
+
+def test_a_rollback_restores_the_skill_published_before_the_failure(
+    sandbox: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _install_fixture_release()
+    published = root / "test-driven-development"
+    failing = root / "systematic-debugging"
+    untouched = root / "verification-before-completion"
+    published_before = _tree_snapshot(published)
+    failing_before = _tree_snapshot(failing)
+    untouched_before = _tree_snapshot(untouched)
+    siblings_before = {
+        sibling: _tree_snapshot(sibling) for sibling in upstream.sibling_skills_roots()
+    }
+    updated = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    updated["test-driven-development"] = {
+        **_SKILL_FILES["test-driven-development"],
+        "new-companion.md": b"# New companion\n",
+    }
+    client, _calls = _client_for("v-test-2", updated)
+    real_replace = os.replace
+
+    def _replace(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        source = Path(src)
+        destination = Path(dst)
+        if source.name.startswith(upstream.STAGING_PREFIX) and destination == failing:
+            raise OSError("injected publish failure")
+        real_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "replace", _replace)
+    outcome = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=client
+    )
+
+    assert outcome.status == "failed"
+    assert _tree_snapshot(published) == published_before
+    assert not (published / "new-companion.md").exists()
+    assert managed_content_matches(published, _managed_manifest(published))
+    assert _tree_snapshot(failing) == failing_before
+    assert _tree_snapshot(untouched) == untouched_before
+    for sibling, snapshot in siblings_before.items():
+        assert _tree_snapshot(sibling) == snapshot
+
+
+def test_a_failure_during_the_restore_keeps_the_backup_on_disk(
+    sandbox: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _install_fixture_release()
+    published = root / "test-driven-development"
+    failing = root / "systematic-debugging"
+    backup = published.with_name(f".{published.name}{upstream.BACKUP_SUFFIX}")
+    untouched_before = _tree_snapshot(root / "verification-before-completion")
+    updated = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    updated["test-driven-development"] = {
+        **_SKILL_FILES["test-driven-development"],
+        "new-companion.md": b"# New companion\n",
+    }
+    client, _calls = _client_for("v-test-2", updated)
+    real_replace = os.replace
+
+    def _replace(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        source = Path(src)
+        destination = Path(dst)
+        if source.name.startswith(upstream.STAGING_PREFIX) and destination == failing:
+            raise OSError("injected publish failure")
+        if source == backup and destination == published:
+            raise OSError("injected restore failure")
+        real_replace(src, dst, *args, **kwargs)
+
+    def _copytree(*args: object, **kwargs: object) -> None:
+        raise OSError("injected restore failure")
+
+    monkeypatch.setattr(os, "replace", _replace)
+    monkeypatch.setattr(shutil, "copytree", _copytree)
+    outcome = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=client
+    )
+
+    assert outcome.status == "failed"
+    assert backup.is_dir()
+    assert (backup / "SKILL.md").read_bytes() == _SKILL_FILES["test-driven-development"]["SKILL.md"]
+    assert not (backup / "new-companion.md").exists()
+    assert _tree_snapshot(root / "verification-before-completion") == untouched_before
+
+    monkeypatch.setattr(os, "replace", real_replace)
+    retry_client, _retry_calls = _client_for("v-test-3", _SKILL_FILES)
+    retry = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=49), http=retry_client
+    )
+
+    assert retry.status == "updated"
+    assert published.is_dir()
+    assert (published / "SKILL.md").read_bytes() == _SKILL_FILES["test-driven-development"][
+        "SKILL.md"
+    ]
 
 
 def test_a_successful_install_leaves_no_staging_directory_behind(sandbox: Path) -> None:

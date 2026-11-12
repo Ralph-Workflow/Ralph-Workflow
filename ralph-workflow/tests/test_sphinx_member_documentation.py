@@ -5,6 +5,13 @@ import re
 from functools import cache
 from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "public member docstrings": (
+        "the comment-free source policy bans docstrings in source, so the public "
+        "members of :members: documented modules must carry none; the Sphinx API "
+        "reference renders their signatures"
+    ),
+}
 _RALPH_ROOT = Path(__file__).parent.parent / "ralph"
 _MODULES_RST = Path(__file__).parent.parent / "docs" / "sphinx" / "modules.rst"
 
@@ -47,41 +54,24 @@ def _resolve_to_source(rel_name: str, ralph_root: Path) -> Path | None:
     return None
 
 
-def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    for deco in node.decorator_list:
-        if isinstance(deco, ast.Name) and deco.id == "overload":
-            return True
-        if (
-            isinstance(deco, ast.Attribute)
-            and deco.attr == "overload"
-            and isinstance(deco.value, ast.Name)
-        ):
-            return True
-    return False
-
-
 @cache
-def _public_members_with_missing_docstrings(source_path: Path) -> list[str]:
+def _public_members_with_docstrings(source_path: Path) -> list[str]:
     try:
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
     except SyntaxError:
         return []
 
-    missing: list[str] = []
-    seen: set[str] = set()
+    found: list[str] = []
     for node in ast.iter_child_nodes(tree):
         if not isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if node.name.startswith("_"):
             continue
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and _is_overload(node):
-            continue
         docstring = ast.get_docstring(node)
-        if (not docstring or not docstring.strip()) and node.name not in seen:
-            missing.append(node.name)
-        seen.add(node.name)
+        if docstring and docstring.strip():
+            found.append(node.name)
 
-    return missing
+    return found
 
 
 @cache
@@ -92,27 +82,29 @@ def _members_modules() -> set[str]:
 for _rel in sorted(_members_modules()):
     _src = _resolve_to_source(_rel, _RALPH_ROOT)
     if _src is not None:
-        _public_members_with_missing_docstrings(_src)
+        _public_members_with_docstrings(_src)
 
 
-def test_members_modules_public_classes_and_functions_have_docstrings() -> None:
+def test_members_modules_public_classes_and_functions_have_no_docstrings() -> None:
     members_modules = _members_modules()
+
+    assert members_modules, "no :members: documented module found in docs/sphinx/modules.rst"
 
     failures: list[str] = []
     for rel_name in sorted(members_modules):
         source = _resolve_to_source(rel_name, _RALPH_ROOT)
         if source is None:
             continue
-        missing = _public_members_with_missing_docstrings(source)
+        offenders = _public_members_with_docstrings(source)
         failures.extend(
             f"  ralph.{rel_name}.{name}  ({source.relative_to(_RALPH_ROOT.parent)})"
-            for name in missing
+            for name in offenders
         )
 
     assert not failures, (
         "The following public classes/functions in :members: documented modules "
-        "are missing docstrings:\n"
+        "carry a docstring; source files carry no docstrings:\n"
         + "\n".join(failures)
-        + "\n\nAdd docstrings explaining role/behavior, parameters, return values, "
-        "and non-obvious side effects or lifecycle constraints."
+        + "\n\nDelete the docstring; the contract lives in names, type annotations, "
+        "and tests."
     )

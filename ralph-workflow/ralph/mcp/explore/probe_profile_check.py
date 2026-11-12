@@ -118,7 +118,7 @@ class _ProfileArguments(argparse.Namespace):
 
 
 def _parse_args(argv: Sequence[str] | None) -> tuple[int, Path | None]:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description="Inspect the explore index probe profile.")
     parser.add_argument(
         "--top",
         type=int,

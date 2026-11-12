@@ -301,7 +301,6 @@ def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsA
 
 
 def _is_config_exception(exc: BaseException) -> bool:
-    """Classify whether an exception caught during context entry is config-related."""
     if isinstance(exc, WorkspaceContextError):
         return True
     try:

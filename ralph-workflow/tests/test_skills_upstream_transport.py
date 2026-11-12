@@ -1,17 +1,3 @@
-"""Bounded-transport tests for the universal upstream skill updater.
-
-The production HTTP client is exercised against a REAL local ``http.server``
-bound to 127.0.0.1 on an ephemeral port: no test ever leaves the loopback
-interface. Every answer the server receives is checked against the
-loopback guard, so a test that points the updater at a remote origin fails
-loudly instead of reaching the network.
-
-The suite pins the three transport guarantees of the updater: a redirect is
-never followed, the byte cap is enforced WHILE the body streams, and the
-timeout covers a slow body. It also pins the inter-process cadence: two
-racing PROCESSES that share one cache make exactly ONE upstream attempt.
-"""
-
 from __future__ import annotations
 
 import fcntl
@@ -38,10 +24,6 @@ import pytest
 from ralph.skills import upstream
 from ralph.skills.upstream import HttpClient, HttpResponse, default_http_client
 
-#: The file drives a REAL socket and spawns REAL interpreters, so it carries
-#: the profile marker for real-subprocess tests. The registry entry in
-#: ``ralph.test_suites`` keeps every item of this file on the default
-#: ``make test`` lane.
 pytestmark = [pytest.mark.subprocess_e2e]
 
 if TYPE_CHECKING:
@@ -49,18 +31,12 @@ if TYPE_CHECKING:
 
 _NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 
-#: The hosts the loopback guard accepts.
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
-#: How long the server waits for the stall event before it gives up, in
-#: seconds. The wait is a SIGNAL wait, not a timed pause: the event the
-#: test never sets is what keeps the body mid-transfer.
 _STALL_TIMEOUT_SECONDS = 2.0
 
-#: The package root, so a spawned interpreter imports THIS checkout.
 _PACKAGE_ROOT = Path(upstream.__file__).resolve().parents[2]
 
-#: The runner a spawned interpreter executes to make one upstream attempt.
 _RUNNER = '''"""Make one upstream attempt against the loopback test server."""
 
 import os
@@ -89,7 +65,6 @@ outcome = upstream.maybe_update_universal_skills(
 print(outcome.status, outcome.attempted)
 '''
 
-#: The companion files every universal skill of the fixture release carries.
 _SKILL_FILES: dict[str, dict[str, bytes]] = {
     "test-driven-development": {
         "SKILL.md": b"# Test driven development\n",
@@ -108,20 +83,6 @@ _SKILL_FILES: dict[str, dict[str, bytes]] = {
 
 @dataclass
 class _Reply:
-    """One scripted answer of the loopback test server.
-
-    Attributes:
-        status: The HTTP status to answer with.
-        body: The body to answer with.
-        headers: The extra headers to answer with.
-        chunk_size: When positive the body is written in chunks of this size
-            with a chunked transfer encoding, so the body carries no
-            ``Content-Length``.
-        stall: When set the server waits for this event before it writes the
-            NEXT chunk. An event that is never set models an upstream whose
-            body stopped mid-transfer.
-    """
-
     status: int = 200
     body: bytes = b""
     headers: dict[str, str] = field(default_factory=dict)
@@ -130,12 +91,9 @@ class _Reply:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    """The request handler of the loopback test server."""
-
     protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
-        """Answer one request with the scripted reply."""
         server = self.server
         assert isinstance(server, _TestServer)
         server.requests.append(self.path)
@@ -143,7 +101,6 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(server.responder(self.path))
 
     def _send(self, reply: _Reply) -> None:
-        """Write the scripted reply to the client."""
         self.send_response(reply.status)
         for key, value in reply.headers.items():
             self.send_header(key, value)
@@ -158,7 +115,6 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(reply.body)
 
     def _send_chunked(self, reply: _Reply) -> None:
-        """Write the body in chunks, stalling between two chunks when asked."""
         for start in range(0, len(reply.body), reply.chunk_size):
             chunk = reply.body[start : start + reply.chunk_size]
             try:
@@ -173,12 +129,10 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"0\r\n\r\n")
 
     def log_message(self, format: str, *args: object) -> None:
-        """Silence the default stderr access log."""
+        pass
 
 
 class _TestServer(ThreadingHTTPServer):
-    """The loopback server that carries the scripted answers."""
-
     daemon_threads = True
     allow_reuse_address = True
 
@@ -190,13 +144,11 @@ class _TestServer(ThreadingHTTPServer):
 
     @property
     def base_url(self) -> str:
-        """Return the loopback base URL of the server."""
         host, port = self.server_address[:2]
         return f"http://{host}:{port}"
 
 
 def _routes(routes: Mapping[str, _Reply]) -> Callable[[str], _Reply]:
-    """Return a responder that answers from ``routes``."""
 
     def _respond(path: str) -> _Reply:
         return routes.get(path, _Reply(status=404, body=b"not found"))
@@ -206,7 +158,6 @@ def _routes(routes: Mapping[str, _Reply]) -> Callable[[str], _Reply]:
 
 @contextmanager
 def _serving(responder: Callable[[str], _Reply]) -> Iterator[_TestServer]:
-    """Serve ``responder`` on a loopback port for the duration of the block."""
     server = _TestServer(responder)
     thread = threading.Thread(
         target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
@@ -222,7 +173,6 @@ def _serving(responder: Callable[[str], _Reply]) -> Iterator[_TestServer]:
 
 
 def _await_children(gate: Path, count: int, timeout: float = 30.0) -> None:
-    """Wait until ``count`` children announced that they reached the gate."""
     deadline = time.monotonic() + timeout
     while len(list(gate.glob("ready-*"))) < count:
         if time.monotonic() > deadline:
@@ -231,31 +181,22 @@ def _await_children(gate: Path, count: int, timeout: float = 30.0) -> None:
 
 
 def _await_quiet_server(server: _TestServer, seconds: float = 0.4) -> None:
-    """Give the children a bounded window to reach the upstream.
-
-    The window is short on purpose: a child that ignores the advisory lock
-    of the attempt cache reaches the upstream within milliseconds, so the
-    window catches it.
-    """
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         time.sleep(0.01)
 
 
 def _assert_loopback_hosts(server: _TestServer) -> None:
-    """Fail the test when the server answered a request for a foreign host."""
     for host in server.hosts:
         name = host.rsplit(":", 1)[0] if not host.startswith("[") else host[1:].split("]")[0]
         assert name in _LOOPBACK_HOSTS, host
 
 
 def _assert_loopback_url(url: str) -> None:
-    """Fail the test when ``url`` points at a non-loopback host."""
     assert urlsplit(url).hostname in _LOOPBACK_HOSTS, url
 
 
 def _point_at(server: _TestServer, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Point the updater at the loopback server."""
     releases = f"{server.base_url}/releases/latest.json"
     archive = f"{server.base_url}/archive/{{tag}}.tar.gz"
     _assert_loopback_url(releases)
@@ -265,12 +206,10 @@ def _point_at(server: _TestServer, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _release_body(tag: str) -> bytes:
-    """Return the release payload the upstream API answers with."""
     return json.dumps({"tag_name": tag}).encode("utf-8")
 
 
 def _archive_bytes(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes:
-    """Return the archive bytes of a release carrying ``skills``."""
     root = f"superpowers-{tag.lstrip('v')}"
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
@@ -286,7 +225,6 @@ def _archive_bytes(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes
 def _client_for(
     tag: str, skills: Mapping[str, Mapping[str, bytes]]
 ) -> tuple[HttpClient, list[str]]:
-    """Return a fake client serving one release, plus its request log."""
     calls: list[str] = []
     responses = {
         upstream.RELEASES_API_URL: (200, _release_body(tag)),
@@ -304,7 +242,6 @@ def _client_for(
 
 
 def _tree_snapshot(root: Path) -> dict[str, str]:
-    """Return a content snapshot of every file below ``root``."""
     snapshot: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root).as_posix()
@@ -318,7 +255,6 @@ def _tree_snapshot(root: Path) -> dict[str, str]:
 
 @pytest.fixture
 def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point the user-global roots, the cache and the state file at a sandbox."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -327,7 +263,6 @@ def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _install_fixture_release() -> Path:
-    """Install the fixture release through the injected seam and return the root."""
     client, _calls = _client_for("v-test-1", _SKILL_FILES)
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
     assert outcome.status == "updated"
@@ -472,14 +407,6 @@ def test_the_attempt_reservation_leaves_a_lock_sidecar(
 def test_two_racing_processes_make_exactly_one_upstream_request(
     sandbox: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Two PROCESSES that share one cache make exactly ONE upstream attempt.
-
-    Both children wait for a shared START GATE, so the reservation is
-    genuinely contested. The parent holds the advisory lock of the attempt
-    cache while it opens the gate: a child cannot reach the upstream while
-    that lock is held, which is what makes the proof sensitive to the lock
-    rather than to the order in which the children happen to start.
-    """
     replies = _routes(
         {
             "/releases/latest.json": _Reply(body=_release_body("v-test-1")),

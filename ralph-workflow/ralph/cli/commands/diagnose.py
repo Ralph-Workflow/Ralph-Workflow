@@ -195,7 +195,7 @@ def _check_capability_state(*, display: object) -> bool:
         ("Web search (DuckDuckGo)", state.web_search),
         ("Page retrieval (visit_url)", state.visit_url),
         ("Docs MCP (localhost:6280)", state.docs_mcp),
-        ("Skill bundles", state.skills),
+        ("Skills", state.skills),
     ]
     for label, entry in managed_rows:
         status_text = (

@@ -205,6 +205,53 @@ def _run_with_direct_mcp_recovery[T](
             retries_used += 1
 
 
+def _reset_tool_registry_after_failure(
+    reset_tool_registry: Callable[[], object],
+    exc: Exception,
+) -> None:
+    record_runtime_event("mcp_operation", "reset_tool_registry")
+    try:
+        reset_tool_registry()
+    except McpServerError:
+        raise
+    except Exception as mcp_exc:
+        raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
+
+
+def _prepare_iter_retry(
+    exc: Exception,
+    exc_with_output: Exception,
+    *,
+    attempt_lines: deque[str],
+    current_session_id: str | None,
+    reset_tool_registry: Callable[[], object] | None,
+    on_retry_failure: Callable[[list[str]], object] | None,
+    retries_used: int,
+    max_retries: int,
+) -> str | None:
+    if not _invocation_retry_allowed_or_raise(
+        exc_with_output,
+        reset_tool_registry=reset_tool_registry,
+        retries_used=retries_used,
+        max_retries=max_retries,
+    ):
+        raise exc_with_output from exc
+    if reset_tool_registry is None:
+        raise RuntimeError("retry registry unexpectedly unavailable") from exc
+    retry_plan = _retry_plan_for_exception(
+        exc_with_output,
+        attempt_lines=list(attempt_lines),
+        current_session_id=current_session_id,
+    )
+    if retry_plan is None:
+        raise exc_with_output from exc
+    if on_retry_failure is not None:
+        on_retry_failure(list(_exception_parsed_output(exc_with_output)))
+    if retry_plan.reset_tool_registry:
+        _reset_tool_registry_after_failure(reset_tool_registry, exc)
+    return retry_plan.session_id
+
+
 def _iter_with_direct_mcp_recovery(
     run_attempt: Callable[[str | None], Iterable[str]],
     *,
@@ -238,33 +285,16 @@ def _iter_with_direct_mcp_recovery(
                     raise _invocation_error_with_output(exc, attempt_lines) from exc
                 agy_incomplete_exit_reprompted = True
             exc_with_output = _invocation_error_with_output(exc, attempt_lines)
-            if not _invocation_retry_allowed_or_raise(
+            current_session_id = _prepare_iter_retry(
+                exc,
                 exc_with_output,
+                attempt_lines=attempt_lines,
+                current_session_id=current_session_id,
                 reset_tool_registry=reset_tool_registry,
+                on_retry_failure=on_retry_failure,
                 retries_used=retries_used,
                 max_retries=max_retries,
-            ):
-                raise exc_with_output from exc
-            if reset_tool_registry is None:
-                raise RuntimeError("retry registry unexpectedly unavailable") from exc
-            retry_plan = _retry_plan_for_exception(
-                exc_with_output,
-                attempt_lines=list(attempt_lines),
-                current_session_id=current_session_id,
             )
-            if retry_plan is None:
-                raise exc_with_output from exc
-            if on_retry_failure is not None:
-                on_retry_failure(list(_exception_parsed_output(exc_with_output)))
-            if retry_plan.reset_tool_registry:
-                record_runtime_event("mcp_operation", "reset_tool_registry")
-                try:
-                    reset_tool_registry()
-                except McpServerError:
-                    raise
-                except Exception as mcp_exc:
-                    raise _mcp_operation_error(exc, mcp_exc) from mcp_exc
-            current_session_id = retry_plan.session_id
             retries_used += 1
 
 

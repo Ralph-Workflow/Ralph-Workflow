@@ -16,10 +16,14 @@ from ralph.testing.audit_test_policy import (
     count_private_imports,
     count_setattr_private,
     main,
-    render_whitebox_baseline,
 )
 from ralph.testing.test_whitebox_baseline import WHITEBOX_BASELINE
 from ralph.testing.whitebox_reconciliation import reconcile_whitebox_baseline
+
+_TESTS_ROOT = Path(__file__).parent
+_WHITEBOX_BASELINE_MODULE = (
+    Path(__file__).parent.parent / "ralph" / "testing" / "test_whitebox_baseline.py"
+)
 
 
 def test_sleep_with_positive_arg_is_violation(tmp_path: Path) -> None:
@@ -441,8 +445,8 @@ def test_nonzero_whitebox_count_missing_from_baseline_exits_one(
 
 
 def test_emit_baseline_entry_set_matches_frozen_baseline() -> None:
-    emitted_text = render_whitebox_baseline(WHITEBOX_BASELINE)
-    parsed = ast.parse(emitted_text)
+    source = _WHITEBOX_BASELINE_MODULE.read_text(encoding="utf-8")
+    parsed = ast.parse(source)
     raw_assignment = next(
         node
         for node in parsed.body
@@ -451,8 +455,20 @@ def test_emit_baseline_entry_set_matches_frozen_baseline() -> None:
         and node.targets[0].id == "_RAW"
     )
     raw = ast.literal_eval(raw_assignment.value)
-    emitted_paths = {line.split("|", 1)[0] for line in raw.splitlines() if line}
-    assert emitted_paths == set(WHITEBOX_BASELINE)
+    emitted = {}
+    for line in raw.splitlines():
+        if not line:
+            continue
+        path, counts = line.split("|")
+        setattr_private, private_import, private_attr = counts.split(",")
+        emitted[path] = {
+            "setattr_private": int(setattr_private),
+            "private_import": int(private_import),
+            "private_attr": int(private_attr),
+        }
+
+    assert set(emitted) == set(WHITEBOX_BASELINE)
+    assert emitted == {path: dict(counts) for path, counts in WHITEBOX_BASELINE.items()}
 
 
 def _whitebox_counts(

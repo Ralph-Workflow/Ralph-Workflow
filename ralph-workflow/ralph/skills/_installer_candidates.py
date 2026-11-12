@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
+from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import _git_blob_sha
 from ralph.skills._agent_paths import (
     project_sibling_skill_roots,
@@ -76,7 +77,8 @@ def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:
             return _lexical_descendants(root, workspace_root)
         try:
             try:
-                raw = cast("str", repo_obj.git.ls_files("--", str(root)))
+                raw_output: object = repo_obj.git.ls_files("--", str(root))
+                raw = optional_str(raw_output) or ""
             except (GitCommandError, OSError):
                 return _lexical_descendants(root, workspace_root)
             paths = [line.strip() for line in raw.splitlines() if line.strip()]

@@ -33,12 +33,7 @@ _UserStrategyFactory = StrategyFactory | object
 
 
 def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactory:
-    catalog = default_catalog()
-    factory = catalog._DEFAULT_STRATEGIES.get(transport)
-    if factory is None:
-        msg = f"No default strategy registered for transport {transport!r}"
-        raise ValueError(msg)
-    return factory
+    return default_catalog()._default_strategy_for_transport(transport)
 
 
 def _validate_and_materialize_support(

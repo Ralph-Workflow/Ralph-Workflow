@@ -737,7 +737,6 @@ class RecoveryController:
         return min(computed, entry.max_backoff_ms)
 
     def _is_agent_spent(self, phase: str, agent: str) -> bool:
-        """Return True when an agent is controller-spent or ledger-demoted."""
         if agent in self._spent_agents.get(phase, ()):
             return True
         return isinstance(self._ledger.status(phase, agent), Spent)

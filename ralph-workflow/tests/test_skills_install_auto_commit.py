@@ -57,10 +57,6 @@ def _head_tree_blob_paths(repo: Repo) -> set[str]:
 
 
 def _write_managed_marker(skill_dir: Path, skill: str, **fields: object) -> None:
-    """Write a managed marker that PROVES Ralph manages ``skill_dir``.
-
-    The install replaces a sibling entry ONLY when Ralph can prove it
-    manages it, so the marker records the digests Ralph owns."""
     marker = {"managed_by": "ralph-workflow", "skill": skill, **fields}
     (skill_dir / _MANAGED_MARKER).write_text(json.dumps(marker) + "\n", encoding="utf-8")
 
@@ -71,8 +67,6 @@ def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and
     Repo.init(tmp_path)
     _commit_all_initial(tmp_path)
 
-    # 1. Track a sibling dir so the install's dir-to-symlink transition
-    #    replaces it; the marker records the files Ralph owns.
     sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
     skill_md = sibling_dir / "SKILL.md"
@@ -378,8 +372,6 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
     Repo.init(tmp_path)
     _commit_all_initial(tmp_path)
 
-    # 1. Track a sibling skill with byte-equal content; the marker
-    #    records the digest Ralph owns.
     sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
     byte_equal_content = get_skill_content("submit-artifact")
@@ -628,8 +620,6 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
 
     sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
-    # The marker proves Ralph manages the entry; the fixture's directory
-    # holds only the tracked SYMLINK descendant (symlinks are skipped).
     _write_managed_marker(sibling_dir, "submit-artifact", files={})
     (sibling_dir / "alias").symlink_to("original")
     repo = Repo(tmp_path)

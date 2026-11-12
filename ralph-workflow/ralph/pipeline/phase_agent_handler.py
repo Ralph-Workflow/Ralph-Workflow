@@ -5,7 +5,7 @@ import os
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -31,8 +31,6 @@ from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 
 if TYPE_CHECKING:
-    from typing import Protocol
-
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
@@ -76,6 +74,11 @@ def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
     return module.read_plan_artifact
 
 
+@runtime_checkable
+class _DisplayMethod(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
+
 def _emit_via_display(
     display_context: DisplayContext,
     method_name: str,
@@ -86,8 +89,8 @@ def _emit_via_display(
         display: ParallelDisplay = resolve_active_display(None, display_context)
     except Exception:
         return False
-    method = getattr(display, method_name, None)
-    if method is None or not callable(method):
+    method: object = getattr(display, method_name, None)
+    if not isinstance(method, _DisplayMethod):
         return False
     try:
         method(*args, **kwargs)
