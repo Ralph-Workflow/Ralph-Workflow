@@ -14,6 +14,19 @@ from ralph.config.agents_file_writer import AgentsFileConflictError, write_agent
 
 _AGENTS_FILENAME = "ralph-workflow-agents.toml"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_failed_writer_interleaved_at_backup_publication_preserves_concurrent_backup": (
+        "uncoordinated concurrent writer B is simulated via atomic backup staging and target writes "
+        "because target serialization lock acquisition now fails closed on timeout instead of "
+        "yielding without locks, which would deadlock an in-process thread holding the lock"
+    ),
+    "test_stale_writer_before_replace_aborts_when_concurrent_writer_succeeds": (
+        "uncoordinated concurrent writer B is simulated via atomic backup staging and target writes "
+        "because target serialization lock acquisition now fails closed on timeout instead of "
+        "yielding without locks, which would deadlock an in-process thread holding the lock"
+    ),
+}
+
 
 def _record_atomic_moves(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
     moves: list[tuple[str, str]] = []
@@ -209,8 +222,9 @@ def test_failed_writer_keeps_a_concurrent_writers_backup(
     thread.start()
     assert reached_replace.wait(timeout=10), "writer A never reached the target replace"
 
-    write_agents_toml(target, '[agents.claude]\nmodel = "writer-b"\n', trigger="writer-b")
     backup = target.with_name(f"{target.name}.bak")
+    backup.write_text(original, encoding="utf-8")
+    target.write_text('[agents.claude]\nmodel = "writer-b"\n', encoding="utf-8")
     writer_b_backup_identity = (backup.stat().st_dev, backup.stat().st_ino)
 
     release_a.set()
@@ -247,15 +261,10 @@ def test_failed_writer_interleaved_at_backup_publication_preserves_concurrent_ba
             raise OSError("simulated target replace failure")
         result = real_replace(self, target_path, *args, **kwargs)
         if threading.current_thread().name == "writer-a" and str(target_path) == str(bak_path):
-            writer_b_thread = threading.Thread(
-                target=lambda: write_agents_toml(
-                    target, '[agents.claude]\nmodel = "writer-b"\n', trigger="writer-b"
-                ),
-                name="writer-b",
-            )
-            writer_b_thread.start()
-            writer_b_thread.join(timeout=5)
-            assert not writer_b_thread.is_alive(), "writer B failed to finish"
+            new_bak = tmp_path / f".bak_b_{os.urandom(4).hex()}"
+            new_bak.write_text(original, encoding="utf-8")
+            real_replace(new_bak, bak_path)
+            target.write_text('[agents.claude]\nmodel = "writer-b"\n', encoding="utf-8")
             writer_b_backup_identity = (bak_path.stat().st_dev, bak_path.stat().st_ino)
         return result
 
@@ -319,8 +328,8 @@ def _historical_release_backup(
 
 
 def _write_versions_as_writer_b(target: Path, bak_path: Path) -> tuple[bytes, tuple[int, int]]:
-    write_agents_toml(target, '[agents.claude]\nmodel = "writer-b-v1"\n', trigger="writer-b-v1")
-    write_agents_toml(target, '[agents.claude]\nmodel = "writer-b-v2"\n', trigger="writer-b-v2")
+    bak_path.write_text('[agents.claude]\nmodel = "writer-b-v1"\n', encoding="utf-8")
+    target.write_text('[agents.claude]\nmodel = "writer-b-v2"\n', encoding="utf-8")
     return bak_path.read_bytes(), (bak_path.stat().st_dev, bak_path.stat().st_ino)
 
 
@@ -511,10 +520,12 @@ def test_stale_writer_before_replace_aborts_when_concurrent_writer_succeeds(
     thread_a.start()
     assert reached_replace.wait(timeout=10), "writer A never reached target replacement"
 
-    b_success = write_agents_toml(target, '[agents.b]\ncmd = "b"\n', trigger="writer-b")
-    assert b_success is True
+    expected_b = '[agents.b]\ncmd = "b"\n'
+    new_bak = tmp_path / f".bak_b_{os.urandom(4).hex()}"
+    new_bak.write_text(base_content, encoding="utf-8")
+    new_bak.replace(bak_path)
+    target.write_text(expected_b, encoding="utf-8")
     results["B"] = True
-
     writer_b_backup_identity = (bak_path.stat().st_dev, bak_path.stat().st_ino)
 
     release_a.set()
@@ -585,3 +596,55 @@ def test_os_flock_failure_raises_conflict_error(
 
     assert "failed to acquire OS lock" in str(exc_info.value)
     assert target.read_text(encoding="utf-8") == '[agents.base]\ncmd = "base"\n'
+
+
+def test_target_lock_timeout_fails_closed_and_preserves_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / _AGENTS_FILENAME
+    initial_content = '[agents.base]\ncmd = "base"\n'
+    target.write_text(initial_content, encoding="utf-8")
+
+    reached_replace = threading.Event()
+    release_writer_1 = threading.Event()
+    real_replace = Path.replace
+
+    def blocking_replace(
+        self: Path, target_path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> Path:
+        if threading.current_thread().name == "writer-1" and _same_path(Path(target_path), target):
+            reached_replace.set()
+            assert release_writer_1.wait(timeout=10), "writer 1 was never released"
+        return real_replace(self, target_path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", blocking_replace)
+
+    thread_1 = threading.Thread(
+        target=lambda: write_agents_toml(target, '[agents.w1]\ncmd = "w1"\n', trigger="writer-1"),
+        name="writer-1",
+    )
+    thread_1.start()
+    assert reached_replace.wait(timeout=10), "writer 1 never reached replace"
+
+    with pytest.raises(AgentsFileConflictError) as exc_info:
+        write_agents_toml(target, '[agents.w2]\ncmd = "w2"\n', trigger="writer-2")
+
+    assert "trigger: lock-timeout" in str(exc_info.value)
+    assert str(target) in str(exc_info.value)
+    assert target.read_text(encoding="utf-8") == initial_content
+
+    leftovers_during = [
+        f.name for f in tmp_path.iterdir() if f.name.startswith(f".{target.name}.tmp.")
+    ]
+    assert len(leftovers_during) == 1
+
+    release_writer_1.set()
+    thread_1.join(timeout=10)
+    assert not thread_1.is_alive()
+
+    assert target.read_text(encoding="utf-8") == '[agents.w1]\ncmd = "w1"\n'
+    leftovers_after = [
+        f.name for f in tmp_path.iterdir() if f.name.startswith(f".{target.name}.tmp.")
+    ]
+    assert leftovers_after == []

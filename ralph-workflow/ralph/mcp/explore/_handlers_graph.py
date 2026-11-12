@@ -9,6 +9,7 @@ from pathlib import Path
 from ralph.mcp.explore import graph as graph_module
 from ralph.mcp.explore import handlers as handlers_module
 from ralph.mcp.explore._bounded_flags import BoundedFlagRegistry
+from ralph.mcp.explore.graph import run_query
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
     _int_param,
@@ -178,7 +179,7 @@ def handle_ralph_graph(
             workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()
             handle = handlers_module.build_explore_index(workspace_root)
             ephemeral_handle = handle
-        result = graph_module.run_query(
+        result = run_query(
             handle.store,
             query_type=query_type_raw,
             target=target,

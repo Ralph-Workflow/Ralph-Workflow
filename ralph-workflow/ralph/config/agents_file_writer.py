@@ -63,28 +63,38 @@ def _lock_file_path(target: Path) -> Path:
 def _target_serialization_lock(target: Path) -> Iterator[None]:
     target_lock = _get_target_lock(target)
     acquired = target_lock.acquire(timeout=0.1)
+    if not acquired:
+        msg = (
+            f"Conflict detected while writing {target} (trigger: lock-timeout): "
+            f"timed out waiting for target serialization lock. "
+            f"Aborting write to preserve operator edits without overwrite. "
+            f"Inspect {target} or re-run with explicit recovery (e.g. ralph --regenerate-config)."
+        )
+        logger.warning(msg)
+        _std_logger.warning(msg)
+        raise AgentsFileConflictError(msg)
+
     lock_fd: int | None = None
     try:
-        if acquired:
-            try:
-                lock_path = _lock_file_path(target)
-                lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
-                if sys.platform != "win32":
-                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
-            except OSError as exc:
-                if lock_fd is not None:
-                    with contextlib.suppress(OSError):
-                        os.close(lock_fd)
-                    lock_fd = None
-                msg = (
-                    f"Conflict detected while writing {target} (trigger: lock-failure): "
-                    f"failed to acquire OS lock: {exc}. "
-                    f"Aborting write to preserve operator edits without overwrite. "
-                    f"Inspect {target} or re-run with explicit recovery (e.g. ralph --regenerate-config)."
-                )
-                logger.warning(msg)
-                _std_logger.warning(msg)
-                raise AgentsFileConflictError(msg) from exc
+        try:
+            lock_path = _lock_file_path(target)
+            lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+            if sys.platform != "win32":
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        except OSError as exc:
+            if lock_fd is not None:
+                with contextlib.suppress(OSError):
+                    os.close(lock_fd)
+                lock_fd = None
+            msg = (
+                f"Conflict detected while writing {target} (trigger: lock-failure): "
+                f"failed to acquire OS lock: {exc}. "
+                f"Aborting write to preserve operator edits without overwrite. "
+                f"Inspect {target} or re-run with explicit recovery (e.g. ralph --regenerate-config)."
+            )
+            logger.warning(msg)
+            _std_logger.warning(msg)
+            raise AgentsFileConflictError(msg) from exc
         yield
     finally:
         if lock_fd is not None:
@@ -93,8 +103,7 @@ def _target_serialization_lock(target: Path) -> Iterator[None]:
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)
             with contextlib.suppress(OSError):
                 os.close(lock_fd)
-        if acquired:
-            target_lock.release()
+        target_lock.release()
 
 
 def _raise_conflict(path: Path, trigger: str) -> None:

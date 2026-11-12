@@ -190,10 +190,16 @@ class DefaultProcessTeardown:
             except psutil.Error:
                 pass
 
-        self._await_exit([proc for proc in procs if proc.pid not in gone])
+        survivors = [proc for proc in procs if proc.pid not in gone]
+        if survivors:
+            gone.update(self._await_exit(survivors))
 
         if group is not None:
-            self._signal_process_group(group)
+            if len(gone) >= len(procs):
+                with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+                    os.killpg(group, signal.SIGKILL)
+            else:
+                self._signal_process_group(group)
 
     def _record_for(self, host_pid: int) -> ProcessRecord | None:
         if self._record_lookup is not None:

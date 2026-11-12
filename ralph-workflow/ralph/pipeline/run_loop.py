@@ -643,9 +643,6 @@ def build_status_bar_model(
     )
 
 
-build_status_bar_model = _build_status_bar_model
-
-
 def integration_alert_for_state(state: PipelineState) -> str | None:
     rebase = state.rebase
     if (
