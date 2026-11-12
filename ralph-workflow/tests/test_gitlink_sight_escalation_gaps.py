@@ -7,11 +7,13 @@ import pytest
 
 if TYPE_CHECKING:
     from ralph.git.git_run_result import GitRunResult
+    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.merge import conflict_stage_entries
 from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.pipeline import resolve_rebase_with_config
 from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.conflict_resolution.session import (
@@ -778,3 +780,84 @@ def test_mixed_stop_no_tab_record_and_text_conflict(
     assert "malformed index stage record for P" in outcome.exhaustion_message
     assert "git add -- P" in outcome.exhaustion_message
     assert "gitlink" not in outcome.exhaustion_message.lower(), "must not use gitlink wording"
+
+
+def _diverged_submodule_commits(tmp_path: Path) -> tuple[str, str, str]:
+    remote = tmp_path / "sub_remote"
+    remote.mkdir()
+    _git(remote, "init", "-q", "-b", "main")
+    _git(remote, "commit", "-q", "--allow-empty", "-m", "base")
+    base = _git(remote, "rev-parse", "HEAD").stdout.strip()
+    _git(remote, "checkout", "-q", "-b", "ours")
+    _git(remote, "commit", "-q", "--allow-empty", "-m", "ours")
+    ours = _git(remote, "rev-parse", "HEAD").stdout.strip()
+    _git(remote, "checkout", "-q", "-b", "theirs", "main")
+    _git(remote, "commit", "-q", "--allow-empty", "-m", "theirs")
+    theirs = _git(remote, "rev-parse", "HEAD").stdout.strip()
+    return base, ours, theirs
+
+
+@pytest.mark.timeout_seconds(5)
+def test_diverged_gitlink_with_unfetchable_objects_escalates_on_sight_without_agent(
+    tmp_path: Path,
+) -> None:
+    repo = _setup_test_repo(tmp_path)
+    base, ours, theirs = _diverged_submodule_commits(tmp_path)
+
+    index_info = f"160000 {base} 1\tsub\n160000 {ours} 2\tsub\n160000 {theirs} 3\tsub\n"
+    _git(repo, "update-index", "--index-info", input_text=index_info)
+
+    assert not (repo / ".gitmodules").exists(), "no submodule mapping: objects are unfetchable"
+    assert not (repo / "sub").exists(), "submodule is not checked out: objects are absent"
+
+    head_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    rebase_dir = repo / ".git" / "rebase-merge"
+    rebase_dir.mkdir()
+    (rebase_dir / "onto").write_text(head_sha + "\n", encoding="utf-8")
+    (rebase_dir / "orig-head").write_text(head_sha + "\n", encoding="utf-8")
+    (rebase_dir / "msgnum").write_text("1\n", encoding="utf-8")
+    (rebase_dir / "end").write_text("1\n", encoding="utf-8")
+    (rebase_dir / "head-name").write_text("refs/heads/feature\n", encoding="utf-8")
+    _git(repo, "update-ref", "REBASE_HEAD", head_sha)
+
+    agent_invocations: list[str] = []
+
+    def mock_invoker(agent_name: str, _repo_root: Path, _round_index: int) -> bool:
+        agent_invocations.append(agent_name)
+        return True
+
+    repo_root = Path(__file__).resolve().parents[1]
+    policy_bundle = load_policy(repo_root / "ralph" / "policy" / "defaults")
+    config = UnifiedConfig.model_validate({"general": {}})
+
+    def stop_resolver(
+        resolver_root: Path, resolver_target: str, rebase_stop: RebaseStop
+    ) -> ResolutionOutcome:
+        return run_rebase_conflict_resolution_outcome(
+            root=resolver_root,
+            target=resolver_target,
+            stop=rebase_stop,
+            config=config,
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=policy_bundle,
+            display=None,
+            display_context=None,
+            invoke=mock_invoker,
+        )
+
+    rebase_result = resolve_rebase_with_config(repo, "main", stop_resolver, None)
+
+    assert rebase_result.succeeded is False
+    assert agent_invocations == [], "no resolver agent may be launched for a diverged gitlink"
+    assert rebase_result.reason is not None
+    assert "gitlink conflict on sub" in rebase_result.reason, (
+        "the escalation must name the conflicted path"
+    )
+    assert "git add -- sub" in rebase_result.reason, (
+        "the escalation must name the exact manual command"
+    )
+
+    unmerged = _git(repo, "ls-files", "-u", "sub").stdout.strip()
+    assert f"160000 {ours} 2\tsub" in unmerged
+    assert f"160000 {theirs} 3\tsub" in unmerged

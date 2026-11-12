@@ -36,6 +36,7 @@ from ralph.pipeline.integration_observation import InProgressKind
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.integration_attempt_ledger import (
         AttemptLedger,
         AttemptLedgerState,
@@ -45,6 +46,10 @@ __all__ = [
     "LADDER_ATTEMPT_BUDGET",
     "LAST_RESORT_DISABLED_NO_SIGNATURE",
     "LAST_RESORT_PRECONDITIONS",
+    "LAST_RESORT_REFUSED_NO_PRESERVED_COPY",
+    "LAST_RESORT_TERMINAL_NO_SIGNATURE",
+    "PRESERVED_COPY_LEDGER_KEY",
+    "QUARANTINE_COPY_LEDGER_KEY",
     "EnvironmentFailure",
     "EnvironmentProbe",
     "FileQuarantine",
@@ -54,16 +59,19 @@ __all__ = [
     "LandResult",
     "RepointResult",
     "adapt_environment_and_retry",
+    "ensure_preserved_copy",
     "evaluate_last_resort_preconditions",
     "ladder_charge_count",
     "last_resort_recovery",
     "preserve_via_temp_index",
+    "preserved_copy_identity",
     "quarantine_and_restore",
     "reap_worktree_stale_locks",
     "rebuild_in_fresh_worktree",
     "record_salvage_attempt",
     "resume_rung",
     "run_ladder_rung",
+    "terminal_operator_message",
 ]
 
 
@@ -78,12 +86,28 @@ LAST_RESORT_PRECONDITIONS: Final[tuple[str, ...]] = (
     "fresh_reobservation_confirms_blocking_state",
 )
 
+LAST_RESORT_TERMINAL_NO_SIGNATURE: Final[str] = "terminal:disabled:no-blocking-signature"
+
 LAST_RESORT_DISABLED_NO_SIGNATURE: Final[str] = "failed:disabled:no-blocking-signature"
+
+LAST_RESORT_REFUSED_NO_PRESERVED_COPY: Final[str] = "terminal:refused:no-preserved-copy"
+
+PRESERVED_COPY_LEDGER_KEY: Final[str] = "preserved:alternate_preservation"
+
+QUARANTINE_COPY_LEDGER_KEY: Final[str] = "preserved:quarantine"
 
 SALVAGE_KINDS: Final[tuple[str, ...]] = (
     "resolver_agent",
     "rebase_first_retry",
     "fresh_worktree_rebuild",
+)
+
+_RESET_CAPABLE_RUNGS: Final[frozenset[CleanupLadderRung]] = frozenset(
+    {
+        CleanupLadderRung.QUARANTINE,
+        CleanupLadderRung.FRESH_WORKTREE,
+        CleanupLadderRung.LAST_RESORT,
+    }
 )
 
 
@@ -435,6 +459,67 @@ def adapt_environment_and_retry(
     return LadderStepResult(rung, "waiting", value, evidence={key: value})
 
 
+def preserved_copy_identity(
+    step: LadderStepResult,
+    state: AttemptLedgerState,
+) -> str | None:
+    identity = step.preserved_ref or step.preserved_sidecar
+    if identity:
+        return identity
+    evidence = state.ladder_evidence
+    return evidence.get(PRESERVED_COPY_LEDGER_KEY) or evidence.get(QUARANTINE_COPY_LEDGER_KEY)
+
+
+def ensure_preserved_copy(
+    root: Path,
+    *,
+    ledger: AttemptLedger,
+    git: GitPlumbing | None = None,
+    fs: FileQuarantine | None = None,
+    state_dir: Path | None = None,
+    is_landed: Callable[[str], bool] | None = None,
+) -> LadderStepResult | None:
+    if PRESERVED_COPY_LEDGER_KEY in ledger.read().ladder_evidence:
+        return None
+    return preserve_via_temp_index(
+        root,
+        git=git if git is not None else default_git_plumbing(),
+        fs=fs if fs is not None else default_file_quarantine(),
+        ledger=ledger,
+        state_dir=state_dir if state_dir is not None else Path(root) / ".agent",
+        is_landed=is_landed,
+    )
+
+
+def terminal_operator_message(
+    record: IntegrationRecord,
+    *,
+    reason: str,
+    observed_head: str | None,
+    preserved_copy: str,
+) -> str:
+    expected = [
+        f"integrated_feature_sha={record.integrated_feature_sha or 'unset'}",
+        f"pre_target_sha={record.pre_target_sha or 'unset'}",
+        f"pre_feature_sha={record.pre_feature_sha}",
+    ]
+    if record.rebase_continue_stop:
+        expected.append(f"rebase_continue_stop={record.rebase_continue_stop}")
+    if record.rebase_continue_head:
+        expected.append(f"rebase_continue_head={record.rebase_continue_head}")
+    if record.rebase_continue_tree:
+        expected.append(f"rebase_continue_tree={record.rebase_continue_tree}")
+    if record.merge_commit_parent:
+        expected.append(f"merge_commit_parent={record.merge_commit_parent}")
+    return (
+        f"Integration ladder terminal state: {reason}; "
+        f"observed HEAD {observed_head or 'unreadable'}; "
+        f"expected {'; '.join(expected)}; "
+        f"preserved copy: {preserved_copy}; "
+        "operator action required: land the expected commit and run 'ralph --resume'"
+    )
+
+
 def last_resort_recovery(
     root: Path,
     *,
@@ -453,18 +538,25 @@ def last_resort_recovery(
     in_progress_kind: InProgressKind = InProgressKind.NONE,
     is_landed: Callable[[str], bool] | None = None,
     budget: int = LADDER_ATTEMPT_BUDGET,
+    terminal_when_disabled: bool = True,
 ) -> LadderStepResult:
     rung = CleanupLadderRung.LAST_RESORT
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
     if not decided_signature:
-        value = LAST_RESORT_DISABLED_NO_SIGNATURE
+        value = (
+            LAST_RESORT_TERMINAL_NO_SIGNATURE
+            if terminal_when_disabled
+            else LAST_RESORT_DISABLED_NO_SIGNATURE
+        )
         _record_evidence(ledger, key, value)
         logger.warning(
             "integration ladder rung 6 (last resort) is disabled for this caller: no "
-            "re-observed blocking signature was supplied, so the hard reset never runs"
+            "re-observed blocking signature was supplied, so the hard reset never runs "
+            "and the ladder ends in a terminal state that needs an operator"
         )
-        return LadderStepResult(rung, "failed", value, evidence={key: value})
+        outcome: LadderOutcome = "terminal" if terminal_when_disabled else "failed"
+        return LadderStepResult(rung, outcome, value, evidence={key: value})
     state = ledger.read()
     preconditions = evaluate_last_resort_preconditions(
         state, decided_signature=decided_signature, fresh_signature=fresh_signature, budget=budget
@@ -478,7 +570,7 @@ def last_resort_recovery(
         return LadderStepResult(rung, "failed", value, evidence=preconditions)
 
     state = ledger.read()
-    if "preserved:alternate_preservation" not in state.ladder_evidence and paths:
+    if PRESERVED_COPY_LEDGER_KEY not in state.ladder_evidence:
         preserved = preserve_via_temp_index(
             root,
             git=git,
@@ -487,10 +579,11 @@ def last_resort_recovery(
             state_dir=state_dir,
             is_landed=is_landed,
         )
-        if preserved.preserved_ref is None and preserved.preserved_sidecar is None:
+        if preserved.outcome == "failed":
             logger.warning(
-                "integration ladder rung 6: final preservation also failed; "
-                "the reset loses only what nothing could save"
+                "integration ladder rung 6: final preservation failed ({}); "
+                "the reset may discard work that nothing could save",
+                preserved.reason,
             )
 
     if in_progress_kind is not InProgressKind.NONE and not git.abort_operation(
@@ -520,6 +613,37 @@ def last_resort_recovery(
     return LadderStepResult(rung, "succeeded", value, evidence=preconditions)
 
 
+def _refuse_without_preserved_copy(
+    root: Path,
+    *,
+    rung: CleanupLadderRung,
+    ledger: AttemptLedger,
+    git: GitPlumbing,
+    fs: FileQuarantine,
+    state_dir: Path,
+    is_landed: Callable[[str], bool] | None,
+) -> LadderStepResult | None:
+    preserved = ensure_preserved_copy(
+        root,
+        ledger=ledger,
+        git=git,
+        fs=fs,
+        state_dir=state_dir,
+        is_landed=is_landed,
+    )
+    if preserved is None or preserved.outcome != "failed":
+        return None
+    value = f"failed:no-preserved-copy:{preserved.reason}"
+    _record_evidence(ledger, _rung_key(rung), value)
+    logger.warning(
+        "integration ladder rung {}: refused; no durable preserved copy could be "
+        "created ({}), so no destructive cleanup runs",
+        rung.value,
+        preserved.reason,
+    )
+    return LadderStepResult(rung, "failed", value, evidence={_rung_key(rung): value})
+
+
 def run_ladder_rung(
     rung: CleanupLadderRung,
     *,
@@ -545,18 +669,20 @@ def run_ladder_rung(
     remote: str = "origin",
     budget: int = LADDER_ATTEMPT_BUDGET,
     expected_target_sha: str | None = None,
+    terminal_when_disabled: bool = False,
 ) -> LadderStepResult:
     plumbing = git if git is not None else default_git_plumbing()
     quarantine = fs if fs is not None else default_file_quarantine()
     probe = env if env is not None else default_environment_probe()
     ladder_clock = clock if clock is not None else current_clock()
     ralph_state = state_dir if state_dir is not None else Path(root) / ".agent"
+    result: LadderStepResult
     if rung is CleanupLadderRung.NORMAL_CLEANUP:
         value = "failed:not-owned-here"
         _record_evidence(ledger, _rung_key(rung), value)
-        return LadderStepResult(rung, "failed", value, evidence={_rung_key(rung): value})
-    if rung is CleanupLadderRung.ALTERNATE_PRESERVATION:
-        return preserve_via_temp_index(
+        result = LadderStepResult(rung, "failed", value, evidence={_rung_key(rung): value})
+    elif rung is CleanupLadderRung.ALTERNATE_PRESERVATION:
+        result = preserve_via_temp_index(
             root,
             git=plumbing,
             fs=quarantine,
@@ -565,30 +691,54 @@ def run_ladder_rung(
             owning_worktree=owning_worktree,
             is_landed=is_landed,
         )
-    if rung is CleanupLadderRung.QUARANTINE:
-        return quarantine_and_restore(
+    elif rung is CleanupLadderRung.QUARANTINE:
+        refusal = _refuse_without_preserved_copy(
             root,
-            paths=paths,
+            rung=rung,
+            ledger=ledger,
             git=plumbing,
             fs=quarantine,
-            ledger=ledger,
             state_dir=ralph_state,
-            clock=ladder_clock,
+            is_landed=is_landed,
         )
-    if rung is CleanupLadderRung.FRESH_WORKTREE:
-        return rebuild_in_fresh_worktree(
+        if refusal is not None:
+            result = refusal
+        else:
+            result = quarantine_and_restore(
+                root,
+                paths=paths,
+                git=plumbing,
+                fs=quarantine,
+                ledger=ledger,
+                state_dir=ralph_state,
+                clock=ladder_clock,
+            )
+    elif rung is CleanupLadderRung.FRESH_WORKTREE:
+        refusal = _refuse_without_preserved_copy(
             root,
-            target=target,
-            branch=branch,
-            git=plumbing,
+            rung=rung,
             ledger=ledger,
+            git=plumbing,
+            fs=quarantine,
             state_dir=ralph_state,
-            clock=ladder_clock,
-            preserved_ref=feature_tip,
-            expected_target_sha=expected_target_sha,
+            is_landed=is_landed,
         )
-    if rung is CleanupLadderRung.ENVIRONMENT_DEGRADE:
-        return adapt_environment_and_retry(
+        if refusal is not None:
+            result = refusal
+        else:
+            result = rebuild_in_fresh_worktree(
+                root,
+                target=target,
+                branch=branch,
+                git=plumbing,
+                ledger=ledger,
+                state_dir=ralph_state,
+                clock=ladder_clock,
+                preserved_ref=feature_tip,
+                expected_target_sha=expected_target_sha,
+            )
+    elif rung is CleanupLadderRung.ENVIRONMENT_DEGRADE:
+        result = adapt_environment_and_retry(
             root,
             git=plumbing,
             fs=quarantine,
@@ -600,24 +750,49 @@ def run_ladder_rung(
             observe=observe,
             remind=remind,
         )
-    return last_resort_recovery(
-        root,
-        git=plumbing,
-        fs=quarantine,
-        ledger=ledger,
-        state_dir=ralph_state,
-        clock=ladder_clock,
-        feature_tip=feature_tip,
-        target=target,
-        branch=branch,
-        decided_signature=decided_signature,
-        fresh_signature=fresh_signature,
-        paths=paths,
-        untracked_paths=untracked_paths,
-        in_progress_kind=in_progress_kind,
-        is_landed=is_landed,
-        budget=budget,
-    )
+    else:
+        preserved = (
+            ensure_preserved_copy(
+                root,
+                ledger=ledger,
+                git=plumbing,
+                fs=quarantine,
+                state_dir=ralph_state,
+                is_landed=is_landed,
+            )
+            if decided_signature
+            else None
+        )
+        if preserved is not None and preserved.outcome == "failed":
+            value = LAST_RESORT_REFUSED_NO_PRESERVED_COPY
+            _record_evidence(ledger, _rung_key(rung), value)
+            logger.warning(
+                "integration ladder rung 6 (last resort): refused; no durable preserved "
+                "copy could be created ({}), so the hard reset never runs",
+                preserved.reason,
+            )
+            result = LadderStepResult(rung, "terminal", value, evidence={_rung_key(rung): value})
+        else:
+            result = last_resort_recovery(
+                root,
+                git=plumbing,
+                fs=quarantine,
+                ledger=ledger,
+                state_dir=ralph_state,
+                clock=ladder_clock,
+                feature_tip=feature_tip,
+                target=target,
+                branch=branch,
+                decided_signature=decided_signature,
+                fresh_signature=fresh_signature,
+                paths=paths,
+                untracked_paths=untracked_paths,
+                in_progress_kind=in_progress_kind,
+                is_landed=is_landed,
+                budget=budget,
+                terminal_when_disabled=terminal_when_disabled,
+            )
+    return result
 
 
 def default_git_plumbing() -> GitPlumbing:

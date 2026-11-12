@@ -37,7 +37,9 @@ def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]
     if head not in allowed_heads:
         return (
             False,
-            f"HEAD {head} does not match integrated_feature_sha, pre_target_sha, or pre_feature_sha",
+            f"HEAD {head} does not match integrated_feature_sha="
+            f"{record.integrated_feature_sha}, pre_target_sha={record.pre_target_sha}, "
+            f"or pre_feature_sha={record.pre_feature_sha}",
         )
     return True, "HEAD matches"
 
@@ -110,6 +112,15 @@ def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool,
     return True, "ownership verified"
 
 
+def _rebase_in_progress(root: Path) -> bool:
+    from ralph.git.rebase.rebase import rebase_in_progress
+
+    try:
+        return rebase_in_progress(root)
+    except Exception:
+        return True
+
+
 def _check_marker_ref_proof(root: Path, ref_name: str) -> tuple[bool, str]:
     from ralph.git.subprocess_runner import run_git
 
@@ -120,6 +131,8 @@ def _check_marker_ref_proof(root: Path, ref_name: str) -> tuple[bool, str]:
             label=f"integration_diagnostic:check_{ref_name.lower()}",
         )
         if res.returncode == 0:
+            if ref_name == "REBASE_HEAD" and not _rebase_in_progress(root):
+                return True, f"{ref_name} is a stale marker left by a completed rebase"
             return False, f"{ref_name} is present"
         if res.returncode != 1:
             return False, f"{ref_name} status is UNKNOWN (unexpected exit code {res.returncode})"
@@ -145,7 +158,7 @@ def _check_gitdir_markers_proof(root: Path) -> tuple[bool, str]:
         gitdir = Path(gitdir_res.stdout.strip())
         if (gitdir / "MERGE_HEAD").exists():
             return False, "MERGE_HEAD is present"
-        if (gitdir / "REBASE_HEAD").exists():
+        if (gitdir / "REBASE_HEAD").exists() and _rebase_in_progress(root):
             return False, "REBASE_HEAD is present"
         if (gitdir / "rebase-merge").exists() or (gitdir / "rebase-apply").exists():
             return False, "rebase state directory is present"

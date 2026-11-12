@@ -119,6 +119,14 @@ type ResolutionInvoker = Callable[[str, "Path", int], ResolutionOutcome | bool]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
+_CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = frozenset(
+    {
+        ResolutionTerminationReason.TOOL_SURFACE_DEAD,
+        ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
+        ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+    }
+)
+
 __all__ = [
     "MonotonicClock",
     "ResolutionAction",
@@ -623,40 +631,22 @@ def _record_unconfigured_resolver(
 
 
 def _dead_chain_reason(
-    candidates: Sequence[str],
+    live_candidates: Sequence[str],
     controller: RecoveryController | None,
     ledger: AgentFailureLedger | None,
-    launch_attempted: bool,
 ) -> ResolutionTerminationReason:
-    if not candidates:
-        return (
-            ResolutionTerminationReason.TOOL_SURFACE_DEAD
-            if launch_attempted
-            else ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-        )
-    delay: int = 0
-    all_exhausted: bool = False
+    wait: int | None
     if controller is not None:
-        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-        all_exhausted = controller.all_exhausted(PHASE_RESOLUTION, candidates)
+        wait = controller.earliest_eligible_wait_ms(PHASE_RESOLUTION, list(live_candidates))
     elif ledger is not None:
-        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(candidates))
-        if wait is None:
-            all_exhausted = True
-        elif wait > 0:
-            delay = wait
+        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(live_candidates))
     else:
-        return (
-            ResolutionTerminationReason.TOOL_SURFACE_DEAD
-            if launch_attempted
-            else ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-        )
-
-    if delay > 0:
-        return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    if not launch_attempted or all_exhausted:
+        wait = None
+    if wait is None:
         return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-    return ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    if wait > 0:
+        return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
 
 
 def _agent_unavailability_reason(
@@ -689,14 +679,17 @@ def _handle_dead_candidate_chain(
     paths = tuple(session.unresolved_paths or conflicted)
     session.unresolved_paths = paths
 
-    launch_attempted = session.rounds_spent > 0 or session.last_attempt_saw_activity
+    barred = skipped_candidates(session, tuple(candidates))
+    live_candidates = [agent for agent in candidates if agent not in barred]
 
     if (
         session.terminal_reason is None
-        or session.terminal_reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        or session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
     ):
         session.terminal_reason = _dead_chain_reason(
-            candidates, controller, ledger, launch_attempted
+            live_candidates,
+            controller,
+            ledger,
         )
 
     if session.last_failure_cause == ResolutionFailureCause.NONE:

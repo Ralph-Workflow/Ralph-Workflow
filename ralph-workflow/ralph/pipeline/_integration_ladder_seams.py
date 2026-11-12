@@ -19,7 +19,7 @@ __all__ = [
 ]
 
 
-type LadderOutcome = Literal["succeeded", "failed", "impossible", "waiting"]
+type LadderOutcome = Literal["succeeded", "failed", "impossible", "waiting", "terminal"]
 
 type LandResult = Literal[
     "landed",

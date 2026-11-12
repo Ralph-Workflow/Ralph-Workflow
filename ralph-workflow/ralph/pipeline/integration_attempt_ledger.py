@@ -10,6 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
+from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
 from ralph.pipeline.integration_decision import (
     LADDER_ORDER,
     MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION,
@@ -29,6 +30,7 @@ __all__ = [
     "LedgerLoadStatus",
     "LedgerRebuildFacts",
     "attempt_ledger_path",
+    "rebase_resolution_signature",
     "rebuild_state_from_git_facts",
     "repository_ledger_path",
     "shared_budget_dir",
@@ -115,6 +117,17 @@ class AttemptLedgerState:
 
 def attempt_ledger_path(workspace_root: Path) -> Path:
     return Path(workspace_root) / ".agent" / ATTEMPT_LEDGER_FILENAME
+
+
+def rebase_resolution_signature(
+    pre_feature_sha: str | None,
+    pre_target_sha: str | None,
+    stop_sha: str | None,
+) -> str:
+    return (
+        f"rebase-resolution|feature={pre_feature_sha or 'unknown'}"
+        f"|target={pre_target_sha or 'unknown'}|stop={stop_sha or 'unknown'}"
+    )
 
 
 def rebuild_state_from_git_facts(
@@ -341,6 +354,11 @@ class AttemptLedger:
         is_unknown: bool,
     ) -> AttemptLedgerState:
         return self.charge(signature, action, is_unknown=is_unknown)
+
+    def charge_ladder_attempt(self, signature: str, action: str) -> AttemptLedgerState:
+        if action not in _LADDER_ACTION_VALUES:
+            raise ValueError(f"not a ladder action: {action!r}")
+        return self.charge(signature, action, is_unknown=False)
 
     def charge(
         self,

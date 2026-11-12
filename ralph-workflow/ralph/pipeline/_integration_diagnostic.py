@@ -125,6 +125,7 @@ __all__ = [
     "diagnostic_evidence_verdict",
     "diagnostic_needed",
     "escalate_diagnostic_budget_to_ladder",
+    "escalate_record_fact_outcome",
     "evaluate_held_diagnostic_evidence",
     "handoff_integration_diagnostic",
     "identity_fingerprint",
@@ -472,10 +473,16 @@ def _run_completion_pre_pass(
             )
 
     if _completion_proof_applies(record):
+        promoted_record, promotion_note = _promote_completed_rebase_before_proof(
+            root,
+            inspection_root,
+            record,
+            backend,
+        )
         return _complete_or_intervene(
             root=root,
             inspection_root=inspection_root,
-            record=record,
+            record=promoted_record,
             backend=backend,
             collector=collector,
             repair_attempt_cap=repair_attempt_cap,
@@ -484,9 +491,26 @@ def _run_completion_pre_pass(
             fs=fs,
             env=env,
             clock=clock,
+            promotion_note=promotion_note,
         )
 
     return None
+
+
+def _promote_completed_rebase_before_proof(
+    root: Path,
+    inspection_root: Path,
+    record: IntegrationRecord,
+    backend: FileBackend,
+) -> tuple[IntegrationRecord, str]:
+    if record.operation_kind != "feature_integrate" or inspection_root != root:
+        return record, ""
+    from ralph.pipeline._pending_rebase_continue import promote_completed_pending_rebase
+
+    promoted = promote_completed_pending_rebase(root, record, backend=backend)
+    if isinstance(promoted, str):
+        return record, promoted
+    return promoted, ""
 
 
 def _complete_or_intervene(
@@ -502,16 +526,20 @@ def _complete_or_intervene(
     fs: FileQuarantine | None = None,
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
+    promotion_note: str = "",
 ) -> bool:
     proof_ok, proof_reason = _check_operation_completion_proof(
         inspection_root, record, collector=collector
     )
     if not proof_ok:
+        reason = f"operation completion proof failed: {proof_reason}"
+        if promotion_note:
+            reason = f"{reason}; {promotion_note}"
         return _pre_pass_failure(
             root,
             record,
             backend,
-            f"operation completion proof failed: {proof_reason}",
+            reason,
             repair_attempt_cap=repair_attempt_cap,
             ledger=ledger,
             git=git,

@@ -33,6 +33,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_explore_concurrency.py",
     "tests/test_explore_cold_start_lifecycle.py",
     "tests/test_explore_perf_regression_gate.py",
+    "tests/test_completed_rebase_landing_blackbox.py",
     "tests/test_skills_install_auto_commit.py",
     "tests/project_policy/test_policy_auto_commit.py",
     "tests/test_scoped_auto_commit.py",

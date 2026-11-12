@@ -217,6 +217,7 @@ class LoopContext:
     process_teardown: Callable[[], None] | None = None
     _session_handoff_dispatched: bool = False
     cold_capped_escalation_attempted: bool = False
+    _retained_round_fingerprints: dict[str, str] = field(default_factory=dict)
     hooks: RetryDiagnosticHooks = field(default_factory=RetryDiagnosticHooks)
 
 
@@ -634,7 +635,7 @@ def build_status_bar_model(
         outer_dev_cap=entry.outer_dev_cap,
         inner_analysis=entry.inner_analysis,
         inner_analysis_cap=entry.inner_analysis_cap,
-        integration_alert=_integration_alert_for_state(state),
+        integration_alert=_integration_alert_for_state(state, workspace_root),
         elapsed_seconds=elapsed_seconds,
         agent_name=entry_agent_name if isinstance(entry_agent_name, str) else None,
         run_started_monotonic=run_started_monotonic,
@@ -643,7 +644,40 @@ def build_status_bar_model(
     )
 
 
-def integration_alert_for_state(state: PipelineState) -> str | None:
+def _preserved_copy_clause_from_reason(reason: str | None) -> str:
+    marker = "preserved copy: "
+    if reason and marker in reason:
+        tail = reason.split(marker, 1)[1]
+        return tail.split(";", 1)[0].strip() or "no preserved copy recorded"
+    return "no preserved copy recorded"
+
+
+def _preserved_copy_clause_for_root(root: Path) -> str:
+    from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+    from ralph.pipeline.integration_ladder import (
+        PRESERVED_COPY_LEDGER_KEY,
+        QUARANTINE_COPY_LEDGER_KEY,
+    )
+
+    try:
+        evidence = AttemptLedger(root).read().ladder_evidence
+    except Exception:
+        return "no preserved copy recorded"
+    identity = evidence.get(PRESERVED_COPY_LEDGER_KEY) or evidence.get(QUARANTINE_COPY_LEDGER_KEY)
+    return identity or "no preserved copy recorded"
+
+
+def _config_failure_fix_text(reason: str, root: Path | None) -> str:
+    from ralph.pipeline._config_failure_fingerprint import extract_config_path_from_reason
+    from ralph.pipeline.config_file_fingerprint_watcher import resolve_config_path_for_workspace
+
+    path = extract_config_path_from_reason(reason)
+    if path is None:
+        path = resolve_config_path_for_workspace(root if root is not None else Path.cwd())
+    return f"fix {path} then run ralph --check-config"
+
+
+def integration_alert_for_state(state: PipelineState, root: Path | None = None) -> str | None:
     rebase = state.rebase
     if (
         rebase.is_intervention_required
@@ -651,7 +685,8 @@ def integration_alert_for_state(state: PipelineState) -> str | None:
         or rebase.operation_display_state == "intervention_required"
     ):
         return (
-            "autonomous fallback ladder escalation — preserved copy: backup refs; "
+            "autonomous fallback ladder escalation — preserved copy: "
+            f"{_preserved_copy_clause_from_reason(rebase.last_reason)}; "
             "next autonomous rung: preserve the work, then climb the cleanup ladder"
         )
     if rebase.is_diagnostic_action() or rebase.operation_display_state == "evidence_diagnosis":
@@ -660,7 +695,7 @@ def integration_alert_for_state(state: PipelineState) -> str | None:
         return None
     reason = rebase.last_reason or "unresolved"
     if rebase.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE:
-        fix_text = reason if "fix " in reason else "fix configuration then run ralph --check-config"
+        fix_text = reason if "fix " in reason else _config_failure_fix_text(reason, root)
         return (
             f"integration conflict ({rebase.last_failure_cause}: {fix_text}) — resolution required"
         )
@@ -672,8 +707,8 @@ def integration_alert_for_state(state: PipelineState) -> str | None:
 _build_status_bar_model = build_status_bar_model
 
 
-def _integration_alert_for_state(state: PipelineState) -> str | None:
-    return integration_alert_for_state(state)
+def _integration_alert_for_state(state: PipelineState, root: Path | None = None) -> str | None:
+    return integration_alert_for_state(state, root)
 
 
 def _attention_state_for_state(state: PipelineState) -> str | None:
@@ -2101,7 +2136,7 @@ def _execute_owner_ladder_rung(
     if result is None:
         return
     message = f"cleanup-ladder rung {result.rung.name.lower()} {result.outcome}: {result.reason}"
-    if result.outcome == "failed":
+    if result.outcome in ("failed", "terminal"):
         logger.warning("{}", message)
     else:
         logger.info("{}", message)
@@ -2409,6 +2444,24 @@ def _diagnose_retained_integration(ctx: LoopContext, failure: str) -> None:
     diagnose_retained_integration(ctx, failure)
 
 
+def _conflict_resolution_warranted(ctx: LoopContext) -> bool:
+    from ralph.pipeline._integration_resolution_gate import conflict_resolution_warranted
+
+    try:
+        return conflict_resolution_warranted(ctx.workspace_scope.root)
+    except Exception:
+        return True
+
+
+def _resolve_retained_conflict(ctx: LoopContext) -> bool:
+    if not _conflict_resolution_warranted(ctx):
+        return False
+    return _run_integration_conflict_resolution(
+        ctx,
+        ctx.latest_state[0].rebase if ctx.latest_state else None,
+    )
+
+
 def _handoff_retained_failure(
     ctx: LoopContext,
     failure: str,
@@ -2425,6 +2478,8 @@ def _handoff_retained_failure(
         read_record_outcome,
     )
 
+    if not _retained_round_is_new(ctx, "retained-handoff", _retained_round_fingerprint(ctx)):
+        return
     outcome = read_record_outcome(ctx.workspace_scope.root, backend=backend)
     if outcome.disposition is RecordReadOutcomeDisposition.PRESENT and outcome.record is not None:
         latest = outcome.record
@@ -2440,10 +2495,7 @@ def _handoff_retained_failure(
                 "UnifiedConfig | None",
                 getattr(ctx, "config", None),
             )
-            resolved = _run_integration_conflict_resolution(
-                ctx,
-                ctx.latest_state[0].rebase if ctx.latest_state else None,
-            )
+            resolved = _resolve_retained_conflict(ctx)
             recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config)
             if (
                 recovered is not None
@@ -2471,10 +2523,7 @@ def _handoff_retained_failure(
             "UnifiedConfig | None",
             getattr(ctx, "config", None),
         )
-        resolved = _run_integration_conflict_resolution(
-            ctx,
-            ctx.latest_state[0].rebase if ctx.latest_state else None,
-        )
+        resolved = _resolve_retained_conflict(ctx)
         recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config_absent)
         if (
             recovered is not None
@@ -2854,9 +2903,30 @@ def _render_current_observation_detail(rebase: RebaseState) -> str:
 _REPEAT_ESCALATION_RETRY_SECONDS = 5.0
 
 
-def _ladder_escalation_reason(detail: str) -> str:
+def _retained_round_fingerprint(ctx: LoopContext) -> str:
+    from ralph.pipeline._integration_resolution_gate import retained_round_fingerprint
+
+    try:
+        return retained_round_fingerprint(ctx.workspace_scope.root)
+    except Exception:
+        return "unreadable"
+
+
+def _retained_round_is_new(ctx: LoopContext, key: str, fingerprint: str) -> bool:
+    try:
+        seen = ctx._retained_round_fingerprints
+    except AttributeError:
+        seen = {}
+        ctx._retained_round_fingerprints = seen
+    if seen.get(key) == fingerprint:
+        return False
+    seen[key] = fingerprint
+    return True
+
+
+def _ladder_escalation_reason(detail: str, preserved_copy: str) -> str:
     return (
-        f"{detail}; preserved copy: backup refs; "
+        f"{detail}; preserved copy: {preserved_copy}; "
         "next autonomous rung: preserve the work, then climb the cleanup ladder"
     )
 
@@ -2922,7 +2992,11 @@ def _wait_for_integration_retry(
             if handoff_rebase is not None and handoff_rebase != rebase_before:
                 rebase = handoff_rebase
         rebase = rebase.record_consecutive_conflicts(rebase.consecutive_conflicts)
-        rebase = rebase.set_ladder_escalation(_ladder_escalation_reason(detail))
+        rebase = rebase.set_ladder_escalation(
+            _ladder_escalation_reason(
+                detail, _preserved_copy_clause_for_root(ctx.workspace_scope.root)
+            )
+        )
         state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
             WaitReason.EXHAUSTED_RETRY, None
         )
@@ -2992,7 +3066,9 @@ def _handle_intervention_required_retry(
         if handoff_rebase is not None and handoff_rebase != rebase_before:
             rebase = handoff_rebase
     rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
-    rebase = rebase.set_ladder_escalation(_ladder_escalation_reason(detail))
+    rebase = rebase.set_ladder_escalation(
+        _ladder_escalation_reason(detail, _preserved_copy_clause_for_root(ctx.workspace_scope.root))
+    )
     repeat_escalation = session_attempted
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
@@ -3018,6 +3094,37 @@ def _resolver_cooldown_wait_ms(ctx: LoopContext) -> int:
     )
     choice = choose_resolver(ctx.controller, installed)
     return choice.wait_ms if choice.agent is None else 0
+
+
+def _config_failure_watch_paths(
+    ctx: LoopContext,
+    watcher: ConfigFileFingerprintWatcher,
+    reason: str | None,
+) -> tuple[Path, ...]:
+    from ralph.pipeline._config_failure_fingerprint import extract_config_path_from_reason
+    from ralph.pipeline.config_file_fingerprint_watcher import resolve_config_path_for_workspace
+
+    bad_path = extract_config_path_from_reason(reason)
+    if bad_path is not None:
+        return (bad_path,)
+    candidates: list[Path] = []
+    scope: object = getattr(ctx, "workspace_scope", None)
+    root: object = getattr(scope, "root", None)
+    if isinstance(root, str | Path):
+        candidates.append(resolve_config_path_for_workspace(root))
+    candidates.extend(watcher.tracked_paths)
+    return tuple(candidates)
+
+
+def _repaired_config_path(
+    ctx: LoopContext,
+    watcher: ConfigFileFingerprintWatcher,
+    reason: str | None,
+) -> Path | None:
+    for candidate in _config_failure_watch_paths(ctx, watcher, reason):
+        if watcher.should_retry(candidate):
+            return candidate
+    return None
 
 
 def handle_pending_retry(
@@ -3066,36 +3173,23 @@ def handle_pending_retry(
     active_rebase = recovered or rebase
     if active_rebase.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE:
         rebase = active_rebase.set_operation_display_state(OperationDisplayState.WAITING)
-        from ralph.pipeline._config_failure_fingerprint import (
-            ConfigFileFingerprintWatcher,
-            extract_config_path_from_reason,
-        )
+        from ralph.pipeline._config_failure_fingerprint import ConfigFileFingerprintWatcher
 
-        bad_path = extract_config_path_from_reason(active_rebase.last_reason)
         watcher = ctx.config_failure_watcher
         if watcher is None:
             watcher = ConfigFileFingerprintWatcher()
             ctx.config_failure_watcher = watcher
-        if bad_path is not None and watcher.should_retry(bad_path):
+        repaired_path = _repaired_config_path(ctx, watcher, active_rebase.last_reason)
+        if repaired_path is not None:
             logger.info(
-                "configuration failure self-recovery: {} repaired; retrying paused rebase",
-                bad_path,
+                "configuration failure self-recovery: {} repaired; retrying {}",
+                repaired_path,
+                "continuation" if recovered is not None else "paused rebase",
             )
             state = state.copy_with(rebase=active_rebase).clear_waiting()
             _save_recovered_rebase_checkpoint(state, ctx)
             ctx.latest_state[:] = [state]
             return state
-        if bad_path is None:
-            for tracked in watcher.tracked_paths:
-                if watcher.should_retry(tracked):
-                    logger.info(
-                        "configuration failure self-recovery: {} repaired; retrying paused rebase",
-                        tracked,
-                    )
-                    state = state.copy_with(rebase=active_rebase).clear_waiting()
-                    _save_recovered_rebase_checkpoint(state, ctx)
-                    ctx.latest_state[:] = [state]
-                    return state
     else:
         bumped_conflicts = (
             max(rebase.consecutive_conflicts, (recovered.consecutive_conflicts if recovered else 0))

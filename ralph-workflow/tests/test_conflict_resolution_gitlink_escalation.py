@@ -251,6 +251,56 @@ def test_gitlink_submodule_absent_objects_fetchable_resolved(
 
 
 @pytest.mark.timeout_seconds(5)
+def test_ancestor_descendant_gitlink_resolves_to_descendant_after_submodule_fetch(
+    tmp_path: Path,
+    allow_file_transport: Path,
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
+    sub_origin, base, sha_a, _sha_b = submodule_remote
+    sha_desc = _add_descendant_commit(sub_origin)
+
+    clone_repo = tmp_path / "super_clone"
+    _git(tmp_path, "clone", "-q", str(super_repo), str(clone_repo))
+
+    assert not (clone_repo / "sub" / ".git").exists()
+
+    absent_before = run_git(
+        ("-C", str(clone_repo / "sub"), "cat-file", "-e", sha_desc),
+        cwd=clone_repo,
+        label="gitlink-object-before-fetch",
+    )
+    assert absent_before.returncode != 0, "the descendant object must be absent before the fetch"
+
+    index_info = f"160000 {base} 1\tsub\n160000 {sha_desc} 2\tsub\n160000 {sha_a} 3\tsub\n"
+    _git(clone_repo, "update-index", "--index-info", input_text=index_info)
+
+    stop = RebaseStop(
+        stop_index=1,
+        stop_cap=1,
+        conflicted_files=("sub",),
+        sha="testsha_descendant_ours",
+        subject="rebase stop descendant on the ours side",
+    )
+
+    resolved = try_deterministic_resolution(clone_repo, stop)
+    assert resolved is True
+
+    unmerged = _git(clone_repo, "ls-files", "-u").stdout.strip()
+    assert unmerged == ""
+
+    staged = _git(clone_repo, "ls-files", "-s", "sub").stdout.strip()
+    assert staged.startswith(f"160000 {sha_desc} 0")
+
+    present_after = run_git(
+        ("-C", str(clone_repo / "sub"), "cat-file", "-e", sha_desc),
+        cwd=clone_repo,
+        label="gitlink-object-after-fetch",
+    )
+    assert present_after.returncode == 0, "the fetch attempt must supply the missing object"
+
+
+@pytest.mark.timeout_seconds(5)
 def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(
     tmp_path: Path,
     submodule_remote: tuple[Path, str, str, str],

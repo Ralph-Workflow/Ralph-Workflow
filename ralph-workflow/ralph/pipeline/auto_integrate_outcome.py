@@ -15,6 +15,9 @@ from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
+    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+        ResolutionTerminationReason,
+    )
 
 ACTION_SKIPPED = RebaseOutcomeKind.SKIPPED.value
 ACTION_REBASED = RebaseOutcomeKind.REBASED.value
@@ -59,7 +62,13 @@ def record_resolution_exhausted(
     reason: str,
     target: str | None,
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.UNRESOLVED_CONFLICT,
+    terminal_reason: ResolutionTerminationReason | None = None,
 ) -> RebaseState:
+    exhaustion_reason = reason
+    if terminal_reason is not None:
+        prefix = f"{terminal_reason.value}: "
+        if not exhaustion_reason.startswith(prefix):
+            exhaustion_reason = f"{prefix}{exhaustion_reason}"
     return RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason=reason,
@@ -67,7 +76,7 @@ def record_resolution_exhausted(
         last_target=target,
         fast_forwarded=False,
         resolution_exhausted=True,
-        resolution_exhaustion_reason=reason,
+        resolution_exhaustion_reason=exhaustion_reason,
     )
 
 

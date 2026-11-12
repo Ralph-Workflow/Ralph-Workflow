@@ -6,10 +6,11 @@ import pytest
 
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, AttemptLedgerState
 from ralph.pipeline.integration_ladder import (
-    LAST_RESORT_DISABLED_NO_SIGNATURE,
     LAST_RESORT_PRECONDITIONS,
+    LAST_RESORT_TERMINAL_NO_SIGNATURE,
     evaluate_last_resort_preconditions,
     last_resort_recovery,
+    resume_rung,
 )
 from ralph.pipeline.integration_observation import InProgressKind
 from tests._fake_git_clock import FakeClock
@@ -25,6 +26,14 @@ from tests._integration_ladder_fakes import (
 )
 
 pytestmark = pytest.mark.timeout_seconds(30)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_rung6_without_a_blocking_signature_is_explicitly_disabled": (
+        "the last-resort rung no longer reports a non-terminal failed outcome; the disabled "
+        "rung now returns the terminal outcome with the terminal reason constant, so the "
+        "assertions were updated to pin the terminal contract"
+    ),
+}
 
 
 def _seed_all_preconditions(ledger: AttemptLedger) -> None:
@@ -226,7 +235,7 @@ def test_evaluate_preconditions_reports_every_one() -> None:
     assert results["fresh_reobservation_confirms_blocking_state"].startswith("met")
 
 
-def test_rung6_without_a_blocking_signature_is_explicitly_disabled(tmp_path: Path) -> None:
+def test_rung6_without_a_blocking_signature_ends_in_a_terminal_state(tmp_path: Path) -> None:
     ledger = _ledger(tmp_path)
     _seed_all_preconditions(ledger)
     git = _FakePlumbing(readable_refs=frozenset({"tipsha"}))
@@ -245,7 +254,30 @@ def test_rung6_without_a_blocking_signature_is_explicitly_disabled(tmp_path: Pat
         fresh_signature="",
     )
 
-    assert result.outcome == "failed"
-    assert result.reason == LAST_RESORT_DISABLED_NO_SIGNATURE
+    assert result.outcome == "terminal"
+    assert result.outcome != "failed"
+    assert result.reason == LAST_RESORT_TERMINAL_NO_SIGNATURE
     assert git.calls == []
-    assert LAST_RESORT_DISABLED_NO_SIGNATURE in _evidence(tmp_path).values()
+    assert LAST_RESORT_TERMINAL_NO_SIGNATURE in _evidence(tmp_path).values()
+
+
+def test_rung6_terminal_state_is_never_selected_again(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    _seed_all_preconditions(ledger)
+    git = _FakePlumbing(readable_refs=frozenset({"tipsha"}))
+
+    last_resort_recovery(
+        tmp_path,
+        git=git,
+        fs=_FakeQuarantineFs(),
+        ledger=ledger,
+        state_dir=tmp_path / ".agent",
+        clock=FakeClock(),
+        feature_tip="tipsha",
+        target="main",
+        branch="feature",
+        decided_signature="",
+        fresh_signature="",
+    )
+
+    assert resume_rung(ledger.read()) is None

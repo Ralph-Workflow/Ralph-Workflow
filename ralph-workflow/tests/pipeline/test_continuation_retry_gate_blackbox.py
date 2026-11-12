@@ -27,6 +27,7 @@ from ralph.pipeline.auto_integrate_resolve import MERGE_COMMIT_PENDING, MergeRes
 from ralph.pipeline.run_loop import run_auto_integrate_recovery_preamble
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = pytest.mark.timeout_seconds(5)
@@ -524,3 +525,56 @@ def test_blackbox_retained_merge_optional_and_global_config_repair(
     outcome3_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
     assert resolve_calls[0] == 3
     assert outcome3_repeat is not None and "WAITING" in outcome3_repeat.last_reason
+
+
+def test_blackbox_eligibility_return_retries_exactly_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root, _cfg_file = _setup_repo_and_config(tmp_path)
+    _setup_rebase_state(root, "feat1", "target1", "stop1")
+
+    rec = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+    write_record(root, rec)
+
+    ctrl, clock = _setup_controller()
+    ctrl.unavailability_store.mark_unavailable(
+        "rebase_conflict_resolution", "agent1", UnavailabilityReason.CONTEXT_EXHAUSTED
+    )
+
+    resolve_calls = [0]
+
+    def fake_resolve(root: Path, target: str, resolver: object, session: object = None) -> bool:
+        resolve_calls[0] += 1
+        ctrl.unavailability_store.mark_unavailable(
+            "rebase_conflict_resolution", "agent2", UnavailabilityReason.CONTEXT_EXHAUSTED
+        )
+        return False
+
+    monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", fake_resolve)
+    monkeypatch.chdir(root)
+
+    scope = WorkspaceScope(root)
+    cfg = load_config(workspace_scope=scope)
+
+    outcome1 = run_auto_integrate_recovery_preamble(scope, config=cfg, recovery_controller=ctrl)
+    assert resolve_calls[0] == 1
+    assert outcome1 is not None and outcome1.recovery_record_retained is True
+
+    outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg, recovery_controller=ctrl)
+    assert resolve_calls[0] == 1
+    assert outcome2 is not None and "WAITING" in outcome2.last_reason
+
+    clock.advance(60.0)
+    outcome3 = run_auto_integrate_recovery_preamble(scope, config=cfg, recovery_controller=ctrl)
+    assert resolve_calls[0] == 2
+    assert outcome3 is not None and outcome3.recovery_record_retained is True
+
+    outcome4 = run_auto_integrate_recovery_preamble(scope, config=cfg, recovery_controller=ctrl)
+    assert resolve_calls[0] == 2
+    assert outcome4 is not None and "WAITING" in outcome4.last_reason

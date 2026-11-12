@@ -170,6 +170,7 @@ ralph --retry
   git add -- <conflicted-paths>
   ```
   After resolving and staging conflicts manually, run `ralph --retry` to resume the pipeline.
+- **Terminal ladder state**: When the cleanup ladder reaches its last rung and no re-observed blocking signature can be supplied, the ladder ends in a terminal, operator-actionable state instead of an autonomous escalation. The message names the observed `HEAD`, the expected commit identities (`integrated_feature_sha`, `pre_target_sha`, `pre_feature_sha`, plus the pending stop anchor and tree when a rebase continuation is recorded), the preserved copy, and the operator action — land the expected commit and run `ralph --resume`. A preserved copy (a backup ref, or a sidecar patch and archive under `.agent/preserved/`) is created and named before any reset-capable rung runs; when there is nothing to preserve, the message says so rather than claiming a copy that does not exist. Unchanged facts do not start another round, so the terminal state is reported once.
 
 ## Common failure modes and what they mean
 

@@ -1,14 +1,27 @@
 from __future__ import annotations
 
+import contextlib
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
+import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline import run_loop
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.pipeline import RebaseOutcomeKind, run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.auto_integrate_record import IntegrationRecord
+from ralph.pipeline.auto_integrate_recovery_record import continue_retained_resolution
+from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
+from ralph.pipeline.run_loop import (
+    LoopContext,
+    handle_pending_retry,
+    integration_alert_for_state,
+)
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -17,7 +30,25 @@ from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    import pytest
+    from collections.abc import Iterator
+
+pytestmark = pytest.mark.timeout_seconds(15)
+
+_RESOLUTION_PHASE = "rebase_conflict_resolution"
+
+
+@contextlib.contextmanager
+def _captured_logs() -> Iterator[list[str]]:
+    logs: list[str] = []
+
+    def sink(msg: Any) -> None:
+        logs.append(str(msg))
+
+    sink_id = logger.add(sink, level="INFO", format="{message}")
+    try:
+        yield logs
+    finally:
+        logger.remove(sink_id)
 
 
 def _entry(until_ms: int) -> UnavailabilityEntry:
@@ -419,3 +450,184 @@ def test_phase_entry_all_agents_unavailable_waits_with_priority_first_ordering(
     assert chain.current_index == 0
     assert waited.is_waiting_state is True
     assert waited.last_retry_delay_ms == 5000
+
+
+def test_resolution_phase_launch_gate_closed_suppresses_selection_evidence() -> None:
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, clock=FakeClock(start=200.0))
+    )
+    controller.set_phase_launch_gate(_RESOLUTION_PHASE, available=False)
+
+    with _captured_logs() as logs:
+        selection = controller.preferred_agent_index(_RESOLUTION_PHASE, ["claude", "opencode"])
+
+    assert selection.index == 0
+    assert selection.agent == "claude"
+    assert not any("Selected agent" in log for log in logs)
+    assert not any("No selectable agent" in log for log in logs)
+
+    with _captured_logs() as other_logs:
+        controller.preferred_agent_index("development", ["claude"])
+
+    assert any("Phase development: Selected agent claude" in log for log in other_logs)
+
+
+def test_resolution_phase_launch_gate_open_emits_selection_evidence() -> None:
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, clock=FakeClock(start=200.0))
+    )
+    controller.set_phase_launch_gate(_RESOLUTION_PHASE, available=True)
+
+    with _captured_logs() as logs:
+        selection = controller.preferred_agent_index(_RESOLUTION_PHASE, ["claude", "opencode"])
+
+    assert selection.index == 0
+    assert selection.agent == "claude"
+    assert any(f"Phase {_RESOLUTION_PHASE}: Selected agent claude" in log for log in logs)
+
+
+def test_continuation_seam_sets_launch_gate_from_resolver_availability(tmp_path: Path) -> None:
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, clock=FakeClock(start=200.0))
+    )
+    record = IntegrationRecord(
+        phase="integrating",
+        target="",
+        pre_feature_sha="feature-sha",
+        pre_target_sha=None,
+    )
+
+    blocked = continue_retained_resolution(
+        tmp_path,
+        record,
+        None,
+        None,
+        None,
+        recovery_controller=controller,
+    )
+
+    assert isinstance(blocked, str)
+    assert controller.phase_launch_available(_RESOLUTION_PHASE) is False
+
+    available = continue_retained_resolution(
+        tmp_path,
+        record,
+        None,
+        lambda *_args, **_kwargs: False,
+        lambda *_args, **_kwargs: False,
+        recovery_controller=controller,
+    )
+
+    assert isinstance(available, str)
+    assert controller.phase_launch_available(_RESOLUTION_PHASE) is True
+
+
+def test_integration_alert_for_config_failure_names_config_file_and_command(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir(parents=True)
+    cfg_file = agent_dir / "ralph-workflow.toml"
+    cfg_file.write_text("[general]\n", encoding="utf-8")
+
+    rebase = RebaseState(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        last_reason="rebase resolution remains pending after continuation (cause: CONFIG_FAILURE)",
+        last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+    )
+    state = PipelineState(phase="planning", rebase=rebase)
+
+    alert = integration_alert_for_state(state, root=tmp_path)
+
+    assert alert is not None
+    assert "CONFIG_FAILURE" in alert
+    assert "ralph --check-config" in alert
+    assert str(cfg_file) in alert
+    assert "unresolved conflict" not in alert
+
+
+def test_continuation_config_repair_triggers_single_retry(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir(parents=True)
+    cfg_file = agent_dir / "ralph-workflow.toml"
+    cfg_file.write_text("invalid_toml = [broken", encoding="utf-8")
+
+    continuation_failure = RebaseState(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        last_reason="rebase resolution remains pending after continuation (cause: CONFIG_FAILURE)",
+        last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+    )
+    paused_failure = RebaseState(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        last_reason="paused rebase configuration failure",
+        last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+    )
+
+    clock = FakeClock(start=0.0)
+    sleeps: list[float] = []
+    policy_bundle = MagicMock()
+    policy_bundle.pipeline.terminal_phase = "complete"
+    policy_bundle.pipeline.terminal_states.return_value = {"complete", "failed_terminal"}
+    connectivity_monitor = MagicMock()
+    connectivity_monitor.current_state = "online"
+    ctx = LoopContext(
+        policy_bundle=policy_bundle,
+        workspace_scope=WorkspaceScope(root=tmp_path),
+        config=UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}}),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=0,
+        registry=MagicMock(),
+        effective_pipeline_subscriber=None,
+        controller=RecoveryController(options=RecoveryControllerOptions(clock=clock)),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=connectivity_monitor,
+        sleep=sleeps.append,
+        is_quiet=False,
+        latest_state=[],
+        hooks=RetryDiagnosticHooks(recovery_preamble=lambda *_: continuation_failure),
+    )
+
+    state = PipelineState(phase="planning", rebase=paused_failure)
+
+    with _captured_logs() as logs:
+        first = handle_pending_retry(
+            state,
+            ctx,
+            paused_failure,
+            detail="continuation configuration failure",
+            backend=MagicMock(),
+        )
+
+    assert sleeps == [5.0]
+    assert not any("retrying continuation" in log for log in logs)
+
+    cfg_file.write_text("[general]\n", encoding="utf-8")
+
+    with _captured_logs() as logs:
+        second = handle_pending_retry(
+            first,
+            ctx,
+            paused_failure,
+            detail="continuation configuration repaired",
+            backend=MagicMock(),
+        )
+
+    assert sleeps == [5.0]
+    assert second.wait_reason is None
+    assert any(
+        "configuration failure self-recovery:" in log and "repaired; retrying continuation" in log
+        for log in logs
+    )
+
+    with _captured_logs() as logs:
+        handle_pending_retry(
+            second,
+            ctx,
+            paused_failure,
+            detail="continuation unchanged after repair",
+            backend=MagicMock(),
+        )
+
+    assert sleeps == [5.0, 5.0]
+    assert not any("retrying continuation" in log for log in logs)

@@ -87,7 +87,8 @@ def test_integration_alert_for_state_uses_typed_phase_decision() -> None:
     rebase_typed = RebaseState(last_decision=PhaseDecision.REPORT_INTERVENTION_REQUIRED.value)
     rebase_string = RebaseState(last_decision="report_intervention_required")
     expected = (
-        "autonomous fallback ladder escalation — preserved copy: backup refs; "
+        "autonomous fallback ladder escalation — preserved copy: "
+        "no preserved copy recorded; "
         "next autonomous rung: preserve the work, then climb the cleanup ladder"
     )
     state_typed = PipelineState(phase="development", rebase=rebase_typed)
@@ -95,6 +96,7 @@ def test_integration_alert_for_state_uses_typed_phase_decision() -> None:
     assert run_loop._integration_alert_for_state(state_typed) == expected
     assert run_loop._integration_alert_for_state(state_string) == expected
     assert "manual recovery" not in expected
+    assert "backup refs" not in expected
 
     rebase_evidence = RebaseState(
         last_outcome=__import__(

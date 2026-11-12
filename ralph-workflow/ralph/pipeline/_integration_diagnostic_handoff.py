@@ -18,9 +18,13 @@ from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import CleanupLadderRung
 from ralph.pipeline.integration_ladder import (
     LadderStepResult,
+    default_git_plumbing,
+    ensure_preserved_copy,
+    preserved_copy_identity,
     record_salvage_attempt,
     resume_rung,
     run_ladder_rung,
+    terminal_operator_message,
 )
 from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
@@ -36,6 +40,7 @@ if TYPE_CHECKING:
     )
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.integration_actions import Clock
+    from ralph.pipeline.integration_attempt_ledger import AttemptLedgerState
     from ralph.pipeline.operation_evidence import OperationEvidenceCollector
     from ralph.recovery.controller import RecoveryController
 
@@ -175,6 +180,72 @@ def budget_spent_record(
     )
 
 
+def _last_charged_signature(state: AttemptLedgerState) -> str:
+    for signature, _action in reversed(list(state.repeat_counts)):
+        return signature
+    return ""
+
+
+def _observed_signature(root: Path) -> str:
+    from ralph.pipeline.integration_decision import AttemptState
+    from ralph.pipeline.integration_director import observe
+
+    try:
+        return AttemptState().signature(observe(root))
+    except Exception as exc:
+        logger.warning("Integration diagnostic: blocking signature unreadable: {}", exc)
+        return ""
+
+
+def _resolve_blocking_signature(
+    root: Path,
+    state: AttemptLedgerState,
+    rung: CleanupLadderRung,
+    decided_signature: str | None,
+    fresh_signature: str | None,
+) -> tuple[str, str]:
+    if decided_signature is not None:
+        return decided_signature, fresh_signature or ""
+    if rung is not CleanupLadderRung.LAST_RESORT:
+        return "", ""
+    charged = _last_charged_signature(state)
+    if not charged:
+        return "", ""
+    observed = _observed_signature(root)
+    if observed and observed == charged:
+        return charged, observed
+    return "", ""
+
+
+def _preserved_copy_clause(
+    root: Path,
+    *,
+    step: LadderStepResult,
+    ladder: AttemptLedger,
+    plumbing: GitPlumbing,
+    fs: FileQuarantine | None,
+    state_dir: Path | None,
+    observed_head: str | None,
+) -> str:
+    identity = preserved_copy_identity(step, ladder.read())
+    if identity:
+        return identity
+    if not plumbing.changed_paths(root):
+        return f"nothing to preserve at HEAD {observed_head or 'unreadable'}"
+    preserved = ensure_preserved_copy(
+        root,
+        ledger=ladder,
+        git=plumbing,
+        fs=fs,
+        state_dir=state_dir,
+    )
+    if preserved is not None:
+        identity = preserved_copy_identity(preserved, ladder.read())
+        if identity:
+            return identity
+    return "the uncommitted changes are not preserved in any durable copy"
+
+
 def escalate_record_fact_outcome(
     root: Path,
     record: IntegrationRecord,
@@ -190,6 +261,8 @@ def escalate_record_fact_outcome(
     target: str | None = None,
     branch: str = "feature",
     feature_tip: str | None = None,
+    decided_signature: str | None = None,
+    fresh_signature: str | None = None,
 ) -> LadderStepResult:
     ladder = ledger if ledger is not None else AttemptLedger(root)
     if outcome is RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT:
@@ -197,11 +270,19 @@ def escalate_record_fact_outcome(
     rung = resume_rung(ladder.read())
     if rung is None:
         rung = CleanupLadderRung.LAST_RESORT
+    plumbing = git if git is not None else default_git_plumbing()
+    decided, fresh = _resolve_blocking_signature(
+        root,
+        ladder.read(),
+        rung,
+        decided_signature,
+        fresh_signature,
+    )
     step = run_ladder_rung(
         rung,
         root=root,
         ledger=ladder,
-        git=git,
+        git=plumbing,
         fs=fs,
         env=env,
         clock=clock,
@@ -209,17 +290,34 @@ def escalate_record_fact_outcome(
         target=record.target if target is None else target,
         branch=branch,
         feature_tip=feature_tip,
+        decided_signature=decided,
+        fresh_signature=fresh,
+        terminal_when_disabled=True,
     )
-    preserved = step.preserved_ref or step.preserved_sidecar or "no preserved copy yet"
-    logger.warning(
-        "Integration diagnostic budget spent; escalated autonomously to fallback "
-        "ladder rung {} ({}): {}; preserved copy: {}; the run continues without "
-        "waiting on a person",
-        rung.value,
-        step.outcome,
-        step.reason,
-        preserved,
+    observed_head = plumbing.head_sha(root)
+    preserved = _preserved_copy_clause(
+        root,
+        step=step,
+        ladder=ladder,
+        plumbing=plumbing,
+        fs=fs,
+        state_dir=state_dir,
+        observed_head=observed_head,
     )
+    if step.outcome == "terminal":
+        message = terminal_operator_message(
+            record,
+            reason=step.reason,
+            observed_head=observed_head,
+            preserved_copy=preserved,
+        )
+    else:
+        message = (
+            "Integration diagnostic budget spent; escalated autonomously to fallback "
+            f"ladder rung {rung.value} ({step.outcome}): {step.reason}; "
+            f"preserved copy: {preserved}; the run continues without waiting on a person"
+        )
+    logger.warning("{}", message)
     return step
 
 

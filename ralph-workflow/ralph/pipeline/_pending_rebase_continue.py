@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ralph.git.merge import staged_conflict_marker_paths, unmerged_paths
 from ralph.git.rebase.rebase_continuation import continue_rebase_at, rebase_in_progress_at
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._pending_merge_commit import _git_value
@@ -169,9 +169,20 @@ def _resume_prepared_rebase(root: Path, record: IntegrationRecord) -> Integratio
     return completion if isinstance(completion, str) else completion.record
 
 
-def _promote_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCompletion | str:
+def _promote_completed_rebase(
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> CommitCompletion | str:
     if not _resolved_stop_landed(root, record):
-        return "completed rebase does not prove the verified stop landed; landing withheld"
+        observed_head = _git_value(root, "rev-parse", "--verify", "HEAD")
+        return (
+            "completed rebase does not prove the verified stop landed; landing withheld "
+            f"(observed HEAD {observed_head}, "
+            f"expected stop anchor {record.rebase_continue_head}, "
+            f"expected stop tree {record.rebase_continue_tree})"
+        )
     head = _git_value(root, "rev-parse", "--verify", "HEAD")
     completion = complete_commit(
         record,
@@ -185,8 +196,24 @@ def _promote_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCo
         rebase_continue_tree=None,
         rebase_continue_error=None,
     )
-    write_record(root, completion.record)
+    write_record(root, completion.record, backend=backend)
     return completion
+
+
+def promote_completed_pending_rebase(
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> IntegrationRecord | str:
+    if classify_git_operation(record) is not GitOperationKind.AWAITING_CONTINUE:
+        return record
+    if rebase_in_progress_at(root):
+        return record
+    completion = _promote_completed_rebase(root, record, backend=backend)
+    if isinstance(completion, str):
+        return completion
+    return completion.record
 
 
 def _advanced_saved_stop(root: Path, record: IntegrationRecord) -> bool:
@@ -238,19 +265,24 @@ def _complete_pending_rebase_snapshot(
 def _resolved_stop_landed(root: Path, record: IntegrationRecord) -> bool:
     if not record.rebase_continue_head or not record.rebase_continue_tree:
         return False
+    head = _git_value(root, "rev-parse", "--verify", "HEAD")
+    if head is None:
+        return False
+    if head == record.rebase_continue_head:
+        return _git_value(root, "rev-parse", "HEAD^{tree}") == record.rebase_continue_tree
     if (
         _git_value(root, "rev-parse", f"{record.rebase_continue_head}^{{tree}}")
         == record.rebase_continue_tree
     ):
         from ralph.git.merge import is_ancestor
 
-        return is_ancestor(root, record.rebase_continue_head, "HEAD")
+        return is_ancestor(root, record.rebase_continue_head, head)
     commits = _git_value(
         root, "rev-list", "--reverse", "--ancestry-path", f"{record.rebase_continue_head}..HEAD"
     )
     first = commits.splitlines()[0] if commits else None
     if first is None:
-        return _git_value(root, "rev-parse", "HEAD^{tree}") == record.rebase_continue_tree
+        return False
     return (
         _git_value(root, "rev-parse", f"{first}^{{tree}}") == record.rebase_continue_tree
         and _git_value(root, "show", "-s", "--format=%P", first) == record.rebase_continue_head

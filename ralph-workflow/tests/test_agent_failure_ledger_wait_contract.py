@@ -4,7 +4,16 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import UnifiedConfig
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
+from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline.conflict_resolution.chain_candidates import remember_dead_surface
+from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import (
@@ -17,14 +26,90 @@ from ralph.recovery.agent_failure_ledger import (
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
+
+_CONFLICTED = ["a.py", "b.py"]
+_CONFIG = UnifiedConfig.model_validate({"general": {}})
 
 
 def _minimal_policy_bundle() -> PolicyBundle:
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
+
+
+def _install_conflict_seams(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ralph.git.conflict_stage_entries import ConflictStageEntries
+    from ralph.pipeline.conflict_resolution import sight as sight_module
+
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: list(_CONFLICTED))
+    monkeypatch.setattr(
+        driver_module,
+        "paths_with_conflict_markers",
+        lambda _root, _paths: list(_CONFLICTED),
+    )
+    monkeypatch.setattr(
+        driver_module,
+        "resolution_chain_agents",
+        lambda _bundle: ("primary", "fallback"),
+    )
+    monkeypatch.setattr(
+        driver_module,
+        "render_conflict_prompt",
+        lambda *, root, **_kwargs: root / "resolution-prompt.md",
+    )
+    monkeypatch.setattr(
+        sight_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: ConflictStageEntries({}),
+    )
+
+
+def _run_mixed_spent_and_demoted_chain(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    cooldown_elapsed: bool,
+) -> tuple[RecoveryController, ResolutionSession]:
+    _install_conflict_seams(monkeypatch)
+    clock = FakeClock(start=0.0)
+    policy_bundle = _minimal_policy_bundle()
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            policy_bundle=policy_bundle,
+            event_bus=FailureEventBus(),
+        )
+    )
+    controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
+    controller.unavailability_store.mark_unavailable(
+        PHASE_RESOLUTION, "fallback", UnavailabilityReason.NO_OUTPUT_AT_START
+    )
+    if cooldown_elapsed:
+        clock.advance(60.0)
+
+    session = ResolutionSession(recovery_controller=controller)
+    session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    remember_dead_surface(session, "fallback")
+    session.rounds_spent = 1
+
+    success = run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=_CONFIG,
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=policy_bundle,
+        display=None,
+        display_context=None,
+        session=session,
+        strategy_history=("previous-strategy",),
+    )
+
+    assert success is False
+    return controller, session
 
 
 def test_earliest_wait_ms_empty_agents_returns_zero() -> None:
@@ -319,3 +404,94 @@ def test_controller_handle_all_spent_does_not_wait() -> None:
     assert not new_state.is_waiting_state
     assert new_state.last_retry_delay_ms == 0
     assert new_state.phase == "failed_terminal" or "failed" in new_state.phase
+
+
+def test_controller_earliest_eligible_wait_ms_reports_no_finite_wait_for_spent_chain() -> None:
+    clock = FakeClock(start=0.0)
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    ledger.record(
+        AttemptFact(
+            phase="development",
+            agent="agent-a",
+            artifact_valid=False,
+            workspace_changed=True,
+        )
+    )
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            ledger=ledger,
+            policy_bundle=_minimal_policy_bundle(),
+            event_bus=FailureEventBus(),
+        ),
+    )
+
+    assert controller.earliest_eligible_wait_ms("development", ["agent-a"]) is None
+    assert controller.earliest_available_wait_ms("development", ["agent-a"]) == 0
+
+
+def test_controller_earliest_eligible_wait_ms_separates_eligible_now_from_no_finite_wait() -> None:
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+            event_bus=FailureEventBus(),
+        ),
+    )
+    controller.note_retry_exhaustion("development", "spent-agent")
+    controller.unavailability_store.mark_unavailable(
+        "development", "cooled-agent", UnavailabilityReason.NO_OUTPUT_AT_START
+    )
+
+    assert controller.earliest_eligible_wait_ms("development", ["spent-agent"]) is None
+    assert controller.earliest_eligible_wait_ms("development", ["cooled-agent"]) == 5000
+    assert (
+        controller.earliest_eligible_wait_ms("development", ["spent-agent", "cooled-agent"]) == 5000
+    )
+
+    clock.advance(60.0)
+
+    assert controller.earliest_eligible_wait_ms("development", ["spent-agent", "cooled-agent"]) == 0
+
+
+@pytest.mark.timeout_seconds(10)
+def test_mixed_spent_and_demoted_chain_without_finite_wait_is_not_tool_surface_dead(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    controller, session = _run_mixed_spent_and_demoted_chain(
+        monkeypatch,
+        tmp_path,
+        cooldown_elapsed=True,
+    )
+
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == 0
+    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is False
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert session.terminal_reason is not ResolutionTerminationReason.TOOL_SURFACE_DEAD
+
+    message = session.operator_action_message
+    assert message is not None
+    assert "primary: spent" in message
+    assert "fallback: no_output_at_start" in message
+    assert "needs operator action: git add -- a.py b.py" in message
+
+
+@pytest.mark.timeout_seconds(10)
+def test_barred_candidate_cooldown_does_not_mask_an_exhausted_chain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _controller, session = _run_mixed_spent_and_demoted_chain(
+        monkeypatch,
+        tmp_path,
+        cooldown_elapsed=False,
+    )
+
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert session.terminal_reason is not ResolutionTerminationReason.TOOL_SURFACE_DEAD
+
+    message = session.operator_action_message
+    assert message is not None
+    assert "primary: spent" in message
+    assert "fallback: no_output_at_start" in message
+    assert "needs operator action: git add -- a.py b.py" in message

@@ -7,12 +7,13 @@ from loguru import logger
 
 from ralph.git.rebase.rebase import RebaseConflicts, RebaseSuccess
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline.auto_integrate_outcome import record_conflict
+from ralph.pipeline.auto_integrate_outcome import record_conflict, record_resolution_exhausted
 from ralph.pipeline.auto_integrate_record import clear_record
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     post_attempt_verify,
 )
+from ralph.pipeline.config_file_fingerprint import extract_config_path_from_reason
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -20,6 +21,8 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
+from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
@@ -132,20 +135,27 @@ def resolve_conflicted_rebase(
         resolved = res.succeeded
         exhaustion_reason = res.reason
         failure_cause = res.failure_cause
+        terminal_reason = res.terminal_reason
     if resolved and not _merge_mod.set_resolving_rebase(root, False):
         logger.warning(
             "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
         )
     record = _merge_mod.read_record(root)
     if record is not None and record.rebase_continue_pending:
+        pending_reason = record.rebase_continue_error or "verified rebase continuation pending"
+        pending_cause = (
+            ResolutionFailureCause.CONFIG_FAILURE
+            if extract_config_path_from_reason(pending_reason) is not None
+            else ResolutionFailureCause.CONTEXT_FAILURE
+        )
         return RebaseRunResult(
             rebase_outcome=RebaseConflicts(files=[]),
             merge_attempted=False,
             merge_outcome=None,
             short_circuit=record_conflict(
-                reason=record.rebase_continue_error or "verified rebase continuation pending",
+                reason=pending_reason,
                 target=target,
-                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+                failure_cause=pending_cause,
             ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
         )
     if not resolved:
@@ -163,6 +173,26 @@ def resolve_conflicted_rebase(
             write_record(
                 root,
                 record.model_copy(update={"last_failure_cause": effective_cause}),
+            )
+        if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+            AttemptLedger(root).charge_ladder_attempt(
+                rebase_resolution_signature(
+                    record.pre_feature_sha if record is not None else None,
+                    record.pre_target_sha if record is not None else target,
+                    record.resolving_stop_sha if record is not None else None,
+                ),
+                NextAction.LAST_RESORT_RECOVERY.value,
+            )
+            return RebaseRunResult(
+                rebase_outcome=RebaseConflicts(files=[]),
+                merge_attempted=False,
+                merge_outcome=None,
+                short_circuit=record_resolution_exhausted(
+                    reason=effective_reason,
+                    target=target,
+                    failure_cause=effective_cause,
+                    terminal_reason=terminal_reason,
+                ),
             )
         return RebaseRunResult(
             rebase_outcome=RebaseConflicts(files=[]),
@@ -214,7 +244,12 @@ def resolve_rebase_with_config(
         else _merge_mod.resolve_rebase_in_progress(root, target, resolver, session=session)
     )
     if resolved:
-        return RebaseResolutionResult(True, None, ResolutionFailureCause.NONE)
+        return RebaseResolutionResult(
+            True,
+            None,
+            ResolutionFailureCause.NONE,
+            session.terminal_reason,
+        )
     carried_cause = (
         session.last_failure_cause
         if session.last_failure_cause != ResolutionFailureCause.NONE
@@ -270,7 +305,12 @@ def resolve_rebase_with_config(
             )
         else:
             carried_reason = None
-        return RebaseResolutionResult(False, carried_reason, carried_cause)
+        return RebaseResolutionResult(
+            False,
+            carried_reason,
+            carried_cause,
+            session.terminal_reason,
+        )
     final_reason = (
         session.operator_action_message
         if session.operator_action_message
@@ -297,6 +337,7 @@ def resolve_rebase_with_config(
         carried_cause
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        session.terminal_reason,
     )
 
 

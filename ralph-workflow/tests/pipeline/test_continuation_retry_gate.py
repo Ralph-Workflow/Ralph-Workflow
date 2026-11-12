@@ -21,9 +21,13 @@ from ralph.pipeline.auto_integrate_recovery_record import (
     recover_pending_merge,
     reset_continuation_gate_state,
 )
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 @pytest.fixture(autouse=True)
@@ -667,3 +671,99 @@ def test_cli_retry_integration_invokes_recovery_with_force_retry(
     res2 = runner.invoke(main_module.app, ["--retry-integration"])
     assert res2.exit_code == 0
     assert recovered_called == [True]
+
+
+def test_failed_attempt_that_consumes_the_eligible_agent_does_not_retrigger(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
+
+    root, _cfg = _setup_repo_and_config(tmp_path)
+    ctrl, _clk = _setup_controller()
+    ctrl.unavailability_store.mark_unavailable(
+        "rebase_conflict_resolution", "agent1", UnavailabilityReason.CONTEXT_EXHAUSTED
+    )
+    _setup_rebase_state(root, "feat1", "target1", "stop_sha_1")
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+    write_record(root, record)
+
+    resolve_calls = [0]
+
+    def fake_resolve_in_progress(
+        root: Path, target: str, resolver: object, *, session: Any = None
+    ) -> bool:
+        resolve_calls[0] += 1
+        ctrl.unavailability_store.mark_unavailable(
+            "rebase_conflict_resolution", "agent2", UnavailabilityReason.CONTEXT_EXHAUSTED
+        )
+        return False
+
+    monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", fake_resolve_in_progress)
+
+    captured, sink_id = _capture_loguru_records()
+    try:
+        for _ in range(4):
+            outcome = recover_pending_merge(
+                root,
+                read_record(root) or record,
+                config=None,
+                rebase_stop_resolver=lambda *_args, **_kwargs: False,
+                recovery_controller=ctrl,
+            )
+            assert outcome.recovery_record_retained is True
+    finally:
+        logger.remove(sink_id)
+
+    assert resolve_calls[0] == 1
+    assert len([r for r in captured if r["level"].name == "CRITICAL"]) == 1
+    assert len([r for r in captured if "WAITING" in r["message"]]) == 1
+
+
+def test_recorded_failure_cause_is_not_inferred_from_the_reason_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
+
+    root, _cfg = _setup_repo_and_config(tmp_path)
+    ctrl, _clk = _setup_controller()
+    _setup_rebase_state(root, "feat1", "target1", "stop_sha_1")
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+    write_record(root, record)
+
+    def fake_resolve_in_progress(
+        root: Path, target: str, resolver: object, *, session: Any = None
+    ) -> bool:
+        session.exhaustion_reason = "fix /tmp/ralph-workflow.toml then run ralph --check-config"
+        session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        return False
+
+    monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", fake_resolve_in_progress)
+
+    outcome = recover_pending_merge(
+        root,
+        record,
+        config=None,
+        rebase_stop_resolver=lambda *_args, **_kwargs: False,
+        recovery_controller=ctrl,
+    )
+
+    assert outcome.last_failure_cause == ResolutionFailureCause.UNRESOLVED_CONFLICT
+    stored = read_record(root)
+    assert stored is not None
+    assert stored.last_failure_cause == ResolutionFailureCause.UNRESOLVED_CONFLICT

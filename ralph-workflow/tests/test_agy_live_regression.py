@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import contextlib
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +25,10 @@ from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
-_REAL_HOME = Path(os.environ.get("HOME") or Path.home()).resolve()
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "live_env fixture": "the live AGY home is now resolved at call time from the HOME the autouse guard redirected into the pytest tmp basetemp, so the test no longer reads or copies the real ~/.gemini directory; the removed fixture had no consumer",
+    "live_smoke_session cli.log assertion": "the assertion still pins that a live cli.log exists where the live run wrote it, but the path now names the redirected test home instead of the real user home",
+}
 
 _LIVE_AGY_AGENT = "agy/gemini-3.6-flash-low"
 _LIVE_AGY_EXPECTED_RUN_ID = resolve_smoke_harness_spec(_LIVE_AGY_AGENT).run_id
@@ -44,7 +45,7 @@ def _observed_parser_classified_lines(output: str) -> list[str]:
     ]
 
 
-def _quick_policy() -> object:
+def _quick_policy() -> TimeoutPolicy:
     return TimeoutPolicy(
         idle_timeout_seconds=45.0,
         process_exit_wait_seconds=15.0,
@@ -71,23 +72,36 @@ def _write_smoke_prompt(prompt_file: Path) -> None:
     )
 
 
-def _get_live_agy_sandbox_home() -> Path:
-    sandbox = Path(tempfile.gettempdir()) / "ralph-live-agy-sandbox-home"
-    sandbox.mkdir(parents=True, exist_ok=True)
-    real_gemini = _REAL_HOME / ".gemini"
-    sandbox_gemini = sandbox / ".gemini"
-    if real_gemini.exists() and not sandbox_gemini.exists():
-        with contextlib.suppress(OSError):
-            shutil.copytree(real_gemini, sandbox_gemini, symlinks=True)
-    return sandbox
+_AGY_AUTH_ARTIFACTS = ("antigravity-oauth-token", "settings.json", "installation_id")
+_AGY_AUTH_DIR_ENV = "RALPH_TEST_AGY_AUTH_DIR"
 
 
-def _build_live_env() -> dict[str, str]:
-    sandbox_home = _get_live_agy_sandbox_home()
+def _live_home() -> Path:
+    home = os.environ.get("HOME")
+    if not home:
+        pytest.fail("HOME is not set; the live AGY home must resolve to the redirected test home.")
+    return Path(home).resolve()
+
+
+def _seed_agy_auth(agy_home: Path) -> None:
+    source_dir_text = os.environ.get(_AGY_AUTH_DIR_ENV)
+    if not source_dir_text:
+        return
+    source_dir = Path(source_dir_text).expanduser()
+    destination_dir = agy_home / ".gemini" / "antigravity-cli"
+    for artifact_name in _AGY_AUTH_ARTIFACTS:
+        source = source_dir / artifact_name
+        if not source.is_file():
+            continue
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination_dir / artifact_name)
+
+
+def _build_live_env(agy_home: Path) -> dict[str, str]:
     env = {
         **os.environ,
-        "HOME": str(sandbox_home),
-        "XDG_CONFIG_HOME": str(sandbox_home / ".config"),
+        "HOME": str(agy_home),
+        "XDG_CONFIG_HOME": str(agy_home / ".config"),
     }
     env.pop("PYTHONPATH", None)
     env.pop("RALPH_AGY_BINARY", None)
@@ -110,6 +124,7 @@ class _LiveSmokeResult:
     cli_log_tail: str
     workspace: Path
     expected_run_id: str
+    agy_home: Path
 
 
 @pytest.fixture
@@ -119,18 +134,17 @@ def workspace_mirror(tmp_path: Path) -> Generator[Path, None, None]:
     yield tmp_path
 
 
-@pytest.fixture
-def live_env(workspace_mirror: Path) -> dict[str, str]:
-    return _build_live_env()
-
-
 @pytest.fixture(scope="session")
-def live_smoke_session() -> Generator[_LiveSmokeResult, None, None]:
-    workspace = Path(tempfile.mkdtemp(prefix="agy-live-smoke-"))
+def live_smoke_session(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[_LiveSmokeResult, None, None]:
+    workspace = tmp_path_factory.mktemp("agy-live-smoke")
     prompt_file = workspace / "tmp" / "interactive-agy-smoke" / "PROMPT.md"
     _write_smoke_prompt(prompt_file)
 
-    env = _build_live_env()
+    agy_home = _live_home()
+    _seed_agy_auth(agy_home)
+    env = _build_live_env(agy_home)
     try:
         result = subprocess.run(
             [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
@@ -142,19 +156,20 @@ def live_smoke_session() -> Generator[_LiveSmokeResult, None, None]:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+        cli_log_tail = _read_cli_log_tail(agy_home)
         timeout_diagnostic = _live_timeout_diagnostic(exc.timeout, cli_log_tail)
         if timeout_diagnostic is not None:
             pytest.xfail(timeout_diagnostic)
         raise
     output = result.stdout + result.stderr
-    cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+    cli_log_tail = _read_cli_log_tail(agy_home)
 
     yield _LiveSmokeResult(
         output=output,
         cli_log_tail=cli_log_tail,
         workspace=workspace,
         expected_run_id=_LIVE_AGY_EXPECTED_RUN_ID,
+        agy_home=agy_home,
     )
 
 
@@ -312,15 +327,17 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
 def test_live_agy_pty_read_thread_sees_output(
     workspace_mirror: Path,
 ) -> None:
-    _xfail_if_live_agy_upstream_blocked()
+    agy_home = _live_home()
+    _seed_agy_auth(agy_home)
+    _xfail_if_live_agy_upstream_blocked(agy_home)
 
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     ctx = AgentRunCtx(
         config=config,
         show_progress=False,
         extra_env={
-            "HOME": str(_get_live_agy_sandbox_home()),
-            "XDG_CONFIG_HOME": str(_get_live_agy_sandbox_home() / ".config"),
+            "HOME": str(agy_home),
+            "XDG_CONFIG_HOME": str(agy_home / ".config"),
         },
         workspace_path=workspace_mirror,
         policy=_quick_policy(),
@@ -356,7 +373,7 @@ def test_live_agy_pty_read_thread_sees_output(
             if time.monotonic() >= deadline:
                 break
     except AgentInvocationError:
-        cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+        cli_log_tail = _read_cli_log_tail(agy_home)
         upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
         if upstream_reason is not None:
             pytest.xfail(
@@ -366,7 +383,7 @@ def test_live_agy_pty_read_thread_sees_output(
             )
         raise
 
-    cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+    cli_log_tail = _read_cli_log_tail(agy_home)
 
     if saw_hello:
         return
@@ -546,14 +563,18 @@ def test_live_agy_produces_parser_classified_output_and_canonical_receipt(
     )
 
 
-def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
-    _xfail_if_live_agy_upstream_blocked()
+def test_live_agy_wire_dispatch_forces_pass_with_broker_secret(
+    tmp_path: Path,
+) -> None:
+    agy_home = _live_home()
+    _seed_agy_auth(agy_home)
+    _xfail_if_live_agy_upstream_blocked(agy_home)
 
-    workspace = Path(tempfile.mkdtemp(prefix="agy-live-smoke-wire-"))
+    workspace = tmp_path / "agy-live-smoke-wire"
     prompt_file = workspace / "tmp" / "interactive-agy-smoke" / "PROMPT.md"
     _write_smoke_prompt(prompt_file)
 
-    env = _build_live_env()
+    env = _build_live_env(agy_home)
     env["RALPH_BROKER_SECRET"] = "test-live-wire-dispatch-secret"
 
     result = subprocess.run(
@@ -566,7 +587,7 @@ def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
         check=False,
     )
     output = result.stdout + result.stderr
-    cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+    cli_log_tail = _read_cli_log_tail(agy_home)
 
     _xfail_if_upstream_blocked(cli_log_tail, smoke_output=output)
 
@@ -599,9 +620,9 @@ def test_live_agy_wire_dispatch_forces_pass_with_broker_secret() -> None:
         )
 
 
-def _xfail_if_live_agy_upstream_blocked() -> None:
+def _xfail_if_live_agy_upstream_blocked(agy_home: Path) -> None:
 
-    cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+    cli_log_tail = _read_cli_log_tail(agy_home)
     upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
     if upstream_reason is not None:
         pytest.xfail(
@@ -626,6 +647,6 @@ def test_live_agy_environment_diagnostic_records_upstream_block(
 
     assert cli_log_tail, (
         f"Expected cli.log to be present at "
-        f"{_REAL_HOME / '.gemini' / 'antigravity-cli' / 'cli.log'} when no "
+        f"{live_smoke_session.agy_home / '.gemini' / 'antigravity-cli' / 'cli.log'} when no "
         f"upstream-blocked reason is detected. Output:\n{output[-2000:]}"
     )

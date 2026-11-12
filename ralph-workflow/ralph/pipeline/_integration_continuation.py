@@ -20,6 +20,9 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.config_file_fingerprint_watcher import (
     compute_config_fingerprint_for_workspace,
 )
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
+from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.rebase_state import StartupRetentionReason
 
 if TYPE_CHECKING:
@@ -34,6 +37,30 @@ if TYPE_CHECKING:
 
 _REBASE_RECEIPT_ENTRIES = 2
 _WAITING_STATE: dict[str, tuple[object, ...] | None] = {"last_key": None}
+
+_GateKey = tuple[str | None, tuple[str, ...], str | None]
+
+_WAITING_ACTION_MESSAGE = (
+    "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged. "
+    "Operator action: run 'ralph --retry' to retry resolution, reset agent backoff, or fix configuration and run 'ralph --check-config'."
+)
+
+_GATE_ACTIVE_REASON = (
+    "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
+)
+
+
+class ExhaustedResolutionFailure(str):
+    terminal_reason: ResolutionTerminationReason
+
+    def __new__(
+        cls,
+        reason: str,
+        terminal_reason: ResolutionTerminationReason,
+    ) -> ExhaustedResolutionFailure:
+        value = super().__new__(cls, reason)
+        value.terminal_reason = terminal_reason
+        return value
 
 
 def reset_continuation_gate_state() -> None:
@@ -126,6 +153,66 @@ def compute_continuation_retry_gate_key(
     return (stop_id, eligible_agents, cfg_fp)
 
 
+def _stored_gate_key(root: Path, record: IntegrationRecord) -> _GateKey | None:
+    if record.resolution_gate_key is not None:
+        return record.resolution_gate_key
+    disk_record = read_record(root)
+    if disk_record is not None:
+        return disk_record.resolution_gate_key
+    return None
+
+
+def _gate_blocks_retry(root: Path, record: IntegrationRecord, gate_key: _GateKey) -> bool:
+    stored_key = _stored_gate_key(root, record)
+    if stored_key is None or stored_key != gate_key:
+        return False
+    disk_record = read_record(root) or record
+    if disk_record.waiting_notification_key != gate_key:
+        _emit_waiting_line(_WAITING_ACTION_MESSAGE, key=gate_key)
+        write_record(root, disk_record.with_waiting_notification_key(gate_key))
+    return True
+
+
+def _recorded_failure_cause(failure_cause: ResolutionFailureCause) -> ResolutionFailureCause:
+    if failure_cause != ResolutionFailureCause.NONE:
+        return failure_cause
+    return ResolutionFailureCause.UNRESOLVED_CONFLICT
+
+
+def _record_failed_attempt(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    *,
+    recovery_controller: RecoveryController | None,
+    phase: str,
+    chain_agents: list[str] | tuple[str, ...] | None,
+    config_path: Path | None,
+    stop_identity: str | None,
+    failure_cause: ResolutionFailureCause,
+) -> None:
+    latest_record = read_record(root) or record
+    post_attempt_key = compute_continuation_retry_gate_key(
+        root,
+        latest_record,
+        config,
+        recovery_controller=recovery_controller,
+        phase=phase,
+        chain_agents=chain_agents,
+        config_path=config_path,
+        stop_identity=stop_identity,
+    )
+    write_record(
+        root,
+        latest_record.model_copy(
+            update={
+                "resolution_gate_key": post_attempt_key,
+                "last_failure_cause": _recorded_failure_cause(failure_cause),
+            }
+        ),
+    )
+
+
 def _continue_merge_resolution(
     root: Path,
     record: IntegrationRecord,
@@ -153,23 +240,9 @@ def _continue_merge_resolution(
         config_path=config_path,
         stop_identity=stop_identity,
     )
-    effective_gate_key = record.resolution_gate_key
-    if effective_gate_key is None:
-        disk_record = read_record(root)
-        if disk_record is not None:
-            effective_gate_key = disk_record.resolution_gate_key
 
-    actionable_waiting_msg = (
-        "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged. "
-        "Operator action: run 'ralph --retry' to retry resolution, reset agent backoff, or fix configuration and run 'ralph --check-config'."
-    )
-
-    if not force_retry and effective_gate_key is not None and effective_gate_key == gate_key:
-        disk_rec = read_record(root) or record
-        if disk_rec.waiting_notification_key != gate_key:
-            _emit_waiting_line(actionable_waiting_msg, key=gate_key)
-            write_record(root, disk_rec.with_waiting_notification_key(gate_key))
-        return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
+    if not force_retry and _gate_blocks_retry(root, record, gate_key):
+        return _GATE_ACTIVE_REASON
 
     reset_continuation_gate_state()
     if conflict_resolver is None:
@@ -181,11 +254,17 @@ def _continue_merge_resolution(
 
     result = resolve_and_commit_with_reason(root, target, conflict_resolver)
     if result.outcome != "success":
-        latest_record = read_record(root) or record
-        updates: dict[str, object] = {"resolution_gate_key": gate_key}
-        if result.failure_cause != ResolutionFailureCause.NONE:
-            updates["last_failure_cause"] = result.failure_cause
-        write_record(root, latest_record.model_copy(update=updates))
+        _record_failed_attempt(
+            root,
+            record,
+            config,
+            recovery_controller=recovery_controller,
+            phase=phase,
+            chain_agents=chain_agents,
+            config_path=config_path,
+            stop_identity=stop_identity,
+            failure_cause=result.failure_cause,
+        )
         return result.reason or "merge resolution remains pending after continuation"
     return None
 
@@ -217,23 +296,9 @@ def _continue_rebase_resolution(
         config_path=config_path,
         stop_identity=stop_identity,
     )
-    effective_gate_key = record.resolution_gate_key
-    if effective_gate_key is None:
-        disk_record = read_record(root)
-        if disk_record is not None:
-            effective_gate_key = disk_record.resolution_gate_key
 
-    actionable_waiting_msg = (
-        "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged. "
-        "Operator action: run 'ralph --retry' to retry resolution, reset agent backoff, or fix configuration and run 'ralph --check-config'."
-    )
-
-    if not force_retry and effective_gate_key is not None and effective_gate_key == gate_key:
-        disk_rec = read_record(root) or record
-        if disk_rec.waiting_notification_key != gate_key:
-            _emit_waiting_line(actionable_waiting_msg, key=gate_key)
-            write_record(root, disk_rec.with_waiting_notification_key(gate_key))
-        return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
+    if not force_retry and _gate_blocks_retry(root, record, gate_key):
+        return _GATE_ACTIVE_REASON
 
     reset_continuation_gate_state()
     if rebase_stop_resolver is None:
@@ -243,21 +308,39 @@ def _continue_rebase_resolution(
 
     from ralph.pipeline._auto_integrate_rebase_resolve import resolve_rebase_with_config
 
-    resolved, reason, failure_cause = resolve_rebase_with_config(
+    result = resolve_rebase_with_config(
         root,
         target,
         rebase_stop_resolver,
         config.conflict_resolution if config is not None else None,
     )
+    resolved, reason, failure_cause = result
     if not resolved:
-        latest_record = read_record(root) or record
-        updates: dict[str, object] = {"resolution_gate_key": gate_key}
-        if failure_cause != ResolutionFailureCause.NONE:
-            updates["last_failure_cause"] = failure_cause
-        write_record(root, latest_record.model_copy(update=updates))
-        return reason or (
+        _record_failed_attempt(
+            root,
+            record,
+            config,
+            recovery_controller=recovery_controller,
+            phase=phase,
+            chain_agents=chain_agents,
+            config_path=config_path,
+            stop_identity=stop_identity,
+            failure_cause=failure_cause,
+        )
+        failure_reason = reason or (
             f"rebase resolution remains pending after continuation (cause: {failure_cause.value})"
         )
+        if result.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+            AttemptLedger(root).charge_ladder_attempt(
+                rebase_resolution_signature(
+                    record.pre_feature_sha,
+                    record.pre_target_sha,
+                    stop_identity or record.resolving_stop_sha,
+                ),
+                NextAction.LAST_RESORT_RECOVERY.value,
+            )
+            return ExhaustedResolutionFailure(failure_reason, result.terminal_reason)
+        return failure_reason
     return None
 
 
@@ -275,6 +358,11 @@ def continue_retained_resolution(
     force_retry: bool = False,
     stop_identity: str | None = None,
 ) -> IntegrationRecord | str:
+    if recovery_controller is not None:
+        recovery_controller.set_phase_launch_gate(
+            phase,
+            available=rebase_stop_resolver is not None and conflict_resolver is not None,
+        )
     target = record.pre_target_sha if record.operation_kind == "target_reconcile" else record.target
     if not target:
         return "retained resolution target unreadable; progress preserved"

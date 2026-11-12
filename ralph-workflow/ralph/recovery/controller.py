@@ -341,6 +341,7 @@ class RecoveryController:
         self._last_selection_state: dict[
             str, tuple[str | None, tuple[tuple[str, bool, bool, bool, str | None], ...]]
         ] = {}
+        self._phase_launch_gates: dict[str, bool] = {}
         self._cap = CycleCap(cap=opts.cycle_cap)
         self._classifier = opts.classifier or FailureClassifier()
         self._bus = opts.event_bus or FailureEventBus()
@@ -890,6 +891,12 @@ class RecoveryController:
             return 0
         return min(failed_index + 1, len(candidates))
 
+    def set_phase_launch_gate(self, phase: str, *, available: bool) -> None:
+        self._phase_launch_gates[phase] = available
+
+    def phase_launch_available(self, phase: str) -> bool:
+        return self._phase_launch_gates.get(phase, True)
+
     def preferred_agent_index(
         self,
         phase: str,
@@ -951,6 +958,9 @@ class RecoveryController:
                 for agent, avail, cooldown_ms, is_spent, cooldown_reason in rows
             ),
         )
+        if not self.phase_launch_available(phase):
+            self._last_selection_state.pop(phase, None)
+            return selection
         if self._last_selection_state.get(phase) != candidate_state:
             self._last_selection_state[phase] = candidate_state
             logger.bind(recovery=True).info(format_selection_evidence(phase, selection))
@@ -1124,7 +1134,9 @@ class RecoveryController:
             )
         return failed_state, [], failure_evt
 
-    def earliest_available_wait_ms(self, phase: str, agents: Sequence[str]) -> int:
+    def earliest_eligible_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
+        if not agents:
+            return None
         if any(self._is_agent_available(phase, agent) for agent in agents):
             return 0
         waits: list[int] = []
@@ -1140,7 +1152,13 @@ class RecoveryController:
             ledger_wait = self._ledger.earliest_wait_ms(phase, [agent])
             if ledger_wait is not None and ledger_wait > 0:
                 waits.append(ledger_wait)
-        return min(waits) if waits else 0
+        if waits:
+            return min(waits)
+        return None
+
+    def earliest_available_wait_ms(self, phase: str, agents: Sequence[str]) -> int:
+        wait = self.earliest_eligible_wait_ms(phase, agents)
+        return 0 if wait is None else wait
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
         if not agents:

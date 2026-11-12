@@ -26,6 +26,15 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_failed_ladder_terminal_alert_names_the_preserved_copy": (
+        "the intervention alert no longer claims an unnamed preserved copy at backup refs; it "
+        "now names the preserved-copy identity that the cleanup ladder actually created, so the "
+        "assertion was updated to pin the truthful wording"
+    ),
+}
+
+
 def _noop_warn(_display: object, _msg: str) -> None:
     pass
 
@@ -370,7 +379,8 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
     alert = run_loop._integration_alert_for_state(updated)
     assert alert is not None
     assert "manual recovery" not in alert
-    assert "backup refs" in alert
+    assert "preserved copy: no preserved copy recorded" in alert
+    assert "backup refs" not in alert
     assert "rung" in alert
 
     observed = run_recovery_scenario(monkeypatch, updated)
