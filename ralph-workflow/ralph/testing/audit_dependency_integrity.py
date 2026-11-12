@@ -71,14 +71,7 @@ INSTALL_HOOK_TABLES: frozenset[str] = frozenset(
 
 BUILD_BACKEND_PATH_KEY = "build-system.backend-path"
 
-EVIDENCE_TABLE_PREFIX = "tool.ralph.dependency-evidence"
-
 PUBLISHER_EVIDENCE_KEYS: frozenset[str] = frozenset({"publisher", "maintainer", "owner"})
-
-PUBLISHER_COMMENT_PATTERN = re.compile(
-    r"(?:publisher|maintainer|owner)\s*[:=]\s*(?P<value>[^\s#]+)",
-    re.IGNORECASE,
-)
 
 REQUIREMENT_PATTERN = re.compile(
     r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)"
@@ -214,20 +207,6 @@ def _find_line(text: str, needle: str) -> int:
         if stripped in line:
             return index
     return 0
-
-
-def _comment_segment(line: str) -> str:
-    marker = line.find("#")
-    if marker < 0:
-        return ""
-    return line[marker:]
-
-
-def _publisher_from_comment(line: str) -> str | None:
-    match = PUBLISHER_COMMENT_PATTERN.search(_comment_segment(line))
-    if match is None:
-        return None
-    return _regex_group_str(match, "value")
 
 
 def _publisher_from_url(url: str) -> str | None:
@@ -395,7 +374,6 @@ def _resolve_source(
 def _resolve_publisher(
     requirement: _Requirement,
     current_data: Mapping[str, object],
-    manifest_text: str,
 ) -> str | None:
     publisher = _evidence_publisher(current_data, requirement.name)
     if publisher is not None:
@@ -404,12 +382,6 @@ def _resolve_publisher(
         owner = _publisher_from_url(requirement.url)
         if owner is not None:
             return owner
-    line_number = _find_line(manifest_text, requirement.raw)
-    if line_number:
-        lines = manifest_text.splitlines()
-        comment_publisher = _publisher_from_comment(lines[line_number - 1])
-        if comment_publisher is not None:
-            return comment_publisher
     return None
 
 
@@ -489,7 +461,7 @@ def audit_dependency_change(
                     ),
                 )
             )
-        publisher = _resolve_publisher(requirement, current_data, current_pyproject)
+        publisher = _resolve_publisher(requirement, current_data)
         if publisher is None:
             findings.append(
                 DependencyFinding(
@@ -499,10 +471,10 @@ def audit_dependency_change(
                     detail=(
                         f"new package '{requirement.name}' has no publisher reference: "
                         "the change names no owner or maintainer for it. "
-                        "fix: record the publisher (inline '# publisher: <name>' comment on the "
-                        "requirement, a [tool.ralph.dependency-evidence.<package>] table, or a "
-                        "source-control URL that names the owner) so the package can be verified "
-                        "against the registry"
+                        "fix: record the publisher in a "
+                        "[tool.ralph.dependency-evidence.<package>] table (publisher, "
+                        "maintainer or owner key) or in a source-control URL that names "
+                        "the owner, so the package can be verified against the registry"
                     ),
                 )
             )

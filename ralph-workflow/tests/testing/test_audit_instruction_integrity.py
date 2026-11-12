@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.testing.audit_instruction_integrity import (
     CATEGORY_INSTRUCTION_PROMOTION,
     CATEGORY_MISSING_PIN,
@@ -18,6 +20,14 @@ from ralph.testing.audit_instruction_integrity import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_review_trigger_comment_satisfies_the_review_rule": (
+        "the instruction-integrity audit no longer accepts a comment as review-trigger "
+        "evidence; the permissive passing case is replaced by rejection regressions "
+        "that report a missing review trigger for a comment-only trigger"
+    ),
+}
+
 _UNPINNED_TOML = """\
 [mcp_servers.github]
 transport = "stdio"
@@ -30,7 +40,23 @@ _PINNED_TOML = """\
 transport = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github@1.2.3"]
+review = "quarterly"
+"""
+
+_COMMENT_ONLY_REVIEW_TOML = """\
+[mcp_servers.github]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github@1.2.3"]
 # re-review when the upstream tool descriptions change
+"""
+
+_COMMENT_ABOVE_SERVER_TOML = """\
+# re-review when the upstream tool descriptions change
+[mcp_servers.github]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github@1.2.3"]
 """
 
 _VERSION_KEY_TOML = """\
@@ -47,6 +73,13 @@ transport = "http"
 url = "https://mcp.example.invalid/docs"
 review = "re-review on every tool-description change"
 """
+
+_OTHER_DOCUMENTED_REVIEW_TRIGGER_KEYS: tuple[str, ...] = (
+    "review_trigger",
+    "review_on",
+    "review_when",
+    "re_review_trigger",
+)
 
 _COMMENTED_TOML = """\
 # [mcp_servers.github]
@@ -135,14 +168,47 @@ def test_missing_review_trigger_is_reported(tmp_path: Path) -> None:
     assert "review trigger" in trigger.detail
 
 
-def test_review_trigger_comment_satisfies_the_review_rule(tmp_path: Path) -> None:
-    _write(tmp_path, "ralph/policy/defaults/mcp.toml", _PINNED_TOML)
+def test_review_trigger_comment_in_the_server_block_is_rejected(tmp_path: Path) -> None:
+    _write(tmp_path, "ralph/policy/defaults/mcp.toml", _COMMENT_ONLY_REVIEW_TOML)
 
-    assert CATEGORY_MISSING_REVIEW_TRIGGER not in _categories(tmp_path)
+    findings = audit_instruction_integrity(tmp_path)
+
+    assert [finding.category for finding in findings] == [CATEGORY_MISSING_REVIEW_TRIGGER]
+    trigger = findings[0]
+    assert trigger.rule == RULE_MCP_SERVER_PIN
+    assert trigger.file_path == "ralph/policy/defaults/mcp.toml"
+    assert trigger.line == 1
+    assert "review trigger" in trigger.detail
+
+
+def test_review_trigger_comment_above_the_server_block_is_rejected(tmp_path: Path) -> None:
+    _write(tmp_path, "ralph/policy/defaults/mcp.toml", _COMMENT_ABOVE_SERVER_TOML)
+
+    findings = audit_instruction_integrity(tmp_path)
+
+    assert [finding.category for finding in findings] == [CATEGORY_MISSING_REVIEW_TRIGGER]
+    trigger = findings[0]
+    assert trigger.rule == RULE_MCP_SERVER_PIN
+    assert trigger.line == 2
 
 
 def test_review_trigger_key_satisfies_the_review_rule(tmp_path: Path) -> None:
     _write(tmp_path, "ralph/policy/defaults/mcp.toml", _REVIEW_KEY_TOML)
+
+    assert CATEGORY_MISSING_REVIEW_TRIGGER not in _categories(tmp_path)
+
+
+@pytest.mark.parametrize("review_key", _OTHER_DOCUMENTED_REVIEW_TRIGGER_KEYS)
+def test_documented_review_trigger_keys_satisfy_the_review_rule(
+    tmp_path: Path,
+    review_key: str,
+) -> None:
+    _write(
+        tmp_path,
+        "ralph/policy/defaults/mcp.toml",
+        '[mcp_servers.github]\ntransport = "http"\nurl = "https://mcp.example.invalid/docs"\n'
+        f'{review_key} = "quarterly"\n',
+    )
 
     assert CATEGORY_MISSING_REVIEW_TRIGGER not in _categories(tmp_path)
 

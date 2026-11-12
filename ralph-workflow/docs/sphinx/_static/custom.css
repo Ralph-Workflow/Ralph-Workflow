@@ -1,6 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-/* Tighter Inter rendering */
 :root,
 body {
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
@@ -9,12 +8,10 @@ body {
     --rw-mono-stack: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* Sidebar chrome matching website */
 aside.sidebar-drawer {
     box-shadow: inset -1px 0 0 var(--color-sidebar-background-border);
 }
 
-/* Sidebar caption typography: uppercase muted label */
 .sidebar-tree .caption-text,
 .toctree-l1 > .caption-text {
     text-transform: uppercase;
@@ -24,18 +21,15 @@ aside.sidebar-drawer {
     font-weight: 600;
 }
 
-/* Suppress double caption headings in toctree wrappers */
 .toctree-wrapper > .caption {
     display: none;
 }
 
-/* Global monospace stack for all pre/code elements */
 pre,
 code {
     font-family: var(--rw-mono-stack);
 }
 
-/* Code blocks */
 div[class*="highlight"] {
     border-radius: 10px;
     border: 1px solid var(--color-background-border, var(--color-sidebar-background-border));
@@ -43,7 +37,6 @@ div[class*="highlight"] {
     font-family: var(--rw-mono-stack);
 }
 
-/* Light-mode code block contrast */
 [data-theme="light"] div[class*="highlight"] {
     background: #f3f4f6;
 }
@@ -54,7 +47,6 @@ div[class*="highlight"] {
     }
 }
 
-/* Inline code */
 code.literal {
     background: var(--color-background-secondary);
     padding: 0.1em 0.4em;
@@ -63,7 +55,6 @@ code.literal {
     font-family: var(--rw-mono-stack);
 }
 
-/* Admonition accent bars */
 .admonition.note,
 .admonition.warning,
 .admonition.tip,
@@ -73,12 +64,10 @@ div.tip {
     border-left: 3px solid var(--color-brand-primary);
 }
 
-/* Hero section container */
 .hero {
     margin-bottom: 2rem;
 }
 
-/* Hero large headline */
 .hero-headline {
     font-size: 2.75rem;
     font-weight: 700;
@@ -89,7 +78,6 @@ div.tip {
     padding-top: 0 !important;
 }
 
-/* Hero subtitle paragraph */
 .hero-subtitle {
     font-size: 1.125rem;
     color: var(--color-foreground-secondary);
@@ -98,7 +86,6 @@ div.tip {
     margin-top: 0;
 }
 
-/* Hero CTA layout */
 .hero-actions {
     display: flex;
     flex-wrap: wrap;
@@ -106,7 +93,6 @@ div.tip {
     margin-top: 1.5rem;
 }
 
-/* Hero CTA pill button */
 .hero-cta {
     display: inline-block;
     padding: 0.625rem 1.5rem;
@@ -142,7 +128,6 @@ div.tip {
     font-size: 0.95rem;
 }
 
-/* Headings */
 h1 {
     font-weight: 700;
     letter-spacing: -0.02em;
@@ -154,7 +139,6 @@ h2 {
     padding-top: 1.5rem;
 }
 
-/* Links */
 a {
     transition: color 120ms;
 }
@@ -163,7 +147,6 @@ a:hover {
     text-decoration: underline;
 }
 
-/* sphinx-design cards matching homepage card style */
 .sd-card {
     background: var(--color-background-secondary) !important;
     border: 1px solid var(--color-background-border, var(--color-sidebar-background-border)) !important;
@@ -172,7 +155,6 @@ a:hover {
     transition: transform 200ms, box-shadow 200ms;
 }
 
-/* Light mode card hover */
 [data-theme="light"] .sd-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 0 0 1px var(--color-brand-primary), 0 4px 20px rgba(8, 145, 178, 0.12);
@@ -185,13 +167,11 @@ a:hover {
     }
 }
 
-/* Dark mode card hover */
 [data-theme="dark"] .sd-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 0 0 1px var(--color-brand-primary), 0 4px 20px rgba(8, 145, 178, 0.15);
 }
 
-/* Sidebar: emphasise active link, hover underline only */
 .sidebar-tree .reference.current,
 .sidebar-tree .current > .reference {
     color: var(--color-brand-primary);
@@ -202,13 +182,11 @@ a:hover {
     text-decoration: underline;
 }
 
-/* Sidebar toctree items */
 .toctree-wrapper li {
     font-size: 0.9em;
     line-height: 1.4;
 }
 
-/* Mobile: prevent horizontal scroll */
 @media (max-width: 48em) {
     .hero-headline {
         font-size: 2rem;

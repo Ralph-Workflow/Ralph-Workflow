@@ -46,17 +46,14 @@ from ralph.timeout_defaults import (
 )
 from ralph.workspace.scope import WorkspaceScope
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_general_config_provider_fallback_is_labeled_reserved": (
-        "under comment-free source policy (audit_comments), maintainer comments are banned; "
-        "test asserts provider_fallback retains exact model field shape without description"
-    ),
-}
-
 DEFAULT_VERBOSITY = 2
 
-RALPH_TEST_CHANGE_REASONS = {
-    "test_general_config_provider_fallback_is_labeled_reserved": "under policy schema v6 comments in tracked Python are prohibited; provider_fallback is reserved by being unexposed in schema and unconsumed rather than carrying an inline comment",
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_general_config_provider_fallback_is_labeled_reserved": (
+        "under policy schema v6 comments in tracked Python are prohibited; "
+        "provider_fallback is reserved by being unexposed in schema and unconsumed "
+        "rather than carrying an inline comment"
+    ),
 }
 
 ACTIVE_AGENT_POLICY = (
@@ -504,7 +501,8 @@ def test_general_config_provider_fallback_is_labeled_reserved() -> None:
     assert field.description in (None, ""), (
         "provider_fallback must not carry a Field(description=...) that would "
         "expose the dead knob through Pydantic JSON schema; the label belongs "
-        "in a maintainer comment. Got description: "
+        "in the loader's reserved-key warning "
+        "(ralph.config.loader._warn_reserved_provider_fallback). Got description: "
         f"{field.description!r}"
     )
     default_factory = field.default_factory

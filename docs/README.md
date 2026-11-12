@@ -64,7 +64,7 @@ reader job; pick the first link that matches, then stop.
   type-ignore, workspace-trait, agent-support architecture, and the
   fabrication guard
 - [`docs/code-style/`](code-style/index.md) — the maintained Python
-  style guide (canonical home; the legacy `CODE_STYLE.md` was removed)
+  style guide (`documentation-rubric.md` and `index.md`)
 
 ## I need architecture notes
 

@@ -1373,36 +1373,37 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/update_check/test_update_check_pypi.py` | 0 | 0 | 1 | dir:update_check | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/workspace/test_workspace_product_baselines.py` | 0 | 1 | 0 | dir:workspace | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 
-### Conversion results in this pass
+### Test files with zero white-box coupling
 
-| test file | white-box sites before | after |
-| --- | --- | --- |
-| `tests/test_run_loop_retry_diagnostic.py` | 96 | 0 |
-| `tests/test_process_manager.py` | 22 | 0 |
-| `tests/process/test_process_manager_listener_cap.py` | 8 | 0 |
-| `tests/process/test_pty_process_external_returncode.py` | 6 | 0 |
-| `tests/process/test_process_manager_terminate_executor.py` | 6 | 0 |
-| `tests/process/test_managed_async_process_context_manager.py` | 6 | 0 |
-| `tests/process/test_termination_status_harvest.py` | 4 | 0 |
-| `tests/process/test_spawn_options_stdin_default.py` | 4 | 0 |
-| `tests/process/monitor/test_monitor_consolidation.py` | 4 | 0 |
-| `tests/process/test_termination_outcomes.py` | 2 | 0 |
-| `tests/process/test_termination_diagnostics_and_psi.py` | 2 | 0 |
-| `tests/process/test_teardown_ownership_guard.py` | 2 | 0 |
-| `tests/process/test_spawn_options_pass_fds.py` | 2 | 0 |
-| `tests/process/test_spawn_env_containment.py` | 2 | 0 |
-| `tests/process/monitor/test_opencode_registry_discovery.py` | 2 | 0 |
-| `tests/process/test_spawn_null_byte_rejection.py` | 1 | 0 |
-| `tests/process/test_spawn_env_pwd_alignment.py` | 1 | 0 |
+These test files hold no white-box coupling, so they carry no row in the
+per-entry ledger above:
 
-The run-loop conversion introduced the public `ralph.pipeline.retry_diagnostic`
-module (`RetryDiagnosticHooks`, `wait_for_integration_retry()`,
-`run_owned_integration_conflict_resolution()`) and the public
-`ralph.pipeline.run_loop.LoopContext` carrier with a `hooks` injection field.
-The process conversion introduced the public `is_terminal_status()`,
-`install_process_manager()`, `shutdown_process_manager()`, the
-`LivenessVerifier` protocol and the `ProcessManager.liveness_verifier=` /
-`terminate_executor_factory=` constructor seams.
+- `tests/test_run_loop_retry_diagnostic.py`
+- `tests/test_process_manager.py`
+- `tests/process/test_process_manager_listener_cap.py`
+- `tests/process/test_pty_process_external_returncode.py`
+- `tests/process/test_process_manager_terminate_executor.py`
+- `tests/process/test_managed_async_process_context_manager.py`
+- `tests/process/test_termination_status_harvest.py`
+- `tests/process/test_spawn_options_stdin_default.py`
+- `tests/process/monitor/test_monitor_consolidation.py`
+- `tests/process/test_termination_outcomes.py`
+- `tests/process/test_termination_diagnostics_and_psi.py`
+- `tests/process/test_teardown_ownership_guard.py`
+- `tests/process/test_spawn_options_pass_fds.py`
+- `tests/process/test_spawn_env_containment.py`
+- `tests/process/monitor/test_opencode_registry_discovery.py`
+- `tests/process/test_spawn_null_byte_rejection.py`
+- `tests/process/test_spawn_env_pwd_alignment.py`
+
+The public seams these files assert through are the
+`ralph.pipeline.retry_diagnostic` module (`RetryDiagnosticHooks`,
+`wait_for_integration_retry()`, `run_owned_integration_conflict_resolution()`),
+the public `ralph.pipeline.run_loop.LoopContext` carrier with a `hooks`
+injection field, `is_terminal_status()`, `install_process_manager()`,
+`shutdown_process_manager()`, the `LivenessVerifier` protocol, and the
+`ProcessManager.liveness_verifier=` / `terminate_executor_factory=`
+constructor seams.
 
 ### Named KEEP records (retained white-box sites with a recorded gap)
 
@@ -1429,30 +1430,23 @@ The process conversion introduced the public `is_terminal_status()`,
   `_paused_rebase_at`, `_resolve_orphaned_unmerged_index`,
   `_resolve_paused_rebase`, `_exhaustion_still_binds`,
   `_announce_blocked_dispatch`). *Gap:* each is a private module function with
-  no public entry point; the retry-diagnostic cluster now shows the pattern
+  no public entry point; the retry-diagnostic cluster shows the pattern
   (a public module plus a `LoopContext.hooks` injection carrier). *Seam
   sketch:* publish the remaining collaborators as public entry points on
   `ralph.pipeline.run_loop` and extend the hooks carrier. *Follow-up owner:*
   the run-loop/pipeline public-seam unit.
 
-### Merge records (duplication removed)
+### Shared test modules
 
-- **Analysis-iteration counter family (11 modules -> 1).** The eleven
-  `tests/test_analysis_iteration_new_*.py` modules (14 test functions, 26
-  assertions, 1761 lines) were merged into the single parametrized module
-  `tests/test_analysis_iteration_counters.py` (407 lines) with exactly 14
-  explicitly-IDed parameter cases, one per original test function. Every
-  original assertion survives and is expressed through public seams
+- **Analysis-iteration counter family.** `tests/test_analysis_iteration_counters.py`
+  is the single parametrized module for this family: 14 explicitly-IDed
+  parameter cases, each asserting through public seams
   (`PipelineState.phase`, `get_loop_iteration()`, `get_outer_progress()`,
-  `policy.loop_counters[...].default_max`); the merged policies were proven
-  byte-identical to the originals with `model_dump()` and the 26 original
-  assertion expressions were replayed against the consolidated table.
-- **Artifact-tool helper stack (8 modules -> 1 implementation + 8 shims).** The
-  duplicated `_tool_artifact_1_helper_*` / `_tool_artifact_2_helper_*` modules
-  now hold one shared implementation in `tests/_tool_artifact_helpers.py`; each
-  legacy module is a re-export-only shim (10-11 lines, no `class`/`def`), so
-  every consumer import path keeps working unchanged. The `_2` stack was the
-  base because it is a strict superset of the `_1` stack.
+  `policy.loop_counters[...].default_max`).
+- **Artifact-tool helper stack.** `tests/_tool_artifact_helpers.py` holds the
+  shared implementation; the `_tool_artifact_1_helper_*` and
+  `_tool_artifact_2_helper_*` modules are re-export-only shims (10-11 lines,
+  no `class`/`def`), so every consumer import path keeps working.
 
 <!-- whitebox-ledger:end -->
 

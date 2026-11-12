@@ -29,9 +29,8 @@ constraint of a single shared SIGINT handler:
    would diverge the two paths and reintroduce the orphan-process
    bug the AC-01 fix closed.
 
-The committed production code (`fix(interrupt): restore two-quick
-ctrl-c via pgids`) is the result. This ADR documents the four
-architectural decisions that produced it.
+This ADR documents the eight architectural decisions that define
+the interrupt subsystem.
 
 ## Choice
 
@@ -61,10 +60,10 @@ factory (`dispatcher_from_process_manager`) and so the timing
 policy and idempotency live in ONE place rather than being
 duplicated in each path.
 
-Reference: ralph/interrupt/dispatcher.py:189-211 (InterruptDispatcher
-dataclass), ralph/interrupt/dispatcher.py:228-242 (begin_interrupt),
-ralph/interrupt/dispatcher.py:244-269 (_wait_for_list_active_empty
-escalation), ralph/interrupt/dispatcher.py:272-306 (force_exit with
+Reference: ralph/interrupt/dispatcher.py:183-202 (InterruptDispatcher
+dataclass), ralph/interrupt/dispatcher.py:204-218 (begin_interrupt),
+ralph/interrupt/dispatcher.py:219-235 (_wait_for_list_active_empty
+escalation), ralph/interrupt/dispatcher.py:236-253 (force_exit with
 the `_force_exit_called` idempotency guard).
 
 Test pin: tests/test_interrupt_dispatcher.py::test_dispatcher_force_exit_is_idempotent_on_repeat_bridge_pids
@@ -87,8 +86,8 @@ advances via explicit `clock.advance(s)` calls, and the test's
 canonical injection point for any future test that needs to
 assert deadline-bounded behavior.
 
-Reference: ralph/interrupt/dispatcher.py:206-208 (clock and sleep
-fields on the dataclass), ralph/interrupt/dispatcher.py:215-219
+Reference: ralph/interrupt/dispatcher.py:190-191 (clock and sleep
+fields on the dataclass), ralph/interrupt/dispatcher.py:194-202
 (`__post_init__` validates the clock returns float).
 
 Test pin: tests/test_interrupt_dispatcher.py::test_dispatcher_uses_injected_clock_for_block_wait_deadline
@@ -112,7 +111,7 @@ PGID (not the PID) so the entire process group dies, matching
 the real-world `os.killpg` semantics the manager's
 `kill_process_group` seam already exposes.
 
-Reference: ralph/interrupt/asyncio_bridge.py:149-152
+Reference: ralph/interrupt/asyncio_bridge.py:84-86
 (`_second_sigint` reads `list_active()` and forwards PGIDs).
 
 Test pin: tests/test_asyncio_bridge_install_signal_handlers.py::test_second_sigint_force_kills_uses_pgid_not_pid
@@ -136,13 +135,15 @@ This is Strategy A (propagation, not absorption). Strategy B
 the dispatcher failure from the outer catch, making the
 catch-block behavior untestable in isolation. Strategy A
 preserves bit-for-bit production output (each CLI catch
-emits its own historically-anchored message) and lets the
-canonical `block=True` contract be black-box tested in
-isolation.
+emits its own warning: `"Interrupt dispatcher failed during
+outer CLI catch"` in `ralph/cli/main.py:1740` and
+`"Interrupt dispatcher failed during CLI catch"` in
+`ralph/cli/commands/run.py:484`) and lets the canonical
+`block=True` contract be black-box tested in isolation.
 
-Reference: ralph/interrupt/dispatcher.py:394-422
-(handle_keyboard_interrupt_at_cli), ralph/cli/main.py:934-960
-(_run_pipeline catch), ralph/cli/commands/run.py:429-434
+Reference: ralph/interrupt/dispatcher.py:319-340
+(handle_keyboard_interrupt_at_cli), ralph/cli/main.py:1735-1740
+(_run_pipeline catch), ralph/cli/commands/run.py:479-484
 (run catch).
 
 Test pin: tests/test_interrupt_cli_helper.py::test_handle_keyboard_interrupt_at_cli_propagates_dispatcher_failures
@@ -151,27 +152,17 @@ Test pin: tests/test_interrupt_cli_helper.py::test_handle_keyboard_interrupt_at_
 
 The sync entry point `handle_keyboard_interrupt` in
 `ralph/pipeline/_runner_interrupt.py` is the seam a real Ctrl+C reaches
-inside the pipeline loop. Before the refactor it had a 50 ms hard-coded
-busy-wait (`interrupt_done.wait(timeout=0.05)` at
-`ralph/pipeline/_runner_interrupt.py:116`), caught `BaseException`
-(anti-pattern at line 103), depended on the global
-`get_process_manager()` singleton at line 74, and silently ignored
-`monitor_stop` when a pre-built dispatcher was passed (the
-`dispatcher_from_process_manager` call at lines 77-81 only forwarded
-`stop_connectivity` when `dispatcher is None`). The refactor closes
-all four gaps with the minimum seam surface:
+inside the pipeline loop. It exposes the minimum seam surface:
 
-- **`process_manager: ProcessManager | None = None`** replaces the
-  hard-coded `get_process_manager()` call. Production callers omit the
-  kwarg and the singleton is used; tests inject a fake.
-- **`poll_interval_s: float = 0.05`** replaces the literal `0.05` in
-  the busy-wait. The default is unchanged from production behavior;
-  tests inject `0.001` so the busy-wait returns in <1ms.
-- **RuntimeError guard** at the top of the function body (lines 67-72)
+- **`process_manager: ProcessManager | None = None`** selects the
+  process manager. Production callers omit the kwarg and the singleton
+  is used; tests inject a fake.
+- **`poll_interval_s: float = 0.05`** sets the busy-wait interval.
+  Tests inject `0.001` so the busy-wait returns in <1ms.
+- **RuntimeError guard** at the top of the function body (lines 38-43)
   raises `RuntimeError` when both `dispatcher` and `monitor_stop` are
-  passed. The prior silent-ignore was a footgun that hid a real
-  contract violation.
-- **Exception not BaseException** (line 103) — see D6 below.
+  passed.
+- **Exception not BaseException** (line 72) — see D6 below.
 
 Clock and sleep seams are **NOT** added to the entry point because
 the entry point only uses `threading.Event` coordination, not
@@ -194,15 +185,15 @@ The contract for every test in
 - Wrap the real dispatcher in a thin `_RecordingDispatcher` class
   (local to the test file) that records `begin_calls` and `poll_calls`
   (the real frozen `InterruptDispatcher` at
-  `ralph/interrupt/dispatcher.py:188` cannot be monkey-patched).
+  `ralph/interrupt/dispatcher.py:183` cannot be monkey-patched).
 - For tests that simulate a second SIGINT, inject a recording
   `hard_exit` callable so the test process is not killed by
   `os._exit(130)`.
 
-Reference: `ralph/pipeline/_runner_interrupt.py:32-46` (new
-signature), `ralph/pipeline/_runner_interrupt.py:67-72` (RuntimeError
-guard), `ralph/pipeline/_runner_interrupt.py:73-81` (process_manager
-injection), `ralph/pipeline/_runner_interrupt.py:116` (poll_interval_s
+Reference: `ralph/pipeline/_runner_interrupt.py:29-36` (signature),
+`ralph/pipeline/_runner_interrupt.py:38-43` (RuntimeError
+guard), `ralph/pipeline/_runner_interrupt.py:44-51` (process_manager
+injection), `ralph/pipeline/_runner_interrupt.py:91` (poll_interval_s
 busy-wait).
 
 Test pin: `tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_uses_injected_poll_interval_for_polling`
@@ -210,16 +201,15 @@ Test pin: `tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_uses_i
 ### D6. Exception not BaseException in handle_keyboard_interrupt
 
 The recovery block in `_begin_interrupt` at
-`ralph/pipeline/_runner_interrupt.py:103` uses `except Exception` (not
-`except BaseException`). The prior `except BaseException` silently
-swallowed `KeyboardInterrupt` and `SystemExit` that must propagate so
-the user's Ctrl+C still kills a hung process; the local
+`ralph/pipeline/_runner_interrupt.py:72` uses `except Exception` (not
+`except BaseException`), so `KeyboardInterrupt` and `SystemExit`
+propagate and the user's Ctrl+C still kills a hung process; the local
 `interrupt_error` list is the recovery surface for non-fatal
 dispatcher failures (`RuntimeError`, `ValueError`, `OSError`, etc.).
 
-A single broken dispatch logs a warning via the existing
+A single broken dispatch logs a warning via the
 `"Interrupt controller raised during KeyboardInterrupt"` message at
-`ralph/pipeline/_runner_interrupt.py:103` and recovers the SIGINT
+`ralph/pipeline/_runner_interrupt.py:99` and recovers the SIGINT
 handler instead of swallowing the user's Ctrl+C. Any future dispatcher
 call that raises a `BaseException` subclass that is NOT an
 `Exception` subclass (e.g. `KeyboardInterrupt`, `SystemExit`) is NOT
@@ -228,19 +218,18 @@ behavior because the dispatcher is the only place that exits the
 process (per D4), so a dispatcher raising `KeyboardInterrupt` is
 itself a bug that should crash, not be recovered.
 
-The discriminator for the `Exception`-not-`BaseException` change is
-`tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher`
-(test 6): a custom `BaseException` subclass that is NOT an
+The discriminator for the `Exception`-not-`BaseException` contract is
+`tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher`:
+a custom `BaseException` subclass that is NOT an
 `Exception` subclass (`_NotAnException`) is raised from the
-dispatcher's `begin_interrupt`. The NEW `except Exception` code does
-NOT catch it, so it propagates to `threading.excepthook`; the OLD
-`except BaseException` code would silently catch it and the excepthook
-would never fire. Test 2 (RuntimeError) is INSUFFICIENT: `RuntimeError`
+dispatcher's `begin_interrupt`. The `except Exception` code does
+NOT catch it, so it propagates to `threading.excepthook`. A
+`RuntimeError` test is INSUFFICIENT: `RuntimeError`
 is caught by both `except BaseException` and `except Exception`, so
-test 2 would pass against the unmodified code.
+such a test passes either way.
 
-Reference: `ralph/pipeline/_runner_interrupt.py:103` (the `except
-Exception` clause with the inline policy-source comment).
+Reference: `ralph/pipeline/_runner_interrupt.py:72` (the `except
+Exception` clause).
 
 Test pin: `tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher`
 
@@ -253,7 +242,7 @@ many seconds to return (the `grace_period_s` plus the
 second time while the first-SIGINT body is still in flight, the
 contract is:
 
-* **Long-running I/O-bound agents (NEW):** the production seam
+* **Long-running I/O-bound agents:** the production seam
   uses the dispatcher's liveness-based
   `_wait_for_list_active_empty` (via `begin_interrupt(block=True)`)
   instead of the CPU-progress-based `run_early_escalation_poll`.
@@ -313,8 +302,8 @@ and does NOT depend on real subprocesses, real signals, or real
 wall-clock waits.
 
 Reference: `tests/test_runner_interrupt.py::test_second_sigint_during_first_sigint_interrupt_thread`
-(the new test pin) and
-`ralph/interrupt/dispatcher.py:281-303` (the `force_exit` method
+(the test pin) and
+`ralph/interrupt/dispatcher.py:236-253` (the `force_exit` method
 with the `_force_exit_called` idempotency guard).
 
 The corresponding async-path test pin
@@ -334,10 +323,9 @@ The first-SIGINT shutdown block — `begin_interrupt(block=True)`
 * `ralph/interrupt/asyncio_bridge.py:_shutdown_block` (the
   asyncio entry point).
 
-The two call sites were duplicated and could drift. A new
-module-level helper `run_shutdown_block` in
+A module-level helper `run_shutdown_block` in
 `ralph/interrupt/dispatcher.py` is the canonical seam; both
-call sites route through it. The body is now a single call to
+call sites route through it. The body is a single call to
 `dispatcher.begin_interrupt(grace_period_s=grace_period_s,
 block=True)` only — no daemon thread, no
 `threading.Thread.join`. The dispatcher's
@@ -357,18 +345,17 @@ The 7th architectural seam is `error_log_message`:
 No other difference exists between the two paths. The helper
 also accepts the `join_timeout_s` bound (default
 `INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1`) as a named
-parameter; the bound is now UNUSED and is kept for backward
-compatibility with the prior call shape. The two call sites
+parameter; the bound is UNUSED and is accepted for call-shape
+compatibility. The two call sites
 do not pass the kwarg and the helper is byte-for-byte
 equivalent at those sites.
 
 The public `InterruptDispatcher.run_early_escalation_poll`
-method is NOT used by the production seam; it is kept on the
-dispatcher as a public utility for backward compatibility
-with its dedicated tests
+method is NOT used by the production seam; it is a public utility
+on the dispatcher, covered by its dedicated tests
 (`tests/test_interrupt_dispatcher.py::test_early_escalation_poll_kills_when_no_cpu_progress_within_budget`,
 `::test_early_escalation_poll_does_not_kill_when_cpu_progresses`,
-`::test_early_escalation_poll_exits_when_process_dies`). The
+`::test_early_escalation_poll_exits_when_process_dies`).
 The method is a public utility NOT used by the production seam.
 
 Reference: `ralph/interrupt/dispatcher.py:run_shutdown_block`
@@ -386,7 +373,7 @@ assert on the recorded call shape, not on the call site.
 
 ## Consequences
 
-The four decisions above produce the following durable rules for
+The decisions above produce the following durable rules for
 future contributors. A contributor who is about to add a third
 bridge path (e.g. for a new event loop) MUST follow them.
 
@@ -404,8 +391,7 @@ bridge path (e.g. for a new event loop) MUST follow them.
    `process_manager.list_active()`.** The bridge, the dispatcher,
    and any future caller MUST read live processes from the
    `ProcessManager` — never from a parallel set on a bridge or a
-   dataclass. A parallel set reintroduces the orphan-process bug
-   the AC-01 fix closed.
+   dataclass.
 
 4. **Forbidden patterns:**
 
@@ -436,11 +422,10 @@ bridge path (e.g. for a new event loop) MUST follow them.
    `hard_exit` callable is called exactly once across the
    two SIGINTs and the body's eventual completion
    (idempotency survives body delay). These two invariants are
-   pinned by the long-running-task black-box tests added in
-   the same commit as this ADR.
+   pinned by the long-running-task black-box tests.
 
 5a. **Entry-point minimum seam surface.** `handle_keyboard_interrupt`
-    exposes exactly two new kwargs (`process_manager`,
+    exposes exactly two kwargs (`process_manager`,
     `poll_interval_s`) and one `RuntimeError` guard. Clock and sleep
     seams are NOT added because the entry point only uses
     `threading.Event` coordination. Tests MUST build a real
@@ -493,24 +478,19 @@ bridge path (e.g. for a new event loop) MUST follow them.
     module-level constant).
 
 6. **Long-running I/O-bound agents are NOT SIGKILLed during the
-   wait (D7 + D8 NEW).** The production seam in
+   wait (D7 + D8).** The production seam in
    `run_shutdown_block` uses the dispatcher's liveness-based
    `_wait_for_list_active_empty` (via `begin_interrupt(block=True)`)
-   instead of the CPU-progress-based `run_early_escalation_poll`
-   that previously ran in a daemon thread. The CPU-progress
-   detector SIGKILLed alive-but-zero-CPU long-running agents
-   (writing checkpoints, releasing locks, draining queues)
-   prematurely because two consecutive 0-CPU polls triggered
+   instead of the CPU-progress-based `run_early_escalation_poll`.
+   The CPU-progress detector SIGKILLs alive-but-zero-CPU
+   long-running agents (writing checkpoints, releasing locks, draining
+   queues) prematurely because two consecutive 0-CPU polls trigger
    `_records_show_no_progress` to return `True`. The
    liveness-based wait gives the agent the full `grace_period_s`
    to die naturally; only an actually-stuck agent (still alive
    after the grace deadline elapses) is escalated via
    `force_exit`. The public
-   `InterruptDispatcher.run_early_escalation_poll` method is kept
-   for backward compatibility with its dedicated tests but is
-   NOT wired into the production seam. The contract is pinned by
+   `InterruptDispatcher.run_early_escalation_poll` method is NOT
+   wired into the production seam. The contract is pinned by
    the regression test
    `tests/test_interrupt_dispatcher.py::test_run_shutdown_block_does_not_sigkill_alive_but_zero_cpu_long_running_agent`.
-   A future contributor who adds a CPU-progress-based escalation
-   back to the production seam re-introduces the
-   "broken at times... when the task is long running" bug.

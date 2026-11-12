@@ -102,9 +102,13 @@ FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
 )
 
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_repaired_citation_points_at_named_token": "line numbers shifted following removal of comments and docstrings across python sources",
     "test_every_backticked_citation_line_exists": "line numbers in cited document shifted following removal of comments and docstrings across python sources",
+    "test_progress_token_handling_is_cited_as_current": "the citation refresh re-pointed the progress-token citations at the verified current lines of exec_sse_streaming.py",
+    "test_historical_evidence_is_labelled_historical": "the citation refresh renamed the current-behavior subsections; the doc now carries the (HISTORICAL) and (CURRENT) labels the gate protects",
+    "test_injected_runner_seam_is_not_the_production_path": "the exec.py ranges shifted; the doc cites the verified current production entry path and injected runner seam",
+    "test_exec_wait_and_exec_cancel_named_as_present": "the names.py tool-name literals moved; the doc cites the verified current registration lines",
 }
 
 REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
@@ -318,8 +322,9 @@ class TestRootCauseDocCitations:
     def test_progress_token_handling_is_cited_as_current(self) -> None:
         text = _read_doc()
         for required in (
-            "exec_sse_streaming.py:62-89",
-            "exec_sse_streaming.py:107-126",
+            "exec_sse_streaming.py:46-69",
+            "exec_sse_streaming.py:86-104",
+            "exec_sse_streaming.py:107-132",
             "notifications/progress",
         ):
             assert required in text, (
@@ -334,8 +339,8 @@ class TestRootCauseDocCitations:
         text = _read_doc()
         for marker in (
             "## Cause 1 (CONFIRMED) — `inactivity` is output-only (HISTORICAL)",
-            "### Cause 1 — present-day liveness subsystem (CURRENT)",
-            "### Cause 4 — present-day progress-notification path (CURRENT)",
+            "### Cause 1 — production liveness subsystem (CURRENT)",
+            "### Cause 4 — progress-notification path (CURRENT)",
         ):
             assert marker in text, (
                 f"root-cause doc must keep the {marker!r} heading. The doc "
@@ -345,22 +350,22 @@ class TestRootCauseDocCitations:
 
     def test_injected_runner_seam_is_not_the_production_path(self) -> None:
         text = _read_doc()
-        for required in ("exec.py:792-821", "exec.py:777-790", "injected runner"):
+        for required in ("exec.py:572-607", "exec.py:558-571", "injected runner"):
             assert required in text, (
                 f"root-cause doc must contain {required!r}. The doc previously "
                 "claimed short/normal calls keep output-only inactivity kills. "
-                "That was false: exec.py:792-821 always starts a registry job "
-                "and exec.py:777-790 is only an injected runner seam."
+                "That was false: exec.py:572-607 always starts a registry job "
+                "and exec.py:558-571 is only an injected runner seam."
             )
 
     def test_exec_wait_and_exec_cancel_named_as_present(self) -> None:
         text = _read_doc()
-        for required in ("exec_wait", "exec_cancel", "names.py:40-41"):
+        for required in ("exec_wait", "exec_cancel", "names.py:36-37"):
             assert required in text, (
                 f"root-cause doc must contain {required!r}. The doc previously "
                 "claimed there was no background mode and no submit-and-poll "
                 "path; exec_wait/exec_cancel are registered tools today "
-                "(ralph/mcp/tools/names.py:40-41)."
+                "(ralph/mcp/tools/names.py:36-37)."
             )
 
     @pytest.mark.parametrize(

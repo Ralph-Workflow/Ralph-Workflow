@@ -151,11 +151,11 @@ def _check_template_banner(content: str, path: str, filename: str) -> list[Polic
             requirement_id=(f"{markers.ID_PLACEHOLDER}:{filename}:starter-template-banner"),
             path=path,
             missing_evidence=(
-                f"file still contains the {markers.STARTER_TEMPLATE_TOKEN} banner comment"
+                f"file still contains the {markers.STARTER_TEMPLATE_TOKEN} starter template banner"
             ),
             required_outcome=(
                 "rewrite the file into verified project policy and delete "
-                "the starter template banner comment"
+                "the starter template banner"
             ),
         )
     ]
@@ -198,7 +198,7 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
                 path=path,
                 missing_evidence=f"missing policy-id line: {expected_id}",
                 required_outcome=(
-                    f"add `<!-- ralph-policy-id: {filename} -->` comment to the file"
+                    f"add the line `<!-- ralph-policy-id: {filename} -->` at the top of the file"
                 ),
             )
         )

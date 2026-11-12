@@ -48,7 +48,7 @@ class JavaGuidelines:
         )
         self.documentation_checks = (
             "Document public APIs and non-obvious business rules.",
-            "Keep Javadoc aligned with actual parameters, return values, and exceptions.",
+            "Keep public API contracts aligned with actual parameters, return values, and exceptions.",
             "Explain transactional, threading, and framework-specific assumptions.",
         )
         self.idioms = (

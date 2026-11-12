@@ -109,9 +109,12 @@ ralph --explain-policy
 
 ## Bundled defaults
 
-The bundled defaults live in `ralph/policy/defaults/`. When in doubt, the files themselves are the most exact reference:
+The bundled defaults live in `ralph/policy/defaults/` and ship with the package. When in doubt, the files themselves are the most exact reference:
 
 - `ralph-workflow.toml` — main config
+- `ralph-workflow-local.toml` — local (`--init-local-config`) config
+- `ralph-workflow-agents.toml` — agent CLI definitions
+- `agents.toml` — agent chains and drain bindings
 - `mcp.toml` — MCP server config
 - `pipeline.toml` — workflow phases and routing
 - `artifacts.toml` — artifact contracts
@@ -136,7 +139,7 @@ Fallback warnings are deduplicated per file content fingerprint (SHA-256) so run
 Agent CLI definitions — the binary, the flags, and the output parser for each coding-agent CLI — live in `~/.config/ralph-workflow-agents.toml`, and an `[agents.*]` block left in the legacy `ralph-workflow.toml` still takes precedence over that file. The optional project-local `.agent/agents.toml` is a different document: it is the agent-chains / drain-bindings policy file (`[agent_chains]`, `[agent_drains]`, `forbid_sibling_drain_inference`), and a `[agents.*]` block placed there is rejected. To guarantee deterministic execution and avoid unexpected drift:
 
 - **Immutability during normal operations**: `ralph-workflow-agents.toml` changes **only** via the explicit operator commands `ralph --init` and `ralph --regenerate-config`. Configuration reads across all routes — plain configuration loading, explicit `--config <path>`, `ralph --diagnose`, or pipeline execution — never mutate the agents configuration file on disk, migrating retired `agent_can_commit` keys in memory only without writing or auto-committing. A read that performs that migration emits one deduplicated warning per file, naming the file and stating that the key was migrated in memory only and that the file on disk was not modified. When the file is missing, the normal path silently falls back to built-in agent defaults without warning. `ralph --init` creates the file from the bundled template when it is missing; `ralph --regenerate-config` rewrites it. Legacy global configuration migration (`_migrate_legacy_global_config`) recognises its target as an agents configuration file by **file identity**, not by filename alone, and refuses to rewrite it: the target's own name or resolved basename is `ralph-workflow-agents.toml`, or the target is the very same file as the active agents configuration — the `ralph-workflow-agents.toml` co-located with the main configuration, or the XDG-configured agents path (`$XDG_CONFIG_HOME/ralph-workflow-agents.toml`, falling back to `~/.config/ralph-workflow-agents.toml`). The identity is the file itself (device and inode), so a hard link counts as the same file a symlink points at. That covers the alias layout in which the main configuration and the agents file are two different names — symlinks or hard links — for one shared backing file; the shared file is left exactly as the operator wrote it. Such a target is skipped with a warning naming the path and the reason, no `.bak` backup is created, and no bytes are written. Furthermore, candidate migrated text is validated with `tomllib` before creating a `.bak` backup or replacing the file, rejecting malformed generated TOML safely without disk mutation.
-- **Safe atomic writes and backup logging**: When written or refreshed by explicit operator commands (`ralph --init` or `ralph --regenerate-config`), Ralph Workflow employs an atomic write sequence. All mutations to an agents configuration file — including `ralph --init` detected agent block activation and chain autowiring targeting an agents file — route through `write_agents_toml`. The classification follows the **resolved** target, so a path that is an alias (a symlink, or any other name) of an agents configuration file is recognised as one and is written through the same safe writer: for a path whose configured name is an agents filename (even when it is itself a symlink), the write lands on the resolved target through `write_agents_toml` while the `.bak` backup sits next to the requested path (the path configured by the operator); for a custom-named alias resolved by chain autowiring, the write lands on and places the `.bak` backup next to the resolved target that is replaced. This writer validates the TOML payload with `tomllib` before replacement, compares bytes (identical content is a no-op: no rewrite, no `.bak`, no log line), serializes concurrent writers targeting the same file, uses a unique temporary file (`tempfile.mkstemp`) in the target directory, publishes a `.bak` backup before replacing the target, and logs one line naming the target path, the trigger, and the `.bak` path — `Wrote <path> (trigger: <trigger>, backup: <path>.bak)` — to the operator-visible log. To protect operator edits against concurrent clobbering, publication is conflict-aware: if the on-disk file changes between initial snapshot and target replacement, the write aborts non-destructively without overwriting the target or publishing a stale backup, cleans up temporary files, logs an operator-visible warning with recovery guidance (`ralph --regenerate-config`), and raises `AgentsFileConflictError`. The replacement preserves the file's permission bits, and a newly created file gets mode `0644`. `ralph --regenerate-config` also prints a summary with the number of config files it regenerated and the number of `.bak` backups it saved. `ralph --init` additionally enables detected agent CLIs by uncommenting bundled `@AGENT-BLOCK` sections; a block that would make the candidate document invalid TOML is skipped with a warning naming the agent, while remaining valid blocks are applied.
+- **Safe atomic writes and backup logging**: When written or refreshed by explicit operator commands (`ralph --init` or `ralph --regenerate-config`), Ralph Workflow employs an atomic write sequence. All mutations to an agents configuration file — including `ralph --init` detected agent activation and chain autowiring targeting an agents file — route through `write_agents_toml`. The classification follows the **resolved** target, so a path that is an alias (a symlink, or any other name) of an agents configuration file is recognised as one and is written through the same safe writer: for a path whose configured name is an agents filename (even when it is itself a symlink), the write lands on the resolved target through `write_agents_toml` while the `.bak` backup sits next to the requested path (the path configured by the operator); for a custom-named alias resolved by chain autowiring, the write lands on and places the `.bak` backup next to the resolved target that is replaced. This writer validates the TOML payload with `tomllib` before replacement, compares bytes (identical content is a no-op: no rewrite, no `.bak`, no log line), serializes concurrent writers targeting the same file, uses a unique temporary file (`tempfile.mkstemp`) in the target directory, publishes a `.bak` backup before replacing the target, and logs one line naming the target path, the trigger, and the `.bak` path — `Wrote <path> (trigger: <trigger>, backup: <path>.bak)` — to the operator-visible log. To protect operator edits against concurrent clobbering, publication is conflict-aware: if the on-disk file changes between initial snapshot and target replacement, the write aborts non-destructively without overwriting the target or publishing a stale backup, cleans up temporary files, logs an operator-visible warning with recovery guidance (`ralph --regenerate-config`), and raises `AgentsFileConflictError`. The replacement preserves the file's permission bits, and a newly created file gets mode `0644`. `ralph --regenerate-config` also prints a summary with the number of config files it regenerated and the number of `.bak` backups it saved. `ralph --init` additionally enables detected agent CLIs by promoting their `[inactive_agents.<name>]` block to `[agents.<name>]` in the agents configuration file; an agent whose promotion would make the candidate document invalid TOML is skipped with a warning naming the agent, while the remaining valid promotions are applied.
 - **Corrupt TOML resilience and recovery**: If `ralph-workflow-agents.toml` contains syntax errors, invalid UTF-8 bytes, or schema validation issues, the failure is treated non-fatally at runtime. Ralph Workflow logs a deduplicated `WARNING` naming the file, the parsing or validation failure (with line and column numbers when available), and the recovery command `ralph --regenerate-config`; it leaves the corrupted file on disk untouched and safely falls back to built-in agent defaults so pipeline runs and rebase resolutions continue without interruption. To restore a known-good configuration baseline, run the recovery command:
 
 ```bash
@@ -150,7 +153,7 @@ This backs up the invalid file to `ralph-workflow-agents.toml.bak` and restores 
 Authoritative files never fall back to defaults and fail immediately upon syntax or schema errors:
 
 - **`ralph-workflow.toml`**: The main configuration file across all scopes (global `~/.config/ralph-workflow.toml`, project-local `.agent/ralph-workflow.toml`, and worktree-propagated copies) remains strictly required with no built-in default fallback. TOML syntax errors, invalid UTF-8 byte decoding issues, and filesystem I/O errors raise `ConfigTomlError` with structured What/Why/Fix diagnostics, whereas schema validation errors encountered during merged configuration loading exit with `SystemExit` (via CLI error exit) after logging the formatted validation failure.
-- **Shipped bundled package data**: Default configuration templates shipped inside the package (`ralph/policy/defaults/mcp.toml`, bundled `artifacts.toml`, bundled `pipeline.toml`, bundled `ralph-workflow.toml`, and bundled `ralph-workflow-agents.toml`) are internal code and distribution assets, not user configuration. Corruption in shipped package data indicates a packaging defect and fails loudly. The test suite's real-config guard snapshot covers the bundled agents template across all runs (including those specifying explicit guarded directories) to prevent accidental test mutation.
+- **Shipped bundled package data**: Default configuration templates shipped inside the package (`ralph/policy/defaults/ralph-workflow.toml`, `ralph/policy/defaults/ralph-workflow-local.toml`, `ralph/policy/defaults/ralph-workflow-agents.toml`, `ralph/policy/defaults/agents.toml`, `ralph/policy/defaults/mcp.toml`, `ralph/policy/defaults/pipeline.toml`, and `ralph/policy/defaults/artifacts.toml`) are internal code and distribution assets, not user configuration. Corruption in shipped package data indicates a packaging defect and fails loudly. The test suite's real-config guard snapshot covers the bundled agents template across all runs (including those specifying explicit guarded directories) to prevent accidental test mutation.
 - **Third-party tool configurations**: External configuration files such as `~/.codex/config.toml` belong to third-party tools rather than Ralph Workflow. Ralph Workflow does not silently replace corrupted third-party configurations with defaults; it fails loudly (`CodexConfigError`) to avoid executing with unintended providers or credentials.
 
 ### Aggregated validation with `ralph --check-config`
@@ -221,7 +224,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `auto_integrate_target` | `"main"` | Local mainline branch used verbatim. It must be non-empty; if the branch is absent, the step records a skip. |
 | `auto_integrate_remote_enabled` | `true` when the remote exists | Enables remote freshness checks and publication when the configured remote exists. Set `false` for local-only operation. |
 | `auto_integrate_remote` | `"origin"` | Configured remote used when remote synchronization is enabled. It must be non-empty; an unavailable remote records a local-only outcome while integration continues. |
-| `auto_integrate_remote_interval_seconds` | `0.0` | Non-negative seconds between freshness probes. `0.0` fetches at every seam; a positive interval records suppressed probes as unverified. The periodic catch-up ticker fetches at most once per this interval (`0.0` keeps its 300 s default), and still applies an already-fetched remote tip on every tick; see the remote sync contract in `docs/agents/remote-sync.md`. |
+| `auto_integrate_remote_interval_seconds` | `0.0` | Non-negative seconds between freshness probes. `0.0` fetches at every seam; a positive interval records suppressed probes as unverified. The periodic catch-up ticker fetches at most once per this interval (`0.0` keeps its 300 s default), and still applies an already-fetched remote tip on every tick; see the remote sync contract in [Remote Sync](../agents/remote-sync.md). |
 | `auto_integrate_reclaim_target_worktree` | `true` | Snapshot and reset only the worktree owning the target branch when its dirty state blocks an advance. Set `false` to retain refuse-and-retry behavior. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |
@@ -488,8 +491,11 @@ and skips feature integration for that seam; `[target refresh: ...]` and
 Setting `auto_integrate_enabled = false` guarantees byte-identical manual git
 behavior from this feature: no rebase, merge, ref movement, fetch, or push.
 
-The six `[general]` keys above are the complete configuration surface, in the
-same order used by the bundled templates.
+The `[general]` table above documents the settings this reference covers; it is
+not the shipped default set. The bundled template
+(`ralph/policy/defaults/ralph-workflow.toml`) ships nine `[general]` keys, and
+every other `[general]` key takes its value from the built-in defaults on
+`GeneralConfig` (`ralph/config/general_config.py`).
 
 ## Agent chains and drains
 
@@ -731,11 +737,18 @@ first-party typed helpers and adapters instead) and the strict flags
 
 ### Suppression policy
 
-- Test files must contain **zero** `# type: ignore` or `# pyright:`
-  comment suppressions.
-- Runtime code may carry a suppression only with the exact policy
-  reason suffix from `docs/agents/type-ignore-policy.md`.
-- Prefer a typed helper, guard, adapter, or `cast(...)` first.
+- Tracked Python sources carry no inline suppression directive of any
+  kind: the absolute comment gate `ralph.testing.audit_comments` fails
+  on every comment token, so a suppression lives in tool configuration
+  (`ralph-workflow/mypy.ini`).
+- Prefer a typed helper, guard, adapter, or `cast(...)` over a
+  suppression.
+- The suppression policy for this project is
+  [docs/agents/type-ignore-policy.md](../agents/type-ignore-policy.md):
+  it lists the mypy configuration keys that weaken type checking, and
+  it states that a suppression is expressed only in tool configuration.
+  The gate `ralph.testing.audit_typecheck_bypass` it names runs in
+  `make verify`.
 
 ### Verification
 
@@ -746,10 +759,11 @@ pytest suite, and the audit scripts. See
 for the full ordered step list, the combined test budget, and the
 non-circumvention rules.
 
-### Optional watchdog and retention keys
+### Watchdog and retention keys
 
-The bundled templates ship these keys commented out, so a project only carries the
-ones it opts into. The semantics live here, in the page that owns the
+The bundled defaults ship these keys with literal values in
+`ralph/policy/defaults/ralph-workflow.toml`; a project carries a key only
+when it overrides it. The semantics live here, in the page that owns the
 configuration.
 
 ```toml
@@ -777,8 +791,7 @@ default is conservative and counts only source-code changes. The five kinds are
 `checkpoint.json`, transport MCP overlays, and every file directly under
 `.agent/` such as `state.db`, `.workspace-awareness.json`, `PLAN.md` and
 `active_runs.json`), `artifact` (`.agent/artifacts`), and `other` (anything
-else). See the Watchdogs section of `docs/sphinx/concepts.md` for the migration
-note.
+else). See [Watchdogs](concepts.md#watchdogs) for the watchdog rules.
 
 `retention_max_age_days` sets the Ralph-managed retention window. Aged run
 bookkeeping, receipts, scratch, Codex homes, session files, `state.db` rows and

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.testing.audit_comments import FIX_HINT, main
+from ralph.testing.audit_comments import FIX_HINT, audit_repository, main
 
 
 def _write(root: Path, name: str, content: str) -> Path:
@@ -559,3 +559,95 @@ def test_toml_bare_example_marker_fails(
     assert code == 1, reason
     assert "COMMENT-POLICY FINDINGS" in output, reason
     assert "@EXAMPLE" in output, reason
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        ("config.ini", "[section]\n# a comment\nkey = value\n"),
+        ("config.conf", "[theme]\n# a comment\ninherit = basic\n"),
+        ("script.js", "var value = 1; // a comment\n"),
+        ("script.js", "/* a comment */\nvar value = 1;\n"),
+        ("styles.css", "/* a comment */\nbody { color: red; }\n"),
+        ("Dockerfile", "# a comment\nFROM debian:bookworm-slim\n"),
+        (".dockerignore", "# a comment\n*.log\n"),
+        ("py.typed", "# a comment\n"),
+        ("formula.rb", "# a comment\nclass RalphWorkflow < Formula\nend\n"),
+    ],
+)
+def test_a_comment_in_a_newly_mapped_file_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    name: str,
+    source: str,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate covers every mapped suffix"
+    code, output = _run(tmp_path, name, source, capsys)
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+    assert "a comment" in output, reason
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        ("config.ini", "[section]\nkey = value\n"),
+        ("config.conf", "[theme]\ninherit = basic\n"),
+        ("script.js", "var value = 1;\n"),
+        ("styles.css", "body {\n    color: red;\n}\n"),
+        ("Dockerfile", "FROM debian:bookworm-slim\n"),
+        (".dockerignore", "*.log\n"),
+        ("py.typed", ""),
+        ("formula.rb", "class RalphWorkflow < Formula\nend\n"),
+    ],
+)
+def test_a_comment_free_file_of_a_newly_mapped_suffix_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    name: str,
+    source: str,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate scans every mapped suffix"
+    code, _output = _run(tmp_path, name, source, capsys)
+
+    assert code == 0, reason
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        ("config.ini", '[section]\nkey = "a # b"\n'),
+        ("script.js", 'var url = "https://example.com";\n'),
+        ("styles.css", "@import url('https://fonts.example.com/css2?family=Inter');\n"),
+    ],
+)
+def test_a_comment_marker_inside_a_quoted_value_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    name: str,
+    source: str,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate ignores markers inside strings"
+    code, _output = _run(tmp_path, name, source, capsys)
+
+    assert code == 0, reason
+
+
+def test_a_githook_pre_commit_shell_comment_fails(tmp_path: Path) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate scans the git hook directory"
+    _write(tmp_path / ".githooks", "pre-commit", "# a comment\nset -euo pipefail\n")
+
+    findings = audit_repository(tmp_path)
+
+    assert findings, reason
+    assert any(finding.path.endswith(".githooks/pre-commit") for finding in findings), reason
+
+
+def test_a_comment_free_githook_pre_commit_passes(tmp_path: Path) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate scans the git hook directory"
+    _write(tmp_path / ".githooks", "pre-commit", "#!/usr/bin/env bash\nset -euo pipefail\n")
+
+    findings = audit_repository(tmp_path)
+
+    assert findings == [], reason

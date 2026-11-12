@@ -25,18 +25,17 @@ tool-call ceiling is. Three columns matter; treat them as independent:
 - **Verified client default** — the wall clock the cited docs page
   records for a single MCP `tools/call` round-trip on the unconfigured
   client. "Verified" requires an explicit line from a URL an agent
-  fetched live: the WU-5 verification pass, with every URL re-opened
-  and the quoted string read back off the page in the WU-3 citation
-  pass. `UNKNOWN (no docs surface)`
+  fetched live, with every URL re-opened and the quoted string read back
+  off the page. `UNKNOWN (no docs surface)`
   means the cited docs page does not name a tool-call timeout at all and
   we did not find one in the transport source — Ralph cannot size what
   the docs do not expose. `UNKNOWN (docs say "SDK default 60 s")` means
   the docs explicitly punt to the MCP SDK's hard-coded default and the
   value is therefore documentation-dependent, not Ralph-writable.
 - **Source/citation** — the live URL(s) the row's claims were taken
-  from. Every URL in this column was fetched during the WU-5 pass and
-  re-fetched in the WU-3 citation pass; all of them still resolve and
-  all of them still carry the quoted text. Per-client transport
+  from. Every URL in this column was fetched live and the quoted string
+  read back off the page; all of them still resolve and all of them
+  still carry the quoted text. Per-client transport
   source lines (`transport/X.py:N`)
   point at the same lines the per-transport section under "Configurations
   that Ralph currently writes" cites; if those line numbers drift, this
@@ -51,14 +50,14 @@ independently of any client-configurable timeout.
 
 | Client | Config key written | Verified client default | Source/citation |
 | --- | --- | --- | --- |
-| Codex CLI | per-server `tool_timeout_sec` (integer seconds) under `mcp_servers.<name>` — written at `ralph/mcp/transport/codex.py:227` | **Verified**: per-server `tool_timeout_sec` "Override the default 60s per-tool timeout for an MCP server" — cited verbatim from the Codex Configuration Reference page | https://developers.openai.com/codex/config-file/config-reference (verified, resolves to https://learn.chatgpt.com/docs/config-file/config-reference; `mcp_servers.<id>.tool_timeout_sec` row) |
-| Claude Code | per-server `timeout` (number, ms) in the server's `.mcp.json` entry — written into the synthesized `--mcp-config` payload at `ralph/mcp/transport/claude.py:80`; env fallback `MCP_TOOL_TIMEOUT`; for an HTTP, SSE, or claude.ai-connector server a SECOND, independent per-request timer set to the greatest of 60 s, that server's per-server `timeout`, and `MCP_TIMEOUT` | **Verified**: per-server `timeout` is "a hard wall-clock limit per tool call"; "Values below 1000 are ignored and fall through to MCP_TOOL_TIMEOUT, or to its default of about 28 hours when that variable is unset"; the second per-request timer is "the greatest of three values: 60 seconds, the tool timeout that applies to the server, and MCP_TIMEOUT". A THIRD documented clock, `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, "abort[s] with an error instead of waiting for the overall MCP_TOOL_TIMEOUT" when a server "sends no response and no progress notification" for that long, and "Overrides the per-transport defaults of 300000 (5 minutes) for network servers and 1800000 (30 minutes) for stdio servers". The 75 000 ms Ralph writes clears every documented floor: above 60000 so it raises the 60-second per-request limit, and at least 1000 so "a per-server timeout of at least 1000 also sets the minimum idle window for that server's tool calls" | https://code.claude.com/docs/en/mcp (verified) AND https://code.claude.com/docs/en/env-vars (verified — `MCP_TOOL_TIMEOUT` row reads "Timeout in milliseconds for MCP tool execution (default: 100000000, about 28 hours)"; the `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` row supplies the idle defaults) |
-| OpenCode | env or global `experimental.mcp_timeout` AND documented-but-ignored per-server `mcp.<server>.timeout` — Ralph writes BOTH at `ralph/mcp/transport/opencode.py:131` and `:148`; the experimental key is the one that wins (issue #8701) | **Verified**: per-server `timeout` is documented as "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds)" — explicitly a TOOL-FETCH deadline, not the tool-call deadline. The actual tool-call enforcement is the MCP SDK's hard-coded default (~60 s). Issue #8701 (closed) confirms: per-server `timeout` is ignored for tool calls; `experimental.mcp_timeout` is the field the SDK honours. **Schema drift — no Ralph-side write required:** the machine-readable schema Ralph stamps into its own generated config (`$schema` written at `ralph/mcp/transport/opencode.py:175`) marks `experimental.mcp_timeout` `"deprecated": true` and adds a non-deprecated `timeout` OBJECT with `startup` / `catalog` / `execution` sub-keys, at both `mcp.timeout.*` (global) and per-server `mcp.<server>.timeout.*`. The human-facing MCP docs page documents only the scalar per-server `timeout`, so the docs trail the schema. Ralph does not write `timeout.execution`: OpenCode's own normalizer supplies it, on four independently cited grounds. **(1)** `execution` is the real tool-call wall — it is the sub-key the MCP client resolves and hands to the tool-call deadline, and OpenCode's own default for it is `12 * 60 * 60 * 1_000 // 12 hours`, so the tool-call ceiling is hours. **(2)** OpenCode translates Ralph's deprecated key onto the superseding key itself: the config normalizer reads `experimental.mcp_timeout` and assigns that one value to BOTH `timeout.catalog` and `timeout.execution`, so the field Ralph already writes at `ralph/mcp/transport/opencode.py:148` lands on `timeout.execution` without Ralph emitting it. **(3)** Ralph's per-server scalar already expands into the object form: every legacy `mcp.<server>` entry is routed through `migrateMcp`, whose `migrateMcpTimeout` returns `{ startup: timeout, catalog: timeout, execution: timeout }`, so Ralph's 330000 ms at `ralph/mcp/transport/opencode.py:131` sets `execution` to 330000 ms as well. **(4)** On the build Ralph pins and tests against, the key is not defined: OpenCode v1.18.25 (named at `ralph/mcp/transport/opencode.py:184`) models the `Timeout` object as `{ startup, request }`, with `request` described as "Maximum time in milliseconds to wait for each MCP request after initialization". The global `mcp.timeout.execution` key is a FILL-IN default merged per server as `{ ...timeout, ...server.timeout }`, so a global `execution` of 330000 would pull every operator-declared MCP server's tool calls down from OpenCode's 12-hour default to ~5.5 minutes. Ralph's writes are sufficient and depend on no field on a deprecation path | https://opencode.ai/docs/mcp-servers/ (verified) AND https://github.com/anomalyco/opencode/issues/8701 (verified — title "Per-server MCP timeout setting not working; requires experimental.mcp_timeout instead", state=closed) AND https://github.com/anomalyco/opencode/issues/8121 (verified — title "MCP timeout not respected", state=closed) AND https://opencode.ai/config.json (verified — the published config schema both `experimental.mcp_timeout` and the `timeout.execution` object are read from) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/config/normalize.ts (verified — `normalizeMcp` copies `experimental.mcp_timeout` into BOTH `timeout.catalog` and `timeout.execution`, and routes legacy `mcp.<server>` entries through `migrateMcp`) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/v1/config/migrate.ts (verified — `migrateMcpTimeout` returns `{ startup: timeout, catalog: timeout, execution: timeout }`) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/mcp/client.ts (verified — `execution` is the resolved value passed to the `client.callTool(...)` deadline, defaulting to `12 * 60 * 60 * 1_000`) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/config/plugin/mcp.ts (verified — the global `mcp.timeout` is a fill-in default merged per server as `{ ...timeout, ...server.timeout }`) AND https://github.com/anomalyco/opencode/blob/v1.18.25/packages/core/src/config/mcp.ts (verified — `Timeout` is `{ startup, request }`; no `execution` sub-key) |
-| Cursor | none written — `cursor_mcp_config` emits only `{"url": endpoint}` at `ralph/mcp/transport/cursor.py:87-92`; Cursor's docs page has no tool-call-timeout field to write | **UNKNOWN (no docs surface)**: the Cursor MCP docs page lists STDIO fields `type`/`command`/`args`/`env`/`envFile` and remote `url`/`headers`/`auth` and stops there. No timeout field is named. We could not verify a client default. | https://cursor.com/docs/mcp (verified — no tool-call-timeout field documented) |
-| Kimi Code CLI | per-server `toolTimeoutMs` (number, ms) in `mcp.json` — written at `ralph/mcp/transport/kimi.py:75`; plus the global default `[mcp] tool_timeout_ms` in `config.toml` (out of Ralph's write path) and the env override `KIMI_MCP_TOOL_TIMEOUT_MS` | **Verified**: global `[mcp] tool_timeout_ms` default is 60000 ms (60 seconds). Per-server `toolTimeoutMs` overrides the global; `KIMI_MCP_TOOL_TIMEOUT_MS` overrides the file. Cited verbatim from the Kimi `mcp` table | https://moonshotai.github.io/kimi-code/en/configuration/config-files (verified — `mcp` table, "Global default single tool-call timeout in milliseconds for all MCP servers; a per-server `toolTimeoutMs` in `mcp.json` wins") AND https://moonshotai.github.io/kimi-code/en/customization/mcp (verified — `toolTimeoutMs` per-server field) |
-| Nanocoder | none written for tool-call — `nanocoder` payload at `ralph/mcp/transport/nanocoder.py:56-61` writes `{"transport": "http", "url": endpoint}` plus optional `alwaysAllow`; the package's documented `timeout` is a connection-timeout, not a tool-call-timeout | **UNKNOWN (docs say "SDK default 60 s")**: Nanocoder docs state the per-server `timeout` "Bounds the connection handshake and the initial tool listing; individual tool calls keep the MCP SDK's default timeout (60 seconds)" — the per-tool default is whatever the MCP SDK ships with, not a value Ralph can write | https://docs.nanocollective.org/nanocoder/docs/v1.31.0/configuration/mcp-configuration/ (verified — `timeout` row in Common Fields: "Connection timeout in milliseconds. Bounds the connection handshake and the initial tool listing; individual tool calls keep the MCP SDK's default timeout (60 seconds)") AND https://registry.npmjs.org/@nanocollective/nanocoder (verified — `dist-tags.latest=1.31.0`; `repository` points at the GitHub repo below) AND https://github.com/Nano-Collective/nanocoder (verified — repo exists; README states "Full documentation is available online at docs.nanocollective.org") |
-| Pi | bridge constant `MCP_TOOL_CALL_DEADLINE_MS` — written into the generated TypeScript bridge at `ralph/mcp/transport/pi.py:305`; bridge also implements dual-abort with Pi's per-tool signal (`transport/pi.py:300-318`); discovery is gated by `MCP_STARTUP_TIMEOUT_MS = 10_000` (`transport/pi.py:85`) | **PARTIALLY verified — Pi documents a 60-second per-request timeout, but not on the path Ralph uses.** Pi's MCP docs state that both server types support "`timeout`: per-request timeout in seconds (default 60). Progress notifications reset it." That `timeout` configures **Pi's own MCP client** (`mcpServers` entries in `~/.pi/agent/mcp.json` / `.pi/mcp.json`, or `pi.registerMcpServer`), and Ralph's transport does NOT go through it: Ralph generates a Pi *extension* that registers Pi custom tools and issues a direct `fetch` to Ralph's own HTTP MCP endpoint (`fetch(ENDPOINT, { signal })`, per the generated bridge at `ralph/mcp/transport/pi.py:200`). Pi's 60-second default therefore never arms on Ralph's path. The only Pi-side clock that reaches the bridge is the per-tool `AbortSignal` that `registerTool({ execute(_, _, signal) })` passes down, and **the duration of that signal is not stated on any cited Pi page** — that residue, not "no docs surface at all", is what this row's `UNKNOWN` covers, so the bridge-side deadline remains the only verified bound. Note also that Pi's own two pages disagree on the unit: the `registerMcpServer` reference lists `timeout` (number) as "Timeout in milliseconds" while the MCP page says seconds; this row therefore quotes the MCP page's default and does not assert a unit for the API-reference field | https://pi.dev/docs/latest/mcp (verified — "`timeout`: per-request timeout in seconds (default 60). Progress notifications reset it.") AND https://pi.dev/docs/latest/extensions (verified — `pi.registerMcpServer` config field list, `timeout` (number) "Timeout in milliseconds") AND `ralph-workflow/ralph/mcp/transport/pi.py:42-318` (verified — read in working tree; the bridge's own `fetch` call is at `:200`) |
-| AGY (Google Antigravity) | none written for tool-call — `agy_mcp_config` writes only `{"serverUrl": endpoint}` at `ralph/mcp/transport/agy.py:69-69`; the cited Antigravity MCP overview names only `command`/`serverUrl` as transport properties and no tool-call-timeout field | **UNKNOWN (no docs surface)**: the Antigravity MCP overview documents the following server-entry properties — `command`, `args`, `env`, `cwd`, `serverUrl`, `headers`, `authProviderType`, `oauth`, `disabled`, `disabledTools` — and stops there. No tool-call timeout field is named. We could not verify a client default. The page lists `serverUrl` (not `url`/`httpUrl`) as the only documented remote transport field; the "legacy `url`/`httpUrl` aren't supported" claim is a paraphrase of the page's silence on those names, not a verbatim quote — Ralph's own normalizer still translates `serverUrl` -> `url` to feed its upstream registry (`ralph/mcp/transport/agy.py:69-69`) | https://antigravity.google/docs/mcp/ (verified — server-entry property list and `serverUrl` as the only documented remote transport field). `ralph/mcp/transport/agy.py:69-69` is a working-tree pointer, not a published web document. |
+| Codex CLI | per-server `tool_timeout_sec` (integer seconds) under `mcp_servers.<name>` — written at `ralph/mcp/transport/codex.py:127` | **Verified**: per-server `tool_timeout_sec` "Override the default 60s per-tool timeout for an MCP server" — cited verbatim from the Codex Configuration Reference page | https://developers.openai.com/codex/config-file/config-reference (verified, resolves to https://learn.chatgpt.com/docs/config-file/config-reference; `mcp_servers.<id>.tool_timeout_sec` row) |
+| Claude Code | per-server `timeout` (number, ms) in the server's `.mcp.json` entry — written into the synthesized `--mcp-config` payload at `ralph/mcp/transport/claude.py:49`; env fallback `MCP_TOOL_TIMEOUT`; for an HTTP, SSE, or claude.ai-connector server a SECOND, independent per-request timer set to the greatest of 60 s, that server's per-server `timeout`, and `MCP_TIMEOUT` | **Verified**: per-server `timeout` is "a hard wall-clock limit per tool call"; "Values below 1000 are ignored and fall through to MCP_TOOL_TIMEOUT, or to its default of about 28 hours when that variable is unset"; the second per-request timer is "the greatest of three values: 60 seconds, the tool timeout that applies to the server, and MCP_TIMEOUT". A THIRD documented clock, `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, "abort[s] with an error instead of waiting for the overall MCP_TOOL_TIMEOUT" when a server "sends no response and no progress notification" for that long, and "Overrides the per-transport defaults of 300000 (5 minutes) for network servers and 1800000 (30 minutes) for stdio servers". The 75 000 ms Ralph writes clears every documented floor: above 60000 so it raises the 60-second per-request limit, and at least 1000 so "a per-server timeout of at least 1000 also sets the minimum idle window for that server's tool calls" | https://code.claude.com/docs/en/mcp (verified) AND https://code.claude.com/docs/en/env-vars (verified — `MCP_TOOL_TIMEOUT` row reads "Timeout in milliseconds for MCP tool execution (default: 100000000, about 28 hours)"; the `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` row supplies the idle defaults) |
+| OpenCode | env or global `experimental.mcp_timeout` AND documented-but-ignored per-server `mcp.<server>.timeout` — Ralph writes BOTH at `ralph/mcp/transport/opencode.py:77` and `:91`; the experimental key is the one that wins (issue #8701) | **Verified**: per-server `timeout` is documented as "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds)" — explicitly a TOOL-FETCH deadline, not the tool-call deadline. The actual tool-call enforcement is the MCP SDK's hard-coded default (~60 s). Issue #8701 (closed) confirms: per-server `timeout` is ignored for tool calls; `experimental.mcp_timeout` is the field the SDK honours. **Schema drift — no Ralph-side write required:** the machine-readable schema Ralph stamps into its own generated config (`$schema` written at `ralph/mcp/transport/opencode.py:116`) marks `experimental.mcp_timeout` `"deprecated": true` and adds a non-deprecated `timeout` OBJECT with `startup` / `catalog` / `execution` sub-keys, at both `mcp.timeout.*` (global) and per-server `mcp.<server>.timeout.*`. The human-facing MCP docs page documents only the scalar per-server `timeout`, so the docs trail the schema. Ralph does not write `timeout.execution`: OpenCode's own normalizer supplies it, on four independently cited grounds. **(1)** `execution` is the real tool-call wall — it is the sub-key the MCP client resolves and hands to the tool-call deadline, and OpenCode's own default for it is `12 * 60 * 60 * 1_000 // 12 hours`, so the tool-call ceiling is hours. **(2)** OpenCode translates Ralph's deprecated key onto the superseding key itself: the config normalizer reads `experimental.mcp_timeout` and assigns that one value to BOTH `timeout.catalog` and `timeout.execution`, so the field Ralph already writes at `ralph/mcp/transport/opencode.py:91` lands on `timeout.execution` without Ralph emitting it. **(3)** Ralph's per-server scalar already expands into the object form: every legacy `mcp.<server>` entry is routed through `migrateMcp`, whose `migrateMcpTimeout` returns `{ startup: timeout, catalog: timeout, execution: timeout }`, so Ralph's 330000 ms at `ralph/mcp/transport/opencode.py:77` sets `execution` to 330000 ms as well. **(4)** The `execution` sub-key is absent from the `Timeout` object of the OpenCode release cited below (`v1.18.25`): it models the `Timeout` object as `{ startup, request }`, with `request` described as "Maximum time in milliseconds to wait for each MCP request after initialization". The global `mcp.timeout.execution` key is a FILL-IN default merged per server as `{ ...timeout, ...server.timeout }`, so a global `execution` of 330000 would pull every operator-declared MCP server's tool calls down from OpenCode's 12-hour default to ~5.5 minutes. Ralph's writes are sufficient and depend on no field on a deprecation path | https://opencode.ai/docs/mcp-servers/ (verified) AND https://github.com/anomalyco/opencode/issues/8701 (verified — title "Per-server MCP timeout setting not working; requires experimental.mcp_timeout instead", state=closed) AND https://github.com/anomalyco/opencode/issues/8121 (verified — title "MCP timeout not respected", state=closed) AND https://opencode.ai/config.json (verified — the published config schema both `experimental.mcp_timeout` and the `timeout.execution` object are read from) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/config/normalize.ts (verified — `normalizeMcp` copies `experimental.mcp_timeout` into BOTH `timeout.catalog` and `timeout.execution`, and routes legacy `mcp.<server>` entries through `migrateMcp`) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/v1/config/migrate.ts (verified — `migrateMcpTimeout` returns `{ startup: timeout, catalog: timeout, execution: timeout }`) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/mcp/client.ts (verified — `execution` is the resolved value passed to the `client.callTool(...)` deadline, defaulting to `12 * 60 * 60 * 1_000`) AND https://github.com/anomalyco/opencode/blob/dev/packages/core/src/config/plugin/mcp.ts (verified — the global `mcp.timeout` is a fill-in default merged per server as `{ ...timeout, ...server.timeout }`) AND https://github.com/anomalyco/opencode/blob/v1.18.25/packages/core/src/config/mcp.ts (verified — `Timeout` is `{ startup, request }`; no `execution` sub-key) |
+| Cursor | none written — `cursor_mcp_config` emits only `{"url": endpoint}` at `ralph/mcp/transport/cursor.py:28`; Cursor's docs page has no tool-call-timeout field to write | **UNKNOWN (no docs surface)**: the Cursor MCP docs page lists STDIO fields `type`/`command`/`args`/`env`/`envFile` and remote `url`/`headers`/`auth` and stops there. No timeout field is named. We could not verify a client default. | https://cursor.com/docs/mcp (verified — no tool-call-timeout field documented) |
+| Kimi Code CLI | per-server `toolTimeoutMs` (number, ms) in `mcp.json` — written at `ralph/mcp/transport/kimi.py:34`; plus the global default `[mcp] tool_timeout_ms` in `config.toml` (out of Ralph's write path) and the env override `KIMI_MCP_TOOL_TIMEOUT_MS` | **Verified**: global `[mcp] tool_timeout_ms` default is 60000 ms (60 seconds). Per-server `toolTimeoutMs` overrides the global; `KIMI_MCP_TOOL_TIMEOUT_MS` overrides the file. Cited verbatim from the Kimi `mcp` table | https://moonshotai.github.io/kimi-code/en/configuration/config-files (verified — `mcp` table, "Global default single tool-call timeout in milliseconds for all MCP servers; a per-server `toolTimeoutMs` in `mcp.json` wins") AND https://moonshotai.github.io/kimi-code/en/customization/mcp (verified — `toolTimeoutMs` per-server field) |
+| Nanocoder | none written for tool-call — `nanocoder` payload at `ralph/mcp/transport/nanocoder.py:36-37` writes `{"transport": "http", "url": endpoint}` plus optional `alwaysAllow`; the package's documented `timeout` is a connection-timeout, not a tool-call-timeout | **UNKNOWN (docs say "SDK default 60 s")**: Nanocoder docs state the per-server `timeout` "Bounds the connection handshake and the initial tool listing; individual tool calls keep the MCP SDK's default timeout (60 seconds)" — the per-tool default is whatever the MCP SDK ships with, not a value Ralph can write | https://docs.nanocollective.org/nanocoder/docs/v1.31.0/configuration/mcp-configuration/ (verified — `timeout` row in Common Fields: "Connection timeout in milliseconds. Bounds the connection handshake and the initial tool listing; individual tool calls keep the MCP SDK's default timeout (60 seconds)") AND https://registry.npmjs.org/@nanocollective/nanocoder (verified — `dist-tags.latest=1.31.0`; `repository` points at the GitHub repo below) AND https://github.com/Nano-Collective/nanocoder (verified — repo exists; README states "Full documentation is available online at docs.nanocollective.org") |
+| Pi | bridge constant `MCP_TOOL_CALL_DEADLINE_MS` — written into the generated TypeScript bridge at `ralph/mcp/transport/pi.py:59`; bridge also implements dual-abort with Pi's per-tool signal (`transport/pi.py:272-293`); discovery is gated by `MCP_STARTUP_TIMEOUT_MS = 10_000` (`transport/pi.py:58`) | **PARTIALLY verified — Pi documents a 60-second per-request timeout, but not on the path Ralph uses.** Pi's MCP docs state that both server types support "`timeout`: per-request timeout in seconds (default 60). Progress notifications reset it." That `timeout` configures **Pi's own MCP client** (`mcpServers` entries in `~/.pi/agent/mcp.json` / `.pi/mcp.json`, or `pi.registerMcpServer`), and Ralph's transport does NOT go through it: Ralph generates a Pi *extension* that registers Pi custom tools and issues a direct `fetch` to Ralph's own HTTP MCP endpoint (`fetch(ENDPOINT, { signal })`, per the generated bridge at `ralph/mcp/transport/pi.py:173`). Pi's 60-second default therefore never arms on Ralph's path. The only Pi-side clock that reaches the bridge is the per-tool `AbortSignal` that `registerTool({ execute(_, _, signal) })` passes down, and **the duration of that signal is not stated on any cited Pi page** — that residue, not "no docs surface at all", is what this row's `UNKNOWN` covers, so the bridge-side deadline remains the only verified bound. Note also that Pi's own two pages disagree on the unit: the `registerMcpServer` reference lists `timeout` (number) as "Timeout in milliseconds" while the MCP page says seconds; this row therefore quotes the MCP page's default and does not assert a unit for the API-reference field | https://pi.dev/docs/latest/mcp (verified — "`timeout`: per-request timeout in seconds (default 60). Progress notifications reset it.") AND https://pi.dev/docs/latest/extensions (verified — `pi.registerMcpServer` config field list, `timeout` (number) "Timeout in milliseconds") AND `ralph-workflow/ralph/mcp/transport/pi.py:15-305` (verified — read in working tree; the bridge's own `fetch` call is at `:173`) |
+| AGY (Google Antigravity) | none written for tool-call — `agy_mcp_config` writes only `{"serverUrl": endpoint}` at `ralph/mcp/transport/agy.py:27`; the cited Antigravity MCP overview names only `command`/`serverUrl` as transport properties and no tool-call-timeout field | **UNKNOWN (no docs surface)**: the Antigravity MCP overview documents the following server-entry properties — `command`, `args`, `env`, `cwd`, `serverUrl`, `headers`, `authProviderType`, `oauth`, `disabled`, `disabledTools` — and stops there. No tool-call timeout field is named. We could not verify a client default. The page lists `serverUrl` (not `url`/`httpUrl`) as the only documented remote transport field; the "legacy `url`/`httpUrl` aren't supported" claim is a paraphrase of the page's silence on those names, not a verbatim quote — Ralph's own normalizer still translates `serverUrl` -> `url` to feed its upstream registry (`ralph/mcp/transport/agy.py:40-41`) | https://antigravity.google/docs/mcp/ (verified — server-entry property list and `serverUrl` as the only documented remote transport field). `ralph/mcp/transport/agy.py:27` is a working-tree pointer, not a published web document. |
 
 ### Unknown client defaults vs bounded implemented defenses
 
@@ -73,23 +72,23 @@ separately on purpose:
   Ralph's side of the wire, that bounds the failure mode the long
   exec tool call can produce. The defenses that exist today:
   - **Server-side soft-reply budget** — `EXEC_SOFT_REPLY_BUDGET_MS`
-    (`ralph/timeout_defaults.py:212`) caps how long a single exec call
+    (`ralph/timeout_defaults.py:169`) caps how long a single exec call
     may run before the server returns; the transports above derive
     their per-client timeout from this budget + 30 s of headroom
     (the `TIMING_SAFETY_TRANSPORT_HEADROOM_MS` constant at
-    `ralph/mcp/server/_timing_safety.py:84`); OpenCode is the one
-    exception — `ralph/mcp/transport/opencode.py:50-51` sizes it as
+    `ralph/mcp/server/_timing_safety.py:35`); OpenCode is the one
+    exception — `ralph/mcp/transport/opencode.py:26-28` sizes it as
     `max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS) + 30 s` =
     330 s.
   - **Server-side hard cap** — `EXEC_MAX_TIMEOUT_MS = 300_000` (5
-    minutes, `ralph/timeout_defaults.py:142`) bounds the
+    minutes, `ralph/timeout_defaults.py:39`) bounds the
     injected-runner seam, and `EXEC_JOB_CEILING_S` /
-    `EXEC_JOB_CEILING_MAX_S` (`ralph/timeout_defaults.py:212` and
-    `:609`) cap production job wall-clock independently of any client
+    `EXEC_JOB_CEILING_MAX_S` (`ralph/timeout_defaults.py:171` and
+    `:173`) cap production job wall-clock independently of any client
     default (Cause 2 below).
   - **Server-side child-runtime shutdown** — the
     `exit_when_owner_exits` daemon in `ralph/mcp/server/runtime.py`
-    (`:914-950`) reaps running subprocesses when the parent
+    (`:625-649`) reaps running subprocesses when the parent
     process dies, closing the "request expiry does not imply process
     death" gap regardless of what the client default is.
   - **Server-side liveness-based kill** — under the job and liveness
@@ -100,8 +99,8 @@ separately on purpose:
     or voluntary context switches lives as long as its
     liveness score stays above the stall-pressure kill line, up to the
     registry's `hard_cap` ceiling (`EXEC_JOB_CEILING_MAX_S = 4 h`).
-    See "Cause 1 — present-day liveness subsystem" further on for the
-    rule table.
+    See "Cause 1 — production liveness subsystem (CURRENT)" further on
+    for the rule table.
 
 Reading the table: every "Config key written" entry is an IMPLEMENTED
 defense; every "Verified client default" entry is the client docs'
@@ -136,21 +135,20 @@ table as `UNKNOWN (docs say "SDK default 60 s")`, not in this section.
 
 Ralph writes client-side tool-call timeouts derived
 from `EXEC_SOFT_REPLY_BUDGET_MS` plus headroom across every transport
-whose cited docs page names a tool-call-timeout field. Line numbers
-below were read from the working tree in the WU-5 pass and re-read
-against the working tree in the WU-3 citation pass; if they drift,
-the Appendix re-read drift check fires:
+whose cited docs page names a tool-call-timeout field. The line numbers
+below are read from the working tree; if they drift, the Appendix
+re-read drift check fires:
 
-- `opencode.py:131` writes `timeout: _OPENCODE_MCP_CLIENT_TIMEOUT_MS`
+- `opencode.py:77` writes `timeout: _OPENCODE_MCP_CLIENT_TIMEOUT_MS`
   (the documented-but-ignored per-server field, set for forward-compat).
-- `opencode.py:148` writes
+- `opencode.py:91` writes
   `experimental.mcp_timeout: _OPENCODE_MCP_CLIENT_TIMEOUT_MS`
   (the field the OpenCode SDK actually honours per issue #8701).
-- `claude.py:80` writes `timeout: _CLAUDE_TOOL_TIMEOUT_MS`.
-- `kimi.py:119` writes `toolTimeoutMs: _KIMI_TOOL_TIMEOUT_MS`.
-- `codex.py:227` writes `tool_timeout_sec: _CODEX_TOOL_TIMEOUT_SEC`.
-- `pi.py:306` writes `MCP_TOOL_CALL_DEADLINE_MS` into the synthesized
-  TypeScript bridge; `pi.py:85` defines `MCP_STARTUP_TIMEOUT_MS = 10_000`
+- `claude.py:49` writes `timeout: _CLAUDE_TOOL_TIMEOUT_MS`.
+- `kimi.py:34` writes `toolTimeoutMs: _KIMI_TOOL_TIMEOUT_MS`.
+- `codex.py:127` writes `tool_timeout_sec: _CODEX_TOOL_TIMEOUT_SEC`.
+- `pi.py:59` writes `MCP_TOOL_CALL_DEADLINE_MS` into the synthesized
+  TypeScript bridge; `pi.py:58` defines `MCP_STARTUP_TIMEOUT_MS = 10_000`
   for the discovery call.
 
 Transports whose cited docs page does NOT name a tool-call-timeout
@@ -159,11 +157,11 @@ only — Ralph cannot size what the docs do not expose, and inventing
 a synthetic field would either be silently ignored or hand-craft a
 contract the agent does not honour:
 
-- `cursor.py:87-92` writes only `{"url": endpoint}`.
-- `nanocoder.py:56-61` writes only `{"transport": "http", "url": endpoint}`
+- `cursor.py:28` writes only `{"url": endpoint}`.
+- `nanocoder.py:36-37` writes only `{"transport": "http", "url": endpoint}`
   (plus optional `alwaysAllow`); the package's documented `timeout` is
   a connection-timeout, not a tool-call-timeout.
-- `agy.py:88-94` writes only `{"serverUrl": endpoint}`.
+- `agy.py:27` writes only `{"serverUrl": endpoint}`.
 
 ## Cause 1 (CONFIRMED) — `inactivity` is output-only (HISTORICAL)
 
@@ -171,19 +169,19 @@ The output-only inactivity window is the timeout rule of the
 **injected-runner seam**: it is refreshed only by a chunk from
 the child's stdout/stderr, never by CPU work. The production entry path
 does not use it — every normal `exec` becomes an `ExecJobRegistry` job
-(`ralph/mcp/tools/exec.py:706-706`) whose kills come from sampled
-liveness. See "Cause 1 — present-day liveness subsystem" further on for
-that rule.
+(`ralph/mcp/tools/exec.py:572-607`) whose kills come from sampled
+liveness. See "Cause 1 — production liveness subsystem (CURRENT)" further
+on for that rule.
 
-- `ralph-workflow/ralph/process/manager/_managed_process.py:315` resets
+- `ralph-workflow/ralph/process/manager/_managed_process.py:279` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
   only when a non-empty `chunk` arrives from the child's `stdout`/`stderr`.
-- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:379-393`
+- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:344-360`
   computes `inactivity_deadline = last_output_at_ref[0] + timeout`
-  (`:381-383`) and arms the kill with `timeout_cause = "inactivity"` and
-  `timeout_value = timeout` (`:391-393`); the terminate-then-raise is at
-  `:394-405`.
-- `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:135`)
+  (`:344-346`) and arms the kill with `timeout_cause = "inactivity"` and
+  `timeout_value = timeout` (`:354-356`); the terminate-then-raise is at
+  `:357-360`.
+- `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:37`)
   — a 90-second default inactivity cap. A CPU-busy command that never
   emits stdout (e.g. tight loop, in-process buffered logging, redirected
   output to a file) dies at `timeout_ms` with cause `inactivity` and
@@ -191,10 +189,10 @@ that rule.
   prompts the agent to "raise `timeout_ms` up to the cap" — but raising
   it only widens the same output-only window.
 
-The seam that applies this rule is `ralph-workflow/ralph/mcp/tools/exec.py:777-790`,
+The seam that applies this rule is `ralph-workflow/ralph/mcp/tools/exec.py:558-571`,
 which the production entry path does not take.
 
-### Cause 1 — present-day liveness subsystem (CURRENT)
+### Cause 1 — production liveness subsystem (CURRENT)
 
 Under the job and liveness architecture, a fuzzy liveness
 assessor sits over the exec job flow. The output-only inactivity window
@@ -202,114 +200,113 @@ is not the kill rule for any production `exec` call, short or long: the
 production path always starts a registry job and the registry decides kills
 from sampled liveness.
 
-- ralph-workflow/ralph/mcp/tools/exec.py:792-821 is the production entry
-  path. It resolves the registry (`:792-799`), calls
-  `effective_registry.start(...)` unconditionally (`:809-816`), and then
+- ralph-workflow/ralph/mcp/tools/exec.py:572-607 is the production entry
+  path. It resolves the registry (`:573-580`), calls
+  `effective_registry.start(...)` unconditionally (`:590-597`), and then
   `effective_registry.wait(job_id, wait_ms=EXEC_SOFT_REPLY_BUDGET_MS, ...)`
-  (`:817-822`). **Every** normal `exec` therefore becomes a registry job;
+  (`:598-603`). **Every** normal `exec` therefore becomes a registry job;
   none of them fall back to the output-only window.
-- ralph-workflow/ralph/mcp/tools/exec.py:777-790 is the **injected runner
+- ralph-workflow/ralph/mcp/tools/exec.py:558-571 is the **injected runner
   seam**, not a fallback for "short" calls. It is entered only when
   `effective_deps.runner is not None` or `run_command is not
-  _DEFAULT_RUN_COMMAND` (`:777-779`) — i.e. when a caller injected a custom
+  _DEFAULT_RUN_COMMAND` (`:558-560`) — i.e. when a caller injected a custom
   runner. Only on this seam does `run_command` reach
-  `_run_subprocess` (`ralph/mcp/tools/exec.py:567`) and the
+  `_run_subprocess` (`ralph/mcp/tools/exec.py:445`) and the
   `_managed_process.py` output-only inactivity window.
 - A short in-request completion returns the legacy output shape
-  end-to-end — `exec.py:706-706` converts a terminal `JobResult` into the
+  end-to-end — `exec.py:645-652` converts a terminal `JobResult` into the
   same `_CompletedProcessAdapter` the seam produced — so the *observable*
   output contract is the same on both paths. The kill rule and the
   response shape are separate contracts.
 - `ralph-workflow/ralph/process/manager/_liveness_assessor.py` —
   Sugeno weighted-average over six working signals (`o`, `c`,
-  `io`, `t`, `n`, `w`; the per-signal helpers are at `:332-407` and the
-  R1..R7 rule weights at `:409`); the verdict score is integrated by
-  `StallIntegrator` (class at `:613`, `step` method at `:628`, leaky `threshold_(theta - s)/theta`) and a
+  `io`, `t`, `n`, `w`; the per-signal helpers are at `:78-155` and the
+  R1..R7 rule weights at `:157-158`); the verdict score is integrated by
+  `StallIntegrator` (class at `:303`, `step` method at `:312`, leaky `threshold_(theta - s)/theta`) and a
   sustained-suspicion clock (`SuspicionClock`, imported from
-  `ralph/process/manager/_suspicion_clock.py` at `:254` and re-exported at
-  `:261`) that tracks R4/R7 streaks (`_SUSPICIOUS_RULES` at `:411`) for
-  `EXEC_NO_PROGRESS_WINDOW_S` (15 min, `timeout_defaults.py:212`) →
+  `ralph/process/manager/_suspicion_clock.py` at `:8` and re-exported at
+  `:15`) that tracks R4/R7 streaks (`_SUSPICIOUS_RULES` at `:159`) for
+  `EXEC_NO_PROGRESS_WINDOW_S` (15 min, `timeout_defaults.py:167`) →
   `no_progress`.
-  Per-spec rule table (`:31-32`, `:474`): R1 z=1.0, R2 z=0.9, R3 z=0.9,
+  Per-spec rule table (`:157`, `:202`): R1 z=1.0, R2 z=0.9, R3 z=0.9,
   R4 z=0.6, R5 z=0.0, R6 z=0.2 (fire-only, see docstring), R7 z=0.55.
 - `ralph-workflow/ralph/process/manager/_liveness_sampler.py` —
-  psutil-tree sampler (`TreeSampler` at `_liveness_sampler.py:321`) reads the process tree every
-  `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s, `timeout_defaults.py:212`) over an
-  `EXEC_LIVENESS_EVIDENCE_WINDOW_S` (30 s, `timeout_defaults.py:212`) window.
-  Each signal is independently `None`-on-read-failure (D5 fail-closed, module
-  docstring `:9` and the `_windowed_rate` rebaseline at `_liveness_sampler.py:246-282`); the typed
+  psutil-tree sampler (`TreeSampler` at `_liveness_sampler.py:238`) reads the process tree every
+  `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s, `timeout_defaults.py:137`) over an
+  `EXEC_LIVENESS_EVIDENCE_WINDOW_S` (30 s, `timeout_defaults.py:139`) window.
+  Each signal is independently `None`-on-read-failure (D5 fail-closed) and the
+  `_windowed_rate` rebaseline lives at `_liveness_sampler.py:182`; the typed
   adapter is local to the sampler because the existing
   `_PsutilProcessLike` protocol
   (`ralph/process/manager/_process_manager_types.py:27-38`) lacks
   `cpu_times`/`io_counters`/`num_ctx_switches`.
-- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:58-60` — `ExecJobRegistry`
-  (`class` at `:308`) runs the job on a sample thread that drives the
+- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py` — `ExecJobRegistry`
+  (`class` at `:238`) runs the job on a sample thread that drives the
   assessor every cycle, accumulates stall pressure, and decides the kill
-  cause. `KillCause` (`:58-60`) names six literals, but only five are
-  actually emitted by the registry today: `abandoned` (`:541`), `hard_cap`
-  (`:546`), `stalled` (`:586`), `no_progress` (`:590`), and `session_end`
-  (`:840`, the `shutdown_all` default). `restart_lost` is declared and
+  cause. `KillCause` (`:52-54`) names six literals, but only five are
+  actually emitted by the registry today: `abandoned` (`:445`), `hard_cap`
+  (`:449`), `stalled` (`:484`), `no_progress` (`:488`), and `session_end`
+  (`:722`, the `shutdown_all` default). `restart_lost` is declared and
   rendered by the error formatter
-  (`ralph/mcp/tools/_exec_execution_error.py:243,251-263`) but has no
+  (`ralph/mcp/tools/_exec_execution_error.py:15`) but has no
   producer in `_exec_jobs.py`: a restart destroys the in-memory registry, so
   the only observable restart contract is the non-retryable
   "unknown or expired job; process was killed or lost in server restart"
   error from `wait()`/`cancel()`
-  (the literal at `_exec_jobs.py:771`; `_lookup_job_locked` is the only
-  site that holds the message string — `_exec_jobs.py:742-772`,
-  with the surrounding capability-mismatch path at `_exec_jobs.py:752-756`
-  and `:764-767` and the `_build_job_result` consumer at `_exec_jobs.py:443-462`),
+  (the literal at `_exec_jobs.py:653`; `_lookup_job_locked` is the only
+  site that holds the message string — `_exec_jobs.py:631-654`,
+  with the `_build_job_result` consumer at `_exec_jobs.py:375-405`),
   which is covered by
   `tests/test_exec_jobs_session_lifecycle.py::test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`
-  (`tests/test_exec_jobs_session_lifecycle.py:73-73`, invented-id assertion at `:149-154`)
+  (`tests/test_exec_jobs_session_lifecycle.py:47`, invented-id assertion at `:63-68`)
   and `tests/test_tool_exec_wait_cancel.py::test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error`.
   A short in-request completion lands in the registry as a regular
   `JobResult` and the legacy output shape is preserved end-to-end;
   only jobs that take longer than the soft-reply budget return a
   snapshot with a `job_id` and the "call exec_wait; do not re-run"
-  instruction (`exec.py:706-706`, `_exec_jobs.py:802-802`).
+  instruction (`exec.py:609-621`, `_exec_jobs.py:772-787`).
 
 ## Cause 2 (CONFIRMED) — single 300-second absolute cap
 
 Even after the operator raises `timeout_ms`, the wall clock is capped.
 
-- `EXEC_MAX_TIMEOUT_MS = 300_000` (`ralph-workflow/ralph/timeout_defaults.py:142`)
+- `EXEC_MAX_TIMEOUT_MS = 300_000` (`ralph-workflow/ralph/timeout_defaults.py:39`)
   — 5 minutes. Larger values are rejected at the import-time invariant
   check below the constant.
 - On the **injected-runner seam** only,
-  `ralph-workflow/ralph/mcp/tools/exec.py:631-637` passes
+  `ralph-workflow/ralph/mcp/tools/exec.py:473-478` passes
   `hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000` to
   `handle.communicate_and_cleanup`. The `inactivity` window is gated BELOW
   this; the `hard_cap` window is the outermost envelope. Note this is the
-  seam path (`exec.py:706-706` → `exec.py:567` → `exec.py:603`), not the
+  seam path (`exec.py:558-571` → `exec.py:445` → `exec.py:473`), not the
   production entry path.
 - On the **production entry path**, the wall-clock cap is the registry's
   job ceiling, not `EXEC_MAX_TIMEOUT_MS`:
-  `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:247-255` resolves the
+  `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:194-198` resolves the
   ceiling once per job (`ceiling_s = min(max_runtime_ms / 1000.0,
   EXEC_JOB_CEILING_MAX_S)` when the caller set `max_runtime_ms`, else
-  `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:212`, 3600 s)) and stores
-  it as `job.ceiling_ms`; `step_job` kills with `cause="hard_cap"` at
-  `_exec_jobs.py:543-545` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
-  (`ralph/timeout_defaults.py:212`, 4 h) is the outer bound.
+  `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:171`, 3600 s)) and stores
+  it as `job.ceiling_ms`; the registry kills with `cause="hard_cap"` at
+  `_exec_jobs.py:449` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
+  (`ralph/timeout_defaults.py:173`, 4 h) is the outer bound.
 - **Hard-cap error text.** `ralph-workflow/ralph/mcp/tools/_exec_execution_error.py`
-  `ExecutionError._render_timeout` (`:187-197`, split into a job path and
+  `ExecutionError._render_timeout` (`:108-118`, split into a job path and
   a legacy in-request path) renders `timeout_cause == "hard_cap"` with the
   ceiling that actually bound the run: a job `hard_cap` renders
-  `_exec_execution_error.py:295-312` ("Killed at the {ceiling}ms job runtime
+  `_exec_execution_error.py:202-213` ("Killed at the {ceiling}ms job runtime
   ceiling… raise `max_runtime_ms` instead") and the silence-only stall
   sentence appears only on the legacy in-request path
-  (`_exec_execution_error.py:310-319`).
+  (`_exec_execution_error.py:223-235`).
 - **Background path.** Every exec-family tool (`exec`, `unsafe_exec`, the
   iteration-timeboxed variants) reaches the server's background execution
   path: `exec_wait` and `exec_cancel` are registered tools
-  (`ralph/mcp/tools/names.py:40-41`, exported at `:103-104`; handlers in
-  `ralph/mcp/tools/_exec_job_tools.py:43-44` and `handle_exec_wait` at
-  `:126`). A long call returns a `JobSnapshot` carrying a `job_id` and
+  (`ralph/mcp/tools/names.py:36-37`, exported at `:95-96`; handlers in
+  `ralph/mcp/tools/_exec_job_tools.py:41-42` and `handle_exec_wait` at
+  `:96`). A long call returns a `JobSnapshot` carrying a `job_id` and
   the `"instruction": "call exec_wait; do not re-run"` string
-  (`ralph/mcp/tools/exec.py:706-706`), and `handle_exec_wait` clamps its
+  (`ralph/mcp/tools/exec.py:609-621`), and `handle_exec_wait` clamps its
   `wait_ms` to `EXEC_SOFT_REPLY_BUDGET_MS`
-  (`_exec_job_tools.py:139-143`). The hard-cap template points at
+  (`_exec_job_tools.py:108-112`). The hard-cap template points at
   `exec_wait` and `exec_cancel`.
 
 ## Cause 3 (CONFIRMED) — client-side timeouts on every transport that documents one
@@ -329,32 +326,32 @@ OpenCode's ~60-s default per issue #8701, the Kimi `mcp` table's
 Ralph writes a client-side MCP request timeout on every transport whose
 cited docs page names a tool-call-timeout field.
 
-- `ralph-workflow/ralph/mcp/transport/opencode.py:41-45` carries the
-  comment
+- `ralph-workflow/ralph/mcp/transport/opencode.py` writes both timeout
+  fields from one constant, `_OPENCODE_MCP_CLIENT_TIMEOUT_MS` (`:26-28`),
+  sized as `max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS)` plus the
+  `_OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS` headroom (`:24`). The
+  per-server `timeout` field is written at `:77` and the global
+  `experimental.mcp_timeout` field at `:91`. OpenCode ignores the
+  per-server `mcp.<server>.timeout` field for tool calls and enforces the
+  MCP SDK default (~60 s) instead; `experimental.mcp_timeout` is the field
+  it honours (opencode issues #8701/#8121).
 
-  > "OpenCode IGNORES the documented per-server `mcp.<server>.timeout`
-  > field and hard-enforces the MCP SDK default (~60s). The setting it
-  > actually honors is the global `experimental.mcp_timeout` (opencode
-  > issues #8701/#8121). We set BOTH: the experimental key is the one
-  > that takes effect..."
-
-The written keys per client (line numbers in the working tree as of
-the WU-3 citation pass):
-- Claude: writes `timeout` (`ralph/mcp/transport/claude.py:80`).
-- Kimi: writes `toolTimeoutMs` (`ralph/mcp/transport/kimi.py:75`).
-- Codex: writes `tool_timeout_sec` (`ralph/mcp/transport/codex.py:227`).
+The written keys per client:
+- Claude: writes `timeout` (`ralph/mcp/transport/claude.py:49`).
+- Kimi: writes `toolTimeoutMs` (`ralph/mcp/transport/kimi.py:34`).
+- Codex: writes `tool_timeout_sec` (`ralph/mcp/transport/codex.py:127`).
 - Pi: enforces `MCP_TOOL_CALL_DEADLINE_MS` in the generated bridge
-  (`ralph/mcp/transport/pi.py:305`).
+  (`ralph/mcp/transport/pi.py:19`, written into the bridge at `:59`).
 - OpenCode: writes both `timeout` and `experimental.mcp_timeout`
-  (`ralph/mcp/transport/opencode.py:131` and `:148`).
+  (`ralph/mcp/transport/opencode.py:77` and `:91`).
 - Cursor, AGY: cited docs page names no public per-server tool-call
   timeout config; Ralph writes only `{"url": endpoint}` /
-  `{"serverUrl": endpoint}` (`cursor.py:88-90`, `agy.py:88-94`).
+  `{"serverUrl": endpoint}` (`cursor.py:28`, `agy.py:27`).
 - Nanocoder: the package's docs DO name a `timeout` field, but it is
   the connection handshake / tool-listing deadline; tool-call
   enforcement reverts to the MCP SDK's hard-coded default. Ralph
   therefore writes only `{"transport": "http", "url": endpoint}`
-  (`nanocoder.py:56-59`) — the row reads `UNKNOWN (docs say "SDK default
+  (`nanocoder.py:36-37`) — the row reads `UNKNOWN (docs say "SDK default
   60 s")` in the verified table.
 - OpenCode, schema drift (no Ralph-side write; see the
   verified table's OpenCode row): the published OpenCode config schema
@@ -380,10 +377,10 @@ least-load-bearing notification the JSON-RPC 2.0 spec offers — and a
 progress notification only reaches a client that sent a `progressToken`
 round trip. A client that sends no `progressToken` gains nothing from
 streamed stdout. Ralph extracts and propagates progress tokens; the
-current behavior is recorded in "Cause 4 — present-day
-progress-notification path (CURRENT)" further on.
+current behavior is recorded in "Cause 4 — progress-notification path
+(CURRENT)" further on.
 
-- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:228-235` builds
+- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:154-161` builds
   every *output-chunk* notification as
 
   ```python
@@ -424,19 +421,19 @@ only counts them when the request carried a `progressToken` round trip.
 When a client never sends one, the run report still ends up "client
 abandoned, server running" — the state Cause 5 makes observable.
 
-### Cause 4 — present-day progress-notification path (CURRENT)
+### Cause 4 — progress-notification path (CURRENT)
 
 Under the job and liveness architecture, Ralph extracts the request's
 progress token and emits `notifications/progress` frames bound to that
 token.
 
-- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:62-89` —
+- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:46-69` —
   `extract_progress_token` reads the token from four request shapes:
   `params._meta.progressToken`, `params.progressToken`,
   `params.arguments._meta.progressToken`, and
   `params.arguments.progressToken`. A `str` or `int` token is returned;
   anything else yields `None` (no subscription).
-- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:107-126` —
+- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:86-104` —
   `_build_progress_frame` renders the SSE frame and its payload:
 
   ```python
@@ -447,29 +444,29 @@ token.
   }
   ```
 
-- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:129-175` —
+- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:107-132` —
   `_install_progress_subscription` registers a request-scoped
   `ProgressSubscription` on the shared `ExecJobRegistry` via
   `registry.subscribe_progress`. Bindings are explicit: `exec_wait` /
   `exec_cancel` requests carry `job_id` and bind at install time
-  (`:159-172`), while `exec` / `unsafe_exec` / `raw_exec` have no
+  (`:116-131`), while `exec` / `unsafe_exec` / `raw_exec` have no
   `job_id` until the worker calls `registry.start(...)`, so the
   subscription is bound afterwards by
   `ralph/mcp/tools/_exec_jobs.attach_progress_subscription`
-  (`_exec_jobs.py:802-802`), which the exec handler hands the subscription
-  to at `ralph/mcp/tools/exec.py:706-706`.
-- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:241-244` wires
-  both mechanisms into the streaming POST: the output-chunk sink at
-  `:237` and the progress subscription at `:241-243`, published to the
+  (`_exec_jobs.py:772-787`), which the exec handler hands the subscription
+  to at `ralph/mcp/tools/exec.py:645-652`.
+- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:167-175` wires
+  both mechanisms into the streaming POST: the progress subscription at
+  `:167-169` and the output-chunk sink swap at `:173-175`, published to the
   request thread through the `_CURRENT_PROGRESS_SUB` ContextVar
-  (`:35-42`) so the exec handler can read it. Teardown at `:273-278`
+  (`:29-31`) so the exec handler can read it. Teardown at `:193-202`
   unsubscribes, so a torn-down sink never emits to a stale token.
 
 A `grep` over `ralph-workflow/ralph/mcp/server/` for either
 `progressToken` or `notifications/progress` returns matches in
-`exec_sse_streaming.py` (lines 66, 68, 69, 72, 73, 74, 77, 81, 82, 85,
-86, 108, 115, 123, 196, 197). Output chunks still travel as
-`notifications/message` (`exec_sse_streaming.py:216-216`), so a client
+`exec_sse_streaming.py` (lines 50, 54, 55, 61, 62, 65, 66, 67, 78, 79,
+82, 101, 110, 118, 126, 194, 197). Output chunks still travel as
+`notifications/message` (`exec_sse_streaming.py:154-161`), so a client
 that sends no `progressToken` gains nothing from streamed stdout.
 
 ## Cause 5 (CONFIRMED, restated) — request expiry does not imply process death
@@ -498,38 +495,42 @@ monitoring, and reaped explicitly on termination or session shutdown.
 
 ### 5b. Dispatch expiry
 
-`SaturatedDispatchTracker` returns a `SaturatedResponse` after
+`_SaturatedDispatch` returns a `SaturatedResponse` after
 `MCP_DISPATCH_TIMEOUT_SECONDS` and calls `future.cancel()`. A *running*
 thread cannot be reclaimed: only queued work can be cancelled. The
 dispatcher therefore returns the saturation error to its caller and
 keeps running the actual command, unobserved:
 
-- `ralph-workflow/ralph/mcp/server/_saturated_dispatch.py:173-179`:
+- `ralph-workflow/ralph/mcp/server/_saturated_dispatch.py:105-115`:
 
   ```python
-  return future.result(timeout=self._dispatch_timeout_seconds)
+  try:
+      if self._dispatch_timeout_seconds is None:
+          future.cancel()
+          return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
+      return future.result(timeout=self._dispatch_timeout_seconds)
   except concurrent.futures.TimeoutError:
-      # cancel() frees queued work only. A running thread cannot be
-      # reclaimed and is released when its callable returns.
       future.cancel()
       _log.warning("MCP dispatch timed out after %s seconds", self._dispatch_timeout_seconds)
       return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
+  except concurrent.futures.CancelledError:
+      return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
   ```
 
-The comment is the failing contract: cancel a Future whose callable is
-a *running* thread is a documented no-op (Python stdlib docs:
-`Future.cancel()` returns False for transitions into RUNNING; the
-worker has to finish). Ralph therefore has an unobserved-job window
-that the saturation-cap's only job is supposed to prevent.
+The `future.cancel()` call at `:111` is the failing contract: cancelling a
+Future whose callable is a *running* thread is a documented no-op (Python
+stdlib docs: `Future.cancel()` returns False for transitions into RUNNING;
+the worker has to finish). Ralph therefore has an unobserved-job window
+that the saturation cap is supposed to prevent.
 
 ### 5c. Session-shutdown job hook exists CHILD-side only
 
 The seam for "a parent kill must reach the child's in-memory registry"
 is the child MCP server's shutdown path, not `_session_wrapup.py`.
 
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:2986` and `:3003` invoke
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:1858` and `:1875` invoke
   `_spawn_mcp_process(...)`, which is defined at
-  `ralph/mcp/server/lifecycle.py:2519-2519`
+  `ralph/mcp/server/lifecycle.py:2077-2091`
   and runs
 
   ```python
@@ -541,13 +542,13 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-  (`ralph/mcp/server/lifecycle.py:2519-2519`; the `"ralph.mcp.server"` module name is at
-  `:3434`). The MCP server runs as a separate child
+  (`ralph/mcp/server/lifecycle.py:2152-2163`; the `"ralph.mcp.server"` module name is at
+  `:2156`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
-  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:46-62`),
+  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:36-40`),
   which calls `self.process.terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)`
-  at line 55 and `self.process.wait(timeout=SHUTDOWN_REAP_WAIT_S)` at line 57.
-  Both waits are module constants (`_standalone_mcp_process.py:20` and `:24`,
+  at line 38 and `self.process.wait(timeout=SHUTDOWN_REAP_WAIT_S)` at line 40.
+  Both waits are module constants (`_standalone_mcp_process.py:14` and `:16`,
   5.0 seconds each) so the E6.4 restart-budget arithmetic in
   `lifecycle.py:_FAILED_ATTEMPT_CLEANUP_S` is derived from the real teardown
   bound rather than a duplicated literal.
@@ -569,27 +570,27 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
 - The real seam for "session_end kills the child's running jobs"
   is the CHILD process's shutdown path:
 
-  - `ralph-workflow/ralph/mcp/server/runtime.py:914-950` —
+  - `ralph-workflow/ralph/mcp/server/runtime.py:625-649` —
     `exit_when_owner_exits` daemon watches the parent PID; when the
     owner is already gone at entry it calls `exit_process(0)`
-    (default `os._exit`) at line 939, and the watcher thread does the
-    same at line 946 once `get_parent_pid()` stops matching the
+    (default `os._exit`) at line 638, and the watcher thread does the
+    same at line 645 once `get_parent_pid()` stops matching the
     recorded owner.
-  - `ralph-workflow/ralph/mcp/server/runtime.py:953-1000` —
-    `main(argv)` calls `install_shutdown_signal_handlers()` (`:983`),
-    then `exit_when_owner_exits(os.environ)` (`:984`), parses args
-    (`:985`), and enters `run_standalone_server` (`:986`) which blocks
+  - `ralph-workflow/ralph/mcp/server/runtime.py:652-663` —
+    `main(argv)` calls `install_shutdown_signal_handlers()` (`:654`),
+    then `exit_when_owner_exits(os.environ)` (`:655`), parses args
+    (`:656`), and enters `run_standalone_server` (`:657`) which blocks
     on the HTTP server until SIGTERM/Ctrl-C.
   - The `MCP_OWNER_PID_ENV` env var
-    (`ralph/mcp/protocol/env.py:70`, `McpEnvVar.OWNER_PID` at `:39`)
+    (`ralph/mcp/protocol/env.py:45`, `McpEnvVar.OWNER_PID` at `:26`)
     is the parent→child hand-off that lets the watcher know when
     to kill itself.
   - The owner-loss hook the registry installs is registered in
-    `ralph/mcp/tools/_exec_jobs.py:347-350`
+    `ralph/mcp/tools/_exec_jobs.py:275-276`
     (`shutdown_all("session_end")`), run by
-    `_run_owner_loss_hooks` (`runtime.py:689-689`) on owner loss and by
-    `_run_shutdown_hooks` (`runtime.py:689-689`) on SIGTERM
-    (`runtime.py:689-689`) and at exit (`runtime.py:689`).
+    `_run_owner_loss_hooks` (`runtime.py:600-609`) on owner loss and by
+    `_run_shutdown_hooks` (`runtime.py:594-597`) on SIGTERM
+    (`runtime.py:614-616`) and at exit (`runtime.py:622`).
 
 The parent cannot reach into the child's in-memory collections from
 `_session_wrapup.py` (or from any `factory_impl.py` callback the parent
@@ -614,27 +615,27 @@ the third column.
 | 4 — streamed output does not keep clients alive | SSE notification stream and progress token handling | `ralph/mcp/server/exec_sse_streaming.py` |
 | 5 — request expiry does not imply process death | child runtime shutdown path via `exit_when_owner_exits` and standalone server termination | `ralph/mcp/server/runtime.py` |
 
-## Per-path termination matrix (CURRENT)
+## Per-path termination matrix
 
 Each row names one way an `ExecJobRegistry`-managed job can be
 terminated and records the calling mechanism, the working-tree
 citations that prove the mechanism is wired in, and the bound the
 producer can guarantee. The matrix is read together with the
-kill-cause literals recorded under `Cause 1 — present-day liveness
-subsystem (CURRENT)`: the five `KillCause` literals
+kill-cause literals recorded under `Cause 1 — production liveness
+subsystem`: the five `KillCause` literals
 (`abandoned`, `hard_cap`, `stalled`, `no_progress`, `session_end`)
 are how the rows announce themselves to the caller; this matrix
 records the seams that produce them.
 
 | path | mechanism | citation (path:line) | proof-or-bound |
 | --- | --- | --- | --- |
-| SIGTERM of server | Signal handler fires `_run_shutdown_hooks`; registry hook installed at startup calls `registry.shutdown_all("session_end")`; `_kill_job` calls `ManagedProcess.terminate(grace_period_s=0.0)` which escalates to `os.killpg(pgid, SIGKILL)` (preceded by SIGTERM and the git cleanup window when the group contains git) over the worker's process group, taking worker + descendant in one group-kill. | `ralph/mcp/server/runtime.py:689-689` (handler install) → `ralph/mcp/server/runtime.py:689-689` (`_run_shutdown_hooks`) → `ralph/mcp/tools/_exec_jobs.py:347-350` (registry hook) → `ralph/mcp/tools/_exec_jobs.py:802-802` (`shutdown_all`) → `ralph/mcp/tools/_exec_jobs.py:477-495` (`_kill_job`) → `ralph/process/manager/_managed_process.py:607-623` (`terminate`) → `ralph/process/manager/_process_manager.py:1222-1290` (`cleanup_orphans` / `_kill_pgid`) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:120-161` (`test_sigterm_shutdown_kills_worker_and_descendant`) — worker + descendant reaped, `kill_cause == "session_end"`. Bound: the entire shutdown completes within `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
-| Owner SIGKILL with server surviving | `exit_when_owner_exits` daemon watches `os.getppid()`; when it stops matching the recorded owner, it invokes `_run_owner_loss_hooks` (a daemon thread plus a bounded join at `EXEC_OWNER_LOSS_HOOK_BUDGET_S`), the registry hook fires `registry.shutdown_all("session_end")`, and the same group-kill path as SIGTERM completes the tree. The same sequence fires immediately at entry when the stored owner PID never matched the current PPID (already-orphaned case). | `ralph/mcp/server/runtime.py:689-689` (`exit_when_owner_exits`) → `ralph/mcp/server/runtime.py:689-689` (`_run_owner_loss_hooks`) → immediate fire at `ralph/mcp/server/runtime.py:689`, watcher fire at `ralph/mcp/server/runtime.py:689` → registry hook at `ralph/mcp/tools/_exec_jobs.py:347-350` → group-kill same as the row above. | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:164-251` (`test_owner_loss_watcher_kills_worker_and_descendant`) — owner SIGKILLed, child server's owner watcher fires the pre-exit hook, worker + descendant reaped. Bound: the watch loop polls at the configured sleep interval (`sleep(1.0)` at `ralph/mcp/server/runtime.py:689`, bound to `time.sleep` as the production default at `ralph/mcp/server/runtime.py:689`); the hook thread is bounded by `EXEC_OWNER_LOSS_HOOK_BUDGET_S`. |
-| MCP server SIGKILLed (Linux) | No Python hook runs on SIGKILL — atexit and `atexit.register(_run_shutdown_hooks)` (`runtime.py:689`) are skipped and no signal handler can fire. Tree death depends on the kernel: on Linux, off-main-thread exec-job spawns (the production HTTP dispatch path) route through the supervisor process `ralph/process/manager/_supervisor.py` (`start_new_session=True`), which arms `PR_SET_PDEATHSIG=SIGTERM` against the server holder and runs an `os.killpg(pgid, SIGKILL)` sweep over the process group on holder death, while the forked worker child arms `PR_SET_PDEATHSIG=SIGKILL` against the supervisor; main-thread spawns install `_install_pdeathsig` as the ProcessManager preexec (`prctl(PR_SET_PDEATHSIG, SIGKILL)`). | `ralph/process/manager/_supervisor.py:146-146` (the `killpg` PG sweep in `_kill_tree_and_exit`) and `ralph/process/manager/_supervisor.py:146-146` (`run`, the supervisor lifecycle) — `ralph/process/manager/__init__.py:128-155` (`_supervisor_invocation`) — `ralph/process/manager/__init__.py:173-223` (`_default_sync_process_factory`, supervisor routing at `:186-221`) — `ralph/process/manager/__init__.py:96-112` (`_install_pdeathsig`) and `ralph/process/manager/__init__.py:263-290` (`_default_async_process_factory`). | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:367-603` (`test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant`, marked `subprocess_e2e`, Linux-only) — starts registry via worker thread, forks descendant, SIGKILLs holder, and asserts both worker and descendant die; additionally `tests/test_exec_job_shutdown_subprocess_e2e.py:270-365` (`test_parent_sigkill_kills_exec_job_via_pr_set_pdeathsig`) for direct main-thread preexec. Bound: sub-millisecond kernel delivery plus supervisor `killpg` sweep. |
-| MCP server SIGKILLed (non-Linux) | SIGKILL cannot run any Python hook on any platform — no atexit, no signal handler, no watchdog. On Linux the supervisor and preexec close the gap (see Linux row above); on macOS/Windows no `PR_SET_PDEATHSIG` exists, the gating `sys.platform.startswith("linux")` test short-circuits supervisor and preexec routing, and the PDEATHSIG test skips. **Nothing in-process bounds the lifetime of a job orphaned by a server SIGKILL on these platforms**: once the server is dead, its `ExecJobRegistry`, liveness sampler threads, the abandonment timer (`EXEC_JOB_ABANDON_S` lives in the now-dead process), and all signal/atexit hooks are gone with it. The orphan's worker and descendants are re-parented to PID 1 and run to natural completion; OS-level process cleanup alone does not terminate them. | `ralph/process/manager/__init__.py:186` (sync supervisor/preexec gate) and `ralph/process/manager/__init__.py:274-279` (async preexec gate — the `_death_preexec(command) if sys.platform.startswith("linux") and threading.current_thread() is threading.main_thread() else None` ternary inside `_default_async_process_factory`) — **pre-SIGKILL caps that DO NOT bind a SIGKILLed-server orphan**: `ralph/mcp/tools/_exec_jobs.py:336-341` (`_running_jobs` capped at `EXEC_MAX_RUNNING_JOBS=4` prevents new submissions from leaking past the cap while the server is alive; `_finished_results` is a `deque(maxlen=EXEC_JOB_RESULT_FIFO=16)`); constants at `ralph/timeout_defaults.py:212`, `:629`, and the abandonment window `EXEC_JOB_ABANDON_S = 120.0` at `ralph/timeout_defaults.py:212` (does NOT fire on an orphan whose server is dead). | **Stated, not proven.** No non-Linux test exists; `tests/test_exec_job_shutdown_subprocess_e2e.py:271-289` skips with the reason "PR_SET_PDEATHSIG is Linux-only and no cross-platform parent-death equivalent is available; once the MCP server is SIGKILLed on a non-Linux platform there is no in-process lifetime bound for an orphaned exec-job tree." **Today's actual bound on the orphan: NONE in-process after the server is SIGKILLed.** The pre-SIGKILL caps cited above prevent new submissions from leaking past the cap while the server is alive; they do NOT cause an in-flight SIGKILLed-server orphan to exit. `EXEC_JOB_ABANDON_S` lives in the (now-dead) server process. The orphan's lifetime is therefore bound by: (a) the orphan runs to natural completion, (b) OS-level cleanup when it exits, or (c) an external supervisor outside this codebase. **Pre-SIGKILL caps retained only for completeness**, not as a bound on the orphan itself. |
-| Post-restart `exec_wait` on a lost job | The in-memory registry is destroyed when the server restarts, so any `exec_wait(old_job_id)` falls through the lookup and raises a non-retryable "unknown or expired job; process was killed or lost in server restart" error. It never fabricates a snapshot or a result. | `ralph/mcp/tools/_exec_jobs.py:742-772` (`_lookup_job_locked`; the literal message string at `ralph/mcp/tools/_exec_jobs.py:771`) | **Proof**: `tests/test_exec_jobs_session_lifecycle.py:73-73` (`test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`) — the `:149-154` branch asserts the same string for an invented, never-seen `job_id`, proving the new registry cannot distinguish prior-server ids from any other id (the correct behaviour). Bound: immediate. |
-| Normal job completion | The registry runner polls the handle each `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s); a non-`None` returncode marks the job finished with `kill_cause=None`, then `_settle_job` calls `pm.cleanup_orphans(handle)` to kill descendants that outlived the root and gives the reader threads a bounded window (`_READER_DRAIN_TIMEOUT_S`, 1 s) to reach EOF. The job slides from the running map to the bounded results FIFO before `done_event` wakes waiters. The finisher never closes a pipe: each reader closes its own stream at EOF, so a detached (`setsid`) descendant that escaped the group kill and still holds the pipes cannot stop the job from finishing; the result carries the output captured so far. | `ralph/mcp/tools/_exec_jobs.py:531-536` (poll-and-mark) — `ralph/mcp/tools/_exec_jobs.py:509-518` (`_mark_finished`) — `ralph/mcp/tools/_exec_jobs.py:437-460` (`_settle_job` → `pm.cleanup_orphans`) — `ralph/process/manager/_process_manager.py:1222-1290` (`cleanup_orphans` / `_kill_pgid`) | **Proof**: orphan sweep locked by `tests/test_exec_jobs.py:522-539` (`test_trace_1_root_exit_with_orphaned_child`) and `tests/test_exec_jobs.py:182-202` (`_TrackingProcessManager.cleanup_orphans`). Bound: `EXEC_LIVENESS_SAMPLE_INTERVAL_S = 2.0` (`ralph/timeout_defaults.py:212`) is the worst-case staleness between root exit and the registry noticing. |
-| Session end | `session_end` is the `KillCause` literal stamped onto the `JobResult` whenever `shutdown_all()` fires; the trigger is whichever path delivered the teardown — SIGTERM via `install_shutdown_signal_handlers`, owner SIGKILL via `exit_when_owner_exits`, or the lifecycle's `shutdown_mcp_server(bridge)` teardown, which calls `bridge.shutdown()` and triggers the child server's own SIGTERM-handler chain. There is no separate "session end" Python mechanism; it is the union of those paths. | kill-cause literal at `ralph/mcp/tools/_exec_jobs.py:802` (also rendered as `KillCause` member of the literal block at `ralph/mcp/tools/_exec_jobs.py:58-60`); lifecycle teardown at `ralph/mcp/server/lifecycle.py:2519-2519` (`shutdown_mcp_server`) → `ralph/mcp/server/_standalone_mcp_process.py:46-62` (`StandaloneMcpProcess.shutdown`); constants at `ralph/mcp/server/_standalone_mcp_process.py:20` and `:24` (5.0 s each) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:120-161` reads `CAUSE session_end` off the registry's `wait()` output at `:129`, proving the literal renders through the SIGTERM path. Bound: teardown wall-clock ≤ `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
+| SIGTERM of server | Signal handler fires `_run_shutdown_hooks`; registry hook installed at startup calls `registry.shutdown_all("session_end")`; `_kill_job` calls `ManagedProcess.terminate(grace_period_s=0.0)` which escalates to `os.killpg(pgid, SIGKILL)` (preceded by SIGTERM and the git cleanup window when the group contains git) over the worker's process group, taking worker + descendant in one group-kill. | `ralph/mcp/server/runtime.py:612-619` (handler install) → `ralph/mcp/server/runtime.py:594-597` (`_run_shutdown_hooks`) → `ralph/mcp/tools/_exec_jobs.py:275-276` (registry hook) → `ralph/mcp/tools/_exec_jobs.py:722` (`shutdown_all`) → `ralph/mcp/tools/_exec_jobs.py:406-416` (`_kill_job`) → `ralph/process/manager/_managed_process.py:550` (`terminate`) → `ralph/process/manager/_process_manager.py:978` (`cleanup_orphans`) / `:1004` (`_kill_pgid`) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:92` (`test_sigterm_shutdown_kills_worker_and_descendant`) — worker + descendant reaped, `kill_cause == "session_end"`. Bound: the entire shutdown completes within `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
+| Owner SIGKILL with server surviving | `exit_when_owner_exits` daemon watches `os.getppid()`; when it stops matching the recorded owner, it invokes `_run_owner_loss_hooks` (a daemon thread plus a bounded join at `EXEC_OWNER_LOSS_HOOK_BUDGET_S`), the registry hook fires `registry.shutdown_all("session_end")`, and the same group-kill path as SIGTERM completes the tree. The same sequence fires immediately at entry when the stored owner PID never matched the current PPID (already-orphaned case). | `ralph/mcp/server/runtime.py:625-649` (`exit_when_owner_exits`) → `ralph/mcp/server/runtime.py:600-609` (`_run_owner_loss_hooks`) → immediate fire at `ralph/mcp/server/runtime.py:637`, watcher fire at `ralph/mcp/server/runtime.py:644` → registry hook at `ralph/mcp/tools/_exec_jobs.py:275-276` → group-kill same as the row above. | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:130` (`test_owner_loss_watcher_kills_worker_and_descendant`) — owner SIGKILLed, child server's owner watcher fires the pre-exit hook, worker + descendant reaped. Bound: the watch loop polls at the configured sleep interval (`sleep(1.0)` at `ralph/mcp/server/runtime.py:643`, bound to `time.sleep` as the production default at `ralph/mcp/server/runtime.py:629`); the hook thread is bounded by `EXEC_OWNER_LOSS_HOOK_BUDGET_S`. |
+| MCP server SIGKILLed (Linux) | No Python hook runs on SIGKILL — atexit and `atexit.register(_run_shutdown_hooks)` (`runtime.py:622`) are skipped and no signal handler can fire. Tree death depends on the kernel: on Linux, off-main-thread exec-job spawns (the production HTTP dispatch path) route through the supervisor process `ralph/process/manager/_supervisor.py` (`start_new_session=True`), which arms `PR_SET_PDEATHSIG=SIGTERM` against the server holder and runs an `os.killpg(pgid, SIGKILL)` sweep over the process group on holder death, while the forked worker child arms `PR_SET_PDEATHSIG=SIGKILL` against the supervisor; main-thread spawns install `_install_pdeathsig` as the ProcessManager preexec (`prctl(PR_SET_PDEATHSIG, SIGKILL)`). | `ralph/process/manager/_supervisor.py:72-84` (the `killpg` PG sweep in `_kill_tree_and_exit`) and `ralph/process/manager/_supervisor.py:106-138` (`run`, the supervisor lifecycle) — `ralph/process/manager/__init__.py:148-163` (`_supervisor_invocation`) — `ralph/process/manager/__init__.py:165-212` (`_default_sync_process_factory`) — `ralph/process/manager/__init__.py:127-147` (`_install_pdeathsig`) and `ralph/process/manager/__init__.py:214-260` (`_default_async_process_factory`). | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:269` (`test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant`, marked `subprocess_e2e`, Linux-only) — starts registry via worker thread, forks descendant, SIGKILLs holder, and asserts both worker and descendant die; additionally `tests/test_exec_job_shutdown_subprocess_e2e.py:221` (`test_parent_sigkill_kills_exec_job_via_pr_set_pdeathsig`) for direct main-thread preexec. Bound: sub-millisecond kernel delivery plus supervisor `killpg` sweep. |
+| MCP server SIGKILLed (non-Linux) | SIGKILL cannot run any Python hook on any platform — no atexit, no signal handler, no watchdog. On Linux the supervisor and preexec close the gap (see Linux row above); on macOS/Windows no `PR_SET_PDEATHSIG` exists, the gating `sys.platform.startswith("linux")` test short-circuits supervisor and preexec routing, and the PDEATHSIG test skips. **Nothing in-process bounds the lifetime of a job orphaned by a server SIGKILL on these platforms**: once the server is dead, its `ExecJobRegistry`, liveness sampler threads, the abandonment timer (`EXEC_JOB_ABANDON_S` lives in the now-dead process), and all signal/atexit hooks are gone with it. The orphan's worker and descendants are re-parented to PID 1 and run to natural completion; OS-level process cleanup alone does not terminate them. | `ralph/process/manager/__init__.py:165-212` (sync supervisor/preexec gate) and `ralph/process/manager/__init__.py:214-260` (async preexec gate — the `_death_preexec(command) if sys.platform.startswith("linux") and threading.current_thread() is threading.main_thread() else None` ternary inside `_default_async_process_factory`) — **pre-SIGKILL caps that DO NOT bind a SIGKILLed-server orphan**: `ralph/mcp/tools/_exec_jobs.py:266-267` (`_running_jobs` capped at `EXEC_MAX_RUNNING_JOBS=4` prevents new submissions from leaking past the cap while the server is alive; `_finished_results` is a `deque(maxlen=EXEC_JOB_RESULT_FIFO=16)`); constants at `ralph/timeout_defaults.py:177` and `:179`, and the abandonment window `EXEC_JOB_ABANDON_S = 120.0` at `ralph/timeout_defaults.py:175` (does NOT fire on an orphan whose server is dead). | **Stated, not proven.** No non-Linux test exists; `tests/test_exec_job_shutdown_subprocess_e2e.py:221-268` skips with the reason "PR_SET_PDEATHSIG is Linux-only and no cross-platform parent-death equivalent is available; once the MCP server is SIGKILLed on a non-Linux platform there is no in-process lifetime bound for an orphaned exec-job tree." **Today's actual bound on the orphan: NONE in-process after the server is SIGKILLed.** The pre-SIGKILL caps cited above prevent new submissions from leaking past the cap while the server is alive; they do NOT cause an in-flight SIGKILLed-server orphan to exit. `EXEC_JOB_ABANDON_S` lives in the (now-dead) server process. The orphan's lifetime is therefore bound by: (a) the orphan runs to natural completion, (b) OS-level cleanup when it exits, or (c) an external supervisor outside this codebase. **Pre-SIGKILL caps retained only for completeness**, not as a bound on the orphan itself. |
+| Post-restart `exec_wait` on a lost job | The in-memory registry is destroyed when the server restarts, so any `exec_wait(old_job_id)` falls through the lookup and raises a non-retryable "unknown or expired job; process was killed or lost in server restart" error. It never fabricates a snapshot or a result. | `ralph/mcp/tools/_exec_jobs.py:631-654` (`_lookup_job_locked`; the literal message string at `ralph/mcp/tools/_exec_jobs.py:653`) | **Proof**: `tests/test_exec_jobs_session_lifecycle.py:47` (`test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`) — the `:63-68` branch asserts the same string for an invented, never-seen `job_id`, proving the new registry cannot distinguish prior-server ids from any other id (the correct behaviour). Bound: immediate. |
+| Normal job completion | The registry runner polls the handle each `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s); a non-`None` returncode marks the job finished with `kill_cause=None`, then `_settle_job` calls `pm.cleanup_orphans(handle)` to kill descendants that outlived the root and gives the reader threads a bounded window (`_READER_DRAIN_TIMEOUT_S`, 1 s) to reach EOF. The job slides from the running map to the bounded results FIFO before `done_event` wakes waiters. The finisher never closes a pipe: each reader closes its own stream at EOF, so a detached (`setsid`) descendant that escaped the group kill and still holds the pipes cannot stop the job from finishing; the result carries the output captured so far. | `ralph/mcp/tools/_exec_jobs.py:534-541` (poll-and-mark) — `ralph/mcp/tools/_exec_jobs.py:418-425` (`_mark_finished`) — `ralph/mcp/tools/_exec_jobs.py:356-359` (`_settle_job` → `pm.cleanup_orphans`) — `ralph/process/manager/_process_manager.py:978` (`cleanup_orphans`) / `:1004` (`_kill_pgid`) | **Proof**: orphan sweep locked by `tests/test_exec_jobs.py:463` (`test_trace_1_root_exit_with_orphaned_child`) and `tests/test_exec_jobs.py:159` (`_TrackingProcessManager.cleanup_orphans`). Bound: `EXEC_LIVENESS_SAMPLE_INTERVAL_S = 2.0` (`ralph/timeout_defaults.py:137`) is the worst-case staleness between root exit and the registry noticing. |
+| Session end | `session_end` is the `KillCause` literal stamped onto the `JobResult` whenever `shutdown_all()` fires; the trigger is whichever path delivered the teardown — SIGTERM via `install_shutdown_signal_handlers`, owner SIGKILL via `exit_when_owner_exits`, or the lifecycle's `shutdown_mcp_server(bridge)` teardown, which calls `bridge.shutdown()` and triggers the child server's own SIGTERM-handler chain. There is no separate "session end" Python mechanism; it is the union of those paths. | kill-cause literal at `ralph/mcp/tools/_exec_jobs.py:722` (also rendered as `KillCause` member of the literal block at `ralph/mcp/tools/_exec_jobs.py:52-54`); lifecycle teardown at `ralph/mcp/server/lifecycle.py:2300-2301` (`shutdown_mcp_server`) → `ralph/mcp/server/_standalone_mcp_process.py:36-40` (`StandaloneMcpProcess.shutdown`); constants at `ralph/mcp/server/_standalone_mcp_process.py:14` and `:16` (5.0 s each) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:92-129` reads `CAUSE session_end` off the registry's `wait()` output, proving the literal renders through the SIGTERM path. Bound: teardown wall-clock ≤ `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
 
 The matrix is the single point of truth for the seaming. A code edit
 that changes any of the cited lines without updating this table is a
@@ -690,10 +691,10 @@ evaluated on the coarse 2 s sample grid (`EXEC_LIVENESS_SAMPLE_INTERVAL_S`
 Worked numbers (scenario-library ground truth):
 
 - scenario 8 ("short burst then idle",
-  `ralph-workflow/tests/test_exec_liveness_scenarios.py:319`) —
+  `ralph-workflow/tests/test_exec_liveness_scenarios.py:244`) —
   `burst_stop = 30`, kill at **168 s** (continuous 167.5 s)
 - scenario 13 ("mid-run deadlock",
-  `ralph-workflow/tests/test_exec_liveness_scenarios.py:644`) —
+  `ralph-workflow/tests/test_exec_liveness_scenarios.py:424`) —
   `deadlock_at = 120`, kill at **258 s** (continuous 257.5 s)
 
 `ralph/mcp/ARCHITECTURE.md` section 3 ("Ramp-offset timing") and
@@ -714,7 +715,7 @@ The shipped aggregate is the literal-Sugeno weighted average
 `sum(w_i * z_i) / sum(w_i)` verbatim from D2/D3; that aggregate admits
 dilution, and the spec's strict-Monotonic property is unsatisfiable
 jointly with the prescribed aggregate. The counterexample is locked at
-`ralph-workflow/tests/test_liveness_pa002_properties.py:475-549`
+`ralph-workflow/tests/test_liveness_pa002_properties.py:223`
 (`test_kill_timing_non_monotone_under_changing_io`): an idle / working /
 idle trace kills at **130 s** with `io = 0` in the working segment and
 strictly earlier (**129 s**) when `io` rises to 64 KiB/s. R2's `z = 0.9`
@@ -754,7 +755,7 @@ to satisfy strict monotonicity). The evidence that backs this analysis —
 `tests/test_liveness_assessor.py`,
 `tests/test_liveness_pa002_properties.py`,
 `tests/test_liveness_properties.py`, and the
-`Cause 1 — present-day liveness subsystem (CURRENT)` rule table — is on
+`Cause 1 — production liveness subsystem (CURRENT)` rule table — is on
 file for the product reconciliation process.
 
 ## Appendix: how to verify the doc is still truthful
@@ -763,52 +764,52 @@ The five causes are stable as long as the file:line citations in this
 doc match the working tree. Drift is the only way a citation goes
 stale, and the fastest drift check is a re-read of:
 
-- `ralph-workflow/ralph/timeout_defaults.py:135` (`EXEC_DEFAULT_TIMEOUT_MS`)
-  and `:142` (`EXEC_MAX_TIMEOUT_MS`), plus `:598`
-  (`EXEC_SOFT_REPLY_BUDGET_MS`), `:603` (`EXEC_JOB_CEILING_S`), `:609`
+- `ralph-workflow/ralph/timeout_defaults.py:37` (`EXEC_DEFAULT_TIMEOUT_MS`)
+  and `:39` (`EXEC_MAX_TIMEOUT_MS`), plus `:169`
+  (`EXEC_SOFT_REPLY_BUDGET_MS`), `:171` (`EXEC_JOB_CEILING_S`), `:173`
   (`EXEC_JOB_CEILING_MAX_S`) — the Cause 1 / Cause 2 constants.
-- `ralph-workflow/ralph/process/manager/_managed_process.py:315` (the
-  output-only `last_output_at_ref` reset) and `:379-405` (the poll
+- `ralph-workflow/ralph/process/manager/_managed_process.py:279` (the
+  output-only `last_output_at_ref` reset) and `:344-360` (the poll
   loop that computes `inactivity_deadline` and arms the kill)
-- ralph-workflow/ralph/mcp/tools/exec.py:777-790 (the injected-runner
-  seam) and `:792-821` (the production registry entry path) — reading
+- ralph-workflow/ralph/mcp/tools/exec.py:558-571 (the injected-runner
+  seam) and `:572-607` (the production registry entry path) — reading
   these two ranges is how a reader tells whether the output-only window
   is still reachable for normal calls.
-- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:247-255` (the registry
-  `hard_cap` ceiling resolution), `:543-545` (the kill check against
-  `job.ceiling_ms`) and `:58-60` (the six kill causes)
-- `ralph-workflow/ralph/mcp/transport/opencode.py:131,148` (Cause 3
-  per-server + experimental writes; the comment block at lines 41-45
-  is the issue-thread reference) and `:175` (the `$schema` value the
+- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:194-198` (the registry
+  `hard_cap` ceiling resolution), `:449` (the kill check against
+  `job.ceiling_ms`) and `:52-54` (the six kill causes)
+- `ralph-workflow/ralph/mcp/transport/opencode.py:26-28` (the
+  `_OPENCODE_MCP_CLIENT_TIMEOUT_MS` constant both timeout keys are
+  written from), `:77` (the per-server `timeout` write), `:91` (the
+  `experimental.mcp_timeout` write) and `:116` (the `$schema` value the
   OpenCode schema-drift claim in the verified table is read against)
-- `ralph-workflow/ralph/mcp/transport/claude.py:80`,
-  `ralph-workflow/ralph/mcp/transport/codex.py:227`,
-  `ralph-workflow/ralph/mcp/transport/kimi.py:119`,
-  `ralph-workflow/ralph/mcp/transport/pi.py:306`
+- `ralph-workflow/ralph/mcp/transport/claude.py:49`,
+  `ralph-workflow/ralph/mcp/transport/codex.py:127`,
+  `ralph-workflow/ralph/mcp/transport/kimi.py:34`,
+  `ralph-workflow/ralph/mcp/transport/pi.py:59`
   (the rest of Cause 3's per-transport writes)
-- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:62-89`
-  (`extract_progress_token`), `:107-126` (`_build_progress_frame`
-  emitting `notifications/progress`) and `:228-235` (the
+- `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:46-69`
+  (`extract_progress_token`), `:86-104` (`_build_progress_frame`
+  emitting `notifications/progress`) and `:154-161` (the
   `notifications/message` output path) — Cause 4
-- `ralph-workflow/ralph/mcp/server/_saturated_dispatch.py:161-181`
+- `ralph-workflow/ralph/mcp/server/_saturated_dispatch.py:105-115`
   (Cause 5b)
-- `ralph-workflow/ralph/mcp/server/runtime.py:914-950`
-  (`exit_when_owner_exits`) and `:953-1000` (`main`) — the Cause 5c seam
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:2986` and `:3003` (the
-  two `_spawn_mcp_process` call sites), `:3233-3408` (its definition) and
-  `:3392-3402` (the `sys.executable -m ralph.mcp.server` argv list)
-- `ralph-workflow/ralph/mcp/server/_standalone_mcp_process.py:20` and
-  `:24` (`SHUTDOWN_TERMINATE_GRACE_S` / `SHUTDOWN_REAP_WAIT_S`, 5.0 s each)
-- `ralph-workflow/ralph/mcp/server/_timing_safety.py:84`
-  (`TIMING_SAFETY_TRANSPORT_HEADROOM_MS`) and `:91-93`
+- `ralph-workflow/ralph/mcp/server/runtime.py:625-649`
+  (`exit_when_owner_exits`) and `:652-663` (`main`) — the Cause 5c seam
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:1858` and `:1875` (the
+  two `_spawn_mcp_process` call sites), `:2077-2091` (its definition) and
+  `:2152-2163` (the `sys.executable -m ralph.mcp.server` argv list)
+- `ralph-workflow/ralph/mcp/server/_standalone_mcp_process.py:14` and
+  `:16` (`SHUTDOWN_TERMINATE_GRACE_S` / `SHUTDOWN_REAP_WAIT_S`, 5.0 s each)
+- `ralph-workflow/ralph/mcp/server/_timing_safety.py:35`
+  (`TIMING_SAFETY_TRANSPORT_HEADROOM_MS`) and `:37-39`
   (`TIMING_SAFETY_TRANSPORT_FLOOR_MS` — the per-transport floor the
   written keys must clear)
 
 The URL citations in the verified client-timeout table are also
-subject to drift — every URL listed there was fetched live in the
-WU-5 pass, then re-opened one at a time in the WU-3 citation pass,
-where the quoted string was read back off the live page before the row
-was allowed to stand. Re-running
+subject to drift — every URL listed there was fetched live and the
+quoted string was read back off the live page before the row was
+allowed to stand. Re-running
 `scripts/fabrication_guard.py --level 2
 ralph-workflow/docs/agents/exec-long-running-root-cause.md`
 after this doc is edited is the cheapest way to confirm none of

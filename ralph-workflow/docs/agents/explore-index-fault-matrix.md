@@ -12,7 +12,7 @@ response (`grep_files`, `search_files`, `read_file`,
 ## Failure-mode matrix
 
 The columns describe: (a) the failure as observed by an agent tool
-call, (b) the current handling prior to this work item, (c) the
+call, (b) the current handling, (c) the
 required auto-mode behaviour per the product criteria, (d) the
 recovery action per R2, and (e) the canonical reason code returned
 on the response so callers can detect the degraded path. Reason codes
@@ -30,10 +30,10 @@ are stable identifiers; their meaning is the contract.
 | F8 | Several sessions share one workspace's index at once | `ReindexWriter.claim` coalesces via a per-db-path active map; tests pin the contract | Correct results for every session; one rebuild at a time | Single-writer lock; readers pick up the new generation | (n/a — silent coalesce) |
 | F9 | Disk full / index directory unwritable (permissions, RO mount) | Writes raise OSError; current handlers don't fall back | Auto: live fall-through | Bounded exponential backoff; self-recover when writable | `index_unwritable` |
 | F10 | Index read-only (RO mount) | Reads succeed; writes raise | Serve from index while fresh; otherwise fall through | Report the degraded state | `index_read_only` |
-| F11 | Index stale past threshold (R4) | (pre-work: no threshold probe) | Auto: live fall-through | Changed-files refresh | `index_stale_scope` |
-| F12 | External edits (shell, editor, other processes) | (pre-work: only in-session mutations are seen) | Never return content no longer in the files; never miss added content | Detect + refresh | `index_stale_scope` |
-| F13 | Mass git change (checkout, rebase, merge, reset, stash, pull) | (pre-work: only in-session mutations) | Fall through until the index catches up | Changed-files or full refresh, whichever is cheaper | `index_stale_scope` |
-| F14 | Ignore rules changed (`.gitignore` edited) | (pre-work: not re-checked) | Results honour the current ignore rules | Re-check affected paths | `ignore_rule_changed` |
+| F11 | Index stale past threshold (R4) | `staleness_probe` compares the store's dirty paths, deleted-file count and manifest drift against `DEFAULT_STALENESS_THRESHOLD` (`ralph/mcp/explore/serving.py:35`); a stale probe sets `fallback_reason = "index_stale_scope"` (`ralph/mcp/tools/workspace/_grep_handlers.py:463-469`) | Auto: live fall-through | Changed-files refresh | `index_stale_scope` |
+| F12 | External edits (shell, editor, other processes) | The staleness probe compares each indexed file's persisted size/mtime against the current workspace manifest, so an externally edited file counts as a stale path (`ralph/mcp/explore/serving.py:180-196`) | Never return content no longer in the files; never miss added content | Detect + refresh | `index_stale_scope` |
+| F13 | Mass git change (checkout, rebase, merge, reset, stash, pull) | The staleness probe reads the store's dirty paths (`ralph/mcp/explore/serving.py:164`), so a mass git change marks the affected scope stale | Fall through until the index catches up | Changed-files or full refresh, whichever is cheaper | `index_stale_scope` |
+| F14 | Ignore rules changed (`.gitignore` edited) | `_gitignore_coverage(workspace_root)` reports the managed ignore-rule coverage of the workspace (`ralph/mcp/explore/handlers.py:132`), and the affected paths are re-checked on the next query | Results honour the current ignore rules | Re-check affected paths | `ignore_rule_changed` |
 | F15 | Hard files (binary, huge, invalid encoding, long lines, symlink loops, unreadable, odd names) | Existing chunker skips/records without crashing; tests pin this | Same results as live search under same rules; never crash the build | Skip / record such files without stopping | `hard_file_skipped` |
 | F16 | Query not FTS-eligible (regex, multiline) | `is_fts_eligible` short-circuits; live grep runs | Fall through | None needed | `pattern_not_fts_eligible` |
 | F17 | Index / query call goes over its timeout budget | Per-call budgets are bounded (1-N ms); live fall-through | Live-search results, or bounded partial result clearly marked incomplete | Build continues in the background | `timeout_exceeded` |
@@ -61,7 +61,7 @@ must not introduce new codes without updating this table.
 * `timeout_exceeded` — the indexed or live call exceeded its timeout budget; the response is bounded and clearly marked incomplete.
 * `indexer_error` — the indexer threw an unexpected exception; the call falls through to live search and recovery is retried with backoff.
 * `resource_pressure` — memory or CPU pressure; indexing paused or slowed down to keep the agent responsive.
-* `workspace_moved` — the workspace root has moved or the worktree was removed; the persisted index no longer applies.
+* `workspace_moved` — the indexed root and the workspace root diverge: the root was moved, the root was renamed, or the worktree has been removed and recreated, so the persisted rows belong to a different root than the current workspace; recovery wipes the index directory and rebuilds it in full mode (`ralph/mcp/explore/recovery.py:310-318`, `:330-336`).
 * `no_index_handle` — no `ExploreIndex` handle is attached to the session; the call uses the live path.
 
 ## Recovery semantics
@@ -118,10 +118,7 @@ suite (`test_explore_fault_matrix_full.py` + the late slice
 four/five-part contract. F6 and F8 use dedicated `subprocess_e2e`
 suites for the kill-during-build and multi-session proofs.
 
-A `✅` means the existing test covers that axis. Rows that were
-missing an axis (the S-4 repair log closed them) carry the same
-`✅` once the missing assertion is in place; see the S-4 repair
-log below for the closure history.
+A `✅` means the named test covers that axis.
 
 | # | Primary test(s) | (a) parity | (b) reason | (c) budget | (d) recovery | (e) status |
 |---|---|---|---|---|---|---|

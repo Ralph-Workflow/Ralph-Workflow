@@ -314,35 +314,41 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "remove": "raw os.remove bypasses the canonical delete primitive; "
     "delete only through the canonical delete primitive",
     "mkdir": "raw mkdir bypasses the canonical directory creation primitive; "
-    "use workspace.fs.mkdirs or annotate the call",
+    "use workspace.fs.mkdirs or exempt the call site via EXEMPT_CALL_SITES",
     "makedirs": "raw makedirs bypasses the canonical directory creation primitive; "
-    "use workspace.fs.mkdirs or annotate the call",
+    "use workspace.fs.mkdirs or exempt the call site via EXEMPT_CALL_SITES",
     "rmdir": "raw rmdir bypasses the canonical delete primitive",
     "rmtree": "raw rmtree bypasses the canonical delete primitive",
     "fsync": "raw fsync bypasses the canonical durability primitive; "
-    "use ralph.mcp.artifacts.idempotent_write or mark with a reason",
+    "use ralph.mcp.artifacts.idempotent_write or exempt the call site via EXEMPT_CALL_SITES",
     "sync": "raw os.sync bypasses the canonical durability primitive; "
-    "use ralph.mcp.artifacts.idempotent_write or mark with a reason",
+    "use ralph.mcp.artifacts.idempotent_write or exempt the call site via EXEMPT_CALL_SITES",
     "copy": "raw shutil.copy bypasses the canonical copy boundary; "
-    "route through an approved persistence primitive appropriate to the copy or mark",
+    "route through an approved persistence primitive appropriate to the copy or "
+    "exempt the call site via EXEMPT_CALL_SITES",
     "copy2": "raw shutil.copy2 bypasses the canonical copy boundary; "
-    "route through an approved persistence primitive appropriate to the copy or mark",
+    "route through an approved persistence primitive appropriate to the copy or "
+    "exempt the call site via EXEMPT_CALL_SITES",
     "copyfile": "raw shutil.copyfile bypasses the canonical copy boundary; "
-    "route through an approved persistence primitive appropriate to the copy or mark",
+    "route through an approved persistence primitive appropriate to the copy or "
+    "exempt the call site via EXEMPT_CALL_SITES",
     "copytree": "raw shutil.copytree bypasses the canonical directory-copy boundary; "
-    "route through Workspace.copy or mark the explicit user-requested tree contract",
+    "route through Workspace.copy or exempt the call site via EXEMPT_CALL_SITES "
+    "for the explicit user-requested tree contract",
     "copymode": "raw shutil.copymode bypasses the canonical copy primitive; "
-    "mark with a reason or route through the canonical primitive",
+    "route through the canonical primitive or exempt the call site via EXEMPT_CALL_SITES",
     "move": "raw shutil.move bypasses the canonical move boundary; "
-    "route through an approved persistence primitive appropriate to the move or mark",
+    "route through an approved persistence primitive appropriate to the move or "
+    "exempt the call site via EXEMPT_CALL_SITES",
     "touch": "raw touch bumps mtime without content change; "
     "register the call site in EXEMPT_CALL_SITES or remove the call",
     "chmod": "raw permission metadata mutation bypasses the filesystem activity guard; "
     "retain only as a registered call site naming the permission contract",
     "open": "raw os.open bypasses the canonical file-creation boundary; "
-    "route through a shared persistence primitive or mark the local lifecycle reason",
+    "route through a shared persistence primitive or exempt the call site via "
+    "EXEMPT_CALL_SITES for the local lifecycle contract",
     "truncate": "raw truncate bypasses the canonical truncation primitive; "
-    "mark with a reason or route through the canonical primitive",
+    "route through the canonical primitive or exempt the call site via EXEMPT_CALL_SITES",
 }
 
 

@@ -62,8 +62,8 @@ class GoGuidelines:
             "Use testify or similar for assertions when it improves clarity.",
         )
         self.documentation_checks = (
-            "Document exported types, functions, and packages with Go-style comments.",
-            "Explain concurrency expectations, ownership, and side effects in non-obvious code.",
+            "Exported types, functions, and packages state their contract through names, types, and signatures.",
+            "Non-obvious code makes concurrency expectations, ownership, and side effects explicit through types and structure.",
             "Keep README and API examples aligned with actual package behavior.",
         )
         self.idioms = (

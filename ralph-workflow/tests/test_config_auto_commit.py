@@ -21,6 +21,21 @@ pytestmark = [
     pytest.mark.timeout_seconds(5),
 ]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_enable_detected_agents_creates_no_auto_commit_in_repo": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "promotes the detected agent through its structured [inactive_agents.<name>] "
+        "table; the check still asserts that no auto-commit is created, that the "
+        "promoted agent lands in [agents.<name>], and that the backup is written"
+    ),
+    "test_enable_detected_agents_via_symlinked_config_path_creates_no_auto_commit": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "promotes the detected agent through its structured [inactive_agents.<name>] "
+        "table; the check still asserts that no auto-commit is created, that the "
+        "symlink is preserved, and that the promoted agent lands in [agents.<name>]"
+    ),
+}
+
 
 def _init_repo_with_initial_commit(repo_root: Path) -> None:
     repo = Repo.init(repo_root)
@@ -178,13 +193,7 @@ def test_enable_detected_agents_creates_no_auto_commit_in_repo(
     _init_repo_with_initial_commit(tmp_path)
     config_path = tmp_path / "ralph-workflow-agents.toml"
     initial_content = (
-        "[agents.claude]\n"
-        'cmd = "claude"\n'
-        "\n"
-        "# @AGENT-BLOCK-START: codex\n"
-        "# [agents.codex]\n"
-        '# cmd = "codex exec"\n'
-        "# @AGENT-BLOCK-END\n"
+        '[agents.claude]\ncmd = "claude"\n\n[inactive_agents.codex]\ncmd = "codex exec"\n'
     )
     config_path.write_text(initial_content, encoding="utf-8")
     repo = Repo(tmp_path)
@@ -210,7 +219,7 @@ def test_enable_detected_agents_creates_no_auto_commit_in_repo(
 
     updated_text = config_path.read_text(encoding="utf-8")
     assert "[agents.codex]" in updated_text
-    assert "# @AGENT-BLOCK-START" not in updated_text
+    assert "[inactive_agents.codex]" not in updated_text
 
     bak_path = config_path.with_name("ralph-workflow-agents.toml.bak")
     assert bak_path.exists()
@@ -231,13 +240,7 @@ def test_enable_detected_agents_via_symlinked_config_path_creates_no_auto_commit
     _init_repo_with_initial_commit(tmp_path)
     target = tmp_path / "target.toml"
     initial_content = (
-        "[agents.claude]\n"
-        'cmd = "claude"\n'
-        "\n"
-        "# @AGENT-BLOCK-START: codex\n"
-        "# [agents.codex]\n"
-        '# cmd = "codex exec"\n'
-        "# @AGENT-BLOCK-END\n"
+        '[agents.claude]\ncmd = "claude"\n\n[inactive_agents.codex]\ncmd = "codex exec"\n'
     )
     target.write_text(initial_content, encoding="utf-8")
     config_link = tmp_path / "config.toml"
@@ -265,7 +268,7 @@ def test_enable_detected_agents_via_symlinked_config_path_creates_no_auto_commit
 
     updated_text = config_link.read_text(encoding="utf-8")
     assert "[agents.codex]" in updated_text
-    assert "# @AGENT-BLOCK-START" not in updated_text
+    assert "[inactive_agents.codex]" not in updated_text
 
     assert config_link.is_symlink(), (
         "enable_detected_agents must not replace a symlinked agents config with a regular file"
@@ -278,7 +281,7 @@ def test_enable_detected_agents_via_symlinked_config_path_creates_no_auto_commit
     assert "[agents.codex]" in target_text, (
         "the real file behind the symlink must hold the activated agents block"
     )
-    assert "# @AGENT-BLOCK-START" not in target_text
+    assert "[inactive_agents.codex]" not in target_text
 
     bak_path = config_link.with_name(f"{config_link.name}.bak")
     assert bak_path.exists()

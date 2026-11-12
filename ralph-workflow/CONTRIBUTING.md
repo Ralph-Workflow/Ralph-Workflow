@@ -668,6 +668,36 @@ uv run hatch build
 uv run python -m twine check dist/*
 ```
 
+### Publishing a Homebrew bottle
+
+`Formula/ralph-workflow.rb` is a contributor scaffold for the standalone
+binary. It is not in a Homebrew tap, no release asset exists, and the formula
+carries neither `url` nor `sha256`, so it is not installable as-is. It installs
+the standalone binary as `ralph`, so the target machine needs no Python
+runtime.
+
+To publish a bottle for the standalone binary:
+
+1. Build the binary: `make dist-binary` — the target runs
+   `pyinstaller ralph-workflow.spec`, and that spec file is not tracked in this
+   repository.
+2. Rename it for Homebrew:
+   `mv dist/ralph-workflow dist/ralph-darwin-universal2`
+3. Create the tarball:
+   `tar -czvf ralph-darwin-universal2.tar.gz -C dist ralph-darwin-universal2`
+4. Compute the checksum:
+   `shasum -a 256 ralph-darwin-universal2.tar.gz`
+5. Read the release version from `__version__` in `ralph/__init__.py`, the
+   canonical version source.
+6. Add `url` and `sha256` lines to `Formula/ralph-workflow.rb` holding the
+   release URL and the checksum, upload the tarball as a release asset, and
+   submit the formula change to the tap.
+7. Validate the formula: `make formula-check` — the target runs `ruby -c` on
+   `Formula/ralph-workflow.rb`.
+
+The formula's `homepage` and `license` values match `pyproject.toml`; keep
+them in sync when either changes.
+
 ## How to add a new agent
 
 The fastest path is the 5-minute [quickstart](docs/agents/quickstart-add-a-new-agent.md) — it shows the opinionated 5-line `register_my_agent` recipe for both headless and interactive agents and is the recommended entry point.

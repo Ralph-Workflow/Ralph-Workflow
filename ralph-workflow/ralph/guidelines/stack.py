@@ -58,7 +58,7 @@ BASE_TESTING_CHECKS = (
 )
 BASE_DOCUMENTATION_CHECKS = (
     "Public APIs are documented",
-    "Complex logic has explanatory comments",
+    "Complex logic is expressed through self-documenting names, types, and structure",
 )
 BASE_IDIOMS = ("Code follows language conventions",)
 BASE_ANTI_PATTERNS = ("Avoid code duplication",)

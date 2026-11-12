@@ -1,10 +1,6 @@
-// Ralph Docs — small enhancements layered on top of the static Sphinx output.
-// Strict scope: scroll-spy for right TOC + close-mobile-drawer-on-link-click.
-// No third-party deps. No framework. Total ~60 lines on purpose.
 (function () {
   "use strict";
 
-  // ── 1) Right-TOC scroll-spy ─────────────────────────────────────────────
   function initTocSpy() {
     var tocLinks = Array.prototype.slice.call(
       document.querySelectorAll(".ralph-toc-tree a[href^='#']")
@@ -36,7 +32,6 @@
             else visible.delete(r.target);
           });
           if (visible.size > 0) {
-            // Pick the highest visible heading (smallest top)
             var top = null;
             visible.forEach(function (r) {
               if (top === null || r.boundingClientRect.top < top.boundingClientRect.top) top = r;
@@ -49,7 +44,6 @@
       );
       entries.forEach(function (e) { io.observe(e.target); });
     } else {
-      // Fallback: passive scroll listener
       var ticking = false;
       function update() {
         ticking = false;
@@ -67,7 +61,6 @@
     }
   }
 
-  // ── 2) Close mobile sidebar drawer on link click ────────────────────────
   function initSidebarClose() {
     var toggle = document.getElementById("__navigation");
     if (!toggle) return;
@@ -76,12 +69,10 @@
     sidebar.addEventListener("click", function (event) {
       var link = event.target.closest("a[href]");
       if (!link) return;
-      // Only close on small screens — sidebar drawer is open
       if (window.matchMedia("(max-width: 64rem)").matches) {
         toggle.checked = false;
       }
     });
-    // Esc to close drawer
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape" && toggle.checked) toggle.checked = false;
     });

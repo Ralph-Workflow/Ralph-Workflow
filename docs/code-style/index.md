@@ -1,9 +1,11 @@
 # Project Code Style Guide
 
 This directory (`docs/code-style/`) is the **canonical home** for the
-maintained Python code style. It contains only Python-current
-material:
+maintained Python code style. It contains:
 
+- `index.md` — this page: the Python style source of truth, the
+  type-checking requirements, the suppression policy, and the canonical
+  verification commands
 - `documentation-rubric.md` — canonical documentation rubric for every
   docs-related change
 
@@ -27,11 +29,8 @@ Use these when working on the maintained package:
 - Test files carry zero type-checker suppression comments (enforced by
   `test_type_ignore_policy.py`).
 - Tracked Python sources carry no inline suppression directive of any
-  kind: the absolute comment gate `ralph.testing.audit_comments` fails
-  on every comment token, so a suppression lives in tool configuration
-  (`ralph-workflow/mypy.ini`) or is replaced with a typed helper, guard,
-  adapter, or `cast(...)`. The policy is
-  `docs/agents/type-ignore-policy.md`.
+  kind, and test files carry zero type-checker suppression comments —
+  see **Suppression policy** below.
 - Source code carries no docstrings; contracts live in names, type
   annotations, and tests.
 - Prefer small, explicit modules over deeply clever abstractions.

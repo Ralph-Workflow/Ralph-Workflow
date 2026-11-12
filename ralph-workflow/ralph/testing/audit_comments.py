@@ -19,8 +19,11 @@ __all__ = [
     "DOCS_MARKERS",
     "DOCS_SUFFIXES",
     "FIX_HINT",
+    "MODE_CSS",
     "MODE_DOCS",
+    "MODE_HASH",
     "MODE_JINJA",
+    "MODE_JS",
     "MODE_MAKE",
     "MODE_PYTHON",
     "MODE_SHELL",
@@ -43,15 +46,23 @@ MODE_TOML = "toml"
 MODE_YAML = "yaml"
 MODE_JINJA = "jinja"
 MODE_DOCS = "docs"
+MODE_HASH = "hash"
+MODE_JS = "js"
+MODE_CSS = "css"
 
 _COMMENT_MODES: dict[str, str] = {
     ".bash": MODE_SHELL,
+    ".conf": MODE_HASH,
+    ".css": MODE_CSS,
+    ".ini": MODE_HASH,
     ".j2": MODE_JINJA,
     ".jinja": MODE_JINJA,
     ".jinja2": MODE_JINJA,
+    ".js": MODE_JS,
     ".mk": MODE_MAKE,
     ".py": MODE_PYTHON,
     ".pyi": MODE_PYTHON,
+    ".rb": MODE_HASH,
     ".sh": MODE_SHELL,
     ".toml": MODE_TOML,
     ".txt": MODE_JINJA,
@@ -62,6 +73,13 @@ _COMMENT_MODES: dict[str, str] = {
 COMMENT_SUFFIXES: frozenset[str] = frozenset(_COMMENT_MODES)
 
 MAKEFILE_NAMES: frozenset[str] = frozenset({"Makefile"})
+
+NAME_COMMENT_MODES: dict[str, str] = {
+    ".dockerignore": MODE_HASH,
+    "Dockerfile": MODE_HASH,
+    "py.typed": MODE_HASH,
+}
+
 DOCS_SUFFIXES: frozenset[str] = frozenset({".md"})
 
 DOCS_TEXT_SUFFIXES: frozenset[str] = frozenset({".md", ".toml"})
@@ -92,7 +110,7 @@ DOCS_MARKER_FILES: frozenset[str] = frozenset(
     }
 )
 
-SCRIPT_DIRS: tuple[str, ...] = ("scripts", "ralph-workflow/scripts")
+SCRIPT_DIRS: tuple[str, ...] = (".githooks", "scripts", "ralph-workflow/scripts")
 
 SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".git", ".mypy_cache", ".ruff_cache"})
 
@@ -312,7 +330,7 @@ def _scan_hash_comments(text: str, path: str, mode: str) -> list[Finding]:
     yaml_style = mode == MODE_YAML
     shell_style = mode in (MODE_SHELL, MODE_MAKE)
     toml_style = mode == MODE_TOML
-    inline_hash = mode in (MODE_TOML, MODE_MAKE)
+    inline_hash = mode in (MODE_TOML, MODE_MAKE, MODE_HASH)
     findings: list[Finding] = []
     state = _ScanState()
     index = 0
@@ -375,6 +393,52 @@ def _scan_jinja_comments(text: str, path: str) -> list[Finding]:
     return findings
 
 
+def _skip_quoted(text: str, index: int, quote: str) -> int:
+    length = len(text)
+    position = index + 1
+    while position < length:
+        char = text[position]
+        if char == "\\":
+            position += 2
+            continue
+        if char == quote:
+            return position + 1
+        position += 1
+    return length
+
+
+def _scan_c_style_comments(text: str, path: str, line_comments: bool) -> list[Finding]:
+    findings: list[Finding] = []
+    line = 1
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char in {'"', "'", "`"}:
+            end = _skip_quoted(text, index, char)
+            line += text.count("\n", index, end)
+            index = end
+            continue
+        if char == "/" and text.startswith("/*", index):
+            end = text.find("*/", index + 2)
+            body_end = length if end < 0 else end
+            findings.append(Finding(path, line, _truncate(_collapse(text[index + 2 : body_end]))))
+            line += text.count("\n", index, body_end)
+            index = body_end + 2 if end >= 0 else length
+            continue
+        if line_comments and char == "/" and text.startswith("//", index):
+            end = text.find("\n", index)
+            if end < 0:
+                end = length
+            findings.append(Finding(path, line, _truncate(text[index:end].strip())))
+            index = end
+            continue
+        if char == "\n":
+            line += 1
+        index += 1
+    return findings
+
+
 def _scan_docs_markers(text: str, path: str) -> list[Finding]:
     findings: list[Finding] = []
     fence = ""
@@ -403,19 +467,28 @@ def _scan_docs_markers(text: str, path: str) -> list[Finding]:
 
 def scan_source(text: str, path: str, mode: str) -> list[Finding]:
     if mode == MODE_PYTHON:
-        return scan_python_source(text, path)
-    if mode == MODE_JINJA:
-        return _scan_jinja_comments(text, path)
-    if mode == MODE_DOCS:
-        return _scan_docs_markers(text, path)
-    if mode == MODE_YAML:
-        return _scan_yaml_comments(text, path)
-    return _scan_hash_comments(text, path, mode)
+        findings = scan_python_source(text, path)
+    elif mode == MODE_JINJA:
+        findings = _scan_jinja_comments(text, path)
+    elif mode == MODE_DOCS:
+        findings = _scan_docs_markers(text, path)
+    elif mode == MODE_YAML:
+        findings = _scan_yaml_comments(text, path)
+    elif mode == MODE_CSS:
+        findings = _scan_c_style_comments(text, path, False)
+    elif mode == MODE_JS:
+        findings = _scan_c_style_comments(text, path, True)
+    else:
+        findings = _scan_hash_comments(text, path, mode)
+    return findings
 
 
 def _comment_mode(path: Path) -> str | None:
     if path.name in MAKEFILE_NAMES:
         return MODE_MAKE
+    named_mode = NAME_COMMENT_MODES.get(path.name)
+    if named_mode is not None:
+        return named_mode
     return _COMMENT_MODES.get(path.suffix)
 
 

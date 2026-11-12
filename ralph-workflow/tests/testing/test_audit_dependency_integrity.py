@@ -16,6 +16,18 @@ from ralph.testing.audit_dependency_integrity import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "comment publisher evidence": (
+        "an inline publisher comment is no longer accepted evidence, so the "
+        "publisher check now requires the structured dependency-evidence table "
+        "or a source-control owner URL"
+    ),
+    "structured publisher evidence": (
+        "the publisher and source checks read one categories value so both "
+        "categories are asserted from the same finding set"
+    ),
+}
+
 _BASE_PYPROJECT = """\
 [project]
 name = "demo"
@@ -90,7 +102,7 @@ def test_hallucinated_package_without_source_or_publisher_fails() -> None:
     assert "fix:" in publisher_finding.detail
 
 
-def test_new_package_with_publisher_but_without_source_still_fails() -> None:
+def test_comment_only_publisher_evidence_fails_with_missing_publisher() -> None:
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
@@ -100,8 +112,15 @@ def test_new_package_with_publisher_but_without_source_still_fails() -> None:
     )
     findings = audit_dependency_change(_baseline(), current)
 
-    assert CATEGORY_MISSING_SOURCE in _categories(findings)
-    assert CATEGORY_MISSING_PUBLISHER not in _categories(findings)
+    categories = _categories(findings)
+    assert CATEGORY_MISSING_SOURCE in categories
+    assert CATEGORY_MISSING_PUBLISHER in categories
+    publisher_finding = next(f for f in findings if f.category == CATEGORY_MISSING_PUBLISHER)
+    assert "halfgated-pkg-4c1d" in publisher_finding.detail
+    assert "publisher" in publisher_finding.detail
+    assert "fix:" in publisher_finding.detail
+    assert "# publisher:" not in publisher_finding.detail
+    assert "[tool.ralph.dependency-evidence.<package>]" in publisher_finding.detail
 
 
 def test_new_package_with_source_but_without_publisher_still_fails() -> None:
@@ -122,22 +141,26 @@ def test_new_package_with_source_but_without_publisher_still_fails() -> None:
     assert CATEGORY_MISSING_PUBLISHER in _categories(findings)
 
 
-def test_new_package_with_source_and_publisher_passes() -> None:
+def test_new_package_with_structured_publisher_and_index_source_passes() -> None:
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
-        '  "halfgated-pkg-4c1d[acme]>=1.0",  # publisher: Acme Inc\n'
+        '  "halfgated-pkg-4c1d[acme]>=1.0",\n'
         "]\n"
         "\n"
         "[[tool.uv.index]]\n"
         'name = "acme"\n'
-        'url = "https://acme.invalid/simple"\n',
+        'url = "https://acme.invalid/simple"\n'
+        "\n"
+        "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'publisher = "Acme Inc"\n',
         _BASE_LOCK,
     )
     findings = audit_dependency_change(_baseline(), current)
 
-    assert CATEGORY_MISSING_SOURCE not in _categories(findings)
-    assert CATEGORY_MISSING_PUBLISHER not in _categories(findings)
+    categories = _categories(findings)
+    assert CATEGORY_MISSING_SOURCE not in categories
+    assert CATEGORY_MISSING_PUBLISHER not in categories
 
 
 def test_evidence_table_records_the_publisher() -> None:
@@ -145,6 +168,24 @@ def test_evidence_table_records_the_publisher() -> None:
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
         '  "halfgated-pkg-4c1d>=1.0",\n'
+        "]\n"
+        "\n"
+        "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'publisher = "Acme Inc"\n'
+        'source = "https://acme.invalid/simple"\n',
+        _BASE_LOCK,
+    )
+    findings = audit_dependency_change(_baseline(), current)
+
+    assert CATEGORY_MISSING_PUBLISHER not in _categories(findings)
+    assert CATEGORY_MISSING_SOURCE not in _categories(findings)
+
+
+def test_structured_publisher_evidence_survives_an_inline_comment() -> None:
+    current = _current(
+        '[project]\nname = "demo"\ndependencies = [\n'
+        '  "typer>=0.12",\n'
+        '  "halfgated-pkg-4c1d>=1.0",  # publisher: Acme Inc\n'
         "]\n"
         "\n"
         "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
@@ -249,15 +290,16 @@ def test_new_package_with_deleted_current_lockfile_fails() -> None:
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
-        '  "halfgated-pkg-4c1d>=1.0",  # publisher: Acme Inc\n'
+        '  "halfgated-pkg-4c1d>=1.0",\n'
         "]\n"
         "\n"
         "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'publisher = "Acme Inc"\n'
         'source = "https://pypi.org/simple"\n',
         lock=None,
     )
     findings = audit_dependency_change(baseline, current)
-    assert CATEGORY_MISSING_LOCK_ENTRY in _categories(findings)
+    assert _categories(findings) == {CATEGORY_MISSING_LOCK_ENTRY}
     finding = next(f for f in findings if f.category == CATEGORY_MISSING_LOCK_ENTRY)
     assert "halfgated-pkg-4c1d" in finding.detail
     assert "re-lock" in finding.detail
@@ -268,15 +310,16 @@ def test_new_package_with_malformed_current_lockfile_fails() -> None:
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
-        '  "halfgated-pkg-4c1d>=1.0",  # publisher: Acme Inc\n'
+        '  "halfgated-pkg-4c1d>=1.0",\n'
         "]\n"
         "\n"
         "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'publisher = "Acme Inc"\n'
         'source = "https://pypi.org/simple"\n',
         lock="malformed toml [[[",
     )
     findings = audit_dependency_change(baseline, current)
-    assert CATEGORY_MISSING_LOCK_ENTRY in _categories(findings)
+    assert _categories(findings) == {CATEGORY_MISSING_LOCK_ENTRY}
     finding = next(f for f in findings if f.category == CATEGORY_MISSING_LOCK_ENTRY)
     assert "halfgated-pkg-4c1d" in finding.detail
 
@@ -296,10 +339,11 @@ sdist = { url = "https://example.invalid/halfgated.tar.gz", hash = "sha256:ccc" 
     current = _current(
         '[project]\nname = "demo"\ndependencies = [\n'
         '  "typer>=0.12",\n'
-        '  "halfgated-pkg-4c1d>=1.0",  # publisher: Acme Inc\n'
+        '  "halfgated-pkg-4c1d>=1.0",\n'
         "]\n"
         "\n"
         "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'publisher = "Acme Inc"\n'
         'source = "https://pypi.org/simple"\n',
         lock=lock_with_pkg,
     )

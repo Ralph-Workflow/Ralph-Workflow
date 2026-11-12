@@ -55,7 +55,7 @@ class RustGuidelines:
     documentation_checks: list[str] = field(
         default_factory=lambda: [
             "Public APIs are documented",
-            "Complex logic has explanatory comments",
+            "Complex logic is expressed through self-documenting names, types, and structure",
             "Unsafe invariants and panic conditions are documented",
         ]
     )

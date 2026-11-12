@@ -26,6 +26,56 @@ def _capture_loguru_records(level: str = "DEBUG") -> tuple[list[tuple[str, int]]
     return records, sink_id
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_enable_detected_agents_creates_backup_preserving_operator_edits": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "promotes the detected agent through its structured [inactive_agents.<name>] "
+        "table; the check still asserts that the backup preserves operator edits and "
+        "that the promoted agent lands in [agents.<name>]"
+    ),
+    "test_enable_detected_agents_keeps_comment_fenced_blocks_inert": (
+        "a comment-fenced block is inert configuration, so the check now asserts that "
+        "no fenced block is activated, no warning is raised, and the file is left "
+        "byte-identical"
+    ),
+    "test_enable_detected_agents_all_invalid_produces_no_backup_and_no_write": (
+        "a comment-fenced block is inert configuration, so the check now asserts that "
+        "the invalid fenced block is never activated, raises no warning, and leaves "
+        "the file without a backup"
+    ),
+    "test_enable_detected_agents_emits_trigger_line_to_operator_visible_loguru_sink": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "promotes the detected agent through its structured [inactive_agents.<name>] "
+        "table; the check still asserts that the operator-visible trigger line is "
+        "emitted for the write"
+    ),
+    "test_enable_detected_agents_skips_block_conflicting_with_existing_table": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "declares the conflicting agent as a structured [inactive_agents.<name>] "
+        "table; the check still asserts that the conflicting agent is skipped with a "
+        "warning and that the file is left unchanged"
+    ),
+    "test_enable_detected_agents_applies_non_conflicting_block_beside_a_conflict": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "declares both agents as structured [inactive_agents.<name>] tables; the check "
+        "still asserts that the non-conflicting agent is promoted beside the skipped "
+        "conflicting one"
+    ),
+    "test_enable_detected_agents_does_not_raise_on_a_conflicting_table": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "declares both agents as structured [inactive_agents.<name>] tables; the check "
+        "still asserts that the conflicting agent is skipped without raising while the "
+        "other one is promoted"
+    ),
+    "test_enable_detected_agents_conflict_propagates_without_stale_backup_or_overwrite": (
+        "the retired comment-fenced agent blocks no longer activate, so the fixture "
+        "declares the agent as a structured [inactive_agents.<name>] table; the check "
+        "still asserts that a concurrent operator edit aborts the write without a "
+        "stale backup"
+    ),
+}
+
+
 def test_enable_detected_agents_creates_backup_preserving_operator_edits(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -37,10 +87,8 @@ def test_enable_detected_agents_creates_backup_preserving_operator_edits(
         "[agents.claude]\n"
         'cmd = "claude"\n'
         'operator_custom_key = "custom_value"\n\n'
-        "# @AGENT-BLOCK-START: codex\n"
-        "# [agents.codex]\n"
-        '# cmd = "codex exec"\n'
-        "# @AGENT-BLOCK-END\n"
+        "[inactive_agents.codex]\n"
+        'cmd = "codex exec"\n'
     )
     config_path.write_text(initial_content, encoding="utf-8")
     bak_path = config_path.with_name(f"{config_path.name}.bak")
@@ -69,7 +117,7 @@ def test_enable_detected_agents_creates_backup_preserving_operator_edits(
     assert str(config_path) in caplog.text
 
 
-def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
+def test_enable_detected_agents_keeps_comment_fenced_blocks_inert(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -79,8 +127,8 @@ def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
         "[agents.claude]\n"
         'cmd = "claude"\n\n'
         "# @AGENT-BLOCK-START: codex\n"
-        "# [agents.codex\n"
-        "# cmd = invalid_syntax = [unclosed\n"
+        "# [agents.codex]\n"
+        '# cmd = "codex exec"\n'
         "# @AGENT-BLOCK-END\n\n"
         "# @AGENT-BLOCK-START: pi\n"
         "# [agents.pi]\n"
@@ -88,6 +136,7 @@ def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
         "# @AGENT-BLOCK-END\n"
     )
     config_path.write_text(initial_content, encoding="utf-8")
+    bak_path = config_path.with_name(f"{config_path.name}.bak")
 
     monkeypatch.setattr(
         "ralph.config.agent_detection.detect_installed_agents", lambda: ["codex", "pi"]
@@ -96,19 +145,16 @@ def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
     with caplog.at_level(logging.WARNING):
         enabled = enable_detected_agents(config_path)
 
-    assert enabled == ["pi"]
+    assert enabled == []
+    assert not bak_path.exists()
+    assert config_path.read_text(encoding="utf-8") == initial_content
+    assert [record.message for record in caplog.records if record.levelno >= logging.WARNING] == []
 
-    assert any(
-        "codex" in record.message for record in caplog.records if record.levelno >= logging.WARNING
-    )
-
-    new_content = config_path.read_text(encoding="utf-8")
-    data = tomllib.loads(new_content)
-    assert isinstance(data, dict)
+    data = tomllib.loads(config_path.read_text(encoding="utf-8"))
     agents = data.get("agents")
     assert isinstance(agents, dict)
-    assert "pi" in agents
     assert "codex" not in agents
+    assert "pi" not in agents
 
 
 def test_enable_detected_agents_all_invalid_produces_no_backup_and_no_write(
@@ -136,9 +182,7 @@ def test_enable_detected_agents_all_invalid_produces_no_backup_and_no_write(
     assert enabled == []
     assert not bak_path.exists()
     assert config_path.read_text(encoding="utf-8") == initial_content
-    assert any(
-        "codex" in record.message for record in caplog.records if record.levelno >= logging.WARNING
-    )
+    assert [record.message for record in caplog.records if record.levelno >= logging.WARNING] == []
 
 
 def test_enable_detected_agents_unchanged_content_produces_no_backup_and_no_write(
@@ -170,11 +214,7 @@ def test_enable_detected_agents_emits_trigger_line_to_operator_visible_loguru_si
 ) -> None:
     config_path = tmp_path / "ralph-workflow-agents.toml"
     config_path.write_text(
-        '[agents.claude]\ncmd = "claude"\n\n'
-        "# @AGENT-BLOCK-START: codex\n"
-        "# [agents.codex]\n"
-        '# cmd = "codex exec"\n'
-        "# @AGENT-BLOCK-END\n",
+        '[agents.claude]\ncmd = "claude"\n\n[inactive_agents.codex]\ncmd = "codex exec"\n',
         encoding="utf-8",
     )
     bak_path = config_path.with_name(f"{config_path.name}.bak")
@@ -207,14 +247,10 @@ CONFLICTING_AGENTS_FILE = (
     "[agents.claude]\n"
     'cmd = "claude"\n'
     'operator_custom_key = "custom_value"\n\n'
-    "# @AGENT-BLOCK-START: claude\n"
-    "# [agents.claude]\n"
-    '# cmd = "claude"\n'
-    "# @AGENT-BLOCK-END\n\n"
-    "# @AGENT-BLOCK-START: codex\n"
-    "# [agents.codex]\n"
-    '# cmd = "codex exec"\n'
-    "# @AGENT-BLOCK-END\n"
+    "[inactive_agents.claude]\n"
+    'cmd = "claude"\n\n'
+    "[inactive_agents.codex]\n"
+    'cmd = "codex exec"\n'
 )
 
 
@@ -282,7 +318,7 @@ def test_enable_detected_agents_applies_non_conflicting_block_beside_a_conflict(
     assert agents["codex"]["cmd"] == "codex exec"
 
     assert '[agents.claude]\ncmd = "claude"\noperator_custom_key = "custom_value"\n' in new_text
-    assert "# @AGENT-BLOCK-START: claude\n# [agents.claude]\n" in new_text
+    assert "[inactive_agents.claude]" in new_text
 
     assert bak_path.read_bytes() == original_bytes
 
@@ -302,14 +338,10 @@ def test_enable_detected_agents_does_not_raise_on_a_conflicting_table(
         '[agents."claude"]\n'
         'cmd = "claude"\n'
         'operator_custom_key = "custom_value"\n\n'
-        "# @AGENT-BLOCK-START: claude\n"
-        "# [agents.claude]\n"
-        '# cmd = "claude"\n'
-        "# @AGENT-BLOCK-END\n\n"
-        "# @AGENT-BLOCK-START: codex\n"
-        "# [agents.codex]\n"
-        '# cmd = "codex exec"\n'
-        "# @AGENT-BLOCK-END\n"
+        "[inactive_agents.claude]\n"
+        'cmd = "claude"\n\n'
+        "[inactive_agents.codex]\n"
+        'cmd = "codex exec"\n'
     )
     config_path.write_text(initial_content, encoding="utf-8")
 
@@ -360,9 +392,7 @@ def test_enable_detected_agents_conflict_propagates_without_stale_backup_or_over
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = tmp_path / "ralph-workflow-agents.toml"
-    initial_content = (
-        '# @AGENT-BLOCK-START: claude\n# [agents.claude]\n# cmd = "claude"\n# @AGENT-BLOCK-END\n'
-    )
+    initial_content = '[inactive_agents.claude]\ncmd = "claude"\n'
     config_path.write_text(initial_content, encoding="utf-8")
     operator_interleaved = '[agents.interleaved]\ncmd = "preserve-me"\n'
 

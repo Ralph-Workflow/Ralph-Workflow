@@ -73,6 +73,8 @@ _REVIEW_TRIGGER_KEYS: frozenset[str] = frozenset(
     {"review", "review_trigger", "review_on", "review_when", "re_review_trigger"}
 )
 
+_REVIEW_TRIGGER_KEYS_TEXT: str = ", ".join(f"'{key}'" for key in sorted(_REVIEW_TRIGGER_KEYS))
+
 _NPM_EXACT_VERSION_RE: re.Pattern[str] = re.compile(
     r"^(?:@[A-Za-z0-9._-]+/[A-Za-z0-9._-]+|[A-Za-z0-9._-]+)@v?\d+\.\d+\.\d+[A-Za-z0-9._+-]*$"
 )
@@ -88,13 +90,6 @@ _SERVER_NAME_PART_COUNT: int = 2
 _TOML_KEY_VALUE_RE: re.Pattern[str] = re.compile(r"^\s*([A-Za-z0-9_\-]+)\s*=\s*(.*)$")
 
 _TOML_STRING_RE: re.Pattern[str] = re.compile(r'"([^"\\]*)"')
-
-_REVIEW_TRIGGER_COMMENT_RE: re.Pattern[str] = re.compile(
-    r"(?i)(?:\bre-?review\b|\breview\s+(?:trigger|when|on)\b)"
-)
-
-_REVIEW_COMMENT_LOOKAHEAD_LINES: int = 3
-
 
 AGENTS_BLOCK_BEGIN: str = "<!-- ralph-workflow-policy:begin v2 -->"
 AGENTS_BLOCK_END: str = "<!-- ralph-workflow-policy:end -->"
@@ -177,7 +172,6 @@ class _McpServerDeclaration:
     name: str
     keys: frozenset[str]
     args: tuple[str, ...]
-    comments: tuple[str, ...]
     command: str | None = None
     fields: Mapping[str, str] = _EMPTY_FIELDS
 
@@ -234,28 +228,14 @@ def _matched_text(match: re.Match[str]) -> str:
 def _find_toml_table_location(
     lines: list[str],
     server_name: str,
-) -> tuple[int, tuple[str, ...]]:
+) -> int:
     header_re = re.compile(
         rf"""^\s*\[\s*{re.escape(MCP_SERVERS_TABLE)}\.(?:{re.escape(server_name)}|"{re.escape(server_name)}"|'{re.escape(server_name)}')\s*\]"""
     )
-    line_number = 1
-    start_index = -1
     for idx, line in enumerate(lines):
         if header_re.match(line):
-            line_number = idx + 1
-            start_index = idx
-            break
-
-    comments: list[str] = []
-    if start_index >= 0:
-        for line in lines[start_index + 1 :]:
-            if re.match(r"^\s*\[", line):
-                break
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                comments.append(stripped)
-
-    return line_number, tuple(comments)
+            return idx + 1
+    return 1
 
 
 def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDeclaration]:
@@ -279,7 +259,7 @@ def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
             continue
         entry_map = cast("dict[str, object]", entry)
 
-        line_number, comments = _find_toml_table_location(lines, name)
+        line_number = _find_toml_table_location(lines, name)
 
         raw_args = entry_map.get("args")
         args: tuple[str, ...] = ()
@@ -301,7 +281,6 @@ def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
                 name=name,
                 keys=keys,
                 args=args,
-                comments=comments,
                 command=command,
                 fields=fields,
             )
@@ -348,7 +327,6 @@ def _json_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
                 name=name,
                 keys=keys,
                 args=args,
-                comments=(),
                 command=command,
                 fields=fields,
             )
@@ -389,22 +367,12 @@ def _has_pin(declaration: _McpServerDeclaration) -> bool:
     return False
 
 
-def _has_review_trigger(declaration: _McpServerDeclaration, text: str) -> bool:
+def _has_review_trigger(declaration: _McpServerDeclaration) -> bool:
     for review_key in _REVIEW_TRIGGER_KEYS:
         val = declaration.fields.get(review_key)
         if isinstance(val, str) and bool(val.strip()):
             return True
         if review_key in declaration.keys and not declaration.fields:
-            return True
-    if any(_REVIEW_TRIGGER_COMMENT_RE.search(comment) for comment in declaration.comments):
-        return True
-    lines = text.splitlines()
-    start = max(0, declaration.line - 1 - _REVIEW_COMMENT_LOOKAHEAD_LINES)
-    for raw_line in lines[start : declaration.line - 1]:
-        stripped = raw_line.strip()
-        if not stripped.startswith("#"):
-            continue
-        if _REVIEW_TRIGGER_COMMENT_RE.search(stripped):
             return True
     return False
 
@@ -449,7 +417,7 @@ def _audit_mcp_declarations(root: Path) -> list[InstructionIntegrityFinding]:
                         ),
                     )
                 )
-            if not _has_review_trigger(declaration, text):
+            if not _has_review_trigger(declaration):
                 findings.append(
                     InstructionIntegrityFinding(
                         file_path=relative,
@@ -458,8 +426,9 @@ def _audit_mcp_declarations(root: Path) -> list[InstructionIntegrityFinding]:
                         category=CATEGORY_MISSING_REVIEW_TRIGGER,
                         detail=(
                             f"third-party MCP server '{declaration.name}' has no review "
-                            "trigger; record when it is re-reviewed (a 'review' key, or "
-                            "a comment naming the re-review condition)"
+                            "trigger; record when it is re-reviewed in a structured "
+                            f"review key ({_REVIEW_TRIGGER_KEYS_TEXT}); a comment is "
+                            "not review evidence"
                         ),
                     )
                 )

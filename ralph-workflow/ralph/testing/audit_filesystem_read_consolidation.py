@@ -167,7 +167,10 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
 )
 _RAW_READ_QUALIFIERS: frozenset[str] = frozenset({"os", "os.path", "pathlib"})
 _RAW_READ_ATTRS: dict[str, str] = {
-    "read_text": "R1/R3 raw full-file read; route through FileBackend.read_text or annotate",
+    "read_text": (
+        "R1/R3 raw full-file read; route through FileBackend.read_text or "
+        "exempt the call site via EXEMPT_CALL_SITES"
+    ),
     "read_bytes": "R1/R3 raw full-file byte load; route through FileBackend.read_bytes",
     "open": "R1/R3 raw file handle read; route through FileBackend or Workspace",
     "exists": "R4 raw existence probe; use FileBackend.exists",

@@ -58,8 +58,8 @@ class PythonGuidelines:
             "Test exception handling and failure paths, not only success cases.",
         )
         self.documentation_checks = (
-            "Document public modules, classes, and functions with clear docstrings.",
-            "Keep docstrings aligned with actual behavior, parameters, and return values.",
+            "Public modules, classes, and functions state their contract through names, types, and structure.",
+            "Keep public contracts aligned with actual behavior, parameters, and return values.",
             "Explain non-obvious business rules, side effects, and framework conventions.",
         )
         self.idioms = (
