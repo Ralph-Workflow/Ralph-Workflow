@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-__doc__ = "Ralph agent output parsers."
-
 import importlib
 import sys
 import types

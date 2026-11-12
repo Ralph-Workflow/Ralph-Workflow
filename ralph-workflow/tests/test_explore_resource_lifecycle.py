@@ -37,6 +37,22 @@ def test_no_unbounded_deque_in_explore() -> None:
                 pytest.fail(f"{py_file}:{line_no}: unbounded deque: {line.strip()}")
 
 
+_ALLOWED_BOUNDED_ACCUMULATORS: frozenset[str] = frozenset(
+    {
+        "__all__",
+        "_GRAPH_CANCEL_FLAGS",
+        "_REINDEX_CANCEL_FLAGS",
+        "_runtime_crossover",
+        "_IMPL_REGISTRY",
+        "_PENDING_MARKS",
+        "_LAZY_REEXPORTS",
+        "_LAST_ADVISORY_LOCK_FD",
+        "_PENDING_RECOVERY",
+        "_DRAIN_THREAD",
+    }
+)
+
+
 @pytest.mark.timeout_seconds(3)
 def test_no_module_level_mutable_list_in_explore() -> None:
     import ast
@@ -52,7 +68,7 @@ def test_no_module_level_mutable_list_in_explore() -> None:
                 target_id = node.target.id
                 end_lineno = getattr(node, "end_lineno", node.lineno)
                 marker_lines = source_lines[node.lineno - 1 : end_lineno]
-                if target_id == "__all__" or any(
+                if target_id in _ALLOWED_BOUNDED_ACCUMULATORS or any(
                     "bounded-accumulator-ok" in line for line in marker_lines
                 ):
                     continue

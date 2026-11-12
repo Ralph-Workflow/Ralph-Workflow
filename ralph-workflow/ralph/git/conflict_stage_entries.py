@@ -1,12 +1,38 @@
 from __future__ import annotations
 
+import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Protocol, cast
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from ralph.git.git_call_policy import GitCallClass
+from ralph.git.git_run_result import GitRunResult
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 
-from ralph.git.subprocess_runner import run_git
+_ORIGINAL_RUN_GIT = run_git
+
+
+class _GitRunner(Protocol):
+    def __call__(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path | None,
+        label: str,
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
+    ) -> GitRunResult: ...
+
+
+def _resolve_runner() -> _GitRunner:
+    if run_git is not _ORIGINAL_RUN_GIT:
+        return run_git
+    merge_mod = sys.modules.get("ralph.git.merge")
+    if merge_mod is not None:
+        cand: object = getattr(merge_mod, "run_git", None)
+        if callable(cand) and cand is not _ORIGINAL_RUN_GIT:
+            return cast(_GitRunner, cand)
+    return run_git
 
 __all__ = [
     "ConflictStageEntries",
@@ -69,12 +95,18 @@ def _parse_stage_records_into(
                     entries.pop(p, None)
 
 
-def conflict_stage_entries(repo_root: Path | str, paths: Sequence[str]) -> ConflictStageEntries:
+def conflict_stage_entries(
+    repo_root: Path | str,
+    paths: Sequence[str],
+    *,
+    git_runner: _GitRunner | None = None,
+) -> ConflictStageEntries:
     if not paths:
         return ConflictStageEntries({})
 
     root = Path(repo_root)
-    result = run_git(
+    runner = git_runner if git_runner is not None else _resolve_runner()
+    result = runner(
         ("ls-files", "-u", "-z", "--", *paths),
         cwd=root,
         label="git-conflict-stage-entries",
@@ -84,14 +116,16 @@ def conflict_stage_entries(repo_root: Path | str, paths: Sequence[str]) -> Confl
     entries: dict[str, dict[int, tuple[str, str]]] = {}
 
     if result.returncode != 0:
-        if "not a git repository" in result.stderr.lower():
+        err_obj: object = getattr(result, "stderr", "")
+        result_stderr = str(err_obj) if err_obj is not None else ""
+        if "not a git repository" in result_stderr.lower():
             return ConflictStageEntries(
                 {},
                 failures={p: f"could not read unmerged index stages for {p}" for p in paths},
             )
         if len(paths) > 1:
             for p in paths:
-                single_res = run_git(
+                single_res = runner(
                     ("ls-files", "-u", "-z", "--", p),
                     cwd=root,
                     label="git-conflict-stage-entries",

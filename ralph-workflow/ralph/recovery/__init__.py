@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-__doc__ = "Ralph error recovery systems."
-
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
     AgentStatus,

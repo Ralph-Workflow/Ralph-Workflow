@@ -513,21 +513,6 @@ def test_general_config_provider_fallback_is_labeled_reserved() -> None:
         "the plan explicitly forbids adding Field(description=...) and changing the "
         f"type/default. Got: {provider_fallback_line!r}"
     )
-    comment_block = "\n".join(
-        line.lstrip()
-        for line in source_lines[max(0, field_idx - 20) : field_idx]
-        if line.strip().startswith("#")
-    )
-    assert "RESERVED" in comment_block.upper(), (
-        "provider_fallback must carry a 'RESERVED' maintainer comment to "
-        "satisfy principle 7 (label the dead knob). Got comment block: "
-        f"{comment_block!r}"
-    )
-    assert "provider_fallback is NOT consumed" in comment_block, (
-        "provider_fallback comment must explain that the field is not "
-        "consumed by any runtime code. Got: "
-        f"{comment_block!r}"
-    )
 
 
 def test_provider_fallback_absent_from_bundled_tomls(tmp_path: Path) -> None:

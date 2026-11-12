@@ -1,4 +1,3 @@
-__doc__ = "Ralph runtime components."
 from ralph.runtime._version_info import PythonVersionInfo
 from ralph.runtime.environment import (
     RuntimeEnvironment,

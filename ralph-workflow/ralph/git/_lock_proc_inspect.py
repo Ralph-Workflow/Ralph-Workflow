@@ -409,7 +409,7 @@ def _check_pid_liveness(
     pid_dir = proc_root / pid_str
 
     is_zombie, uids = _read_proc_status(pid_dir)
-    if is_zombie:
+    if is_zombie or _is_infrastructure_daemon(proc_root, pid_str):
         return "dead"
 
     fd_status = _pid_holds_lock_fd(pid_dir, lock_resolved, lock_ident)

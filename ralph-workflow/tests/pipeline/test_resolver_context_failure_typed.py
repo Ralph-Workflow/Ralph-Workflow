@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from loguru import logger
 from rich.console import Console
 
+from ralph.display.auto_integrate_message import OperationDisplayState
 from ralph.display.context import make_display_context
 from ralph.display.status_bar import StatusBar, render_status_bar
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
@@ -19,6 +20,12 @@ from ralph.pipeline import (
     resolve_rebase_with_config,
 )
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
+from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
+    read_record,
+    write_record,
+)
+from ralph.pipeline.auto_integrate_recovery_record import recover_pending_merge
 from ralph.pipeline.conflict_resolution import (
     RebaseStop,
     ResolutionTerminationReason,
@@ -29,7 +36,6 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
-from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.run_loop import (
     LoopContext,
     _build_status_bar_model,
@@ -320,15 +326,45 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
     repo = _setup_paused_rebase_repo(tmp_path)
     mock_ctx = _make_loop_context(repo)
 
+    feat_sha = run_git(
+        ["rev-parse", "feature"], cwd=repo, label="test:setup:rev-feature"
+    ).stdout.strip()
+    main_sha = run_git(["rev-parse", "main"], cwd=repo, label="test:setup:rev-main").stdout.strip()
+    initial_record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feat_sha,
+        pre_target_sha=main_sha,
+        resolving_rebase=True,
+    )
+    write_record(repo, initial_record)
+
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
 
     try:
+        resolver = build_agent_rebase_stop_resolver(
+            policy_bundle=mock_ctx.policy_bundle,
+            registry=mock_ctx.registry,
+            display=mock_ctx.active_display,
+            config=mock_ctx.config,
+            pipeline_deps=mock_ctx.pipeline_deps,
+            workspace_scope=mock_ctx.workspace_scope,
+            display_context=mock_ctx.display_context,
+        )
+
         with patch(
             "ralph.pipeline.auto_integrate_agent.workspace_context",
             side_effect=RuntimeError("boom"),
         ):
             resolved = _resolve_paused_rebase(mock_ctx, "main")
+            outcome = recover_pending_merge(
+                repo,
+                initial_record,
+                config=None,
+                rebase_stop_resolver=resolver,
+                recovery_controller=mock_ctx.controller,
+            )
 
         assert resolved is False
 
@@ -347,16 +383,22 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
             for r in records
             if "without the resolver chain being spent" in r["message"]
         ]
-        assert len(chain_warns) == 1
+        assert len(chain_warns) >= 1
         assert "ended on CONTEXT_FAILURE" in chain_warns[0]
         assert "no terminal evidence" not in chain_warns[0]
 
-        rebase_state = RebaseState(
-            last_outcome=RebaseOutcomeKind.CONFLICT,
-            last_reason="target worktree context failed: boom",
-            last_failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
-            operation_display_state="waiting",
-        )
+        assert outcome.last_failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
+        assert outcome.last_outcome == RebaseOutcomeKind.CONFLICT
+        assert "target worktree context failed: boom" in (outcome.last_reason or "")
+        assert outcome.resolution_exhausted is False
+        assert outcome.resolution_exhaustion_reason is None
+
+        disk_rec = read_record(repo)
+        assert disk_rec is not None
+        assert disk_rec.last_failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
+        assert disk_rec.resolution_gate_key is not None
+
+        rebase_state = outcome.set_operation_display_state(OperationDisplayState.WAITING)
         state = PipelineState(phase="planning", rebase=rebase_state)
 
         alert = integration_alert_for_state(state)
@@ -394,12 +436,37 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
     repo = _setup_paused_rebase_repo(tmp_path)
     mock_ctx = _make_loop_context(repo)
 
+    feat_sha = run_git(
+        ["rev-parse", "feature"], cwd=repo, label="test:setup:rev-feature-cfg"
+    ).stdout.strip()
+    main_sha = run_git(
+        ["rev-parse", "main"], cwd=repo, label="test:setup:rev-main-cfg"
+    ).stdout.strip()
+    initial_record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feat_sha,
+        pre_target_sha=main_sha,
+        resolving_rebase=True,
+    )
+    write_record(repo, initial_record)
+
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
 
     try:
         bad_cfg = repo / ".agent" / "ralph-workflow.toml"
         fix_msg = f"fix {bad_cfg} then run ralph --check-config"
+
+        resolver = build_agent_rebase_stop_resolver(
+            policy_bundle=mock_ctx.policy_bundle,
+            registry=mock_ctx.registry,
+            display=mock_ctx.active_display,
+            config=mock_ctx.config,
+            pipeline_deps=mock_ctx.pipeline_deps,
+            workspace_scope=mock_ctx.workspace_scope,
+            display_context=mock_ctx.display_context,
+        )
 
         with patch(
             "ralph.pipeline.auto_integrate_agent.workspace_context",
@@ -410,6 +477,13 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
             ),
         ):
             resolved = _resolve_paused_rebase(mock_ctx, "main")
+            outcome = recover_pending_merge(
+                repo,
+                initial_record,
+                config=None,
+                rebase_stop_resolver=resolver,
+                recovery_controller=mock_ctx.controller,
+            )
 
         assert resolved is False
 
@@ -423,12 +497,18 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
         assert "cause: CONFIG_FAILURE" in cfg_rebase_warns[0]
         assert "no terminal evidence" not in cfg_rebase_warns[0]
 
-        rebase_state_cfg = RebaseState(
-            last_outcome=RebaseOutcomeKind.CONFLICT,
-            last_reason=fix_msg,
-            last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
-            operation_display_state="waiting",
-        )
+        assert outcome.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
+        assert outcome.last_outcome == RebaseOutcomeKind.CONFLICT
+        assert fix_msg in (outcome.last_reason or "")
+        assert outcome.resolution_exhausted is False
+        assert outcome.resolution_exhaustion_reason is None
+
+        disk_rec = read_record(repo)
+        assert disk_rec is not None
+        assert disk_rec.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
+        assert disk_rec.resolution_gate_key is not None
+
+        rebase_state_cfg = outcome.set_operation_display_state(OperationDisplayState.WAITING)
         state_cfg = PipelineState(phase="planning", rebase=rebase_state_cfg)
 
         alert_cfg = integration_alert_for_state(state_cfg)

@@ -62,11 +62,6 @@ def _setup_base_workspace(root: Path) -> Path:
     return root
 
 
-# ==============================================================================
-# Cell: workspace_context reload x policy (agents.toml)
-# ==============================================================================
-
-
 def test_workspace_reload_agents_toml_syntax_fallback(tmp_path: Path) -> None:
     root = _setup_base_workspace(tmp_path / "repo")
     agents_file = root / ".agent" / "agents.toml"
@@ -121,11 +116,6 @@ def test_workspace_reload_agents_toml_schema_invalid_fallback(tmp_path: Path) ->
     assert len(matching) == 1
 
 
-# ==============================================================================
-# Cell: workspace_context reload x policy (pipeline.toml / policy.toml)
-# ==============================================================================
-
-
 def test_workspace_reload_pipeline_toml_syntax_fallback(tmp_path: Path) -> None:
     root = _setup_base_workspace(tmp_path / "repo")
     pipeline_file = root / ".agent" / "pipeline.toml"
@@ -178,11 +168,6 @@ def test_workspace_reload_pipeline_toml_permission_denied_fallback(tmp_path: Pat
     assert pipeline_file.read_bytes() == before_bytes
 
 
-# ==============================================================================
-# Cell: workspace_context reload x policy (artifacts.toml)
-# ==============================================================================
-
-
 def test_workspace_reload_artifacts_toml_syntax_fallback(tmp_path: Path) -> None:
     root = _setup_base_workspace(tmp_path / "repo")
     artifacts_file = root / ".agent" / "artifacts.toml"
@@ -207,11 +192,6 @@ def test_workspace_reload_artifacts_toml_syntax_fallback(tmp_path: Path) -> None
     ]
     assert len(matching) == 1
     assert "ralph --check-config" in matching[0]
-
-
-# ==============================================================================
-# Cell: workspace_context reload x MCP (mcp.toml)
-# ==============================================================================
 
 
 def test_workspace_reload_mcp_toml_syntax_fallback(tmp_path: Path) -> None:
@@ -258,11 +238,6 @@ def test_workspace_reload_mcp_toml_bad_encoding_fallback(tmp_path: Path) -> None
         if str(mcp_file) in r["message"] and "using built-in default" in r["message"]
     ]
     assert len(matching) == 1
-
-
-# ==============================================================================
-# Cell: workspace_context reload x Portfolio (policy-portfolio.toml / portfolio.toml)
-# ==============================================================================
 
 
 def test_workspace_reload_portfolio_toml_syntax_fallback(tmp_path: Path) -> None:
@@ -318,11 +293,6 @@ def test_workspace_reload_portfolio_toml_schema_invalid_fallback(tmp_path: Path)
     assert "ralph --check-config" in matching[0]
 
 
-# ==============================================================================
-# Cell: --check-config x Portfolio (policy-portfolio.toml)
-# ==============================================================================
-
-
 def test_check_config_reports_unreadable_portfolio_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -356,11 +326,6 @@ def test_check_config_reports_unreadable_portfolio_file(
     assert any(
         str(portfolio_file) in r["message"] or portfolio_file.name in r["message"] for r in records
     )
-
-
-# ==============================================================================
-# Cell: diagnose x Portfolio (policy-portfolio.toml)
-# ==============================================================================
 
 
 def test_diagnose_reports_unreadable_portfolio_file(

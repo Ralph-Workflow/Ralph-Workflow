@@ -172,20 +172,20 @@ those.
    is setup to repair, not a reason to work in the parent session.
    (evidence: strong)
 9. **Plan scaling.** A trivial, single-file change goes straight to
-      implementation. Multi-file or ambiguous work requires a written
-      plan with acceptance criteria before the first edit, so that "done"
-      is a stated criterion rather than a judgement call at the end.
-      (evidence: none)
+     implementation. Multi-file or ambiguous work requires a written
+     plan with acceptance criteria before the first edit, so that "done"
+     is a stated criterion rather than a judgement call at the end.
+     (evidence: none)
 10. **Commit-level hygiene.** One logical change per commit, and the
-     commit message lists the verification evidence and anything left
-     unverified. Commit-level rules stop at the commit: this kernel
-     states no pull-request rules. (evidence: none)
+    commit message lists the verification evidence and anything left
+    unverified. Commit-level rules stop at the commit: this kernel
+    states no pull-request rules. (evidence: none)
 11. **Human checkpoints.** An agent asks for confirmation only for an
-     irreversible or outward-facing action — publishing, deleting,
-     sending, spending, granting access, or anything a human cannot
-     undo. For every other blocked step the agent records the question
-     and proceeds with the safest reversible assumption, so a missing
-     answer does not stall the run. (evidence: none)
+    irreversible or outward-facing action — publishing, deleting,
+    sending, spending, granting access, or anything a human cannot
+    undo. For every other blocked step the agent records the question
+    and proceeds with the safest reversible assumption, so a missing
+    answer does not stall the run. (evidence: none)
 12. **Rule-to-enforcer ladder.** A rule that keeps being broken is
     fixed at the highest level that can hold it: architecture first,
     then types and lint, then tests, and documentation last. The
@@ -456,6 +456,28 @@ Review this kernel in the same workflow as any of:
   separate a trivial change from a planned one, and an irreversible
   action from a reversible one, are project judgment rather than a
   measurement, so these rules stay `none` and advisory.
+
+## Explicit non-adoptions
+
+These candidate rules were considered and NOT adopted. They are recorded
+here so they are not re-litigated without new evidence.
+
+* A blanket "never block on the human" rule — Ralph has a plan phase and
+  human checkpoints; a blocked agent records the question and proceeds
+  with the safest reversible assumption.
+* "No planning skills" — Ralph HAS a plan phase; multi-file or ambiguous
+  work requires a written plan with acceptance criteria.
+* Agent-side loop, stuck-detection and budget logic — the runtime owns
+  it. A rule must never ask an agent to count its own retries or enforce
+  its own budget.
+* Pull-request size and pull-request body rules — this project is
+  trunk-based and opens no pull requests; the commit-level analogue is
+  the commit-hygiene rule above.
+* Model routing and single-vendor automation — a configuration
+  recommendation, not a shipped rule.
+* Mutation testing, property-based testing, duplication metrics,
+  diff-size caps and choice logs — no direct evidence found; they stay
+  advisory candidates until evidence exists.
 
 ## What the kernel does NOT do
 
