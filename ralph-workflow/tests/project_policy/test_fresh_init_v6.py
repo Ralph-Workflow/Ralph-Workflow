@@ -22,11 +22,11 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
-RALPH_TEST_CHANGE_REASONS = {
-    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
-    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
-    "test_fresh_cli_init_seeds_v6_policy_pack": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
-    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the premise-check rule is retired so its special-case advisory check was removed",
+    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the premise-check rule is retired so its special-case advisory check was removed",
+    "test_fresh_cli_init_seeds_v6_policy_pack": "the premise-check rule is retired so its special-case advisory check was removed",
+    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the premise-check rule is retired so its special-case advisory check was removed",
 }
 
 
@@ -120,13 +120,10 @@ def test_fresh_starters_follow_fill_model_no_ralph_audit_ids() -> None:
 
         for row in rows:
             enf = row.get("enforcement", "")
-            if row.get("guard") == "Premise check":
-                assert enf.startswith("advisory: ")
-            else:
-                assert enf == "deterministic: PROJECT-FACT-UNRESOLVED", (
-                    f"Starter {name} guard {row.get('guard')!r} must ship with "
-                    f"'deterministic: PROJECT-FACT-UNRESOLVED', observed: {enf!r}"
-                )
+            assert enf == "deterministic: PROJECT-FACT-UNRESOLVED", (
+                f"Starter {name} guard {row.get('guard')!r} must ship with "
+                f"'deterministic: PROJECT-FACT-UNRESOLVED', observed: {enf!r}"
+            )
             for banned in banned_audit_tokens:
                 assert banned not in enf, (
                     f"Starter {name} pre-filled Ralph internal audit ID {banned!r} in enforcement"
@@ -173,12 +170,9 @@ def test_all_bundled_starters_comply_with_v6_schema_and_seven_columns() -> None:
         assert rows, f"Bundled starter {name} must have parseable guard inventory rows"
         for row in rows:
             assert len(row) == 7, f"Bundled starter {name} row must have 7 columns"
-            if row.get("guard") == "Premise check":
-                assert row["enforcement"].startswith("advisory: ")
-            else:
-                assert row["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED", (
-                    f"Bundled starter {name} row {row.get('guard')!r} must use fill model placeholder"
-                )
+            assert row["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED", (
+                f"Bundled starter {name} row {row.get('guard')!r} must use fill model placeholder"
+            )
 
 
 def test_fresh_cli_init_seeds_v6_policy_pack(
@@ -211,10 +205,7 @@ def test_fresh_cli_init_seeds_v6_policy_pack(
         assert rows, f"Expected guard inventory rows in {name}"
         for r in rows:
             assert len(r) == 7, f"Row in {name} must have 7 columns"
-            if r.get("guard") == "Premise check":
-                assert r["enforcement"].startswith("advisory: ")
-            else:
-                assert r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED"
+            assert r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED"
 
     agents_file = tmp_path / "AGENTS.md"
     assert agents_file.is_file(), "AGENTS.md must be bootstrapped by ralph --init"
@@ -255,12 +246,7 @@ def test_fresh_real_filesystem_init_seeds_v6_policy_pack(tmp_path: Path) -> None
         assert text.startswith("<!-- ralph-policy-schema: v6 -->")
         rows = _parse_guard_inventory_table(text)
         assert rows, f"Expected guard inventory rows in {name}"
-        assert all(
-            r["enforcement"].startswith("advisory: ")
-            if r.get("guard") == "Premise check"
-            else r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED"
-            for r in rows
-        )
+        assert all(r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED" for r in rows)
 
     second_result = preflight.run_policy_readiness_preflight(ws, stack)
     assert second_result.requires_remediation()
