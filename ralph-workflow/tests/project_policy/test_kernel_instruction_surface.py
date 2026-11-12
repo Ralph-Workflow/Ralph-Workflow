@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ralph.project_policy import starters
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_kernels_state_the_non_inferable_instruction_surface_rule": (
         "the kernel now states the non-inferable instruction-surface rule, so both "
         "kernels must carry it with its strong evidence tag, its non-inferable "
@@ -17,10 +17,15 @@ RALPH_TEST_CHANGE_REASONS = {
         "the ladder cell that repeats it"
     ),
     "test_kernels_state_the_pre_fix_failure_obligation": (
-        "the shipped guard row for the regression rule already reviewed a missing "
-        "pre-fix failure record, so the rule text itself must state that the "
-        "bug-fix test fails on the pre-fix revision and that the failing run is "
-        "recorded"
+        "the generic red-green obligation is taught by the test-driven-development "
+        "skill, so the kernel no longer states it and the check that required the "
+        "two red-green clauses is replaced by the check that the rule states the "
+        "spec-derived expected value and the library-documentation clause"
+    ),
+    "test_kernels_state_the_spec_derived_expected_value_obligation": (
+        "the generic red-green obligation is taught by the test-driven-development "
+        "skill, so the kernel states the spec-derived expected value and the "
+        "library-documentation clause instead of the red-green clauses"
     ),
     "test_kernels_drop_the_rule_history_sentence": (
         "the kernel carried a sentence narrating where the rules used to live, "
@@ -40,7 +45,12 @@ INSTRUCTION_SURFACE_OBLIGATIONS: tuple[str, ...] = (
     "llm-generated bulk summary of the codebase is excluded",
 )
 
-PRE_FIX_FAILURE_CLAUSES: tuple[str, ...] = (
+SPEC_VALUE_OBLIGATIONS: tuple[str, ...] = (
+    "expected value is written down from the spec",
+    "that library's own documentation is the spec",
+)
+
+RETIRED_RED_GREEN_CLAUSES: tuple[str, ...] = (
     "fails on the pre-fix revision",
     "the failing run is recorded with the change",
 )
@@ -220,7 +230,7 @@ def test_kernel_root_and_starter_carry_the_same_instruction_surface_row() -> Non
     )
 
 
-def test_kernels_state_the_pre_fix_failure_obligation() -> None:
+def test_kernels_state_the_spec_derived_expected_value_obligation() -> None:
     for source_name, content in (("root", _root_kernel()), ("starter", _starter_kernel())):
         statements = _agent_rule_statements(content)
         statement = statements.get("regression tests from the spec")
@@ -228,10 +238,16 @@ def test_kernels_state_the_pre_fix_failure_obligation() -> None:
             f"{source_name} kernel does not state the regression-tests-from-the-spec rule"
         )
         normalized = " ".join(statement.lower().split())
-        for clause in PRE_FIX_FAILURE_CLAUSES:
+        for clause in SPEC_VALUE_OBLIGATIONS:
             assert clause in normalized, (
                 f"{source_name} kernel rule 'Regression tests from the spec' does not "
-                f"state the pre-fix-failure obligation {clause!r}"
+                f"state the spec-derived expected value obligation {clause!r}"
+            )
+        for clause in RETIRED_RED_GREEN_CLAUSES:
+            assert clause not in normalized, (
+                f"{source_name} kernel rule 'Regression tests from the spec' still states "
+                f"the retired generic red-green obligation {clause!r}; the technique is "
+                f"taught by the test-driven-development skill"
             )
 
 

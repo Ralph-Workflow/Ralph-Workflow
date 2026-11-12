@@ -5,12 +5,16 @@ import pytest
 import ralph.testing.audit_skill_auto_commit as audit_module
 from ralph.testing.audit_skill_auto_commit import main as audit_main
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS = {
     "test_audit_blocks_regression_when_failure_path_log_removed": (
         "the skill auto-commit wiring moved out of cli/commands/run.py into "
         "cli/commands/_run_start_setup.py and the audit pins that live path, so "
         "the old run.py monkeypatch no longer removed a pinned literal and the "
         "regression went undetected"
+    ),
+    "test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces": (
+        "the dead commit helper was removed (zero-dead-code rule), so the phase-seam guard "
+        "now pins the live commit path instead"
     ),
 }
 
@@ -195,7 +199,7 @@ def test_audit_blocks_regression_when_phase_seam_skill_commit_resurfaces(
         if rel_path == runner_path:
             return (
                 content
-                + "\nfrom ralph.skills._auto_commit import commit_skill_updates  # regression\n"
+                + "\nfrom ralph.skills._auto_commit import commit_skill_writes  # regression\n"
             )
         return content
 

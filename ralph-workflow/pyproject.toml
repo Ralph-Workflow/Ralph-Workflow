@@ -120,6 +120,7 @@ include = [
   "/ralph",
   "/README.md",
   "/LICENSE",
+  "/_sitecustomize_shim.py",
   "/ralph/prompts/templates/**/*.jinja",
   "/ralph/mcp/artifacts/format_docs/*.md",
   "/ralph/mcp/artifacts/format_docs/examples/*.md",

@@ -23,6 +23,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_stub_heavy_sync_paths": (
+        "the dead commit helper was removed (zero-dead-code rule), so the stub that patched "
+        "it was dropped; these tests stub project_skills_need_install to False, so the live "
+        "commit path is never reached"
+    ),
+}
+
 pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
@@ -30,18 +38,12 @@ def _stub_heavy_sync_paths(
     monkeypatch: pytest.MonkeyPatch,
     *,
     skip_project_install: bool = True,
-    skip_auto_commit: bool = True,
     skip_retention_sweep: bool = True,
     skip_bootstrap_seed: bool = True,
 ) -> None:
     if skip_project_install:
         monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: False)
         monkeypatch.setattr(run_module, "install_project_baseline_skills", lambda _root: ({}, []))
-    if skip_auto_commit:
-        monkeypatch.setattr(
-            "ralph.skills._auto_commit.commit_skill_updates",
-            lambda *args: None,
-        )
     if skip_retention_sweep:
         monkeypatch.setattr(
             "ralph.workspace.agent_dir_retention.sweep_agent_dir",

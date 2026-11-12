@@ -5,6 +5,14 @@ from pathlib import Path
 
 import pytest
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "TESTS_ALLOWLIST": (
+        "the retired sync-script absence assertion moved to the consolidated "
+        "test_retired_skills_package_absent module, so its obsolete process-audit "
+        "allowlist entry was removed"
+    ),
+}
+
 RALPH_ROOT = Path(__file__).parent.parent / "ralph"
 TESTS_ROOT = Path(__file__).parent
 
@@ -106,7 +114,6 @@ TESTS_ALLOWLIST: set[str] = {
     "test_interrupt_signal_realtime.py",
     "test_claude_interactive_interrupt_realtime.py",
     "test_terminal_state_restored_on_exit.py",
-    "test_skills_package_sync_script.py",
     "test_audit_test_policy.py",
     "test_audit_mcp_timeout.py",
     "test_audit_filesystem_polling_invocation.py",

@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from git import Repo
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Generator
 
     from ralph.mcp.artifacts.file_backend import FileBackend
     from ralph.pipeline.conflict_resolution import RebaseStop
@@ -18,6 +19,23 @@ pytestmark = [
     pytest.mark.timeout_seconds(15),
     pytest.mark.subprocess_e2e,
 ]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "per-test commit helper now reuses one GitPython repository handle": (
+        "the per-test repository setup is now shared, so the check still proves the "
+        "same observable outcome: every commit still lands in the same real git "
+        "repository with the same tree and the same HEAD sha, but the helper no "
+        "longer spawns a separate 'git add' plus 'git commit' pair (and a separate "
+        "GitPython object reader) for every commit it creates"
+    ),
+    "rev-parse --verify pseudo-ref lookups resolve without a git subprocess": (
+        "the per-test repository setup is now shared, so the check still proves the "
+        "same observable outcome: MERGE_HEAD and REBASE_HEAD are read from the "
+        "real repository's own git directory, which is where git itself keeps "
+        "those pseudo-refs, and a missing pseudo-ref still reports a failing "
+        "revision lookup"
+    ),
+}
 
 
 def _fast_branch_name(root: Path) -> str | None:
@@ -51,6 +69,49 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
     return None
 
 
+_PSEUDO_REFS = ("MERGE_HEAD", "REBASE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD")
+
+_REPO_CACHE: dict[Path, tuple[tuple[int, int], Repo]] = {}
+
+
+def _repo_identity(root: Path) -> tuple[int, int]:
+    try:
+        stat = (root / ".git").stat()
+    except OSError:
+        return (0, 0)
+    return (stat.st_dev, stat.st_ino)
+
+
+def _repo(repo_root: Path) -> Repo:
+    identity = _repo_identity(repo_root)
+    cached = _REPO_CACHE.get(repo_root)
+    if cached is not None:
+        if cached[0] == identity:
+            return cached[1]
+        cached[1].close()
+    repo = Repo(repo_root)
+    _REPO_CACHE[repo_root] = (identity, repo)
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repos() -> Generator[None, None, None]:
+    yield
+    for _identity, repo in _REPO_CACHE.values():
+        repo.close()
+    _REPO_CACHE.clear()
+
+
+def _fast_verify_ref(repo_root: Path, ref_name: str) -> str | None:
+    if ref_name not in _PSEUDO_REFS:
+        return None
+    try:
+        content = (repo_root / ".git" / ref_name).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return content if len(content) == 40 else None
+
+
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     if args == ("branch", "--show-current"):
         name = _fast_branch_name(repo_root)
@@ -64,6 +125,15 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(
                 args=("git", *args), stdout=sha + "\n", stderr="", returncode=0
             )
+    if len(args) == 3 and args[0] == "rev-parse" and args[1] == "--verify":
+        sha = _fast_verify_ref(repo_root, args[2])
+        if sha is not None:
+            return subprocess.CompletedProcess(
+                args=("git", *args), stdout=sha + "\n", stderr="", returncode=0
+            )
+        return subprocess.CompletedProcess(
+            args=("git", *args), stdout="", stderr="fatal: Needed a single revision\n", returncode=1
+        )
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -89,9 +159,11 @@ def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> 
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    _run(repo_root, "add", filename)
-    _run(repo_root, "commit", "-m", message)
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+    repo = _repo(repo_root)
+    repo.index.add([filename])
+    commit = repo.index.commit(message)
+    assert commit.hexsha
+    return commit.hexsha
 
 
 def _behind_with_untracked_copy(tmp_git_repo: Path, content: str) -> str:

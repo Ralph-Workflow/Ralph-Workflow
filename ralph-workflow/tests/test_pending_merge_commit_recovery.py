@@ -3,8 +3,10 @@ from __future__ import annotations
 import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+from git import Repo
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
@@ -14,7 +16,51 @@ from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integratio
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
 pytestmark = [pytest.mark.timeout_seconds(5)]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "shared git test helpers now reuse one GitPython repository handle": (
+        "the per-test repository setup is now shared, so the check still proves the "
+        "same observable outcome: the helper still creates the same commits in the "
+        "same real git repository and still reads the same branch names, revision "
+        "ids and file contents, but the helpers no longer open and close a separate "
+        "GitPython object reader (and its git helper subprocesses) for every read "
+        "and every commit"
+    ),
+}
+
+_REPO_CACHE: dict[Path, tuple[tuple[int, int], Repo]] = {}
+
+
+def _repo_identity(root: Path) -> tuple[int, int]:
+    try:
+        stat = (root / ".git").stat()
+    except OSError:
+        return (0, 0)
+    return (stat.st_dev, stat.st_ino)
+
+
+def _repo(root: Path) -> Repo:
+    identity = _repo_identity(root)
+    cached = _REPO_CACHE.get(root)
+    if cached is not None:
+        if cached[0] == identity:
+            return cached[1]
+        cached[1].close()
+    repo = Repo(root)
+    _REPO_CACHE[root] = (identity, repo)
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repos() -> Generator[None, None, None]:
+    yield
+    for _identity, repo in _REPO_CACHE.values():
+        repo.close()
+    _REPO_CACHE.clear()
 
 
 def _fast_branch_name(root: Path) -> str | None:
@@ -25,15 +71,10 @@ def _fast_branch_name(root: Path) -> str | None:
             return head_content.removeprefix("ref: refs/heads/")
     except OSError:
         pass
-    from git import Repo
-
-    repo = Repo(root)
     try:
-        return repo.active_branch.name
+        return _repo(root).active_branch.name
     except Exception:
         return None
-    finally:
-        repo.close()
 
 
 def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
@@ -53,15 +94,10 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
                 return ref_file.read_text(encoding="utf-8").strip()
     except OSError:
         pass
-    from git import Repo
-
-    repo = Repo(root)
     try:
-        return repo.rev_parse(ref_name).hexsha
+        return _repo(root).rev_parse(ref_name).hexsha
     except Exception:
         return None
-    finally:
-        repo.close()
 
 
 def _git(root: Path, *args: str) -> GitRunResult:
@@ -75,16 +111,11 @@ def _git(root: Path, *args: str) -> GitRunResult:
             return GitRunResult(args=args, stdout=sha + "\n", stderr="", returncode=0)
     if len(args) == 2 and args[0] == "show" and ":" in args[1]:
         ref, path = args[1].split(":", 1)
-        from git import Repo
-
-        repo = Repo(root)
         try:
-            content = repo.commit(ref).tree[path].data_stream.read().decode("utf-8")
+            content = _repo(root).commit(ref).tree[path].data_stream.read().decode("utf-8")
             return GitRunResult(args=args, stdout=content, stderr="", returncode=0)
         except Exception:
             pass
-        finally:
-            repo.close()
     return run_git(
         args,
         cwd=root,
@@ -95,16 +126,11 @@ def _git(root: Path, *args: str) -> GitRunResult:
 
 def _commit(root: Path, path: str, content: str) -> str:
     FsWorkspace(root).write(path, content)
-    from git import Repo
-
-    repo = Repo(root)
-    try:
-        repo.index.add([path])
-        commit = repo.index.commit(path)
-        assert commit.hexsha
-        return commit.hexsha
-    finally:
-        repo.close()
+    repo = _repo(root)
+    repo.index.add([path])
+    commit = repo.index.commit(path)
+    assert commit.hexsha
+    return commit.hexsha
 
 
 _PREPARED_TEMPLATE: list[tuple[Path, str, IntegrationRecord]] = []

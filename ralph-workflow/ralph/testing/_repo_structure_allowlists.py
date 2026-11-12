@@ -961,11 +961,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_sweep_run_state_db_rows",),
         ),
         (
-            "tests/test_skills_auto_commit.py",
-            "ralph.skills._agent_paths",
-            ("_SKILL_ROOT_PREFIXES",),
-        ),
-        (
             "tests/test_skills_installer_project.py",
             "ralph.skills._content",
             ("_MANAGED_MARKER",),

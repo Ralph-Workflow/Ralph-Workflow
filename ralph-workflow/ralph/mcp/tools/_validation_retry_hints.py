@@ -91,11 +91,6 @@ def persist_validation_retry_hint(
     backend.mkdir(path.parent, parents=True, exist_ok=True)
     prior_hint = backend.read_text(path) if backend.exists(path) else ""
     fingerprint_path = validation_retry_fingerprint_file(session, workspace)
-    prior_fingerprint = (
-        backend.read_text(fingerprint_path).strip()
-        if fingerprint_path is not None and backend.exists(fingerprint_path)
-        else ""
-    )
     write_text_if_changed(
         backend,
         path,
@@ -103,7 +98,6 @@ def persist_validation_retry_hint(
             artifact_type,
             diagnostics,
             prior_hint=prior_hint,
-            prior_fingerprint=prior_fingerprint or None,
         ),
     )
     if fingerprint_path is not None:

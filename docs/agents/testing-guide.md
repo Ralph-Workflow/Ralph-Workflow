@@ -450,7 +450,7 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| root | 464 | 397 | 865 | 857 | 2119 | follow-up: backlog white-box conversion unit |
+| root | 461 | 397 | 859 | 857 | 2113 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | mcp-bridge |
 | agents | 97 | 34 | 279 | 100 | 413 | agents |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | auto-integrate |
@@ -1266,7 +1266,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_skills_agent_paths.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_agent_paths_research.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_agent_paths_staleness_audit.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_skills_auto_commit.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_auto_update_no_repair.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_baseline_catalog.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_content.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
@@ -1277,8 +1276,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_skills_installer_sibling_symlinks.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_installer_update.py` | 6 | 2 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_manager.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_skills_package_skill_names_parity.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_skills_package_sync_script.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_prune_ownership.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_process_view.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_project_paths_research.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

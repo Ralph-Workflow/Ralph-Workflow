@@ -12,10 +12,20 @@ from ralph.skills._content import (
     BASELINE_SKILL_NAMES,
     get_skill_content,
     get_skill_metadata,
-    list_skill_names,
     materialize_skills_to_claude_dir,
     materialize_skills_to_dir,
 )
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_shipped_skill_set_is_exactly_the_artifact_skills": (
+        "the verify step ralph.testing.audit_artifact_skill_types already enforces the same "
+        "shipped-skills/metadata alignment contract, so this duplicated check was removed"
+    ),
+    "test_shipped_skill_metadata_lists_exactly_the_artifact_skills": (
+        "the verify step ralph.testing.audit_artifact_skill_types already enforces the same "
+        "shipped-skills/metadata alignment contract, so this duplicated check was removed"
+    ),
+}
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
@@ -78,18 +88,6 @@ class _CountingBackend(FileBackend):
 
     def glob(self, path: Path, pattern: str) -> list[Path]:
         return self._delegate.glob(path, pattern)
-
-
-def test_shipped_skill_set_is_exactly_the_artifact_skills() -> None:
-    assert BASELINE_SKILL_NAMES == EXPECTED_BUNDLE_SKILLS
-    assert list_skill_names() == EXPECTED_BUNDLE_SKILLS
-    assert len(BASELINE_SKILL_NAMES) == len(EXPECTED_BUNDLE_SKILLS)
-
-
-def test_shipped_skill_metadata_lists_exactly_the_artifact_skills() -> None:
-    metadata = get_skill_metadata()
-    assert tuple(metadata["skills"]) == EXPECTED_BUNDLE_SKILLS
-    assert tuple(metadata["skills"]) == BASELINE_SKILL_NAMES
 
 
 def test_shipped_bundle_metadata_carries_no_upstream_provenance() -> None:

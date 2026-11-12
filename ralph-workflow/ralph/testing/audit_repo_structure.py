@@ -3,8 +3,10 @@ from __future__ import annotations
 import io
 import sys
 import tokenize
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from ralph.testing._repo_structure_allowlists import (
     _LEGACY_LARGE_FILE_ALLOWLIST,
@@ -20,6 +22,8 @@ _REPO_ROOT_STANDALONE_FILES: tuple[Path, ...] = (REPO_ROOT / "conftest.py",)
 _SKIP_DIRS = frozenset({"__pycache__", ".venv", "tmp"})
 _TYPE_IGNORE_MARKER = "# type:" + " ignore"
 _NOQA_MARKER = "# no" + "qa"
+_PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+_SDIST_ROOT_SHIM_ENTRY = "/_sitecustomize_shim.py"
 
 
 @dataclass(frozen=True)
@@ -229,8 +233,67 @@ def _collect_repo_root_violations() -> list[str]:
     return violations
 
 
+def _load_toml_root(path: Path) -> dict[str, object] | None:
+    try:
+        parsed: object = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return cast("dict[str, object]", parsed)
+
+
+def _nested_table(root: dict[str, object], *keys: str) -> dict[str, object]:
+    current: object = root
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        current = cast("dict[str, object]", current).get(key)
+    if not isinstance(current, dict):
+        return {}
+    return cast("dict[str, object]", current)
+
+
+def _sdist_include_entries(pyproject: dict[str, object]) -> list[str] | None:
+    sdist = _nested_table(pyproject, "tool", "hatch", "build", "targets", "sdist")
+    include = sdist.get("include")
+    if not isinstance(include, list):
+        return None
+    entries: list[str] = []
+    for item in include:
+        if not isinstance(item, str):
+            return None
+        entries.append(item)
+    return entries
+
+
+def _collect_packaging_config_violations() -> list[str]:
+    violations: list[str] = []
+    pyproject = _load_toml_root(_PYPROJECT_PATH)
+    if pyproject is None:
+        violations.append(f"packaging config unreadable: {_PYPROJECT_PATH.name}")
+        return violations
+    entries = _sdist_include_entries(pyproject)
+    if entries is None:
+        violations.append(
+            "packaging config missing sdist include list: "
+            f"{_PYPROJECT_PATH.name}: [tool.hatch.build.targets.sdist] include"
+        )
+        return violations
+    if _SDIST_ROOT_SHIM_ENTRY not in entries:
+        violations.append(
+            "packaging config sdist include missing root shim: "
+            f"{_PYPROJECT_PATH.name}: {_SDIST_ROOT_SHIM_ENTRY}"
+        )
+    return violations
+
+
 def collect_violations() -> list[str]:
-    return _collect_source_violations() + _collect_repo_root_violations()
+    return (
+        _collect_source_violations()
+        + _collect_repo_root_violations()
+        + _collect_packaging_config_violations()
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -243,7 +306,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{len(violations)} violation(s). See AGENTS.md 'Non-negotiables'.")
         return 1
     print(
-        "Repo-structure audit: OK (file size, class-per-module, private imports, bypass comments)"
+        "Repo-structure audit: OK (file size, class-per-module, private imports, "
+        "bypass comments, packaging config)"
     )
     return 0
 

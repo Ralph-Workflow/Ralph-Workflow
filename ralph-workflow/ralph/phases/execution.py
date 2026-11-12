@@ -24,7 +24,6 @@ from ralph.phases.artifacts import (
     unwrap_phase_artifact_content,
 )
 from ralph.phases.required_artifacts import (
-    PREMISE_CHECK_LINE,
     build_missing_input_hint,
     build_required_artifacts,
     build_retry_hint,
@@ -41,7 +40,6 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
-from ralph.recovery.retry_prompt import premise_check_line
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -453,17 +451,11 @@ class PersistedRetryHint(NamedTuple):
     fingerprint: str
 
 
-def _strip_premise_check_line(text: str) -> str:
-    kept = [line for line in text.splitlines() if line.strip() != PREMISE_CHECK_LINE]
-    return "\n".join(kept).strip()
-
-
 def compose_persisted_retry_hint(
     phase: str,
     detail: str,
     *,
     prior_hint: str = "",
-    prior_fingerprint: str = "",
     registry: dict[str, RequiredArtifact] | None = None,
     unsubmitted_draft: bool = False,
 ) -> PersistedRetryHint:
@@ -475,11 +467,8 @@ def compose_persisted_retry_hint(
         unsubmitted_draft=unsubmitted_draft,
         validation=True,
     )
-    history = _strip_premise_check_line(prior_hint)
+    history = prior_hint.strip()
     hint = f"{history}\n\n{block}" if history else block
-    premise = premise_check_line(fingerprint, prior_fingerprint or None)
-    if premise:
-        hint = f"{hint}\n\n{premise}"
     return PersistedRetryHint(hint=hint, fingerprint=fingerprint)
 
 
@@ -498,11 +487,7 @@ def _write_retry_hint(
         registry = build_required_artifacts(ctx.artifacts_policy)
     except AttributeError:
         registry = None
-    prior_fingerprint = ""
     prior_hint = ""
-    with suppress(Exception):
-        if ctx.workspace.exists(fingerprint_path):
-            prior_fingerprint = ctx.workspace.read(fingerprint_path).strip()
     with suppress(Exception):
         if preserve_existing and ctx.workspace.exists(hint_path):
             prior_hint = ctx.workspace.read(hint_path)
@@ -510,7 +495,6 @@ def _write_retry_hint(
         phase,
         detail,
         prior_hint=prior_hint,
-        prior_fingerprint=prior_fingerprint,
         registry=registry,
         unsubmitted_draft=unsubmitted_draft,
     )

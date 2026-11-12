@@ -37,20 +37,16 @@ from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 from tests._tool_artifact_2_helper_mocksession import MockSession
 from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS = {
     "test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_failure": (
-        "the old expectation encoded the retirement of the premise-check rule, so the persisted "
-        "hint was asserted to never carry the premise line; the rule is re-landed, so an identical "
-        "repeat must carry the premise line exactly once after the validation footer"
+        "the deleted agent rule is removed by the policy trim, so the persisted hint is "
+        "asserted against the rendered validation trailer and the accumulated attempt history"
     ),
-    "test_execution_persisted_hint_carries_the_premise_line_only_on_an_identical_repeat": (
-        "the execution-phase persisted hint kept a stale premise line across a changed failure "
-        "and duplicated it on an identical repeat, so the composed hint now carries the premise "
-        "line exactly once at the end on an identical repeat and never on a changed failure"
+    "test_execution_persisted_hint_tracks_the_failure_fingerprint_across_attempts": (
+        "the deleted agent rule is removed by the policy trim, so the execution-phase persisted "
+        "hint is asserted against the failure fingerprint and the accumulated attempt history"
     ),
 }
-
-_PREMISE_CHECK_LINE = "test the premise shared by the failed fixes before another patch"
 
 _INVALID_PRODUCT_SPEC = "---\ntype: product_spec\n---\n"
 _VALID_PRODUCT_SPEC = """---
@@ -256,21 +252,17 @@ def test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_f
 
     trailer = build_validation_retry_footer()
 
-    assert _PREMISE_CHECK_LINE not in first
     assert first.count(trailer) == 1
     assert first.endswith(trailer)
     assert first.count("ATTEMPT 1") == 1
     assert "ATTEMPT 2" not in first
 
-    assert repeat.count(_PREMISE_CHECK_LINE) == 1
     assert repeat.count(trailer) == 1
-    assert repeat.index(_PREMISE_CHECK_LINE) > repeat.index(trailer)
-    assert repeat.endswith(_PREMISE_CHECK_LINE)
+    assert repeat.endswith(trailer)
     assert repeat.count("ATTEMPT 1") == 1
     assert repeat.count("ATTEMPT 2") == 1
     assert "THIS VALIDATION HAS FAILED 2 TIMES" in repeat
 
-    assert _PREMISE_CHECK_LINE not in changed
     assert changed.count(trailer) == 1
     assert changed.endswith(trailer)
     assert changed.count("ATTEMPT 1") == 1
@@ -283,7 +275,7 @@ def test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_f
     assert changed_attempt_bodies.count("PREVIOUS ATTEMPT FAILED") == 3
 
 
-def test_execution_persisted_hint_carries_the_premise_line_only_on_an_identical_repeat() -> None:
+def test_execution_persisted_hint_tracks_the_failure_fingerprint_across_attempts() -> None:
     phase = "development"
     detail = "required artifact was not submitted"
 
@@ -292,27 +284,20 @@ def test_execution_persisted_hint_carries_the_premise_line_only_on_an_identical_
         phase,
         detail,
         prior_hint=first.hint,
-        prior_fingerprint=first.fingerprint,
     )
     changed = compose_persisted_retry_hint(
         phase,
         "a different failure happened",
         prior_hint=repeat.hint,
-        prior_fingerprint=repeat.fingerprint,
     )
 
     assert first.fingerprint != ""
-    assert first.hint.count(_PREMISE_CHECK_LINE) == 0
     assert first.hint.count("PREVIOUS ATTEMPT FAILED") == 1
 
     assert repeat.fingerprint == first.fingerprint
-    assert repeat.hint.count(_PREMISE_CHECK_LINE) == 1
-    assert repeat.hint.endswith(_PREMISE_CHECK_LINE)
-    assert repeat.hint.split(_PREMISE_CHECK_LINE)[0].endswith("\n\n")
     assert repeat.hint.startswith(first.hint)
     assert repeat.hint.count("PREVIOUS ATTEMPT FAILED") == 2
 
     assert changed.fingerprint != repeat.fingerprint
-    assert changed.hint.count(_PREMISE_CHECK_LINE) == 0
-    assert changed.hint.startswith(repeat.hint.removesuffix(_PREMISE_CHECK_LINE).rstrip())
+    assert changed.hint.startswith(repeat.hint)
     assert changed.hint.count("PREVIOUS ATTEMPT FAILED") == 3

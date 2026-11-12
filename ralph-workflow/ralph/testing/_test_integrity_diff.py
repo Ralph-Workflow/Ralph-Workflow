@@ -16,6 +16,35 @@ DELETED_TEST_MODULES: dict[str, str] = {
         "the audit_public_docstrings module and its verify step were deleted; "
         "the absolute comment gate covers the docstring floor"
     ),
+    "ralph-workflow/tests/test_skills_auto_commit.py": (
+        "the dead skills auto-commit helper and the tests that pinned only it were "
+        "deleted; the live skill auto-commit path stays pinned by "
+        "tests/test_audit_skill_auto_commit.py"
+    ),
+    "ralph-workflow/tests/recovery/test_retry_prompt_premise_check.py": (
+        "the retired agent rule and its runtime machinery were removed by the policy "
+        "trim; the surviving retry behaviour stays pinned by "
+        "tests/recovery/test_retry_prompt_contract.py"
+    ),
+    "ralph-workflow/tests/test_audit_skill_mirror_freshness.py": (
+        "the retired mirror-freshness audit was deleted with the mirrored bundle; the "
+        "retired package stays absent under "
+        "tests/test_retired_skills_package_absent.py"
+    ),
+    "ralph-workflow/tests/test_skills_package_skill_names_parity.py": (
+        "the hand-kept skill-name list and its parity test were deleted with the "
+        "mirrored bundle; the shipped set stays pinned by "
+        "tests/test_skills_content.py"
+    ),
+    "ralph-workflow/tests/test_skills_package_sync_script.py": (
+        "the skills sync script was deleted with the mirrored bundle; the retired "
+        "package and script stay absent under tests/test_retired_skills_package_absent.py"
+    ),
+    "ralph-workflow/tests/test_skills_package_version_parity.py": (
+        "the separate skills package and its version parity were deleted with the "
+        "mirrored bundle; the retired package stays absent under "
+        "tests/test_retired_skills_package_absent.py"
+    ),
 }
 
 CATEGORY_TEST_WEAKENING = "test-weakening"

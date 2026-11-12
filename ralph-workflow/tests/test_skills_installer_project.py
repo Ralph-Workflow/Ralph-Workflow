@@ -17,8 +17,22 @@ from ralph.skills._installer import (
     _project_skills_need_install,
     _resolve_within_workspace,
     install_project_baseline_skills,
-    self_improving_skills_hook,
 )
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "install_project_baseline_skills hook-invocation check": (
+        "the no-op hook was removed (zero-dead-code rule), so the install path no longer "
+        "calls a stub that never did anything"
+    ),
+    "no-op hook behavior check": (
+        "the no-op hook was removed (zero-dead-code rule), so the check that pinned its "
+        "empty behavior no longer has a subject"
+    ),
+    "install_project_baseline_skills conflict-path hook check": (
+        "the no-op hook was removed (zero-dead-code rule), so the conflict path no longer "
+        "has a hook invocation to assert against"
+    ),
+}
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
@@ -203,62 +217,6 @@ def test_project_skills_need_install_when_canonical_is_file(tmp_path: Path) -> N
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         assert _project_skills_need_install(tmp_path) is True
-
-
-@pytest.mark.timeout_seconds(5)
-def test_install_project_baseline_skills_invokes_self_improving_hook(tmp_path: Path) -> None:
-    home = _fake_user_global_home(tmp_path)
-    with (
-        patch("pathlib.Path.home", return_value=home),
-        patch("ralph.skills._installer.self_improving_skills_hook") as hook_mock,
-    ):
-        result = install_project_baseline_skills(tmp_path)
-    hook_mock.assert_called_once_with(
-        workspace_root=tmp_path,
-        canonical_root=tmp_path / ".opencode" / "skills",
-    )
-    assert not result[1], f"Expected no failures, got {result[1]}"
-    assert result[0].status.value == "installed_healthy", (
-        f"Expected INSTALLED_HEALTHY status, got {result[0]!r}"
-    )
-
-
-@pytest.mark.timeout_seconds(5)
-def test_self_improving_skills_hook_is_no_op_by_default(tmp_path: Path) -> None:
-    result = self_improving_skills_hook(
-        workspace_root=tmp_path,
-        canonical_root=tmp_path,
-    )
-    assert result is None
-    assert list(tmp_path.iterdir()) == [], (
-        f"No-op hook must NOT write anything; got: {list(tmp_path.iterdir())!r}"
-    )
-
-
-@pytest.mark.timeout_seconds(5)
-def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_conflict(
-    tmp_path: Path,
-) -> None:
-    home = _fake_user_global_home(tmp_path)
-    canonical = tmp_path / ".opencode" / "skills"
-    user_skill = canonical / "submit-artifact"
-    user_skill.mkdir(parents=True, exist_ok=True)
-    (user_skill / "SKILL.md").write_text(
-        "# my custom override\n",
-        encoding="utf-8",
-    )
-
-    with (
-        patch("pathlib.Path.home", return_value=home),
-        patch("ralph.skills._installer.self_improving_skills_hook") as hook_mock,
-    ):
-        result = install_project_baseline_skills(tmp_path)
-
-    assert result[0].status == CapabilityStatus.NEEDS_REPAIR
-    assert any(code == "skills-conflict-submit-artifact" for code in result[1]), (
-        f"Expected skills-conflict-submit-artifact, got {result[1]}"
-    )
-    hook_mock.assert_not_called()
 
 
 @pytest.mark.timeout_seconds(5)

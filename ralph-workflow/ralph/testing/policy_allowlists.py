@@ -37,7 +37,6 @@ IO_ALLOWLIST: set[str] = {
 }
 
 SOURCE_READ_ALLOWLIST: set[str] = {
-    "test_skills_package_skill_names_parity",
     "test_visual_verdict_policy_alignment",
     "test_developer_prompt_subagent_guidance",
     "test_linting_policy_inventory",

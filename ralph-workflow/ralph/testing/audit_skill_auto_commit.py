@@ -68,7 +68,6 @@ _INVARIANTS: tuple[Invariant, ...] = (
         present=(
             "SKILL_AUTO_COMMIT_SUBJECT",
             _SKILL_AUTO_COMMIT_SUBJECT,
-            "commit_skill_updates",
             "commit_skill_writes",
             "stage_files",
         ),
@@ -156,7 +155,7 @@ _INVARIANTS: tuple[Invariant, ...] = (
     Invariant(
         rel_path="pipeline/runner.py",
         present=(),
-        absent=("commit_skill_updates",),
+        absent=("commit_skill_writes",),
     ),
 )
 

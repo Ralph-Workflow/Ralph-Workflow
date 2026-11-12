@@ -447,10 +447,6 @@ def install_project_baseline_skills(
             ),
             failures,
         )
-    self_improving_skills_hook(
-        workspace_root=workspace_root,
-        canonical_root=canonical,
-    )
     return (
         CapabilityEntry(
             status=CapabilityStatus.INSTALLED_HEALTHY,
@@ -458,10 +454,6 @@ def install_project_baseline_skills(
         ),
         [],
     )
-
-
-def self_improving_skills_hook(*, workspace_root: Path, canonical_root: Path) -> None:
-    return None
 
 
 def _resolve_within_workspace(path: Path, workspace_root: Path) -> Path | None:
@@ -613,5 +605,4 @@ __all__ = [
     "install_baseline_skills",
     "install_project_baseline_skills",
     "install_project_baseline_skills_with_diff",
-    "self_improving_skills_hook",
 ]

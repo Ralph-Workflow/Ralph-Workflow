@@ -91,7 +91,7 @@ itself never raises.
 
 ## Acceptance cases
 
-`tests/test_skills_auto_commit.py` and
+`tests/test_skills_install_auto_commit.py` and
 `tests/project_policy/test_policy_auto_commit.py` cover the
 acceptance contract end-to-end with real-git fixtures. They run
 on the default `make test` profile via

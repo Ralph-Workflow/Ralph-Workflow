@@ -767,7 +767,6 @@ tests/test_session_wrapup.py|0,6,0
 tests/test_skills_agent_paths.py|0,1,0
 tests/test_skills_agent_paths_research.py|0,4,0
 tests/test_skills_agent_paths_staleness_audit.py|0,1,0
-tests/test_skills_auto_commit.py|0,4,0
 tests/test_skills_auto_update_no_repair.py|0,3,0
 tests/test_skills_baseline_catalog.py|0,1,0
 tests/test_skills_content.py|0,2,0

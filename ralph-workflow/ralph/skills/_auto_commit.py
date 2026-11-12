@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from ralph.git.operations import stage_files
 from ralph.git.scoped_auto_commit import (
     ScopedCommitResult,
     ScopedCommitStatus,
     commit_deterministic_writes,
-    commit_scoped_updates,
 )
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 
@@ -55,29 +52,6 @@ def _build_body(dirty_paths: list[str]) -> str:
     return "\n".join(body_lines)
 
 
-def commit_skill_updates(
-    repo_root: Path | str,
-    create_commit_fn: _CreateCommitFn,
-    *,
-    stage_fn: Callable[[Path | str, list[str]], None] | None = None,
-) -> str | None:
-    if stage_fn is None:
-        stage_fn = stage_files
-    result = commit_scoped_updates(
-        repo_root,
-        scopes=tuple(sorted(_SKILL_ROOT_PREFIXES)),
-        subject=SKILL_AUTO_COMMIT_SUBJECT,
-        body_builder=_build_body,
-        create_commit_fn=create_commit_fn,
-        stage_fn=stage_fn,
-    )
-    if result.status is ScopedCommitStatus.CREATED:
-        return result.sha
-    if result.status is ScopedCommitStatus.FAILED:
-        logger.debug("commit_skill_updates: failed ({}); returning None", result.error)
-    return None
-
-
 def commit_skill_writes(
     repo_root: Path | str,
     *,
@@ -105,6 +79,5 @@ __all__ = [
     "SKILL_AUTO_COMMIT_SUBJECT",
     "ScopedCommitResult",
     "ScopedCommitStatus",
-    "commit_skill_updates",
     "commit_skill_writes",
 ]
