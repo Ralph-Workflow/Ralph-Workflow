@@ -44,6 +44,7 @@ def _jinja_templates() -> list[Path]:
 
 _ALLOWLIST: list[tuple[str, str]] = [
     ("Ralph loop", "historical concept reference: the Ralph loop"),
+    ("Ralph Loop", "historical concept reference: the Ralph Loop (title case)"),
     ("Ralph-loop", "historical concept reference: the Ralph-loop (hyphenated)"),
     ("original Ralph", "historical lineage reference: original Ralph"),
     (

@@ -229,8 +229,9 @@ def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> 
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     repo = _repo(repo_root)
-    repo.index.add([filename])
-    commit = repo.index.commit(message)
+    index = repo.index
+    index.add([filename])
+    commit = index.commit(message)
     assert commit.hexsha
     return commit.hexsha
 

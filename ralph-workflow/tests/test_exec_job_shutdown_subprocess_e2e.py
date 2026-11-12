@@ -25,12 +25,15 @@ pytestmark = [
 ]
 
 
+_POLL_INTERVAL_S: float = 0.005
+
+
 def _wait_for_pid_dead(pid: int, timeout_s: float = 3.0) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
             os.kill(pid, 0)
-            time.sleep(0.05)
+            time.sleep(_POLL_INTERVAL_S)
         except ProcessLookupError:
             return True
         except OSError:
@@ -48,7 +51,7 @@ def _wait_for_sentinel(path: str, timeout_s: float = 15.0) -> int:
                     return int(fh.read().strip())
             except (OSError, ValueError):
                 pass
-        time.sleep(0.05)
+        time.sleep(_POLL_INTERVAL_S)
     raise AssertionError(f"sentinel {path!r} never written within {timeout_s}s")
 
 
@@ -229,7 +232,7 @@ import os, sys, time
 from ralph.mcp.tools._exec_jobs import ExecJobRegistry
 
 cmd = ["sleep", "60"]
-registry = ExecJobRegistry(auto_register_runtime_hooks=True)
+registry = ExecJobRegistry(auto_register_runtime_hooks=False)
 job_id = registry.start(cmd, capability='ProcessExecBounded')
 job = registry._running_jobs[job_id]
 open(os.environ['HOLDER_FILE'], 'w').write(str(os.getpid()))
@@ -290,7 +293,7 @@ def test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant(
         "_WORKER_FILE = os.environ['WORKER_FILE']\n"
         "_DESCENDANT_FILE = os.environ['DESCENDANT_FILE']\n"
         "\n"
-        "_REGISTRY = ExecJobRegistry(auto_register_runtime_hooks=True)\n"
+        "_REGISTRY = ExecJobRegistry(auto_register_runtime_hooks=False)\n"
         "\n"
         "# Worker command: a Python wrapper that forks ``sleep 600`` and\n"
         "# writes the descendant's PID to ``$DESCENDANT_FILE`` so the test\n"
@@ -516,7 +519,7 @@ def _wait_for_sentinel_text(path: Path, timeout_s: float = 15.0) -> None:
     while not path.exists():
         if time.monotonic() > deadline:
             raise AssertionError(f"{path} never written within {timeout_s}s")
-        time.sleep(0.02)
+        time.sleep(_POLL_INTERVAL_S)
 
 
 _LIVENESS_TREE_WORKER = """
@@ -692,9 +695,9 @@ def test_liveness_kill_stalled_reaps_worker_and_descendant(tmp_path: Path) -> No
         tmp_path,
         age_steps=_AGE_STEPS,
         age_clock_step_s=_AGE_CLOCK_STEP_S,
-        drive_steps=6,
+        drive_steps=2,
         drive_clock_step_s=0.25,
-        drive_dt_s=0.25,
+        drive_dt_s=0.9,
         drive_real_sleep_s=0.0,
         refresh_wait=True,
         timeout_ms=800,
@@ -715,8 +718,8 @@ def test_liveness_kill_hard_cap_reaps_worker_and_descendant(tmp_path: Path) -> N
         tmp_path,
         age_steps=0,
         age_clock_step_s=0.0,
-        drive_steps=6,
-        drive_clock_step_s=0.4,
+        drive_steps=2,
+        drive_clock_step_s=0.5,
         drive_dt_s=0.0,
         drive_real_sleep_s=0.0,
         refresh_wait=False,
@@ -761,9 +764,9 @@ def test_liveness_kill_no_progress_reaps_worker_and_descendant(tmp_path: Path) -
         tmp_path,
         age_steps=_AGE_STEPS,
         age_clock_step_s=_AGE_CLOCK_STEP_S,
-        drive_steps=4,
+        drive_steps=2,
         drive_clock_step_s=0.10,
-        drive_dt_s=300.0,
+        drive_dt_s=900.0,
         drive_real_sleep_s=0.02,
         refresh_wait=True,
         timeout_ms=3_600_000,

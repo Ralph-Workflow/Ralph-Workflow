@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -54,6 +56,37 @@ def _close_cached_repos() -> Generator[None, None, None]:
     _REPO_CACHE.clear()
 
 
+@pytest.fixture(scope="session")
+def commit_review_git_template(
+    tmp_path_factory: pytest.TempPathFactory,
+    _git_repo_template: Path,
+) -> Path:
+    template = tmp_path_factory.mktemp("commit-review-git-template")
+    shutil.copytree(_git_repo_template, template, dirs_exist_ok=True)
+    bootstrap.auto_seed_default_gitignore(template)
+    bootstrap.auto_seed_default_git_exclude(template)
+    return template
+
+
+@pytest.fixture
+def tmp_git_repo(tmp_path: Path, commit_review_git_template: Path) -> Path:
+    repo_path = tmp_path / "repo"
+    shutil.copytree(commit_review_git_template, repo_path)
+    return repo_path
+
+
+def _pending_tree_sha(repo_path: Path) -> str:
+    with Repo(repo_path) as repo, tempfile.TemporaryDirectory() as temp_dir:
+        temporary_index = Path(temp_dir) / "proposal_index"
+        index_path = Path(repo.index.path)
+        if index_path.exists():
+            shutil.copy2(index_path, temporary_index)
+        with repo.git.custom_environment(GIT_INDEX_FILE=str(temporary_index)):
+            repo.git.add("-A")
+            repo.git.rm("-r", "--cached", "--ignore-unmatch", "--", ".agent")
+            return str(repo.git.write_tree()).strip()
+
+
 def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
     if (repo_path / ".git").exists():
         try:
@@ -67,14 +100,11 @@ def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
             untrack_engine_internal_files(repo_path, is_agent_internal_path)
             auto_seed_default_gitignore(repo_path)
             auto_seed_default_git_exclude(repo_path)
-            return seal_pending(repo_path, "run", 1).tree_sha
+            return _pending_tree_sha(repo_path)
         except Exception:
             return None
 
     try:
-        import shutil
-        import tempfile
-
         from ralph.config.bootstrap import (
             auto_seed_default_git_exclude,
             auto_seed_default_gitignore,
@@ -93,7 +123,7 @@ def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
             ensure_git_initialized(str(temp_repo))
             auto_seed_default_gitignore(temp_repo)
             auto_seed_default_git_exclude(temp_repo)
-            return seal_pending(temp_repo, "run", 1).tree_sha
+            return _pending_tree_sha(temp_repo)
     except Exception:
         return None
 

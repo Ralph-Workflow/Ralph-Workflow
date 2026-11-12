@@ -1,7 +1,9 @@
 # ralph-workflow — the AI agent orchestrator and software factory
 
-Coding agents write code quickly; the human coordination around them — babysitting sessions, conflict
-resolution, re-running checks, and review queues — does not scale.
+Coding agents write code quickly; the human coordination around them does not scale — babysitting
+sessions, conflict resolution, re-running checks, and review queues cap throughput at the handoffs.
+A plain agent loop repeats one prompt until the work stops changing, and by hand you supply every
+call. Ralph Workflow moves those calls into a configurable workflow graph.
 
 **Ralph Workflow is the operating system for autonomous coding: a free, open-source AI agent orchestrator
 and software factory that anybody can use — you give it a spec and your own checks, it runs plan →

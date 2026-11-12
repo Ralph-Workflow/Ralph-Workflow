@@ -68,7 +68,7 @@ each phase's output contract is in the
 
 A plain agent loop repeats one prompt until the work stops changing: give an agent a
 task, let it work, check the result, iterate — that is the whole Ralph loop. By hand,
-you make every call: the next prompt, the retry, the merge.
+you supply every call: the next prompt, the retry, the merge.
 
 A workflow graph keeps that loop and moves those calls into configuration:
 

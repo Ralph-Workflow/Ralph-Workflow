@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from collections.abc import Generator
 from dataclasses import dataclass
+from itertools import count
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,8 @@ _VARIANTS: dict[str, tuple[str, bool]] = {
 
 _REPO_CACHE: dict[Path, Repo] = {}
 
+_SCENARIO_SEQUENCE = count()
+
 
 def _repo(path: Path) -> Repo | None:
     cached = _REPO_CACHE.get(path)
@@ -65,32 +68,32 @@ def _refreshed_repo(path: Path) -> Repo | None:
     return repo
 
 
-def _recognized_git_output(repo: Repo, args: tuple[str, ...]) -> str | None:
-    if len(args) == 2 and args[0] == "rev-parse":
-        return repo.rev_parse(args[1]).hexsha
-    if len(args) == 2 and args[0] == "symbolic-ref":
-        return str(repo.head.ref)
-    if len(args) == 4 and args[0] == "log" and args[1] == "-1" and args[2] == "--format=%s":
-        return str(repo.commit(args[3]).message).splitlines()[0]
-    if len(args) == 3 and args[0] == "log" and args[1] == "--format=%s":
-        return "\n".join(
-            str(commit.message).splitlines()[0] for commit in repo.iter_commits(args[2])
-        )
-    if args == ("remote",):
-        return "\n".join(remote.name for remote in repo.remotes)
-    return None
-
-
 def _in_process_git(cwd: Path, args: tuple[str, ...]) -> str | None:
-    repo = _repo(cwd)
-    if repo is None:
-        return None
-    try:
-        return _recognized_git_output(repo, args)
-    except Exception:
-        with contextlib.suppress(Exception):
-            repo.git.clear_cache()
-        return None
+    value: str | None = None
+    for repo in (_repo(cwd), _refreshed_repo(cwd)):
+        if repo is None:
+            continue
+        try:
+            if len(args) == 2 and args[0] == "rev-parse":
+                value = repo.rev_parse(args[1]).hexsha
+            elif len(args) == 2 and args[0] == "symbolic-ref":
+                value = str(repo.head.ref)
+            elif (
+                len(args) == 4 and args[0] == "log" and args[1] == "-1" and args[2] == "--format=%s"
+            ):
+                value = str(repo.commit(args[3]).message).splitlines()[0]
+            elif len(args) == 3 and args[0] == "log" and args[1] == "--format=%s":
+                value = "\n".join(
+                    str(commit.message).splitlines()[0] for commit in repo.iter_commits(args[2])
+                )
+            elif args == ("remote",):
+                value = "\n".join(remote.name for remote in repo.remotes)
+            else:
+                return None
+        except Exception:
+            continue
+        return value
+    return None
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -301,20 +304,14 @@ def _build(
 ) -> _Topology:
     variant = f"{remote}-{'feature' if feature_commit else 'plain'}"
     template = _TEMPLATES[variant]
-    shutil.copytree(template, tmp_path, dirs_exist_ok=True, ignore=_ignore_inert_git_samples)
-    _rebase_paths(template, tmp_path)
-    for path in (
-        tmp_path / "origin.git",
-        tmp_path / "clone",
-        tmp_path / _WORKTREE,
-        tmp_path / "writer",
-    ):
-        _refreshed_repo(path)
+    root = tmp_path / f"scenario-{next(_SCENARIO_SEQUENCE)}"
+    shutil.copytree(template, root, ignore=_ignore_inert_git_samples)
+    _rebase_paths(template, root)
     return _Topology(
-        bare=tmp_path / "origin.git",
-        clone=tmp_path / "clone",
-        feature=tmp_path / _WORKTREE,
-        writer=tmp_path / "writer",
+        bare=root / "origin.git",
+        clone=root / "clone",
+        feature=root / _WORKTREE,
+        writer=root / "writer",
         remote=remote,
     )
 
