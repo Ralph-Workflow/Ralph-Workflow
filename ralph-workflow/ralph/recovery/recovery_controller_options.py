@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING, Protocol
 from ralph.agents.timeout_clock import SystemClock
 from ralph.checked_accessors import as_int, as_mapping, as_str_list
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+from ralph.recovery.unavailability_reason import (
+    DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
+    UnavailabilityReason,
+)
 from ralph.timeout_defaults import (
     AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
     AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
@@ -17,17 +22,14 @@ if TYPE_CHECKING:
 
     from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
-    from ralph.recovery.agent_unavailability_tracker import (
-        UnavailabilityEntry,
-        UnavailabilityStore,
-    )
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.attempt_facts import AttemptFacts
     from ralph.recovery.attribution import AttributionVerdict
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.dead_agent_verdict import PersistedVerdict, TypedSignal
     from ralph.recovery.events import FailureEventBus
     from ralph.recovery.failure_classifier import FailureClassifier
-    from ralph.recovery.unavailability_reason import ReasonBackoffPolicy, UnavailabilityReason
+    from ralph.recovery.unavailability_reason import ReasonBackoffPolicy
     from ralph.workspace.probe import WorkspaceChangeProbe
 
 
@@ -40,6 +42,33 @@ class _DeadAgentVerdictRunner(Protocol):
         probe_outcome: ProbeOutcome | None,
         typed_signal: TypedSignal | None,
     ) -> PersistedVerdict | None: ...
+
+
+def _restored_unavailability_entries(
+    timeouts: Mapping[str, int],
+    reasons: Mapping[str, object],
+    backoff_attempts: Mapping[str, int],
+) -> dict[str, UnavailabilityEntry]:
+    entries: dict[str, UnavailabilityEntry] = {}
+    for agent, until_ms in timeouts.items():
+        raw_reason = reasons.get(agent)
+        if not isinstance(raw_reason, str):
+            continue
+        try:
+            reason = UnavailabilityReason(raw_reason)
+        except ValueError:
+            continue
+        policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY.get(reason)
+        if policy is None:
+            continue
+        entries[agent] = UnavailabilityEntry(
+            unavailable_until_ms=until_ms,
+            reason=reason,
+            attempt=max(0, backoff_attempts.get(agent, 1) - 1),
+            base_backoff_ms=policy.base_backoff_ms,
+            max_backoff_ms=policy.max_backoff_ms,
+        )
+    return entries
 
 
 @dataclass(frozen=True)
@@ -86,6 +115,11 @@ class RecoveryControllerOptions:
                 snapshot.get("unavailable_timeouts", {}), field="unavailable_timeouts"
             ).items()
         }
+        unavailability_entries = _restored_unavailability_entries(
+            unavailable_timeouts,
+            as_mapping(snapshot.get("unavailability_reasons", {}), field="unavailability_reasons"),
+            backoff_attempts,
+        )
         spent_agents = {
             k: set(as_str_list(v, field=f"spent_agents[{k}]"))
             for k, v in as_mapping(snapshot.get("spent_agents", {}), field="spent_agents").items()
@@ -101,6 +135,7 @@ class RecoveryControllerOptions:
             cycle_cap=cycle_cap,
             backoff_attempts=backoff_attempts,
             unavailable_timeouts=unavailable_timeouts,
+            unavailability_entries=unavailability_entries,
             spent_agents=spent_agents,
             policy_bundle=policy_bundle,
             clock=clock,

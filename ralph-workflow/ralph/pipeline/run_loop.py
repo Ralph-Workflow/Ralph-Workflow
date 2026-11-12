@@ -134,6 +134,7 @@ if TYPE_CHECKING:
     from ralph.pro_support.hooks import ProPipelineHooks
     from ralph.pro_support.state_query import SnapshotRegistry
     from ralph.pro_support.watcher import ProMarkerWatcher
+    from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.workspace.scope import WorkspaceScope
 
     class _PipelineSubscriberProtocol(Protocol):
@@ -3500,6 +3501,22 @@ def _emit_post_loop_result(
                     )
 
 
+def _production_dead_agent_probe_runner(
+    config: UnifiedConfig,
+) -> Callable[[str, str], ProbeOutcome | None]:
+    from ralph.agents.registry import AgentRegistry
+    from ralph.recovery.canary_probe import run_canary_probe
+    from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
+
+    def resolve_agent(name: str) -> AgentConfig | None:
+        return AgentRegistry.from_config(config).get(name)
+
+    return build_dead_agent_probe_runner(
+        resolve_agent,
+        lambda agent_config: run_canary_probe(agent_config, general_config=config.general),
+    )
+
+
 def _build_recovery_controller(
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -3552,6 +3569,7 @@ def _build_recovery_controller(
             clock=effective_clock,
             ledger=ledger,
             workspace_probe=effective_probe,
+            dead_agent_probe_runner=_production_dead_agent_probe_runner(config),
         )
     )
     return controller, _cycle_cap

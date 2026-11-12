@@ -46,6 +46,10 @@ from ralph.agents.invoke._errors import (
     AgentInvocationError,
     OpenCodeResumableExitError,
 )
+from ralph.agents.invoke._fire_reason_issuer import (
+    fire_reason_from_value,
+    termination_issuer_for_fire_reason,
+)
 from ralph.agents.invoke._implicit_completion import is_implicit_development_exit
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._pi_exit_signals import (
@@ -101,29 +105,6 @@ if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
 
 
-_SUPERVISOR_IDLE_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
-    {
-        WatchdogFireReason.CONFLICT_INACTIVITY,
-        WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
-        WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER,
-        WatchdogFireReason.NO_OUTPUT_AT_START,
-        WatchdogFireReason.NO_OUTPUT_DEADLINE,
-        WatchdogFireReason.NO_PROGRESS_QUIET,
-        WatchdogFireReason.REPEATED_ERROR_LOOP,
-        WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL,
-        WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
-        WatchdogFireReason.STRICTLY_STUCK,
-    }
-)
-
-_RECOVERY_TIMEOUT_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
-    {
-        WatchdogFireReason.DESCENDANT_HANG,
-        WatchdogFireReason.PROCESS_EXIT_HANG,
-        WatchdogFireReason.SESSION_CEILING_EXCEEDED,
-    }
-)
-
 _OPERATOR_TEARDOWN_ISSUERS: frozenset[str] = frozenset(
     {
         "interactive_completion",
@@ -134,47 +115,37 @@ _OPERATOR_TEARDOWN_ISSUERS: frozenset[str] = frozenset(
     }
 )
 
+_POST_EXIT_FIRE_VERDICTS: frozenset[PostExitVerdict] = frozenset(
+    {PostExitVerdict.FIRE_DESCENDANT_HANG, PostExitVerdict.FIRE_PROCESS_EXIT_HANG}
+)
+
+_MAX_OBSERVED_FACT_ENTRIES = 256
+
 _COMPLETION_ISSUER_PREFIX = "invoke:completion:"
 
-_SIGNAL_RETURN_CODES: frozenset[int] = frozenset({-15, 143})
+_SHELL_SIGNAL_EXIT_MIN = 129
+_SHELL_SIGNAL_EXIT_MAX = 159
+
+
+def _return_code_may_be_a_signal(returncode: int | None) -> bool:
+    if returncode is None:
+        return True
+    return returncode < 0 or _SHELL_SIGNAL_EXIT_MIN <= returncode <= _SHELL_SIGNAL_EXIT_MAX
 
 _EXCEPTION_CHAIN_LIMIT = 8
 
 
-def _fire_reason_from_value(value: str) -> WatchdogFireReason | None:
-    try:
-        return WatchdogFireReason(value)
-    except ValueError:
-        return None
-
-
-def termination_issuer_for_fire_reason(
-    reason: WatchdogFireReason | str | None,
-) -> TerminationIssuer:
-    if reason is None:
-        return TerminationIssuer.UNKNOWN
-    value = reason.value if isinstance(reason, WatchdogFireReason) else str(reason)
-    fire_reason = _fire_reason_from_value(value)
-    if fire_reason is None:
-        return TerminationIssuer.UNKNOWN
-    if fire_reason in _SUPERVISOR_IDLE_FIRE_REASONS:
-        return TerminationIssuer.SUPERVISOR_IDLE
-    if fire_reason in _RECOVERY_TIMEOUT_FIRE_REASONS:
-        return TerminationIssuer.RECOVERY_TIMEOUT
-    return TerminationIssuer.UNKNOWN
-
-
 def termination_issuer_for_teardown_issuer(issuer: str | None) -> TerminationIssuer:
-    if issuer is None:
-        return TerminationIssuer.UNKNOWN
-    label = issuer.strip()
+    label = (issuer or "").strip()
     if not label:
         return TerminationIssuer.UNKNOWN
     if label == "quota_exhausted":
         return TerminationIssuer.QUOTA_DETECTOR
+    with contextlib.suppress(ValueError):
+        return TerminationIssuer(label)
     if label in _OPERATOR_TEARDOWN_ISSUERS or label.startswith(_COMPLETION_ISSUER_PREFIX):
         return TerminationIssuer.OPERATOR
-    if _fire_reason_from_value(label) is not None:
+    if fire_reason_from_value(label) is not None:
         return termination_issuer_for_fire_reason(label)
     return TerminationIssuer.UNKNOWN
 
@@ -229,7 +200,7 @@ def termination_issuer_for_exception(exc: BaseException) -> TerminationIssuer:
     reason = _exception_fire_reason(exc)
     if reason is not None:
         return termination_issuer_for_fire_reason(reason)
-    if _exception_returncode(exc) in _SIGNAL_RETURN_CODES:
+    if _return_code_may_be_a_signal(_exception_returncode(exc)):
         return TerminationIssuer.UNKNOWN
     return TerminationIssuer.AGENT_EXIT
 
@@ -250,6 +221,21 @@ def observed_returncode(handle: object) -> int | None:
 @dataclass
 class _TerminationRecorder:
     _values: list[object] = field(default_factory=lambda: [None] * 7)
+    _event_kinds: list[str] = field(default_factory=list)
+    _tool_calls: list[str] = field(default_factory=list)
+    _pending_tool: str | None = None
+
+    def observe_event(self, kind: str, tool_name: str | None = None) -> None:
+        # A tool call counts as completed once any later event proves the stream moved on.
+        if self._pending_tool is not None:
+            if len(self._tool_calls) < _MAX_OBSERVED_FACT_ENTRIES:
+                self._tool_calls.append(self._pending_tool)
+            self._pending_tool = None
+        is_new_kind = not self._event_kinds or self._event_kinds[-1] != kind
+        if is_new_kind and len(self._event_kinds) < _MAX_OBSERVED_FACT_ENTRIES:
+            self._event_kinds.append(kind)
+        if tool_name is not None:
+            self._pending_tool = tool_name
 
     def record_issuer(self, issuer: TerminationIssuer) -> None:
         if self._values[0] is None:
@@ -262,6 +248,10 @@ class _TerminationRecorder:
     def record_reported_returncode(self, returncode: int | None) -> None:
         if returncode is not None:
             self._values[2] = returncode
+
+    def record_post_exit_watchdog_fire(self) -> None:
+        self._values[0] = TerminationIssuer.POST_EXIT_WATCHDOG
+        self._values[3] = True
 
     def record_liveness(self, observed: bool | None) -> None:
         if observed is not None and self._values[3] is None:
@@ -289,6 +279,8 @@ class _TerminationRecorder:
 
     def facts(self) -> AttemptFacts:
         return AttemptFacts(
+            event_kinds=tuple(self._event_kinds),
+            tool_calls=tuple(self._tool_calls),
             liveness_observed=cast("bool | None", self._values[3]),
             subagent_activity_observed=cast("bool | None", self._values[4]),
             elapsed_to_terminal_ms=cast("int | None", self._values[5]),
@@ -304,8 +296,11 @@ class _AttemptFactsCarrier(Protocol):
 
 def attach_attempt_facts(exc: BaseException, recorder: _TerminationRecorder) -> None:
     recorder.record_reported_returncode(_exception_returncode(exc))
+    facts = recorder.facts()
     carrier = cast("_AttemptFactsCarrier", exc)
-    carrier.attempt_facts = recorder.facts()
+    carrier.attempt_facts = facts
+    if isinstance(exc, AgentInvocationError) and exc.issuer is None and facts.termination:
+        exc.issuer = facts.termination.issuer.value
 
 
 def attempt_facts_from_exception(exc: BaseException) -> AttemptFacts | None:
@@ -492,6 +487,17 @@ def _raise_quota_unless_agy_completed(
             raise
 
 
+def _recorded_issuer_value(recorder: _TerminationRecorder | None) -> str | None:
+    return recorder.termination().issuer.value if recorder is not None else None
+
+
+def _record_post_exit_watchdog_fire(
+    recorder: _TerminationRecorder | None, verdict: PostExitVerdict
+) -> None:
+    if recorder is not None and verdict in _POST_EXIT_FIRE_VERDICTS:
+        recorder.record_post_exit_watchdog_fire()
+
+
 def _wait_for_completion_grace(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
@@ -500,6 +506,7 @@ def _wait_for_completion_grace(
     *,
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
+    termination_recorder: _TerminationRecorder | None = None,
 ) -> AgentExecutionState:
     assert opts.workspace_path is not None
     workspace_path = opts.workspace_path
@@ -531,6 +538,7 @@ def _wait_for_completion_grace(
 
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_parent_exit_grace(classify_exit_state)
+    _record_post_exit_watchdog_fire(termination_recorder, verdict)
     _teardown_subtree_if_pid_available(
         handle,
         issuer=f"invoke:completion:{agent_name}",
@@ -551,6 +559,7 @@ def _wait_for_descendants_then_recheck(
     *,
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
+    termination_recorder: _TerminationRecorder | None = None,
 ) -> AgentExecutionState:
     if isinstance(agent_name_or_opts, CompletionCheckOptions):
         agent_name = "unknown"
@@ -594,6 +603,7 @@ def _wait_for_descendants_then_recheck(
 
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_descendant_quiesce(classify_exit_state)
+    _record_post_exit_watchdog_fire(termination_recorder, verdict)
     _teardown_subtree_if_pid_available(
         handle,
         issuer=f"invoke:completion:{agent_name}",
@@ -729,7 +739,7 @@ def _handle_non_zero_returncode(
         termination_recorder.record_reported_returncode(returncode)
         termination_recorder.record_issuer(
             termination_issuer_for_teardown_issuer(issuer)
-            if returncode in _SIGNAL_RETURN_CODES
+            if _return_code_may_be_a_signal(returncode)
             else TerminationIssuer.AGENT_EXIT
         )
     bounded_output = _bounded_output_lines(
@@ -944,6 +954,7 @@ def _check_process_result(
                 bounded_output,
                 clock=_clock,
                 teardown=process_teardown,
+                termination_recorder=termination_recorder,
             )
 
         if (
@@ -957,6 +968,7 @@ def _check_process_result(
                 bounded_output,
                 clock=_clock,
                 teardown=process_teardown,
+                termination_recorder=termination_recorder,
             )
             descendants_still_active = (
                 opts.execution_strategy.classify_exit(
@@ -1000,6 +1012,8 @@ def _check_process_result(
                 last_evidence_summary=opts.last_evidence_summary,
                 elapsed_seconds=opts.elapsed_seconds,
                 transcript_tail=opts.transcript_tail,
+                returncode=observed_returncode(handle) or 0,
+                issuer=_recorded_issuer_value(termination_recorder),
             )
     elif (
         opts is not None

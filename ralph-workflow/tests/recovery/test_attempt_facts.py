@@ -21,6 +21,7 @@ def test_termination_issuer_exposes_the_required_vocabulary() -> None:
         "supervisor_idle",
         "quota_detector",
         "recovery_timeout",
+        "post_exit_watchdog",
         "operator",
         "unknown",
     }
@@ -33,6 +34,7 @@ def test_termination_issuer_exposes_the_required_vocabulary() -> None:
         (TerminationIssuer.SUPERVISOR_IDLE, "supervisor_idle"),
         (TerminationIssuer.QUOTA_DETECTOR, "quota_detector"),
         (TerminationIssuer.RECOVERY_TIMEOUT, "recovery_timeout"),
+        (TerminationIssuer.POST_EXIT_WATCHDOG, "post_exit_watchdog"),
         (TerminationIssuer.OPERATOR, "operator"),
         (TerminationIssuer.UNKNOWN, "unknown"),
     ),

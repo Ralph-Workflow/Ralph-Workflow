@@ -13,6 +13,8 @@ class OpenCodeResumableExitError(AgentInvocationError):
         last_evidence_summary: str | None = None,
         elapsed_seconds: float | None = None,
         transcript_tail: tuple[str, ...] = (),
+        returncode: int = 0,
+        issuer: str | None = None,
     ) -> None:
         self.resumable_session_id = session_id
         self.last_observed_tool_call = last_observed_tool_call
@@ -32,7 +34,7 @@ class OpenCodeResumableExitError(AgentInvocationError):
             full_message = base_message + " [" + ", ".join(diagnostic_suffix_parts) + "]"
         else:
             full_message = base_message
-        super().__init__(agent_name, 0, full_message)
+        super().__init__(agent_name, returncode, full_message, issuer=issuer)
 
 
 __all__ = ["OpenCodeResumableExitError"]

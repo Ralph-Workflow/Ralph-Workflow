@@ -518,6 +518,12 @@ def reduce(
                 routed_state = routed_state.copy_with(ledger_snapshot=snap)
         except Exception:
             pass
+        verdict_record = cast("object", getattr(recovery, "last_verdict_record", None))
+        if (
+            isinstance(verdict_record, dict)
+            and verdict_record != routed_state.dead_agent_verdict_record
+        ):
+            routed_state = routed_state.copy_with(dead_agent_verdict_record=verdict_record)
     return routed_state, effects
 
 
@@ -862,8 +868,8 @@ def _handle_owned_agent_failure(
     if current_agent is not None:
         observation = observation_from_event(event)
         if observation is None or not observation.already_charged:
-            workspace_changed: bool = bool(
-                observation.resolved_workspace_changed() if observation is not None else False
+            workspace_changed: bool | None = (
+                observation.resolved_workspace_changed() if observation is not None else None
             )
             demoted_reason = recovery.record_attempt_fact(
                 state.phase,
@@ -875,6 +881,11 @@ def _handle_owned_agent_failure(
             if demoted_reason is not None and len(chain.agents) == 1:
                 logger.warning(demoted_reason)
                 return _enter_failed_recovery(state, demoted_reason, policy)
+        recovery.record_confirmed_dead_agent(
+            state.phase,
+            current_agent,
+            facts=observation.facts if observation is not None else None,
+        )
     selection = recovery.preferred_agent_index(
         state.phase,
         chain.agents,
@@ -992,8 +1003,8 @@ def _handle_skip_same_agent_retries(
         observation = observation_from_event(event)
         if current_agent is not None:
             if observation is None or not observation.already_charged:
-                workspace_changed: bool = bool(
-                    observation.resolved_workspace_changed() if observation is not None else False
+                workspace_changed: bool | None = (
+                    observation.resolved_workspace_changed() if observation is not None else None
                 )
                 demoted_reason = recovery.record_attempt_fact(
                     state.phase,
@@ -1019,7 +1030,7 @@ def _handle_skip_same_agent_retries(
             state.phase,
             chain.agents,
             current_index=chain.current_index,
-            current_allowance_spent=True,
+            exclude_current=True,
         )
         selected_attempt = _selection_attempt(state, chain, selection, recovery)
         if selected_attempt is not None:

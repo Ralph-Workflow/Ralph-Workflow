@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
+from ralph.agents.invoke._fire_reason_issuer import termination_issuer_for_fire_reason
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 
 
@@ -99,6 +100,7 @@ class AgentInactivityTimeoutError(AgentInvocationError):
             stderr_msg,
             list(parsed_output) if parsed_output is not None else [],
             failure_origin="watchdog_observation",
+            issuer=termination_issuer_for_fire_reason(_opts.reason).value,
         )
 
 

@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-def failure_detail_parts(exc: BaseException | str) -> list[str]:
+def failure_message_parts(exc: BaseException | str) -> list[str]:
     if isinstance(exc, str):
         text = exc.strip()
         return [text] if text else []
@@ -21,7 +21,14 @@ def failure_detail_parts(exc: BaseException | str) -> list[str]:
         stderr_text = stderr.strip()
         if stderr_text and stderr_text not in parts:
             parts.append(stderr_text)
+    return parts
 
+
+def failure_detail_parts(exc: BaseException | str) -> list[str]:
+    if isinstance(exc, str):
+        return failure_message_parts(exc)
+
+    parts = failure_message_parts(exc)
     parsed_output = cast("object", getattr(exc, "parsed_output", None))
     if isinstance(parsed_output, list):
         for item in parsed_output:
@@ -51,5 +58,6 @@ def has_stale_session_details(
 __all__ = [
     "contains_casefolded_marker",
     "failure_detail_parts",
+    "failure_message_parts",
     "has_stale_session_details",
 ]

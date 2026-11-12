@@ -114,7 +114,9 @@ def test_quota_kill_records_quota_detector_issuer(tmp_path: Path) -> None:
     ("reason", "expected"),
     [
         (WatchdogFireReason.NO_PROGRESS_QUIET, TerminationIssuer.SUPERVISOR_IDLE),
-        (WatchdogFireReason.PROCESS_EXIT_HANG, TerminationIssuer.RECOVERY_TIMEOUT),
+        (WatchdogFireReason.PROCESS_EXIT_HANG, TerminationIssuer.POST_EXIT_WATCHDOG),
+        (WatchdogFireReason.DESCENDANT_HANG, TerminationIssuer.POST_EXIT_WATCHDOG),
+        (WatchdogFireReason.SESSION_CEILING_EXCEEDED, TerminationIssuer.RECOVERY_TIMEOUT),
         (WatchdogFireReason.OPERATOR_CAP_REACHED, TerminationIssuer.UNKNOWN),
     ],
 )
@@ -183,7 +185,7 @@ def test_every_runtime_termination_component_has_an_issuer() -> None:
         "normal_agent_exit": TerminationIssuer.AGENT_EXIT,
         "quota_detector": TerminationIssuer.QUOTA_DETECTOR,
         "supervisor_idle": termination_issuer_for_fire_reason(WatchdogFireReason.NO_PROGRESS_QUIET),
-        "recovery_timeout": termination_issuer_for_fire_reason(
+        "post_exit_watchdog": termination_issuer_for_fire_reason(
             WatchdogFireReason.PROCESS_EXIT_HANG
         ),
         "explicit_teardown": termination_issuer_for_teardown_issuer("invoke:process"),
@@ -194,7 +196,7 @@ def test_every_runtime_termination_component_has_an_issuer() -> None:
         "normal_agent_exit": TerminationIssuer.AGENT_EXIT,
         "quota_detector": TerminationIssuer.QUOTA_DETECTOR,
         "supervisor_idle": TerminationIssuer.SUPERVISOR_IDLE,
-        "recovery_timeout": TerminationIssuer.RECOVERY_TIMEOUT,
+        "post_exit_watchdog": TerminationIssuer.POST_EXIT_WATCHDOG,
         "explicit_teardown": TerminationIssuer.OPERATOR,
         "unattributed_teardown": TerminationIssuer.UNKNOWN,
     }

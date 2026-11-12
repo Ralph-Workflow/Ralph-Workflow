@@ -586,7 +586,9 @@ def _handle_recovery_attempt_failure(
             _set_last_captured_retry_intent(AgentRetryIntent())
         raise exc
 
-    workspace_changed: bool = observation.resolved_workspace_changed() if observation else False
+    workspace_changed: bool | None = (
+        observation.resolved_workspace_changed() if observation else None
+    )
     phase = str(ctx.effect.phase)
     agent = ctx.effect.agent_name
     controller = ctx.deps.pipeline_deps.recovery_controller
@@ -1935,6 +1937,9 @@ def _handle_terminal_agent_invocation_error(
         )
     origin = exc.failure_origin if isinstance(exc, AgentInvocationError) else "agent"
     issuer = exc.issuer if isinstance(exc, AgentInvocationError) else None
+    if issuer is None and observation is not None and observation.facts is not None:
+        termination = observation.facts.termination
+        issuer = str(termination.issuer) if termination is not None else None
     logger.error(
         "Agent invocation failed: origin={} issuer={} error={}",
         origin,

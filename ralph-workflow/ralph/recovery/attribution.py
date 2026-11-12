@@ -66,6 +66,7 @@ class _RuntimeCause(StrEnum):
     KILL_SUPERVISOR_IDLE = "runtime_kill_supervisor_idle"
     KILL_RECOVERY_TIMEOUT = "runtime_kill_recovery_timeout"
     KILL_OPERATOR = "runtime_kill_operator"
+    KILL_POST_EXIT_WATCHDOG = "runtime_kill_post_exit_watchdog"
 
 
 if tuple(item.value for item in _Attribution) != _REQUIRED_ATTRIBUTION_VALUES:
@@ -106,6 +107,7 @@ _RUNTIME_ISSUER_CAUSES: Final[dict[TerminationIssuer, _RuntimeCause]] = {
     TerminationIssuer.SUPERVISOR_IDLE: _RuntimeCause.KILL_SUPERVISOR_IDLE,
     TerminationIssuer.RECOVERY_TIMEOUT: _RuntimeCause.KILL_RECOVERY_TIMEOUT,
     TerminationIssuer.OPERATOR: _RuntimeCause.KILL_OPERATOR,
+    TerminationIssuer.POST_EXIT_WATCHDOG: _RuntimeCause.KILL_POST_EXIT_WATCHDOG,
     TerminationIssuer.UNKNOWN: _RuntimeCause.KILL_UNATTRIBUTED,
 }
 

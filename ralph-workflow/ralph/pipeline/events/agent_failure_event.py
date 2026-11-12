@@ -31,10 +31,10 @@ class AgentFailureEvent:
             return TerminationIssuer.UNKNOWN.value
         return termination.issuer.value
 
-    def resolved_workspace_changed(self) -> bool:
+    def resolved_workspace_changed(self) -> bool | None:
         if not self.has_identity:
             return False
-        return bool(self.workspace_changed)
+        return self.workspace_changed
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, AgentFailureEvent):

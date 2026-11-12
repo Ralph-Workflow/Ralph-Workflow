@@ -24,6 +24,7 @@ __all__ = [
     "task_or_environment_attribution_is_not_agent_fault",
     "verdict_benches_agent",
     "verdict_counts_toward_agent_state",
+    "verdict_record",
 ]
 
 _REQUIRED_DEAD_AGENT_VERDICT_VALUES: Final[tuple[str, ...]] = (
@@ -38,6 +39,7 @@ _RUNTIME_ISSUERS: Final[frozenset[TerminationIssuer]] = frozenset(
         TerminationIssuer.QUOTA_DETECTOR,
         TerminationIssuer.SUPERVISOR_IDLE,
         TerminationIssuer.RECOVERY_TIMEOUT,
+        TerminationIssuer.POST_EXIT_WATCHDOG,
         TerminationIssuer.OPERATOR,
     }
 )
@@ -147,3 +149,65 @@ def verdict_benches_agent(verdict: DeadAgentVerdict) -> bool:
 
 def verdict_counts_toward_agent_state(verdict: DeadAgentVerdict) -> bool:
     return verdict is not DeadAgentVerdict.NOT_AGENT_FAULT
+
+
+def _facts_record(facts: AttemptFacts) -> dict[str, object]:
+    return {
+        "event_kinds": list(facts.event_kinds),
+        "tool_calls": list(facts.tool_calls),
+        "workspace_changed_by_tool": facts.workspace_changed_by_tool,
+        "artifact_valid": facts.artifact_valid,
+        "workspace_changed": facts.workspace_changed,
+        "elapsed_to_terminal_ms": facts.elapsed_to_terminal_ms,
+        "exit_status": facts.exit_status,
+        "liveness_observed": facts.liveness_observed,
+        "subagent_activity_observed": facts.subagent_activity_observed,
+    }
+
+
+def _attribution_record(attribution: AttributionVerdict) -> dict[str, object]:
+    return {
+        "attribution": str(attribution.attribution),
+        "runtime_cause": str(attribution.runtime_cause)
+        if attribution.runtime_cause is not None
+        else None,
+        "cleared": attribution.cleared,
+        "counts_toward_agent_state": attribution.counts_toward_agent_state,
+        "reason": attribution.reason,
+    }
+
+
+def _termination_record(termination: TerminationRecord | None) -> dict[str, object] | None:
+    if termination is None:
+        return None
+    return {
+        "issuer": str(termination.issuer),
+        "observed_returncode": termination.observed_returncode,
+        "reported_returncode": termination.reported_returncode,
+        "liveness_observed": termination.liveness_observed,
+        "return_code_discrepancy": termination.return_code_discrepancy,
+    }
+
+
+def _typed_signal_record(signal: TypedSignal | None) -> dict[str, object] | None:
+    if signal is None:
+        return None
+    return {
+        "name": signal.name,
+        "provider_originated": signal.provider_originated,
+        "agent_initiated": signal.agent_initiated,
+    }
+
+
+def verdict_record(phase: str, agent: str, verdict: PersistedVerdict) -> dict[str, object]:
+    return {
+        "phase": phase,
+        "agent": agent,
+        "verdict": str(verdict.verdict),
+        "facts": _facts_record(verdict.facts),
+        "attribution": _attribution_record(verdict.attribution),
+        "probe_outcome": str(verdict.probe_outcome) if verdict.probe_outcome is not None else None,
+        "termination": _termination_record(verdict.termination),
+        "typed_signal": _typed_signal_record(verdict.typed_signal),
+        "return_code_discrepancy": verdict.return_code_discrepancy,
+    }

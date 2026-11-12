@@ -11,8 +11,11 @@ from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
+    _TerminationRecorder,
+    attach_attempt_facts,
     check_process_result,
     completion_run_id_from_extra_env,
+    termination_issuer_for_fire_reason,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -151,6 +154,7 @@ def run_pty_and_read_lines(
             agy_cli_log=agy_cli_log,
         )
         lines_iter = pty_reader.read_lines()
+        termination = _TerminationRecorder()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
         captured_session_id = expected_session_id
@@ -191,7 +195,9 @@ def run_pty_and_read_lines(
                     )
         except _IdleStreamTimeoutError as exc:
             session_resume_safe = _is_resumable_fire_reason(exc.reason)
-            raise AgentInactivityTimeoutError(
+            termination.record_issuer(termination_issuer_for_fire_reason(exc.reason))
+            termination.record_liveness(True)
+            timeout_error = AgentInactivityTimeoutError(
                 _agent_command_name(ctx.config),
                 exc.timeout_seconds,
                 _bounded_output_lines(
@@ -208,7 +214,9 @@ def run_pty_and_read_lines(
                     ),
                     diagnostic=exc.diagnostic,
                 ),
-            ) from exc
+            )
+            attach_attempt_facts(timeout_error, termination)
+            raise timeout_error from exc
         except BaseException:
             _close_iterator(lines_iter)
             _terminate_pty_tree(handle)
@@ -251,4 +259,5 @@ def run_pty_and_read_lines(
                 activity_only_supervision=ctx.policy.profile.value == "activity_only",
             ),
             _clock=clock,
+            termination_recorder=termination,
         )

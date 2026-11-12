@@ -39,7 +39,12 @@ from ralph.agents.idle_watchdog import (
 )
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
-from ralph.agents.invoke._completion import completion_run_id_from_extra_env
+from ralph.agents.invoke._completion import (
+    _TerminationRecorder,
+    attach_attempt_facts,
+    completion_run_id_from_extra_env,
+    observed_returncode,
+)
 from ralph.agents.invoke._errors import (
     AgentInvocationError,
     SupervisionInfrastructureError,
@@ -111,11 +116,12 @@ from ralph.process.manager import (
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
 from ralph.process.teardown import teardown_subtree
+from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.failure_classifier import _is_subscription_limit_message
 from ralph.runtime_events import current_runtime_event
 
 from ._monitor_factory import _make_process_monitor
-from ._quota_detection import is_provider_quota_output_line
+from ._quota_detection import is_provider_quota_output_line, is_quota_kill_evidence
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1156,14 +1162,28 @@ class PtyLineReader:
         unsubscribe()
 
     def _terminate_for_quota(self, detail: str) -> None:
+        if not is_quota_kill_evidence(detail):
+            return
         if self._quota_error is not None:
             return
-        self._quota_error = QuotaExhaustedError(self._agent_name, detail)
         self._record_terminal_reason("quota_exhausted")
         self._handle.terminate(grace_period_s=0.5)
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
+        recorder = _TerminationRecorder()
+        recorder.record_issuer(TerminationIssuer.QUOTA_DETECTOR)
+        recorder.record_liveness(True)
+        returncode = observed_returncode(self._handle)
+        recorder.record_observed_returncode(returncode)
+        error = QuotaExhaustedError(
+            self._agent_name,
+            detail,
+            returncode=0 if returncode is None else returncode,
+            issuer=TerminationIssuer.QUOTA_DETECTOR.value,
+        )
+        attach_attempt_facts(error, recorder)
+        self._quota_error = error
         self._lines_event.set()
 
     def _record_terminal_reason(self, reason: str) -> None:

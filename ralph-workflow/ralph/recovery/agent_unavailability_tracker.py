@@ -73,6 +73,8 @@ class AgentUnavailabilityTracker:
 
         if initial_timeouts:
             for key, timeout_ms in initial_timeouts.items():
+                if key in self._entries:
+                    continue
                 self._entries[key] = UnavailabilityEntry(
                     unavailable_until_ms=timeout_ms,
                     reason=None,

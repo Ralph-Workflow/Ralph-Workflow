@@ -28,7 +28,7 @@ class _AttemptFact:
     phase: str
     agent: str
     artifact_valid: bool
-    workspace_changed: bool = False
+    workspace_changed: bool | None = False
     free_retry_category: bool = False
 
 
@@ -263,7 +263,7 @@ class AgentFailureLedger:
                     total_unproductive=0,
                 )
 
-            if fact.workspace_changed:
+            if fact.workspace_changed is True:
                 entry.consecutive_unproductive = 0
                 entry.total_unproductive += 1
             else:

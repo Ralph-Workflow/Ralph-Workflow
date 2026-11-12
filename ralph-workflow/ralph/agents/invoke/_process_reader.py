@@ -50,6 +50,7 @@ from ralph.agents.invoke._completion import (
     attach_attempt_facts,
     check_process_result,
     completion_run_id_from_extra_env,
+    observed_returncode,
     read_bounded_stderr,
     termination_issuer_for_fire_reason,
 )
@@ -117,7 +118,7 @@ from ralph.timeout_defaults import (
 )
 
 from ._monitor_factory import _make_process_monitor
-from ._quota_detection import is_provider_quota_output_line
+from ._quota_detection import is_provider_quota_output_line, is_quota_kill_evidence
 
 _CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
@@ -125,6 +126,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
     from contextvars import Token
 
+    from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.mcp.server._activity_sink import ActivitySink
     from ralph.process.manager import ManagedPtyProcess
@@ -162,8 +164,10 @@ def _subagent_activity_observed(watchdog: IdleWatchdog) -> bool | None:
 def _record_watchdog_evidence(recorder: _TerminationRecorder, watchdog: object) -> None:
     elapsed = cast("float | None", getattr(watchdog, "invocation_elapsed_seconds", None))
     recorder.record_elapsed_to_terminal(int(elapsed * 1000) if elapsed is not None else None)
-    if isinstance(watchdog, IdleWatchdog):
-        recorder.record_subagent_activity(_subagent_activity_observed(watchdog))
+    if hasattr(watchdog, "last_evidence_summary"):
+        recorder.record_subagent_activity(
+            _subagent_activity_observed(cast("IdleWatchdog", watchdog))
+        )
 
 
 def _record_fire_termination(
@@ -175,6 +179,17 @@ def _record_fire_termination(
     recorder.record_issuer(termination_issuer_for_fire_reason(fire_reason))
     recorder.record_liveness(True)
     _record_watchdog_evidence(recorder, watchdog)
+
+
+def _observe_attempt_event(reader: object, activity_signal: AgentActivitySignal) -> None:
+    recorder = cast("_TerminationRecorder | None", getattr(reader, "_termination", None))
+    if recorder is None:
+        return
+    tool_name: str | None = None
+    if activity_signal.kind == AgentActivityKind.TOOL_USE:
+        tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
+        tool_name = tool_call[0] if tool_call is not None else None
+    recorder.observe_event(str(activity_signal.kind), tool_name)
 
 
 def _agent_command_name(config: AgentConfig) -> str:
@@ -459,6 +474,8 @@ class ProcessLineReader:
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._quota_error: QuotaExhaustedError | None = None
+        self._quota_lock = threading.Lock()
+        self._quota_claimed = False
         self._termination = _TerminationRecorder()
         self._stderr_lock = threading.Lock()
         self._stderr_capture = ""
@@ -815,14 +832,21 @@ class ProcessLineReader:
                 self._pre_output_listener()
 
     def _terminate_for_quota(self, detail: str) -> None:
-        if self._quota_error is not None:
+        if not is_quota_kill_evidence(detail):
             return
         if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS:
             return
-        self._quota_error = QuotaExhaustedError(_agent_command_name(self._config), detail)
-        self._lines_event.set()
+        with self._quota_lock:
+            if self._quota_claimed:
+                return
+            self._quota_claimed = True
         self._termination.record_issuer(TerminationIssuer.QUOTA_DETECTOR)
         self._termination.record_liveness(True)
+        reason_recorder = cast(
+            "Callable[[str], None] | None", getattr(self._handle, "record_terminal_reason", None)
+        )
+        if reason_recorder is not None:
+            reason_recorder("quota_exhausted")
         self._handle.terminate(grace_period_s=0.5)
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
@@ -830,6 +854,15 @@ class ProcessLineReader:
                 teardown_subtree(pid, issuer="invoke:process")
             else:
                 self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
+        returncode = observed_returncode(self._handle)
+        self._termination.record_observed_returncode(returncode)
+        self._quota_error = QuotaExhaustedError(
+            _agent_command_name(self._config),
+            detail,
+            returncode=0 if returncode is None else returncode,
+            issuer=TerminationIssuer.QUOTA_DETECTOR.value,
+        )
+        self._lines_event.set()
 
     def _raise_if_fresh_agy_log_has_quota(self) -> None:
         if self._agy_cli_log is None:
@@ -1000,6 +1033,7 @@ class ProcessLineReader:
                 stderr_reader.join(timeout=max(self._policy.drain_window_seconds, 0.5))
         self._publish_bounded_stderr()
         self._capture_abandoned_lines()
+        _record_watchdog_evidence(self._termination, watchdog)
         watchdog.record_invocation_end()
         if self._remove_relay_sink is not None:
             self._remove_relay_sink()
@@ -1034,6 +1068,7 @@ class ProcessLineReader:
         ):
             watchdog.record_any_output(byte_size=len(queued_line.encode("utf-8")))
         self._last_activity_kind = str(activity_signal.kind)
+        _observe_attempt_event(self, activity_signal)
         self._last_activity_meaningful[0] = (
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
             and not activity_signal.is_harness_echo
@@ -1064,6 +1099,7 @@ class ProcessLineReader:
         self, watchdog: IdleWatchdog, drain_deadline: float | None
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         while True:
+            self._poll_opencode_subagent_probe()
             result = self._check_fire(
                 watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
             )

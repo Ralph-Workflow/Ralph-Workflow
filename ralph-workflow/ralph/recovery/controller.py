@@ -39,6 +39,7 @@ from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
     UnavailabilityStore,
 )
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import attribute_attempt
 from ralph.recovery.classifier import (
     ClassifiedFailure,
@@ -281,7 +282,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
-    from ralph.recovery.attempt_facts import AttemptFacts
     from ralph.recovery.attribution import AttributionVerdict
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.dead_agent_verdict import DeadAgentVerdict, PersistedVerdict, TypedSignal
@@ -470,6 +470,7 @@ class RecoveryController:
             )
         self._workspace_probe: WorkspaceChangeProbe | None = opts.workspace_probe
         self._dead_agent_probe_runner = opts.dead_agent_probe_runner
+        self._last_verdict_record: dict[str, object] | None = None
         self._dead_agent_verdict_runner = opts.dead_agent_verdict_runner
         self._spent_agents: dict[str, set[str]] = {
             k: set(v) for k, v in (opts.spent_agents or {}).items()
@@ -540,10 +541,12 @@ class RecoveryController:
             agent,
             failure=failure,
             facts=effective_facts,
+            exc=raw_failure if isinstance(raw_failure, BaseException) else None,
         )
         bench_applied = False
         counts_toward_agent_state = True
         if verdict is not None:
+            self._remember_verdict(phase, agent, verdict)
             if _verdict_benches_agent(verdict) and agent is not None:
                 self.record_confirmed_unavailability(
                     phase,
@@ -576,6 +579,17 @@ class RecoveryController:
             counts_toward_agent_state=counts_toward_agent_state,
         )
 
+    def _remember_verdict(self, phase: str, agent: str | None, verdict: PersistedVerdict) -> None:
+        namespace = _dead_agent_verdict_namespace()
+        record = cast(
+            "Callable[[str, str, PersistedVerdict], dict[str, object]]", namespace["verdict_record"]
+        )
+        self._last_verdict_record = record(phase, agent or "", verdict)
+
+    @property
+    def last_verdict_record(self) -> dict[str, object] | None:
+        return self._last_verdict_record
+
     def _is_dead_agent_candidate(
         self,
         signal_name: str | None,
@@ -596,19 +610,21 @@ class RecoveryController:
         signal_name: str | None = None,
         signal_provider_originated: bool = False,
     ) -> PersistedVerdict | None:
-        if self._dead_agent_probe_runner is None and self._dead_agent_verdict_runner is None:
-            return None
         if signal_name is None and exc is not None:
             signal_name = typed_signal_name(exc)
             signal_provider_originated = typed_signal_provider_originated(exc)
+        has_runner = (
+            self._dead_agent_probe_runner is not None or self._dead_agent_verdict_runner is not None
+        )
+        if not has_runner and not (signal_name is not None and signal_provider_originated):
+            return None
         effective_facts = facts
         if effective_facts is None and failure is not None:
             effective_facts = failure.facts
         if not self._is_dead_agent_candidate(signal_name, effective_facts):
             return None
-        probe_outcome: ProbeOutcome | None = None
-        if self._dead_agent_probe_runner is not None and agent is not None:
-            probe_outcome = self._dead_agent_probe_runner(phase, agent)
+        if effective_facts is None and self._dead_agent_verdict_runner is None:
+            effective_facts = AttemptFacts()
         typed_signal = build_typed_agent_signal(
             signal_name,
             signal_provider_originated,
@@ -623,6 +639,20 @@ class RecoveryController:
                     typed_signal is not None and typed_signal.provider_originated
                 ),
             )
+        probe_outcome: ProbeOutcome | None = None
+        if self._dead_agent_verdict_runner is None and effective_facts is not None:
+            preliminary = build_dead_agent_verdict(
+                effective_facts,
+                attribution=attribution,
+                probe_outcome=None,
+                typed_signal=typed_signal,
+            )
+            if _verdict_benches_agent(preliminary) or not _verdict_counts_toward_agent_state(
+                preliminary
+            ):
+                return preliminary
+        if self._dead_agent_probe_runner is not None and agent is not None:
+            probe_outcome = self._dead_agent_probe_runner(phase, agent)
         if self._dead_agent_verdict_runner is not None:
             return self._dead_agent_verdict_runner(
                 facts=effective_facts,
@@ -682,6 +712,7 @@ class RecoveryController:
         )
         if verdict is None:
             return None
+        self._remember_verdict(phase, agent, verdict)
         if _verdict_benches_agent(verdict):
             self.record_confirmed_unavailability(
                 phase,
@@ -706,7 +737,7 @@ class RecoveryController:
         agent: str,
         *,
         artifact_valid: bool,
-        workspace_changed: bool,
+        workspace_changed: bool | None,
         free_retry_category: bool = False,
     ) -> str | None:
         fact = AttemptFact(
@@ -1162,7 +1193,7 @@ class RecoveryController:
         agents: Sequence[str],
         *,
         current_index: int | None = None,
-        current_allowance_spent: bool = False,
+        exclude_current: bool = False,
     ) -> AgentSelection:
         snap = self._unavailability_tracker.snapshot()
         self._phase_chains[phase] = tuple(agents)
@@ -1186,12 +1217,10 @@ class RecoveryController:
                 cooldown_ms = max(cooldown_ms, 0, ledger_status.until_ms - now_ms)
                 cooldown_reason = ledger_status.reason
 
-            avail = self._is_agent_available(phase, agent)
-            is_spent = (
-                agent in spent_set
-                or (idx == current_index and current_allowance_spent)
-                or is_ledger_spent
+            avail = self._is_agent_available(phase, agent) and not (
+                exclude_current and idx == current_index
             )
+            is_spent = agent in spent_set or is_ledger_spent
 
             rows.append(
                 agent_availability(
@@ -1446,6 +1475,7 @@ class RecoveryController:
             "agent_max_total_unproductive": self._total_unproductive_limit,
             "ledger": self._ledger.snapshot(),
             "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
+            "unavailability_reasons": tracker_snapshot.get("unavailability_reasons", {}),
             "spent_agents": {k: sorted(v) for k, v in self._spent_agents.items()},
         }
 

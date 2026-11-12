@@ -129,5 +129,6 @@
   "is_waiting_state": false,
   "wait_reason": null,
   "wait_until_monotonic_ms": null,
-  "ledger_snapshot": null
+  "ledger_snapshot": null,
+  "dead_agent_verdict_record": null
 }

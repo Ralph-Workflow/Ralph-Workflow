@@ -17,6 +17,7 @@ _REQUIRED_TERMINATION_ISSUER_VALUES: tuple[str, ...] = (
     "supervisor_idle",
     "quota_detector",
     "recovery_timeout",
+    "post_exit_watchdog",
     "operator",
     "unknown",
 )
@@ -29,6 +30,7 @@ class _TerminationIssuer(StrEnum):
     SUPERVISOR_IDLE = "supervisor_idle"
     QUOTA_DETECTOR = "quota_detector"
     RECOVERY_TIMEOUT = "recovery_timeout"
+    POST_EXIT_WATCHDOG = "post_exit_watchdog"
     OPERATOR = "operator"
     UNKNOWN = "unknown"
 
@@ -42,7 +44,7 @@ class _WorkspaceChangeState(StrEnum):
 if tuple(issuer.value for issuer in _TerminationIssuer) != _REQUIRED_TERMINATION_ISSUER_VALUES:
     raise RuntimeError(
         "TerminationIssuer must expose exactly agent_exit, supervisor_idle, quota_detector, "
-        "recovery_timeout, operator, unknown"
+        "recovery_timeout, post_exit_watchdog, operator, unknown"
     )
 
 if tuple(state.value for state in _WorkspaceChangeState) != _REQUIRED_WORKSPACE_CHANGE_STATE_VALUES:

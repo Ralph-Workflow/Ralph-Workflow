@@ -589,42 +589,35 @@ def test_incident_4_each_candidate_kill_source_leaves_a_distinguishable_signatur
     )
 
 
-def test_incident_4_the_observed_signature_does_not_identify_the_actual_killer() -> None:
-    observed_signature = (
-        "agent",
-        None,
-        0,
+def test_incident_4_every_known_killer_records_an_issuer_instead_of_the_unattributed_signature() -> None:
+    unattributed_signature = ("agent", None, 0)
+    supervisor = AgentInactivityTimeoutError(
+        "opencode",
+        18.0,
+        [],
+        InactivityTimeoutOpts(reason=WatchdogFireReason.NO_PROGRESS_QUIET),
     )
+    watchdog = AgentInactivityTimeoutError(
+        "opencode",
+        30.0,
+        [],
+        InactivityTimeoutOpts(reason=WatchdogFireReason.DESCENDANT_HANG),
+    )
+    quota = QuotaExhaustedError("opencode", INCIDENT_4_OPENCODE_TOOL_USE_LINE)
 
-    idle_watchdog_signature = (
-        AgentInactivityTimeoutError(
-            "opencode",
-            18.0,
-            [],
-            InactivityTimeoutOpts(reason=WatchdogFireReason.NO_PROGRESS_QUIET),
-        ).failure_origin,
-        None,
-        AgentInactivityTimeoutError(
-            "opencode",
-            18.0,
-            [],
-            InactivityTimeoutOpts(reason=WatchdogFireReason.NO_PROGRESS_QUIET),
-        ).returncode,
-    )
-    quota_signature = (
-        QuotaExhaustedError("opencode", INCIDENT_4_OPENCODE_TOOL_USE_LINE).failure_origin,
-        QuotaExhaustedError("opencode", INCIDENT_4_OPENCODE_TOOL_USE_LINE).issuer,
-        QuotaExhaustedError("opencode", INCIDENT_4_OPENCODE_TOOL_USE_LINE).returncode,
-    )
+    signatures = {
+        "supervisor": (supervisor.failure_origin, supervisor.issuer, supervisor.returncode),
+        "watchdog": (watchdog.failure_origin, watchdog.issuer, watchdog.returncode),
+        "quota": (quota.failure_origin, quota.issuer, quota.returncode),
+    }
 
-    assert idle_watchdog_signature != observed_signature, (
-        "the incident-4 signature (origin=agent, issuer=None, code 0) is not the supervisor "
-        f"idle/liveness kill (observed supervisor signature: {idle_watchdog_signature!r})"
+    assert all(signature != unattributed_signature for signature in signatures.values()), (
+        f"a kill that records no issuer cannot be attributed: {signatures!r}"
     )
-    assert quota_signature == observed_signature, (
-        "the incident-4 signature collides with the quota-detector signature, so it cannot prove "
-        f"which component sent SIGTERM (observed quota signature: {quota_signature!r})"
+    assert len({signature[1] for signature in signatures.values()}) == len(signatures), (
+        f"each killer must record its own distinguishable issuer: {signatures!r}"
     )
+    assert all(isinstance(signature[1], str) and signature[1] for signature in signatures.values())
 
 
 def test_incident_4_the_recovery_controller_never_kills_the_agent_process() -> None:
