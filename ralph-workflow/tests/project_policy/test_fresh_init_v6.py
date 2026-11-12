@@ -23,15 +23,16 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the deleted agent rule is removed by the policy trim, so the execution-kernel starter ships a single advisory guard row, the non-inferable instruction-surface rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
-    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the deleted agent rule is removed by the policy trim, so the execution-kernel starter ships a single advisory guard row, the non-inferable instruction-surface rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
-    "test_fresh_cli_init_seeds_v6_policy_pack": "the deleted agent rule is removed by the policy trim, so the execution-kernel starter ships a single advisory guard row, the non-inferable instruction-surface rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
-    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the deleted agent rule is removed by the policy trim, so the execution-kernel starter ships a single advisory guard row, the non-inferable instruction-surface rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
+    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the premise-check rule is stated again as rule 7, so the execution-kernel starter ships two advisory guard rows, the non-inferable instruction-surface rule and the premise-check rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
+    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the premise-check rule is stated again as rule 7, so the execution-kernel starter ships two advisory guard rows, the non-inferable instruction-surface rule and the premise-check rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
+    "test_fresh_cli_init_seeds_v6_policy_pack": "the premise-check rule is stated again as rule 7, so the execution-kernel starter ships two advisory guard rows, the non-inferable instruction-surface rule and the premise-check rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
+    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the premise-check rule is stated again as rule 7, so the execution-kernel starter ships two advisory guard rows, the non-inferable instruction-surface rule and the premise-check rule; the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
 }
 
 ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
     {
         "Non-inferable instruction surface",
+        "Premise check",
     }
 )
 

@@ -16,6 +16,7 @@ from ralph.recovery.retry_prompt import (
     build_retry_error_block,
     build_validation_retry_footer,
     failure_fingerprint,
+    premise_check_line,
 )
 
 if TYPE_CHECKING:
@@ -240,25 +241,28 @@ def build_validation_retry_hint(
         ]
     )
     current_attempt = "\n".join(lines)
-    attempts = [*_validation_retry_attempts(prior_hint), current_attempt]
+    prior_attempts = _validation_retry_attempts(prior_hint)
+    attempts = [*prior_attempts, current_attempt]
+    premise = premise_check_line(
+        failure_fingerprint(current_attempt),
+        failure_fingerprint(prior_attempts[-1]) if prior_attempts else None,
+    )
     numbered_attempts = [
         _number_validation_retry_attempt(attempt, index)
         for index, attempt in enumerate(attempts, start=1)
     ]
     bounded_attempts = _bound_validation_retry_attempts(numbered_attempts)
-    header = (
-        f"THIS VALIDATION HAS FAILED {len(attempts)} TIMES - FIX THE UNDERLYING ISSUE, "
-        "DO NOT RESUBMIT UNCHANGED\n\n"
-        if len(attempts) > 1
-        else ""
-    )
-    return "\n\n".join(
-        [
-            VALIDATION_FAILURE_BANNER,
-            header + "\n\n".join(bounded_attempts),
-            build_validation_retry_footer(),
-        ]
-    )
+    blocks = [VALIDATION_FAILURE_BANNER]
+    if len(attempts) > 1:
+        blocks.append(
+            f"THIS VALIDATION HAS FAILED {len(attempts)} TIMES - FIX THE UNDERLYING ISSUE, "
+            "DO NOT RESUBMIT UNCHANGED"
+        )
+    if premise:
+        blocks.append(premise)
+    blocks.append("\n\n".join(bounded_attempts))
+    blocks.append(build_validation_retry_footer())
+    return "\n\n".join(blocks)
 
 
 def _validation_retry_attempts(hint: str) -> list[str]:

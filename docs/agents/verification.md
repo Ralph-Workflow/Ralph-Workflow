@@ -251,7 +251,7 @@ The MCP server startup architecture enforces a strict distinction between non-fa
 
 - `ralph/verify_steps.py` — the `_VERIFY_STEPS` registry (the step definitions and their execution order)
 - `ralph/verify.py` — budget tracker, the re-exported `_VERIFY_STEPS`, invariant checks
-- `ralph/testing/audit_*.py` — per-audit machinery (see each docstring for the per-audit invariant list)
+- `ralph/testing/audit_*.py` — per-audit machinery (each audit's invariants are its module-level rule constants and check functions, covered by `ralph-workflow/tests/test_audit_*.py` and `ralph-workflow/tests/testing/test_audit_*.py`)
 - [AGENTS.md §'Non-negotiables'](../../AGENTS.md) — canonical policy and circumvention table
 - [Testing Guide](testing-guide.md) — test design rules and required doubles
 - [Deterministic Auto-Commit](deterministic-auto-commit.md) — the producer-level discipline for engine-owned writes

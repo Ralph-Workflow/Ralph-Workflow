@@ -7,7 +7,12 @@ import pytest
 from ralph.project_policy import markers, starters
 from tests.project_policy.kernel_contract import (
     AGENT_RULES,
+    COMMENT_BAN_ANCHOR,
+    DETERMINISTIC_TAG_ANCHOR,
+    PREMISE_CHECK_RULE_NAME,
+    RETIRED_BLANKET_TAG_ANCHOR,
     agent_rule_statements,
+    enforcer_status_rows,
     evidence_tag,
     kernel,
     kernel_rules_section,
@@ -18,34 +23,30 @@ from tests.project_policy.kernel_contract import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_kernels_declare_exactly_the_fourteen_agent_rules": (
-        "the deleted agent rule is removed by the policy trim, so the shipped "
-        "contract is thirteen numbered agent rules and the count check moves to "
-        "the thirteen-rule contract"
-    ),
     "test_kernels_number_the_agent_rules_to_match_the_contract": (
-        "the deleted agent rule is removed by the policy trim, so the numbered "
-        "contract is thirteen rules and every rule that followed the deleted one "
-        "moves down one number"
+        "the premise-check rule is stated again as rule 7, so the numbered "
+        "contract is fourteen rules and every rule that followed it moves down "
+        "one number"
     ),
     "test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules": (
-        "the deleted agent rule is removed by the policy trim, so the "
-        "rule-to-phase table covers the thirteen surviving numbered rules"
+        "the premise-check rule is stated again as rule 7, so the rule-to-phase "
+        "table covers the fourteen numbered rules"
     ),
     "test_every_agent_rule_has_a_research_basis_supports_line": (
-        "the deleted agent rule is removed by the policy trim, so each of the "
-        "thirteen surviving rules names its number in a research-basis supports line"
+        "the premise-check rule is stated again as rule 7, so each of the "
+        "fourteen rules names its number in a research-basis supports line"
     ),
-    "test_kernels_state_the_removed_agent_rule": (
-        "the deleted agent rule is removed by the policy trim, so the kernel no "
-        "longer states it and the check that required its rule text, its "
-        "anecdotal evidence tag, and its advisory ladder row is deleted with it"
+    "test_kernel_anchors_the_deterministic_evidence_rule": (
+        "the blanket sentence that only a `strong` or `moderate` rule may carry "
+        "a `deterministic` enforcement status is replaced by the rule that the "
+        "evidence tag and the enforcement status are separate properties, so the "
+        "anchor names the replacement text and the retired blanket sentence must "
+        "be absent"
     ),
-    "test_kernel_root_and_starter_guard_inventory_carry_the_removed_rule_row": (
-        "the deleted agent rule is removed by the policy trim, so neither kernel "
-        "carries a guard row for it and the check that required that row in both "
-        "kernels is replaced by the check that the surviving rule 4 row names the "
-        "spec-derived expected value"
+    "test_kernels_state_the_premise_check_rule": (
+        "the premise-check rule is stated again as rule 7 with its anecdotal "
+        "evidence tag, its advisory ladder cell and its guard-inventory rows, so "
+        "the check pins that contract in both kernels"
     ),
 }
 
@@ -85,11 +86,17 @@ LOAD_STEP_DOMAIN_MARKER = "LOAD only the domain polic"
 
 BRIEF_EVIDENCE_TAGS: dict[str, str] = {
     "Regression tests from the spec": "moderate",
+    "Premise check": "anecdotal",
     "Smallest change": "anecdotal",
     "Context hygiene": "strong",
 }
 
-DETERMINISTIC_TAG_ANCHOR = "Only a rule tagged `strong` or `moderate` may carry a `deterministic`"
+PREMISE_CHECK_OBLIGATIONS: tuple[str, ...] = (
+    "the runtime owns the retry signal",
+    "retry formatter",
+    "does not count retries",
+    "does not remember earlier attempts",
+)
 
 INSTRUCTION_AUDIT_TRIGGER = "A model or harness generation change"
 INSTRUCTION_AUDIT_REQUIREMENTS: tuple[str, ...] = (
@@ -566,8 +573,50 @@ def test_kernel_evidence_tags_match_the_brief() -> None:
 def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
     for source_name, content in (("root", root_kernel()), ("starter", kernel())):
         assert DETERMINISTIC_TAG_ANCHOR in content, (
-            f"{source_name} kernel does not anchor the rule that only a `strong` "
-            f"or `moderate` rule may carry a `deterministic` enforcement status"
+            f"{source_name} kernel does not anchor the rule that the evidence tag and "
+            f"the enforcement status are separate properties and that a rule a "
+            f"deterministic gate decides carries `deterministic` whatever its tag"
+        )
+        normalized = " ".join(content.split())
+        assert COMMENT_BAN_ANCHOR in normalized, (
+            f"{source_name} kernel does not name the absolute comment and docstring "
+            f"ban as the `none`-tagged rule a deterministic gate decides"
+        )
+        assert RETIRED_BLANKET_TAG_ANCHOR not in normalized, (
+            f"{source_name} kernel still states the retired blanket rule that only a "
+            f"`strong` or `moderate` rule may carry a `deterministic` enforcement status"
+        )
+
+
+def test_kernels_state_the_premise_check_rule() -> None:
+    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
+        statements = agent_rule_statements(content)
+        statement = statements.get(PREMISE_CHECK_RULE_NAME.lower())
+        assert statement is not None, (
+            f"{source_name} kernel does not state the {PREMISE_CHECK_RULE_NAME!r} agent rule"
+        )
+        assert evidence_tag(statement) == "anecdotal", (
+            f"{source_name} kernel rule {PREMISE_CHECK_RULE_NAME!r} carries evidence tag "
+            f"{evidence_tag(statement)!r}; the rule rests on practitioner experience"
+        )
+        normalized = " ".join(statement.lower().split())
+        for obligation in PREMISE_CHECK_OBLIGATIONS:
+            assert obligation in normalized, (
+                f"{source_name} kernel rule {PREMISE_CHECK_RULE_NAME!r} does not state "
+                f"the obligation {obligation!r}"
+            )
+        status = enforcer_status_rows(content).get(PREMISE_CHECK_RULE_NAME)
+        assert status is not None, (
+            f"{source_name} kernel rule-to-enforcer ladder has no row for the "
+            f"{PREMISE_CHECK_RULE_NAME!r} rule"
+        )
+        assert status.startswith("advisory:"), (
+            f"{source_name} kernel rule {PREMISE_CHECK_RULE_NAME!r} must keep its "
+            f"advisory enforcement; observed: {status!r}"
+        )
+        assert "; review:" in status, (
+            f"{source_name} kernel rule {PREMISE_CHECK_RULE_NAME!r} must name its review "
+            f"trigger; observed: {status!r}"
         )
 
 

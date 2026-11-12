@@ -74,11 +74,17 @@ Evidence tags differ by claim. The comment/code-inconsistency link to
 defects is tagged moderate (the source is listed under Research basis)
 and is the basis for a blocking check. The over-commenting claim — that
 agents comment too much, and that removing such comments changes
-outcomes — is tagged anecdotal and its effect size is unconfirmed, so
-the ban rests on the project rule rather than on a measured effect size;
-the checker enforces it regardless. No percentage, multiplier, or
-benchmark figure from either claim belongs in this policy until it is
-confirmed against the primary source.
+outcomes — is tagged anecdotal and its effect size is unconfirmed. The
+ban itself is a project judgment tagged `none`: no recorded source
+establishes that the ban lowers the defect rate, and the ban does not
+rest on one. The evidence tag and the enforcement status are separate
+properties: the tag names the kind of source behind the rule, the
+enforcement status names who decides it. The ban ships as
+`deterministic` because the comment audit enforces it, and a `none`
+tag does not make a rule advisory when a deterministic gate decides it.
+No percentage, multiplier, or benchmark figure from either claim
+belongs in this policy until it is confirmed against the primary
+source.
 
 There is no inline bypass marker and no baseline. A comment is a finding
 even when it carries a reason, and the gate holds no list of exempted

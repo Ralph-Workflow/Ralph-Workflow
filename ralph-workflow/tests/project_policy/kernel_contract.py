@@ -12,16 +12,38 @@ AGENT_RULES: tuple[tuple[int, str], ...] = (
     (4, "Regression tests from the spec"),
     (5, "Independent review"),
     (6, "Handoff by artifact"),
-    (7, "Smallest change"),
-    (8, "Context hygiene"),
-    (9, "Plan scaling"),
-    (10, "Commit-level hygiene"),
-    (11, "Human checkpoints"),
-    (12, "Rule-to-enforcer ladder"),
-    (13, "Non-inferable instruction surface"),
+    (7, "Premise check"),
+    (8, "Smallest change"),
+    (9, "Context hygiene"),
+    (10, "Plan scaling"),
+    (11, "Commit-level hygiene"),
+    (12, "Human checkpoints"),
+    (13, "Rule-to-enforcer ladder"),
+    (14, "Non-inferable instruction surface"),
 )
 
 EVIDENCE_TAG_PATTERN = re.compile(r"\(evidence:\s*(strong|moderate|anecdotal|none)\)")
+
+PREMISE_CHECK_RULE_NAME: str = "Premise check"
+
+PREMISE_CHECK_EVIDENCE_TAG: str = "anecdotal"
+
+PREMISE_CHECK_ENFORCEMENT: str = (
+    "advisory: no gate decides whether a cold agent received the premise "
+    "instruction; review: when a retry reaches an agent without the premise "
+    "instruction"
+)
+
+DETERMINISTIC_TAG_ANCHOR: str = "`deterministic` whatever its evidence tag"
+
+RETIRED_BLANKET_TAG_ANCHOR: str = (
+    "Only a rule tagged `strong` or `moderate` may carry a `deterministic`"
+)
+
+COMMENT_BAN_ANCHOR: str = (
+    "the absolute comment and docstring ban in `clean-code-policy.md` is a "
+    "project rule tagged `none`"
+)
 
 GUARD_INVENTORY_COLUMNS: tuple[str, ...] = (
     "Guard",
@@ -46,6 +68,48 @@ RETIRED_PRE_FIX_REASON_SUBSTRINGS: tuple[str, ...] = (
     "failed before the fix",
 )
 
+IDENTICAL_AGENT_RULE_TITLES: tuple[str, ...] = (
+    "Check first",
+    "Real-artifact evidence",
+    "Regression tests from the spec",
+    "Handoff by artifact",
+    "Smallest change",
+    "Context hygiene",
+    "Plan scaling",
+    "Commit-level hygiene",
+    "Human checkpoints",
+    "Rule-to-enforcer ladder",
+    "Non-inferable instruction surface",
+)
+
+PROJECT_SPECIFIC_AGENT_RULE_TITLES: tuple[str, ...] = (
+    "Test integrity",
+    "Independent review",
+    "Premise check",
+)
+
+SMALLEST_CHANGE_RULE_TITLE: str = "Smallest change"
+
+SMALLEST_CHANGE_OBLIGATION: str = "deletes the replaced API in the same change"
+
+INVERTED_SMALLEST_CHANGE_OBLIGATION: str = "deletes its replacement in the same change"
+
+COMMENT_BAN_EVIDENCE_PARAGRAPH_START: str = "Evidence tags differ by claim."
+
+COMMENT_BAN_EVIDENCE_PARAGRAPH_END: str = "There is no inline bypass marker"
+
+COMMENT_BAN_CURRENT_FACT_STATEMENTS: tuple[str, ...] = (
+    "The ban itself is a project judgment tagged `none`",
+    "no recorded source establishes that the ban lowers the defect rate",
+    "the ban does not rest on one",
+    "The evidence tag and the enforcement status are separate properties",
+    "the tag names the kind of source behind the rule, the enforcement status names who decides it",
+    "The ban ships as `deterministic` because the comment audit enforces it",
+    "a `none` tag does not make a rule advisory when a deterministic gate decides it",
+)
+
+STARTER_COMMENT_BAN_ENFORCEMENT: str = "deterministic: PROJECT-FACT-UNRESOLVED"
+
 
 def starter(name: str) -> str:
     return starters.read_starter(name)
@@ -63,6 +127,12 @@ def root_kernel() -> str:
         / "execution-kernel.md"
     )
     assert path.is_file(), f"root kernel file not found at {path}"
+    return path.read_text(encoding="utf-8")
+
+
+def root_policy(name: str) -> str:
+    path = Path(__file__).resolve().parents[3] / "docs" / "ralph-workflow-policy" / name
+    assert path.is_file(), f"root policy file not found at {path}"
     return path.read_text(encoding="utf-8")
 
 
@@ -97,6 +167,28 @@ def rule_statements(section: str) -> dict[str, str]:
 
 def agent_rule_statements(content: str) -> dict[str, str]:
     return rule_statements(section_of(content, "## Agent rules"))
+
+
+def agent_rule_body(content: str, title: str) -> str:
+    statement = agent_rule_statements(content).get(title.lower())
+    assert statement is not None, f"no {title!r} agent rule in the policy file"
+    marker = f"**{title.lower()}"
+    index = statement.lower().find(marker)
+    assert index != -1, f"the {title!r} agent rule carries no bold title"
+    body = statement[index + len(marker) :]
+    return " ".join(body.lstrip(".:").lstrip("*").split())
+
+
+def commenting_evidence_paragraph(content: str) -> str:
+    normalized = " ".join(content.split())
+    start = normalized.find(COMMENT_BAN_EVIDENCE_PARAGRAPH_START)
+    assert start != -1, f"the policy file has no {COMMENT_BAN_EVIDENCE_PARAGRAPH_START!r} paragraph"
+    rest = normalized[start:]
+    end = rest.find(COMMENT_BAN_EVIDENCE_PARAGRAPH_END)
+    assert end != -1, (
+        f"the comment-ban evidence paragraph has no {COMMENT_BAN_EVIDENCE_PARAGRAPH_END!r} boundary"
+    )
+    return rest[:end]
 
 
 def evidence_tag(statement: str) -> str:
@@ -155,6 +247,30 @@ def guard_inventory_rows(content: str) -> list[list[str]]:
         f"{list(GUARD_INVENTORY_COLUMNS)}"
     )
     return table_rows[1:]
+
+
+def guard_row(content: str, guard_name: str, source_name: str) -> list[str]:
+    rows = guard_inventory_rows(content)
+    matching = [row for row in rows if row[0] == guard_name]
+    assert matching, (
+        f"{source_name} guard inventory has no row whose Guard cell is exactly {guard_name!r}"
+    )
+    row = matching[0]
+    assert len(row) == len(GUARD_INVENTORY_COLUMNS), (
+        f"{source_name} guard-inventory row for {guard_name!r} carries {len(row)} cells; "
+        f"the contract is {len(GUARD_INVENTORY_COLUMNS)} cells: {list(GUARD_INVENTORY_COLUMNS)}"
+    )
+    empty_columns = [
+        column for column, cell in zip(GUARD_INVENTORY_COLUMNS, row, strict=True) if not cell
+    ]
+    assert not empty_columns, (
+        f"{source_name} guard-inventory row for {guard_name!r} has empty cells: {empty_columns}"
+    )
+    return row
+
+
+def enforcement_cell(row: list[str]) -> str:
+    return row[GUARD_INVENTORY_COLUMNS.index("Enforcement")]
 
 
 def spec_value_guard_row(content: str, source_name: str) -> list[str]:
