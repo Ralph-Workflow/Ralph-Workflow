@@ -751,3 +751,195 @@ def test_kernels_point_a_third_party_behaviour_at_its_own_documentation() -> Non
             f"{source_name} kernel must state the library-documentation clause exactly "
             f"once; found {normalized.count(LIBRARY_DOCUMENTATION_CLAUSE)}"
         )
+
+
+PREMISE_GUARD_NAME: str = "Premise check"
+
+GUARD_INVENTORY_COLUMNS: tuple[str, ...] = (
+    "Guard",
+    "Owner",
+    "Protected outcome",
+    "Detected condition",
+    "Claim scope",
+    "Enforcement",
+    "Retirement trigger",
+)
+
+PREMISE_ADVISORY_REASON_SUBSTRINGS: tuple[str, ...] = (
+    "formatter is deterministic",
+    "evidence is practitioner strength",
+)
+
+PREMISE_REVIEW_TRIGGER_SUBSTRINGS: tuple[str, ...] = (
+    "retry contract",
+    "failure classifier",
+)
+
+
+def _guard_inventory_table_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if not stripped.startswith("|"):
+        return []
+    return [cell.strip() for cell in stripped.split("|")[1:-1]]
+
+
+def _guard_inventory_rows(content: str) -> list[list[str]]:
+    section = _section(content, markers.GUARD_INVENTORY_HEADING)
+    table_rows: list[list[str]] = []
+    for line in section.splitlines():
+        cells = _guard_inventory_table_cells(line)
+        if not cells:
+            continue
+        if all(cell and set(cell) <= set("-:") for cell in cells):
+            continue
+        table_rows.append(cells)
+    assert table_rows, "guard inventory carries no table rows"
+    assert [cell.lower() for cell in table_rows[0]] == [
+        column.lower() for column in GUARD_INVENTORY_COLUMNS
+    ], (
+        f"guard inventory header {table_rows[0]} is not the seven canonical columns "
+        f"{list(GUARD_INVENTORY_COLUMNS)}"
+    )
+    return table_rows[1:]
+
+
+def _premise_guard_row(content: str, source_name: str) -> list[str]:
+    rows = _guard_inventory_rows(content)
+    matching = [row for row in rows if row[0] == PREMISE_GUARD_NAME]
+    assert matching, (
+        f"{source_name} guard inventory has no row whose Guard cell is exactly "
+        f"{PREMISE_GUARD_NAME!r}; a fresh ralph --init project would ship without "
+        f"the premise-check guard"
+    )
+    row = matching[0]
+    assert len(row) == len(GUARD_INVENTORY_COLUMNS), (
+        f"{source_name} guard-inventory row for {PREMISE_GUARD_NAME!r} carries "
+        f"{len(row)} cells; the contract is {len(GUARD_INVENTORY_COLUMNS)} cells: "
+        f"{list(GUARD_INVENTORY_COLUMNS)}"
+    )
+    empty_columns = [
+        column for column, cell in zip(GUARD_INVENTORY_COLUMNS, row, strict=True) if not cell
+    ]
+    assert not empty_columns, (
+        f"{source_name} guard-inventory row for {PREMISE_GUARD_NAME!r} has empty "
+        f"cells: {empty_columns}"
+    )
+    return row
+
+
+def _advisory_reason_and_trigger(enforcement: str, source_name: str) -> tuple[str, str]:
+    lowered = enforcement.lower()
+    assert lowered.startswith("advisory:"), (
+        f"{source_name} guard-inventory row for {PREMISE_GUARD_NAME!r} must keep an "
+        f"advisory enforcement; observed: {enforcement!r}"
+    )
+    marker = "; review:"
+    index = lowered.find(marker)
+    assert index != -1, (
+        f"{source_name} guard-inventory row for {PREMISE_GUARD_NAME!r} must name its "
+        f"review trigger; observed: {enforcement!r}"
+    )
+    reason = enforcement[len("advisory:") : index].strip()
+    trigger = enforcement[index + len(marker) :].strip()
+    return reason, trigger
+
+
+def _parity_key(text: str) -> str:
+    return " ".join("".join(char.lower() if char.isalnum() else " " for char in text).split())
+
+
+def _assert_premise_guard_contract(content: str, source_name: str) -> str:
+    row = _premise_guard_row(content, source_name)
+    enforcement = row[GUARD_INVENTORY_COLUMNS.index("Enforcement")]
+    protected_outcome = row[GUARD_INVENTORY_COLUMNS.index("Protected outcome")]
+    claim_scope = row[GUARD_INVENTORY_COLUMNS.index("Claim scope")]
+    reason, trigger = _advisory_reason_and_trigger(enforcement, source_name)
+    reason_lower = reason.lower()
+    for substring in PREMISE_ADVISORY_REASON_SUBSTRINGS:
+        assert substring in reason_lower, (
+            f"{source_name} guard-inventory row for {PREMISE_GUARD_NAME!r} does not "
+            f"state the advisory reason {substring!r}; observed reason: {reason!r}"
+        )
+    trigger_lower = trigger.lower()
+    assert any(substring in trigger_lower for substring in PREMISE_REVIEW_TRIGGER_SUBSTRINGS), (
+        f"{source_name} guard-inventory row for {PREMISE_GUARD_NAME!r} names no review "
+        f"trigger about the retry contract or the failure classifier; observed "
+        f"trigger: {trigger!r}"
+    )
+    assert "premise" in protected_outcome.lower(), (
+        f"{source_name} guard-inventory Protected outcome for {PREMISE_GUARD_NAME!r} "
+        f"does not name the premise; observed: {protected_outcome!r}"
+    )
+    assert "premise" in claim_scope.lower(), (
+        f"{source_name} guard-inventory Claim scope for {PREMISE_GUARD_NAME!r} does not "
+        f"name the premise; observed: {claim_scope!r}"
+    )
+    return enforcement
+
+
+def _assert_premise_guard_template_row(content: str, source_name: str) -> str:
+    return _assert_premise_guard_contract(content, source_name)
+
+
+def test_kernel_root_and_starter_guard_inventory_carry_the_premise_check_row() -> None:
+    root_enforcement = _assert_premise_guard_contract(_root_kernel(), "root kernel")
+    starter_enforcement = _assert_premise_guard_contract(_kernel(), "starter kernel")
+    root_reason, root_trigger = _advisory_reason_and_trigger(root_enforcement, "root kernel")
+    starter_reason, starter_trigger = _advisory_reason_and_trigger(
+        starter_enforcement, "starter kernel"
+    )
+    assert _parity_key(root_reason) == _parity_key(starter_reason), (
+        f"root kernel premise-check advisory reason {root_reason!r} differs from the "
+        f"starter kernel advisory reason {starter_reason!r}"
+    )
+    assert _parity_key(root_trigger) == _parity_key(starter_trigger), (
+        f"root kernel premise-check review trigger {root_trigger!r} differs from the "
+        f"starter kernel review trigger {starter_trigger!r}"
+    )
+
+
+def _replace_guard_inventory_section(content: str, replacement: str) -> str:
+    marker = f"\n{markers.GUARD_INVENTORY_HEADING}\n"
+    start = content.index(marker) + len(marker)
+    rest = content[start:]
+    next_heading = rest.find("\n## ")
+    end = start + (next_heading if next_heading != -1 else len(rest))
+    return content[:start] + replacement + content[end:]
+
+
+def _mutated_guard_inventory_texts(content: str) -> tuple[str, str]:
+    section = _section(content, markers.GUARD_INVENTORY_HEADING)
+    enforcement_index = GUARD_INVENTORY_COLUMNS.index("Enforcement")
+    without_row: list[str] = []
+    without_reason: list[str] = []
+    premise_rows = 0
+    for line in section.splitlines(keepends=True):
+        cells = _guard_inventory_table_cells(line)
+        is_premise_row = bool(cells) and cells[0] == PREMISE_GUARD_NAME
+        if not is_premise_row:
+            without_row.append(line)
+            without_reason.append(line)
+            continue
+        premise_rows += 1
+        without_row.append("")
+        _reason, trigger = _advisory_reason_and_trigger(cells[enforcement_index], "root kernel")
+        mutated_cells = list(cells)
+        mutated_cells[enforcement_index] = f"advisory: ; review: {trigger}"
+        ending = "\n" if line.endswith("\n") else ""
+        without_reason.append("| " + " | ".join(mutated_cells) + " |" + ending)
+    assert premise_rows == 1, (
+        f"expected exactly one {PREMISE_GUARD_NAME!r} row in the guard inventory; "
+        f"found {premise_rows}"
+    )
+    return (
+        _replace_guard_inventory_section(content, "".join(without_row)),
+        _replace_guard_inventory_section(content, "".join(without_reason)),
+    )
+
+
+def test_premise_guard_inventory_check_is_fault_sensitive_to_a_dropped_row_and_reason() -> None:
+    without_row, without_reason = _mutated_guard_inventory_texts(_root_kernel())
+    with pytest.raises(AssertionError, match="no row whose Guard cell is exactly"):
+        _assert_premise_guard_contract(without_row, "root kernel without the premise row")
+    with pytest.raises(AssertionError, match="does not state the advisory reason"):
+        _assert_premise_guard_contract(without_reason, "root kernel without the reason")

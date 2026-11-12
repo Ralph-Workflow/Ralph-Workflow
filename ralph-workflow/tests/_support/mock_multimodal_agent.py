@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.protocol.startup import PreflightError, post_http_jsonrpc
+from ralph.mcp.protocol._preflight_error import PreflightError
+from ralph.mcp.protocol._startup_http import post_http_jsonrpc
 
 ENDPOINT_ENV = "RALPH_MCP_ENDPOINT"
 SECRET_ENV = "RALPH_BROKER_SECRET"

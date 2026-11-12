@@ -3,6 +3,7 @@ from __future__ import annotations
 INIT_COMPLETE = True
 
 _RAW = """
+tests/_support/mock_multimodal_agent.py|0,2,0
 tests/_fake_git_ops.py|0,1,0
 tests/agents/execution_state/test_generic_child_signal.py|0,5,0
 tests/agents/execution_state/test_opencode_sink_registry_parity.py|0,1,0
