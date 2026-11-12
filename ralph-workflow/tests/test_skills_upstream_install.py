@@ -489,3 +489,118 @@ def test_a_sibling_symlink_that_points_at_the_canonical_skill_is_left_alone(
     assert sibling_dir.is_symlink()
     assert sibling_dir.resolve() == canonical.resolve()
     assert _tree_snapshot(root) != before
+
+
+def test_a_nested_reference_resolves_against_the_referring_file(sandbox: Path) -> None:
+    nested = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    nested["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b"# Guide\n\nSee `a.md`.\n",
+        "docs/a.md": b"# Companion\n",
+    }
+    client, _calls = _client_for("v-test-1", nested)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "docs" / "a.md").read_bytes() == b"# Companion\n"
+
+
+def test_a_missing_in_tree_parent_relative_reference_is_refused(sandbox: Path) -> None:
+    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    missing["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b"# Guide\n\nSee `../shared/g.md`.\n",
+    }
+    client, _calls = _client_for("v-test-1", missing)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert "systematic-debugging" in outcome.preserved
+    assert any("shared/g.md" in message for message in outcome.messages)
+    root = upstream.canonical_skills_root()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
+
+
+def test_an_in_tree_parent_relative_reference_that_is_carried_is_accepted(
+    sandbox: Path,
+) -> None:
+    carried = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    carried["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b"# Guide\n\nSee `../shared/g.md`.\n",
+        "shared/g.md": b"# Shared\n",
+    }
+    client, _calls = _client_for("v-test-1", carried)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "shared" / "g.md").read_bytes() == b"# Shared\n"
+
+
+def test_a_root_relative_reference_that_is_missing_is_refused(sandbox: Path) -> None:
+    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    missing["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n\nSee `README.md`.\n",
+    }
+    client, _calls = _client_for("v-test-1", missing)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert "systematic-debugging" in outcome.preserved
+    assert any("README.md" in message for message in outcome.messages)
+
+
+def test_escaping_and_external_references_are_permitted(sandbox: Path) -> None:
+    escaping = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    escaping["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": (
+            b"# Guide\n\nSee `../../outside.md`, `/etc/x.md`, `~/y.md`, "
+            b"`https://example.com/doc.md` and `docs/guide.md#section`.\n"
+        ),
+    }
+    client, _calls = _client_for("v-test-1", escaping)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
+
+
+def test_an_unrecognized_suffix_reference_is_permitted(sandbox: Path) -> None:
+    raw = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    raw["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b"# Guide\n\nSee `notes.raw`.\n",
+    }
+    client, _calls = _client_for("v-test-1", raw)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
+
+
+def test_a_skill_whose_companions_are_all_carried_installs(sandbox: Path) -> None:
+    complete = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    complete["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n\nSee `docs/guide.md`.\n",
+        "docs/guide.md": b"# Guide\n\nSee `a.md` and `../shared/g.md`.\n",
+        "docs/a.md": b"# Companion\n",
+        "shared/g.md": b"# Shared\n",
+    }
+    client, _calls = _client_for("v-test-1", complete)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    installed = root / "systematic-debugging"
+    assert (installed / "docs" / "a.md").read_bytes() == b"# Companion\n"
+    assert (installed / "shared" / "g.md").read_bytes() == b"# Shared\n"

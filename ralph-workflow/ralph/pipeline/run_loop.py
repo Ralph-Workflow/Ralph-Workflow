@@ -2761,8 +2761,14 @@ def _run_inner_loop(
         if legacy_block is not None:
             state = state.copy_with(rebase=legacy_block)
     state = _apply_startup_rebase_outcomes(state, ctx, backend=backend)
-    _ = _block_unresolved_integration
-    return _continue_after_startup_integration(state, ctx, prev_phase, backend=backend)
+    blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
+    return _continue_after_startup_integration(
+        state,
+        ctx,
+        prev_phase,
+        backend=backend,
+        blocked_integration=blocked_integration,
+    )
 
 
 def _continue_after_startup_integration(
@@ -2771,10 +2777,12 @@ def _continue_after_startup_integration(
     prev_phase: str,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    blocked_integration: tuple[PipelineState, str, int] | None = None,
 ) -> tuple[PipelineState, str, int | None]:
-    blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
-    if blocked_startup is not None:
-        state = _wait_for_integration_retry(blocked_startup[0], ctx, backend=backend)
+    if blocked_integration is None:
+        blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
+    if blocked_integration is not None:
+        state = _wait_for_integration_retry(blocked_integration[0], ctx, backend=backend)
     return _run_inner_loop_after_startup(state, ctx, prev_phase)
 
 

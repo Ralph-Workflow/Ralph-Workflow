@@ -7,13 +7,42 @@ from ralph.testing.audit_skill_auto_commit import main as audit_main
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+_AUDIT_INVARIANTS = audit_module._INVARIANTS
+_AUTO_COMMIT_SUBJECT = audit_module._SKILL_AUTO_COMMIT_SUBJECT
+_SKILL_ROOT_PREFIXES = audit_module._SKILL_ROOT_PREFIXES
+
+
+def _auto_commit_helper_module() -> str:
+    helper_rel_paths = [
+        inv.rel_path for inv in _AUDIT_INVARIANTS if _AUTO_COMMIT_SUBJECT in inv.present
+    ]
+    assert len(helper_rel_paths) == 1, (
+        "the audit must pin exactly one invariant on the auto-commit helper module; "
+        f"got {helper_rel_paths}"
+    )
+    root_package = audit_module.__name__.split(".", 1)[0]
+    module_path = helper_rel_paths[0].removesuffix(".py").replace("/", ".")
+    return f"{root_package}.{module_path}"
+
+
+def _auto_commit_wiring_targets() -> tuple[tuple[str, str], ...]:
+    helper_module = _auto_commit_helper_module()
+    targets = tuple(
+        (inv.rel_path, literal)
+        for inv in _AUDIT_INVARIANTS
+        for literal in inv.present
+        if literal.startswith(f"from {helper_module} import ")
+    )
+    assert targets, f"the audit must pin at least one required import literal from {helper_module}"
+    return targets
+
 
 def test_audit_subject_literal_is_deterministic_chore_skills_sync_baseline_bundle() -> None:
-    assert audit_module._SKILL_AUTO_COMMIT_SUBJECT == "chore(skills): sync baseline bundle"
+    assert _AUTO_COMMIT_SUBJECT == "chore(skills): sync baseline bundle"
 
 
 def test_audit_skill_root_prefixes_count_is_five() -> None:
-    assert len(audit_module._SKILL_ROOT_PREFIXES) == 5
+    assert len(_SKILL_ROOT_PREFIXES) == 5
     assert (
         frozenset(
             {
@@ -24,12 +53,12 @@ def test_audit_skill_root_prefixes_count_is_five() -> None:
                 ".gemini/antigravity-cli/skills/",
             }
         )
-        == audit_module._SKILL_ROOT_PREFIXES
+        == _SKILL_ROOT_PREFIXES
     )
 
 
 def test_audit_invariants_cover_helper_module() -> None:
-    invariant_paths = {inv.rel_path for inv in audit_module._INVARIANTS}
+    invariant_paths = {inv.rel_path for inv in _AUDIT_INVARIANTS}
     assert "skills/_auto_commit.py" in invariant_paths
 
 
@@ -114,22 +143,35 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     real_read = audit_module._read
-    run_path = "cli/commands/_run_start_setup.py"
+    targets = _auto_commit_wiring_targets()
 
-    def _read_with_failure_log_removed(rel_path: str) -> str:
+    for rel_path, literal in targets:
+        assert literal in real_read(rel_path), (
+            f"{rel_path} must contain the required literal {literal!r} before the mutation"
+        )
+
+    clean_rc = audit_main([])
+    clean_captured = capsys.readouterr()
+    assert clean_rc == 0, (
+        f"The audit must pass on the unmodified tree; got rc={clean_rc}: {clean_captured.out}"
+    )
+
+    def _read_with_wiring_removed(rel_path: str) -> str:
         content = real_read(rel_path)
-        if rel_path == run_path:
-            return content.replace(
-                "from ralph.skills._auto_commit import commit_skill_writes",
-                "from ralph.skills._auto_commit import removed_rename",
-            )
+        for target_rel_path, literal in targets:
+            if rel_path == target_rel_path:
+                return content.replace(literal, "removed_rename")
         return content
 
-    monkeypatch.setattr(audit_module, "_read", _read_with_failure_log_removed)
+    monkeypatch.setattr(audit_module, "_read", _read_with_wiring_removed)
     rc = audit_main([])
     captured = capsys.readouterr()
-    assert rc == 1, f"Audit must exit 1 when the run.py wiring reference is removed; got rc={rc}"
-    assert run_path in captured.out
+    assert rc == 1, f"Audit must exit 1 when the wiring literal is removed; got rc={rc}"
+    for rel_path, literal in targets:
+        assert rel_path in captured.out, f"The audit output must name {rel_path}: {captured.out}"
+        assert literal in captured.out, (
+            f"The audit output must name the missing literal {literal!r}: {captured.out}"
+        )
     assert "missing required literal" in captured.out
 
 

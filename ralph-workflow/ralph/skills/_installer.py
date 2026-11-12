@@ -8,6 +8,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
+from git import GitCommandError, InvalidGitRepositoryError, Repo
+
+from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import (
     capture_pre_write_contents,
     snapshot_dirty_paths_strict,
@@ -35,7 +38,7 @@ from ralph.skills._installer_candidates import (
     _candidate_skill_paths,
     _diff_written_paths,
 )
-from ralph.skills._ownership import may_replace
+from ralph.skills._ownership import Ownership, classify_entry, may_replace
 from ralph.skills._prune import (
     _prune_failure_codes,
     _prune_removed_baseline_skills,
@@ -43,6 +46,7 @@ from ralph.skills._prune import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.skills._project_paths import ProjectAgentSkillRoot
@@ -62,9 +66,10 @@ def install_project_baseline_skills_with_diff(
 ) -> ProjectSkillInstallOutcome:
     candidates = _candidate_skill_paths(workspace_root)
     pre_contents = capture_pre_write_contents(workspace_root, candidates)
-    user_dirty_descendants = _detect_user_dirty_tracked_descendants(workspace_root, candidates)
+    dirty_paths = _dirty_tracked_paths(workspace_root, candidates)
+    user_dirty_descendants = dirty_paths if dirty_paths is not None else frozenset(candidates)
     entry, failures = install_project_baseline_skills(workspace_root)
-    written = _diff_written_paths(workspace_root, candidates, pre_contents)
+    written = _skill_sync_written_paths(workspace_root, candidates, pre_contents)
     transition_roots = {
         path
         for path in candidates
@@ -88,14 +93,59 @@ def install_project_baseline_skills_with_diff(
     )
 
 
-def _detect_user_dirty_tracked_descendants(
+def _dirty_tracked_paths(
     workspace_root: Path,
     candidates: list[str],
-) -> frozenset[str]:
+) -> frozenset[str] | None:
     dirty = snapshot_dirty_paths_strict(workspace_root)
     if dirty is None:
-        return frozenset(candidates)
+        return None
     return frozenset(path for path in candidates if path in dirty)
+
+
+def _skill_sync_written_paths(
+    workspace_root: Path,
+    candidates: list[str],
+    pre_contents: dict[str, str | None],
+) -> list[str]:
+    written = _diff_written_paths(workspace_root, candidates, pre_contents)
+    for conflict_dir in _conflicting_sibling_dirs(workspace_root):
+        try:
+            relative = str(conflict_dir.relative_to(workspace_root))
+        except ValueError:
+            continue
+        prefix = f"{relative}/"
+        skipped_descendants = _worktree_modified_paths(workspace_root, relative)
+        reportable = [
+            path
+            for path in candidates
+            if path.startswith(prefix) and path in skipped_descendants and path in pre_contents
+        ]
+        if not reportable:
+            continue
+        for path in reportable:
+            if path not in written:
+                written.append(path)
+        if relative in pre_contents and relative not in written:
+            written.append(relative)
+    return written
+
+
+def _worktree_modified_paths(workspace_root: Path, relative: str) -> frozenset[str]:
+    try:
+        repo = Repo(str(workspace_root), search_parent_directories=False)
+    except (InvalidGitRepositoryError, Exception):
+        return frozenset()
+    try:
+        raw_output: object = repo.git.diff("--name-only", "--", relative)
+        raw = optional_str(raw_output) or ""
+    except (GitCommandError, OSError):
+        return frozenset()
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
+    return frozenset(line.strip() for line in raw.splitlines() if line.strip())
 
 
 def _now_iso() -> str:
@@ -264,13 +314,29 @@ def _may_replace_sibling_symlink(sibling_dir: Path, canonical_target: Path) -> b
     return may_replace(sibling_dir)
 
 
+def _sibling_entry_conflict(sibling_dir: Path, canonical_target: Path) -> bool:
+    if not (sibling_dir.is_symlink() or sibling_dir.exists()):
+        return False
+    return not _may_replace_sibling_entry(sibling_dir, canonical_target)
+
+
+def _conflicting_sibling_dirs(workspace_root: Path) -> list[Path]:
+    canonical = project_skill_root(workspace_root)
+    conflicts: list[Path] = []
+    for sibling in project_sibling_skill_roots(workspace_root):
+        sibling_root = sibling.resolve(workspace_root)
+        for name in BASELINE_SKILL_NAMES:
+            sibling_dir = sibling_root / name
+            if _sibling_entry_conflict(sibling_dir, canonical / name):
+                conflicts.append(sibling_dir)
+    return conflicts
+
+
 def _materialize_project_sibling_dir(
     sibling_dir: Path, canonical_root: Path, skill_name: str
 ) -> str | None:
     canonical_target = canonical_root / skill_name
-    if (sibling_dir.is_symlink() or sibling_dir.exists()) and not _may_replace_sibling_entry(
-        sibling_dir, canonical_target
-    ):
+    if _sibling_entry_conflict(sibling_dir, canonical_target):
         return f"sibling-conflict-{skill_name}"
 
     sibling_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -454,6 +520,9 @@ def _collect_project_skills_reasons(workspace_root: Path, reasons: list[str]) ->
             continue
         if not _root_skill_marker_valid(canonical, name):
             reasons.append(f"canonical-marker-invalid-{name}")
+    reasons.extend(
+        f"canonical-retired-managed-{name}" for name in _retired_managed_entry_names(canonical)
+    )
     canonical_resolved = canonical.resolve()
     for sibling in project_sibling_skill_roots(workspace_root):
         sibling_root = sibling.resolve(workspace_root)
@@ -465,6 +534,27 @@ def _collect_project_skills_reasons(workspace_root: Path, reasons: list[str]) ->
             canonical_target = (canonical_resolved / name).resolve()
             if sibling_dir.resolve() != canonical_target:
                 reasons.append(f"sibling-wrong-target-{sibling.agent}-{name}")
+        reasons.extend(
+            f"sibling-retired-managed-{sibling.agent}-{name}"
+            for name in _retired_managed_entry_names(sibling_root)
+        )
+
+
+def _retired_managed_entry_names(root: Path) -> list[str]:
+    names: list[str] = []
+    try:
+        entries = sorted(root.iterdir())
+    except OSError:
+        return names
+    for entry in entries:
+        if entry.name in BASELINE_SKILL_NAMES:
+            continue
+        if entry.is_symlink() or not entry.is_dir():
+            continue
+        if classify_entry(entry) is not Ownership.MANAGED:
+            continue
+        names.append(entry.name)
+    return names
 
 
 def _root_metadata_valid(resolved: Path) -> bool:
@@ -515,12 +605,16 @@ def check_skills_update_available() -> bool:
 __all__ = [
     "ProjectSkillInstallOutcome",
     "_collect_project_skills_reasons",
+    "_conflicting_sibling_dirs",
+    "_dirty_tracked_paths",
     "_mirror_baseline_skills_to_siblings",
     "_mirror_skill_to_sibling_root",
     "_project_root_outside_workspace",
     "_project_skills_need_install",
     "_prune_removed_baseline_skills",
     "_resolve_within_workspace",
+    "_retired_managed_entry_names",
+    "_skill_sync_written_paths",
     "check_skills_update_available",
     "install_baseline_skills",
     "install_project_baseline_skills",

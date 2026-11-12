@@ -1,44 +1,12 @@
-# =============================================================================
-#  Ralph Workflow -- agent CLI definitions
-#  ~/.config/ralph-workflow-agents.toml
-# =============================================================================
-#
-#  YOU ALMOST NEVER EDIT THIS FILE. It records HOW to invoke each coding-agent
-#  CLI -- binary name, flags, output parser. That is transport plumbing, not a
-#  preference. Which model does which job is `[agent_chains]` in
-#  ralph-workflow.toml; that is the file you want.
-#
-#  You come here for exactly one reason: to SWITCH which CLI is active.
-#  Comment out the ACTIVE block, uncomment ONE of the INACTIVE blocks, then
-#  name that agent from [agent_chains] in ralph-workflow.toml.
-#
-#  `ralph --diagnose` reports which CLIs are installed; a detected CLI may be
-#  uncommented for you automatically.
-#
-#  Full per-agent flag reference: docs/sphinx/agent-compatibility.md
-#
-# =============================================================================
-
-# --- ACTIVE ------------------------------------------------------------------
-
 [agents.claude]
 cmd = "claude"
 transport = "claude_interactive"
-# Use skip-permissions here because Ralph Workflow confines interactive Claude
-# through the Ralph Workflow MCP/tool allowlist; MCP remains the real
-# permission boundary.
 yolo_flag = "--dangerously-skip-permissions"
 verbose_flag = "--verbose"
 json_parser = "claude"
 session_flag = "--resume {}"
 display_name = "Claude"
-# Claude Code's native sub-agent / task tooling is enabled by default in
-# this build. Plans that declare work_units / parallel_plan are
-# dispatched to the executing agent's sub-agents; Ralph-managed fan-out
-# stays dormant. Set to false to force sequential execution.
 subagent_capability = true
-
-# --- INACTIVE (uncomment ONE to switch) --------------------------------------
 
 # @AGENT-BLOCK-START: claude
 # [agents.claude]
@@ -75,9 +43,6 @@ subagent_capability = true
 # display_name = "Codex"
 # @AGENT-BLOCK-END
 
-# opencode has no output-format flag beyond the `--format json` Ralph always
-# passes (`opencode run --help`, 1.18.25), so `output_flag` is not offered
-# here: the command builder drops it for this transport by declaration.
 # @AGENT-BLOCK-START: opencode
 # [agents.opencode]
 # cmd = "opencode"

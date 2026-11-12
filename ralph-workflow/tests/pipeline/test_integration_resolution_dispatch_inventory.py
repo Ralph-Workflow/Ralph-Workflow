@@ -38,12 +38,25 @@ EXPECTED_EFFECT_EXECUTOR_CALLER_MODULES = {
 }
 
 
+def _names_owner(route: object, owner: str) -> bool:
+    source = inspect.getsource(route)
+    if owner in source:
+        return True
+    module = inspect.getmodule(route)
+    for name, member in inspect.getmembers(module, inspect.isfunction):
+        if member.__module__ != route.__module__:
+            continue
+        if f"{name}(" not in source:
+            continue
+        if owner in inspect.getsource(member):
+            return True
+    return False
+
+
 def test_dispatch_inventory_reconciles_every_named_route() -> None:
     assert inspect_integration_resolution.__module__ == "ralph.pipeline.integration_resolution"
     for route, owner in ORDINARY_DISPATCH_ROUTES:
-        assert owner in inspect.getsource(route), (
-            f"{route.__module__}.{route.__name__} lacks {owner}"
-        )
+        assert _names_owner(route, owner), f"{route.__module__}.{route.__name__} lacks {owner}"
 
 
 def test_every_live_effect_executor_caller_is_inventoried() -> None:
@@ -63,6 +76,17 @@ def test_every_live_effect_executor_caller_is_inventoried() -> None:
 
 
 def test_resolution_routes_are_explicitly_out_of_graph_recovery() -> None:
+    out_of_graph_outcome = driver.run_rebase_conflict_resolution_outcome
     for route in RESOLUTION_ROUTES:
         source = inspect.getsource(route)
-        assert "PHASE_RESOLUTION" in source or "_run_rounds" in source
+        assert (
+            "PHASE_RESOLUTION" in source
+            or "_run_rounds" in source
+            or (
+                "run_rebase_conflict_resolution_outcome" in source
+                and "_run_rounds" in inspect.getsource(out_of_graph_outcome)
+            )
+        ), (
+            f"{route.__module__}.{route.__name__} must resolve through the "
+            f"out-of-graph resolution rounds"
+        )

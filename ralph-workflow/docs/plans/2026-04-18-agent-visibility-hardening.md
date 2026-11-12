@@ -1,7 +1,5 @@
 # Agent Visibility Hardening Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Make Ralph reliably show meaningful agent activity for Claude, Codex, OpenCode, Gemini, and future agents without blank dashboards, stale live views, silent parser drops, or runaway workspace traversal.
 
 **Architecture:** Introduce an explicit, typed agent-activity contract between parsers and display code, then make the runner and display stack consume that contract instead of inferring visibility from ad hoc strings, metadata, or Rich side effects. Separate three concerns cleanly: agent stream normalization, UI-agnostic visibility state, and terminal rendering/refresh.
@@ -437,6 +435,6 @@ Plan complete and saved to `docs/plans/2026-04-18-agent-visibility-hardening.md`
 
 **1. Subagent-Driven (this session)** - I dispatch fresh subagent per task, review between tasks, fast iteration
 
-**2. Parallel Session (separate)** - Open new session with executing-plans, batch execution with checkpoints
+**2. Parallel Session (separate)** - Open a new session, batch execution with checkpoints
 
 **Which approach?**

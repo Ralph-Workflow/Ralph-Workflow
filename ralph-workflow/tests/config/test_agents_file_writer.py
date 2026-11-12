@@ -330,6 +330,7 @@ def test_module_imports_only_stdlib_and_loguru() -> None:
         "tomllib",
         "weakref",
         "typing",
+        "weakref",
         "loguru",
     }
 

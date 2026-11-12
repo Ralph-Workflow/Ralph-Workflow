@@ -1,6 +1,6 @@
 # Shared Subagent Smoke Scenario Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a shared `--subagents` smoke option, with an optional delegated-task prompt file, that verifies native subagent dispatch, result parsing, post-result progress, and normal smoke completion.
 

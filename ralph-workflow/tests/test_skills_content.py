@@ -188,6 +188,108 @@ def test_materialize_skills_to_dir_writes_all_skills(tmp_path: Path) -> None:
         assert path.read_text(encoding="utf-8").startswith(f"---\nname: {name}\n")
 
 
+def _plant_managed_skill(skill_dir: Path, name: str, content: str) -> Path:
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+    (skill_dir / MANAGED_MARKER_NAME).write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": name,
+                "installed_content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return skill_dir
+
+
+def test_materialize_skills_to_claude_dir_preserves_a_managed_skill_carrying_a_user_file(
+    tmp_path: Path,
+) -> None:
+    name = BASELINE_SKILL_NAMES[0]
+    skill_dir = tmp_path / name
+    installed = "# the bundled version Ralph installed earlier\n"
+    _plant_managed_skill(skill_dir, name, installed)
+    user_file = skill_dir / "notes.md"
+    user_file.write_text("# my notes\n", encoding="utf-8")
+
+    written = materialize_skills_to_claude_dir(tmp_path)
+
+    assert name not in written
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == installed
+    assert user_file.read_text(encoding="utf-8") == "# my notes\n"
+
+
+def test_materialize_skills_to_claude_dir_preserves_a_managed_skill_carrying_an_unrecorded_symlink(
+    tmp_path: Path,
+) -> None:
+    name = BASELINE_SKILL_NAMES[0]
+    skill_dir = tmp_path / name
+    installed = "# the bundled version Ralph installed earlier\n"
+    _plant_managed_skill(skill_dir, name, installed)
+    user_target = tmp_path / "user-notes.md"
+    user_target.write_text("# my notes\n", encoding="utf-8")
+    link = skill_dir / "my-notes.md"
+    link.symlink_to(user_target)
+
+    written = materialize_skills_to_claude_dir(tmp_path)
+
+    assert name not in written
+    assert link.is_symlink()
+    assert user_target.read_text(encoding="utf-8") == "# my notes\n"
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == installed
+
+
+def test_materialize_skills_to_claude_dir_never_writes_through_a_symlinked_skill_directory(
+    tmp_path: Path,
+) -> None:
+    name = BASELINE_SKILL_NAMES[0]
+    user_dir = tmp_path / "user-skill"
+    user_dir.mkdir()
+    (user_dir / "SKILL.md").write_text("# my own skill\n", encoding="utf-8")
+    link = tmp_path / name
+    link.symlink_to(user_dir, target_is_directory=True)
+
+    written = materialize_skills_to_claude_dir(tmp_path)
+
+    assert name not in written
+    assert link.is_symlink()
+    assert (user_dir / "SKILL.md").read_text(encoding="utf-8") == "# my own skill\n"
+    assert not (user_dir / MANAGED_MARKER_NAME).exists()
+
+
+def test_materialize_skills_to_claude_dir_refreshes_a_managed_skill_when_the_bundle_changed(
+    tmp_path: Path,
+) -> None:
+    name = BASELINE_SKILL_NAMES[0]
+    skill_dir = tmp_path / name
+    installed = "# the bundled version Ralph installed earlier\n"
+    _plant_managed_skill(skill_dir, name, installed)
+
+    written = materialize_skills_to_claude_dir(tmp_path)
+
+    assert name in written
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == get_skill_content(name)
+    marker = json.loads((skill_dir / MANAGED_MARKER_NAME).read_text(encoding="utf-8"))
+    expected_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
+    assert marker["installed_content_sha256"] == expected_sha
+
+
+def test_materialize_skills_to_claude_dir_installs_a_missing_skill_directory(
+    tmp_path: Path,
+) -> None:
+    written = materialize_skills_to_claude_dir(tmp_path)
+
+    assert written == list(BASELINE_SKILL_NAMES)
+    for name in BASELINE_SKILL_NAMES:
+        skill_dir = tmp_path / name
+        assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == get_skill_content(name)
+        assert (skill_dir / MANAGED_MARKER_NAME).exists()
+
+
 def test_materialize_skills_to_claude_dir_second_pass_writes_nothing(tmp_path: Path) -> None:
     backend = _CountingBackend()
 

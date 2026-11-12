@@ -11,7 +11,6 @@ from ralph.test_suites import (
     REQUIRED_AUTO_INTEGRATE_E2E_FILES,
     SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES,
 )
-from ralph.testing import test_whitebox_baseline
 from ralph.testing.policy_allowlists import (
     IO_ALLOWLIST,
     SOURCE_READ_ALLOWLIST,
@@ -459,11 +458,7 @@ def collect_whitebox_inventory(tests_root: Path) -> dict[str, WhiteboxCounts]:
 
 
 def render_whitebox_baseline(inventory: Mapping[str, Mapping[str, int]]) -> str:
-    docstring = test_whitebox_baseline.__doc__
-    if docstring is None:
-        raise RuntimeError("frozen white-box baseline is missing its module docstring")
     lines = [
-        f'"""{docstring}"""\n',
         "from __future__ import annotations",
         "",
         "INIT_COMPLETE = True",
@@ -484,7 +479,6 @@ def render_whitebox_baseline(inventory: Mapping[str, Mapping[str, int]]) -> str:
             "",
             "",
             "def _parse(raw: str) -> dict[str, dict[str, int]]:",
-            '    """Parse the frozen ``path|c1,c2,c3`` table into the public dict form."""',
             "    table: dict[str, dict[str, int]] = {}",
             "    for line in raw.splitlines():",
             "        record = line.strip()",

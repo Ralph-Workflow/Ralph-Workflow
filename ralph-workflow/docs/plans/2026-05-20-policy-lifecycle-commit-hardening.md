@@ -1,7 +1,5 @@
 # Composable Policy Blocks and Lifecycle Accounting Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Redesign Ralph’s policy system so workflow semantics are expressed as composable policy blocks, with lifecycle completion owning budget progression and commit logic modeled as attachable hooks rather than as the thing that defines developer-cycle accounting.
 
 **Architecture:** This is a deliberate breaking change. The current phase graph model is too low-level because budget/cycle semantics are indirectly coupled to whether commit phases exist and where they sit in the graph. The new model should let policy define a logical block such as an inner development-analysis lifecycle with its own loop counter, optional pre/post commit hooks, and an explicit completion event that advances the outer developer-cycle counter. Old `pipeline.toml` semantics are not preserved; legacy policy files should fail loudly and be replaced, not silently adapted.

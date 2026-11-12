@@ -1,6 +1,6 @@
 # Project Policy Holistic Improvement Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver a comprehensive, portable initialized policy system with mandatory maintained quality gates, core architecture guidance, conservative conditional policies, and independently verified results.
 

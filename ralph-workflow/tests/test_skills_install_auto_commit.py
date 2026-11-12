@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from git import Actor, Repo
+from rich.console import Console
 
+from ralph.cli.commands import run as run_module
+from ralph.display.context import make_display_context
 from ralph.git.operations import create_commit, stage_files
 from ralph.skills._auto_commit import (
     SKILL_AUTO_COMMIT_SUBJECT,
@@ -59,6 +63,40 @@ def _head_tree_blob_paths(repo: Repo) -> set[str]:
 def _write_managed_marker(skill_dir: Path, skill: str, **fields: object) -> None:
     marker = {"managed_by": "ralph-workflow", "skill": skill, **fields}
     (skill_dir / _MANAGED_MARKER).write_text(json.dumps(marker) + "\n", encoding="utf-8")
+
+
+def _plant_managed_skill(root: Path, name: str, content: str) -> Path:
+    skill_dir = root / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    _write_managed_marker(skill_dir, name, files={"SKILL.md": digest})
+    return skill_dir
+
+
+def _plant_user_edited_skill(root: Path, name: str, installed: str, edited: str) -> Path:
+    skill_dir = _plant_managed_skill(root, name, installed)
+    (skill_dir / "SKILL.md").write_text(edited, encoding="utf-8")
+    return skill_dir
+
+
+def _plant_unmanaged_skill(root: Path, name: str) -> Path:
+    skill_dir = root / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text("# mine\n", encoding="utf-8")
+    return skill_dir
+
+
+def _commit_worktree(repo_root: Path, message: str) -> str:
+    repo = Repo(repo_root)
+    try:
+        repo.git.add("-A")
+        if not repo.is_dirty(untracked_files=True):
+            return str(repo.head.commit.hexsha)
+        actor = Actor("Test Author", "test@example.com")
+        return str(repo.index.commit(message, author=actor, committer=actor).hexsha)
+    finally:
+        repo.close()
 
 
 def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and_link(
@@ -686,5 +724,155 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
         assert any(
             ".claude/skills/submit-artifact/alias" in line for line in porcelain.splitlines()
         ), f"user's dirty descendant MUST remain uncommitted; status: {porcelain!r}"
+    finally:
+        repo.close()
+
+
+def test_run_start_leaves_a_user_edited_retired_skill_alone_without_a_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", lambda _root: [])
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_git_exclude", lambda _root: [])
+
+    Repo.init(tmp_path)
+    _commit_all_initial(tmp_path)
+
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+
+    with patch("pathlib.Path.home", return_value=home):
+        run_module.sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    _commit_worktree(tmp_path, "install baseline skills")
+
+    canonical = tmp_path / ".opencode" / "skills"
+    _plant_user_edited_skill(canonical, "edited-retired-skill", "installed\n", "# edited\n")
+    _plant_unmanaged_skill(canonical, "user-retired-skill")
+    seed_head = _commit_worktree(tmp_path, "seed edited retired skills")
+
+    stream = io.StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None)
+    display_context = make_display_context(console=console)
+    monkeypatch.setattr(run_module, "make_display_context", lambda **_kwargs: display_context)
+
+    with patch("pathlib.Path.home", return_value=home):
+        run_module.sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    rendered = stream.getvalue()
+    assert "skills-prune-preserved-edited-retired-skill" not in rendered, (
+        f"a USER-EDITED retired skill alone MUST NOT enter the project install; "
+        f"the preserved entry would re-run the install on every launch; got: {rendered!r}"
+    )
+    assert (canonical / "edited-retired-skill" / "SKILL.md").read_text(encoding="utf-8") == (
+        "# edited\n"
+    ), "the USER-EDITED retired skill MUST survive the run"
+    assert (canonical / "user-retired-skill" / "SKILL.md").read_text(encoding="utf-8") == (
+        "# mine\n"
+    ), "the USER-OWNED retired skill MUST survive the run"
+
+    repo = Repo(tmp_path)
+    try:
+        new_commits = []
+        for commit in repo.iter_commits():
+            if commit.hexsha == seed_head:
+                break
+            new_commits.append(commit)
+        assert new_commits == [], (
+            f"a USER-EDITED retired skill alone MUST NOT produce a commit; "
+            f"got {[(c.hexsha[:8], c.message.splitlines()[0]) for c in new_commits]}"
+        )
+    finally:
+        repo.close()
+
+
+def test_run_start_migration_removes_retired_managed_skills_in_one_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", lambda _root: [])
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_git_exclude", lambda _root: [])
+
+    Repo.init(tmp_path)
+    _commit_all_initial(tmp_path)
+
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+
+    with patch("pathlib.Path.home", return_value=home):
+        run_module.sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    _commit_worktree(tmp_path, "install baseline skills")
+
+    canonical_root = tmp_path / ".opencode" / "skills"
+    sibling_root = tmp_path / ".claude" / "skills"
+    user_global_root = home / ".claude" / "skills"
+
+    for root in (canonical_root, sibling_root, user_global_root):
+        _plant_managed_skill(root, "retired-skill", "retired\n")
+        _plant_user_edited_skill(root, "edited-skill", "installed\n", "# edited\n")
+        _plant_unmanaged_skill(root, "user-skill")
+
+    retired_link = tmp_path / ".codex" / "skills" / "retired-skill"
+    retired_link.parent.mkdir(parents=True, exist_ok=True)
+    retired_link.symlink_to(Path("../../.opencode/skills/retired-skill"), target_is_directory=True)
+
+    seed_head = _commit_worktree(tmp_path, "seed retired skills")
+
+    with patch("pathlib.Path.home", return_value=home):
+        run_module.sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    assert not (canonical_root / "retired-skill").exists(), (
+        "the retired MANAGED skill MUST be removed from the project canonical root"
+    )
+    assert not (sibling_root / "retired-skill").exists(), (
+        "the retired MANAGED skill MUST be removed from the project sibling root"
+    )
+    assert not (user_global_root / "retired-skill").exists(), (
+        "the retired MANAGED skill MUST be removed from the user-global root"
+    )
+    assert not retired_link.is_symlink(), (
+        "the retired sibling symlink MUST be removed with the entry it pointed at"
+    )
+
+    for root in (canonical_root, sibling_root, user_global_root):
+        assert (root / "user-skill" / "SKILL.md").read_text(encoding="utf-8") == "# mine\n", (
+            f"the USER-OWNED skill MUST survive in {root}"
+        )
+        assert (root / "edited-skill" / "SKILL.md").read_text(encoding="utf-8") == "# edited\n", (
+            f"the USER-EDITED skill MUST survive in {root}"
+        )
+
+    expected_retired_paths = {
+        ".opencode/skills/retired-skill/SKILL.md",
+        ".opencode/skills/retired-skill/" + _MANAGED_MARKER,
+        ".claude/skills/retired-skill/SKILL.md",
+        ".claude/skills/retired-skill/" + _MANAGED_MARKER,
+        ".codex/skills/retired-skill",
+    }
+
+    repo = Repo(tmp_path)
+    try:
+        new_commits = []
+        for commit in repo.iter_commits():
+            if commit.hexsha == seed_head:
+                break
+            new_commits.append(commit)
+        assert len(new_commits) == 1, (
+            f"the migration MUST produce EXACTLY ONE commit; got {len(new_commits)}: "
+            f"{[(c.hexsha[:8], c.message.splitlines()[0]) for c in new_commits]}"
+        )
+        chore = new_commits[0]
+        assert chore.message.splitlines()[0] == SKILL_AUTO_COMMIT_SUBJECT, (
+            f"the migration commit subject MUST be deterministic; got: "
+            f"{chore.message.splitlines()[0]!r}"
+        )
+        committed_paths = {diff.a_path for diff in chore.diff(chore.parents[0])}
+        assert committed_paths == expected_retired_paths, (
+            f"the migration commit MUST touch ONLY the retired skill paths; "
+            f"got: {sorted(committed_paths)}"
+        )
     finally:
         repo.close()

@@ -1,6 +1,6 @@
 # Nanocoder Support Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add Nanocoder as a first-class built-in Ralph Workflow agent with shared transport handling, Ralph-managed MCP wiring, and black-box regression coverage.
 

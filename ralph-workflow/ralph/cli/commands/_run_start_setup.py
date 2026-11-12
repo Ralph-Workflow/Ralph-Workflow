@@ -67,9 +67,9 @@ def sync_shipped_skills(
             snapshot_dirty_paths_strict,
         )
         from ralph.skills._auto_commit import commit_skill_writes
+        from ralph.skills._installer import _skill_sync_written_paths
         from ralph.skills._installer_candidates import (
             _candidate_skill_paths,
-            _diff_written_paths,
         )
 
         create_commit = create_commit_impl
@@ -91,7 +91,7 @@ def sync_shipped_skills(
                 if failures:
                     dependencies.print_project_skill_conflict_hint(failures)
                 if pre_tree is not None:
-                    written_paths = _diff_written_paths(target_root, candidates, pre_contents)
+                    written_paths = _skill_sync_written_paths(target_root, candidates, pre_contents)
                     if written_paths:
                         written_pre_contents = {p: pre_contents.get(p) for p in written_paths}
                         result = commit_skill_writes(

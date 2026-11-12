@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypedDict
 from ralph.checked_accessors import as_mapping, as_str_list
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.skills._ownership import Ownership, classify_entry
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -82,6 +83,13 @@ def materialize_skills_to_dir(
     return written_names
 
 
+def _may_materialize_skill_dir(skill_dir: Path) -> bool:
+    if skill_dir.is_symlink():
+        return False
+    ownership = classify_entry(skill_dir)
+    return ownership not in (Ownership.USER_EDITED, Ownership.FOREIGN)
+
+
 def materialize_skills_to_claude_dir(
     target: Path,
     *,
@@ -92,22 +100,11 @@ def materialize_skills_to_claude_dir(
     metadata = get_skill_metadata()
     for name in BASELINE_SKILL_NAMES:
         skill_dir = target / name
+        if not _may_materialize_skill_dir(skill_dir):
+            continue
         skill_dir.mkdir(parents=True, exist_ok=True)
         skill_file = skill_dir / "SKILL.md"
         marker_file = skill_dir / _MANAGED_MARKER
-        if skill_file.exists() and marker_file.exists():
-            stored_sha: str = ""
-            try:
-                marker_raw: object = json.loads(marker_file.read_text(encoding="utf-8"))
-                marker_data = as_mapping(marker_raw, field="managed marker")
-                sha_val = marker_data.get("installed_content_sha256", "")
-                stored_sha = sha_val if isinstance(sha_val, str) else ""
-            except Exception:
-                pass
-            if stored_sha:
-                current_sha = hashlib.sha256(skill_file.read_bytes()).hexdigest()
-                if current_sha != stored_sha:
-                    continue
         content = get_skill_content(name)
         write_text_if_changed(backend, skill_file, content, encoding="utf-8")
         content_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()

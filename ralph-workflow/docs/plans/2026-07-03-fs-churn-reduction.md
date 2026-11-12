@@ -1,6 +1,6 @@
 # FS Churn Reduction (fseventsd CPU) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cut the filesystem-event volume Ralph Workflow generates during long runs so macOS `fseventsd` stops burning a full core, by batching per-line writes, closing write-handle churn, pruning unbounded `.agent` accumulation, and consolidating machine-only bookkeeping into a per-workspace SQLite database.
 

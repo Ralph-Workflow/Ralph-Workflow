@@ -630,11 +630,31 @@ def _missing_reference(content: _SkillPayload) -> str | None:
             continue
         data = content.files[relative][0]
         for reference in _iter_references(data.decode("utf-8", errors="replace")):
-            if reference in content.files:
+            resolved = _resolve_reference(relative, reference)
+            if resolved is None:
                 continue
-            if Path(reference).suffix.lower() in ALLOWED_FILE_SUFFIXES:
-                return f"it references {reference}, which the archive does not carry"
+            if resolved in content.files:
+                continue
+            if Path(resolved).suffix.lower() in ALLOWED_FILE_SUFFIXES:
+                return f"it references {resolved}, which the archive does not carry"
     return None
+
+
+def _resolve_reference(relative: str, reference: str) -> str | None:
+    base = relative.rsplit("/", 1)[0] if "/" in relative else ""
+    parts = [part for part in base.split("/") if part]
+    for segment in reference.split("/"):
+        if not segment or segment == ".":
+            continue
+        if segment == "..":
+            if not parts:
+                return None
+            parts.pop()
+            continue
+        parts.append(segment)
+    if not parts:
+        return None
+    return "/".join(parts)
 
 
 def _iter_references(text: str) -> Iterator[str]:
@@ -646,7 +666,7 @@ def _iter_references(text: str) -> Iterator[str]:
         if candidate.startswith(("http://", "https://", "/", "~", "#")):
             continue
         parts = [part for part in candidate.split("/") if part]
-        if not parts or any(part == ".." for part in parts):
+        if not parts:
             continue
         if not _FILE_NAME_PATTERN.match(parts[-1]):
             continue

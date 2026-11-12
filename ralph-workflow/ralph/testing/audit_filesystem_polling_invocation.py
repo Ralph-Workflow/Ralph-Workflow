@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.testing._audit_scope import qualified_scope
+from ralph.testing._audit_scope import build_parent_map, qualified_scope
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -306,7 +306,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvo
             )
         ]
     nodes = list(ast.walk(tree))
-    parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
+    parents = build_parent_map(tree, nodes)
     time_names, asyncio_names, observer_names, subprocess_names = _module_aliases(nodes)
     violations: list[FilesystemPollingInvocationViolation] = []
     for node in nodes:

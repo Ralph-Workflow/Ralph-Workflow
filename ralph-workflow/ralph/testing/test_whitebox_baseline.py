@@ -378,7 +378,7 @@ tests/test_audit_mcp_timeout.py|0,1,0
 tests/test_audit_opts_key_drift.py|0,0,1
 tests/test_audit_parallelization_dormant.py|2,0,2
 tests/test_audit_resource_lifecycle.py|0,1,0
-tests/test_audit_skill_auto_commit.py|5,0,10
+tests/test_audit_skill_auto_commit.py|5,0,9
 tests/test_audit_template_render_integrity.py|0,4,0
 tests/test_audit_terminal_escape_containment.py|11,0,5
 tests/test_audit_typecheck_bypass.py|0,4,0
@@ -833,6 +833,7 @@ tests/test_skills_recheck_policy_config.py|0,1,0
 tests/test_skills_skill_resolver.py|0,1,0
 tests/test_skills_state.py|0,3,0
 tests/test_skills_state_store.py|0,4,0
+tests/test_skills_upstream_install.py|0,1,0
 tests/test_smoke_agy_end_to_end.py|0,1,0
 tests/test_smoke_agy_full_lifecycle_e2e.py|0,2,0
 tests/test_smoke_canonical_path.py|0,1,0

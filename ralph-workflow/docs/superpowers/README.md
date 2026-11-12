@@ -1,21 +1,17 @@
 # Superpowers Docs (package)
 
-This directory collects notes about Superpowers skill bundles, spec
-layouts, and plan metadata that ship inside the **maintained Python
-package** at `ralph-workflow/`.
+This directory collects spec layouts and plan metadata for the
+**maintained Python package** at `ralph-workflow/`.
 
 ## Who this is for
 
-Contributors and operators who want background on the Superpowers
-metadata that the Python package ships with, and where to update it
-when a skill bundle changes.
+Contributors and operators who want background on the design work
+recorded here, and where the package documents its current contract.
 
 ## Subdirectories
 
-- [`plans/`](plans/) — Superpowers plan metadata for the Python
-  package.
-- [`specs/`](specs/) — Superpowers spec metadata for the Python
-  package.
+- [`plans/`](plans/) — Plan metadata for the Python package.
+- [`specs/`](specs/) — Spec metadata for the Python package.
 
 ## Next click
 

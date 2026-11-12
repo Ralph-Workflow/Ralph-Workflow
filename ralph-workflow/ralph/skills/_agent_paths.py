@@ -31,26 +31,24 @@ AGENT_SKILL_ROOTS: tuple[AgentSkillRoot, ...] = (
     AgentSkillRoot(
         agent="codex",
         path_segments=(".codex", "skills"),
-        source_url=("https://github.com/openai/codex/blob/main/codex-rs/utils/home-dir/src/lib.rs"),
+        source_url=(
+            "https://github.com/openai/codex/blob/main/"
+            "codex-rs/skills/src/assets/samples/skill-installer/SKILL.md"
+        ),
         is_canonical=False,
         last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
     ),
     AgentSkillRoot(
         agent="opencode",
         path_segments=(".config", "opencode", "skills"),
-        source_url=(
-            "https://github.com/anomalyco/opencode/blob/dev/packages/web/src/content/docs/skills.mdx"
-        ),
+        source_url="https://opencode.ai/docs/skills/",
         is_canonical=False,
         last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
     ),
     AgentSkillRoot(
         agent="agy",
         path_segments=(".gemini", "antigravity-cli", "skills"),
-        source_url=(
-            "https://medium.com/google-cloud/"
-            "configuring-mcp-servers-and-skills-for-antigravity-cli-and-ide-a938c7eebb78"
-        ),
+        source_url="https://antigravity.google/docs/skills/",
         is_canonical=False,
         last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
     ),

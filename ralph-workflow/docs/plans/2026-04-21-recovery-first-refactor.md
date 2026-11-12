@@ -1,7 +1,5 @@
 # Recovery-First Refactor Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Make Ralph treat ordinary pipeline failures as recovery events instead of terminal exits so the run keeps progressing or re-prompting instead of dying.
 
 **Architecture:** Centralize failure recovery in the pipeline reducer and runner instead of letting scattered terminal paths emit `ExitFailureEffect`. Analysis rejection should route through loopback, while exhausted retries, commit failures, and explicit failed events should re-enter the phase with recovery context. The runner should no longer stop on `PHASE_FAILED`; instead it should convert failure state into a recovery prompt cycle.

@@ -106,7 +106,6 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/config/_toml_fallback.py", "<module>", "unbounded_accumulator"),
         ("ralph/config/agents_file_writer.py", "_publish_backup", "raw_os_fd"),
         ("ralph/config/agents_file_writer.py", "_target_serialization_lock", "raw_os_fd"),
-        ("ralph/skills/upstream.py", "_open_lock_descriptor", "raw_os_fd"),
         ("ralph/config/loader.py", "<module>", "unbounded_accumulator"),
         ("ralph/diagnostics/host_pressure.py", "_macos_maxfiles_pressure", "direct_child_spawn"),
         ("ralph/display/_salience.py", "SalienceAllocator.__init__", "unbounded_accumulator"),
@@ -279,6 +278,7 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/recovery/controller.py", "RecoveryController.__init__", "unbounded_accumulator"),
         ("ralph/recovery/events.py", "FailureEventBus.__init__", "unbounded_accumulator"),
         ("ralph/recovery/testing.py", "FakeConnectivityMonitor.__init__", "unbounded_accumulator"),
+        ("ralph/skills/upstream.py", "_open_lock_descriptor", "raw_os_fd"),
         ("ralph/telemetry/_user_identity.py", "_identity_lock", "raw_os_fd"),
         (
             "ralph/workspace/_cross_process_watch_lock.py",
