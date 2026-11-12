@@ -219,10 +219,6 @@ class AgentCatalog:
     def _default_strategies(self) -> dict[AgentTransport, "StrategyFactory"]:
         return _default_strategy_factories()
 
-    @property
-    def _DEFAULT_STRATEGIES(self) -> dict[AgentTransport, "StrategyFactory"]:
-        return self._default_strategies
-
     def add(self, support: "AgentSupport") -> None:
         name_lower = support._name_lower
         if name_lower in self._entries:

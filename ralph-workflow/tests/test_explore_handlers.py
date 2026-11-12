@@ -14,6 +14,12 @@ from ralph.mcp.explore.handlers import (
 )
 from ralph.mcp.explore.store import DEFAULT_INDEX_ROOT
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_ralph_graph_clears_cancel_flag_on_query_error": (
+        "patch target corrected to graph module where run_query is defined"
+    ),
+}
+
 pytestmark = pytest.mark.timeout_seconds(2.0)
 
 handle_ralph_graph_local = handle_ralph_graph
@@ -616,7 +622,7 @@ def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
             "timeout_ms": 5_000,
         }
         with (
-            patch("ralph.mcp.explore._handlers_graph.run_query", side_effect=_explode),
+            patch("ralph.mcp.explore.graph.run_query", side_effect=_explode),
             pytest.raises(RuntimeError),
         ):
             handle_ralph_graph_local(call_session, _Workspace(workspace), params)

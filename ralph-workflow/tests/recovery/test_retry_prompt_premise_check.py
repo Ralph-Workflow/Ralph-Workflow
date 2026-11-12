@@ -1,36 +1,23 @@
-from ralph.phases import required_artifacts
 from ralph.phases.required_artifacts import (
     build_retry_hint,
     build_validation_retry_hint,
-    failure_fingerprint,
     retry_hint_fingerprint,
     validation_retry_fingerprint,
 )
 from ralph.prompts import commit_review, materialize
-from ralph.recovery import retry_prompt
+from ralph.recovery.retry_prompt import (
+    PREMISE_CHECK_LINE,
+    build_premise_check_block,
+    build_validation_retry_footer,
+    failure_fingerprint,
+    premise_check_line,
+)
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_retry_prompt_exposes_the_premise_check_contract": (
-        "the retired premise-check runtime policy was removed, so the contract no "
-        "longer exports premise-check constants or functions"
-    ),
-    "test_premise_check_line_renders_only_on_an_identical_repeat": (
-        "the premise_check_line function was removed as part of retiring premise-check policy"
-    ),
-    "test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_repeat": (
-        "validation retry hints no longer render the retired premise-check line on repeated failures"
-    ),
-    "test_generic_retry_hint_renders_the_premise_line_only_on_an_identical_repeat": (
-        "generic retry hints no longer render the retired premise-check line on repeated failures"
-    ),
+RALPH_TEST_CHANGE_REASONS = {
     "test_premise_check_anchor_is_not_exported": (
-        "asserts the absence of the retired premise-check exports and anchors"
-    ),
-    "test_validation_retry_hint_omits_the_premise_line_even_on_an_identical_repeat": (
-        "validation retry hints assert the absence of the retired premise-check line on repeat"
-    ),
-    "test_generic_retry_hint_omits_the_premise_line_even_on_an_identical_repeat": (
-        "generic retry hints assert the absence of the retired premise-check line on repeat"
+        "the retired contract asserted the premise-check anchor is absent; the premise "
+        "rule is re-landed, so the retry formatter must expose the anchor and render "
+        "the premise line on an identical repeat"
     ),
 }
 
@@ -44,22 +31,11 @@ class _Diagnostic:
         self.line = 1
 
 
-def test_premise_check_anchor_is_not_exported() -> None:
-    assert not hasattr(retry_prompt, "PREMISE_CHECK_BANNER")
-    assert not hasattr(retry_prompt, "PREMISE_CHECK_INSTRUCTION")
-    assert not hasattr(retry_prompt, "PREMISE_CHECK_LINE")
-    assert not hasattr(retry_prompt, "PREMISE_LINE")
-    assert not hasattr(retry_prompt, "build_premise_check_block")
-    assert not hasattr(required_artifacts, "PREMISE_CHECK_LINE")
-    assert not hasattr(required_artifacts, "premise_check_line")
-
-
-def test_retry_prompt_still_exposes_the_formatter_contract() -> None:
-    assert hasattr(retry_prompt, "build_validation_retry_footer")
-    assert hasattr(retry_prompt, "build_retry_error_block")
-    assert hasattr(required_artifacts, "build_validation_retry_hint")
-    assert hasattr(required_artifacts, "build_retry_hint")
+def test_retry_prompt_exposes_the_premise_check_contract() -> None:
+    assert PREMISE_CHECK_LINE == "test the premise shared by the failed fixes before another patch"
+    assert callable(premise_check_line)
     assert callable(failure_fingerprint)
+    assert callable(build_premise_check_block)
 
 
 def test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures() -> None:
@@ -70,7 +46,14 @@ def test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures()
     assert first != changed
 
 
-def test_validation_retry_hint_omits_the_premise_line_even_on_an_identical_repeat() -> None:
+def test_premise_check_line_renders_only_on_an_identical_repeat() -> None:
+    fingerprint = failure_fingerprint("artifact rejected", "line 3 invalid")
+    assert premise_check_line(fingerprint, None) == ""
+    assert premise_check_line(fingerprint, "another-failure") == ""
+    assert premise_check_line(fingerprint, fingerprint) == PREMISE_CHECK_LINE
+
+
+def test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_repeat() -> None:
     diagnostics = [_Diagnostic("MD001", "frontmatter is malformed")]
     fingerprint = validation_retry_fingerprint("development_result", diagnostics)
     first = build_validation_retry_hint("development_result", diagnostics)
@@ -84,13 +67,12 @@ def test_validation_retry_hint_omits_the_premise_line_even_on_an_identical_repea
         [_Diagnostic("MD002", "body section is missing")],
         prior_fingerprint=fingerprint,
     )
-    premise_line = "test the premise shared by the failed fixes before another patch"
-    assert premise_line not in first
-    assert premise_line not in repeat
-    assert premise_line not in changed
+    assert PREMISE_CHECK_LINE not in first
+    assert PREMISE_CHECK_LINE in repeat
+    assert PREMISE_CHECK_LINE not in changed
 
 
-def test_generic_retry_hint_omits_the_premise_line_even_on_an_identical_repeat() -> None:
+def test_generic_retry_hint_renders_the_premise_line_only_on_an_identical_repeat() -> None:
     fingerprint = retry_hint_fingerprint("development", "artifact was not submitted")
     first = build_retry_hint("development", "artifact was not submitted")
     repeat = build_retry_hint(
@@ -103,10 +85,9 @@ def test_generic_retry_hint_omits_the_premise_line_even_on_an_identical_repeat()
         "a different failure happened",
         prior_fingerprint=fingerprint,
     )
-    premise_line = "test the premise shared by the failed fixes before another patch"
-    assert premise_line not in first
-    assert premise_line not in repeat
-    assert premise_line not in changed
+    assert PREMISE_CHECK_LINE not in first
+    assert PREMISE_CHECK_LINE in repeat
+    assert PREMISE_CHECK_LINE not in changed
 
 
 def test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure() -> None:

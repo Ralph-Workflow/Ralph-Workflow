@@ -15,8 +15,10 @@ def build_parent_map_from_nodes(nodes: Iterable[ast.AST]) -> dict[ast.AST, ast.A
     return {child: node for node in nodes for child in ast.iter_child_nodes(node)}
 
 
-def build_parent_map(tree: ast.Module) -> dict[ast.AST, ast.AST]:
-    return build_parent_map_from_nodes(ast.walk(tree))
+def build_parent_map(tree_or_nodes: ast.AST | Iterable[ast.AST]) -> dict[ast.AST, ast.AST]:
+    if isinstance(tree_or_nodes, ast.AST):
+        return build_parent_map_from_nodes(ast.walk(tree_or_nodes))
+    return build_parent_map_from_nodes(tree_or_nodes)
 
 
 def qualified_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:

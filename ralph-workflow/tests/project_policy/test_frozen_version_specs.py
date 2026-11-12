@@ -7,6 +7,12 @@ from ralph.project_policy import markers, portfolio, starters, validators
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.test_v4_corpus_authentic import build_v4_pack
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_frozen_v5_pack_validates_ready": (
+        "v6 starter carries advisory enforcement cell in premise check guard row"
+    ),
+}
+
 
 def test_version_specs_registry_invariants() -> None:
     assert "v4" in markers.VERSION_SPECS
@@ -119,6 +125,7 @@ def _clean_v5_starter_prose(body: str) -> str:
         "|---|---|---|---|---|---|",
     )
     body = body.replace(" | deterministic: verified-value |", " |")
+    body = re.sub(r" \| (advisory|deterministic):[^|]* \|", " |", body)
     return body
 
 

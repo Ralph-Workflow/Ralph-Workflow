@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.testing._audit_scope import build_parent_map, qualified_scope
+from ralph.testing._audit_scope import build_parent_map_from_nodes, qualified_scope
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -385,7 +385,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
             )
         ]
     nodes = list(ast.walk(tree))
-    parents = build_parent_map(nodes)
+    parents = build_parent_map_from_nodes(nodes)
     path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(
         tree, nodes, parents
     )

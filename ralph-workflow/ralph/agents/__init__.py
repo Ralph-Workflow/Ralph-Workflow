@@ -11,8 +11,6 @@ if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
     from ralph.agents.support import AgentSupport
 
-__doc__ = "register_my_agent is the 90% recipe for agent registration."
-
 __all__ = [
     "AgentCatalog",
     "AgentChain",
@@ -20,11 +18,9 @@ __all__ = [
     "AgentSupport",
     "default_catalog",
     "invoke_agent",
-    "register_my_agent",
     "register_agent_support",
+    "register_my_agent",
 ]
-
-__doc__ = "register_my_agent"
 
 
 def __getattr__(name: str) -> object:

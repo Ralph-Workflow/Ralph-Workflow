@@ -48,6 +48,7 @@ def _example_section(text: str) -> str:
     match = _NEXT_SECTION_RE.search(rest)
     return rest[: match.start()] if match is not None else rest
 
+
 def _extract_example_blocks(text: str) -> list[str]:
     return [block.group(1) for block in _EXAMPLE_BLOCK_RE.finditer(_example_section(text))]
 

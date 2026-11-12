@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph.git.git_call_policy import GitCallClass
-from ralph.git.git_run_result import GitRunResult
 from ralph.git.subprocess_runner import GitRunOptions, run_git
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ralph.git.git_call_policy import GitCallClass
+    from ralph.git.git_run_result import GitRunResult
 
 _ORIGINAL_RUN_GIT = run_git
 
@@ -31,8 +34,9 @@ def _resolve_runner() -> _GitRunner:
     if merge_mod is not None:
         cand: object = getattr(merge_mod, "run_git", None)
         if callable(cand) and cand is not _ORIGINAL_RUN_GIT:
-            return cast(_GitRunner, cand)
+            return cast("_GitRunner", cand)
     return run_git
+
 
 __all__ = [
     "ConflictStageEntries",

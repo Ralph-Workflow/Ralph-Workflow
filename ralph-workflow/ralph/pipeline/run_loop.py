@@ -4020,3 +4020,4 @@ def _start_pro_heartbeat_if_active(
 
 
 resolve_initial_state = _resolve_initial_state
+build_status_bar_model = _build_status_bar_model

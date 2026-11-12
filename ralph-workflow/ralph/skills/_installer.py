@@ -12,7 +12,6 @@ from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import (
-    _ANCESTOR_SYMLINK_DIRTY,
     capture_pre_write_contents,
     snapshot_dirty_paths_strict,
 )
@@ -38,7 +37,6 @@ from ralph.skills._content import (
 from ralph.skills._installer_candidates import (
     _candidate_skill_paths,
     _diff_written_paths,
-    _head_blob_shas,
 )
 from ralph.skills._ownership import Ownership, classify_entry, may_replace
 from ralph.skills._prune import (

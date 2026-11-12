@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.testing._audit_scope import build_parent_map, qualified_scope
+from ralph.testing._audit_scope import build_parent_map_from_nodes, qualified_scope
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -733,7 +733,7 @@ def _scan_module(
     tree, _source = prepared
 
     nodes = list(ast.walk(tree))
-    parents = build_parent_map(nodes)
+    parents = build_parent_map_from_nodes(nodes)
     (
         module_aliases,
         direct_mutations,
