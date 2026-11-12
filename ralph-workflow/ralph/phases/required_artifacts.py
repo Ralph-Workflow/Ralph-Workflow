@@ -12,10 +12,12 @@ from ralph.mcp.artifacts.typed_artifacts import (
 )
 from ralph.policy.models import PipelinePolicy
 from ralph.recovery.retry_prompt import (
+    PREMISE_CHECK_LINE,
     VALIDATION_FAILURE_BANNER,
     build_retry_error_block,
     build_validation_retry_footer,
     failure_fingerprint,
+    premise_check_line,
 )
 
 if TYPE_CHECKING:
@@ -253,13 +255,19 @@ def build_validation_retry_hint(
         if len(attempts) > 1
         else ""
     )
-    return "\n\n".join(
+    hint = "\n\n".join(
         [
             VALIDATION_FAILURE_BANNER,
             header + "\n\n".join(bounded_attempts),
             build_validation_retry_footer(),
         ]
     )
+    premise = premise_check_line(
+        validation_retry_fingerprint(artifact_type, diagnostics), prior_fingerprint
+    )
+    if not premise:
+        return hint
+    return f"{hint}\n\n{premise}"
 
 
 def _validation_retry_attempts(hint: str) -> list[str]:
@@ -276,7 +284,7 @@ def _validation_retry_attempts(hint: str) -> list[str]:
 
 
 def _validation_retry_attempt_region(hint: str) -> str:
-    region = hint.rstrip()
+    region = hint.removesuffix(PREMISE_CHECK_LINE).rstrip()
     footer_index = region.rfind(build_validation_retry_footer())
     return region if footer_index < 0 else region[:footer_index]
 
@@ -359,6 +367,11 @@ def build_retry_hint(
         detail=detail,
         validation=validation,
     )
+    premise = premise_check_line(
+        retry_hint_fingerprint(phase, detail, registry=registry), prior_fingerprint
+    )
+    if premise:
+        block = f"{block}\n\n{premise}"
 
     lines = [block, "", "Submit the artifact now. Do not restart the task from scratch."]
     if unsubmitted_draft:
@@ -405,6 +418,7 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
 
 
 __all__ = [
+    "PREMISE_CHECK_LINE",
     "RequiredArtifact",
     "build_missing_input_hint",
     "build_required_artifacts",

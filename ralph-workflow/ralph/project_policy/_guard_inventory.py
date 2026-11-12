@@ -252,8 +252,8 @@ def _check_claim_scope_cell(
                 path=path,
                 missing_evidence=(
                     f"{markers.GUARD_INVENTORY_HEADING} row {index} "
-                    "has a multi-sentence 'Claim scope' cell; the v5 "
-                    "plan freezes the cell to a single sentence so the "
+                    "has a multi-sentence 'Claim scope' cell; the schema "
+                    "freezes the cell to a single sentence so the "
                     "claim stays narrow and observable"
                 ),
                 required_outcome=(
