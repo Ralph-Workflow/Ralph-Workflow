@@ -9,6 +9,8 @@ from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
 from ralph.project_policy import cli_integration
 
+_PREPARE_DISPATCH_NAME = "_prepare_pipeline_step_dispatch"
+
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_dispatch_inventory_reconciles_every_named_route": (
         "_run_inner_loop no longer calls _block_unresolved_integration directly."
@@ -27,7 +29,7 @@ ORDINARY_DISPATCH_ROUTES = (
     (run_loop._continue_after_startup_integration, "_block_unresolved_integration"),
     (run_loop._run_inner_loop_after_startup, "_block_unresolved_integration"),
     (run_loop._resume_after_cooldown_wait, "inspect_integration_resolution"),
-    (runner._run_pipeline_step, "_prepare_pipeline_step_dispatch"),
+    (runner._run_pipeline_step, _PREPARE_DISPATCH_NAME),
     (runner._prepare_pipeline_step_dispatch, "call_determine_effect_from_policy"),
     (runner._integrate_inline_effect, "_integrate_on_phase_transition"),
     (effect_executor.execute_agent_effect, "assert_non_resolution_dispatch_allowed"),

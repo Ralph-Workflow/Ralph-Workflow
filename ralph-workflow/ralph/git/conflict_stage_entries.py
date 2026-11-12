@@ -4,13 +4,12 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph.git.subprocess_runner import GitRunOptions, run_git
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ralph.git.git_call_policy import GitCallClass
     from ralph.git.git_run_result import GitRunResult
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 _ORIGINAL_RUN_GIT = run_git
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
 
+import re
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -198,17 +199,27 @@ def build_agent_rebase_stop_resolver(
                 exc,
             )
             is_config = _is_config_exception(exc)
-            failure_cause = (
-                ResolutionFailureCause.CONFIG_FAILURE
-                if is_config
-                else ResolutionFailureCause.CONTEXT_FAILURE
-            )
-            term_reason = (
-                ResolutionTerminationReason.CONFIG_FAILURE
-                if is_config
-                else ResolutionTerminationReason.CONTEXT_FAILURE
-            )
-            reason_text = f"target worktree context failed: {exc}"
+            if is_config:
+                failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+                term_reason = ResolutionTerminationReason.CONFIG_FAILURE
+                cfg_path = _extract_config_path(exc)
+                target_path = cfg_path if cfg_path else str(root / ".agent" / "ralph-workflow.toml")
+                reason_text = f"fix {target_path} then run ralph --check-config"
+                emit_config_failure_warning(
+                    target_path,
+                    kind="ralph-workflow",
+                    error_detail=describe_config_failure(exc),
+                    behaviour=(
+                        "strict configuration behaviour in effect "
+                        "(this file has no built-in default fallback)"
+                    ),
+                    fix_hint=f"To continue: {reason_text}",
+                    exc=exc,
+                )
+            else:
+                failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
+                term_reason = ResolutionTerminationReason.CONTEXT_FAILURE
+                reason_text = f"target worktree context failed: {exc}"
             session = active_rebase_resolution_session()
             if session is not None:
                 session.charge_conflict_budget = False
@@ -302,37 +313,100 @@ def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsA
     )
 
 
-def _is_config_exception(exc: BaseException) -> bool:
-    if isinstance(exc, WorkspaceContextError):
-        return True
-    try:
-        from ralph.config.loader import ConfigTomlError
+_CONFIG_PATH_PATTERN = re.compile(
+    r"""(?:['"`(\[\s]|^)([^\s'"`()\[\]:;,<>]*?(?:agents|pipeline|artifacts|mcp|portfolio|policy-portfolio|ralph-workflow[^\s'"`()\[\]:;,<>]*)\.toml)(?:['"`\)\]:;,]|\s|$)""",
+    re.IGNORECASE,
+)
 
-        if isinstance(exc, ConfigTomlError):
-            return True
-    except ImportError:
-        pass
-    try:
-        from pydantic import ValidationError
+_FIX_PATTERN = re.compile(
+    r"""fix\s+([^\s]+)\s+then run ralph --check-config""",
+    re.IGNORECASE,
+)
 
-        if isinstance(exc, ValidationError):
-            return True
-    except ImportError:
-        pass
+_COULD_NOT_READ_PATTERN = re.compile(
+    r"""Ralph could not read (.*?):""",
+    re.IGNORECASE,
+)
+
+
+def _extract_config_path(exc: BaseException) -> str | None:
+    for attr in ("file", "path"):
+        val: object = getattr(exc, attr, None)
+        if val is not None:
+            return str(val)
+
     chain: list[BaseException] = []
     curr: BaseException | None = exc
     while curr is not None and curr not in chain:
         chain.append(curr)
         curr = curr.__cause__ or curr.__context__
+
+    for e in chain:
+        for attr in ("file", "path"):
+            chain_val: object = getattr(e, attr, None)
+            if chain_val is not None:
+                return str(chain_val)
+
+    for e in chain:
+        msg = str(e)
+        m = _FIX_PATTERN.search(msg)
+        if m is not None:
+            raw_fix: object = m.group(1)
+            if isinstance(raw_fix, str):
+                return raw_fix.strip()
+        m = _COULD_NOT_READ_PATTERN.search(msg)
+        if m is not None:
+            raw_read: object = m.group(1)
+            if isinstance(raw_read, str):
+                return raw_read.strip()
+        m = _CONFIG_PATH_PATTERN.search(msg)
+        if m is not None:
+            raw_cfg: object = m.group(1)
+            if isinstance(raw_cfg, str):
+                return raw_cfg.strip()
+
+    return None
+
+
+def _is_config_exception(exc: BaseException) -> bool:
+    if isinstance(exc, WorkspaceContextError) or _extract_config_path(exc) is not None:
+        return True
+    config_types: tuple[type[BaseException], ...] = ()
+    try:
+        from ralph.config.loader import ConfigTomlError
+
+        config_types = (ConfigTomlError,)
+    except ImportError:
+        pass
+    try:
+        from pydantic import ValidationError
+
+        config_types = (*config_types, ValidationError)
+    except ImportError:
+        pass
+    if config_types and isinstance(exc, config_types):
+        return True
+
+    chain: list[BaseException] = []
+    curr: BaseException | None = exc
+    while curr is not None and curr not in chain:
+        chain.append(curr)
+        curr = curr.__cause__ or curr.__context__
+
+    cfg_keywords = (
+        "check-config",
+        "configuration",
+        "ralph-workflow",
+        "agents.toml",
+        "pipeline.toml",
+        "artifacts.toml",
+        "mcp.toml",
+        "portfolio.toml",
+    )
     for e in chain:
         if isinstance(e, WorkspaceContextError):
             return True
         msg = str(e).lower()
-        if (
-            "ralph-workflow.toml" in msg
-            or "agents.toml" in msg
-            or "check-config" in msg
-            or "configuration" in msg
-        ):
+        if any(kw in msg for kw in cfg_keywords):
             return True
     return False

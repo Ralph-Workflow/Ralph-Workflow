@@ -130,12 +130,29 @@ def test_general_section_starts_with_auto_integration_banner() -> None:
         text = _read_text(path)
         block = _general_section_block(text).strip()
         assert block.startswith("[general]")
+        first_lines = "\n".join(block.splitlines()[:8])
+        if any(
+            line.lstrip().startswith("#") and "auto_integrate_" in line
+            for line in block.splitlines()
+        ):
+            assert _REQUIRED_BANNER_HEADER.lower() in first_lines.lower(), (
+                f"{path}: auto-integration block must start with the "
+                f"{_REQUIRED_BANNER_HEADER!r} banner; first 8 lines: "
+                f"{first_lines!r}"
+            )
 
 
 def test_general_section_contains_required_prose_tokens() -> None:
     for _, path in _bundled():
         text = _read_text(path)
         assert "[general]" in text
+        block = _general_section_block(text).lower()
+        if any(
+            line.lstrip().startswith("#") and "auto_integrate_" in line
+            for line in block.splitlines()
+        ):
+            missing = tuple(t for t in _REQUIRED_PROSE_TOKENS if t not in block)
+            assert not missing, f"{path}: prose missing tokens: {missing!r}"
 
 
 def test_templates_list_exactly_six_live_auto_integrate_keys_in_order() -> None:

@@ -71,6 +71,7 @@
 # ``max_inline_bytes`` is the only genuine tunable; increase it for larger
 # inline images.
 # @EXAMPLE-START
+# Broad multimodal support (read_media tool; read_image is a compatibility alias for inline images).
 # [media]
 # max_inline_bytes = 5242880  # 5 MiB default; increase for larger inline images
 # @EXAMPLE-END
