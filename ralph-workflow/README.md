@@ -252,12 +252,11 @@ exact definitions.
 The surfaces and the v6 model are documented in
 `docs/architecture/project-policy-readiness-traceability.md`.
 
-The v6 revision reframes the shipped policy as a small outcome-oriented
-execution kernel plus evidence-backed, selectively applicable controls,
-and adds the `Enforcement` column so every guard names the gate that owns
-it; see the v6 history entry in `ralph/project_policy/markers.py` for the
-reason and the v5-to-v6 consequence. The revision's outcomes are
-measured against v5 in a paired replay; see
+The shipped policy pack is a small outcome-oriented execution kernel plus
+evidence-backed, selectively applicable controls, and the `Enforcement`
+column names how each guard is enforced: the owning gate for a
+deterministic row, the review trigger for an advisory one. A paired
+replay measures the pack's outcomes; see
 `docs/plans/policy-v5-paired-replay-plan.md` for the plan.
 
 ## Project home

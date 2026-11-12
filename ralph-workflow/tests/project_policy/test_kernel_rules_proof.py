@@ -8,10 +8,11 @@ import pytest
 from ralph.project_policy import markers, starters
 
 RALPH_TEST_CHANGE_REASONS = {
-    "test_kernels_declare_exactly_the_thirteen_agent_rules": (
+    "test_kernels_declare_exactly_the_fourteen_agent_rules": (
         "the retired contract froze the shipped kernel at twelve agent rules; the "
-        "premise rule is re-landed as numbered rule 7, so the kernel declares "
-        "thirteen agent rules"
+        "premise rule is re-landed as numbered rule 7 and the non-inferable "
+        "instruction-surface rule is added as numbered rule 14, so the kernel "
+        "declares fourteen agent rules"
     ),
     "test_kernels_state_the_premise_check_rule": (
         "the retired contract asserted the kernel must not state the premise rule; "
@@ -20,12 +21,13 @@ RALPH_TEST_CHANGE_REASONS = {
     ),
     "test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules": (
         "the retired contract required the rule-to-phase table to cover twelve "
-        "numbered rules; the re-landed premise rule makes the table carry thirteen "
-        "numbered rules"
+        "numbered rules; the re-landed premise rule and the new instruction-surface "
+        "rule make the table carry fourteen numbered rules"
     ),
     "test_kernels_number_the_agent_rules_to_match_the_contract": (
         "the retired contract compared the kernel rule count against a twelve-rule "
-        "list; the re-landed premise rule makes the contract thirteen numbered rules"
+        "list; the re-landed premise rule and the new instruction-surface rule make "
+        "the contract fourteen numbered rules"
     ),
 }
 
@@ -85,6 +87,7 @@ AGENT_RULES: tuple[tuple[int, str], ...] = (
     (11, "Commit-level hygiene"),
     (12, "Human checkpoints"),
     (13, "Rule-to-enforcer ladder"),
+    (14, "Non-inferable instruction surface"),
 )
 
 INSTRUCTION_AUDIT_TRIGGER = "A model or harness generation change"
@@ -661,7 +664,7 @@ SKILL_TECHNIQUE_PRECEDENCE = "the kernel (policy) wins"
 LIBRARY_DOCUMENTATION_CLAUSE = "that library's own documentation"
 
 
-def test_kernels_declare_exactly_the_thirteen_agent_rules() -> None:
+def test_kernels_declare_exactly_the_fourteen_agent_rules() -> None:
     for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
         statements = _agent_rule_statements(content)
         assert len(statements) == len(AGENT_RULES), (

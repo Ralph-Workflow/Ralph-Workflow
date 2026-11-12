@@ -233,15 +233,6 @@ The terminal state restoration contract keeps Ralph ownership-safe on its own pa
 
 *Unrecoverable states:* Terminal state cannot be restored from inside the process if the process receives an uncatchable `SIGKILL` (signal 9) or if the terminal emulator window is closed externally.
 
-Documentation review note:
-===
-
-- *What changed.* The contract now describes only cursor-show plus SGR reset on the restore sequence and explicitly disclaims the prior broad-reset promises (alternate screen, mouse/focus/bracketed-paste, cursor/keypad modes, scroll region, G0 charset, autowrap, display clearing, generic parent `TCIFLUSH`).
-- *Why this verification guide owns it.* The contract is the single source of truth for the controlled-exit terminal behavior enforced by `ralph/testing/audit_terminal_escape_containment.py`; this guide already references that audit, so it is the right surface to keep the prose aligned with the audit.
-- *What was pruned or left alone.* Stale alt-screen and parent-flush language was removed. The OSC 11 probe's narrowly owned timeout flush was preserved verbatim in wording because it is the only legitimate flush in the contract. The terminal-escape containment section above and the cross-links below were left untouched — they are still accurate.
-- *How duplication was contained.* The new bullet on normal/exception exits and the bullet on interrupt/termination now share the same one-sentence description of the two-escape sequence and the same "saved snapshot, never fresh `tcgetattr`" framing, so the contract no longer implies distinct envelopes for each path.
-- *Why the operator route is clearer.* Operators reading this guide now learn the three things they can rely on (saved termios restored, cursor visible, SGR neutral) and the one thing Ralph deliberately does not do (flush their typed input), which is the answerable question behind "will `make verify` eat my unsent prompt?".
-
 ## MCP timeout contract
 
 Every blocking I/O operation under `ralph/mcp/` (as well as `ralph/git/` and `ralph/process/manager/`) must perform blocking calls with a bounded, fail-closed timeout. An unbounded blocking call hangs the worker or server thread and starves the agent of output. This contract is enforced by `ralph/testing/audit_mcp_timeout.py` as part of `make verify`.
@@ -267,19 +258,3 @@ The MCP server startup architecture enforces a strict distinction between non-fa
 - [Documentation Rubric](../code-style/documentation-rubric.md) — for any docs/README/manual change
 
 If the change touches README, docs, START_HERE, the manual, or any public-doc route, read [Documentation Rubric](../code-style/documentation-rubric.md) first and check the edited surface against it before calling the docs work done.
-
-## Documentation Review Note
-
-- *What changed.* Reconciled MCP startup timeout and git lock recovery contracts with runtime behavior: documented that pre-serve operations enforce the remaining real startup deadline (`mcp_real_startup_deadline_from_env()`) rather than the legacy `mcp_pre_serve_budget_from_env()` knob; clarified diagnostic stage budgets and overrun records; documented negative liveness proof and bounded backoff for git lock contention; and documented persistent in-place reducer retry with `recovery_epoch` clamping when no recovery phase is defined.
-- *Why these surfaces own it.* `docs/agents/verification.md` is the authoritative contract for timeout budgets, audit gates, and lifecycle invariants enforced by `make verify`.
-- *What was left alone.* The core diagnostic-vs-deadline architecture, probe-safety margin (`_PROBE_SAFETY_S`), and fail-safe overrun diagnostic exit paths were preserved. The terminal-escape containment, test budget, and installer contracts above remain authoritative.
-- *How duplication was contained.* Code-level helper details remain in docstrings (`_startup_timeouts.py`, `reducer.py`); this verification guide records the architectural contracts and invariant guarantees.
-- *Why the route is clearer.* Agents and operators now understand the exact boundary between non-fatal stage diagnostics and fatal deadline enforcement without relying on misleading environment knobs, and understand how git lock recovery seamlessly coordinates with the reducer.
-
-## Documentation Review Note — single canonical verification contract
-
-- *What changed.* This file is now the repository's single verification contract. A `## Verify steps and gates` section names the step registry (`ralph/verify_steps.py::_VERIFY_STEPS`, 47 steps) and lists the four supply-chain and test-surface gates with their real labels and enforcing commands; the stale pointer to `AGENTS.md` for the non-circumvention table now points at §'Non-circumvention table' in this file; and the "LAST entry in `_VERIFY_STEPS`" claim about the terminal-escape audit was corrected against the registry (the last entry is `audit_mcp_agent_boundary`).
-- *Why this surface owns it.* Root `AGENTS.md` names `docs/agents/verification.md` as the owner of the test budget, the import-time invariant table and the non-circumvention list, so the contract, the table it points at, and the gate inventory belong on one page.
-- *What was left alone.* The invariant table, the budget numbers, the MCP timeout contract, and the terminal contracts were not reworded. The policy layer above this contract stays in the root policy pack (`docs/ralph-workflow-policy/verification-policy.md`); the two layers answer different questions and are not merged.
-- *How duplication was contained.* `ralph-workflow/docs/agents/verification.md` was a divergent second copy (an older bullet form of the invariants plus a link into a deleted policy pack); it is now a pointer to this file, so the contract has one home.
-- *Why the route is clearer.* An agent reading the budget rule lands on the table that implements it, and an agent listing the gates sees the four new ones with the exact command that runs each.

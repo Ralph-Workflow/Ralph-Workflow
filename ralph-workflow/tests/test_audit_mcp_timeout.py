@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.testing.audit_mcp_timeout import (
     STRUCTURAL_EXEMPTIONS,
     McpTimeoutViolation,
@@ -11,9 +13,24 @@ from ralph.testing.audit_mcp_timeout import (
     main,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_registered_exemption_covers_exactly_one_call_site": (
+        "the per-entry audit pair was split into one parametrized case per registered "
+        "exemption so each case fits the pinned 1.0 CPU-second per-test budget; "
+        "assertions unchanged"
+    ),
+}
+
 PACKAGE_DIR = Path(__file__).resolve().parents[1] / "ralph"
 
 MARKER = "# mcp-timeout-ok: still reported"
+
+_EXEMPTION_KEYS: tuple[tuple[str, str, str, int], ...] = tuple(STRUCTURAL_EXEMPTIONS)
+
+_EXEMPTION_IDS: tuple[str, ...] = tuple(
+    f"{module}-{qualname}-{category}-{index}"
+    for module, qualname, category, index in _EXEMPTION_KEYS
+)
 
 
 def _audit(tmp_path: Path, src: str) -> list[McpTimeoutViolation]:
@@ -347,15 +364,17 @@ def test_stale_structural_exemption_is_reported(tmp_path: Path) -> None:
     assert len(stale) == 1
 
 
-def test_every_registered_exemption_covers_exactly_one_call_site() -> None:
-    for key in STRUCTURAL_EXEMPTIONS:
-        target = _module_file(key[0])
-        assert target.is_file(), f"exemption target missing: {target}"
-        without = {k: v for k, v in STRUCTURAL_EXEMPTIONS.items() if k != key}
-        violations = audit_mcp_file(target, exemptions=without)
-        assert len(violations) == 1, f"{key} must exempt exactly one call site"
-        assert violations[0].category == key[2]
-        assert not audit_mcp_file(target), f"{key} must leave its file clean"
+@pytest.mark.parametrize("key", _EXEMPTION_KEYS, ids=_EXEMPTION_IDS)
+def test_every_registered_exemption_covers_exactly_one_call_site(
+    key: tuple[str, str, str, int],
+) -> None:
+    target = _module_file(key[0])
+    assert target.is_file(), f"exemption target missing: {target}"
+    without = {k: v for k, v in STRUCTURAL_EXEMPTIONS.items() if k != key}
+    violations = audit_mcp_file(target, exemptions=without)
+    assert len(violations) == 1, f"{key} must exempt exactly one call site"
+    assert violations[0].category == key[2]
+    assert not audit_mcp_file(target), f"{key} must leave its file clean"
 
 
 def test_audit_directory_aggregates(tmp_path: Path) -> None:

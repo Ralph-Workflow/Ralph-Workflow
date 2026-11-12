@@ -22,12 +22,37 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
-    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
-    "test_fresh_cli_init_seeds_v6_policy_pack": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
-    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "execution-kernel starter premise check guard is advisory per v6 evidence tag and root schema",
+RALPH_TEST_CHANGE_REASONS = {
+    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the execution-kernel starter now ships a second advisory guard row for the non-inferable instruction-surface rule, so the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
+    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the execution-kernel starter now ships a second advisory guard row for the non-inferable instruction-surface rule, so the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
+    "test_fresh_cli_init_seeds_v6_policy_pack": "the execution-kernel starter now ships a second advisory guard row for the non-inferable instruction-surface rule, so the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
+    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the execution-kernel starter now ships a second advisory guard row for the non-inferable instruction-surface rule, so the fill-model placeholder applies to the remaining guards and every advisory row must name its review trigger",
 }
+
+ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
+    {
+        "Premise check",
+        "Non-inferable instruction surface",
+    }
+)
+
+
+def _assert_starter_enforcement(row: dict[str, str], name: str) -> None:
+    enf = row.get("enforcement", "")
+    if row.get("guard") in ADVISORY_STARTER_GUARDS:
+        assert enf.startswith("advisory: "), (
+            f"Starter {name} guard {row.get('guard')!r} must ship with an advisory "
+            f"enforcement, observed: {enf!r}"
+        )
+        assert "; review:" in enf, (
+            f"Starter {name} guard {row.get('guard')!r} must ship an advisory "
+            f"enforcement with a review trigger, observed: {enf!r}"
+        )
+        return
+    assert enf == "deterministic: PROJECT-FACT-UNRESOLVED", (
+        f"Starter {name} guard {row.get('guard')!r} must ship with "
+        f"'deterministic: PROJECT-FACT-UNRESOLVED', observed: {enf!r}"
+    )
 
 
 def _stack() -> ProjectStack:
@@ -120,13 +145,7 @@ def test_fresh_starters_follow_fill_model_no_ralph_audit_ids() -> None:
 
         for row in rows:
             enf = row.get("enforcement", "")
-            if row.get("guard") == "Premise check":
-                assert enf.startswith("advisory: ")
-            else:
-                assert enf == "deterministic: PROJECT-FACT-UNRESOLVED", (
-                    f"Starter {name} guard {row.get('guard')!r} must ship with "
-                    f"'deterministic: PROJECT-FACT-UNRESOLVED', observed: {enf!r}"
-                )
+            _assert_starter_enforcement(row, name)
             for banned in banned_audit_tokens:
                 assert banned not in enf, (
                     f"Starter {name} pre-filled Ralph internal audit ID {banned!r} in enforcement"
@@ -173,12 +192,7 @@ def test_all_bundled_starters_comply_with_v6_schema_and_seven_columns() -> None:
         assert rows, f"Bundled starter {name} must have parseable guard inventory rows"
         for row in rows:
             assert len(row) == 7, f"Bundled starter {name} row must have 7 columns"
-            if row.get("guard") == "Premise check":
-                assert row["enforcement"].startswith("advisory: ")
-            else:
-                assert row["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED", (
-                    f"Bundled starter {name} row {row.get('guard')!r} must use fill model placeholder"
-                )
+            _assert_starter_enforcement(row, name)
 
 
 def test_fresh_cli_init_seeds_v6_policy_pack(
@@ -211,10 +225,7 @@ def test_fresh_cli_init_seeds_v6_policy_pack(
         assert rows, f"Expected guard inventory rows in {name}"
         for r in rows:
             assert len(r) == 7, f"Row in {name} must have 7 columns"
-            if r.get("guard") == "Premise check":
-                assert r["enforcement"].startswith("advisory: ")
-            else:
-                assert r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED"
+            _assert_starter_enforcement(r, name)
 
     agents_file = tmp_path / "AGENTS.md"
     assert agents_file.is_file(), "AGENTS.md must be bootstrapped by ralph --init"
@@ -255,12 +266,8 @@ def test_fresh_real_filesystem_init_seeds_v6_policy_pack(tmp_path: Path) -> None
         assert text.startswith("<!-- ralph-policy-schema: v6 -->")
         rows = _parse_guard_inventory_table(text)
         assert rows, f"Expected guard inventory rows in {name}"
-        assert all(
-            r["enforcement"].startswith("advisory: ")
-            if r.get("guard") == "Premise check"
-            else r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED"
-            for r in rows
-        )
+        for r in rows:
+            _assert_starter_enforcement(r, name)
 
     second_result = preflight.run_policy_readiness_preflight(ws, stack)
     assert second_result.requires_remediation()

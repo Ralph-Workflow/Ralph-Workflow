@@ -19,7 +19,7 @@ ralph --generate-commit   # dogfood the AGENTS.md commit rule
 
 A few practical notes for a first patch:
 
-- **Pick something small.** A typo, a missing docstring, a clearer
+- **Pick something small.** A typo, a clearer error message, a clearer
   example, a one-line bug fix — the maintainers review small PRs
   faster and the verification loop is shorter.
 - **Run `make verify` before you push.** A red `make verify` is the

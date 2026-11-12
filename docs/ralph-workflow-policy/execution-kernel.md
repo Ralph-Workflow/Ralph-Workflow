@@ -55,9 +55,6 @@ markers MUST appear verbatim before any heading or content.
 
 ## Kernel rules
 
-These rules previously appeared verbatim in every domain file's "AI
-execution instructions" section. They live here exactly once.
-
 1. **Truthful evidence.** Every claim about behavior, status, or outcome
    must be backed by a record the agent can show: a command and its
    actual output, a test and its result, a file read and its content.
@@ -143,6 +140,8 @@ those.
    only that the implementation agrees with itself. When the behaviour
    belongs to a third-party library, that library's own documentation
    is the spec: check it before relying on the behaviour.
+   Before the fix lands, the bug-fix test fails on the pre-fix
+   revision, and the failing run is recorded with the change.
    (evidence: moderate)
 5. **Independent review.** Review belongs to the analysis phases
    (`planning_analysis`, `development_analysis`), which are already
@@ -202,6 +201,14 @@ those.
     in the rule-to-enforcer ladder instead. A rule that has become
     impossible to break is deleted instead of being left as prose.
     (evidence: none)
+14. **Non-inferable instruction surface.** The managed `AGENTS.md`
+    block and the project `AGENTS.md` carry only content an agent
+    cannot infer from the repository: the verify commands, the
+    run-one-test command, warnings about misleading code, constraints
+    that reach beyond the repository, and corrections the agent must
+    repeat. An LLM-generated bulk summary of the codebase is excluded:
+    it restates what a reader derives by reading the code.
+    (evidence: strong)
 
 ## Rule-to-phase table
 
@@ -215,7 +222,7 @@ slice is not that role's obligation.
 | Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Regression tests from the spec (4), Handoff by artifact (6), Premise check (7), Smallest change (8), Context hygiene (9), Human checkpoints (12), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
 | Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a choice artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
 | Commit agent | `development_commit` | Commit-level hygiene (11) | one commit per logical change, its message listing the verification evidence and the unverified items |
-| Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (13) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
+| Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (13), Non-inferable instruction surface (14) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
 
 ## Rule-to-enforcer ladder
 
@@ -247,6 +254,7 @@ cell verbatim.
 | 11 Commit-level hygiene | docs-last | the commit phase | advisory: commit contents are not gated; review: at every commit boundary |
 | 12 Human checkpoints | architecture | the runtime's confirmation boundary | advisory: the runtime cannot classify every irreversible action; review: when an agent blocks on a reversible step |
 | 13 Rule-to-enforcer ladder | docs-last | the guard-inventory review | advisory: the inventory review is a recurring human review; review: at the guard-inventory review cadence |
+| 14 Non-inferable instruction surface | docs-last | the guard-inventory review | advisory: only line-count and path-existence checks run, and neither detects an inferable line; review: on every policy remediation pass that edits AGENTS.md content, and whenever a managed-block or AGENTS.md line-budget warning fires |
 
 ## Claim-scope rule
 
@@ -301,6 +309,7 @@ names who decides it.
 | Commit-level hygiene | Commit owner | the commit holds one logical change and names its verification evidence | the commit message lists the verification command and the unverified items | the verification evidence named in the commit message | advisory: commit contents are not gated; review: at every commit boundary | when a commit gate checks the message content |
 | Human checkpoints | Session owner | a confirmation is asked only for an irreversible or outward-facing action | the session records the blocked question and the reversible assumption it proceeded with | the recorded question and the reversible assumption in the session | advisory: the runtime cannot classify every irreversible action; review: when an agent blocks on a reversible step | when the runtime classifies irreversible actions mechanically |
 | Rule-to-enforcer ladder | Policy owner | each rule names an enforcement level and an enforcer recorded in this inventory | this inventory carries a row for every rule the kernel states | the rule rows carried in this inventory | advisory: the inventory review is a recurring human review; review: at the guard-inventory review cadence | when the inventory review becomes a scheduled gate |
+| Non-inferable instruction surface | Policy owner | the instruction surfaces carry no line a reader can infer from the code | the recorded instruction-surface review names the lines of the managed AGENTS.md block and the project AGENTS.md a reader can infer | the instruction-surface lines named in the recorded review | advisory: only line-count and path-existence checks run, and neither detects an inferable line; review: on every policy remediation pass that edits AGENTS.md content, and whenever a managed-block or AGENTS.md line-budget warning fires | when a gate decides the content of the instruction surfaces |
 
 
 ## Project facts to resolve
@@ -396,11 +405,15 @@ Review this kernel in the same workflow as any of:
   title: "Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?"
   http: https://arxiv.org/pdf/2602.11988
   review date: 2026-11-09
-  supports: Independent review (5) and Handoff by artifact (6) — a
-  written agent instruction helps the next reader only when it states
-  what was actually checked, so the review is judged against the spec
-  and the handoff carries the record behind the claim. The preprint is
-  directional evidence, so the rules it supports stay `moderate`.
+  supports: Independent review (5), Handoff by artifact (6) and
+  Non-inferable instruction surface (14) — a written agent instruction
+  helps the next reader only when it states what was actually checked
+  and carries content the reader cannot infer, so the review is judged
+  against the spec, the handoff carries the record behind the claim, and
+  an instruction surface states only non-inferable requirements. The
+  review and handoff rules rest on its directional findings, so they
+  stay `moderate`; the repository-context effect it measured is a
+  controlled study, so the instruction-surface rule stays `strong`.
 
 * publisher: Zhong et al. (arXiv preprint)
   title: "ImpossibleBench: Measuring LLMs' Propensity of Exploiting Test Cases"

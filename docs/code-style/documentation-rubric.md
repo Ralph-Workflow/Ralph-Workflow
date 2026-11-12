@@ -153,16 +153,6 @@ Fail the docs system if any of these are true:
 - a docs change adds surface area without improving the route
 - the user would reasonably need to remind the docs agent of the same rubric again
 
-## Required review note for meaningful docs changes
-
-Meaningful docs changes must leave behind a short review note covering:
-
-- what changed
-- why it belongs on that surface
-- what was pruned, merged, or explicitly left alone
-- how duplication was reduced or contained
-- how the route is clearer now than before
-
 ## Completion bar
 
 Docs work is not done unless:

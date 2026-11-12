@@ -207,15 +207,6 @@ comment to name the canonical location and explain one-time migration. Update
 the changelog with the user-visible persistence and telemetry-schema changes.
 Do not duplicate the full telemetry schema in the README.
 
-Documentation review note:
-
-- This specification records the approved engineering contract and belongs in
-  the existing design-specification surface.
-- User-facing behavior will be documented in the operator reference, where
-  telemetry configuration already lives.
-- The README is explicitly left alone to avoid duplicating reference details.
-- The route remains unchanged; no new public navigation entry is needed.
-
 ## Expected implementation areas
 
 - `ralph/telemetry/_user_identity.py`: canonical resolution, migration, locking,

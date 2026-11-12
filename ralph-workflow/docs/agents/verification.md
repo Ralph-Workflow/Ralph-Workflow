@@ -14,9 +14,7 @@ integrity, dependency integrity, secret scan and test integrity gates), and the
 audit-backed contracts — terminal escape containment, terminal state
 restoration, and the MCP timeout contract.
 
-Read that file and change that file. This copy used to hold an older variant of
-the invariant list and a link into a policy pack that no longer existed, which
-is exactly how one contract becomes two divergent ones.
+Read that file and change that file.
 
 Two neighbouring surfaces answer different questions and are not duplicates of
 it:
