@@ -764,7 +764,7 @@ def test_liveness_kill_no_progress_reaps_worker_and_descendant(tmp_path: Path) -
         drive_steps=4,
         drive_clock_step_s=0.10,
         drive_dt_s=300.0,
-        drive_real_sleep_s=0.10,
+        drive_real_sleep_s=0.02,
         refresh_wait=True,
         timeout_ms=3_600_000,
         max_runtime_ms=3_600_000,

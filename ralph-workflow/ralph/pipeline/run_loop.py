@@ -41,7 +41,7 @@ from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
 )
 from ralph.pipeline._integration_executor import default_rebase_continuation_executor
-from ralph.pipeline._integration_log_dedupe import integration_outcome_log
+from ralph.pipeline._integration_log_dedupe import IntegrationOutcomeLog, integration_outcome_log
 from ralph.pipeline._integration_owner_seam import (
     PlanningSyncVerdict,
     decide_planning_sync,
@@ -2577,6 +2577,25 @@ def _dispatch_retained_handoff(
         _handoff_retained_failure(ctx, detail, backend=backend)
     except TypeError:
         _handoff_retained_failure(ctx, detail)
+
+
+def dispatch_retained_handoff(
+    ctx: LoopContext,
+    detail: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    _dispatch_retained_handoff(ctx, detail, backend=backend)
+
+
+def diagnostic_repair_attempt_cap() -> int:
+    from ralph.pipeline._integration_diagnostic import DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+
+    return DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+
+
+def new_integration_outcome_log() -> IntegrationOutcomeLog:
+    return IntegrationOutcomeLog()
 
 
 def _handle_retained_integration(

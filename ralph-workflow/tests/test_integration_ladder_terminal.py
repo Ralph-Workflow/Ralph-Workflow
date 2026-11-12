@@ -9,13 +9,7 @@ import pytest
 from loguru import logger
 
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline import run_loop
-from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.pipeline._integration_diagnostic import (
-    DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
-    escalate_record_fact_outcome,
-)
-from ralph.pipeline._integration_log_dedupe import IntegrationOutcomeLog
+from ralph.pipeline import RebaseOutcomeKind, escalate_record_fact_outcome, run_loop
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.integration_decision import CleanupLadderRung
 from ralph.pipeline.integration_ladder import (
@@ -321,7 +315,7 @@ def test_unchanged_retained_facts_end_in_exactly_one_terminal_round(
             "pre_feature_sha": "a" * 40,
             "pre_target_sha": "b" * 40,
             "integrated_feature_sha": "c" * 40,
-            "merge_commit_repair_attempts": DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+            "merge_commit_repair_attempts": run_loop.diagnostic_repair_attempt_cap(),
             "diagnostic_evidence": (("integration.diagnostic", "held"),),
         }
     )
@@ -338,13 +332,13 @@ def test_unchanged_retained_facts_end_in_exactly_one_terminal_round(
     resolver_calls: list[str] = []
     monkeypatch.setattr(
         run_loop,
-        "_run_integration_conflict_resolution",
+        "run_integration_conflict_resolution",
         lambda *_args, **_kwargs: resolver_calls.append("resolver") or False,
     )
-    outcome_log = IntegrationOutcomeLog()
+    outcome_log = run_loop.new_integration_outcome_log()
     monkeypatch.setattr(run_loop, "integration_outcome_log", lambda: outcome_log)
     ctx = cast(
-        "run_loop._LoopContext",
+        "run_loop.LoopContext",
         SimpleNamespace(
             hooks=RetryDiagnosticHooks(save_checkpoint=lambda *_args: None),
             workspace_scope=WorkspaceScope(tmp_path),
@@ -375,7 +369,7 @@ def test_unchanged_retained_facts_end_in_exactly_one_terminal_round(
     with _captured_records() as captured:
         wait_for_integration_retry(state, ctx)
         after_first_round = len(captured)
-        run_loop._dispatch_retained_handoff(ctx, "integration retained")
+        run_loop.dispatch_retained_handoff(ctx, "integration retained")
         after_second_round = len(captured)
         ctx._session_handoff_dispatched = False
         wait_for_integration_retry(state, ctx)

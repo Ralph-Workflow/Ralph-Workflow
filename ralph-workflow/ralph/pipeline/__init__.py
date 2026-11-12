@@ -10,6 +10,7 @@ if TYPE_CHECKING:
         resolve_rebase_with_config,
     )
     from ralph.pipeline._integration_action import IntegrationAction, RebaseOutcomeKind
+    from ralph.pipeline._integration_diagnostic_handoff import escalate_record_fact_outcome
     from ralph.pipeline._integration_owner_seam import (
         PlanningSyncVerdict,
         decide_seam_action,
@@ -31,6 +32,7 @@ __all__ = [
     "RebaseResolutionResult",
     "apply_session_capture",
     "decide_seam_action",
+    "escalate_record_fact_outcome",
     "integration_action",
     "integration_owner_seam",
     "reduce",
@@ -55,6 +57,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     ),
     "apply_session_capture": ("ralph.pipeline._runner_session", "apply_session_capture"),
     "decide_seam_action": ("ralph.pipeline._integration_owner_seam", "decide_seam_action"),
+    "escalate_record_fact_outcome": (
+        "ralph.pipeline._integration_diagnostic_handoff",
+        "escalate_record_fact_outcome",
+    ),
     "reduce": ("ralph.pipeline.reducer", "reduce"),
     "resolve_conflicted_rebase": (
         "ralph.pipeline._auto_integrate_rebase_resolve",

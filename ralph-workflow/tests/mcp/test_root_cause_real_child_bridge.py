@@ -178,7 +178,7 @@ def test_c1_tool_hash_mismatch_rejected_real_child(
     tmp_path: Path,
 ) -> None:
     old_proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(300)"],
+        ["sleep", "300"],
         label="c1-old-child",
     )
     old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="old-stage-c1")
@@ -533,7 +533,7 @@ def test_c2_budget_exhaustion_with_dead_old_child(
     tmp_path: Path,
 ) -> None:
     dead_proc = managed_spawner(
-        [sys.executable, "-c", "import sys; sys.exit(0)"],
+        ["true"],
         label="c2-dead-child",
     )
     dead_proc.wait(timeout=2.0)
@@ -572,7 +572,7 @@ def test_c3_timeout_only_deferral_vs_connection_reset(
     tmp_path: Path,
 ) -> None:
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(300)"],
+        ["sleep", "300"],
         label="c3-probe-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-probe-stage")
@@ -626,7 +626,7 @@ def test_c3_confirm_before_replace_and_probe_overrun(
     tmp_path: Path,
 ) -> None:
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(300)"],
+        ["sleep", "300"],
         label="c3-confirm-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-confirm-stage")
@@ -663,7 +663,7 @@ def test_c3_deferral_ceiling_and_dead_child_never_deferred(
     tmp_path: Path,
 ) -> None:
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(300)"],
+        ["sleep", "300"],
         label="c3-ceiling-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-ceiling-stage")
@@ -710,7 +710,7 @@ def test_c3_e53_sigstopped_child_detected_and_reaped(
     tmp_path: Path,
 ) -> None:
     proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(300)"],
+        ["sleep", "300"],
         label="c3-sigstop-child",
     )
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-sigstop-stage")
@@ -981,7 +981,7 @@ def test_c5_e22_candidate_stage_failures_parametrized(
     preexisting_pids = _descendant_pids()
 
     old_proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(300)"],
+        ["sleep", "300"],
         label="c5-e22-old-child",
     )
     old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="c5-e22-old")
@@ -1079,7 +1079,7 @@ def test_cited_impossibility_pins(
     managed_spawner: Callable[..., ManagedProcess],
 ) -> None:
     proc = managed_spawner(
-        [sys.executable, "-c", "import sys; sys.exit(0)"],
+        ["true"],
         label="zombie-pin-child",
     )
     proc.wait(timeout=2.0)

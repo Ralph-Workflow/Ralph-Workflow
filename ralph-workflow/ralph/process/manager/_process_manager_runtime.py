@@ -54,13 +54,21 @@ def loguru_event_listener(event: ProcessEvent) -> None:
     if new_status == ProcessStatus.KILLED or (
         new_status == ProcessStatus.EXITED and record.returncode != 0
     ):
-        bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)
-    elif new_status == ProcessStatus.FAILED:
-        bound.error(
-            "process {} {} rc={} command={} failure={}",
+        bound.warning(
+            "process {} {} rc={} label={} command={}",
             record.pid,
             new_status.name,
             record.returncode,
+            record.label or "<unlabeled>",
+            redacted_command(record.command),
+        )
+    elif new_status == ProcessStatus.FAILED:
+        bound.error(
+            "process {} {} rc={} label={} command={} failure={}",
+            record.pid,
+            new_status.name,
+            record.returncode,
+            record.label or "<unlabeled>",
             redacted_command(record.command),
             record.failure_message,
         )

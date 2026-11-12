@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import replace
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -15,7 +16,7 @@ from ralph.pipeline.conflict_resolution.resolver_health import (
     clear_resolver,
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
-from ralph.pipeline.integration_decision import CleanupLadderRung
+from ralph.pipeline.integration_decision import CleanupLadderRung, cleanup_action_for
 from ralph.pipeline.integration_ladder import (
     LadderStepResult,
     default_git_plumbing,
@@ -49,11 +50,20 @@ __all__ = [
     "check_target_worktree_context",
     "escalate_diagnostic_budget_to_ladder",
     "escalate_record_fact_outcome",
+    "ladder_terminal_state",
     "next_resolver",
     "observe_workspace_change",
 ]
 
 _INTEGRATION_PROBE_KEY = "integration_resolution"
+
+_LAST_RESORT_EVIDENCE_KEY: Final[str] = (
+    f"rung:{cleanup_action_for(CleanupLadderRung.LAST_RESORT).value}"
+)
+
+_TERMINAL_EVIDENCE_PREFIX: Final[str] = "terminal:"
+
+_TERMINAL_FACTS_EVIDENCE_KEY: Final[str] = "terminal:ladder_facts"
 
 
 def observe_workspace_change(
@@ -246,6 +256,63 @@ def _preserved_copy_clause(
     return "the uncommitted changes are not preserved in any durable copy"
 
 
+def _ladder_facts_fingerprint(record: IntegrationRecord, observed_head: str | None) -> str:
+    return "|".join(
+        (
+            observed_head or "unreadable",
+            record.integrated_feature_sha or "unset",
+            record.pre_target_sha or "unset",
+            record.pre_feature_sha or "unset",
+            record.rebase_continue_stop or "unset",
+            record.rebase_continue_head or "unset",
+            record.rebase_continue_tree or "unset",
+            record.merge_commit_parent or "unset",
+        )
+    )
+
+
+def _record_ladder_facts(
+    ledger: AttemptLedger,
+    record: IntegrationRecord,
+    observed_head: str | None,
+) -> None:
+    facts = _ladder_facts_fingerprint(record, observed_head)
+    state = ledger.read()
+    if state.ladder_evidence.get(_TERMINAL_FACTS_EVIDENCE_KEY) == facts:
+        return
+    ledger.persist(
+        replace(
+            state,
+            ladder_evidence={**state.ladder_evidence, _TERMINAL_FACTS_EVIDENCE_KEY: facts},
+        )
+    )
+
+
+def ladder_terminal_state(
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    ledger: AttemptLedger | None = None,
+    git: GitPlumbing | None = None,
+) -> LadderStepResult | None:
+    ladder = ledger if ledger is not None else AttemptLedger(root)
+    state = ladder.read()
+    value = state.ladder_evidence.get(_LAST_RESORT_EVIDENCE_KEY)
+    if value is None or not value.startswith(_TERMINAL_EVIDENCE_PREFIX):
+        return None
+    recorded = state.ladder_evidence.get(_TERMINAL_FACTS_EVIDENCE_KEY)
+    if recorded is not None:
+        plumbing = git if git is not None else default_git_plumbing()
+        if recorded != _ladder_facts_fingerprint(record, plumbing.head_sha(root)):
+            return None
+    return LadderStepResult(
+        CleanupLadderRung.LAST_RESORT,
+        "terminal",
+        value,
+        evidence={_LAST_RESORT_EVIDENCE_KEY: value},
+    )
+
+
 def escalate_record_fact_outcome(
     root: Path,
     record: IntegrationRecord,
@@ -265,12 +332,15 @@ def escalate_record_fact_outcome(
     fresh_signature: str | None = None,
 ) -> LadderStepResult:
     ladder = ledger if ledger is not None else AttemptLedger(root)
+    plumbing = git if git is not None else default_git_plumbing()
+    terminal = ladder_terminal_state(root, record, ledger=ladder, git=plumbing)
+    if terminal is not None:
+        return terminal
     if outcome is RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT:
         record_salvage_attempt(ladder, "resolver_agent", f"failed:{reason}")
     rung = resume_rung(ladder.read())
     if rung is None:
         rung = CleanupLadderRung.LAST_RESORT
-    plumbing = git if git is not None else default_git_plumbing()
     decided, fresh = _resolve_blocking_signature(
         root,
         ladder.read(),
@@ -295,6 +365,8 @@ def escalate_record_fact_outcome(
         terminal_when_disabled=True,
     )
     observed_head = plumbing.head_sha(root)
+    if step.outcome == "terminal":
+        _record_ladder_facts(ladder, record, observed_head)
     preserved = _preserved_copy_clause(
         root,
         step=step,

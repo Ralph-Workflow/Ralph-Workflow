@@ -12,8 +12,10 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_diagnostic import handoff_integration_diagnostic
 from ralph.pipeline.operation_evidence import identity_fingerprint
+from tests._integration_ladder_fakes import _seed_terminal_rungs
 from tests._resolver_controller import make_resolver_controller
 
 pytestmark = [
@@ -22,6 +24,8 @@ pytestmark = [
 ]
 
 _GIT_OPTIONS = GitRunOptions(timeout=10)
+
+_TERMINAL_STATUS_MARKER = "Integration ladder terminal state:"
 
 
 def _git(root: Path, *args: str) -> GitRunResult:
@@ -72,7 +76,11 @@ def _completed_rebase_repo(root: Path) -> tuple[str, str, str]:
     return base, feature, target
 
 
-def _run_diagnostic(root: Path) -> tuple[bool, list[str], list[tuple[str, str]]]:
+def _run_diagnostic(
+    root: Path,
+    *,
+    ledger: AttemptLedger | None = None,
+) -> tuple[bool, list[str], list[tuple[str, str]]]:
     record = read_record(root)
     assert record is not None
     leased = record.model_copy(
@@ -101,6 +109,7 @@ def _run_diagnostic(root: Path) -> tuple[bool, list[str], list[tuple[str, str]]]
             failure="integration retained after the completed rebase",
             agents=("test-resolver",),
             invoke=fake_invoke,
+            ledger=ledger,
         )
     finally:
         loguru_logger.remove(handler_id)
@@ -175,3 +184,48 @@ def test_unrelated_head_with_an_identical_tree_is_rejected_with_the_mismatch_fac
     assert expected_target in error
     assert expected_anchor in error
     assert expected_tree in error
+
+
+def test_unrelated_head_ends_in_one_terminal_status_that_never_repeats(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _completed_rebase_repo(root)
+    landed_tree = _git(root, "rev-parse", "HEAD^{tree}").stdout.strip()
+    assert _git(root, "checkout", "--orphan", "unrelated").returncode == 0
+    assert _git(root, "commit", "-m", "unrelated root").returncode == 0
+    assert _git(root, "rev-parse", "HEAD^{tree}").stdout.strip() == landed_tree
+
+    ledger = AttemptLedger(root, ledger_path=root / ".agent" / "ladder-under-test.json")
+    _seed_terminal_rungs(ledger)
+
+    terminal_statuses: list[str] = []
+    critical: list[str] = []
+    invoked: list[str] = []
+    for _round in range(8):
+        result, round_invoked, captured = _run_diagnostic(root, ledger=ledger)
+        invoked.extend(round_invoked)
+        terminal_statuses.extend(
+            message for _level, message in captured if _TERMINAL_STATUS_MARKER in message
+        )
+        critical.extend(message for level, message in captured if level == "CRITICAL")
+        assert result is False
+        if terminal_statuses:
+            break
+
+    assert len(terminal_statuses) == 1, terminal_statuses
+    assert critical == [], critical
+    assert invoked == [], invoked
+
+    result, round_invoked, captured = _run_diagnostic(root, ledger=ledger)
+    invoked.extend(round_invoked)
+    terminal_statuses.extend(
+        message for _level, message in captured if _TERMINAL_STATUS_MARKER in message
+    )
+    critical.extend(message for level, message in captured if level == "CRITICAL")
+
+    assert result is False
+    assert len(terminal_statuses) == 1, terminal_statuses
+    assert critical == [], critical
+    assert invoked == [], invoked

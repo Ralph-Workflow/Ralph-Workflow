@@ -549,7 +549,6 @@ tests/test_integration_diagnostic_livelock.py|1,10,5
 tests/test_integration_diagnostic_proof.py|0,1,10
 tests/test_integration_diagnostic_resolver_health.py|0,1,0
 tests/test_integration_diagnostic_worktree_isolation.py|0,2,0
-tests/test_integration_ladder_terminal.py|1,3,1
 tests/test_integration_fault_catalogue.py|7,0,0
 tests/test_integration_fault_model.py|7,2,0
 tests/test_integration_gate_parity.py|0,0,4

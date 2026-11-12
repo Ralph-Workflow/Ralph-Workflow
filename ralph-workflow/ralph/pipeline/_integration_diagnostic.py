@@ -33,6 +33,7 @@ from ralph.pipeline._integration_diagnostic_handoff import (
     budget_spent_record,
     escalate_diagnostic_budget_to_ladder,
     escalate_record_fact_outcome,
+    ladder_terminal_state,
     next_resolver,
 )
 from ralph.pipeline._integration_diagnostic_prepass import (
@@ -392,6 +393,12 @@ def _pre_pass_failure(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
 ) -> bool:
+    if ladder_terminal_state(root, record, ledger=ledger, git=git) is not None:
+        logger.info(
+            "Integration diagnostic: the cleanup ladder already ended in a state that "
+            "needs an operator; the retained integration starts no new diagnostic round"
+        )
+        return False
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
     write_record(root, target_record, backend=backend)
     if target_record.merge_commit_repair_attempts >= repair_attempt_cap:
@@ -434,7 +441,7 @@ def _run_completion_pre_pass(
 ) -> bool | None:
     if isinstance(next_action, RecordFactOutcome):
         try:
-            escalate_record_fact_outcome(
+            step = escalate_record_fact_outcome(
                 root,
                 record,
                 next_action,
@@ -451,6 +458,14 @@ def _run_completion_pre_pass(
                 "Typed record-fact outcome {} could not escalate to the ladder; "
                 "the durable ledger keeps the climb and the next seam resumes it",
                 next_action.value,
+            )
+            return False
+        if step.outcome == "terminal":
+            logger.info(
+                "Integration diagnostic: the cleanup ladder ended in a state that needs "
+                "an operator ({}); the retained integration waits and starts no new "
+                "diagnostic round",
+                step.reason,
             )
         return False
 

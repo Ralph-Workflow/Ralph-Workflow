@@ -1498,3 +1498,91 @@ def test_shutdown_all_for_label_continues_when_first_record_raises() -> None:
 
     assert first.record.status == ProcessStatus.FAILED
     assert second.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
+
+
+def test_process_failure_identity_regression_exit_log_names_child_safely() -> None:
+    messages: list[str] = []
+    sink_id = logger.add(
+        lambda msg: messages.append(str(msg)),
+        level="WARNING",
+        format="{message}",
+    )
+    try:
+        record = ProcessRecord(
+            pid=4242,
+            pgid=4242,
+            command=("git", "rebase", "--continue", "--token=SUPERSECRETARGVALUE"),
+            cwd=None,
+            started_at=datetime.now(tz=UTC),
+            status=ProcessStatus.EXITED,
+            returncode=1,
+            label="pending-merge:identity",
+        )
+        event = ProcessEvent(
+            record=record,
+            previous_status=ProcessStatus.RUNNING,
+            new_status=ProcessStatus.EXITED,
+            timestamp=datetime.now(tz=UTC),
+        )
+
+        loguru_event_listener(event)
+
+        assert len(messages) == 1, f"expected one warning line, got {messages}"
+        message = messages[0]
+        assert "pending-merge:identity" in message, (
+            f"failed-child line must name the child label; got {message!r}"
+        )
+        assert "'git'" in message, (
+            f"failed-child line must name the redacted executable; got {message!r}"
+        )
+        assert "SUPERSECRETARGVALUE" not in message, (
+            f"failed-child line must not expose argument values; got {message!r}"
+        )
+        assert "--token=SUPERSECRETARGVALUE" not in message, (
+            f"failed-child line must not expose argument values; got {message!r}"
+        )
+    finally:
+        logger.remove(sink_id)
+
+
+def test_process_failure_identity_regression_spawn_log_names_child_safely() -> None:
+    messages: list[str] = []
+    sink_id = logger.add(
+        lambda msg: messages.append(str(msg)),
+        level="WARNING",
+        format="{message}",
+    )
+    try:
+        record = ProcessRecord(
+            pid=4343,
+            pgid=4343,
+            command=("git", "rebase", "--continue", "--token=SUPERSECRETARGVALUE"),
+            cwd=None,
+            started_at=datetime.now(tz=UTC),
+            status=ProcessStatus.FAILED,
+            returncode=None,
+            failure_message="resolver launch refused before start",
+            label="pending-merge:identity",
+        )
+        event = ProcessEvent(
+            record=record,
+            previous_status=ProcessStatus.RUNNING,
+            new_status=ProcessStatus.FAILED,
+            timestamp=datetime.now(tz=UTC),
+        )
+
+        loguru_event_listener(event)
+
+        assert len(messages) == 1, f"expected one error line, got {messages}"
+        message = messages[0]
+        assert "pending-merge:identity" in message, (
+            f"failed-child line must name the child label; got {message!r}"
+        )
+        assert "'git'" in message, (
+            f"failed-child line must name the redacted executable; got {message!r}"
+        )
+        assert "SUPERSECRETARGVALUE" not in message, (
+            f"failed-child line must not expose argument values; got {message!r}"
+        )
+    finally:
+        logger.remove(sink_id)
