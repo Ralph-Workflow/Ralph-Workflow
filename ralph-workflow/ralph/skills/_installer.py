@@ -35,6 +35,7 @@ from ralph.skills._installer_candidates import (
     _candidate_skill_paths,
     _diff_written_paths,
 )
+from ralph.skills._ownership import may_replace
 from ralph.skills._prune import (
     _prune_failure_codes,
     _prune_removed_baseline_skills,
@@ -247,18 +248,69 @@ def install_baseline_skills(
     )
 
 
+# --- Project-scope baseline skill installation --------------------------------
+#
+# The project scope is a separate fan-out (./.opencode/skills/ canonical +
+# 3 project siblings). Same precedence contract as the user-global install
+# above: canonical is all-or-nothing, sibling failures are appended flatly.
+# The project canonical NEVER appears in the sibling list (see PA-007 in
+# _agent_paths.py).
+
+
+def _may_replace_sibling_entry(sibling_dir: Path, canonical_target: Path) -> bool:
+    """Return True when the project-scope sibling entry may be replaced.
+
+    A sibling entry is replaceable ONLY when Ralph can prove it manages
+    the entry:
+
+    * a symlink that already points at the canonical target (the healthy
+      state) is relinked as before;
+    * a symlink to a MANAGED pristine directory is relinked as before; and
+    * a directory whose marker and recorded digests prove Ralph manages its
+      complete content is replaced as before.
+
+    Every other shape -- a user-owned, user-edited, foreign-marked or
+    malformed entry, and a broken symlink Ralph cannot attribute -- is
+    PRESERVED and reported as a sibling conflict.
+    """
+    if sibling_dir.is_symlink():
+        return _may_replace_sibling_symlink(sibling_dir, canonical_target)
+    return may_replace(sibling_dir)
+
+
+def _may_replace_sibling_symlink(sibling_dir: Path, canonical_target: Path) -> bool:
+    """Return True when the sibling SYMLINK may be relinked to the canonical.
+
+    A symlink that already points at the canonical target is the healthy
+    state and is relinked as before. A symlink to a MANAGED pristine
+    directory is relinked as before. Every other symlink -- including a
+    broken link Ralph cannot attribute -- is preserved.
+    """
+    try:
+        resolved = sibling_dir.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+    if resolved == canonical_target.resolve(strict=False):
+        return True
+    return may_replace(sibling_dir)
+
+
 def _materialize_project_sibling_dir(
     sibling_dir: Path, canonical_root: Path, skill_name: str
 ) -> str | None:
-    skill_file = sibling_dir / "SKILL.md"
-    marker = sibling_dir / _MANAGED_MARKER
-    if skill_file.exists() and not marker.exists():
-        try:
-            existing = skill_file.read_text(encoding="utf-8")
-        except OSError:
-            existing = ""
-        if existing != get_skill_content(skill_name):
-            return f"sibling-conflict-{skill_name}"
+    """Materialize a single project-scope sibling entry as a symlink to the canonical.
+
+    Returns ``None`` on success or a failure code on conflict / hard failure.
+    The replacement is OWNERSHIP-GATED: a sibling entry Ralph cannot prove
+    it manages is preserved and reported as ``sibling-conflict-<name>``.
+    Uses ``Path.resolve()``-aware checks for macOS ``/tmp`` -> ``/private/tmp``
+    indirection safety (PA-007).
+    """
+    canonical_target = canonical_root / skill_name
+    if (sibling_dir.is_symlink() or sibling_dir.exists()) and not _may_replace_sibling_entry(
+        sibling_dir, canonical_target
+    ):
+        return f"sibling-conflict-{skill_name}"
 
     sibling_dir.parent.mkdir(parents=True, exist_ok=True)
     if sibling_dir.is_symlink():
@@ -268,7 +320,6 @@ def _materialize_project_sibling_dir(
     elif sibling_dir.exists():
         sibling_dir.unlink()
 
-    canonical_target = canonical_root / skill_name
     try:
         resolved_target = canonical_target.resolve()
         resolved_parent = sibling_dir.parent.resolve()
@@ -283,13 +334,44 @@ def _materialize_project_sibling_dir(
 
 
 def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
+    """Refresh a single project-scope canonical skill with the bundled content.
+
+    The refresh is OWNERSHIP-GATED (see
+    :mod:`ralph.skills._ownership`): the bundled content overwrites the
+    canonical entry ONLY when Ralph can prove it manages the entry -- the
+    managed marker is present and its recorded digests still match the
+    on-disk content. A stale-but-pristine Ralph-managed copy IS refreshed
+    to the new bundled content so the auto-commit helper sees exactly one
+    diff; a USER-EDITED, USER-OWNED, FOREIGN or UNKNOWN entry is
+    PRESERVED and never overwritten (PRODUCT_CRITERIA §3.3: "User-owned
+    and user-edited skills are untouched").
+
+    Args:
+        canonical: Resolved project-canonical skill directory
+            (e.g. ``workspace_root / '.opencode' / 'skills'``).
+        skill_name: Name of the skill whose canonical entry to refresh.
+
+    Returns:
+        True when at least one of ``SKILL.md`` or the managed marker was
+        overwritten with bundled content; False when the entry was
+        preserved or the on-disk content already matches the bundled hash.
+
+    The helper is fail-closed: any ``OSError`` during read/write returns
+    False so the caller can treat overwrite failures as 'no change' and
+    still proceed with the rest of the install / auto-commit pipeline.
+    """
     try:
         bundled_content = get_skill_content(skill_name)
         bundled_sha = hashlib.sha256(bundled_content.encode("utf-8")).hexdigest()
         skill_dir = canonical / skill_name
         skill_file = skill_dir / "SKILL.md"
         marker_file = skill_dir / _MANAGED_MARKER
-        skill_dir.mkdir(parents=True, exist_ok=True)
+        if not skill_dir.exists():
+            skill_dir.mkdir(parents=True, exist_ok=True)
+        elif not may_replace(skill_dir):
+            # USER-EDITED / USER-OWNED / FOREIGN / UNKNOWN: the entry is
+            # the user's, so Ralph never overwrites it.
+            return False
         on_disk_hash = (
             hashlib.sha256(skill_file.read_bytes()).hexdigest() if skill_file.exists() else ""
         )
@@ -342,13 +424,38 @@ def install_project_baseline_skills(
         )
     for skill_name in BASELINE_SKILL_NAMES:
         _materialize_canonical_skill(canonical, skill_name)
-    prune_failures = _prune_failure_codes(_prune_removed_baseline_skills(canonical))
+    # Prune any managed skill directory that the baseline no longer
+    # ships. The materialize loop only touches BASELINE_SKILL_NAMES, so a
+    # retired bundled skill (one whose name is no longer in the baseline)
+    # stays on disk otherwise. Without this step, a stale retired skill
+    # directory from a prior release would persist in the canonical and
+    # every sibling symlink would continue to point at it. The prune is
+    # source-aware and hash-aware: it removes a retired directory ONLY
+    # when the directory's managed marker proves Ralph manages it AND its
+    # content still matches the digest the marker recorded. A user-owned,
+    # user-edited, universal-marked or malformed entry is preserved and
+    # reported through ``skills-prune-preserved-*`` /
+    # ``skills-prune-unknown-*``.
+    canonical_prune = _prune_removed_baseline_skills(canonical)
+    prune_failures = _prune_failure_codes(canonical_prune)
+    # The canonical entries this pass removed are threaded into the
+    # sibling passes so a broken sibling symlink can be attributed to the
+    # Ralph-managed canonical entry the canonical prune just deleted (and
+    # ONLY then: an unattributable broken link is preserved and reported).
+    removed_targets = set(canonical_prune.removed_paths)
     sibling_failures: list[str] = []
     siblings: tuple[ProjectAgentSkillRoot, ...] = project_sibling_skill_roots(workspace_root)
     for sibling in siblings:
         sibling_root = sibling.resolve(workspace_root)
         sibling_root.mkdir(parents=True, exist_ok=True)
-        sibling_failures.extend(_prune_failure_codes(_prune_removed_baseline_skills(sibling_root)))
+        # The sibling fan-out runs the same prune so a stale symlink
+        # pointing at a now-removed canonical entry does not reappear
+        # after the canonical prune.
+        sibling_prune = _prune_removed_baseline_skills(
+            sibling_root, removed_targets=frozenset(removed_targets)
+        )
+        removed_targets.update(sibling_prune.removed_paths)
+        sibling_failures.extend(_prune_failure_codes(sibling_prune))
         for skill_name in BASELINE_SKILL_NAMES:
             failure = _materialize_project_sibling_dir(
                 sibling_dir=sibling_root / skill_name,

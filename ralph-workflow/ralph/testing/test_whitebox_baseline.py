@@ -777,6 +777,7 @@ tests/test_skills_installer_project.py|0,15,0
 tests/test_skills_installer_sibling_symlinks.py|0,3,0
 tests/test_skills_installer_update.py|6,2,0
 tests/test_skills_manager.py|0,3,0
+tests/test_skills_prune_ownership.py|0,2,0
 tests/test_skills_process_view.py|0,2,0
 tests/test_skills_project_paths_research.py|0,2,0
 tests/test_skills_recheck_policy.py|0,3,0

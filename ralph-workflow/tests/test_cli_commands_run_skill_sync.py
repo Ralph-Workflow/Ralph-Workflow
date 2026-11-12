@@ -391,8 +391,22 @@ def test_sync_shipped_skills_creates_auto_commit_on_dirty_skill_tree(
     canonical.mkdir(parents=True, exist_ok=True)
     stale_content = "# stale version from an earlier Ralph run\n"
     (canonical / "SKILL.md").write_text(stale_content, encoding="utf-8")
+    # OWNERSHIP CONTRACT (wt-05 WU-1): the marker records the digest of
+    # the content Ralph actually installed, so the entry is a provably
+    # MANAGED (pristine) copy that the install may refresh to the new
+    # bundled content. A marker whose digest does NOT match the on-disk
+    # content is indistinguishable from a user edit and is preserved.
     (canonical / ".ralph-managed.json").write_text(
-        '{"managed_by": "ralph-workflow", "installed_content_sha256": "deadbeef"}',
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": name,
+                "installed_content_sha256": hashlib.sha256(
+                    stale_content.encode("utf-8")
+                ).hexdigest(),
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -462,7 +476,12 @@ def test_install_then_auto_commit_replaces_stale_bundled_skill(
     canonical.mkdir(parents=True, exist_ok=True)
     stale_content = "# stale version from an earlier Ralph run\n"
     (canonical / "SKILL.md").write_text(stale_content, encoding="utf-8")
-    stale_marker_sha = "deadbeef" * 8
+    # 64-hex-char sha of the content Ralph actually installed -- the
+    # 'stale bundled SHA' marker shape. OWNERSHIP CONTRACT (wt-05 WU-1):
+    # the marker MUST record the digest of the on-disk content, otherwise
+    # the entry is indistinguishable from a user edit and the install
+    # preserves it instead of refreshing it.
+    stale_marker_sha = hashlib.sha256(stale_content.encode("utf-8")).hexdigest()
     (canonical / ".ralph-managed.json").write_text(
         json.dumps(
             {

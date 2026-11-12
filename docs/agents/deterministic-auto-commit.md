@@ -50,7 +50,7 @@ paths the writer just modified. It will NEVER sweep in:
 ## Failure semantics
 
 - **No diff = no commit.** A seed with nothing missing (the
-  `.gitignore` already covered, the skill bundle already current,
+  `.gitignore` already covered, the skill set already current,
   the policy surfaces already committed) is a NOOP. No commit, no
   error.
 - **Commit failure is visible.** A `FAILED` outcome is logged at

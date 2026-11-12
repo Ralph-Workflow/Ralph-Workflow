@@ -56,23 +56,37 @@ def _head_tree_blob_paths(repo: Repo) -> set[str]:
     return tree_paths
 
 
+def _write_managed_marker(skill_dir: Path, skill: str, **fields: object) -> None:
+    """Write a managed marker that PROVES Ralph manages ``skill_dir``.
+
+    The install replaces a sibling entry ONLY when Ralph can prove it
+    manages it, so the marker records the digests Ralph owns."""
+    marker = {"managed_by": "ralph-workflow", "skill": skill, **fields}
+    (skill_dir / _MANAGED_MARKER).write_text(json.dumps(marker) + "\n", encoding="utf-8")
+
+
 def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and_link(
     tmp_path: Path,
 ) -> None:
     Repo.init(tmp_path)
     _commit_all_initial(tmp_path)
 
+    # 1. Track a sibling dir so the install's dir-to-symlink transition
+    #    replaces it; the marker records the files Ralph owns.
     sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
     skill_md = sibling_dir / "SKILL.md"
     skill_md.write_text("old\n", encoding="utf-8")
-    marker = sibling_dir / _MANAGED_MARKER
-    marker.write_text(
-        '{"managed_by": "ralph-workflow", "skill": "submit-artifact"}\n',
-        encoding="utf-8",
-    )
     extra = sibling_dir / "extra.txt"
     extra.write_text("extra\n", encoding="utf-8")
+    _write_managed_marker(
+        sibling_dir,
+        "submit-artifact",
+        files={
+            "SKILL.md": hashlib.sha256(b"old\n").hexdigest(),
+            "extra.txt": hashlib.sha256(b"extra\n").hexdigest(),
+        },
+    )
 
     repo = Repo(tmp_path)
     try:
@@ -364,13 +378,16 @@ def test_install_byte_equal_descendant_under_replaced_dir_still_commits(
     Repo.init(tmp_path)
     _commit_all_initial(tmp_path)
 
+    # 1. Track a sibling skill with byte-equal content; the marker
+    #    records the digest Ralph owns.
     sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
     byte_equal_content = get_skill_content("submit-artifact")
     (sibling_dir / "SKILL.md").write_text(byte_equal_content, encoding="utf-8")
-    (sibling_dir / _MANAGED_MARKER).write_text(
-        '{"managed_by": "ralph-workflow", "skill": "submit-artifact"}\n',
-        encoding="utf-8",
+    _write_managed_marker(
+        sibling_dir,
+        "submit-artifact",
+        installed_content_sha256=hashlib.sha256(byte_equal_content.encode("utf-8")).hexdigest(),
     )
 
     repo = Repo(tmp_path)
@@ -611,6 +628,9 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
 
     sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
+    # The marker proves Ralph manages the entry; the fixture's directory
+    # holds only the tracked SYMLINK descendant (symlinks are skipped).
+    _write_managed_marker(sibling_dir, "submit-artifact", files={})
     (sibling_dir / "alias").symlink_to("original")
     repo = Repo(tmp_path)
     try:

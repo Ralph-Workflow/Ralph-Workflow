@@ -389,6 +389,11 @@ ralph-workflow/.claude/
 ralph-workflow/.codex/
 ralph-workflow/.gemini/
 ralph-workflow/.opencode/
+/.agents/skills/
+/.claude/skills/
+/.codex/skills/
+/.gemini/antigravity-cli/skills/
+/.opencode/skills/
 
 .pi-subagents/*
 .agent/ralph-explore/
