@@ -460,3 +460,87 @@ def test_a_yaml_comment_after_a_block_indicator_fails(
     code, _output = _run(tmp_path, "config.yaml", source, capsys)
 
     assert code == 1, reason
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "ralph/policy/defaults/ralph-workflow-agents.toml",
+        "ralph/policy/defaults/ralph-workflow.toml",
+        "ralph/policy/defaults/ralph-workflow-local.toml",
+        "ralph/policy/defaults/mcp.toml",
+        "ralph/testing/test_whitebox_baseline.py",
+    ],
+)
+def test_formerly_exempt_paths_fail_on_comment(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    relative_path: str,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate rejects formerly exempt paths"
+    code, output = _run(tmp_path, relative_path, "value = 1  # formerly exempt comment\n", capsys)
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+    assert "formerly exempt comment" in output, reason
+
+
+def test_formerly_exempt_whitebox_baseline_fails_on_docstring(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate rejects docstrings in baseline file"
+    source = '"""Docstring in baseline."""\nINIT_COMPLETE = True\n'
+
+    code, output = _run(
+        tmp_path,
+        "ralph/testing/test_whitebox_baseline.py",
+        source,
+        capsys,
+    )
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+    assert "Docstring in baseline." in output, reason
+
+
+def test_toml_agent_block_marker_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate rejects structural agent block markers"
+    source = "# @AGENT-BLOCK-START\n# key = 1\n# @AGENT-BLOCK-END\n"
+
+    code, output = _run(tmp_path, "config.toml", source, capsys)
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+    assert "@AGENT-BLOCK-START" in output, reason
+
+
+def test_toml_example_marker_fences_fail(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate rejects structural example markers"
+    source = "# @EXAMPLE-START\n# key = 1\n# @EXAMPLE-END\n"
+
+    code, output = _run(tmp_path, "config.toml", source, capsys)
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+    assert "@EXAMPLE-START" in output, reason
+
+
+def test_toml_bare_example_marker_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate rejects bare example marker"
+    source = "# @EXAMPLE\nkey = 1\n"
+
+    code, output = _run(tmp_path, "config.toml", source, capsys)
+
+    assert code == 1, reason
+    assert "COMMENT-POLICY FINDINGS" in output, reason
+    assert "@EXAMPLE" in output, reason

@@ -4,6 +4,7 @@ import threading as _threading
 import time
 import uuid
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from inspect import signature
 from pathlib import Path
@@ -92,6 +93,7 @@ from ralph.recovery.failure_details import contains_casefolded_marker, failure_d
 from ralph.recovery.retry_prompt import (
     build_retry_error_block,
     build_validation_retry_footer,
+    premise_check_line,
 )
 from ralph.workspace import FsWorkspace
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangeProbe
@@ -1603,13 +1605,15 @@ def _retry_fingerprint_file(
     workspace_root: Path,
     drain: str | None,
     worker_namespace: Path | None,
+    reason: str | None = None,
 ) -> Path | None:
-    if drain is None:
+    scope = drain or reason
+    if scope is None:
         return None
     hint_file = (
-        worker_namespace / "tmp" / f"last_retry_error_{drain}.txt"
+        worker_namespace / "tmp" / f"last_retry_error_{scope}.txt"
         if worker_namespace is not None
-        else workspace_root / retry_hint_path(drain)
+        else workspace_root / retry_hint_path(scope)
     )
     return Path(retry_fingerprint_path_for_hint(hint_file.as_posix()))
 
@@ -1749,7 +1753,14 @@ def _write_agent_retry_prompt(
         workspace_root=workspace_root,
         drain=drain,
         worker_namespace=worker_namespace,
+        reason=reason,
     )
+    prior_fingerprint: str | None = None
+    if fingerprint_file is not None and DEFAULT_FILE_BACKEND.exists(fingerprint_file):
+        with suppress(Exception):
+            prior_fingerprint = (
+                DEFAULT_FILE_BACKEND.read_text(fingerprint_file, encoding="utf-8").strip() or None
+            )
     current_fingerprint = retry_hint_fingerprint(str(drain or reason), detail or reason)
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
@@ -1758,6 +1769,9 @@ def _write_agent_retry_prompt(
         context_path=str(context_path),
         validation=validation_retry,
     )
+    premise = premise_check_line(current_fingerprint, prior_fingerprint)
+    if premise:
+        error_block = f"{error_block}\n\n{premise}"
     if fingerprint_file is not None:
         fingerprint_file.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(

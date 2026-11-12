@@ -1,16 +1,23 @@
+from pathlib import Path
+from types import SimpleNamespace
+
 from ralph.phases import required_artifacts
+from ralph.phases.execution import write_retry_hint as _write_retry_hint
 from ralph.phases.required_artifacts import (
     build_retry_hint,
     build_validation_retry_hint,
     retry_hint_fingerprint,
+    retry_hint_path,
     validation_retry_fingerprint,
 )
+from ralph.pipeline.effect_executor import write_agent_retry_prompt
 from ralph.prompts import commit_review, materialize
 from ralph.recovery import retry_prompt
 from ralph.recovery.retry_prompt import (
     build_validation_retry_footer,
     failure_fingerprint,
 )
+from ralph.workspace.memory import MemoryWorkspace
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_premise_check_anchor_is_not_exported": (
@@ -47,6 +54,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _RETIRED_PREMISE_CHECK_LINE = "test the premise shared by the failed fixes before another patch"
+PREMISE_CHECK_LINE = _RETIRED_PREMISE_CHECK_LINE
 
 
 class _Diagnostic:
@@ -194,3 +202,113 @@ def test_prompt_readers_stay_read_only() -> None:
     assert not hasattr(materialize, "read_and_clear_retry_hint")
     assert hasattr(commit_review, "_read_retry_hint")
     assert not hasattr(commit_review, "_read_and_clear_retry_hint")
+
+
+def test_generic_technical_retry_prompt_renders_premise_line_only_on_identical_repeat(
+    tmp_path: Path,
+) -> None:
+    prompt_path = tmp_path / "PROMPT.md"
+    prompt_path.write_text("Execute task", encoding="utf-8")
+
+    first = Path(
+        write_agent_retry_prompt(
+            workspace_root=tmp_path,
+            prompt_file=str(prompt_path),
+            reason="InactivityTimeout",
+            detail="no progress for 30s",
+            context_lines=[],
+            drain="development",
+        )
+    ).read_text(encoding="utf-8")
+
+    repeat = Path(
+        write_agent_retry_prompt(
+            workspace_root=tmp_path,
+            prompt_file=str(prompt_path),
+            reason="InactivityTimeout",
+            detail="no progress for 30s",
+            context_lines=[],
+            drain="development",
+        )
+    ).read_text(encoding="utf-8")
+
+    changed = Path(
+        write_agent_retry_prompt(
+            workspace_root=tmp_path,
+            prompt_file=str(prompt_path),
+            reason="ExecutionTimeout",
+            detail="turn ceiling reached",
+            context_lines=[],
+            drain="development",
+        )
+    ).read_text(encoding="utf-8")
+
+    assert [
+        first.count(PREMISE_CHECK_LINE),
+        repeat.count(PREMISE_CHECK_LINE),
+        changed.count(PREMISE_CHECK_LINE),
+    ] == [0, 1, 0]
+
+
+def test_generic_technical_retry_prompt_without_drain_renders_premise_line_only_on_identical_repeat(
+    tmp_path: Path,
+) -> None:
+    prompt_path = tmp_path / "PROMPT.md"
+    prompt_path.write_text("Execute task", encoding="utf-8")
+
+    first = Path(
+        write_agent_retry_prompt(
+            workspace_root=tmp_path,
+            prompt_file=str(prompt_path),
+            reason="InactivityTimeout",
+            detail="no progress for 30s",
+            context_lines=[],
+        )
+    ).read_text(encoding="utf-8")
+
+    repeat = Path(
+        write_agent_retry_prompt(
+            workspace_root=tmp_path,
+            prompt_file=str(prompt_path),
+            reason="InactivityTimeout",
+            detail="no progress for 30s",
+            context_lines=[],
+        )
+    ).read_text(encoding="utf-8")
+
+    changed = Path(
+        write_agent_retry_prompt(
+            workspace_root=tmp_path,
+            prompt_file=str(prompt_path),
+            reason="ExecutionTimeout",
+            detail="turn ceiling reached",
+            context_lines=[],
+        )
+    ).read_text(encoding="utf-8")
+
+    assert [
+        first.count(PREMISE_CHECK_LINE),
+        repeat.count(PREMISE_CHECK_LINE),
+        changed.count(PREMISE_CHECK_LINE),
+    ] == [0, 1, 0]
+
+
+def test_execution_retry_hint_renders_premise_line_only_on_identical_repeat() -> None:
+    workspace = MemoryWorkspace()
+    ctx = SimpleNamespace(workspace=workspace, pipeline_policy=None, artifacts_policy=None)
+    hint_path = retry_hint_path("planning")
+
+    _write_retry_hint(ctx, "planning", "failure detail A")
+    first = workspace.read(hint_path)
+
+    _write_retry_hint(ctx, "planning", "failure detail A")
+    repeat = workspace.read(hint_path)
+
+    _write_retry_hint(ctx, "planning", "failure detail B")
+    changed = workspace.read(hint_path)
+
+    assert [
+        first.count(PREMISE_CHECK_LINE),
+        repeat.count(PREMISE_CHECK_LINE),
+        changed.count(PREMISE_CHECK_LINE),
+    ] == [0, 1, 0]

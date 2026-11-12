@@ -31,8 +31,9 @@ practice and adapt to other detected languages (see Verification).
 * Function, class, module, and file scope MUST follow single
   responsibility: a function does one thing, a module owns one
   concept. Functions over `pylint.max-args = 40` (the CLI typer
-  callback floor) MUST be justified inline; the project has narrowed
-  the ruff floor beyond its default for the same reason.
+  callback floor) are refactored or configured in tool configuration;
+  the project has narrowed the ruff floor beyond its default for the
+  same reason.
 * Error handling MUST surface actionable context. Bare `except: pass`
   is forbidden. Errors MUST be logged with enough context to diagnose
   (`loguru`-based logging in production code, with the structured

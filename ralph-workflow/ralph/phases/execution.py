@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
@@ -24,6 +25,7 @@ from ralph.phases.artifacts import (
     unwrap_phase_artifact_content,
 )
 from ralph.phases.required_artifacts import (
+    PREMISE_CHECK_LINE,
     build_missing_input_hint,
     build_required_artifacts,
     build_retry_hint,
@@ -477,12 +479,20 @@ def _write_retry_hint(
         if preserve_existing and ctx.workspace.exists(hint_path):
             existing = ctx.workspace.read(hint_path).strip()
             if existing:
-                hint = f"{existing}\n\n{hint}"
+                existing_lines = [
+                    line for line in existing.splitlines() if line.strip() != PREMISE_CHECK_LINE
+                ]
+                existing_cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(existing_lines)).strip()
+                if existing_cleaned:
+                    hint = f"{existing_cleaned}\n\n{hint}"
         ctx.workspace.write(hint_path, hint)
         ctx.workspace.write(
             fingerprint_path,
             retry_hint_fingerprint(phase, detail, registry=registry),
         )
+
+
+write_retry_hint = _write_retry_hint
 
 
 def _worker_retry_hint_path(

@@ -7,7 +7,8 @@ from unittest.mock import MagicMock
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases import PhaseContext
-from ralph.phases.required_artifacts import retry_hint_path
+from ralph.phases.execution import write_retry_hint as _write_retry_hint
+from ralph.phases.required_artifacts import PREMISE_CHECK_LINE, retry_hint_path
 from ralph.phases.verification import handle_verification_phase
 from ralph.pipeline.effect_executor import write_agent_retry_prompt
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -29,21 +30,11 @@ from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
-from ralph.recovery.retry_prompt import build_validation_retry_footer
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 from tests._tool_artifact_2_helper_mocksession import MockSession
 from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
-
-RALPH_TEST_CHANGE_REASONS = {
-    "test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_failure": (
-        "the retired premise-check line is no longer rendered, so the persisted hint is "
-        "asserted against the rendered validation trailer and the accumulated attempt history"
-    ),
-}
-
-_RETIRED_PERSISTED_TRAILER_LINE = "test the premise shared by the failed fixes before another patch"
 
 _INVALID_PRODUCT_SPEC = "---\ntype: product_spec\n---\n"
 _VALID_PRODUCT_SPEC = """---
@@ -226,7 +217,7 @@ def test_regression_s2_successful_submit_reports_recovery_and_clears_hint(tmp_pa
     assert not backend.exists(hint_path)
 
 
-def test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_failure(
+def test_persisted_hint_renders_the_premise_line_only_on_an_identical_repeat(
     tmp_path: Path,
 ) -> None:
     session = MockSession(drain="development")
@@ -247,30 +238,67 @@ def test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_f
     repeat = submit(_INVALID_PRODUCT_SPEC)
     changed = submit(changed_spec)
 
-    trailer = build_validation_retry_footer()
+    assert first.count(PREMISE_CHECK_LINE) == 0
+    assert repeat.count(PREMISE_CHECK_LINE) == 1
+    assert changed.count(PREMISE_CHECK_LINE) == 0
 
-    assert _RETIRED_PERSISTED_TRAILER_LINE not in first
-    assert _RETIRED_PERSISTED_TRAILER_LINE not in repeat
-    assert _RETIRED_PERSISTED_TRAILER_LINE not in changed
 
-    assert first.count(trailer) == 1
-    assert first.endswith(trailer)
-    assert first.count("ATTEMPT 1") == 1
-    assert "ATTEMPT 2" not in first
+def test_generic_technical_retry_prompt_renders_the_premise_line_only_on_an_identical_repeat(
+    tmp_path: Path,
+) -> None:
+    prompt_path = tmp_path / "PROMPT.md"
+    prompt_path.write_text("Repair the planning artifact.", encoding="utf-8")
 
-    assert repeat.count(trailer) == 1
-    assert repeat.endswith(trailer)
-    assert repeat.count("ATTEMPT 1") == 1
-    assert repeat.count("ATTEMPT 2") == 1
-    assert "THIS VALIDATION HAS FAILED 2 TIMES" in repeat
+    first_file = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_path),
+        reason="InactivityTimeout",
+        detail="no progress for 30s",
+        context_lines=[],
+        drain="planning",
+    )
+    first_content = Path(first_file).read_text(encoding="utf-8")
 
-    assert changed.count(trailer) == 1
-    assert changed.endswith(trailer)
-    assert changed.count("ATTEMPT 1") == 1
-    assert changed.count("ATTEMPT 2") == 1
-    assert changed.count("ATTEMPT 3") == 1
-    assert "THIS VALIDATION HAS FAILED 3 TIMES" in changed
+    repeat_file = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_path),
+        reason="InactivityTimeout",
+        detail="no progress for 30s",
+        context_lines=[],
+        drain="planning",
+    )
+    repeat_content = Path(repeat_file).read_text(encoding="utf-8")
 
-    changed_attempt_bodies = changed[: changed.index(trailer)]
-    assert trailer not in changed_attempt_bodies
-    assert changed_attempt_bodies.count("PREVIOUS ATTEMPT FAILED") == 3
+    changed_file = write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt_path),
+        reason="ExecutionTimeout",
+        detail="turn ceiling reached",
+        context_lines=[],
+        drain="planning",
+    )
+    changed_content = Path(changed_file).read_text(encoding="utf-8")
+
+    assert first_content.count(PREMISE_CHECK_LINE) == 0
+    assert repeat_content.count(PREMISE_CHECK_LINE) == 1
+    assert changed_content.count(PREMISE_CHECK_LINE) == 0
+
+
+def test_execution_retry_hint_renders_the_premise_line_only_on_an_identical_repeat(
+    tmp_path: Path,
+) -> None:
+    context, _ = _verification_context(tmp_path)
+    hint_path = retry_hint_path("gate", pipeline_policy=context.pipeline_policy)
+
+    _write_retry_hint(context, "gate", "required artifact 'gate_spec' was not submitted")
+    first = context.workspace.read(hint_path)
+
+    _write_retry_hint(context, "gate", "required artifact 'gate_spec' was not submitted")
+    repeat = context.workspace.read(hint_path)
+
+    _write_retry_hint(context, "gate", "different failure reason")
+    changed = context.workspace.read(hint_path)
+
+    assert first.count(PREMISE_CHECK_LINE) == 0
+    assert repeat.count(PREMISE_CHECK_LINE) == 1
+    assert changed.count(PREMISE_CHECK_LINE) == 0

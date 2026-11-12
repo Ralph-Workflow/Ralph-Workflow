@@ -26,8 +26,6 @@ __all__ = [
     "MODE_SHELL",
     "MODE_TOML",
     "MODE_YAML",
-    "STRUCTURAL_MARKERS",
-    "STRUCTURAL_MARKER_FENCES",
     "Finding",
     "audit_paths",
     "audit_repository",
@@ -95,20 +93,6 @@ DOCS_MARKER_FILES: frozenset[str] = frozenset(
 SCRIPT_DIRS: tuple[str, ...] = ("scripts", "ralph-workflow/scripts")
 
 SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".git", ".mypy_cache", ".ruff_cache"})
-COMMENT_EXEMPT_PATHS: frozenset[str] = frozenset(
-    {
-        "ralph-workflow/ralph/policy/defaults/ralph-workflow-agents.toml",
-        "ralph/policy/defaults/ralph-workflow-agents.toml",
-        "ralph-workflow/ralph/policy/defaults/ralph-workflow.toml",
-        "ralph/policy/defaults/ralph-workflow.toml",
-        "ralph-workflow/ralph/policy/defaults/ralph-workflow-local.toml",
-        "ralph/policy/defaults/ralph-workflow-local.toml",
-        "ralph-workflow/ralph/policy/defaults/mcp.toml",
-        "ralph/policy/defaults/mcp.toml",
-        "ralph-workflow/ralph/testing/test_whitebox_baseline.py",
-        "ralph/testing/test_whitebox_baseline.py",
-    }
-)
 
 MAX_TEXT_LENGTH = 160
 
@@ -126,27 +110,6 @@ _SHELL_WORD_SEPARATORS = ";&|("
 _YAML_QUOTED_SEGMENT_RE = re.compile(r"\"[^\"]*\"|'[^']*'")
 
 _YAML_BLOCK_INDICATOR_RE = re.compile(r"(?:^|[\s:\-])[|>][+-]?\d*(?:\s+#.*)?$")
-
-STRUCTURAL_MARKER_FENCES: tuple[tuple[str, str], ...] = (
-    ("@AGENT-BLOCK-START", "@AGENT-BLOCK-END"),
-    ("@EXAMPLE-START", "@EXAMPLE-END"),
-)
-
-STRUCTURAL_MARKERS: frozenset[str] = frozenset(
-    {marker for fence in STRUCTURAL_MARKER_FENCES for marker in fence} | {"@EXAMPLE"}
-)
-
-_FENCE_END_BY_START: dict[str, str] = dict(STRUCTURAL_MARKER_FENCES)
-
-_BUNDLED_CONFIG_TEMPLATE_ROOTS: tuple[str, ...] = ("/ralph/policy/defaults/",)
-
-_DOCUMENTED_DEFAULT_KEY_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
-
-_DOCUMENTED_DEFAULT_VALUE_PATTERN: re.Pattern[str] = re.compile(
-    r"^(?:\"[^\"]*\"|'[^']*'|true|false|[-+]?[0-9][0-9_.eE+-]*|\{.*\}|\[.*\])$"
-)
-
-_MARKERS_LONGEST_FIRST: tuple[str, ...] = tuple(sorted(STRUCTURAL_MARKERS, key=len, reverse=True))
 
 
 @dataclass(frozen=True)
@@ -343,66 +306,6 @@ def _scan_yaml_comments(text: str, path: str) -> list[Finding]:
     return findings
 
 
-def _structural_marker(line: str) -> str | None:
-    stripped = line.strip()
-    if not stripped.startswith("#"):
-        return None
-    payload = stripped.lstrip("#").strip()
-    for marker in _MARKERS_LONGEST_FIRST:
-        if payload == marker or payload.startswith(f"{marker}:"):
-            return marker
-    return None
-
-
-def _closing_marker_index(lines: list[str], start: int, end_marker: str) -> int | None:
-    for index in range(start, len(lines)):
-        if _structural_marker(lines[index]) == end_marker:
-            return index
-    return None
-
-
-def _structural_exempt_lines(text: str) -> frozenset[int]:
-    lines = text.split("\n")
-    exempt: set[int] = set()
-    index = 0
-    while index < len(lines):
-        marker = _structural_marker(lines[index])
-        if marker is None:
-            index += 1
-            continue
-        exempt.add(index + 1)
-        end_marker = _FENCE_END_BY_START.get(marker)
-        if end_marker is None:
-            index += 1
-            continue
-        closing = _closing_marker_index(lines, index + 1, end_marker)
-        if closing is None:
-            index += 1
-            continue
-        exempt.update(range(index + 1, closing + 2))
-        index = closing + 1
-    return frozenset(exempt)
-
-
-def _documented_default_exempt_lines(text: str, path: str) -> frozenset[int]:
-    if not any(root in path for root in _BUNDLED_CONFIG_TEMPLATE_ROOTS):
-        return frozenset()
-    exempt: set[int] = set()
-    for number, line in enumerate(text.split("\n"), start=1):
-        stripped = line.strip()
-        if not stripped.startswith("# "):
-            continue
-        key, separator, value = stripped[2:].partition("=")
-        if not separator:
-            continue
-        if _DOCUMENTED_DEFAULT_KEY_PATTERN.match(key.strip()) is None:
-            continue
-        if _DOCUMENTED_DEFAULT_VALUE_PATTERN.match(value.split(" #", 1)[0].strip()) is None:
-            continue
-        exempt.add(number)
-    return frozenset(exempt)
-
-
 def _scan_hash_comments(text: str, path: str, mode: str) -> list[Finding]:
     yaml_style = mode == MODE_YAML
     shell_style = mode in (MODE_SHELL, MODE_MAKE)
@@ -497,8 +400,6 @@ def _scan_docs_markers(text: str, path: str) -> list[Finding]:
 
 
 def scan_source(text: str, path: str, mode: str) -> list[Finding]:
-    if any(path.endswith(exempt) for exempt in COMMENT_EXEMPT_PATHS):
-        return []
     if mode == MODE_PYTHON:
         return scan_python_source(text, path)
     if mode == MODE_JINJA:
@@ -507,12 +408,7 @@ def scan_source(text: str, path: str, mode: str) -> list[Finding]:
         return _scan_docs_markers(text, path)
     if mode == MODE_YAML:
         return _scan_yaml_comments(text, path)
-    findings = _scan_hash_comments(text, path, mode)
-    if mode == MODE_TOML:
-        exempt = _structural_exempt_lines(text)
-        exempt = exempt | _documented_default_exempt_lines(text, path)
-        findings = [finding for finding in findings if finding.line not in exempt]
-    return findings
+    return _scan_hash_comments(text, path, mode)
 
 
 def _comment_mode(path: Path) -> str | None:
@@ -590,8 +486,6 @@ def _comment_targets(repo_root: Path, tracked: list[Path]) -> list[_Target]:
         try:
             rel = path.relative_to(repo_root)
         except ValueError:
-            continue
-        if rel.as_posix() in COMMENT_EXEMPT_PATHS:
             continue
         mode = _comment_mode(path)
         if mode is None:
