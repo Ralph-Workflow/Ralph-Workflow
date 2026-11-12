@@ -5,9 +5,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke._watch_capacity import CAPACITY_PROBE_BUDGET_SECONDS, call_within_budget
 from ralph.agents.invoke._workspace import STOP_OBSERVER_BUDGET_SECONDS, WorkspaceMonitor
 from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
+from ralph.agents.watch_capacity import CAPACITY_PROBE_BUDGET_SECONDS, call_within_budget
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
 if TYPE_CHECKING:
@@ -62,9 +62,7 @@ class _CompletedProbeThread:
 def test_capacity_probe_regression_completed_answer_is_published_without_join_observation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "ralph.agents.invoke._watch_capacity.threading.Thread", _CompletedProbeThread
-    )
+    monkeypatch.setattr("ralph.agents.watch_capacity.threading.Thread", _CompletedProbeThread)
 
     result = call_within_budget(
         lambda: False,

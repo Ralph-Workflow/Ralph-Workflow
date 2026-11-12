@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 import shutil
 import subprocess
@@ -114,11 +115,21 @@ def _repo(repo_root: Path) -> Repo:
     return repo
 
 
+def _refreshed_repo(repo_root: Path) -> Repo:
+    stale = _REPO_CACHE.pop(repo_root, None)
+    if stale is not None:
+        with contextlib.suppress(Exception):
+            stale.close()
+    repo = Repo(repo_root)
+    _REPO_CACHE[repo_root] = repo
+    return repo
+
+
 def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    repo = _repo(repo_root)
+    repo = _refreshed_repo(repo_root)
     repo.index.add([filename])
     commit = repo.index.commit(message)
     assert commit.hexsha

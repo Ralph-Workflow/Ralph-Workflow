@@ -10,6 +10,18 @@ import pytest
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_e64_import_guard_fires_under_both_pythons_with_same_marker": (
+        "removed as a duplicate: the test asserted the identical contract as "
+        "test_e64_import_guard_fires_under_normal_python and "
+        "test_e64_import_guard_fires_under_optimized_python (non-zero exit code "
+        "plus the guard marker on stderr for the same driver script), so running "
+        "both interpreter modes concurrently added no distinct coverage while "
+        "booting two extra interpreter processes"
+    ),
+}
+
+
 _GUARD_FIRED_MARKER = "wire-bound-violation"
 
 
@@ -105,35 +117,3 @@ def test_e64_import_guard_fires_under_optimized_python(tmp_path: Path) -> None:
     assert _GUARD_FIRED_MARKER in proc.stderr, (
         f"guard did not fire under python -O; stderr={proc.stderr!r}"
     )
-
-
-@pytest.mark.subprocess_e2e
-def test_e64_import_guard_fires_under_both_pythons_with_same_marker(tmp_path: Path) -> None:
-    script = tmp_path / "driver_combined.py"
-    script.write_text(_driver_script_text(), encoding="utf-8")
-
-    p_normal = subprocess.Popen(
-        [sys.executable, str(script)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    p_opt = subprocess.Popen(
-        [sys.executable, "-O", str(script)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    stdout_n, stderr_n = p_normal.communicate(timeout=15)
-    stdout_o, stderr_o = p_opt.communicate(timeout=15)
-    results = {
-        "normal": (p_normal.returncode, stdout_n, stderr_n),
-        "optimized": (p_opt.returncode, stdout_o, stderr_o),
-    }
-    for label, (rc, out, err) in results.items():
-        assert rc != 0, (
-            f"{label} interpreter exited 0; the guard did not fire. stdout={out!r} stderr={err!r}"
-        )
-        assert _GUARD_FIRED_MARKER in err, (
-            f"{label} interpreter did not produce the guard marker; stderr={err!r}"
-        )

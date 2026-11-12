@@ -101,7 +101,7 @@ tests/agents/test_terminal_state_restored_on_exit.py|0,2,0
 tests/agents/test_workspace_change_classifier.py|0,4,0
 tests/agents/test_workspace_cross_process_coordination.py|0,8,3
 tests/agents/test_workspace_event_backpressure.py|0,3,0
-tests/agents/test_workspace_watch_scoping.py|0,5,0
+tests/agents/test_workspace_watch_scoping.py|0,4,0
 tests/config/test_agents_config_file.py|0,0,1
 tests/config/test_heartbeat_ceiling_config.py|0,2,0
 tests/config/test_no_output_at_start_config.py|0,2,0
@@ -851,7 +851,7 @@ tests/test_wire_ledger_capture_exporter.py|0,2,0
 tests/test_workspace_fs_fs_workspace_read_lines.py|0,0,5
 tests/test_workspace_memory_memory_workspace_init.py|0,0,3
 tests/test_workspace_memory_memory_workspace_normalize.py|0,0,3
-tests/test_workspace_monitor_never_delays_the_agent.py|0,3,0
+tests/test_workspace_monitor_never_delays_the_agent.py|0,2,0
 tests/unit/display/_criteria_probes.py|6,35,9
 tests/unit/display/test_brief_criteria_coverage.py|0,2,5
 tests/unit/display/test_crash_output_containment.py|0,0,1

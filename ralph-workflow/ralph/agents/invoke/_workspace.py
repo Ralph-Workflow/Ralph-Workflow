@@ -19,12 +19,6 @@ from ralph.agents.invoke._callback_arity import (
     callback_arity,
 )
 from ralph.agents.invoke._shared_awareness_publisher import ThrottledSidecarPublisher
-from ralph.agents.invoke._watch_capacity import (
-    CAPACITY_PROBE_BUDGET_SECONDS,
-    DirectoryCounter,
-    call_within_budget,
-    watch_capacity_is_predicted,
-)
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
 from ralph.agents.invoke._workspace_seams import (
     WorkspaceWatchSeams,
@@ -37,6 +31,12 @@ from ralph.agents.invoke._workspace_seams import (
 from ralph.agents.invoke.watchdog_observer import (
     _WatchObserverProtocol,
     create_watchdog_observer,
+)
+from ralph.agents.watch_capacity import (
+    CAPACITY_PROBE_BUDGET_SECONDS,
+    DirectoryCounter,
+    call_within_budget,
+    watch_capacity_is_predicted,
 )
 from ralph.workspace._cross_process_watch_lock import (
     CrossProcessWatchLock,

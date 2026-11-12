@@ -3,7 +3,7 @@
 Coding agents write code quickly; the human coordination around them does not scale — babysitting
 sessions, conflict resolution, re-running checks, and review queues cap throughput at the handoffs.
 A plain agent loop repeats one prompt until the work stops changing, and by hand you supply every
-decision. Ralph Workflow moves those decisions into a configurable workflow graph.
+choice. Ralph Workflow moves those choices into a configurable workflow graph.
 
 Ralph Workflow is the operating system for autonomous coding: a free, open-source AI agent orchestrator
 and software factory that anybody can use — you give it a spec and your own checks, it runs plan →
@@ -125,7 +125,7 @@ The maintained operator manual is the Sphinx build at [`docs/sphinx/index.rst`](
 ## License
 
 AGPL-3.0-or-later: use it, read it, change it, and publish your changes under the same license if you
-offer a modified version over a network. The Ralph Loop pattern is credited to Geoffrey Huntley;
+offer a modified version over a network. The Ralph Workflow loop pattern is credited to Geoffrey Huntley;
 Ralph Workflow is an independent implementation built on that core. No agent vendor named above
 endorses this project.
 

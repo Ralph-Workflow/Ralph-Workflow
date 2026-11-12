@@ -450,9 +450,9 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| root | 461 | 397 | 859 | 857 | 2113 | follow-up: backlog white-box conversion unit |
+| root | 461 | 397 | 858 | 857 | 2112 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | mcp-bridge |
-| agents | 97 | 34 | 279 | 100 | 413 | agents |
+| agents | 97 | 34 | 278 | 100 | 412 | agents |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | auto-integrate |
 | project-policy | 28 | 4 | 53 | 158 | 215 | project-policy |
 | run-loop | 17 | 103 | 29 | 89 | 221 | run-loop |
@@ -600,7 +600,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/agents/test_workspace_change_classifier.py` | 0 | 4 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/test_workspace_cross_process_coordination.py` | 0 | 8 | 3 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/test_workspace_event_backpressure.py` | 0 | 3 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
-| `tests/agents/test_workspace_watch_scoping.py` | 0 | 5 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
+| `tests/agents/test_workspace_watch_scoping.py` | 0 | 4 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/config/test_agents_config_file.py` | 0 | 0 | 1 | dir:config | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/config/test_heartbeat_ceiling_config.py` | 0 | 2 | 0 | dir:config | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/config/test_no_output_at_start_config.py` | 0 | 2 | 0 | dir:config | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
@@ -1349,7 +1349,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_workspace_fs_fs_workspace_read_lines.py` | 0 | 0 | 5 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_workspace_memory_memory_workspace_init.py` | 0 | 0 | 3 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_workspace_memory_memory_workspace_normalize.py` | 0 | 0 | 3 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
-| `tests/test_workspace_monitor_never_delays_the_agent.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_workspace_monitor_never_delays_the_agent.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/unit/display/_criteria_probes.py` | 6 | 35 | 9 | display | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: display public-seam unit |
 | `tests/unit/display/test_brief_criteria_coverage.py` | 0 | 2 | 5 | display | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: display public-seam unit |
 | `tests/unit/display/test_crash_output_containment.py` | 0 | 0 | 1 | display | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: display public-seam unit |
@@ -1446,4 +1446,3 @@ constructor seams.
   no `class`/`def`), so every consumer import path keeps working.
 
 <!-- whitebox-ledger:end -->
-

@@ -21,8 +21,8 @@ from ralph.workspace._shared_awareness import (
 from ralph.workspace.awareness import release_workspace_awareness
 
 if TYPE_CHECKING:
-    from ralph.agents.invoke._watch_capacity import DirectoryCounter
     from ralph.agents.invoke.watchdog_observer import WatchObserverFactory
+    from ralph.agents.watch_capacity import DirectoryCounter
 
 
 class _FakeCrossProcessWatchLock:

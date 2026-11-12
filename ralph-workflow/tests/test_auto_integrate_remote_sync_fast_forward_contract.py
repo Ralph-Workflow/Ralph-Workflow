@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -53,10 +54,8 @@ def _repo(path: Path) -> Repo | None:
 def _refreshed_repo(path: Path) -> Repo | None:
     stale = _REPO_CACHE.pop(path, None)
     if stale is not None:
-        try:
+        with contextlib.suppress(Exception):
             stale.close()
-        except Exception:
-            pass
     try:
         repo = Repo(path)
     except Exception:
@@ -65,33 +64,32 @@ def _refreshed_repo(path: Path) -> Repo | None:
     return repo
 
 
-def _in_process_git(cwd: Path, args: tuple[str, ...]) -> str | None:
-    for repo in (_repo(cwd), _refreshed_repo(cwd)):
-        if repo is None:
-            continue
-        try:
-            if len(args) == 2 and args[0] == "rev-parse":
-                return repo.rev_parse(args[1]).hexsha
-            if len(args) == 2 and args[0] == "symbolic-ref":
-                return str(repo.head.ref)
-            if (
-                len(args) == 4
-                and args[0] == "log"
-                and args[1] == "-1"
-                and args[2] == "--format=%s"
-            ):
-                return str(repo.commit(args[3]).message).splitlines()[0]
-            if len(args) == 3 and args[0] == "log" and args[1] == "--format=%s":
-                return "\n".join(
-                    str(commit.message).splitlines()[0]
-                    for commit in repo.iter_commits(args[2])
-                )
-            if args == ("remote",):
-                return "\n".join(remote.name for remote in repo.remotes)
-            return None
-        except Exception:
-            continue
+def _recognized_git_output(repo: Repo, args: tuple[str, ...]) -> str | None:
+    if len(args) == 2 and args[0] == "rev-parse":
+        return repo.rev_parse(args[1]).hexsha
+    if len(args) == 2 and args[0] == "symbolic-ref":
+        return str(repo.head.ref)
+    if len(args) == 4 and args[0] == "log" and args[1] == "-1" and args[2] == "--format=%s":
+        return str(repo.commit(args[3]).message).splitlines()[0]
+    if len(args) == 3 and args[0] == "log" and args[1] == "--format=%s":
+        return "\n".join(
+            str(commit.message).splitlines()[0] for commit in repo.iter_commits(args[2])
+        )
+    if args == ("remote",):
+        return "\n".join(remote.name for remote in repo.remotes)
     return None
+
+
+def _in_process_git(cwd: Path, args: tuple[str, ...]) -> str | None:
+    repo = _repo(cwd)
+    if repo is None:
+        return None
+    try:
+        return _recognized_git_output(repo, args)
+    except Exception:
+        with contextlib.suppress(Exception):
+            repo.git.clear_cache()
+        return None
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -112,14 +110,14 @@ def _git(cwd: Path, *args: str) -> str:
 
 def _commit(repo: Path, filename: str, content: str, message: str) -> str:
     (repo / filename).write_text(content, encoding="utf-8")
-    git_repo = _repo(repo)
+    git_repo = _refreshed_repo(repo)
     assert git_repo is not None
     git_repo.index.add([filename])
     return git_repo.index.commit(message).hexsha
 
 
 def _identify(repo: Path) -> None:
-    git_repo = _repo(repo)
+    git_repo = _refreshed_repo(repo)
     assert git_repo is not None
     writer = git_repo.config_writer()
     try:
@@ -131,8 +129,8 @@ def _identify(repo: Path) -> None:
 
 def _publish_commit(writer: Path, bare: Path, filename: str, content: str, message: str) -> str:
     (writer / filename).write_text(content, encoding="utf-8")
-    writer_repo = _repo(writer)
-    bare_repo = _repo(bare)
+    writer_repo = _refreshed_repo(writer)
+    bare_repo = _refreshed_repo(bare)
     assert writer_repo is not None and bare_repo is not None
     writer_repo.index.add([filename])
     commit = writer_repo.index.commit(message)

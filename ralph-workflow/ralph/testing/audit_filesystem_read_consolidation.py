@@ -32,14 +32,14 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
             "_load_prompt_with_master",
             "raw_path_read_text",
         ),
-        ("ralph/agents/invoke/_watch_capacity.py", "_count_watchable_directories", "raw_walk"),
+        ("ralph/agents/watch_capacity.py", "_count_watchable_directories", "raw_walk"),
         (
-            "ralph/agents/invoke/_watch_capacity.py",
+            "ralph/agents/watch_capacity.py",
             "_read_inotify_watch_limit",
             "raw_path_read_text",
         ),
         (
-            "ralph/agents/invoke/_watch_capacity.py",
+            "ralph/agents/watch_capacity.py",
             "_read_inotify_watch_user_total",
             "raw_path_iterdir",
         ),

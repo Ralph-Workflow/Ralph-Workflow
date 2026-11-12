@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke._watch_capacity import (
+from ralph.agents.watch_capacity import (
     _read_inotify_watch_limit,
     _read_inotify_watch_user_total,
     call_within_budget,
