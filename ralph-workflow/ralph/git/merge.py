@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.conflict_stage_entries import (
+    ConflictStageEntries,
+    conflict_stage_entries,
+)
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, merge_refusal
@@ -305,32 +309,6 @@ def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
     )
 
 
-def conflict_stage_entries(
-    repo_root: Path | str, paths: Sequence[str]
-) -> dict[str, dict[int, tuple[str, str]]]:
-    if not paths:
-        return {}
-    result = run_git(
-        ("ls-files", "-u", "-z", "--", *paths),
-        cwd=Path(repo_root),
-        label="git-conflict-stage-entries",
-    )
-    if result.returncode != 0:
-        return {}
-
-    entries: dict[str, dict[int, tuple[str, str]]] = {}
-    for record in result.stdout.split("\0"):
-        if not record:
-            continue
-        try:
-            metadata, path = record.split("\t", 1)
-            mode, blob, raw_stage = metadata.split()
-            entries.setdefault(path, {})[int(raw_stage)] = (mode, blob)
-        except ValueError:
-            return {}
-    return entries
-
-
 def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
     if not paths:
         return True
@@ -482,6 +460,7 @@ __all__ = [
     "WORKTREE_FOUND",
     "WORKTREE_NOT_CHECKED_OUT",
     "WORKTREE_QUERY_FAILED",
+    "ConflictStageEntries",
     "MergeResult",
     "UnmergedPathsObservation",
     "abort_merge",

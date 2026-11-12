@@ -88,8 +88,9 @@ from ralph.pipeline.conflict_resolution.session import (
 from ralph.pipeline.conflict_resolution.sight import (
     classify_unmerged_conflicts,
     declared_decision_paths,
-    gitlink_escalation_message,
+    out_of_reach_escalation_message,
     out_of_reach_paths,
+    out_of_reach_reasons,
     stage_mechanical_conflicts,
 )
 from ralph.pipeline.conflict_resolution.status import (
@@ -130,6 +131,8 @@ __all__ = [
     "declared_decision_paths",
     "emit_conflict_phase_line",
     "invoke_resolution_agent",
+    "out_of_reach_escalation_message",
+    "out_of_reach_reasons",
     "paths_with_conflict_markers",
     "render_conflict_prompt",
     "retained_merge_paths",
@@ -285,6 +288,11 @@ def _prepare_conflicted_paths(
     session.out_of_reach_paths = ()
     kinds = observer.classify_unmerged_conflicts(root, conflicted)
     unreachable = out_of_reach_paths(kinds)
+    reasons: dict[str, str] = (
+        observer.out_of_reach_reasons(kinds)
+        if hasattr(observer, "out_of_reach_reasons")
+        else out_of_reach_reasons(kinds)
+    )
     reachable = tuple(path for path in conflicted if path not in set(unreachable))
     if unreachable and not reachable:
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
@@ -298,7 +306,7 @@ def _prepare_conflicted_paths(
                 session.exhaustion_reason
                 if session.exhaustion_reason
                 and "needs operator action:" in session.exhaustion_reason
-                else gitlink_escalation_message(unreachable)
+                else out_of_reach_escalation_message(unreachable, reasons)
             )
         )
         session.exhaustion_reason = msg
@@ -310,6 +318,9 @@ def _prepare_conflicted_paths(
         return (), False, ()
     if unreachable:
         session.out_of_reach_paths = unreachable
+        msg = out_of_reach_escalation_message(unreachable, reasons)
+        session.operator_action_message = msg
+        session.exhaustion_reason = msg
         emit_conflict_phase_line(
             display,
             "OUT_OF_REACH: no resolver can repair "
@@ -732,7 +743,7 @@ def _escalate_unreachable_remainder(
         else (
             session.exhaustion_reason
             if session.exhaustion_reason and "needs operator action:" in session.exhaustion_reason
-            else gitlink_escalation_message(session.out_of_reach_paths)
+            else out_of_reach_escalation_message(session.out_of_reach_paths)
         )
     )
     session.exhaustion_reason = msg

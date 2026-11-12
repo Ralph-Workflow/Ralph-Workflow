@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+    from ralph.pipeline.conflict_resolution.sight import ConflictClassification, ConflictSight
 
 __all__ = ["WorktreeConflictObserver"]
 
@@ -18,7 +18,11 @@ class WorktreeConflictObserver(Protocol):
 
     def classify_unmerged_conflicts(
         self, root: Path, paths: tuple[str, ...]
-    ) -> dict[str, ConflictSight]: ...
+    ) -> ConflictClassification | dict[str, ConflictSight]: ...
+
+    def out_of_reach_reasons(self, kinds: dict[str, ConflictSight]) -> dict[str, str]:
+        """Reasons for paths classified as OUT_OF_REACH, if known."""
+        ...
 
     def declared_decision_paths(self, kinds: dict[str, ConflictSight]) -> tuple[str, ...]: ...
 

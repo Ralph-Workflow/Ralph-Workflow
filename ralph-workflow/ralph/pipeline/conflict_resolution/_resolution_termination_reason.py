@@ -19,6 +19,7 @@ class ResolutionTerminationReason(StrEnum):
     PROMPT_UNAVAILABLE = "PROMPT_UNAVAILABLE"
     EXCEPTION = "EXCEPTION"
     CONFIG_FAILURE = "CONFIG_FAILURE"
+    CONTEXT_FAILURE = "CONTEXT_FAILURE"
 
 
 __all__ = ["ResolutionTerminationReason"]

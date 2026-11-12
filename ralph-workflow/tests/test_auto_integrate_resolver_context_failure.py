@@ -45,7 +45,11 @@ def test_unreadable_target_config_declines_instead_of_raising(
     monkeypatch.setattr(agent_module, "workspace_context", _raise)
     resolver = _build_resolver(MagicMock(name="display"))
 
-    assert resolver(tmp_path, "main", _stop()) is False
+    outcome = resolver(tmp_path, "main", _stop())
+    # RALPH-TEST-REASON: resolver returns ResolutionOutcome(succeeded=False) conveying typed failure reason
+    assert outcome is False or (
+        isinstance(outcome, agent_module.ResolutionOutcome) and not outcome.succeeded
+    )
 
 
 def test_unreadable_target_config_is_reported_to_the_operator(
@@ -64,6 +68,10 @@ def test_unreadable_target_config_is_reported_to_the_operator(
     )
     resolver = _build_resolver(MagicMock(name="display"))
 
-    assert resolver(tmp_path, "main", _stop()) is False
+    outcome = resolver(tmp_path, "main", _stop())
+    # RALPH-TEST-REASON: resolver returns ResolutionOutcome(succeeded=False) conveying typed failure reason
+    assert outcome is False or (
+        isinstance(outcome, agent_module.ResolutionOutcome) and not outcome.succeeded
+    )
     assert len(emitted) == 1
     assert "Unclosed array (at line 75, column 1)" in emitted[0]

@@ -43,6 +43,9 @@ def test_resolution_failure_cause_and_termination_reason() -> None:
     assert ResolutionFailureCause.CONFIG_FAILURE == "CONFIG_FAILURE"
     assert ResolutionTerminationReason.CONFIG_FAILURE == "CONFIG_FAILURE"
     assert ResolutionTerminationReason.CONFIG_FAILURE in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert ResolutionFailureCause.CONTEXT_FAILURE == "CONTEXT_FAILURE"
+    assert ResolutionTerminationReason.CONTEXT_FAILURE == "CONTEXT_FAILURE"
+    assert ResolutionTerminationReason.CONTEXT_FAILURE in RESOLVER_NOT_SPENT_TERMINATION_REASONS
 
 
 def test_workspace_context_error_structure(tmp_path: Path) -> None:

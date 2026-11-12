@@ -195,11 +195,37 @@ def build_agent_rebase_stop_resolver(
                 "to resolve the rebase",
                 exc,
             )
+            is_config = _is_config_exception(exc)
+            failure_cause = (
+                ResolutionFailureCause.CONFIG_FAILURE
+                if is_config
+                else ResolutionFailureCause.CONTEXT_FAILURE
+            )
+            term_reason = (
+                ResolutionTerminationReason.CONFIG_FAILURE
+                if is_config
+                else ResolutionTerminationReason.CONTEXT_FAILURE
+            )
+            reason_text = f"target worktree context failed: {exc}"
+            session = active_rebase_resolution_session()
+            if session is not None:
+                session.charge_conflict_budget = False
+                session.terminal_reason = term_reason
+                session.last_failure_cause = failure_cause
+                session.exhaustion_reason = reason_text
             emit_integration_warn_line(
                 display,
-                f"rebase conflict resolution unavailable: target worktree context failed: {exc}",
+                f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return False
+            return ResolutionOutcome(
+                succeeded=False,
+                reason=reason_text,
+                duration_seconds=0.0,
+                last_activity_kind=None,
+                last_activity_at=None,
+                unresolved_paths=(),
+                failure_cause=failure_cause,
+            )
 
     return _resolver
 
@@ -272,3 +298,40 @@ def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsA
         registry.get(agent_name) is not None
         for agent_name in resolution_chain_agents(policy_bundle)
     )
+
+
+def _is_config_exception(exc: BaseException) -> bool:
+    """Classify whether an exception caught during context entry is config-related."""
+    if isinstance(exc, WorkspaceContextError):
+        return True
+    try:
+        from ralph.config.loader import ConfigTomlError
+
+        if isinstance(exc, ConfigTomlError):
+            return True
+    except ImportError:
+        pass
+    try:
+        from pydantic import ValidationError
+
+        if isinstance(exc, ValidationError):
+            return True
+    except ImportError:
+        pass
+    chain: list[BaseException] = []
+    curr: BaseException | None = exc
+    while curr is not None and curr not in chain:
+        chain.append(curr)
+        curr = curr.__cause__ or curr.__context__
+    for e in chain:
+        if isinstance(e, WorkspaceContextError):
+            return True
+        msg = str(e).lower()
+        if (
+            "ralph-workflow.toml" in msg
+            or "agents.toml" in msg
+            or "check-config" in msg
+            or "configuration" in msg
+        ):
+            return True
+    return False

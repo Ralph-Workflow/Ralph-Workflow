@@ -736,7 +736,15 @@ class RecoveryController:
         computed = entry.base_backoff_ms * multiplier
         return min(computed, entry.max_backoff_ms)
 
+    def _is_agent_spent(self, phase: str, agent: str) -> bool:
+        """Return True when an agent is controller-spent or ledger-demoted."""
+        if agent in self._spent_agents.get(phase, ()):
+            return True
+        return isinstance(self._ledger.status(phase, agent), Spent)
+
     def _is_agent_available(self, phase: str, agent: str) -> bool:
+        if self._is_agent_spent(phase, agent):
+            return False
         if not self._ledger.is_available(phase, agent):
             return False
         return self._unavailability_tracker.is_available(phase, agent)
@@ -1120,9 +1128,17 @@ class RecoveryController:
     def earliest_available_wait_ms(self, phase: str, agents: list[str]) -> int:
         if any(self._is_agent_available(phase, agent) for agent in agents):
             return 0
-        tracker_wait = self._unavailability_tracker.earliest_unavailable_wait_ms(phase, agents)
-        ledger_wait = self._ledger.earliest_wait_ms(phase, agents)
-        waits = [w for w in (tracker_wait, ledger_wait) if w is not None and w > 0]
+        waits: list[int] = []
+        for agent in agents:
+            if not self._unavailability_tracker.is_available(phase, agent):
+                tracker_wait = self._unavailability_tracker.earliest_unavailable_wait_ms(
+                    phase, [agent]
+                )
+                if tracker_wait > 0:
+                    waits.append(tracker_wait)
+            ledger_wait = self._ledger.earliest_wait_ms(phase, [agent])
+            if ledger_wait is not None and ledger_wait > 0:
+                waits.append(ledger_wait)
         return min(waits) if waits else 0
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
@@ -1132,13 +1148,7 @@ class RecoveryController:
             return False
         if self.earliest_available_wait_ms(phase, list(agents)) > 0:
             return False
-        spent_set = self._spent_agents.get(phase, set())
-        for agent in agents:
-            if agent in spent_set:
-                continue
-            if not isinstance(self._ledger.status(phase, agent), Spent):
-                return False
-        return True
+        return all(self._is_agent_spent(phase, agent) for agent in agents)
 
     def _earliest_unavailable_wait_ms(
         self,

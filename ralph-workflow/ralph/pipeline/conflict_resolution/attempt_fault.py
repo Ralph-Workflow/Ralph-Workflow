@@ -50,6 +50,7 @@ RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] =
             ResolutionTerminationReason.NO_RESOLVER_CONFIGURED,
             ResolutionTerminationReason.PROMPT_UNAVAILABLE,
             ResolutionTerminationReason.CONFIG_FAILURE,
+            ResolutionTerminationReason.CONTEXT_FAILURE,
         }
     )
 )

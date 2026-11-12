@@ -221,7 +221,11 @@ def resolve_rebase_with_config(
         else (
             ResolutionFailureCause.CONFIG_FAILURE
             if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
-            else ResolutionFailureCause.NONE
+            else (
+                ResolutionFailureCause.CONTEXT_FAILURE
+                if session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE
+                else ResolutionFailureCause.NONE
+            )
         )
     )
     if (
@@ -254,7 +258,13 @@ def resolve_rebase_with_config(
                     f"all resolver agents are spent/unavailable; "
                     f"conflict on {paths_str} needs operator action: {cmd}"
                 )
-        elif carried_cause == ResolutionFailureCause.CONFIG_FAILURE:
+        elif carried_cause in (
+            ResolutionFailureCause.CONFIG_FAILURE,
+            ResolutionFailureCause.CONTEXT_FAILURE,
+        ) or session.terminal_reason in (
+            ResolutionTerminationReason.CONFIG_FAILURE,
+            ResolutionTerminationReason.CONTEXT_FAILURE,
+        ):
             carried_reason = session.exhaustion_reason or (
                 session.terminal_reason.value if session.terminal_reason is not None else None
             )

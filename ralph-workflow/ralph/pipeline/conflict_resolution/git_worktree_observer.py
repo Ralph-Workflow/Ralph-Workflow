@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from ralph.pipeline.conflict_resolution.sight import ConflictSight
+    from ralph.pipeline.conflict_resolution.sight import ConflictClassification, ConflictSight
 
 __all__ = ["GitWorktreeConflictObserver"]
 
@@ -24,10 +24,15 @@ class GitWorktreeConflictObserver:
 
     def classify_unmerged_conflicts(
         self, root: Path, paths: tuple[str, ...]
-    ) -> dict[str, ConflictSight]:
+    ) -> ConflictClassification | dict[str, ConflictSight]:
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
         return _driver_mod.classify_unmerged_conflicts(root, paths)
+
+    def out_of_reach_reasons(self, kinds: dict[str, ConflictSight]) -> dict[str, str]:
+        from ralph.pipeline.conflict_resolution import driver as _driver_mod
+
+        return _driver_mod.out_of_reach_reasons(kinds)
 
     def declared_decision_paths(self, kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
         from ralph.pipeline.conflict_resolution import driver as _driver_mod

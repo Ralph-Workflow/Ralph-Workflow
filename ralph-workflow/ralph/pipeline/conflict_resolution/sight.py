@@ -4,19 +4,22 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 from ralph.git.merge import (
+    ConflictStageEntries,
     conflict_stage_entries,
     paths_with_conflict_markers,
     stage_paths,
 )
+from ralph.pipeline.conflict_resolution._conflict_classification import ConflictClassification
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
 __all__ = [
+    "ConflictClassification",
     "ConflictSight",
     "classify_stage_map",
     "classify_unmerged_conflicts",
@@ -24,7 +27,9 @@ __all__ = [
     "escalate_on_sight",
     "gitlink_escalation_message",
     "mechanical_paths",
+    "out_of_reach_escalation_message",
     "out_of_reach_paths",
+    "out_of_reach_reasons",
     "stage_mechanical_conflicts",
 ]
 
@@ -40,13 +45,36 @@ def gitlink_escalation_message(paths: Sequence[str]) -> str:
     return f"OUT_OF_REACH: gitlink conflict on {joined}"
 
 
+def out_of_reach_escalation_message(
+    paths: Sequence[str],
+    reasons: Mapping[str, str] | None = None,
+) -> str:
+    """Format the escalation message naming unreachable paths and operator command."""
+    reasons_map = reasons or {}
+    if not any(p in reasons_map for p in paths):
+        return gitlink_escalation_message(paths)
+    command = operator_command_for_paths(paths)
+    items: list[str] = []
+    for path in paths:
+        reason = reasons_map.get(path)
+        if reason:
+            items.append(reason)
+        else:
+            items.append(f"gitlink conflict on {path}")
+    joined_reasons = "; ".join(items)
+    if command:
+        return f"OUT_OF_REACH: {joined_reasons} needs operator action: {command}"
+    return f"OUT_OF_REACH: {joined_reasons}"
+
+
 def escalate_on_sight(
     paths: Sequence[str],
     *,
     session: ResolutionSession | None = None,
+    reasons: Mapping[str, str] | None = None,
 ) -> str:
     paths_tuple = tuple(paths)
-    message = gitlink_escalation_message(paths_tuple)
+    message = out_of_reach_escalation_message(paths_tuple, reasons)
     target_session = session
     if target_session is None:
         try:
@@ -79,6 +107,13 @@ class ConflictSight(StrEnum):
     OUT_OF_REACH = "out_of_reach"
 
 
+def out_of_reach_reasons(kinds: dict[str, ConflictSight]) -> dict[str, str]:
+    """Return reasons for paths classified as OUT_OF_REACH, if known."""
+    if isinstance(kinds, ConflictClassification):
+        return dict(kinds.reasons)
+    return {}
+
+
 def out_of_reach_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
     return tuple(path for path, kind in kinds.items() if kind is ConflictSight.OUT_OF_REACH)
 
@@ -107,10 +142,10 @@ def classify_stage_map(
         return _classify_one_sided(ours if ours is not None else theirs)
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs
-    if _is_tree(ours_mode) != _is_tree(theirs_mode):
-        return ConflictSight.AGENT_DECISION
     if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
         return _classify_gitlink(ours_mode, ours_blob, theirs_mode, theirs_blob, stages.get(1))
+    if _is_tree(ours_mode) != _is_tree(theirs_mode):
+        return ConflictSight.AGENT_DECISION
     return _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
 
 
@@ -145,17 +180,25 @@ def _classify_gitlink(
     return ConflictSight.OUT_OF_REACH
 
 
-def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> dict[str, ConflictSight]:
+def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> ConflictClassification:
     entries = conflict_stage_entries(root, paths)
     marked = set(paths_with_conflict_markers(root, paths))
     kinds: dict[str, ConflictSight] = {}
+    reasons: dict[str, str] = {}
+    entry_failures: dict[str, str] = (
+        dict(entries.failures) if isinstance(entries, ConflictStageEntries) else {}
+    )
     for path in paths:
-        kinds[path] = classify_stage_map(
-            entries.get(path, {}),
-            binary=_path_is_binary(root, path),
-            has_markers=path in marked,
-        )
-    return kinds
+        if path in entry_failures:
+            kinds[path] = ConflictSight.OUT_OF_REACH
+            reasons[path] = entry_failures[path]
+        else:
+            kinds[path] = classify_stage_map(
+                entries.get(path, {}),
+                binary=_path_is_binary(root, path),
+                has_markers=path in marked,
+            )
+    return ConflictClassification(kinds, reasons=reasons)
 
 
 def stage_mechanical_conflicts(root: Path, kinds: dict[str, ConflictSight]) -> tuple[str, ...]:

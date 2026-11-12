@@ -41,6 +41,7 @@ _EXCLUDED: dict[str, str] = {
     "display.worker_snapshot": "internal display type, not public API",
     "exit_pause.exit_outcome": "internal exit type, not public API",
     "exit_pause.pause_on_exit_mode": "internal exit type, not public API",
+    "git.conflict_stage_entries": "internal git merge stage helper, not public API",
     "git.hardening": "internal git hardening, not public API",
     "git.git_run_result": "internal git type, not public API",
     "git.rebase.process_result": "internal git type, not public API",

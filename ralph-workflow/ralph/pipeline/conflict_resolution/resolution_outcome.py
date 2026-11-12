@@ -21,3 +21,6 @@ class ResolutionOutcome:
     unresolved_paths: tuple[str, ...]
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     exhaustion_message: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.succeeded
