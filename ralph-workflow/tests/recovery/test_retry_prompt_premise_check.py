@@ -1,3 +1,4 @@
+from ralph.phases import required_artifacts
 from ralph.phases.required_artifacts import (
     build_retry_hint,
     build_validation_retry_hint,
@@ -5,24 +6,35 @@ from ralph.phases.required_artifacts import (
     validation_retry_fingerprint,
 )
 from ralph.prompts import commit_review, materialize
+from ralph.recovery import retry_prompt
 from ralph.recovery.retry_prompt import (
-    PREMISE_CHECK_LINE,
-    build_premise_check_block,
     build_validation_retry_footer,
     failure_fingerprint,
-    premise_check_line,
 )
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_premise_check_anchor_is_not_exported": (
-        "the retired contract asserted the premise-check anchor is absent; the premise "
-        "rule is re-landed, so the retry formatter must expose the anchor and render "
-        "the premise line on an identical repeat"
+        "the premise-check rule was retired from the runtime because the debugging "
+        "skill already covers it, so the retry formatter must not export the premise "
+        "anchor, the premise builder, or the premise constant"
     ),
-    "test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure": (
-        "the retry history is delimited by the rendered validation footer, so the "
-        "accumulated attempt count and the rendered trailer are asserted next to the "
-        "premise line"
+    "test_retry_prompt_still_exposes_the_formatter_contract": (
+        "retiring the premise rule leaves the ordinary retry formatter contract in place"
+    ),
+    "test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures": (
+        "the failure fingerprint is unrelated to the premise rule and stays intact"
+    ),
+    "test_validation_retry_hint_omits_the_premise_line_even_on_an_identical_repeat": (
+        "the restored premise injection rendered the premise line on an identical "
+        "repeat; the retired rule requires the line to stay absent on every failure"
+    ),
+    "test_generic_retry_hint_omits_the_premise_line_even_on_an_identical_repeat": (
+        "the restored premise injection rendered the premise line on an identical "
+        "repeat; the retired rule requires the line to stay absent on every failure"
+    ),
+    "test_persisted_hint_history_keeps_the_premise_line_off_every_attempt": (
+        "the restored premise injection appended the premise line to the persisted "
+        "retry hint; the retired rule requires it absent from every attempt"
     ),
     "test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies": (
         "the retry history is delimited by the rendered validation footer, so the "
@@ -34,7 +46,7 @@ RALPH_TEST_CHANGE_REASONS = {
     ),
 }
 
-_RETIRED_PERSISTED_TRAILER_LINE = "test the premise shared by the failed fixes before another patch"
+_RETIRED_PREMISE_CHECK_LINE = "test the premise shared by the failed fixes before another patch"
 
 
 class _Diagnostic:
@@ -46,11 +58,25 @@ class _Diagnostic:
         self.line = 1
 
 
-def test_retry_prompt_exposes_the_premise_check_contract() -> None:
-    assert PREMISE_CHECK_LINE == "test the premise shared by the failed fixes before another patch"
-    assert callable(premise_check_line)
+def test_premise_check_anchor_is_not_exported() -> None:
+    assert not hasattr(retry_prompt, "PREMISE_CHECK_LINE")
+    assert not hasattr(retry_prompt, "premise_check_line")
+    assert not hasattr(retry_prompt, "build_premise_check_block")
+    assert "PREMISE_CHECK_LINE" not in retry_prompt.__all__
+    assert "premise_check_line" not in retry_prompt.__all__
+    assert "build_premise_check_block" not in retry_prompt.__all__
+    assert not hasattr(required_artifacts, "PREMISE_CHECK_LINE")
+    assert not hasattr(required_artifacts, "premise_check_line")
+    assert "PREMISE_CHECK_LINE" not in required_artifacts.__all__
+
+
+def test_retry_prompt_still_exposes_the_formatter_contract() -> None:
+    assert hasattr(retry_prompt, "build_validation_retry_footer")
+    assert hasattr(retry_prompt, "build_retry_error_block")
+    assert hasattr(retry_prompt, "failure_fingerprint")
+    assert hasattr(required_artifacts, "build_validation_retry_hint")
+    assert hasattr(required_artifacts, "build_retry_hint")
     assert callable(failure_fingerprint)
-    assert callable(build_premise_check_block)
 
 
 def test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures() -> None:
@@ -61,14 +87,7 @@ def test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures()
     assert first != changed
 
 
-def test_premise_check_line_renders_only_on_an_identical_repeat() -> None:
-    fingerprint = failure_fingerprint("artifact rejected", "line 3 invalid")
-    assert premise_check_line(fingerprint, None) == ""
-    assert premise_check_line(fingerprint, "another-failure") == ""
-    assert premise_check_line(fingerprint, fingerprint) == PREMISE_CHECK_LINE
-
-
-def test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_repeat() -> None:
+def test_validation_retry_hint_omits_the_premise_line_even_on_an_identical_repeat() -> None:
     diagnostics = [_Diagnostic("MD001", "frontmatter is malformed")]
     fingerprint = validation_retry_fingerprint("development_result", diagnostics)
     first = build_validation_retry_hint("development_result", diagnostics)
@@ -82,12 +101,12 @@ def test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_rep
         [_Diagnostic("MD002", "body section is missing")],
         prior_fingerprint=fingerprint,
     )
-    assert PREMISE_CHECK_LINE not in first
-    assert PREMISE_CHECK_LINE in repeat
-    assert PREMISE_CHECK_LINE not in changed
+    assert _RETIRED_PREMISE_CHECK_LINE not in first
+    assert _RETIRED_PREMISE_CHECK_LINE not in repeat
+    assert _RETIRED_PREMISE_CHECK_LINE not in changed
 
 
-def test_generic_retry_hint_renders_the_premise_line_only_on_an_identical_repeat() -> None:
+def test_generic_retry_hint_omits_the_premise_line_even_on_an_identical_repeat() -> None:
     fingerprint = retry_hint_fingerprint("development", "artifact was not submitted")
     first = build_retry_hint("development", "artifact was not submitted")
     repeat = build_retry_hint(
@@ -100,12 +119,12 @@ def test_generic_retry_hint_renders_the_premise_line_only_on_an_identical_repeat
         "a different failure happened",
         prior_fingerprint=fingerprint,
     )
-    assert PREMISE_CHECK_LINE not in first
-    assert PREMISE_CHECK_LINE in repeat
-    assert PREMISE_CHECK_LINE not in changed
+    assert _RETIRED_PREMISE_CHECK_LINE not in first
+    assert _RETIRED_PREMISE_CHECK_LINE not in repeat
+    assert _RETIRED_PREMISE_CHECK_LINE not in changed
 
 
-def test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure() -> None:
+def test_persisted_hint_history_keeps_the_premise_line_off_every_attempt() -> None:
     failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
     failure_b = [_Diagnostic("MD002", "body section is missing")]
     fingerprint_a = validation_retry_fingerprint("development_result", failure_a)
@@ -124,15 +143,14 @@ def test_persisted_hint_history_keeps_the_premise_line_off_a_changed_failure() -
         prior_fingerprint=fingerprint_a,
     )
 
-    assert first.count(PREMISE_CHECK_LINE) == 0
-    assert repeat.count(PREMISE_CHECK_LINE) == 1
-    assert changed.count(PREMISE_CHECK_LINE) == 0
+    assert first.count(_RETIRED_PREMISE_CHECK_LINE) == 0
+    assert repeat.count(_RETIRED_PREMISE_CHECK_LINE) == 0
+    assert changed.count(_RETIRED_PREMISE_CHECK_LINE) == 0
     assert first.count("ATTEMPT 1") == 1
     assert repeat.count("ATTEMPT 1") == 1
     assert repeat.count("ATTEMPT 2") == 1
     assert changed.count("ATTEMPT 3") == 1
     assert changed.count(build_validation_retry_footer()) == 1
-    assert _RETIRED_PERSISTED_TRAILER_LINE not in changed
 
 
 def test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies() -> None:
@@ -148,7 +166,8 @@ def test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_
     )
 
     assert repeat.count(build_validation_retry_footer()) == 1
-    assert repeat.endswith(PREMISE_CHECK_LINE)
+    assert repeat.endswith(build_validation_retry_footer())
+    assert repeat.count(_RETIRED_PREMISE_CHECK_LINE) == 0
     assert repeat.count("ATTEMPT 1") == 1
     assert repeat.count("ATTEMPT 2") == 1
 
@@ -157,7 +176,7 @@ def test_persisted_hint_from_the_retired_format_parses_into_the_same_attempts() 
     failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
 
     first = build_validation_retry_hint("development_result", failure_a)
-    persisted_before_removal = f"{first}\n\n{_RETIRED_PERSISTED_TRAILER_LINE}"
+    persisted_before_removal = f"{first}\n\n{_RETIRED_PREMISE_CHECK_LINE}"
     repeat = build_validation_retry_hint(
         "development_result",
         failure_a,
@@ -167,7 +186,7 @@ def test_persisted_hint_from_the_retired_format_parses_into_the_same_attempts() 
     assert repeat.count("ATTEMPT 1") == 1
     assert repeat.count("ATTEMPT 2") == 1
     assert repeat.count(build_validation_retry_footer()) == 1
-    assert _RETIRED_PERSISTED_TRAILER_LINE not in repeat
+    assert _RETIRED_PREMISE_CHECK_LINE not in repeat
 
 
 def test_prompt_readers_stay_read_only() -> None:

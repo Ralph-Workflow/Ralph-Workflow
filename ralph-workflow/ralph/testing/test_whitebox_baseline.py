@@ -834,6 +834,7 @@ tests/test_skills_skill_resolver.py|0,1,0
 tests/test_skills_state.py|0,3,0
 tests/test_skills_state_store.py|0,4,0
 tests/test_skills_upstream_install.py|0,1,0
+tests/test_skills_upstream_references.py|0,0,4
 tests/test_smoke_agy_end_to_end.py|0,1,0
 tests/test_smoke_agy_full_lifecycle_e2e.py|0,2,0
 tests/test_smoke_canonical_path.py|0,1,0

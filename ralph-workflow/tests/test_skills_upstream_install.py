@@ -25,6 +25,130 @@ if TYPE_CHECKING:
 
     from ralph.skills.upstream import HttpClient, HttpResponse
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_an_unrecognized_suffix_link_destination_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_an_escaping_reference_with_an_unrecognized_suffix_is_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_reference_without_a_file_extension_is_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_directory_style_reference_is_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_code_identifier_or_version_token_is_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_deeply_nested_reference_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_deeply_nested_reference_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_reference_style_link_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_reference_style_link_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_with_a_non_file_url_scheme_is_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_skill_whose_companions_are_all_carried_installs": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_nested_reference_with_fragment_is_accepted_when_present": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_nested_reference_with_fragment_is_refused_when_missing": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_nested_reference_with_title_is_accepted_when_present": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_nested_reference_with_title_is_refused_when_missing": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_parent_relative_reference_with_fragment_is_accepted_when_present": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_parent_relative_reference_with_fragment_is_refused_when_missing": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_parent_relative_reference_with_title_is_accepted_when_present": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_parent_relative_reference_with_title_is_refused_when_missing": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_pure_fragment_and_external_link_destinations_are_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_destination_with_an_uppercase_extension_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_destination_with_an_uppercase_extension_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_an_angle_bracket_destination_with_a_space_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_an_angle_bracket_destination_with_a_space_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_percent_encoded_destination_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_percent_encoded_destination_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_percent_encoded_url_destination_stays_external": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_percent_encoded_fragment_destination_is_not_a_file": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_destination_to_a_nested_file_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_destination_to_a_nested_file_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_destination_with_a_parent_relative_path_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_destination_with_a_parent_relative_path_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_link_definition_with_an_angle_bracket_destination_that_is_missing_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_bare_prose_mention_is_not_treated_as_a_file": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_missing_markdown_reference_reports_that_the_archive_does_not_carry_it": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_the_carried_suffix_helper_agrees_with_the_allowed_suffix_allowlist": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_code_span_with_a_percent_encoded_space_is_refused_like_its_link_form": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_code_span_with_a_percent_encoded_space_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_code_span_with_a_literal_space_stays_a_snippet_and_is_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+    "test_a_code_span_that_names_a_reader_project_path_is_permitted": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    ),
+}
+
+
 _NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 
 _SKILL_FILES: dict[str, dict[str, bytes]] = {
@@ -585,327 +709,8 @@ def test_an_unrecognized_suffix_reference_is_refused(sandbox: Path) -> None:
     assert "systematic-debugging" in outcome.preserved
     assert "test-driven-development" in outcome.installed
     assert any("docs/notes.raw" in message for message in outcome.messages)
-    root = upstream.canonical_skills_root()
-    assert not (root / "systematic-debugging" / "SKILL.md").exists()
-
-
-def test_a_reference_without_a_file_extension_is_permitted(sandbox: Path) -> None:
-    bare = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    bare["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee `notes` for the details.\n",
-    }
-    client, _calls = _client_for("v-test-1", bare)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
-
-
-def test_a_directory_style_reference_is_permitted(sandbox: Path) -> None:
-    directory = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    directory["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee `assets/` for the details.\n",
-    }
-    client, _calls = _client_for("v-test-1", directory)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
-
-
-def test_a_code_identifier_or_version_token_is_permitted(sandbox: Path) -> None:
-    identifiers = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    identifiers["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": (
-            b"# Guide\n\nThe test read `context.tempDir` and the runtime is `python3.12`.\n"
-        ),
-    }
-    client, _calls = _client_for("v-test-1", identifiers)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
-
-
-def test_a_deeply_nested_reference_that_is_carried_is_accepted(sandbox: Path) -> None:
-    deep = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    deep["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/deep/guide.md": b"# Guide\n\nSee `a.md`.\n",
-        "docs/deep/a.md": b"# Companion\n",
-    }
-    client, _calls = _client_for("v-test-1", deep)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "deep" / "a.md").read_bytes() == (
-        b"# Companion\n"
+    assert any(
+        "docs/notes.raw" in message and "extension" in message for message in outcome.messages
     )
-
-
-def test_a_deeply_nested_reference_that_is_missing_is_refused(sandbox: Path) -> None:
-    deep = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    deep["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/deep/guide.md": b"# Guide\n\nSee `a.md`.\n",
-    }
-    client, _calls = _client_for("v-test-1", deep)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert "systematic-debugging" in outcome.preserved
-    assert "test-driven-development" in outcome.installed
-    assert any("docs/deep/a.md" in message for message in outcome.messages)
     root = upstream.canonical_skills_root()
     assert not (root / "systematic-debugging" / "SKILL.md").exists()
-
-
-def test_a_reference_style_link_that_is_carried_is_accepted(sandbox: Path) -> None:
-    styled = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    styled["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee the [companion][ref].\n\n[ref]: a.md\n",
-        "docs/a.md": b"# Companion\n",
-    }
-    client, _calls = _client_for("v-test-1", styled)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "a.md").read_bytes() == b"# Companion\n"
-
-
-def test_a_reference_style_link_that_is_missing_is_refused(sandbox: Path) -> None:
-    styled = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    styled["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee the [companion][ref].\n\n[ref]: missing.md\n",
-    }
-    client, _calls = _client_for("v-test-1", styled)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert "systematic-debugging" in outcome.preserved
-    assert "test-driven-development" in outcome.installed
-    assert any("docs/missing.md" in message for message in outcome.messages)
-    root = upstream.canonical_skills_root()
-    assert not (root / "systematic-debugging" / "SKILL.md").exists()
-
-
-def test_a_link_with_a_non_file_url_scheme_is_permitted(sandbox: Path) -> None:
-    external = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    external["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": (
-            b"# Guide\n\n"
-            b"[mail](mailto:someone@example.com), "
-            b"[plain](http://example.com/doc.md), "
-            b"and [ftp](ftp://example.com/doc.md).\n"
-        ),
-    }
-    client, _calls = _client_for("v-test-1", external)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
-
-
-def test_a_skill_whose_companions_are_all_carried_installs(sandbox: Path) -> None:
-    complete = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    complete["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n\nSee `docs/guide.md`.\n",
-        "docs/guide.md": b"# Guide\n\nSee `a.md` and `../shared/g.md`.\n",
-        "docs/a.md": b"# Companion\n",
-        "shared/g.md": b"# Shared\n",
-    }
-    client, _calls = _client_for("v-test-1", complete)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    installed = root / "systematic-debugging"
-    assert (installed / "docs" / "a.md").read_bytes() == b"# Companion\n"
-    assert (installed / "shared" / "g.md").read_bytes() == b"# Shared\n"
-
-
-def test_a_nested_reference_with_fragment_is_accepted_when_present(
-    sandbox: Path,
-) -> None:
-    nested = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    nested["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee [companion](a.md#section).\n",
-        "docs/a.md": b"# Companion\n\n## Section\n",
-    }
-    client, _calls = _client_for("v-test-1", nested)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "a.md").is_file()
-
-
-def test_a_nested_reference_with_fragment_is_refused_when_missing(
-    sandbox: Path,
-) -> None:
-    nested = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    nested["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee [companion](missing.md#section).\n",
-    }
-    client, _calls = _client_for("v-test-1", nested)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert "systematic-debugging" in outcome.preserved
-    assert any("docs/missing.md" in message for message in outcome.messages)
-    root = upstream.canonical_skills_root()
-    assert not (root / "systematic-debugging" / "SKILL.md").exists()
-
-
-def test_a_nested_reference_with_title_is_accepted_when_present(
-    sandbox: Path,
-) -> None:
-    nested = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    nested["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b'# Guide\n\nSee [companion](a.md "Companion Title").\n',
-        "docs/a.md": b"# Companion\n",
-    }
-    client, _calls = _client_for("v-test-1", nested)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "a.md").is_file()
-
-
-def test_a_nested_reference_with_title_is_refused_when_missing(
-    sandbox: Path,
-) -> None:
-    nested = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    nested["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b'# Guide\n\nSee [companion](missing.md "Companion Title").\n',
-    }
-    client, _calls = _client_for("v-test-1", nested)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert "systematic-debugging" in outcome.preserved
-    assert any("docs/missing.md" in message for message in outcome.messages)
-    root = upstream.canonical_skills_root()
-    assert not (root / "systematic-debugging" / "SKILL.md").exists()
-
-
-def test_a_parent_relative_reference_with_fragment_is_accepted_when_present(
-    sandbox: Path,
-) -> None:
-    carried = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    carried["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee [shared](../shared/g.md#section).\n",
-        "shared/g.md": b"# Shared\n\n## Section\n",
-    }
-    client, _calls = _client_for("v-test-1", carried)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "shared" / "g.md").is_file()
-
-
-def test_a_parent_relative_reference_with_fragment_is_refused_when_missing(
-    sandbox: Path,
-) -> None:
-    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    missing["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b"# Guide\n\nSee [shared](../shared/missing.md#section).\n",
-    }
-    client, _calls = _client_for("v-test-1", missing)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert "systematic-debugging" in outcome.preserved
-    assert any("shared/missing.md" in message for message in outcome.messages)
-    root = upstream.canonical_skills_root()
-    assert not (root / "systematic-debugging" / "SKILL.md").exists()
-
-
-def test_a_parent_relative_reference_with_title_is_accepted_when_present(
-    sandbox: Path,
-) -> None:
-    carried = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    carried["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b'# Guide\n\nSee [shared](../shared/g.md "Shared Guide").\n',
-        "shared/g.md": b"# Shared\n",
-    }
-    client, _calls = _client_for("v-test-1", carried)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "shared" / "g.md").is_file()
-
-
-def test_a_parent_relative_reference_with_title_is_refused_when_missing(
-    sandbox: Path,
-) -> None:
-    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    missing["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": b'# Guide\n\nSee [shared](../shared/missing.md "Shared Guide").\n',
-    }
-    client, _calls = _client_for("v-test-1", missing)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert "systematic-debugging" in outcome.preserved
-    assert any("shared/missing.md" in message for message in outcome.messages)
-    root = upstream.canonical_skills_root()
-    assert not (root / "systematic-debugging" / "SKILL.md").exists()
-
-
-def test_pure_fragment_and_external_link_destinations_are_permitted(
-    sandbox: Path,
-) -> None:
-    escaping = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    escaping["systematic-debugging"] = {
-        "SKILL.md": b"# Systematic debugging\n",
-        "docs/guide.md": (
-            b"# Guide\n\n"
-            b"See [section](#section), "
-            b"[empty fragment](#), "
-            b'[external](https://example.com/doc.md#sec "Ext"), '
-            b'[escaping](../../outside.md#sec "Esc"), '
-            b"and [absolute](/etc/x.md#sec 'Abs').\n"
-        ),
-    }
-    client, _calls = _client_for("v-test-1", escaping)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()

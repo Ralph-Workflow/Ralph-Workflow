@@ -9,7 +9,8 @@ from tests.project_policy.test_v4_corpus_authentic import build_v4_pack
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_frozen_v5_pack_validates_ready": (
-        "v6 starter carries advisory enforcement cell in premise check guard row"
+        "the v5 pack drops the enforcement-status cell the v6 starter "
+        "rule-to-enforcer ladder carries"
     ),
 }
 

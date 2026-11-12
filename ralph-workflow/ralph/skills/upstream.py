@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
+from urllib.parse import unquote
 
 if sys.platform != "win32":
     import fcntl
@@ -125,10 +126,14 @@ except AttributeError:
 _ATTEMPT_LOCK = threading.Lock()
 
 _REFERENCE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"`([^`\n]+)`|\]\(([^)\n]+)\)|^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(\S+)", re.MULTILINE
+    r"`([^`\n]+)`|\]\(([^)\n]+)\)|^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(<[^>\n]*>|\S+)", re.MULTILINE
 )
 
-_FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[a-z]+$")
+_FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*\.[A-Za-z]+$")
+
+_CARRIED_SUFFIXES: Final[frozenset[str]] = frozenset(
+    suffix.lower() for suffix in ALLOWED_FILE_SUFFIXES
+)
 
 _URL_SCHEME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
@@ -638,7 +643,9 @@ def _missing_reference(content: _SkillPayload) -> str | None:
                 continue
             if resolved in content.files:
                 continue
-            return f"it references {resolved}, which the archive does not carry"
+            if _carried_suffix(resolved) is not None:
+                return f"it references {resolved}, which the archive does not carry"
+            return f"it references {resolved}, whose extension the installer does not carry"
     return None
 
 
@@ -659,14 +666,14 @@ def _resolve_reference(relative: str, reference: str) -> str | None:
     return "/".join(parts)
 
 
-def _destination_path(raw: str) -> str:
-    candidate = raw.strip()
-    if candidate.startswith("<") and ">" in candidate:
-        candidate = candidate[1 : candidate.index(">")].strip()
-    elif candidate:
-        candidate = candidate.split(None, 1)[0]
-    path, _, _ = candidate.partition("#")
-    return path.strip()
+def _carried_suffix(path: str) -> str | None:
+    _, dot, extension = path.rpartition(".")
+    if not dot:
+        return None
+    suffix = f".{extension.lower()}"
+    if suffix in _CARRIED_SUFFIXES:
+        return suffix
+    return None
 
 
 def _iter_references(text: str) -> Iterator[str]:
@@ -674,27 +681,62 @@ def _iter_references(text: str) -> Iterator[str]:
         raw_code: object = match.group(1)
         raw_link: object = match.group(2)
         raw_definition: object = match.group(3)
-        candidate: str
+        candidate: str | None
         if isinstance(raw_code, str):
-            candidate = raw_code.strip()
+            candidate = _code_candidate(raw_code)
         elif isinstance(raw_link, str):
-            candidate = _destination_path(raw_link)
+            candidate = _destination_candidate(raw_link)
         elif isinstance(raw_definition, str):
-            candidate = _destination_path(raw_definition)
+            candidate = _destination_candidate(raw_definition)
         else:
             continue
-        if not candidate or " " in candidate:
+        if candidate is None:
             continue
         if _is_external_reference(candidate):
             continue
         if candidate.endswith("/"):
             continue
-        parts: list[str] = [part for part in candidate.split("/") if part]
-        if not parts:
+        if not _is_file_reference(candidate):
             continue
-        if not _FILE_NAME_PATTERN.match(parts[-1]):
-            continue
-        yield "/".join(parts)
+        yield candidate
+
+
+def _code_candidate(raw: str) -> str | None:
+    candidate = raw.strip()
+    if not candidate or any(character.isspace() for character in candidate):
+        return None
+    return unquote(candidate)
+
+
+def _destination_candidate(raw: str) -> str | None:
+    destination = _destination_text(raw)
+    if destination is None:
+        return None
+    path, _, _ = unquote(destination).partition("#")
+    path = path.strip()
+    if not path:
+        return None
+    return path
+
+
+def _destination_text(raw: str) -> str | None:
+    text = raw.strip()
+    if not text:
+        return None
+    if text.startswith("<"):
+        end = text.find(">")
+        if end == -1:
+            return None
+        return text[1:end]
+    return text.split(None, 1)[0]
+
+
+def _is_file_reference(candidate: str) -> bool:
+    segment = candidate.rsplit("/", 1)[-1]
+    _, dot, extension = segment.rpartition(".")
+    if not dot or not _FILE_NAME_PATTERN.match(segment):
+        return False
+    return extension.islower() or extension.isupper()
 
 
 def _is_external_reference(candidate: str) -> bool:
