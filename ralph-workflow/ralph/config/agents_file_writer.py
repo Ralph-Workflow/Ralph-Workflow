@@ -71,11 +71,20 @@ def _target_serialization_lock(target: Path) -> Iterator[None]:
                 lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
                 if sys.platform != "win32":
                     fcntl.flock(lock_fd, fcntl.LOCK_EX)
-            except OSError:
+            except OSError as exc:
                 if lock_fd is not None:
                     with contextlib.suppress(OSError):
                         os.close(lock_fd)
                     lock_fd = None
+                msg = (
+                    f"Conflict detected while writing {target} (trigger: lock-failure): "
+                    f"failed to acquire OS lock: {exc}. "
+                    f"Aborting write to preserve operator edits without overwrite. "
+                    f"Inspect {target} or re-run with explicit recovery (e.g. ralph --regenerate-config)."
+                )
+                logger.warning(msg)
+                _std_logger.warning(msg)
+                raise AgentsFileConflictError(msg) from exc
         yield
     finally:
         if lock_fd is not None:
@@ -167,6 +176,30 @@ def _rollback_backup(
             _publish_backup(bak_path, prior_bytes, directory)
 
 
+def _replace_target(
+    tmp_path: Path,
+    write_target: Path,
+    expected_bytes: bytes | None,
+    path: Path,
+    trigger: str,
+    bak_path: Path,
+    prior_bak_bytes: bytes | None,
+    published_identity: tuple[int, int] | None,
+) -> None:
+    current_bytes = _read_existing_bytes(write_target)
+    if current_bytes != expected_bytes:
+        if expected_bytes is not None:
+            _rollback_backup(
+                bak_path,
+                prior_bak_bytes,
+                write_target.parent,
+                published_identity,
+                expected_bytes,
+            )
+        _raise_conflict(path, trigger)
+    tmp_path.replace(write_target)
+
+
 def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
     path = Path(path)
 
@@ -220,7 +253,16 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
                     )
                 _raise_conflict(path, trigger)
 
-            tmp_path.replace(write_target)
+            _replace_target(
+                tmp_path,
+                write_target,
+                existing_bytes,
+                path,
+                trigger,
+                bak_path,
+                prior_bak_bytes,
+                published_identity,
+            )
     except BaseException:
         if tmp_path is not None:
             with contextlib.suppress(OSError):

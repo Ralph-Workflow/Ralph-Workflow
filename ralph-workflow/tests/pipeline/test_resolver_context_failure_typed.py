@@ -52,9 +52,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "removed white-box private attribute assertion assert sb._model == model to comply "
         "with zero white-box test policy; the status bar rendering is verified via render_status_bar"
     ),
-    "test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar": (
-        "avoid soft line-wrapping breaking long path in console status bar assertion"
-    ),
+    "test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar": "remove newlines from rendered status bar before checking fix_msg to prevent Rich line wrap splitting long paths",
 }
 
 

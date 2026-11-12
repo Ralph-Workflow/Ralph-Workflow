@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import sys
 import threading
 import tomllib
 from collections.abc import Callable
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.config.agents_file_writer import write_agents_toml
+from ralph.config.agents_file_writer import AgentsFileConflictError, write_agents_toml
 
 _AGENTS_FILENAME = "ralph-workflow-agents.toml"
 
@@ -469,3 +470,118 @@ def test_replacement_failure_interleave_preserves_concurrent_backup(
     assert sorted(entry.name for entry in live_dir.iterdir()) == sorted(
         [target.name, bak_path.name]
     )
+
+
+def test_stale_writer_before_replace_aborts_when_concurrent_writer_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / _AGENTS_FILENAME
+    base_content = '[agents.base]\ncmd = "base"\n'
+    target.write_text(base_content, encoding="utf-8")
+    bak_path = target.with_name(f"{target.name}.bak")
+
+    reached_replace = threading.Event()
+    release_a = threading.Event()
+
+    real_read_bytes = Path.read_bytes
+    writer_a_reads = 0
+
+    def hooked_read_bytes(self: Path) -> bytes:
+        nonlocal writer_a_reads
+        if threading.current_thread().name == "writer-a" and _same_path(self, target):
+            writer_a_reads += 1
+            if writer_a_reads >= 3:
+                reached_replace.set()
+                assert release_a.wait(timeout=10), "writer A was never released"
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", hooked_read_bytes)
+
+    results: dict[str, object] = {}
+
+    def run_writer_a() -> None:
+        try:
+            write_agents_toml(target, '[agents.a]\ncmd = "a"\n', trigger="writer-a")
+            results["A"] = True
+        except AgentsFileConflictError as exc:
+            results["A"] = exc
+
+    thread_a = threading.Thread(target=run_writer_a, name="writer-a")
+    thread_a.start()
+    assert reached_replace.wait(timeout=10), "writer A never reached target replacement"
+
+    b_success = write_agents_toml(target, '[agents.b]\ncmd = "b"\n', trigger="writer-b")
+    assert b_success is True
+    results["B"] = True
+
+    writer_b_backup_identity = (bak_path.stat().st_dev, bak_path.stat().st_ino)
+
+    release_a.set()
+    thread_a.join(timeout=10)
+    assert not thread_a.is_alive()
+
+    assert isinstance(results.get("A"), AgentsFileConflictError)
+    assert "Conflict detected" in str(results["A"])
+
+    expected_b = '[agents.b]\ncmd = "b"\n'
+    assert target.read_text(encoding="utf-8") == expected_b
+    tomllib.loads(target.read_text(encoding="utf-8"))
+
+    assert bak_path.is_file()
+    assert bak_path.read_text(encoding="utf-8") == base_content
+    assert (bak_path.stat().st_dev, bak_path.stat().st_ino) == writer_b_backup_identity
+
+    leftovers = [
+        f.name
+        for f in tmp_path.iterdir()
+        if f.name != target.name and not f.name.endswith(".bak") and not f.name.endswith(".lock")
+    ]
+    assert leftovers == []
+
+
+def test_os_lock_open_failure_raises_conflict_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / _AGENTS_FILENAME
+    target.write_text('[agents.base]\ncmd = "base"\n', encoding="utf-8")
+    real_open = os.open
+
+    def failing_open(
+        path: str | bytes | os.PathLike[str], flags: int, *args: object, **kwargs: object
+    ) -> int:
+        if ".ralph-agents-" in str(path) and str(path).endswith(".lock"):
+            raise OSError("simulated lock file open failure")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", failing_open)
+
+    with pytest.raises(AgentsFileConflictError) as exc_info:
+        write_agents_toml(target, '[agents.new]\ncmd = "new"\n', trigger="test-lock-fail")
+
+    assert "failed to acquire OS lock" in str(exc_info.value)
+    assert target.read_text(encoding="utf-8") == '[agents.base]\ncmd = "base"\n'
+
+
+def test_os_flock_failure_raises_conflict_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("flock is not used on Windows")
+    import fcntl
+
+    target = tmp_path / _AGENTS_FILENAME
+    target.write_text('[agents.base]\ncmd = "base"\n', encoding="utf-8")
+
+    def failing_flock(fd: int, operation: int) -> None:
+        raise OSError("simulated flock failure")
+
+    monkeypatch.setattr(fcntl, "flock", failing_flock)
+
+    with pytest.raises(AgentsFileConflictError) as exc_info:
+        write_agents_toml(target, '[agents.new]\ncmd = "new"\n', trigger="test-flock-fail")
+
+    assert "failed to acquire OS lock" in str(exc_info.value)
+    assert target.read_text(encoding="utf-8") == '[agents.base]\ncmd = "base"\n'

@@ -494,7 +494,7 @@ be weakened to obtain a passing result.
   http: https://github.com/Ralph-Workflow/Ralph-Workflow
   review date: 2026-11-09
   supports: Plan scaling (9), Commit-level hygiene (10) and Human
-  checkpoints (11) — this project has a plan phase, a commit phase,
+  checkpoints (11) — this project has a planning phase, a commit phase,
   and human checkpoints for irreversible actions; the thresholds that
   separate a trivial change from a planned one, and an irreversible
   action from a reversible one, are project judgment rather than a

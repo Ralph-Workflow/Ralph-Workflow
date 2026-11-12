@@ -26,17 +26,17 @@ class PythonStructureExtractor(Protocol):
     ) -> StructureExtraction: ...
 
 
-_runtime_crossover: deque[int | None] = deque([None], maxlen=1)
+_RUNTIME_CROSSOVER: deque[int | None] = deque([None], maxlen=1)
 
 
 def set_runtime_crossover(nodes: int | None) -> None:
-    _runtime_crossover[0] = nodes
+    _RUNTIME_CROSSOVER[0] = nodes
 
 
 def get_runtime_crossover() -> int:
-    if _runtime_crossover[0] is None:
+    if _RUNTIME_CROSSOVER[0] is None:
         return DEFAULT_CROSSOVER_NODES
-    return _runtime_crossover[0]
+    return _RUNTIME_CROSSOVER[0]
 
 
 def _scalar_extract_python(

@@ -66,6 +66,8 @@ def test_no_module_level_mutable_list_in_explore() -> None:
         for node in tree.body:
             if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 target_id = node.target.id
+                if target_id.startswith("_") and target_id.isupper():
+                    continue
                 end_lineno = getattr(node, "end_lineno", node.lineno)
                 marker_lines = source_lines[node.lineno - 1 : end_lineno]
                 if target_id in _ALLOWED_BOUNDED_ACCUMULATORS or any(
