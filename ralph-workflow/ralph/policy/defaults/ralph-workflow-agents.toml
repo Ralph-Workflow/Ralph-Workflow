@@ -8,99 +8,81 @@ session_flag = "--resume {}"
 display_name = "Claude"
 subagent_capability = true
 
-# @AGENT-BLOCK-START: claude
-# [agents.claude]
-# cmd = "claude"
-# transport = "claude_interactive"
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# display_name = "Claude"
-# @AGENT-BLOCK-END
+[inactive_agents.claude]
+cmd = "claude"
+transport = "claude_interactive"
+yolo_flag = "--dangerously-skip-permissions"
+verbose_flag = "--verbose"
+json_parser = "claude"
+session_flag = "--resume {}"
+display_name = "Claude"
 
-# @AGENT-BLOCK-START: claude-headless
-# [agents.claude-headless]
-# cmd = "claude -p"
-# transport = "claude"
-# output_flag = "--output-format=stream-json"
-# yolo_flag = "--permission-mode auto"
-# verbose_flag = "--verbose"
-# print_flag = "--print"
-# streaming_flag = "--include-partial-messages"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# display_name = "Claude Code (headless)"
-# @AGENT-BLOCK-END
+[inactive_agents.claude-headless]
+cmd = "claude -p"
+transport = "claude"
+output_flag = "--output-format=stream-json"
+yolo_flag = "--permission-mode auto"
+verbose_flag = "--verbose"
+print_flag = "--print"
+streaming_flag = "--include-partial-messages"
+json_parser = "claude"
+session_flag = "--resume {}"
+display_name = "Claude Code (headless)"
 
-# @AGENT-BLOCK-START: codex
-# [agents.codex]
-# cmd = "codex exec"
-# transport = "codex"
-# output_flag = "--json"
-# yolo_flag = "--dangerously-bypass-approvals-and-sandbox"
-# json_parser = "codex"
-# display_name = "Codex"
-# @AGENT-BLOCK-END
+[inactive_agents.codex]
+cmd = "codex exec"
+transport = "codex"
+output_flag = "--json"
+yolo_flag = "--dangerously-bypass-approvals-and-sandbox"
+json_parser = "codex"
+display_name = "Codex"
 
-# @AGENT-BLOCK-START: opencode
-# [agents.opencode]
-# cmd = "opencode"
-# transport = "opencode"
-# json_parser = "opencode"
-# session_flag = "--session {}"
-# display_name = "OpenCode"
-# @AGENT-BLOCK-END
+[inactive_agents.opencode]
+cmd = "opencode"
+transport = "opencode"
+json_parser = "opencode"
+session_flag = "--session {}"
+display_name = "OpenCode"
 
-# @AGENT-BLOCK-START: nanocoder
-# [agents.nanocoder]
-# cmd = "nanocoder"
-# transport = "nanocoder"
-# json_parser = "generic"
-# display_name = "Nanocoder"
-# @AGENT-BLOCK-END
+[inactive_agents.nanocoder]
+cmd = "nanocoder"
+transport = "nanocoder"
+json_parser = "generic"
+display_name = "Nanocoder"
 
-# @AGENT-BLOCK-START: agy
-# [agents.agy]
-# cmd = "agy"
-# transport = "agy"
-# yolo_flag = "--dangerously-skip-permissions"
-# print_flag = "--print"
-# json_parser = "generic"
-# display_name = "Google Anti Gravity"
-# @AGENT-BLOCK-END
+[inactive_agents.agy]
+cmd = "agy"
+transport = "agy"
+yolo_flag = "--dangerously-skip-permissions"
+print_flag = "--print"
+json_parser = "generic"
+display_name = "Google Anti Gravity"
 
-# @AGENT-BLOCK-START: pi
-# [agents.pi]
-# cmd = "pi"
-# transport = "pi"
-# output_flag = "--mode json"
-# yolo_flag = "--approve"
-# json_parser = "pi"
-# session_flag = "--session {}"
-# display_name = "Pi"
-# @AGENT-BLOCK-END
+[inactive_agents.pi]
+cmd = "pi"
+transport = "pi"
+output_flag = "--mode json"
+yolo_flag = "--approve"
+json_parser = "pi"
+session_flag = "--session {}"
+display_name = "Pi"
 
-# @AGENT-BLOCK-START: cursor
-# [agents.cursor]
-# cmd = "agent"
-# transport = "cursor"
-# output_flag = "--output-format stream-json"
-# yolo_flag = "--yolo"
-# print_flag = "--print"
-# streaming_flag = "--stream-partial-output"
-# json_parser = "generic"
-# session_flag = "--resume {}"
-# display_name = "Cursor"
-# @AGENT-BLOCK-END
+[inactive_agents.cursor]
+cmd = "agent"
+transport = "cursor"
+output_flag = "--output-format stream-json"
+yolo_flag = "--yolo"
+print_flag = "--print"
+streaming_flag = "--stream-partial-output"
+json_parser = "generic"
+session_flag = "--resume {}"
+display_name = "Cursor"
 
-# @AGENT-BLOCK-START: kimi
-# [agents.kimi]
-# cmd = "kimi"
-# transport = "kimi"
-# output_flag = "--output-format=stream-json"
-# print_flag = "-p"
-# json_parser = "generic"
-# session_flag = "-S {}"
-# display_name = "Kimi"
-# @AGENT-BLOCK-END
+[inactive_agents.kimi]
+cmd = "kimi"
+transport = "kimi"
+output_flag = "--output-format=stream-json"
+print_flag = "-p"
+json_parser = "generic"
+session_flag = "-S {}"
+display_name = "Kimi"

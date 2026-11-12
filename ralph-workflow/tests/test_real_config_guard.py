@@ -556,7 +556,7 @@ def test_bundled_defaults_agents_toml_is_protected_and_valid() -> None:
     assert isinstance(parsed["agents"], dict)
     assert parsed["agents"]["claude"]["cmd"] == "claude"
     assert "[agents.claude]" in content
-    assert "# @AGENT-BLOCK-START: codex" in content
+    assert "[inactive_agents.codex]" in content
     assert bundled_agents.read_bytes() == initial_bytes
 
 

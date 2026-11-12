@@ -3817,8 +3817,6 @@ ralph.supervising
    :members:
    :show-inheritance:
 
-----
-
 Utilities
 ---------
 

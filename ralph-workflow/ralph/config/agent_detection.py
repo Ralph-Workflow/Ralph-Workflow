@@ -327,6 +327,13 @@ def _agent_block_pattern(name: str) -> re.Pattern[str]:
     )
 
 
+def _inactive_agent_pattern(name: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"^[ \t]*\[\s*inactive_agents\.(?:{re.escape(name)}|\"{re.escape(name)}\"|'{re.escape(name)}')\s*\]",
+        re.MULTILINE,
+    )
+
+
 def _uncomment_block(content: str) -> str:
     return "\n".join(
         line[2:] if line.startswith("# ") else line[1:] if line.startswith("#") else line
@@ -360,6 +367,32 @@ def enable_detected_agents(config_path: Path | None = None) -> list[str]:
     enabled: list[str] = []
 
     for name in detect_installed_agents():
+        inactive_match = _inactive_agent_pattern(name).search(text)
+        if inactive_match is not None:
+            candidate = (
+                text[: inactive_match.start()]
+                + re.sub(r"\[\s*inactive_agents\.", "[agents.", inactive_match.group(0), count=1)
+                + text[inactive_match.end() :]
+            )
+            try:
+                tomllib.loads(candidate)
+            except ValueError as exc:
+                conflict = (
+                    f"[agents.{name}] is already configured"
+                    if name in _configured_agent_names(text)
+                    else "it conflicts with the existing configuration"
+                )
+                msg = (
+                    f"Skipping conflicting agent block for {name}: {conflict} ({exc}). "
+                    f"The existing configuration is kept unchanged (trigger: {_ENABLE_TRIGGER})."
+                )
+                logger.warning(msg)
+                _std_logger.warning(msg)
+                continue
+            text = candidate
+            enabled.append(name)
+            continue
+
         match = _agent_block_pattern(name).search(text)
         if match is None:
             continue

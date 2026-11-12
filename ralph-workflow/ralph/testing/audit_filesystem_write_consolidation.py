@@ -733,7 +733,7 @@ def _scan_module(
     tree, _source = prepared
 
     nodes = list(ast.walk(tree))
-    parents = build_parent_map(tree)
+    parents = build_parent_map(nodes)
     (
         module_aliases,
         direct_mutations,

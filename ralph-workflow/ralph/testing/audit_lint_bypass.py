@@ -306,6 +306,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/tools/_validation_retry_hints.py",
             "ralph/mcp/tools/coordination.py",
+            "ralph/supervising.py",
             "tests/**/*.py",
         ],
         "reason": (

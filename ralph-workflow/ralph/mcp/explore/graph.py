@@ -6,7 +6,10 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Final, cast
+from typing import TYPE_CHECKING, Final, cast
+
+if TYPE_CHECKING:
+    from ralph.mcp.explore._graph_query import run_query
 
 from ralph.mcp.explore.store import (
     EdgeRow,
@@ -277,6 +280,7 @@ __all__ = [
     "GraphEdge",
     "GraphNode",
     "GraphResult",
+    "run_query",
 ]
 
 

@@ -44,6 +44,7 @@ class UnifiedConfig(RalphBaseModel):
     conflict_resolution: ConflictResolutionConfig = Field(default_factory=ConflictResolutionConfig)
     ccs: CcsConfig = Field(default_factory=CcsConfig)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
+    inactive_agents: dict[str, AgentConfig] = Field(default_factory=dict)
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
     agent_chains: dict[str, AgentChainConfig] = Field(default_factory=dict)
     agent_drains: dict[str, AgentDrainConfig] = Field(default_factory=dict)

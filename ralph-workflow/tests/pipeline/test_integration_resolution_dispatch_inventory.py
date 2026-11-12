@@ -10,11 +10,12 @@ from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
 from ralph.project_policy import cli_integration
 
 ORDINARY_DISPATCH_ROUTES = (
-    (run_loop._run_inner_loop, "_block_unresolved_integration"),
+    (run_loop._run_inner_loop, "_continue_after_startup_integration"),
     (run_loop._continue_after_startup_integration, "_block_unresolved_integration"),
     (run_loop._run_inner_loop_after_startup, "_block_unresolved_integration"),
     (run_loop._resume_after_cooldown_wait, "inspect_integration_resolution"),
-    (runner._run_pipeline_step, "determine_effect_from_policy"),
+    (runner._run_pipeline_step, "_prepare_pipeline_step_dispatch"),
+    (runner._prepare_pipeline_step_dispatch, "determine_effect_from_policy"),
     (runner._integrate_inline_effect, "_integrate_on_phase_transition"),
     (effect_executor.execute_agent_effect, "assert_non_resolution_dispatch_allowed"),
     (worker_runtime.run_parallel_worker_from_manifest, "assert_non_resolution_dispatch_allowed"),
@@ -25,7 +26,7 @@ ORDINARY_DISPATCH_ROUTES = (
 
 RESOLUTION_ROUTES = (
     session.invoke_resolution_agent,
-    driver.run_rebase_conflict_resolution_pipeline,
+    driver.run_rebase_conflict_resolution_outcome,
 )
 
 EXPECTED_EFFECT_EXECUTOR_CALLER_MODULES = {

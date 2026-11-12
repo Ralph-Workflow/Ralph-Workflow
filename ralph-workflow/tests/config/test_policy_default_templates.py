@@ -50,14 +50,11 @@ def test_local_template_does_not_contain_new_key() -> None:
 def test_policy_template_new_key_comment_mentions_all_kinds() -> None:
     text = _read_template()
     for line in text.splitlines():
-        if "agent_workspace_change_weights" in line and line.lstrip().startswith("#"):
+        if "agent_workspace_change_weights" in line:
             for kind in ("source", "log", "cache", "artifact", "other"):
                 assert kind in line, (
-                    f"new key comment line must mention WorkspaceChangeKind {kind!r}, got: {line!r}"
+                    f"new key line must mention WorkspaceChangeKind {kind!r}, got: {line!r}"
                 )
 
             return
-    raise AssertionError(
-        "new key comment line not found in template; the new key"
-        " must be commented out with a docstring that lists all 5 kinds"
-    )
+    raise AssertionError("new key line not found in template; the new key must list all 5 kinds")

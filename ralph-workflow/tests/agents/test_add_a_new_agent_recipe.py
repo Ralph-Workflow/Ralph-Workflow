@@ -16,6 +16,8 @@ from ralph.config.enums import AgentTransport
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+_DOC_REFERENCE = "docs/agents/adding-a-new-agent.md"
+
 
 class _FakeParser(ParserTemplateBase):
     _STOP_EVENT_TYPES = frozenset()

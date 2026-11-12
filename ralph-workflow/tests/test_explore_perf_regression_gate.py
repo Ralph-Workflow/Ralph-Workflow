@@ -86,14 +86,13 @@ def test_in_budget_baseline_covers_every_r6_3_workload() -> None:
 
 
 @pytest.mark.timeout_seconds(20)
-def test_in_budget_full_synthetic_seeder_builds_tens_of_thousands() -> None:
-    with tempfile.TemporaryDirectory() as scratch:
-        workspace = _seed_large_synthetic(
-            Path(scratch),
-            file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT,
-        )
-        file_count = sum(1 for path in workspace.rglob("*") if path.is_file())
-        assert file_count >= 10_000
+def test_in_budget_full_synthetic_seeder_builds_tens_of_thousands(tmp_path: Path) -> None:
+    workspace = _seed_large_synthetic(
+        tmp_path,
+        file_count=FULL_LARGE_SYNTHETIC_FILE_COUNT,
+    )
+    file_count = sum(1 for path in workspace.rglob("*") if path.is_file())
+    assert file_count >= 10_000
 
 
 @pytest.mark.timeout_seconds(20)

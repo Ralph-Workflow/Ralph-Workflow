@@ -27,32 +27,23 @@ EXPECTED_BLOCK_NAMES = (
 
 
 def _block_names(text: str) -> list[str]:
-    return re.findall(r"^# @AGENT-BLOCK-START: (\S+)$", text, re.MULTILINE)
+    return re.findall(r"^\[inactive_agents\.([^\]]+)\]", text, re.MULTILINE)
 
 
 def _block_content(text: str, name: str) -> str:
     block = re.compile(
-        rf"^# @AGENT-BLOCK-START: {re.escape(name)}\n"
+        rf"^\[inactive_agents\.{re.escape(name)}\]\n"
         rf"(?P<content>.*?)"
-        rf"^# @AGENT-BLOCK-END\n?",
+        rf"(?=^\[|\Z)",
         re.MULTILINE | re.DOTALL,
     )
     match = block.search(text)
-    assert match is not None, f"the bundled template has no @AGENT-BLOCK for {name!r}"
+    assert match is not None, f"the bundled template has no inactive agent for {name!r}"
     return match.group("content")
 
 
-def _uncomment(content: str) -> str:
-    return "\n".join(
-        line[2:] if line.startswith("# ") else line[1:] if line.startswith("#") else line
-        for line in content.splitlines()
-    )
-
-
 def _isolated_block_file(name: str) -> str:
-    return (
-        f"# @AGENT-BLOCK-START: {name}\n{_block_content(TEMPLATE_TEXT, name)}# @AGENT-BLOCK-END\n"
-    )
+    return f"[inactive_agents.{name}]\n{_block_content(TEMPLATE_TEXT, name)}"
 
 
 def test_bundled_template_ships_every_expected_agent_block() -> None:
@@ -64,22 +55,20 @@ def test_bundled_agents_template_is_valid_toml() -> None:
     agents = data["agents"]
     assert "claude" in agents
     assert agents["claude"]["cmd"] == "claude"
+    inactive = data["inactive_agents"]
+    assert tuple(inactive.keys()) == EXPECTED_BLOCK_NAMES
 
 
-@pytest.mark.parametrize("name", _block_names(TEMPLATE_TEXT))
-def test_every_bundled_agent_block_uncomments_to_valid_toml(name: str) -> None:
-    uncommented = _uncomment(_block_content(TEMPLATE_TEXT, name))
-    try:
-        parsed = tomllib.loads(uncommented)
-    except tomllib.TOMLDecodeError as exc:
-        pytest.fail(
-            f"the {name!r} agent block does not uncomment to valid TOML: {exc}\n"
-            f"--- uncommented block ---\n{uncommented}"
-        )
-    assert name in parsed["agents"], f"the {name!r} block does not define [agents.{name}]"
+@pytest.mark.parametrize("name", EXPECTED_BLOCK_NAMES)
+def test_every_bundled_agent_block_is_valid_toml(name: str) -> None:
+    data = tomllib.loads(TEMPLATE_TEXT)
+    inactive = data["inactive_agents"]
+    assert name in inactive
+    assert isinstance(inactive[name], dict)
+    assert "cmd" in inactive[name]
 
 
-@pytest.mark.parametrize("name", _block_names(TEMPLATE_TEXT))
+@pytest.mark.parametrize("name", EXPECTED_BLOCK_NAMES)
 def test_enable_detected_agents_enables_every_bundled_block(
     name: str,
     tmp_path: Path,
@@ -94,8 +83,8 @@ def test_enable_detected_agents_enables_every_bundled_block(
     assert enabled == [name]
     parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
     assert name in parsed["agents"]
-    mirrored = tomllib.loads(_uncomment(_block_content(TEMPLATE_TEXT, name)))
-    assert parsed["agents"][name] == mirrored["agents"][name]
+    data = tomllib.loads(TEMPLATE_TEXT)
+    assert parsed["agents"][name] == data["inactive_agents"][name]
 
 
 def test_enable_detected_agents_enables_opencode_from_the_bundled_template(

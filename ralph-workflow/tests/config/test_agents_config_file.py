@@ -32,20 +32,20 @@ def _scratch_files(directory: Path) -> list[Path]:
 def test_bundled_agents_template_parses_and_activates_claude() -> None:
     with _bundled_agents_template().open("rb") as handle:
         data = tomllib.load(handle)
-    assert list(data) == ["agents"], (
-        f"the agents template must define only [agents.*], got {list(data)}"
+    assert set(data) == {"agents", "inactive_agents"}, (
+        f"the agents template must define [agents.*] and [inactive_agents.*], got {list(data)}"
     )
     assert data["agents"]["claude"]["cmd"] == "claude"
 
 
 def test_bundled_agents_template_carries_every_builtin_block() -> None:
-    text = _bundled_agents_template().read_text(encoding="utf-8")
+    with _bundled_agents_template().open("rb") as handle:
+        data = tomllib.load(handle)
+    all_agents = set(data.get("agents", {})) | set(data.get("inactive_agents", {}))
     missing = tuple(
-        support.name
-        for support in builtin_supports()
-        if f"@AGENT-BLOCK-START: {support.name}" not in text
+        support.name for support in builtin_supports() if support.name not in all_agents
     )
-    assert not missing, f"agents template is missing blocks for: {missing!r}"
+    assert not missing, f"agents template is missing entries for: {missing!r}"
 
 
 def test_main_templates_no_longer_ship_agent_definitions() -> None:

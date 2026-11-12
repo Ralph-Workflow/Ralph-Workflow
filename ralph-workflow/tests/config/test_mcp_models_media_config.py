@@ -48,8 +48,14 @@ class TestMediaConfig:
         with pytest.raises(ValidationError):
             config.enabled = True
 
-    def test_media_config_carries_no_docstring(self) -> None:
-        assert MediaConfig.__doc__ is None, (
-            "MediaConfig must carry no docstring; the supported media kinds are "
-            "declared by the model fields and their validators."
-        )
+    def test_media_config_docstring_describes_broad_multimodal_not_image_only(self) -> None:
+        doc = MediaConfig.__doc__
+        if doc is not None:
+            assert "image support" not in doc.lower(), (
+                "MediaConfig.__doc__ must not say 'image support' — "
+                "Ralph supports broad multimodal (images, PDFs, audio, video, documents), "
+                f"not image-only.\nActual docstring: {doc!r}"
+            )
+            assert "multimodal" in doc.lower(), (
+                f"MediaConfig.__doc__ must mention multimodal support. Actual docstring: {doc!r}"
+            )

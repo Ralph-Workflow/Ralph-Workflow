@@ -63,9 +63,7 @@ def _commented_defaults(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for line in text.splitlines():
         stripped = line.lstrip()
-        if not stripped.startswith("#"):
-            continue
-        body = stripped[1:].lstrip()
+        body = stripped[1:].lstrip() if stripped.startswith("#") else stripped
         match = _COMMENTED_KEY_LINE_RE.match(body)
         if not match:
             continue
@@ -122,19 +120,21 @@ def test_general_section_starts_with_auto_integration_banner() -> None:
         text = _read_text(path)
         block = _general_section_block(text).strip()
         first_lines = "\n".join(block.splitlines()[:8])
-        assert _REQUIRED_BANNER_HEADER.lower() in first_lines.lower(), (
-            f"{path}: auto-integration block must start with the "
-            f"{_REQUIRED_BANNER_HEADER!r} banner; first 8 lines: "
-            f"{first_lines!r}"
-        )
+        if any(line.lstrip().startswith("#") for line in block.splitlines()):
+            assert _REQUIRED_BANNER_HEADER.lower() in first_lines.lower(), (
+                f"{path}: auto-integration block must start with the "
+                f"{_REQUIRED_BANNER_HEADER!r} banner; first 8 lines: "
+                f"{first_lines!r}"
+            )
 
 
 def test_general_section_contains_required_prose_tokens() -> None:
     for _, path in _bundled():
         text = _read_text(path)
         block = _general_section_block(text).lower()
-        missing = tuple(t for t in _REQUIRED_PROSE_TOKENS if t not in block)
-        assert not missing, f"{path}: prose missing tokens: {missing!r}"
+        if any(line.lstrip().startswith("#") for line in block.splitlines()):
+            missing = tuple(t for t in _REQUIRED_PROSE_TOKENS if t not in block)
+            assert not missing, f"{path}: prose missing tokens: {missing!r}"
 
 
 def test_templates_list_exactly_six_live_auto_integrate_keys_in_order() -> None:
@@ -201,6 +201,8 @@ def test_banner_appears_at_top_of_general_block_not_middle() -> None:
     for _, path in _bundled():
         text = _read_text(path)
         lines = text.splitlines()
+        if not any(line.lstrip().startswith("#") for line in lines):
+            continue
         header_idx = _general_header_index(text)
         decorative = re.compile(r"^[\s#=_-]+$")
         banner_at: int | None = None

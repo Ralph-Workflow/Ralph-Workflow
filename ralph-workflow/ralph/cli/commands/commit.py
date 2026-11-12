@@ -333,6 +333,7 @@ def _resolve_commit_generation_inputs(
     return diff, chain_config
 
 
+
 def _show_commit_message(repo_root: Path, *, display_context: DisplayContext) -> None:
     display = resolve_active_display(None, display_context)
     commit_message = read_commit_message_artifact(repo_root)

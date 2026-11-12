@@ -87,29 +87,13 @@ commit = "commit"
 # [general] -- Core workflow settings
 # -----------------------------------------------------------------------------
 [general]
-# =============================================================================
-# AUTO-INTEGRATION (auto-rebase) — keep the feature branch and the mainline
-# in lockstep.
-# -----------------------------------------------------------------------------
-# What the feature does: rebases feature work onto the configured local target,
-# resolves conflicts through the normal endpoint-merge fallback, then
-# fast-forwards that target when the result is safe to land.
-#
-# When it runs (the seams): startup, commit, phase boundary, parallel worker
-# startup/boundary, and the Ralph-managed parallel fan-out join.
-#
-# What it never does: force-move a ref, force-push, push a feature branch,
-# leave a rebase or merge in progress, or fail the run because remote sync
-# failed. The on-by-default local tier is safe; the configured remote tier
-# refreshes whenever that remote exists. Set auto_integrate_enabled = false for byte-identical manual git behavior:
-# no rebase, merge, ref movement, fetch, or push from this feature.
-# =============================================================================
-# auto_integrate_enabled = true     # local integration at every seam; set false for manual git control.
-# auto_integrate_target = "main"    # required local mainline branch; a missing branch records a skip.
-# auto_integrate_remote_enabled = true   # refresh the configured remote when it exists; set false for local-only operation.
-# auto_integrate_remote = "origin"       # configured remote used when remote integration is enabled.
-# auto_integrate_remote_interval_seconds = 0.0  # seconds between probes; 0 fetches at every seam.
-# auto_integrate_reclaim_target_worktree = true # snapshot/reset a dirty mainline worktree; false refuses and retries.
+auto_integrate_enabled = true
+auto_integrate_target = "main"
+auto_integrate_remote_enabled = true
+auto_integrate_remote = "origin"
+auto_integrate_remote_interval_seconds = 0.0
+auto_integrate_reclaim_target_worktree = true
+retention_max_age_days = 7.0
 
 # verbosity = 2                         # Change only when this project's output needs to be quieter or more detailed.
 # telemetry_enabled = true              # Set false only when this project must opt out of anonymous reliability telemetry.

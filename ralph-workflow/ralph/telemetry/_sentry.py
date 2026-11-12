@@ -144,6 +144,14 @@ class _MetricDistribution(Protocol):
     ) -> None: ...
 
 
+class _SentryInit(Protocol):
+    def __call__(self, **kwargs: object) -> None: ...
+
+
+class _SentrySetUser(Protocol):
+    def __call__(self, user: dict[str, object] | None) -> None: ...
+
+
 def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
     mapping = env if env is not None else os.environ
     raw = mapping.get("RALPH_DISABLE_TELEMETRY")
@@ -384,7 +392,8 @@ def _before_send(event: Event, _hint: dict[str, object]) -> Event | None:
 def init_sentry(user_id: str, session_id: str) -> None:
     _STATE.extra_scrub_prefixes = _build_extra_scrub_prefixes()
 
-    sentry_sdk.init(
+    sentry_init = cast("_SentryInit", sentry_sdk.init)
+    sentry_init(
         dsn=_DSN,
         send_default_pii=False,
         release=f"ralph-workflow@{ralph_version}",
@@ -402,8 +411,8 @@ def init_sentry(user_id: str, session_id: str) -> None:
         before_send=_before_send,
         before_send_transaction=_before_send,
     )
-    user: dict[str, object] = {"id": user_id}
-    sentry_sdk.set_user(user)
+    set_user = cast("_SentrySetUser", sentry_sdk.set_user)
+    set_user({"id": user_id})
     sentry_sdk.set_tag("session_id", session_id)
     _STATE.initialized = True
 

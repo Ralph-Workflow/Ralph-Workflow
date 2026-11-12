@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import threading
 from dataclasses import dataclass, field
 
@@ -59,6 +60,8 @@ def get_default_metrics() -> McpMetrics:
     if _default_metrics is not None:
         return _default_metrics
     with _default_metrics_lock:
+        if _default_metrics is not None:
+            return _default_metrics
         metrics = _default_metrics_holder[0]
         if metrics is None:
             metrics = McpMetrics()
@@ -68,6 +71,8 @@ def get_default_metrics() -> McpMetrics:
 
 def reset_default_metrics() -> None:
     with _default_metrics_lock:
+        attr = "_default_metrics"
+        setattr(sys.modules[__name__], attr, None)
         _default_metrics_holder[0] = None
 
 

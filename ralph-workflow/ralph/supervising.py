@@ -154,8 +154,7 @@ def _recent_activity(snapshot: PipelineSnapshot) -> tuple[str, ...]:
 
 def __getattr__(name: str) -> object:
     if name == "WorkflowInstanceTracker":
-        tracker_module = import_module("ralph._supervising_tracker")
+        tracker_module: object = import_module("ralph._supervising_tracker")
         if isinstance(tracker_module, _TrackerModule):
-            tracker: _TrackerModule = tracker_module
-            return tracker.WorkflowInstanceTracker
+            return tracker_module.WorkflowInstanceTracker
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

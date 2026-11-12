@@ -1,21 +1,16 @@
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from collections.abc import Sequence
 
 __all__ = ["build_parent_map", "qualified_scope"]
 
 MODULE_SCOPE = "<module>"
 
 
-def build_parent_map(
-    tree: ast.Module, nodes: Sequence[ast.AST] | None = None
-) -> dict[ast.AST, ast.AST]:
-    collected = list(ast.walk(tree)) if nodes is None else nodes
-    return {child: node for node in collected for child in ast.iter_child_nodes(node)}
+def build_parent_map(tree_or_nodes: ast.AST | Sequence[ast.AST]) -> dict[ast.AST, ast.AST]:
+    nodes = tree_or_nodes if isinstance(tree_or_nodes, Sequence) else ast.walk(tree_or_nodes)
+    return {child: node for node in nodes for child in ast.iter_child_nodes(node)}
 
 
 def qualified_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:

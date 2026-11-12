@@ -286,8 +286,6 @@ def _acquire_platform_lock(descriptor: int) -> Callable[[], None] | None:
 
 
 def _acquire_posix_lock(descriptor: int) -> Callable[[], None] | None:
-    if sys.platform == "win32":
-        return None
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX)
     except OSError:

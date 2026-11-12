@@ -385,7 +385,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
             )
         ]
     nodes = list(ast.walk(tree))
-    parents = build_parent_map(tree)
+    parents = build_parent_map(nodes)
     path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(
         tree, nodes, parents
     )

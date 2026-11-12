@@ -553,14 +553,14 @@ def test_interleaved_operator_write_after_backup_aborts_without_overwrite_or_sta
         )
 
     assert target_path.read_text(encoding="utf-8") == operator_content
+    bak_path = target_path.with_name(f"{target_path.name}.bak")
+    assert not bak_path.exists()
 
     assert "Conflict detected" in str(exc_info.value)
     assert str(target_path) in str(exc_info.value)
 
     stray_files = [
-        f.name
-        for f in tmp_path.iterdir()
-        if f != target_path and not f.name.endswith(".bak") and not f.name.endswith(".lock")
+        f.name for f in tmp_path.iterdir() if f != target_path and not f.name.endswith(".lock")
     ]
     assert stray_files == []
 
@@ -610,3 +610,71 @@ def test_interleaved_operator_write_during_staging_aborts_without_backup_or_over
         if f != target_path and not f.name.endswith(".bak") and not f.name.endswith(".lock")
     ]
     assert stray_files == []
+
+
+def test_conflict_aborted_write_leaves_no_backup_when_none_existed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_path = tmp_path / "ralph-workflow-agents.toml"
+    initial_content = '[agents.original]\ncommand = "old"\n'
+    target_path.write_text(initial_content, encoding="utf-8")
+    bak_path = target_path.with_name(f"{target_path.name}.bak")
+    operator_content = '[agents.operator]\ncommand = "preserve-me"\n'
+
+    real_replace = Path.replace
+
+    def interleaving_replace(
+        self: Path, target: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> Path:
+        result = real_replace(self, target, *args, **kwargs)
+        if str(target).endswith(".bak"):
+            target_path.write_text(operator_content, encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    with pytest.raises(AgentsFileConflictError):
+        write_agents_toml(
+            target_path,
+            '[agents.generated]\ncommand = "new"\n',
+            trigger="test_conflict_no_prior_backup",
+        )
+
+    assert target_path.read_text(encoding="utf-8") == operator_content
+    assert not bak_path.exists()
+
+
+def test_conflict_aborted_write_preserves_pre_existing_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_path = tmp_path / "ralph-workflow-agents.toml"
+    initial_content = '[agents.original]\ncommand = "old"\n'
+    target_path.write_text(initial_content, encoding="utf-8")
+    bak_path = target_path.with_name(f"{target_path.name}.bak")
+    operator_backup = b'[agents.operator_backup]\ncommand = "dont-clobber-me"\n'
+    bak_path.write_bytes(operator_backup)
+    operator_content = '[agents.operator]\ncommand = "preserve-me"\n'
+
+    real_replace = Path.replace
+
+    def interleaving_replace(
+        self: Path, target: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> Path:
+        result = real_replace(self, target, *args, **kwargs)
+        if str(target).endswith(".bak"):
+            target_path.write_text(operator_content, encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(Path, "replace", interleaving_replace)
+
+    with pytest.raises(AgentsFileConflictError):
+        write_agents_toml(
+            target_path,
+            '[agents.generated]\ncommand = "new"\n',
+            trigger="test_conflict_with_prior_backup",
+        )
+
+    assert target_path.read_text(encoding="utf-8") == operator_content
+    assert bak_path.read_bytes() == operator_backup

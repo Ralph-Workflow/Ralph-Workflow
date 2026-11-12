@@ -24,6 +24,8 @@ __all__ = [
     "register_agent_support",
 ]
 
+__doc__ = "register_my_agent"
+
 
 def __getattr__(name: str) -> object:
     exports = {

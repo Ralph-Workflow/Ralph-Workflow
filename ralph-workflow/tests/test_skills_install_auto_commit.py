@@ -658,16 +658,35 @@ def test_install_skips_transition_with_pre_write_dirty_symlink_descendant(
 
     sibling_dir = tmp_path / ".claude" / "skills" / "submit-artifact"
     sibling_dir.mkdir(parents=True)
-    _write_managed_marker(sibling_dir, "submit-artifact", files={})
+    original_file = sibling_dir / "original"
+    original_file.write_text("original\n", encoding="utf-8")
     (sibling_dir / "alias").symlink_to("original")
     repo = Repo(tmp_path)
     try:
-        repo.index.add([".claude/skills/submit-artifact/alias"])
+        repo.index.add(
+            [
+                ".claude/skills/submit-artifact/original",
+                ".claude/skills/submit-artifact/alias",
+            ]
+        )
         actor = Actor("Test Author", "test@example.com")
         repo.index.commit("seed tracked symlink descendant", author=actor, committer=actor)
         seed_head = repo.head.commit.hexsha
         (sibling_dir / "alias").unlink()
+        dirty_file = sibling_dir / "dirty"
+        dirty_file.write_text("dirty\n", encoding="utf-8")
         (sibling_dir / "alias").symlink_to("dirty")
+        orig_digest = hashlib.sha256(b"original\n").hexdigest()
+        dirty_digest = hashlib.sha256(b"dirty\n").hexdigest()
+        _write_managed_marker(
+            sibling_dir,
+            "submit-artifact",
+            files={
+                "original": orig_digest,
+                "dirty": dirty_digest,
+                "alias": dirty_digest,
+            },
+        )
     finally:
         repo.close()
 

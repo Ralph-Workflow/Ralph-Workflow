@@ -268,6 +268,9 @@ select = [
 "ralph/phases/**/*.py" = [
     "PLC0415",
 ]
+"ralph/supervising.py" = [
+    "PLC0415",
+]
 
 [tool.ruff.lint.pylint]
 max-args = 41

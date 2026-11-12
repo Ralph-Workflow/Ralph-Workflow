@@ -306,7 +306,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvo
             )
         ]
     nodes = list(ast.walk(tree))
-    parents = build_parent_map(tree, nodes)
+    parents = build_parent_map(nodes)
     time_names, asyncio_names, observer_names, subprocess_names = _module_aliases(nodes)
     violations: list[FilesystemPollingInvocationViolation] = []
     for node in nodes:

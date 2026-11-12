@@ -114,7 +114,19 @@ def _resolve_mode(target: Path) -> int:
         return _NEW_FILE_MODE
 
 
-def _publish_backup(bak_path: Path, previous_bytes: bytes, directory: Path) -> None:
+def _file_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        status = path.stat()
+    except OSError:
+        return None
+    if status.st_ino == 0:
+        return None
+    return (status.st_dev, status.st_ino)
+
+
+def _publish_backup(
+    bak_path: Path, previous_bytes: bytes, directory: Path
+) -> tuple[int, int] | None:
     staging = directory / f".{bak_path.name}.stage.{os.urandom(8).hex()}"
     descriptor = os.open(staging, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
@@ -126,11 +138,33 @@ def _publish_backup(bak_path: Path, previous_bytes: bytes, directory: Path) -> N
         with staged:
             staged.write(previous_bytes)
             staged.flush()
+        identity = _file_identity(staging)
         staging.replace(bak_path)
+        return identity
     except BaseException:
         with contextlib.suppress(OSError):
             staging.unlink(missing_ok=True)
         raise
+
+
+def _rollback_backup(
+    bak_path: Path,
+    prior_bytes: bytes | None,
+    directory: Path,
+    published_identity: tuple[int, int] | None,
+    published_bytes: bytes,
+) -> None:
+    current_identity = _file_identity(bak_path)
+    if published_identity is not None:
+        if current_identity != published_identity:
+            return
+    elif _read_existing_bytes(bak_path) != published_bytes:
+        return
+    with contextlib.suppress(OSError):
+        if prior_bytes is None:
+            bak_path.unlink(missing_ok=True)
+        else:
+            _publish_backup(bak_path, prior_bytes, directory)
 
 
 def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
@@ -169,11 +203,21 @@ def write_agents_toml(path: Path, text: str, *, trigger: str) -> bool:
             if current_bytes != existing_bytes:
                 _raise_conflict(path, trigger)
 
+            prior_bak_bytes = _read_existing_bytes(bak_path)
+            published_identity: tuple[int, int] | None = None
             if existing_bytes is not None:
-                _publish_backup(bak_path, existing_bytes, write_target.parent)
+                published_identity = _publish_backup(bak_path, existing_bytes, write_target.parent)
 
             final_bytes = _read_existing_bytes(write_target)
             if final_bytes != existing_bytes:
+                if existing_bytes is not None:
+                    _rollback_backup(
+                        bak_path,
+                        prior_bak_bytes,
+                        write_target.parent,
+                        published_identity,
+                        existing_bytes,
+                    )
                 _raise_conflict(path, trigger)
 
             tmp_path.replace(write_target)
