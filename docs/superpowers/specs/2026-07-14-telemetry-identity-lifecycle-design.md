@@ -197,13 +197,13 @@ recorders:
   duration and safe dimensions;
 - telemetry exceptions never change the pipeline event or exit code.
 
-After focused red-green cycles, run the complete `make -C ralph-workflow verify`
-gate within its immutable test budget.
+Run the complete `make -C ralph-workflow verify` gate within its immutable test
+budget.
 
 ## Documentation and migration notes
 
-Update the operator configuration reference and the generated identity-file
-comment to name the canonical location and explain one-time migration. Update
+Update the operator configuration reference and the generated identity file to
+name the canonical location and explain the one-time migration. Update
 the changelog with the user-visible persistence and telemetry-schema changes.
 Do not duplicate the full telemetry schema in the README.
 

@@ -369,8 +369,7 @@ with its dedicated tests
 (`tests/test_interrupt_dispatcher.py::test_early_escalation_poll_kills_when_no_cpu_progress_within_budget`,
 `::test_early_escalation_poll_does_not_kill_when_cpu_progresses`,
 `::test_early_escalation_poll_exits_when_process_dies`). The
-method's docstring notes that it is a public utility NOT used
-by the production seam.
+The method is a public utility NOT used by the production seam.
 
 Reference: `ralph/interrupt/dispatcher.py:run_shutdown_block`
 (the canonical seam), `ralph/pipeline/_runner_interrupt.py:_begin_interrupt`

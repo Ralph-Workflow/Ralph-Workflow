@@ -9,19 +9,23 @@ If this is your first contribution, the shortest path is:
 ```bash
 git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
-make dev              # create/refresh the self-contained dev snapshot + rdev launcher
-# ...make your change...
-make verify           # docs/drift, ruff, mypy, combined tests, and every
-                      # declared audit; required real-git E2E runs inside
-                      # make test under the immutable 60-second budget
-ralph --generate-commit   # dogfood the AGENTS.md commit rule
+make dev
+make verify
+ralph --generate-commit
 ```
+
+`git clone` fetches the repository and `cd Ralph-Workflow/ralph-workflow`
+enters the Python package. `make dev` creates or refreshes the
+self-contained dev snapshot and its `rdev` launcher. Make your change
+in the package, then `make verify` runs the docs/drift check, ruff,
+mypy, the combined tests, and every declared audit; the required
+real-git E2E runs inside `make test` under the immutable 60-second
+budget. `ralph --generate-commit` produces the commit message.
 
 A few practical notes for a first patch:
 
 - **Pick something small.** A typo, a clearer error message, a clearer
-  example, a one-line bug fix — the maintainers review small PRs
-  faster and the verification loop is shorter.
+  example, a one-line bug fix — the verification loop is shorter.
 - **Run `make verify` before you push.** A red `make verify` is the
   fastest way to get unstuck; the gate is the contract and the
   high-visibility failure banner cites `AGENTS.md` so you know exactly
@@ -30,7 +34,7 @@ A few practical notes for a first patch:
   `git commit`. The generated message follows the repo's
   conventional-commit style and the canonical-submit / artifact
   contract.
-- **Link the relevant docs page** in the PR description — the
+- **Link the relevant docs page** in the commit message — the
   architecture orientation lives in
   [`docs/sphinx/developer-internals.md`](docs/sphinx/developer-internals.md),
   and the package-level architecture index is at
@@ -41,39 +45,26 @@ A few practical notes for a first patch:
   start touching production code, but they are deliberately *not* the
   on-ramp.
 
-When you're ready to ship the patch, push your branch and open a PR
-on GitHub or Codeberg. GitHub is the primary development repo; the
-Codeberg mirror remains available for the time being. The
-full verification contract, the guardrails, and the contribution
-policy follow below.
+When you're ready to ship the patch, commit directly to `main` and
+push to `origin/main`; `ralph --generate-commit` produces the commit
+message. The full verification contract, the guardrails, and the
+contribution policy follow below.
 
 ## Contributor License Agreement
 
-Every pull request must agree to the repository-level
-[`Contributor License Agreement`](../CLA.md). The Codeberg and GitHub
-PR templates include the required checkbox:
-
-```markdown
-- [ ] I have read and agree to the Contributor License Agreement in CLA.md, including the grant that allows Ralph Workflow to distribute my contribution under AGPL-3.0-or-later and commercial licenses.
-```
-
-The CI gate checks that exact line and fails every pull-request build
-until it is checked. This applies to Codeberg pull requests through
-Woodpecker and GitHub pull requests through GitHub Actions.
-
-Ralph Workflow remains published as AGPL-3.0-or-later. The CLA also
-grants the project permission to include accepted contributions in
-commercial licenses, which is required for the planned dual-license
-offering.
+Contributions are covered by the repository-level
+[`Contributor License Agreement`](../CLA.md).
 
 ## Development setup
 
 ```bash
 git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
-uv --version          # must report uv 0.7.0 or newer
+uv --version
 make dev
 ```
+
+`uv --version` must report uv 0.7.0 or newer.
 
 ### Dev build vs stable build
 
@@ -158,8 +149,10 @@ side. They never collide because the dev build registers no global `ralph` comma
   version instead of the latest release:
 
   ```bash
-  python -m ralph.install --version 0.8.18   # or: uv tool install ralph-workflow==0.8.18
+  python -m ralph.install --version 0.8.18
   ```
+
+  `uv tool install ralph-workflow==0.8.18` pins the same version.
 
 - **Existing global installs** — Ralph Workflow resolves any global `ralph` executable to its owning package before installing. `make install` and `make dev` install `rdev`, never `ralph`, so a detected `ralph` is only reported: it stays exactly as it is and `rdev` is used instead. The `rdev` launcher belongs to the dev build, and every refresh repoints it at the snapshot it just wrote. `make stable` does own the global `ralph`, so it still prompts — continue, remove a pipx/uv-tool install with its package-manager uninstall command, or abort; non-interactive and source-owned conflicts abort without changing the install.
 
@@ -167,9 +160,12 @@ side. They never collide because the dev build registers no global `ralph` comma
   build; nothing to toggle. Verify which is which with:
 
   ```bash
-  rdev --version   # -> manual (-build) or dev (-dev) snapshot (~/.local/bin/rdev)
-  ralph --version  # -> stable release version (~/.local/bin/ralph)
+  rdev --version
+  ralph --version
   ```
+
+  `rdev --version` reports the manual (`-build`) or dev (`-dev`)
+  snapshot; `ralph --version` reports the stable release version.
 
   Bump the stable install later with `uv tool upgrade ralph-workflow`, or remove it
   entirely with `uv tool uninstall ralph-workflow`. Remove the source-snapshot
@@ -203,8 +199,7 @@ The runtime is a generic policy interpreter that validates and enforces these de
 
 1. Add the role literal to `PhaseRole` in `ralph/policy/models.py`.
 2. Add role-specific required-field validation to `validate_policy_completeness` in `ralph/policy/validation.py`.
-3. Update the `POLICY COMPLETENESS` comment in `ralph/policy/defaults/pipeline.toml`.
-4. Add tests in `tests/test_policy_validation.py` covering the new validation rule.
+3. Add tests in `tests/test_policy_validation.py` covering the new validation rule.
 
 **Adding a new budget or loop counter:**
 
@@ -218,7 +213,7 @@ Adding a new budget counter or loop iteration counter is a `pipeline.toml`-only 
 **Changing workflow behavior** (routing, retries, analysis bounds, commit semantics):
 Update the relevant `pipeline.toml` fields instead of adding code branches. If behavior is not expressible as policy, first extend the policy schema — do not add hardcoded phase-name logic to the reducer.
 
-### Project-policy schema v4
+### Project-policy schema v6
 
 Projects managed by the readiness preflight have one bounded portfolio at
 `docs/ralph-workflow-policy/policy-portfolio.toml`. Compose it in this fixed
@@ -226,8 +221,8 @@ order: invariant kernel, matching versioned profiles, local tightening, then
 exact unexpired exceptions. Repository size and fixed test counts are not
 selection inputs. Each control must name its protected outcome, distinct fault
 sensitivity, cheapest sufficient layer, owner, trigger, lane, marginal cost,
-inspectable evidence, lifecycle condition, and
-`REMOVE`/`MERGE`/`REPLACE`/`KEEP` disposition.
+inspectable evidence, lifecycle condition,
+`REMOVE`/`MERGE`/`REPLACE`/`KEEP` disposition, and its `enforcement`.
 
 Before adding a policy, test, or gate, search for nearest existing coverage and
 record the disposition of the affected control family. Keep the default lane
@@ -237,8 +232,8 @@ operational, or one-off lanes when the proof cannot run deterministically in
 the default gate. The full schema and evidence contract live in
 [`docs/ralph-workflow-policy/verification-policy.md`](../docs/ralph-workflow-policy/verification-policy.md#bounded-policy-portfolio).
 
-Existing schema v3 installations change only through Ralph Workflow's single
-upgrade-or-freeze choice. Upgrade seeds the manifest and v4 policies
+Existing installations change only through Ralph Workflow's single
+upgrade-or-freeze choice. Upgrade seeds the manifest and v6 policies
 together; freeze leaves the existing files unchanged.
 
 ## Required verification
@@ -302,10 +297,8 @@ do not triplicate it here.
 ## Documentation expectations
 
 - Update user-facing Markdown when workflows or commands change.
-- Update public module/package docstrings when APIs change.
-- Keep exported package docstrings self-sufficient enough for `pydoc` users.
 - New public subpackages added under `ralph/` must have an `.. automodule::` entry in `docs/sphinx/modules.rst`. The test `tests/test_sphinx_modules_coverage.py` enforces this — update `_EXCLUDED` in that test if the subpackage is intentionally private.
-- When changing pipeline hardening around artifacts or agent success criteria, document both the behavior change and the failure mode it prevents. Future contributors need to understand why the stricter contract exists.
+- When changing pipeline hardening around artifacts or agent success criteria, document both the behavior change and the failure mode it prevents.
 
 ## Typing suppression policy
 
@@ -415,7 +408,7 @@ verdict semantics.
 ### Watchdog two-state invariant
 
 The recovery controller has exactly two recovery paths. There is no third
-state; a future PR that needs to introduce a new recovery state MUST update
+state; a future change that needs to introduce a new recovery state MUST update
 the import-time invariants below in the same commit. The two MAIN RULES
 (quoted verbatim from the user's prompt) are:
 
@@ -477,7 +470,7 @@ rejected by pydantic and `TimeoutPolicy.__post_init__`. The
 constant and `ralph/agents/idle_watchdog/timeout_policy.py` for the
 validator.
 
-**How to evolve.** A future PR that needs to introduce a new recovery
+**How to evolve.** A future change that needs to introduce a new recovery
 state MUST update the import-time invariant in
 `ralph/recovery/controller.py` and the test in
 `tests/recovery/test_two_state_invariant.py` in the same commit. The

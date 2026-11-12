@@ -28,7 +28,11 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (
         "docs/superpowers/specs/2026-07-14-telemetry-identity-lifecycle-design.md",
-        ("Documentation review note:",),
+        (
+            "Documentation review note:",
+            "identity-file comment",
+            "comment to name the canonical location",
+        ),
     ),
     (
         "docs/ralph-workflow-policy/verification-policy.md",
@@ -98,6 +102,43 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "ralph-workflow/docs/sphinx/recovery.md",
         ("Documentation review note",),
+    ),
+    (
+        "docs/code-style/index.md",
+        (
+            "public module docstrings",
+            "Keep public module and package docstrings",
+        ),
+    ),
+    (
+        "docs/agents/workspace-trait.md",
+        ("the module docstring in",),
+    ),
+    (
+        "docs/ralph-workflow-policy/testing-policy.md",
+        ("in the test docstring",),
+    ),
+    (
+        "ralph-workflow/ralph/mcp/artifacts/format_docs/examples/issues.md",
+        (
+            "lacks a comment explaining",
+            "Add a one-line comment",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md",
+        ("method's docstring notes",),
+    ),
+    (
+        "ralph-workflow/docs/plans/2026-07-03-fs-churn-reduction.md",
+        (
+            "completion_receipts.py` docstring",
+            "keep module docstring",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/sphinx/mcp-restart-decisions.md",
+        ("its own docstring defers",),
     ),
 )
 

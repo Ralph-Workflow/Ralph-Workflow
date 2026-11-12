@@ -72,9 +72,8 @@ state change has exactly one writer:
 - **Choice-field writers**: `set_publication_decision`,
   `set_fan_out_decision`, and `set_operation_display_state` are the
   writers of `last_publication_decision`, `last_fan_out_decision`, and
-  `operation_display_state`. Raw `model_copy` writers of fan-out (1
-  site) and operation display (10 sites) were migrated onto those
-  setters.
+  `operation_display_state`. Fan-out (1 site) and operation display
+  (10 sites) write through those setters rather than raw `model_copy`.
 - **Recovery boundaries**: crash recovery uses two reflog seams with
   different contracts. One reads the shared branch reflog
   (`commondir/logs/refs/heads/<branch>`, via `git reflog show -2`) as
@@ -129,8 +128,8 @@ dispatch view reflects the change automatically.
 
 The 6 wire-format NDJSON parsers (`claude`, `opencode`, `codex`, `gemini`,
 `generic`, `pi`) share a common base class `NdjsonParserBase` in
-`ralph/agents/parsers/_ndjson_base.py`. The base owns 6 behaviors that
-used to be duplicated across every parser's `classify_line`:
+`ralph/agents/parsers/_ndjson_base.py`. The base owns the 6 behaviors of
+every parser's `classify_line` in one place, so no parser re-implements them:
 
 1. strip the SSE `data:` prefix
 2. short-circuit on `[DONE]` (yields `AgentOutputLine(type='stop')`)
@@ -159,8 +158,8 @@ The 9 built-in agents (`claude`, `claude-headless`, `codex`, `opencode`,
 declarative line per agent. The frozen golden test
 `tests/agents/test_builtin_spec_consolidation.py` pins the
 (name, transport, parser_factory, strategy_factory, config.cmd,
-session_flag, json_parser) tuple for every built-in, so the BuiltinAgentSpec
-refactor is provably no-op.
+session_flag, json_parser) tuple for every built-in, so the
+BuiltinAgentSpec declaration is provably behavior-preserving.
 
 ## CommandBuilder and RuntimeResolver
 

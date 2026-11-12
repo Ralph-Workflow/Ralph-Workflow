@@ -76,6 +76,7 @@ They must not branch on a worker or coordinator role. Specifically:
 - No "worker scope", "coordinator dispatch", or "assigned unit" wording that assumes Ralph-orchestrated workers
 - Parallelism guidance is unconditional and always rendered
 
-Ralph Workflow previously supported a worker-orchestration model. See
-`docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'`
-for why it was removed.
+Ralph Workflow's worker-orchestration model is deprecated; parallelism is owned
+by the developer agent's own sub-agents. See
+`docs/sphinx/concepts.md §'Deprecated: Ralph Workflow-orchestrated workers'`
+for the routing contract.

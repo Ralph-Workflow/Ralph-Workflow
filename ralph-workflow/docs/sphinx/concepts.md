@@ -415,15 +415,15 @@ When the watchdog or a timeout fires, the runtime hands control to the recovery 
 
 ## Deprecated: Ralph Workflow-orchestrated workers {#deprecated-ralph-orchestrated-workers}
 
-Ralph Workflow previously supported a worker-orchestration model where
-Ralph Workflow itself split a plan into work units and dispatched parallel
-"worker" agents. **That model is deprecated.**
+Ralph Workflow runs a single developer agent. The worker-orchestration model —
+where Ralph Workflow split a plan into work units and dispatched parallel
+"worker" agents — is deprecated.
 
-Parallelism is now owned by the developer agent's own sub-agents. Ralph Workflow
-runs a single developer agent; that agent fans independent work out to
-sub-agents using the runtime's task/orchestration tools. The developer
-prompt always contains sub-agent guidance, parallel-execution instructions,
-and the pre-submit review — unconditionally, with no role gate.
+Parallelism is owned by the developer agent's own sub-agents: that agent fans
+independent work out to sub-agents using the runtime's task/orchestration
+tools. The developer prompt always contains sub-agent guidance,
+parallel-execution instructions, and the pre-submit review — unconditionally,
+with no role gate.
 
 ### Configuration and routing behavior
 
@@ -446,7 +446,7 @@ route.
   worker pool during routing, but workers cannot execute end to end.
 - Non-null `work_unit` and `worker_namespace` materialization inputs fail closed
   with `ValueError` in `ralph.prompts.materialize` (the developer execution
-  path is the only live entry point). They are not CLI flags and were never
+  path is the only live entry point). They are not CLI flags and not
   operator-facing; they are historical `PromptPhaseOptions` /
   `materialize_master_prompt` kwargs retained for backward compatibility.
 

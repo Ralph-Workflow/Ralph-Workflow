@@ -14,8 +14,9 @@ Use these when working on the maintained package:
 - `ralph-workflow/pyproject.toml` — tool configuration (`ruff`,
   `mypy`, packaging)
 - `ralph-workflow/CONTRIBUTING.md` — contributor workflow
-- public module docstrings under `ralph-workflow/ralph/` — API
-  expectations for `pydoc`
+- the Sphinx API reference under
+  `ralph-workflow/docs/sphinx/modules.rst` — the public module and
+  symbol surface of `ralph-workflow/ralph/`
 - existing Python modules and tests — preferred naming, typing, and
   error-handling patterns
 
@@ -31,8 +32,8 @@ Use these when working on the maintained package:
   (`ralph-workflow/mypy.ini`) or is replaced with a typed helper, guard,
   adapter, or `cast(...)`. The policy is
   `docs/agents/type-ignore-policy.md`.
-- Keep public module and package docstrings self-sufficient so
-  `pydoc` is useful without external Markdown.
+- Source code carries no docstrings; contracts live in names, type
+  annotations, and tests.
 - Prefer small, explicit modules over deeply clever abstractions.
 - Keep CLI, orchestration, MCP, workspace, and Git layers clearly
   separated.

@@ -254,7 +254,7 @@ id above is carried by the dedicated real-child or behavioural module instead:
 - `tests/mcp/test_bridge_e1_e2_edge_cases.py::test_e19_tool_set_drift_detection` — a hash-determinism check, not a drift refusal.
 - `tests/mcp/test_bridge_e1_e2_edge_cases.py::test_e25_snapshot_survives_tmp_cleanup` — the snapshot directory is untouched, but no candidate is spawned.
 - `tests/mcp/test_bridge_e1_e2_edge_cases.py::test_e27_bridge_lock_serializes_restart` — only that the lock is acquireable.
-- `tests/mcp/test_bridge_e5_e6_e7_edge_cases.py::test_e62_probe_slack_bounds_classification` — pins the slack constant; its own docstring defers the behavioural proof to the E6.2 test above.
+- `tests/mcp/test_bridge_e5_e6_e7_edge_cases.py::test_e62_probe_slack_bounds_classification` — pins the slack constant; its own assertion defers the behavioural proof to the E6.2 test above.
 
 ## Documented 2026-10 incident: trigger undetermined
 

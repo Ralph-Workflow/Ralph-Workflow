@@ -11,7 +11,7 @@ status: issues_found
 
 - [I-1] src/auth/refresh.py | high | Lock entry is not released when refresh raises, so the per-key dictionary grows on every failed refresh
 - [I-2] tests/auth/test_refresh_race.py | medium | Race assertion sleeps 0.5s and checks elapsed time; assert on token state instead so the test cannot flake under load
-- [I-3] src/auth/refresh.py | low | The module-level lock lacks a comment explaining why a dict-of-locks is safe here
+- [I-3] src/auth/refresh.py | low | The module-level lock lifetime invariant is unasserted: a dict-of-locks entry must exist only while a refresh is in flight
 
 ## What Came Up Short
 
@@ -22,4 +22,4 @@ status: issues_found
 
 - [FIX-1] Wrap the critical section in try/finally so the lock entry is dropped on failure, and add a test that forces the backend write to raise.
 - [FIX-2] Replace the elapsed-time assertion with a state assertion (token remains valid and exactly one refresh occurred).
-- [FIX-3] Add a one-line comment on the dict-of-locks invariant (entries only exist while a refresh is in flight).
+- [FIX-3] Assert the dict-of-locks lifetime invariant in a test: entries exist only while a refresh is in flight.

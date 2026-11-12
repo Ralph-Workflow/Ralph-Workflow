@@ -38,7 +38,7 @@ These address the volume-level pathology today; Task 7 documents them permanentl
 - Run tests with `make test-unit` (pytest) from `ralph-workflow/`; lint with `make lint`.
 - The idle watchdog corroborates liveness from `RawOverflowLog.size_bytes` (in-memory counter) with `LOG_GROWTH_SECONDS = 30.0` (`ralph/timeout_defaults.py:250`). The buffered flush interval MUST stay well below 30 s (default 5 s) and `size_bytes` MUST keep updating per `append()` (not per flush).
 - `.agent/state.db*` (db/-wal/-shm) must be classified as engine cache by `ralph/agents/invoke/_workspace_change_classifier.py` `CACHE_FILENAME_GLOBS`, like `completion_seen_*.json` is today.
-- Receipts/sentinels keep their HMAC anti-forgery semantics (`completion_receipts.py` docstring): the broker-owned secret never reaches the agent; verification must fail closed.
+- Receipts/sentinels keep their HMAC anti-forgery semantics (the `completion_receipts.py` module): the broker-owned secret never reaches the agent; verification must fail closed.
 - `ralph/testing/audit_agent_internal_paths.py` guards internal-path references — update its allowlist when paths change.
 
 ---
@@ -110,7 +110,7 @@ Expected: new tests FAIL (`TypeError: unexpected keyword argument 'flush_interva
 
 - [ ] **Step 3: Rewrite `RawOverflowLog` with a persistent handle**
 
-Replace the class body in `ralph/display/raw_overflow.py` (keep module docstring, `_sanitize_unit_id`, `DEFAULT_MAX_OVERFLOW_FILE_BYTES`):
+Replace the class body in `ralph/display/raw_overflow.py` (keep the module's public surface: `_sanitize_unit_id`, `DEFAULT_MAX_OVERFLOW_FILE_BYTES`):
 
 ```python
 """Per-unit raw NDJSON overflow log writer."""

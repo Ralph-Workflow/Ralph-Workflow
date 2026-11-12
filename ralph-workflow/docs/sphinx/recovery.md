@@ -432,23 +432,21 @@ and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md))
 
 ### Closed-table loader + recovery release
 
-Two specific bypasses would have let one lifecycle fact disagree with another, and
-both are now closed:
+Each lifecycle fact has one authority, and both release paths are closed:
 
-- **Loader intervention bypass**: the loader used to author
-  `diagnostic_intervention_required=True` directly via a `dict(**data_raw, ...)`
-  spread inside `_migrate_payload_evidence`. That spread is the documented
+- **Loader intervention bypass**: the loader constructs a bare
+  `IntegrationRecord` from the migrated dict and applies the closed
+  `RAISE_DIAGNOSTIC_INTERVENTION` transition. A `dict(**data_raw, ...)`
+  spread inside `_migrate_payload_evidence` that authors
+  `diagnostic_intervention_required=True` directly is the documented
   forbidden mutation (ADR-0009 §1: "One Authority Per Domain Fact"). The
-  loader now constructs a bare `IntegrationRecord` from the migrated dict
-  and applies the closed `RAISE_DIAGNOSTIC_INTERVENTION` transition. The
   intervention flag's only path to flip is the transition table.
 - **Recovery release bypass**: the three sibling release sites
   (`auto_integrate_recovery.recover_incomplete_integration`,
   `_integration_diagnostic.handoff_integration_diagnostic`,
-  `_remote_reconcile_recovery.recover_target_resolution`) used to call
-  bare `write_record(...)` after `with_transition(RELEASE_DIAGNOSTIC_EVIDENCE, ...)`.
-  They now route through `IntegrationRecordStore.transition` (via
-  `apply_record_transition`). The store's typed refusal contract —
+  `_remote_reconcile_recovery.recover_target_resolution`) release through
+  `IntegrationRecordStore.transition` (via `apply_record_transition`) after
+  `with_transition(RELEASE_DIAGNOSTIC_EVIDENCE, ...)`. The store's typed refusal contract —
   `RecordBusyError` for demonstrable transient lock contention and
   `RecordUnreadableError` for unreadable bytes — is enforced at every
   release site:
@@ -484,9 +482,9 @@ unrelated worktree's branch advance.
 
 The choice fields those recoveries project are written only by
 `set_publication_decision`, `set_fan_out_decision`, and
-`set_operation_display_state`. Raw `model_copy` writers of fan-out
-(1 site) and operation display (10 sites) were migrated onto the
-setters. The field-by-authority inventory is the writer table in
+`set_operation_display_state`. Fan-out (1 site) and operation display
+(10 sites) write through those setters rather than raw `model_copy`.
+The field-by-authority inventory is the writer table in
 ADR-0009, next to the authority, reader, projection, transition,
 restart, UNKNOWN, and blocking columns.
 

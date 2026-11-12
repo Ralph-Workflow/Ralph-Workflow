@@ -80,10 +80,8 @@ When Pro mode is active, the engine POSTs a small JSON heartbeat to
 
 ## Late-marker adoption
 
-The Pro product historically assumed the marker file is present
-*before* the engine starts. In practice, an engine instance may
-already be running when Pro is launched. To make the engine adopt
-the marker after the engine has started, the engine runs
+An engine instance may already be running when Pro is launched. To make
+the engine adopt the marker after the engine has started, the engine runs
 `ralph.pro_support.watcher.ProMarkerWatcher` in a daemon thread.
 
 - **Polls every `poll_interval_seconds` (default `2.0`).**
