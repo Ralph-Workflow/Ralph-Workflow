@@ -72,8 +72,8 @@ state change has exactly one writer:
 - **Choice-field writers**: `set_publication_decision`,
   `set_fan_out_decision`, and `set_operation_display_state` are the
   writers of `last_publication_decision`, `last_fan_out_decision`, and
-  `operation_display_state`. Fan-out (1 site) and operation display
-  (10 sites) write through those setters rather than raw `model_copy`.
+  `operation_display_state`. Fan-out and operation display write through
+  those setters rather than raw `model_copy`.
 - **Recovery boundaries**: crash recovery uses two reflog seams with
   different contracts. One reads the shared branch reflog
   (`commondir/logs/refs/heads/<branch>`, via `git reflog show -2`) as
@@ -110,8 +110,10 @@ For details on how to register and manage custom agents, or to modify built-in o
 
 ## Parser and execution strategy
 
-Every parser (`ClaudeParser`, `CodexParser`, `OpenCodeParser`, `GeminiParser`,
-`GenericParser`, `PiParser`) is registered in `_PARSER_REGISTRY`, a
+Every parser (`AgyParser`, `ClaudeParser`, `ClaudeInteractiveParser`,
+`CodexParser`, `CursorParser`, `GeminiParser`, `GenericParser`,
+`KimiParser`, `NanocoderParser`, `OpenCodeParser`, `PiParser`) is
+registered in `_PARSER_REGISTRY`, a
 `types.MappingProxyType` view over `AgentCatalog`.  The registry is
 read-only at runtime — writes go through `AgentCatalog.add` /
 `AgentCatalog.remove`, which keep the view synchronised.  `PiParser`
@@ -126,8 +128,9 @@ dispatch view reflects the change automatically.
 
 ## NDJSON parser layer (`NdjsonParserBase`)
 
-The 6 wire-format NDJSON parsers (`claude`, `opencode`, `codex`, `gemini`,
-`generic`, `pi`) share a common base class `NdjsonParserBase` in
+The 9 wire-format NDJSON parsers (`agy`, `claude`, `codex`, `cursor`,
+`gemini`, `generic`, `nanocoder`, `opencode`, `pi`) share a common base class
+`NdjsonParserBase` in
 `ralph/agents/parsers/_ndjson_base.py`. The base owns the 6 behaviors of
 every parser's `classify_line` in one place, so no parser re-implements them:
 
@@ -140,26 +143,27 @@ every parser's `classify_line` in one place, so no parser re-implements them:
 6. `{"error": ...}` shapes produce `AgentOutputLine(type='error', ...)` via
    the canonical `extract_error_message` helper
 
-Subclasses override a single `_dispatch_json_object(obj, raw)` hook to handle
+Subclasses override a single
+`_dispatch_json_object(obj, raw, source_timestamp=None)` hook to handle
 per-agent event types. `NdjsonParserBase` itself inherits from
 `ParserTemplateBase`, which remains the public base for any custom
-(non-NDJSON) parser. See `tests/agents/parsers/test_ndjson_base.py` for the
-per-behavior coverage of the base and the per-parser migration tests under
-`tests/agents/parsers/test_<parser>_uses_ndjson_base.py` for behavior
-preservation.
+(non-NDJSON) parser. See `tests/agents/parsers/test_ndjson_base.py` for
+the per-behavior coverage of the base and
+`tests/agents/parsers/test_<parser>_uses_ndjson_base.py` (claude, codex,
+gemini, generic, opencode) for the per-parser contract coverage.
 
 ## Built-in declaration (`BuiltinAgentSpec`)
 
 The 9 built-in agents (`claude`, `claude-headless`, `codex`, `opencode`,
 `nanocoder`, `agy`, `pi`, `cursor`, `kimi`) are declared in `ralph/agents/builtin.py` as
 `BuiltinAgentSpec` dataclass rows. Each row is materialized into an
-`AgentSupport` via `BuiltinAgentSpec.to_support(name)`, collapsing the
-14-kwarg `AgentSupport.from_registration_kwargs` call into a single
-declarative line per agent. The frozen golden test
+`AgentSupport` via `BuiltinAgentSpec.to_support(name)`, which delegates to
+`AgentSupport.from_registration_kwargs` (`ralph/agents/support.py:71`) — the
+keyword-only constructor that `register_agent_support`
+(`ralph/agents/registration.py:64`) also uses. The frozen golden test
 `tests/agents/test_builtin_spec_consolidation.py` pins the
 (name, transport, parser_factory, strategy_factory, config.cmd,
-session_flag, json_parser) tuple for every built-in, so the
-BuiltinAgentSpec declaration is provably behavior-preserving.
+session_flag, json_parser) tuple for every built-in.
 
 ## CommandBuilder and RuntimeResolver
 
@@ -173,7 +177,8 @@ Every `AgentTransport` enum value has a `CommandBuilder` class in
   maps `AgentTransport` to a `RuntimeResolver` class
 
 Both dicts are populated at module import time and key every `AgentTransport`
-value (CLAUDE, CLAUDE_INTERACTIVE, CODEX, OPENCODE, NANOCODER, GENERIC, AGY, PI).
+value (CLAUDE, CLAUDE_INTERACTIVE, CODEX, OPENCODE, NANOCODER, GENERIC, AGY, PI,
+CURSOR, KIMI).
 No transport silently falls through to a default; `DefaultRuntimeResolver` handles
 only the explicit GENERIC entry and raises `UnsupportedMcpTransportError` for
 other transports with an MCP endpoint.
@@ -237,29 +242,27 @@ default 5-minute print timeout; a billed amount requires the unrun pricing
 probe. It reports file, session, parser-event, tool-activity, and artifact
 signals. Treat any missing signal as a failed diagnostic, not a successful run.
 
-The v1.1.8 manual record observed acceptance of the exact published ID
+The manual record observes acceptance of the exact published ID
 `gemini-3.6-flash-low` and stream-json `init`, `step_update`, and successful
 `result` events. The latest smoke exited 0 after
 creating the requested file and showing plain-text parser/tool activity without
 a permission prompt. AGY wrote a valid fallback artifact; Ralph validated and
 promoted it and recorded the canonical receipt; because AGY missed the MCP
-completion call, completion evidence was absent and the verdict was
+completion call, completion evidence is absent and the verdict is
 `DEGRADED (absent)` (the host does not synthesize completion evidence). The plain-text
-parser remains the smoke default because it retained file and tool visibility.
-Continuation remains disabled: `--continue` and `--conversation` accepted
-prompts but did not establish that a specific earlier conversation resumed.
+parser is the smoke default because it retains file and tool visibility.
+Continuation is disabled: `--continue` and `--conversation` accept
+prompts but do not establish that a specific earlier conversation resumed.
 Re-measure periodically because AGY updates can change published IDs and flags.
-The no-cost `agy agents` observation reported no agents on the measured
+The no-cost `agy agents` subcommand listing reports no agents on the measured
 installation; that is a *subcommand listing* observation, not proof AGY lacks
-subagent capability -- a later v1.1.10 live-binary measurement found
-`define_subagent` / `invoke_subagent` / `manage_subagents` in the live `init`
-frame's tool list, and a capture confirmed two subagents actually dispatched
-and completed in parallel through those tools (see
-`tests/display/_fixtures/agy_wire_provenance.md`). Ralph Workflow's
+subagent capability -- the live `init` frame's tool list carries
+`define_subagent` / `invoke_subagent` / `manage_subagents`, and a capture
+confirms two subagents dispatch and complete in parallel through those tools
+(see `tests/display/_fixtures/agy_wire_provenance.md`). Ralph Workflow's
 [parallel work-unit routing policy](../sphinx/advanced-pipeline-configuration.md)
-now matches that measured transport: AGY parallel plans route through the
-same supported agent_subagents path as other native-subagent transports, and
-the stale `agy agents` availability veto has been removed.
+matches that measured transport: AGY parallel plans route through the
+same supported agent_subagents path as other native-subagent transports.
 
 The exact free observations and manual probe ledger are in
 `tmp/agy-source-of-truth.txt`. A valid smoke artifact is stored at
@@ -297,4 +300,8 @@ with `positional_prompt=True`. Do NOT assert the literal `'PROMPT.md'`
 — that is the prompt file PATH, not the file CONTENT that the
 positional argv element carries.
 
-For the live `pi` binary end-to-end path, see <https://pi.dev/docs/latest/usage> for the documented `--mode json` invocation and the documented `--approve` (`-a`) project-trust override. Pi has no native CLI MCP config file, so Ralph Workflow removes `RALPH_MCP_ENDPOINT` from the Pi subprocess environment, writes a generated Pi extension, and passes it with `--no-builtin-tools --extension` so Pi receives Ralph Workflow MCP tools through its custom-tool API.
+For the live `pi` binary end-to-end path, see <https://pi.dev/docs/latest/usage> for the documented `--mode json` invocation and the documented `--approve` (`-a`) project-trust override. Pi has no native CLI MCP config file, so Ralph Workflow removes
+`RALPH_MCP_ENDPOINT` from the Pi subprocess environment, writes a generated
+Pi extension, and passes it with `--extension` so Pi receives Ralph Workflow
+MCP tools through its custom-tool API. Ralph Workflow does not pass
+`--no-builtin-tools`.

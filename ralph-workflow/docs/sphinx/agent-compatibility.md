@@ -69,22 +69,22 @@ availability remains the CLI provider's responsibility.
 - **CLI**: `agy`
 - **Install / auth**: <https://github.com/google-antigravity/antigravity-cli>
 - **Transport**: `agy`
-- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.10 publishes model IDs. Live probes accepted exact published IDs such as `gemini-3.6-flash-low`; the measured CLI accepts `--effort` only without an explicit model, so Ralph Workflow does not emit `--model <id> --effort <level>`.
+- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.10 publishes model IDs. The CLI accepts exact published IDs such as `gemini-3.6-flash-low`; it accepts `--effort` only without an explicit model, so Ralph Workflow does not emit `--model <id> --effort <level>`.
 - **Parser**: `agy` (`AgyParser`; maps `--output-format stream-json` events including `step_update` tool activity and multi-subagent updates, with plain-text fallback)
-- **Wire format (measured against the live v1.1.10 binary; vocabulary re-measured against v1.1.13)**: the full
-  measured record, including the PTY capture method and the exact probe
+- **Wire format (live v1.1.10 binary; v1.1.13 vocabulary)**: the full
+  record, including the PTY capture method and the exact probe
   prompts, is tracked in `tests/display/_fixtures/agy_wire_provenance.md`.
   Summary:
     - `--print --output-format stream-json` writes stream-json frames to
       stdout **only when stdout is a controlling terminal (PTY)**; without a
       PTY the same invocation produces empty stdout.
-    - Observed events: `init` (`model`, `cwd`, `tools`, `permission_mode`),
+    - Event kinds: `init` (`model`, `cwd`, `tools`, `permission_mode`),
       `step_update` (`step_type` values `user_input`, `unknown`,
       `agent_response`, `tool`, `checkpoint`, `subagent`; v1.1.13 adds the
       bodiless `system_message`), `result`
       (`status`, `response`, `duration_seconds`, `num_turns`, `usage`), and an
-      `error` emitter that exists in the binary but whose exact live payload
-      shape was not captured. v1.1.13 also adds `workspace_uris` and emits
+      `error` emitter that exists in the binary but whose exact payload
+      shape is not documented. v1.1.13 also adds `workspace_uris` and emits
       each subagent entry's `conversation_id` / `log_uri` already on its
       ACTIVE dispatch frame; `AgyParser` surfaces any new bodiless
       `step_type` as a lifecycle event rather than dropping it.
@@ -97,13 +97,13 @@ availability remains the CLI provider's responsibility.
       recognizes both patterns.
 - **Caveats**:
     - Ralph Workflow gives each AGY invocation a private `HOME` containing generated `.gemini/antigravity-cli/mcp_config.json` and `.gemini/config/mcp_config.json` files. Concurrent sessions therefore use independent MCP endpoints without writing, locking, or restoring the operator's global configuration.
-    - With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions` (AGY reuses the Claude flag; the earlier docs incorrectly attributed Codex's `--dangerously-bypass-approvals-and-sandbox` to AGY).
-    - Completion contract: the agent itself must call `declare_complete` to write the durable completion sentinel; the host writes no completion evidence for any transport. When AGY's observed `--print` fallback produces a valid required artifact but misses the MCP completion call, completion evidence is absent and the verdict is `DEGRADED (absent)`. Required-artifact phases still need the run-scoped receipt.
+    - With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions` (AGY reuses the Claude flag).
+    - Completion contract: the agent itself must call `declare_complete` to write the durable completion sentinel; the host writes no completion evidence for any transport. When AGY's `--print` fallback produces a valid required artifact but misses the MCP completion call, completion evidence is absent and the verdict is `DEGRADED (absent)`. Required-artifact phases still need the run-scoped receipt.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
-    - Session continuation remains unavailable in Ralph Workflow. The v1.1.10 continuation and conversation-id probes accepted one-word `--print` prompts, but neither exposed the resumed-session identity; the integration therefore does not claim or reuse AGY sessions.
-    - `agy agents` reported no available agents on the measured stock v1.1.10 CLI installation. This is a *subcommand listing* observation, not proof AGY lacks subagent capability: the live `init` frame's `tools` list includes `define_subagent`, `invoke_subagent`, and `manage_subagents`, and a live capture confirmed two subagents actually dispatched and completed in parallel through those tools. Ralph Workflow's routing policy matches the measured transport: with `agent_subagents` and two or more work units, AGY parallel plans route through the same supported agent_subagents path as other native-subagent transports, and the stale `agy agents` availability veto has been removed.
-    - The measured v1.1.10 mock live smoke exited 0 after creating its requested file, showing parser/tool activity without a permission prompt, and producing a valid fallback `smoke_test_result`. Ralph Workflow validated and canonically promoted it and recorded the receipt; because AGY missed the `declare_complete` call, completion evidence was absent and the verdict was `DEGRADED (absent)` (the host does not synthesize completion evidence). `AgyParser` maps stream-json `init`, `step_update`, and `result` events.
+    - Session continuation remains unavailable in Ralph Workflow: the integration does not claim or reuse AGY sessions.
+    - The `init` frame's `tools` list includes `define_subagent`, `invoke_subagent`, and `manage_subagents`; subagents dispatch and complete in parallel through those tools. Ralph Workflow's routing policy matches that transport: with `agent_subagents` and two or more work units, AGY parallel plans route through the same supported agent_subagents path as other native-subagent transports. The `agy agents` subcommand listing does not gate availability.
+    - The mock smoke exits 0 after creating its requested file, shows parser/tool activity without a permission prompt, and produces a valid fallback `smoke_test_result`. Ralph Workflow validates and canonically promotes it and records the receipt; because AGY misses the `declare_complete` call, completion evidence is absent and the verdict is `DEGRADED (absent)` (the host does not synthesize completion evidence). `AgyParser` maps stream-json `init`, `step_update`, and `result` events.
     - AGY is a supported integration, not a replacement for Ralph Workflow.
 
 ```toml
@@ -123,7 +123,7 @@ json_parser = "generic"
 - **Install / auth**: <https://pi.dev/docs/latest/usage>
 - **Transport**: `pi`
 - **Flags**: `--mode json`, `--approve`, and `--session {}`
-- **Native tools**: Ralph Workflow adds only `--extension <path>` for its MCP bridge. It does not pass `--no-builtin-tools`, and it preserves configured command arguments, so installed native extensions remain available. Pi's bundled `examples/extensions/subagent/` provides the official `subagent` tool. Install both `index.ts` and `agents.ts` under `~/.pi/agent/extensions/subagent/` plus its definitions under `~/.pi/agent/agents/`, or pass its `index.ts` through `--extension`. The developer prompt injects this setup path when the tool is absent instead of treating absence as permission to implement independent units in the parent session.
+- **Native tools**: Ralph Workflow adds only `--extension <path>` for its MCP bridge. It does not pass `--no-builtin-tools`, and it preserves configured command arguments, so installed native extensions remain available. Pi's bundled `examples/extensions/subagent/` provides the official `subagent` tool. Install both `index.ts` and `agents.ts` under `~/.pi/agent/extensions/subagent/` plus its definitions under `~/.pi/agent/agents/`, or pass its `index.ts` through `--extension`. The developer prompt injects this setup path when the tool is absent; absence of the tool does not license implementing independent units in the parent session.
 
 ### Cursor (Cursor)
 
@@ -138,15 +138,15 @@ json_parser = "generic"
 
 ### Kimi (Kimi Code)
 
-- **CLI**: `kimi` (v0.36.1 observed)
+- **CLI**: `kimi` (v0.36.1)
 - **Install / auth**: <https://platform.kimi.ai> — OAuth login (`kimi` interactive) wires the `managed:kimi-code` subscription provider
 - **Transport**: `kimi`
-- **Flags**: `-p <prompt-file>`, `--output-format stream-json`, `-m <model>` via the `kimi/<model>` alias, and `-S <session-id>` for session resume (fresh v0.36.1 probe: `-S, --session [id] Resume a session`; the legacy `-r` spelling from stale kimi-cli docs is not a v0.36.1 option and is never emitted)
-- **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (observed: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; config default `kimi-code/kimi-for-coding`, set in wt-063 — it was `kimi-code/k3-256k` before). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
-- **Multimodal**: image input is covered by the measured `image_in` capability on the authenticated models.
-- **Native orchestration**: current Kimi Code exposes `Agent`, `TaskOutput`, `TaskWait`, and `TaskStop`; its experimental fork mode is a separate optional facility. The older measured v0.36.1 build did not advertise those tools. Ralph Workflow does not disable native Kimi tools. An older installed build must be updated or must report the concrete version blocker rather than silently implement ready work in the parent session.
+- **Flags**: `-p <prompt-file>`, `--output-format stream-json`, `-m <model>` via the `kimi/<model>` alias, and `-S <session-id>` for session resume (`-S, --session [id] Resume a session`). The `-r` spelling is not a v0.36.1 option and is never emitted.
+- **Constraint**: `-m` must carry a full configured ID from `~/.kimi-code/config.toml` (configured IDs: `kimi-code/kimi-for-coding`, `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, `kimi-code/k3-256k`; config default `kimi-code/kimi-for-coding`). A bare `-m kimi-for-coding` fails with `Model "kimi-for-coding" is not configured in config.toml`.
+- **Multimodal**: image input is covered by the `image_in` capability on the authenticated models.
+- **Native orchestration**: current Kimi Code exposes `Agent`, `TaskOutput`, `TaskWait`, and `TaskStop`; its experimental fork mode is a separate optional facility. Ralph Workflow does not disable native Kimi tools. An installed build that lacks those tools must be updated or must report the concrete version blocker; it must not silently implement ready work in the parent session.
 - **Smoke**: `ralph smoke-interactive-kimi --agent kimi/kimi-code/kimi-for-coding` (the default alias).
-- **Model cost comparison** (re-measured 2026-08-17 against the official model table at <https://www.kimi.com/code/docs/en/kimi-code/models>; availability and quota notes as stated there):
+- **Model cost comparison** (official model table at <https://www.kimi.com/code/docs/en/kimi-code/models>; availability and quota notes as stated there):
 
   | Model ID | Availability | Context | Stated quota note |
   | --- | --- | --- | --- |
@@ -155,7 +155,13 @@ json_parser = "generic"
   | `kimi-code/k3` | Moderato and above (1M context needs Allegretto) | up to 1M | about 2x `k3-256k` consumption |
   | `kimi-code/k3-256k` | Moderato and above | 256k | none stated |
 
-  The table does not publish a direct `kimi-for-coding` vs `k3-256k` price, so the smoke default stays on the configured standard model `kimi-code/kimi-for-coding`: it is available to every member tier and carries no documented quota multiplier, which makes it the auditable least-cost choice. Selection rule if the table or configured aliases change: pick the accessible model with the lowest explicitly documented multiplier and break missing-price ties in favor of the configured default, never a guess from the name.
+  The table publishes no direct `kimi-for-coding` vs `k3-256k` price,
+  so the smoke default is the configured standard model
+  `kimi-code/kimi-for-coding`: it is available to every member tier and
+  carries no documented quota multiplier. Selection rule: pick the
+  accessible model with the lowest explicitly documented multiplier and
+  break missing-price ties in favor of the configured default, never a
+  guess from the name.
 
 <a id="ccs_aliases"></a>
 
@@ -166,12 +172,12 @@ json_parser = "generic"
 - **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode bypassPermissions`, `--verbose`, and `--resume {}`
 - **Constraint**: CCS aliases are explicitly headless Claude commands configured under `[ccs_aliases]`. `ccs/<alias>` also resolves as a dynamic alias (like `claude/<model>`) even with no `[ccs_aliases]` entry at all.
 - **Smoke test**: `ralph smoke-interactive-ccs --agent ccs/<alias>` (the requested target is `ccs/mm`; when unspecified it defaults to `ccs/glm`).
-- **Caveats** (measured against the live CCS v8.9.0 CLI):
+- **Caveats** (live CCS v8.9.0 CLI):
     - `--permission-mode auto` is a valid `claude` flag value but is rejected by
       `ccs`'s own pre-flight validator (`Invalid permission mode: "auto". Valid
       modes: default, plan, acceptEdits, bypassPermissions`) before the command
-      ever reaches `claude` -- every `ccs/<alias>` invocation failed
-      immediately with exit code 1. `bypassPermissions` is accepted by both
+      ever reaches `claude` — the invocation exits with code 1.
+      `bypassPermissions` is accepted by both
       the `ccs` wrapper and the underlying `claude` CLI and is the documented
       default.
     - Ralph Workflow never passes `ccs` its own `-p`/`--prompt` flag (only
@@ -179,26 +185,31 @@ json_parser = "generic"
       `-- <text>` positional argument), so a `ccs/<alias>` invocation does
       NOT route through CCS's separate "headless executor" delegation-report
       feature (that feature is `-p "task"`-triggered only, a distinct
-      one-shot "delegate and summarize" UX). The invocation instead takes
+      one-shot "delegate and summarize" UX). The invocation takes
       CCS's raw pass-through path, which spawns `claude` and forwards its
-      raw `--output-format=stream-json` NDJSON stdout untouched. A live run
-      against `ccs/glm` confirmed parser events, tool activity, and artifact
-      submission are all observed at WIRE/TRANSCRIPT provenance -- the same
-      fidelity as the built-in `claude-headless` agent.
-    - `AgentTransport.CLAUDE` (shared by `claude-headless` and every
-      `ccs/<alias>`) previously raised `MissingCredentialsError:
-      ANTHROPIC_API_KEY not set` before ever spawning `ccs` -- CCS profiles
-      resolve their own provider credential per-profile (e.g. a GLM-backed
-      profile injects `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` itself,
-      confirmed via `ccs env <alias>`) and never need `ANTHROPIC_API_KEY` in
-      Ralph Workflow's own environment. `ccs/<alias>` commands are now
-      exempt from that preflight check.
+      raw `--output-format=stream-json` NDJSON stdout untouched. Parser
+      events, tool activity, and artifact submission are observed at
+      WIRE/TRANSCRIPT provenance — the same fidelity as the built-in
+      `claude-headless` agent.
+    - The `ANTHROPIC_API_KEY` preflight in
+      `ralph/agents/invoke/__init__.py::_fail_for_missing_credentials`
+      applies to the `AgentTransport.CLAUDE` and
+      `AgentTransport.CLAUDE_INTERACTIVE` transports, and is skipped when
+      the command's first token is `ccs` or `claude`. Every `ccs/<alias>`
+      command is exempt for that reason: CCS profiles resolve their own
+      provider credential per-profile (e.g. a GLM-backed profile injects
+      `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` itself, as shown by
+      `ccs env <alias>`) and never need `ANTHROPIC_API_KEY` in
+      Ralph Workflow's own environment. The built-in `claude-headless` agent is
+      exempt as well — its command is `claude -p` — while a `claude`-transport
+      agent whose command starts with neither `ccs` nor `claude` still hits
+      the preflight.
     - Session identification: CCS aliases wrap headless Claude but the wrapper
       hides the session-id banner from the PTY capture, so Ralph Workflow
       declares `session_identifier_observable=False` for every `ccs/<alias>`.
-      The smoke harness therefore no longer requires an observable session
+      The smoke harness therefore does not require an observable session
       ID for `ccs/mm` or any other CCS alias; single-turn runs pass without
-      retries/resume. The `--resume {}` flag is still emitted, but session
+      retries/resume. The `--resume {}` flag is emitted, but session
       continuation remains best-effort for this transport.
     - Visible-output ceiling: because the resolved command carries
       `--output-format=stream-json`, `ccs/<alias>` is classified as

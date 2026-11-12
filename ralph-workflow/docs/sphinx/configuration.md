@@ -229,16 +229,16 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `max_backoff_ms` | `60000` | Maximum retry backoff delay |
 | `max_cycles` | `3` | Maximum full fallback cycles through a drain |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
-| `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
-| `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
+| `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and count stdout-only activity. |
+| `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who want log-file activity counted can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
 | `agent_max_consecutive_unproductive` | `3` | Maximum consecutive unproductive attempts (attempts that end without an accepted artifact) by the same agent in a phase before the agent enters cooldown and the chain falls over to the next candidate; minimum 1. A workspace change resets this counter. |
 | `agent_max_total_unproductive` | `9` | Maximum total unproductive attempts by an agent in a phase, counted with or without a workspace change, before the agent is spent for the phase; minimum 1. The limit still applies to an agent that keeps changing files without ever producing the artifact. |
 
 These two keys are the complete agent-failure surface. The agent failure ledger is their single owner: it decides whether an agent is eligible, cooling down, or spent, and no other counter or cap decides that an agent retries or is benched. An attempt that ends with a valid artifact clears the agent's history. The cooldown that follows a demotion is fixed and is not configurable in `ralph-workflow.toml`; see [Recovery](recovery.md#unproductive-agent-bounds-agentfailureledger) for the bounds and the cooldown behaviour.
 
-### Removed agent-failure settings
+### Rejected agent-failure settings
 
-Three earlier settings were removed and are now rejected instead of being ignored:
+Three settings are rejected instead of being ignored:
 
 - `agent_max_same_shape_resumes`
 - `agent_max_broken_agent_same_shape_resumes`
@@ -250,7 +250,7 @@ A `[general]` table that still carries one of them fails validation with the set
 general: Value error, Configuration setting(s) ['agent_max_same_shape_resumes'] have been removed. Use 'agent_max_consecutive_unproductive' and 'agent_max_total_unproductive' instead.
 ```
 
-There is no alias for the removed keys. Migration is to delete the removed key and express the intent with `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`, then validate the file:
+There is no alias for these keys. To fix the configuration, delete the rejected key and express the intent with `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`, then validate the file:
 
 ```bash
 ralph --check-config
@@ -269,7 +269,7 @@ Use this section to tune **routing limits** for merge and rebase conflict resolu
 | `max_fallback_agents` | `2` | integer `>= 1` | Retained for compatibility. It does **not** truncate the bound chain. How many agents run, and in what order, is the `rebase_conflict_resolution` chain in `agents.toml`. A one-agent chain is warned at load because this phase then has no fallback. |
 | `total_resolution_cap_seconds` | `None` | `None` or finite number `> 0` | Optional operator cap for one complete merge resolution or all stops of one paused rebase. It is disabled by default. When configured, it can stop active work and is reported as `OPERATOR_CAP_REACHED`, never as an idle timeout. |
 
-The legacy `max_consecutive_resolver_attempts` setting has been removed in favor of `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`. Those two limits are enforced by the agent failure ledger, which is the single owner of resolver eligibility: the recorded conflict count is repository bookkeeping and never suppresses an agent.
+The `max_consecutive_resolver_attempts` setting is rejected; use `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`. Those two limits are enforced by the agent failure ledger, which is the single owner of resolver eligibility: the recorded conflict count is repository bookkeeping and never suppresses an agent.
 
 For example, an operator who deliberately wants a one-hour total cap can add:
 
@@ -363,13 +363,12 @@ preserved and reported, never overwritten.
 Policy states the rules; skills hold the technique. When they conflict,
 policy wins.
 
-### Migration from the retired default skills
+### Retired default skills
 
-On the first run after upgrading, Ralph Workflow removes the retired default
-skills it previously installed — in the project scope, in sibling agent
-locations, and user-global — and only those it manages. User-owned and
-user-edited skills are untouched. Project-level removals land in the usual
-single automatic skill-sync commit.
+On the first run after upgrading, Ralph Workflow removes the default skills it
+manages — in the project scope, in sibling agent locations, and user-global —
+and only those it manages. User-owned and user-edited skills are untouched.
+Project-level removals land in the usual single automatic skill-sync commit.
 
 ## Auto-integration
 
@@ -652,7 +651,7 @@ These four behaviours are part of the contract and are not configurable:
 - **The rollback uses neither `git stash` nor a saved patch.** The rollback is driven by the sealed proposal ref: the proposal diff identifies the files the proposal added, and `git read-tree --reset -u` restores the tracked files to `HEAD` (or the dirty run-start baseline). Nothing is stashed, and no patch file is written.
 - **A rejection after the cycle timebox expires routes to `failed_terminal`, not back to `development`.** Timebox exhaustion and the consecutive-rejection ceiling both take the phase's `on_failure` target (the recovery `failed_route` when `on_failure` is unset) and perform no rollback.
 - **Intentional large deletions get no plan-based bypass.** The mass-deletion tripwires compare the diff against `HEAD` and never consult the plan or the task text, so a deliberate large deletion trips the same hard rejection as an accidental one. Raise `max_deleted_files` and/or `max_deleted_fraction` in `[commit_review]` when a large intentional deletion is expected.
-- **Old phase names are not migrated.** The phase, role, artifact, counter, template, and skill identifiers that commit review replaced are gone, and Ralph Workflow performs no checkpoint migration for them; the maintained documentation no longer carries those retired names, and [Concepts → Phase rename and checkpoint compatibility](concepts.md#phase-rename-and-checkpoint-compatibility) explains the checkpoint consequence. A checkpoint that still names a pre-rename phase is not rewritten: the run cannot route that phase and fails. Start a fresh run after upgrading.
+- **Old phase names are not migrated.** The phase, role, artifact, counter, template, and skill identifiers that commit review replaced are gone, and Ralph Workflow performs no checkpoint migration for them; see [Concepts → Phase rename and checkpoint compatibility](concepts.md#phase-rename-and-checkpoint-compatibility) for the checkpoint consequence. A checkpoint that still names a pre-rename phase is not rewritten: the run cannot route that phase and fails. Start a fresh run after upgrading.
 
 ## `artifacts.toml` in plain language
 
@@ -764,7 +763,7 @@ defers `NO_OUTPUT_DEADLINE` while MCP tool calls, subagent work, or workspace
 events are fresher than the TTL. Workspace evidence is collected whenever a run
 has a `workspace_path`, even when `show_progress` is disabled. A subagent that is
 alive but silent on every channel is not treated as activity. Set it to `0.0` to
-disable and restore legacy stdout-only behavior.
+disable and count stdout-only activity.
 
 `agent_workspace_change_weights` sets the per-kind workspace file-change weights.
 Values are binary: `0.0` drops the kind, `1.0` counts it as full activity. The

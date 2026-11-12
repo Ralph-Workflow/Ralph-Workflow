@@ -49,9 +49,10 @@ calling a typed choice function. There is no fallback authority:
   `last_publication_decision`), `set_fan_out_decision` (single writer of
   `last_fan_out_decision`), and `set_operation_display_state` (single
   writer of `operation_display_state`). Grepping the codebase for these
-  setters confirms there are no raw `model_copy` writers of these
-  fields left after the audit. The migration covered 10
-  operation-display sites and 1 fan-out site (see
+  setters confirms that every write of these fields goes through a typed
+  setter: `operation_display_state` is written only through
+  `set_operation_display_state` and `last_fan_out_decision` only through
+  `set_fan_out_decision` (see
   [ADR-0009](../architecture/adr-0009-pipeline-source-of-truth-ownership.md)).
 - Crash recovery uses two reflog boundaries with different contracts.
   One reads the shared branch reflog as one row of a legacy rebase
@@ -87,15 +88,24 @@ The full lifecycle — failure categorization, checkpoints, evidence
 retention, and the recovery loop these states project — is documented in
 [Recovery](recovery.md).
 
-### Post-fix closure
+### Closed operator surface
 
-The two residual prose-comparison sites (the `last_decision` string
-compare in `run_loop._integration_alert_for_state` and the
-`"diagnos" in norm or "evidence" in norm` substring heuristic in
-`display/auto_integrate_message`) are closed in
-[ADR-0010](../architecture/adr-0010-post-fix-source-of-truth.md).
-The same ADR records the defensive `RuntimeError` boundary on
+Every label you see in the activity line comes from a closed enum, never
+from prose. The `last_decision` comparison in
+`run_loop._integration_alert_for_state` reads
+`PhaseDecision.REPORT_INTERVENTION_REQUIRED.value`.
+`display/auto_integrate_message.format_integration_label` returns
+`IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS` whenever `_is_diagnosis_state`
+holds: the typed `is_diagnosis` flag, a set `diagnostic_ownership`, a
+retained `recovery_record_retained`, or a `last_outcome` /
+`operation_display_state` of `evidence_diagnosis` / `diagnosing` — while a
+`last_outcome` of `intervention_required` /
+`diagnostic_intervention_required` settles the label as `intervention`.
+The `OperationDisplayState` projection
+(`integration_action_to_operation_display_state`) selects
+`EVIDENCE_DIAGNOSIS` from the closed `_DIAGNOSIS_ACTION_VERBS` vocabulary
+(`diagnosing`, `evidence_diagnosis`) and the same `is_diagnosis` flag; see
+[ADR-0010](../architecture/adr-0010-post-fix-source-of-truth.md). The same
+ADR records the defensive `RuntimeError` boundary on
 `SubprocessOperationEvidenceCollector.snapshot()` and the public
-matrix-extension regression coverage. The operator surface is now
-strictly typed: every label you see in the activity line comes
-from a closed enum and an `is_diagnosis` flag, never from prose.
+matrix-extension regression coverage.

@@ -1,17 +1,15 @@
 # ADR-0006: Owned landing recovery at standalone commit boundaries
 
 * Status: Accepted
-* Date: 2026-10-06
+* Related: [ADR-0007](adr-0007-integration-source-of-truth.md), [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
 
 ## Context
 
 The ordinary dispatch invariant blocks every agent phase while a durable
-integration receipt exists. Pipeline startup has a recovery supervisor;
-standalone commit generation previously reached the invariant directly and
-raised an uncaught exception. A separate defect deleted an unfinished landing
-receipt when a target advanced or an ancestry query failed.
+integration receipt exists. Pipeline startup has a recovery supervisor, and
+standalone commit generation runs the same supervisor.
 
-## Choice
+## Architecture
 
 Standalone commit generation delegates existing ownership to the same recovery
 and supervised resolution paths as pipeline startup before inspecting its diff
@@ -21,15 +19,16 @@ no new integration without an existing receipt. A final dispatch refusal is a
 typed `IntegrationDispatchBlockedError`, handled outside commit-agent retry.
 
 Target divergence schedules owned reintegration under the existing recovery
-lease. The durable `reintegrate_pending` field defaults to false for older
-receipts. Action replacement uses the existing atomic record writer, with no
-delete-and-recreate interval. Reintegration remains owned until Git proves the
-result landed. Missing targets and failed ancestry queries retain evidence.
-Disabling new automatic integration does not cancel existing ownership.
+lease. A record without the durable `reintegrate_pending` field is read with
+`reintegrate_pending = false`. Action replacement uses the atomic record
+writer, with no delete-and-recreate interval. Reintegration remains owned until
+Git proves the result landed. Missing targets and failed ancestry queries
+retain evidence. Disabling new automatic integration does not cancel existing
+ownership.
 Foreign target reconciliation records the initiating feature identity. Finishing
 that target operation atomically schedules the feature landing; it cannot release
-the initiating obligation. Older foreign receipts without that identity retain
-evidence and require intervention rather than guessing the protected feature.
+the initiating obligation. A foreign receipt without that identity retains
+evidence and requires intervention rather than guessing the protected feature.
 
 ## Consequences
 

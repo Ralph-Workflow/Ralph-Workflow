@@ -140,6 +140,71 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
         "ralph-workflow/docs/sphinx/mcp-restart-decisions.md",
         ("its own docstring defers",),
     ),
+    (
+        "ralph-workflow/docs/architecture/adr-0006-owned-landing-recovery.md",
+        (
+            "previously reached the invariant directly",
+            "deleted an unfinished landing receipt",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/architecture/adr-0007-integration-source-of-truth.md",
+        (
+            "Previously, lifecycle truth was derived",
+            "immediate production reproduction",
+            "core decisions",
+            "false progress (premature dispatch)",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/architecture/adr-0009-pipeline-source-of-truth-ownership.md",
+        (
+            "replaced the live raw writers",
+            "used to branch on the prose prefix",
+            "used to derive the",
+            "used to authorize",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/agents/watchdog-spec.md",
+        (
+            "used to be two independent arbiters that drifted apart",
+            "This split produced visible",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/sphinx/agent-compatibility.md",
+        (
+            "previously raised `MissingCredentialsError",
+            "A live run against `ccs/glm` confirmed",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/architecture/adr-0008-integration-lifecycle-consolidation.md",
+        (
+            "explicitly deferred several areas in",
+            "This ADR supersedes the",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/architecture/adr-0010-post-fix-source-of-truth.md",
+        ("**Before.**",),
+    ),
+    (
+        "ralph-workflow/docs/sphinx/operator-states.md",
+        (
+            "left after the audit",
+            "The migration covered",
+        ),
+    ),
+    (
+        "ralph-workflow/docs/agents/exec-long-running-root-cause.md",
+        (
+            "Historical (pre-§3b) wording",
+            "no longer holds",
+            "no longer cites a local-source URL",
+        ),
+    ),
 )
 
 

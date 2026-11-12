@@ -1,44 +1,39 @@
 # ADR-0008: Integration lifecycle consolidation: typed IntegrationAction, RebaseOutcomeKind, and the operation-scoped object-reachability check
 
 * Status: Accepted
-* Date: 2026-10-15
-* Deciders: Ralph Workflow Team
-* Consulted: ADR-0004, ADR-0005, ADR-0006, ADR-0007
+* Related: [ADR-0004](adr-0004-conflict-resolution-liveness.md), [ADR-0005](adr-0005-conflict-resolution-pipeline-parity.md), [ADR-0006](adr-0006-owned-landing-recovery.md), [ADR-0007](adr-0007-integration-source-of-truth.md)
 * Extended by: [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
 
 ## Context
 
-[ADR-0007](adr-0007-integration-source-of-truth.md) established the single-source-of-truth
-architecture for Ralph Workflow, introducing operation-scoped evidence collection via
-`OperationEvidenceCollector`, explicit state transitions on `IntegrationRecord`, and the
-`OperationDisplayState` taxonomy. However, ADR-0007 explicitly deferred several areas in
-its "Out of Scope" clause:
+Ralph Workflow coordinates automated Git integration, crash recovery, and diagnostic
+repair across linked worktrees. The integration lifecycle is driven by several
+independent owners — the durable integration record, the operation-scoped evidence
+collector, the typed operator display taxonomy, and the diagnostic repair path — and
+each of them can disagree with the others unless one typed authority owns the whole
+lifecycle.
 
-1. **Full reducer consolidation**: `RebaseState` retained legacy compatibility fields
-   (`last_action`, `last_reason`) alongside `operation_display_state` without a single
-   typed outcome authority.
-2. **Conflict-resolution typing**: Round progression in `ralph/pipeline/conflict_resolution/driver.py`
-   relied on unstructured boolean checks and prose inspection (`if evidence`, `if evidence is None`).
-3. **Deterministic completion proof & non-agent diagnostic repair**: Diagnostic remediation
-   continued to invoke diagnostic agents without verifying whether the underlying Git operation
-   had already completed cleanly or whether marker objects (`MERGE_HEAD`, `REBASE_HEAD`) were
-   reachable in the object store.
+Prose comparisons such as `record.phase == "integrating"` / `"integrated"` or
+`rebase.last_action == "conflict"`, and untyped outcome strings such as
+`"remote_failed"`, give two sites the power to disagree about the same lifecycle fact.
+When marker SHAs are invalid or unreachable, diagnostic routines can enter repeated
+agent rotation loops or risk destructive metadata mutations.
 
-As a result, several drift sites remained where code compared prose strings such as
-`record.phase == "integrating"` / `"integrated"` or `rebase.last_action == "conflict"`, or wrote
-untyped outcome strings (e.g. `"remote_failed"`). Furthermore, when marker SHAs were invalid or
-unreachable, diagnostic routines could enter repeated agent rotation loops or risk destructive
-metadata mutations.
+[ADR-0007](adr-0007-integration-source-of-truth.md) scopes operation-scoped evidence
+collection via `OperationEvidenceCollector`, explicit state transitions on
+`IntegrationRecord`, and the `OperationDisplayState` taxonomy. The lifecycle contract
+below adds the typed `IntegrationAction` vocabulary, the typed `RebaseOutcomeKind`
+outcome model, and the positive operation-completion proof.
 
-## Choice
+## Architecture
 
-This ADR supersedes the "Out of Scope" clause of ADR-0007 by consolidating the integration
-lifecycle under typed authorities, single-writer state invariants, fail-closed reachability
-verification, and a four-condition positive operation-completion proof.
+The integration lifecycle runs under typed authorities, single-writer state invariants,
+fail-closed reachability verification, and a four-condition positive operation-completion
+proof.
 
 ### 1. Typed `IntegrationAction` authority
 
-We introduce `ralph.pipeline._integration_action.IntegrationAction`, a closed enumeration of
+`ralph.pipeline._integration_action.IntegrationAction` is a closed enumeration of
 8 discrete actions governing the entire integration lifecycle:
 
 | Value | Name | Description |
@@ -57,9 +52,9 @@ The integration owner seam (`ralph.pipeline.integration_owner`: `decide_integrat
 `charge_integration_attempt`, reached from the pipeline boundaries through
 `ralph.pipeline._integration_owner_seam.decide_seam_action`) is the sole authority for deciding
 what action the pipeline must take for an integration obligation.
-All prose checks (`phase == "integrating"`, `phase == "integrated"`, `last_action == ...`) across
-the run loop, reducer, orchestrator, effect router, and recovery boundaries are eliminated and
-replaced by typed queries against that seam.
+All prose checks (`phase == "integrating"`, `phase == "integrated"`, `last_action == ...`) are
+absent from the run loop, reducer, orchestrator, effect router, and recovery boundaries;
+each of them consults typed queries against that seam.
 
 The helper `ralph.pipeline._integration_action.next_integration_action(record, policy=None, clock=None) -> IntegrationAction`
 is NOT that authority: it is the typed projection of durable state onto the closed
@@ -68,7 +63,7 @@ facts cannot prove a next step.
 
 ### 2. Typed `RebaseOutcomeKind` and single-writer `RebaseState.last_outcome`
 
-We introduce `ralph.pipeline._integration_action.RebaseOutcomeKind`, an enumeration of 19 closed outcome
+`ralph.pipeline._integration_action.RebaseOutcomeKind` is an enumeration of 19 closed outcome
 verbs representing the lossless union of all integration outcome categories across the pipeline:
 
 - Core rebase/merge outcomes: `REBASED`, `MERGED`, `FAST_FORWARDED`, `SKIPPED`, `CONFLICT`, `RECOVERED`
@@ -90,8 +85,9 @@ To guarantee backward compatibility with existing checkpoints and external calle
 
 ### 3. Operation-scoped object reachability and the four-condition completion proof
 
-To eliminate unnecessary diagnostic agent invocations and prevent corruption when marker files point
-to unreachable objects, `ralph.pipeline.operation_evidence` and `_integration_diagnostic` enforce
+To keep unnecessary diagnostic agent invocations out of the picture and to keep marker
+files that point at unreachable objects from being mutated,
+`ralph.pipeline.operation_evidence` and `_integration_diagnostic` enforce
 a fail-closed pre-pass before any diagnostic agent is invoked:
 
 #### Object reachability check
@@ -131,14 +127,14 @@ satisfying all four conditions:
 
 ### 4. Typed conflict-resolution action and attempt fault classification
 
-We type the conflict-resolution driver and fault classification:
+The conflict-resolution driver and the fault classification are typed:
 - `ralph.pipeline.conflict_resolution.driver.ResolutionAction`: enum with values
   `CONTINUE_AGENT_ROUND`, `ESCALATE_TO_INTERVENTION`, `ACCEPT_WORKTREE_REPAIR`, `PROCEED_TO_FAST_FORWARD`.
 - `select_resolution_action(session, round_index, cap) -> ResolutionAction`: single authority for round
   choice making.
 - `ralph.pipeline.conflict_resolution.attempt_fault.AttemptFault`: enum with values
   `AGENT_HEALTHY`, `AGENT_EXITED`, `AGENT_INFRASTRUCTURE_FAILURE`, `AGENT_TOOL_DEAD`, `UNKNOWN`.
-- `classify_attempt_fault(evidence) -> AttemptFault`: typed classifier replacing unstructured `if evidence` checks.
+- `classify_attempt_fault(evidence) -> AttemptFault`: typed classifier; the unstructured `if evidence` checks are absent.
 
 ## Consequences
 
@@ -146,11 +142,11 @@ We type the conflict-resolution driver and fault classification:
   (`ralph.pipeline.integration_owner`, reached from the pipeline boundaries through
   `decide_seam_action`) prevents divergent lifecycle decisions across the six public entry points
   (`inspect_integration_resolution`, `_run_inner_loop`, commit handler, cooldown handler,
-  parallel-join handler, terminal handler). The retired `next_integration_action` projection is no
-  longer consulted by those entry points.
+  parallel-join handler, terminal handler). The `next_integration_action` projection is not
+  consulted by those entry points.
 - **Lossless outcome projection**: `RebaseState.last_outcome` provides full typed fidelity across 19 verbs
   while maintaining 100% backward compatibility for legacy checkpoints.
-- **Fail-closed diagnostic safety**: Broken or unreachable Git marker objects no longer trigger infinite
+- **Fail-closed diagnostic safety**: Broken or unreachable Git marker objects do not trigger infinite
   agent loops or unsafe marker deletions.
 - **Fast-path evidence release**: Completed Git operations with positive proof skip agent invocation,
   reducing latency and agent spend while maintaining strict cryptographic and structural guarantees.
