@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -47,6 +48,9 @@ from ralph.recovery.classifier import FailureCategory
 from ralph.test_suites import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 from ralph.workspace.fs import FsWorkspace
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
 COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 _INVARIANTS_FILE = "tests/test_commit_review_invariants.py"
 _VERIFY_GATE_FILE = "tests/test_commit_review_verify_gate.py"
@@ -54,6 +58,24 @@ _PIPELINE_COMMIT_E2E_FILE = "tests/integration/test_pipeline_commit_review_to_co
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.required_auto_integrate_e2e]
+
+_REPO_CACHE: dict[Path, Repo] = {}
+
+
+def _repo(root: Path) -> Repo:
+    repo = _REPO_CACHE.get(root)
+    if repo is None:
+        repo = Repo(root)
+        _REPO_CACHE[root] = repo
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repos() -> Generator[None, None, None]:
+    yield
+    for repo in _REPO_CACHE.values():
+        repo.close()
+    _REPO_CACHE.clear()
 
 
 def _resolve_verdict(content: dict[str, object]) -> str:
@@ -350,12 +372,9 @@ def test_untracked_completion_report_md_deletes_and_tracked_is_declined(
     assert not report.exists()
 
     report.write_text("# tracked\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["completion_report.md"])
-        repo.index.commit("track completion report")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add(["completion_report.md"])
+    repo.index.commit("track completion report")
     _write_commit_review_artifact(
         workspace,
         {
@@ -439,28 +458,18 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
 
 
 def _head_sha(repo_root: Path) -> str:
-    repo = Repo(repo_root)
-    try:
-        return str(repo.head.commit.hexsha)
-    finally:
-        repo.close()
+    return str(_repo(repo_root).head.commit.hexsha)
 
 
 def _commit_count(repo_root: Path) -> int:
-    repo = Repo(repo_root)
-    try:
-        return sum(1 for _ in repo.iter_commits())
-    finally:
-        repo.close()
+    head = _repo(repo_root).head.commit
+    return sum(1 for _ in head.traverse()) + 1
 
 
 def _track_and_commit(repo_root: Path, paths: list[str]) -> None:
-    repo = Repo(repo_root)
-    try:
-        repo.index.add(paths)
-        repo.index.commit(f"track {', '.join(paths)}")
-    finally:
-        repo.close()
+    repo = _repo(repo_root)
+    repo.index.add(paths)
+    repo.index.commit(f"track {', '.join(paths)}")
 
 
 def _seed_engine_defaults(repo_root: Path) -> None:
@@ -751,12 +760,9 @@ def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
 ) -> None:
     secret = tmp_git_repo / ".env"
     secret.write_text("TOKEN=staged-secret\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add([".env"])
-        repo.index.commit("track secret before the ignore seed")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add([".env"])
+    repo.index.commit("track secret before the ignore seed")
     _seed_engine_defaults(tmp_git_repo)
 
     secret.write_text("TOKEN=rotated-secret\n", encoding="utf-8")
@@ -786,11 +792,8 @@ def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
         f"A staged secret must not reject the iteration, got: {event!r}"
     )
     assert secret.read_text(encoding="utf-8") == "TOKEN=rotated-secret\n"
-    repo = Repo(tmp_git_repo)
-    try:
-        tracked = repo.git.ls_files("--cached").splitlines()
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    tracked = [path for path, _stage in repo.index.entries]
     assert ".env" not in tracked
     assert _head_sha(tmp_git_repo) == head_before
     assert _commit_count(tmp_git_repo) == commits_before
@@ -842,12 +845,9 @@ def test_final_commit_review_loops_back_on_an_unsafe_action_and_never_advances(
     workspace = FsWorkspace(tmp_git_repo)
     tracked = tmp_git_repo / "app.py"
     tracked.write_text("print('x')\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["app.py"])
-        repo.index.commit("track app")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add(["app.py"])
+    repo.index.commit("track app")
 
     _write_commit_review_artifact(
         workspace,

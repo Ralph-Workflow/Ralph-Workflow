@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,6 +28,30 @@ pytestmark = [
     pytest.mark.timeout_seconds(15),
 ]
 
+_REPO_CACHE: dict[Path, Repo] = {}
+
+
+def _repo(repo_root: Path, *, refresh: bool = False) -> Repo:
+    if refresh:
+        stale = _REPO_CACHE.pop(repo_root, None)
+        if stale is not None:
+            with contextlib.suppress(Exception):
+                stale.close()
+    repo = _REPO_CACHE.get(repo_root)
+    if repo is None:
+        repo = Repo(repo_root)
+        _REPO_CACHE[repo_root] = repo
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repositories() -> Iterator[None]:
+    yield
+    for repo in _REPO_CACHE.values():
+        with contextlib.suppress(Exception):
+            repo.close()
+    _REPO_CACHE.clear()
+
 
 @pytest.fixture(autouse=True)
 def _scope_baseline_skills_to_test_skills(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -37,14 +63,11 @@ def _scope_baseline_skills_to_test_skills(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def _commit_all_initial(repo_root: Path) -> None:
-    repo = Repo(repo_root)
-    try:
-        repo.config_writer().set_value("user", "name", "Test Author").release()
-        repo.config_writer().set_value("user", "email", "test@example.com").release()
-        actor = Actor("Test Author", "test@example.com")
-        repo.index.commit("initial", author=actor, committer=actor)
-    finally:
-        repo.close()
+    repo = _repo(repo_root, refresh=True)
+    repo.config_writer().set_value("user", "name", "Test Author").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    actor = Actor("Test Author", "test@example.com")
+    repo.index.commit("initial", author=actor, committer=actor)
 
 
 def _head_tree_blob_paths(repo: Repo) -> set[str]:
@@ -88,15 +111,12 @@ def _plant_unmanaged_skill(root: Path, name: str) -> Path:
 
 
 def _commit_worktree(repo_root: Path, message: str) -> str:
-    repo = Repo(repo_root)
-    try:
-        repo.git.add("-A")
-        if not repo.is_dirty(untracked_files=True):
-            return str(repo.head.commit.hexsha)
-        actor = Actor("Test Author", "test@example.com")
-        return str(repo.index.commit(message, author=actor, committer=actor).hexsha)
-    finally:
-        repo.close()
+    repo = _repo(repo_root, refresh=True)
+    repo.git.add("-A")
+    if not repo.is_dirty(untracked_files=True):
+        return str(repo.head.commit.hexsha)
+    actor = Actor("Test Author", "test@example.com")
+    return str(repo.index.commit(message, author=actor, committer=actor).hexsha)
 
 
 def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and_link(

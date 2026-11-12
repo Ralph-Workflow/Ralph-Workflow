@@ -230,6 +230,11 @@ select = [
 ]
 "ralph/cli/**/*.py" = ["PLC0415"]
 "ralph/config/**/*.py" = ["PLC0415"]
+"ralph/mcp/tool_contract.py" = ["PLC0415"]
+"ralph/mcp/server/_snapshots.py" = ["PLC0415"]
+"ralph/mcp/upstream/tool_catalog_cache.py" = ["PLC0415"]
+"ralph/workspace/context.py" = ["PLC0415"]
+"tests/test_integration_obstruction_real_git.py" = ["PLR0911"]
 "ralph/display/**/*.py" = ["PLC0415"]
 "ralph/mcp/tools/_validation_retry_hints.py" = [
     "PLC0415",

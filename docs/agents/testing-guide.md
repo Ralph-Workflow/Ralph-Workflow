@@ -324,7 +324,7 @@ def test_something_timing_sensitive() -> None: ...
 ## TDD discipline
 
 **Name the check before you implement.** Write down the runnable
-pass/fail check that decides the change is done, and keep it green.
+pass/fail check that decides the change is done.
 
 * The red / green / refactor cycle is taught by the
   `test-driven-development` skill; use it when that skill is available.

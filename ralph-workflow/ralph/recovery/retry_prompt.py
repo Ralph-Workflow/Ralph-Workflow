@@ -4,20 +4,11 @@ import hashlib
 from typing import Final
 
 VALIDATION_FAILURE_BANNER: Final[str] = "VALIDATION FAILURE"
-PREMISE_CHECK_LINE: Final[str] = "test the premise shared by the failed fixes before another patch"
 
 
 def failure_fingerprint(failure_summary: str, diagnostic_identity: str = "") -> str:
     payload = "\x1f".join((failure_summary.strip(), diagnostic_identity.strip()))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def premise_check_line(current_fingerprint: str, prior_fingerprint: str | None) -> str:
-    if not current_fingerprint or not prior_fingerprint:
-        return ""
-    if current_fingerprint != prior_fingerprint:
-        return ""
-    return PREMISE_CHECK_LINE
 
 
 def build_validation_retry_footer() -> str:
@@ -78,10 +69,8 @@ def build_retry_error_block(
 
 
 __all__ = [
-    "PREMISE_CHECK_LINE",
     "VALIDATION_FAILURE_BANNER",
     "build_retry_error_block",
     "build_validation_retry_footer",
     "failure_fingerprint",
-    "premise_check_line",
 ]

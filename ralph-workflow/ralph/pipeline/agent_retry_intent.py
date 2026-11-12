@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading as _threading
 from importlib import import_module
 from typing import Literal, Protocol, cast
 
@@ -102,10 +103,44 @@ def resume_agent_retry_intent(
     )
 
 
+_retry_intent_local: _threading.local = _threading.local()
+
+
+def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
+    _retry_intent_local.intent = intent
+    if intent == cleared_agent_retry_intent():
+        _retry_intent_local.fresh_bridge_requested = False
+
+
+def fresh_bridge_requested() -> bool:
+    raw: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
+    return raw is True
+
+
+def mark_fresh_bridge_requested() -> None:
+    _retry_intent_local.fresh_bridge_requested = True
+
+
+def clear_fresh_bridge_requested() -> None:
+    _retry_intent_local.fresh_bridge_requested = False
+
+
+def pop_last_captured_retry_intent() -> AgentRetryIntent:
+    raw: object = getattr(_retry_intent_local, "intent", cleared_agent_retry_intent())
+    intent = raw if isinstance(raw, AgentRetryIntent) else cleared_agent_retry_intent()
+    _retry_intent_local.intent = cleared_agent_retry_intent()
+    return intent
+
+
 __all__ = [
     "AgentRetryAction",
     "AgentRetryIntent",
     "agent_retry_intent_for_failure",
+    "clear_fresh_bridge_requested",
     "cleared_agent_retry_intent",
+    "fresh_bridge_requested",
+    "mark_fresh_bridge_requested",
+    "pop_last_captured_retry_intent",
     "resume_agent_retry_intent",
+    "set_last_captured_retry_intent",
 ]

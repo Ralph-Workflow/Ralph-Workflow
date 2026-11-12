@@ -103,11 +103,8 @@ def _port_from_endpoint(endpoint: str) -> int:
 
 
 def _wait_child_dead(proc: lifecycle.ProcessLike, timeout_s: float) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            return
-        time.sleep(0.02)
+    proc.wait(timeout=timeout_s)
+    assert proc.poll() is not None
 
 
 def _assert_no_connrefused(port: int, *, context: str) -> None:

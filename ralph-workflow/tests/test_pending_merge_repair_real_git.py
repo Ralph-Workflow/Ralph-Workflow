@@ -44,6 +44,17 @@ def _repo(root: Path) -> Repo:
     return repo
 
 
+def _read_git_object(root: Path, args: tuple[str, ...]) -> GitRunResult | None:
+    if len(args) == 2 and args[0] == "rev-parse":
+        sha = _repo(root).commit(args[1]).hexsha
+        return GitRunResult(args=("git", *args), stdout=sha + "\n", stderr="", returncode=0)
+    if len(args) == 2 and args[0] == "show" and ":" in args[1]:
+        ref, path = args[1].split(":", 1)
+        data = _repo(root).commit(ref).tree[path].data_stream.read().decode()
+        return GitRunResult(args=("git", *args), stdout=data, stderr="", returncode=0)
+    return None
+
+
 def _git(root: Path, *args: str) -> GitRunResult:
     if args == ("write-tree",):
         try:
@@ -57,6 +68,12 @@ def _git(root: Path, *args: str) -> GitRunResult:
         except Exception:
             return _base_git(root, *args)
         return GitRunResult(args=("git", *args), stdout="", stderr="", returncode=0)
+    try:
+        result = _read_git_object(root, args)
+    except Exception:
+        result = None
+    if result is not None:
+        return result
     return _base_git(root, *args)
 
 

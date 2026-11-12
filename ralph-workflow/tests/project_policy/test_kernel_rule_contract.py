@@ -7,9 +7,6 @@ from tests.project_policy.kernel_contract import (
     COMMENT_BAN_CURRENT_FACT_STATEMENTS,
     IDENTICAL_AGENT_RULE_TITLES,
     INVERTED_SMALLEST_CHANGE_OBLIGATION,
-    PREMISE_CHECK_ENFORCEMENT,
-    PREMISE_CHECK_EVIDENCE_TAG,
-    PREMISE_CHECK_RULE_NAME,
     PROJECT_SPECIFIC_AGENT_RULE_TITLES,
     RETIRED_PRE_FIX_REASON_SUBSTRINGS,
     SMALLEST_CHANGE_OBLIGATION,
@@ -49,53 +46,46 @@ RETIRED_COMMENT_BAN_STATEMENT: str = (
     "the ban rests on the project rule rather than on a measured effect size"
 )
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS = {
     "test_kernels_declare_exactly_the_fourteen_agent_rules": (
-        "the premise-check rule is stated again as rule 7, so the kernel declares "
-        "fourteen numbered agent rules; the kernel contract checks moved into this "
-        "module so one module owns the contract, with their assertions unchanged"
+        "the retired cold-agent retry rule was removed by the policy trim, so the "
+        "kernel declares thirteen numbered agent rules and the check is renamed to "
+        "test_kernels_declare_exactly_the_thirteen_agent_rules"
+    ),
+    "test_kernels_declare_exactly_the_thirteen_agent_rules": (
+        "the retired cold-agent retry rule was removed by the policy trim, so the "
+        "kernel declares thirteen numbered agent rules"
     ),
     "test_kernels_number_the_enforcer_ladder_rows_to_match_the_contract": (
-        "the premise-check rule is stated again as rule 7, so the enforcer ladder "
-        "carries one numbered row per shipped rule; the kernel contract checks moved "
-        "into this module so one module owns the contract, with their assertions "
-        "unchanged"
+        "the retired cold-agent retry rule was removed by the policy trim, so the "
+        "enforcer ladder carries one numbered row per shipped rule and the row "
+        "numbers above the retired rule move down one number"
     ),
     "test_root_kernel_guard_inventory_covers_every_agent_rule": (
-        "the premise-check rule is stated again as rule 7, so the root guard "
-        "inventory covers the fourteen shipped agent rules; the kernel contract checks "
-        "moved into this module so one module owns the contract, with their "
-        "assertions unchanged"
+        "the retired cold-agent retry rule was removed by the policy trim, so the "
+        "root guard inventory covers the thirteen shipped agent rules"
     ),
     "test_kernel_root_and_starter_agent_rules_carry_the_same_titles_and_evidence_tags": (
-        "the premise-check rule is stated again as rule 7, so both kernels carry "
-        "the same fourteen rule titles with the same evidence tags; the kernel "
-        "contract checks moved into this module so one module owns the contract, "
-        "with their assertions unchanged"
+        "the retired cold-agent retry rule was removed by the policy trim, so both "
+        "kernels carry the same thirteen rule titles with the same evidence tags"
     ),
     "test_every_advisory_enforcer_status_names_its_review_trigger": (
-        "the premise-check rule is stated again as rule 7, so the advisory status "
-        "of every shipped rule carries the review trigger the kernel contract "
-        "requires; the kernel contract checks moved into this module so one module "
-        "owns the contract, with their assertions unchanged"
+        "the retired cold-agent retry rule was removed by the policy trim, so the "
+        "advisory status of every shipped rule carries the review trigger the "
+        "kernel contract requires"
     ),
     "test_kernel_rule_four_enforcement_points_at_the_spec_derived_expected_value": (
-        "the premise-check rule is stated again as rule 7, so the rule 4 "
-        "enforcement cells name the spec-derived expected value instead of a "
-        "pre-fix failure record; the kernel contract checks moved into this module so "
-        "one module owns the contract, with their assertions unchanged"
+        "the rule 4 enforcement cells name the spec-derived expected value instead "
+        "of a pre-fix failure record"
     ),
     "test_advisory_guard_inventory_check_is_fault_sensitive_to_a_dropped_row_and_reason": (
-        "the premise-check rule is stated again as rule 7, so the "
-        "fault-sensitivity proof covers the advisory guard row that survived the "
-        "trim and still carries an advisory reason and a review trigger; the kernel "
-        "contract checks moved into this module so one module owns the contract, "
-        "with their assertions unchanged"
+        "the fault-sensitivity proof covers the advisory guard row that survived the "
+        "trim and still carries an advisory reason and a review trigger"
     ),
-    "test_kernels_state_the_premise_check_rule_with_its_advisory_enforcement": (
-        "the premise-check rule is stated again as rule 7 with no resolving "
-        "deterministic enforcer, so both kernels carry it with the same advisory "
-        "enforcement cell in the ladder and in the guard inventory"
+    "the_removed_cold_agent_retry_rule_check": (
+        "the retired cold-agent retry rule was removed by the policy trim, so the "
+        "check that pinned it with its advisory ladder cell and its guard-inventory "
+        "row in both kernels no longer applies"
     ),
     "test_clean_code_policy_states_the_comment_ban_evidence_tag_and_enforcement": (
         "the comment ban is a `none`-tagged project rule that a deterministic gate "
@@ -114,17 +104,17 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_the_shared_and_project_specific_agent_rule_titles_cover_every_agent_rule": (
         "the shared and the project-specific agent-rule sets are named explicitly, so "
-        "the parity check cannot silently skip a rule when the rule list changes"
+        "the parity check cannot silently skip a rule when the rule list changes; the "
+        "retired cold-agent retry rule left the project-specific set with the trim"
     ),
     "test_smallest_change_requires_deleting_the_replaced_api_in_both_kernels": (
-        "the smallest-change obligation was inverted in one pack, so both packs are "
-        "checked for the requirement that deletes the replaced API and for the "
-        "absence of the inverted wording"
+        "the retired cold-agent retry rule was removed by the policy trim, so the "
+        "smallest-change rule is rule 7 and the check names its new number"
     ),
 }
 
 
-def test_kernels_declare_exactly_the_fourteen_agent_rules() -> None:
+def test_kernels_declare_exactly_the_thirteen_agent_rules() -> None:
     for source_name, content in (("root", root_kernel()), ("starter", kernel())):
         statements = agent_rule_statements(content)
         assert len(statements) == len(AGENT_RULES), (
@@ -225,31 +215,6 @@ def test_advisory_guard_inventory_check_is_fault_sensitive_to_a_dropped_row_and_
         assert_spec_value_guard_contract(without_reason, "root kernel without the reason")
 
 
-def test_kernels_state_the_premise_check_rule_with_its_advisory_enforcement() -> None:
-    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
-        statements = agent_rule_statements(content)
-        statement = statements.get(PREMISE_CHECK_RULE_NAME.lower())
-        assert statement is not None, (
-            f"{source_name} kernel does not state the {PREMISE_CHECK_RULE_NAME!r} agent rule"
-        )
-        assert evidence_tag(statement) == PREMISE_CHECK_EVIDENCE_TAG, (
-            f"{source_name} kernel rule {PREMISE_CHECK_RULE_NAME!r} carries evidence tag "
-            f"{evidence_tag(statement)!r}; the shipped contract is "
-            f"{PREMISE_CHECK_EVIDENCE_TAG!r}"
-        )
-        status = enforcer_status_rows(content).get(PREMISE_CHECK_RULE_NAME)
-        assert status == PREMISE_CHECK_ENFORCEMENT, (
-            f"{source_name} kernel rule {PREMISE_CHECK_RULE_NAME!r} carries enforcement "
-            f"{status!r}; the shipped contract is {PREMISE_CHECK_ENFORCEMENT!r}"
-        )
-        row = guard_row(content, PREMISE_CHECK_RULE_NAME, f"{source_name} kernel")
-        assert enforcement_cell(row) == PREMISE_CHECK_ENFORCEMENT, (
-            f"{source_name} kernel guard-inventory row for {PREMISE_CHECK_RULE_NAME!r} "
-            f"carries enforcement {enforcement_cell(row)!r}; the ladder cell and the "
-            f"inventory cell must match {PREMISE_CHECK_ENFORCEMENT!r}"
-        )
-
-
 def test_clean_code_policy_states_the_comment_ban_evidence_tag_and_enforcement() -> None:
     content = root_policy("clean-code-policy.md")
     normalized = " ".join(content.split())
@@ -334,12 +299,12 @@ def test_smallest_change_requires_deleting_the_replaced_api_in_both_kernels() ->
     for source_name, content in (("root", root_kernel()), ("starter", kernel())):
         body = agent_rule_body(content, SMALLEST_CHANGE_RULE_TITLE)
         assert SMALLEST_CHANGE_OBLIGATION in body, (
-            f"{source_name} kernel rule 8 does not require deleting the replaced API "
+            f"{source_name} kernel rule 7 does not require deleting the replaced API "
             f"in the same change; expected: {SMALLEST_CHANGE_OBLIGATION!r}; observed: "
             f"{body!r}"
         )
         assert INVERTED_SMALLEST_CHANGE_OBLIGATION not in body, (
-            f"{source_name} kernel rule 8 inverts the requirement: it deletes the "
+            f"{source_name} kernel rule 7 inverts the requirement: it deletes the "
             "replacement instead of the replaced API; observed: "
             f"{body!r}"
         )

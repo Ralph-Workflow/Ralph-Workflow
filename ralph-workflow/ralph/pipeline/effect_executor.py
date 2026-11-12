@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading as _threading
 import time
 import uuid
 from collections import deque
@@ -67,7 +66,16 @@ from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.pipeline.agent_retry_intent import (
     AgentRetryIntent,
+    clear_fresh_bridge_requested,
     cleared_agent_retry_intent,
+    fresh_bridge_requested,
+    mark_fresh_bridge_requested,
+)
+from ralph.pipeline.agent_retry_intent import (
+    pop_last_captured_retry_intent as _pop_last_captured_retry_intent,
+)
+from ralph.pipeline.agent_retry_intent import (
+    set_last_captured_retry_intent as _set_last_captured_retry_intent_state,
 )
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
 from ralph.pipeline.events import (
@@ -90,10 +98,8 @@ from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_N
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import (
-    PREMISE_CHECK_LINE,
     build_retry_error_block,
     build_validation_retry_footer,
-    premise_check_line,
 )
 from ralph.workspace import FsWorkspace
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangeProbe
@@ -728,7 +734,7 @@ def _invoke_agent_with_recovery(
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> PipelineEvent | AgentFailureEvent:
-    raw_fresh_bridge: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
+    raw_fresh_bridge: object = fresh_bridge_requested()
     if raw_fresh_bridge is True:
         bridge = None
     own_bridge = bridge is None
@@ -917,9 +923,9 @@ def _start_bridge(
     pipeline_deps: PipelineDeps,
     run_id: str,
 ) -> RestartAwareMcpBridge:
-    raw_fresh_start: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
+    raw_fresh_start: object = fresh_bridge_requested()
     if raw_fresh_start is True:
-        _retry_intent_local.fresh_bridge_requested = False
+        clear_fresh_bridge_requested()
     if not ctx.parallel_worker:
         workspace = FsWorkspace(
             ctx.workspace_scope.root, allowed_roots=ctx.workspace_scope.allowed_roots
@@ -1756,17 +1762,6 @@ def _write_agent_retry_prompt(
         reason=reason,
     )
     current_fingerprint = retry_hint_fingerprint(str(drain or reason), detail or reason)
-    prior_fingerprint: str | None = None
-    if fingerprint_file is not None and DEFAULT_FILE_BACKEND.exists(fingerprint_file):
-        try:
-            prior_fingerprint = (
-                DEFAULT_FILE_BACKEND.read_text(fingerprint_file, encoding="utf-8").strip() or None
-            )
-        except (OSError, ValueError):
-            prior_fingerprint = None
-    premise = premise_check_line(current_fingerprint, prior_fingerprint)
-    if premise and PREMISE_CHECK_LINE in validation_hint:
-        premise = ""
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         detail=detail,
@@ -1795,7 +1790,6 @@ def _write_agent_retry_prompt(
         retry_prompt_path.write_text(
             (
                 f"{error_block}\n\n"
-                f"{premise + chr(10) + chr(10) if premise else ''}"
                 f"{validation_block + chr(10) + chr(10) if validation_block else ''}"
                 f"PREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}"
                 f"{chr(10) + chr(10) + validation_footer if validation_footer else ''}\n"
@@ -1818,8 +1812,6 @@ def _write_agent_retry_prompt(
     ]
     if validation_block:
         body_parts[1:1] = ["", validation_block]
-    if premise:
-        body_parts[1:1] = ["", premise]
     if stale_session_id and not condensed:
         body_parts[3:3] = [
             "STALE SESSION EMPTY PRIOR OUTPUT",
@@ -1872,25 +1864,20 @@ retry_prompt_file_for_context = _retry_prompt_file_for_context
 write_agent_retry_prompt = _write_agent_retry_prompt
 
 
-_retry_intent_local: _threading.local = _threading.local()
-
-
 def _mark_next_attempt_gets_fresh_bridge(exc: Exception | None = None) -> None:
     del exc
-    _retry_intent_local.fresh_bridge_requested = True
+    mark_fresh_bridge_requested()
 
 
 mark_next_attempt_gets_fresh_bridge = _mark_next_attempt_gets_fresh_bridge
 
 
 def _set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
-    _retry_intent_local.intent = intent
-    if intent == cleared_agent_retry_intent():
-        _retry_intent_local.fresh_bridge_requested = False
+    _set_last_captured_retry_intent_state(intent)
 
 
 def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
-    _set_last_captured_retry_intent(intent)
+    _set_last_captured_retry_intent_state(intent)
 
 
 def _write_terminal_missing_artifact_hint(
@@ -1972,11 +1959,7 @@ def _set_pi_context_exhaustion_intent(exc: Exception) -> None:
 
 
 def pop_last_captured_retry_intent() -> AgentRetryIntent:
-
-    raw: object = getattr(_retry_intent_local, "intent", cleared_agent_retry_intent())
-    intent = raw if isinstance(raw, AgentRetryIntent) else cleared_agent_retry_intent()
-    _retry_intent_local.intent = cleared_agent_retry_intent()
-    return intent
+    return _pop_last_captured_retry_intent()
 
 
 __all__ = [

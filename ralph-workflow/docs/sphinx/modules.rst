@@ -2079,6 +2079,13 @@ ralph.agents.system_clock
    :members:
    :show-inheritance:
 
+ralph.agents.watch_capacity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.watch_capacity
+   :members:
+   :show-inheritance:
+
 ralph.agents.unknown_agent_error
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

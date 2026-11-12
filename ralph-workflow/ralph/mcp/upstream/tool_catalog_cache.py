@@ -7,7 +7,6 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_TOOL_CATALOG_ENV,
     UpstreamMcpServer,
@@ -214,6 +213,8 @@ def clear_tool_catalog(workspace_root: Path | None) -> None:
 def collect_tool_catalog(
     servers: Iterable[UpstreamMcpServer],
 ) -> dict[str, list[UpstreamTool]]:
+    from ralph.mcp.upstream.client import make_upstream_client
+
     return {server.name: list(make_upstream_client(server).list_tools()) for server in servers}
 
 

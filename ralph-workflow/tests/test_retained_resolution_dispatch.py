@@ -7,6 +7,7 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
+from git import Repo
 from rich.console import Console
 
 from ralph.config.enums import Verbosity
@@ -31,6 +32,14 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_pending_merge_commit_recovery import _git
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "retained-resolution branch assertions use equivalent GitPython object reads": (
+        "the assertions still compare the same branch object ids with the same expected "
+        "commit ids; only their read-only git transport changed from the git executable to "
+        "GitPython"
+    ),
+}
 
 
 @pytest.fixture(autouse=True)
@@ -79,30 +88,39 @@ def _branch_sha(root: Path, branch: str) -> str:
     return ref.read_text(encoding="utf-8").strip()
 
 
+_REPOS: dict[Path, Repo] = {}
+
+
+def _repo(root: Path) -> Repo:
+    return _REPOS.setdefault(root, Repo(root))
+
+
+def _close_repo(root: Path) -> None:
+    repo = _REPOS.pop(root, None)
+    if repo is not None:
+        repo.close()
+
+
+def _branch_sha_from_repo(root: Path, branch: str) -> str:
+    _close_repo(root)
+    return _repo(root).commit(branch).hexsha
+
+
 def _commit(root: Path, path: str, content: str) -> str:
-    from git import Repo
 
     FsWorkspace(root).write(path, content)
-    repo = Repo(root)
-    try:
-        repo.index.add([path])
-        commit = repo.index.commit(path)
-        assert commit.hexsha
-        return commit.hexsha
-    finally:
-        repo.close()
+    repo = _repo(root)
+    repo.index.add([path])
+    commit = repo.index.commit(path)
+    assert commit.hexsha
+    return commit.hexsha
 
 
 def _seed_commit(root: Path, path: str, content: str) -> str:
-    from git import Repo
-
     FsWorkspace(root).write(path, content)
-    repo = Repo(root)
-    try:
-        repo.index.add([path])
-        return repo.index.commit(path).hexsha
-    finally:
-        repo.close()
+    repo = _repo(root)
+    repo.index.add([path])
+    return repo.index.commit(path).hexsha
 
 
 @dataclass(frozen=True)
@@ -118,20 +136,15 @@ def _scenario_templates(
     tmp_path_factory: pytest.TempPathFactory,
     _git_repo_template: Path,
 ) -> dict[str, _Scenario]:
-    from git import Repo
-
     scenarios: dict[str, _Scenario] = {}
     for scenario, feature_content in _SCENARIO_FEATURE_CONTENT.items():
         root = tmp_path_factory.mktemp(f"retained-resolution-{scenario}")
         shutil.copytree(_git_repo_template, root, dirs_exist_ok=True)
         target = _current_branch(root)
         base = _seed_commit(root, "shared.txt", "base\n")
-        repo = Repo(root)
-        try:
-            repo.create_head("feature", base)
-            repo.head.set_reference(repo.heads.feature)
-        finally:
-            repo.close()
+        repo = _repo(root)
+        repo.create_head("feature", base)
+        repo.head.set_reference(repo.heads.feature)
         assert _current_branch(root) == "feature"
         assert _branch_sha(root, "feature") == base
         feature = _seed_commit(root, "shared.txt", feature_content)
@@ -141,12 +154,14 @@ def _scenario_templates(
             base=base,
             feature=feature,
         )
+        _close_repo(root)
     return scenarios
 
 
 def _scenario_repo(tmp_path: Path, scenarios: dict[str, _Scenario], scenario: str) -> _Scenario:
     prepared = scenarios[scenario]
     root = tmp_path / "repo"
+    _close_repo(prepared.root)
     shutil.copytree(prepared.root, root)
     return _Scenario(
         root=root,
@@ -258,7 +273,7 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
         phases.append(str(state.phase))
         assert state.phase != initial.phase
         assert read_record(root) is None
-        assert _git(root, "rev-parse", target).stdout.strip() == feature
+        assert _branch_sha_from_repo(root, target) == feature
         return 0
 
     monkeypatch.setattr(runner, "run_pipeline_step", next_step)
@@ -330,7 +345,7 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
         assert DEFAULT_FILE_BACKEND.read_bytes(record_path(root)) == original
         direct = recover_incomplete_integration(WorkspaceScope(root), config=config)
         assert direct is not None and direct.recovery_record_retained
-        assert _git(root, "rev-parse", target).stdout.strip() == base
+        assert _branch_sha_from_repo(root, target) == base
         assert not inspect_integration_resolution(root, recovered).dispatch_allowed
         if receipt == "malformed":
             with pytest.raises(RecordUnreadableError):
@@ -342,7 +357,7 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
     else:
         assert recovered.fast_forwarded
         assert read_record(root) is None
-        assert _git(root, "rev-parse", target).stdout.strip() == feature
+        assert _branch_sha_from_repo(root, target) == feature
         assert inspect_integration_resolution(root, recovered).dispatch_allowed
         clear_record(root)
         assert inspect_integration_resolution(

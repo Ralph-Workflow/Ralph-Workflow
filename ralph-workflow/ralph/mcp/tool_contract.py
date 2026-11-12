@@ -4,10 +4,7 @@ from collections import OrderedDict
 from threading import Lock
 from typing import TYPE_CHECKING
 
-from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name_prefix
-from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -63,6 +60,8 @@ def visible_owned_tool_names(
     upstream_registry: UpstreamRegistry | None = None,
     include_aliases: bool = True,
 ) -> list[str]:
+    from ralph.mcp.tools.bridge import build_ralph_tool_registry
+
     registry = build_ralph_tool_registry(
         session, workspace, upstream_registry=upstream_registry, mcp_config=None
     )
@@ -82,6 +81,9 @@ _VISIBLE_TOOL_NAMES_LOCK = Lock()
 def _visible_tool_names_for_capabilities(
     capability_ids: tuple[str, ...], *, drain: str
 ) -> tuple[str, ...]:
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.workspace.memory import MemoryWorkspace
+
     key = (capability_ids, drain)
     with _VISIBLE_TOOL_NAMES_LOCK:
         cached = _VISIBLE_TOOL_NAMES_BY_PROFILE.get(key)

@@ -141,6 +141,8 @@ def _publish_commit(writer: Path, bare: Path, filename: str, content: str, messa
 
 
 def _copy_objects(source: Repo, target: Repo, commit: Commit) -> None:
+    source.git.clear_cache()
+    target.git.clear_cache()
     source_objects = Path(source.git_dir) / "objects"
     target_objects = Path(target.git_dir) / "objects"
     for sha in [commit.hexsha, *_tree_shas(commit.tree)]:
@@ -150,6 +152,8 @@ def _copy_objects(source: Repo, target: Repo, commit: Commit) -> None:
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_objects / name, destination)
+    source.git.clear_cache()
+    target.git.clear_cache()
 
 
 def _tree_shas(tree: Tree) -> list[str]:
@@ -163,6 +167,9 @@ def _tree_shas(tree: Tree) -> list[str]:
 
 
 def _set_ref(git_dir: Path, ref: str, sha: str) -> None:
+    cached = _REPO_CACHE.pop(git_dir, None)
+    if cached is not None:
+        cached.close()
     path = git_dir / ref
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"{sha}\n", encoding="utf-8")
@@ -185,14 +192,19 @@ def _ref_sha(git_dir: Path, name: str) -> str:
 
 
 def _is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
-    result = subprocess.run(
-        ("git", "merge-base", "--is-ancestor", ancestor, descendant),
-        cwd=str(repo),
-        capture_output=True,
-        check=False,
-        timeout=20,
-    )
-    return result.returncode == 0
+    git_repo = _repo(repo)
+    assert git_repo is not None
+    try:
+        return git_repo.is_ancestor(git_repo.commit(ancestor), git_repo.commit(descendant))
+    except Exception:
+        result = subprocess.run(
+            ("git", "merge-base", "--is-ancestor", ancestor, descendant),
+            cwd=str(repo),
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+        return result.returncode == 0
 
 
 @dataclass(frozen=True)
@@ -291,6 +303,13 @@ def _build(
     template = _TEMPLATES[variant]
     shutil.copytree(template, tmp_path, dirs_exist_ok=True, ignore=_ignore_inert_git_samples)
     _rebase_paths(template, tmp_path)
+    for path in (
+        tmp_path / "origin.git",
+        tmp_path / "clone",
+        tmp_path / _WORKTREE,
+        tmp_path / "writer",
+    ):
+        _refreshed_repo(path)
     return _Topology(
         bare=tmp_path / "origin.git",
         clone=tmp_path / "clone",

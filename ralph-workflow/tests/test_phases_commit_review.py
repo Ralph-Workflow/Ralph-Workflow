@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -27,9 +28,30 @@ from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.recovery.classifier import FailureCategory
 from ralph.workspace.fs import FsWorkspace
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
 COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
+
+_REPO_CACHE: dict[Path, Repo] = {}
+
+
+def _repo(root: Path) -> Repo:
+    repo = _REPO_CACHE.get(root)
+    if repo is None:
+        repo = Repo(root)
+        _REPO_CACHE[root] = repo
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repos() -> Generator[None, None, None]:
+    yield
+    for repo in _REPO_CACHE.values():
+        repo.close()
+    _REPO_CACHE.clear()
 
 
 def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
@@ -1158,12 +1180,9 @@ def test_delete_untracked_file_in_generated_directory(tmp_git_repo: Path) -> Non
 
 
 def _track_and_commit(repo_root: Path, rel_path: str) -> None:
-    repo = Repo(repo_root)
-    try:
-        repo.index.add([rel_path])
-        repo.index.commit(f"track {rel_path}")
-    finally:
-        repo.close()
+    repo = _repo(repo_root)
+    repo.index.add([rel_path])
+    repo.index.commit(f"track {rel_path}")
 
 
 def test_delete_tracked_agent_internal_files_succeeds(tmp_git_repo: Path) -> None:
@@ -1187,12 +1206,9 @@ def test_delete_tracked_agent_internal_files_succeeds(tmp_git_repo: Path) -> Non
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
 
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add([rel_path for rel_path, _content in tracked_artifacts])
-        repo.index.commit("track canonical engine artifacts")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add([rel_path for rel_path, _content in tracked_artifacts])
+    repo.index.commit("track canonical engine artifacts")
 
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
@@ -1261,12 +1277,9 @@ def test_delete_tracked_non_engine_files_rejected(tmp_git_repo: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("tracked project content")
 
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(list(paths))
-        repo.index.commit("track protected project content")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add(list(paths))
+    repo.index.commit("track protected project content")
 
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),

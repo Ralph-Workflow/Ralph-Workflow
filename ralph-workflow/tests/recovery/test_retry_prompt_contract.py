@@ -5,63 +5,77 @@ from pathlib import Path
 from ralph.phases.required_artifacts import (
     build_retry_hint,
     build_validation_retry_hint,
+    clear_validation_retry_hint,
+    retry_fingerprint_path_for_hint,
+    retry_hint_fingerprint,
+    retry_hint_path,
+    validation_retry_fingerprint,
 )
 from ralph.pipeline.effect_executor import write_agent_retry_prompt
 from ralph.prompts import commit_review, materialize
 from ralph.recovery.retry_prompt import (
-    PREMISE_CHECK_LINE,
     build_retry_error_block,
     build_validation_retry_footer,
     failure_fingerprint,
-    premise_check_line,
 )
+from ralph.workspace.fs import FsWorkspace
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS = {
     "test_retry_prompt_still_exposes_the_formatter_contract": (
-        "the premise-check rule is re-landed on runtime-owned retry state, so the ordinary "
-        "retry formatter contract stays exported"
+        "the premise-check rule is removed by the policy trim, so the ordinary retry "
+        "formatter contract stays exported"
     ),
     "test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures": (
-        "the premise-check rule is re-landed on runtime-owned retry state, so the failure "
-        "fingerprint stays stable per failure and differs across failures"
+        "the premise-check rule is removed by the policy trim, so the failure fingerprint "
+        "stays stable per failure and differs across failures"
     ),
     "test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies": (
-        "the premise-check rule is re-landed on runtime-owned retry state, so the persisted "
-        "history is asserted against the rendered validation trailer"
+        "the premise-check rule is removed by the policy trim, so the persisted history is "
+        "asserted against the rendered validation trailer"
     ),
     "test_persisted_hint_history_accumulates_attempts_across_repeats_and_changes": (
-        "the premise-check rule is re-landed on runtime-owned retry state, so the persisted "
-        "attempt history is asserted through the accumulated attempts"
+        "the premise-check rule is removed by the policy trim, so the persisted attempt "
+        "history is asserted through the accumulated attempts"
+    ),
+    "test_validation_retry_hint_accumulates_attempts_across_three_identical_attempts": (
+        "the premise-check rule is removed by the policy trim, so a third identical attempt "
+        "keeps accumulating attempts and the rendered validation trailer"
     ),
     "test_generic_retry_hint_keeps_the_failure_summary_and_submission_instructions": (
-        "the premise-check rule is re-landed on runtime-owned retry state, so the generic "
-        "retry hint is asserted through its failure summary and submission instructions"
+        "the premise-check rule is removed by the policy trim, so the generic retry hint is "
+        "asserted through its failure summary and submission instructions"
+    ),
+    "test_generic_retry_prompt_renders_the_failure_and_persists_the_failure_fingerprint": (
+        "the premise-check rule is removed by the policy trim, so the generic agent-retry "
+        "prompt is asserted through its rendered failure and the persisted fingerprint"
+    ),
+    "test_persisted_validation_hint_is_rendered_on_a_repeat_and_cleared_afterwards": (
+        "the premise-check rule is removed by the policy trim, so the persisted validation "
+        "hint is asserted through its rendering on a repeat and its clearing"
     ),
     "test_prompt_readers_stay_read_only": (
-        "the premise-check rule is re-landed on runtime-owned retry state, so the runtime "
-        "owns the retry state and the hint readers stay read-only"
+        "the premise-check rule is removed by the policy trim, so the runtime owns the retry "
+        "state and the hint readers stay read-only"
     ),
     "test_retry_prompt_exposes_the_premise_check_contract": (
-        "the premise-check rule is re-landed, so the retry prompt exposes the premise-check "
-        "contract again"
+        "the premise-check rule is removed by the policy trim, so the premise-check contract "
+        "no longer applies"
     ),
     "test_premise_check_line_matches_only_an_identical_repeat_fingerprint": (
-        "the premise-check rule is re-landed, so the premise line is emitted only for an "
-        "identical repeat fingerprint"
+        "the premise-check rule is removed by the policy trim, so the premise line no longer "
+        "applies"
     ),
     "test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_repeat": (
-        "the premise-check rule is re-landed, so the runtime-owned retry hint renders the "
-        "premise line exactly once on an identical repeat and never on a first or changed "
-        "failure"
+        "the premise-check rule is removed by the policy trim, so the runtime-owned retry hint "
+        "no longer renders a premise line"
     ),
     "test_validation_retry_hint_keeps_the_repeat_signal_across_three_identical_attempts": (
-        "the premise-check rule is re-landed, so the premise line stays outside the attempt "
-        "bodies and a third identical repeat still renders it"
+        "the premise-check rule is removed by the policy trim, so the premise line no longer "
+        "applies"
     ),
     "test_generic_retry_prompt_renders_the_premise_line_only_on_an_identical_repeat": (
-        "the premise-check rule is re-landed, so the generic agent-retry prompt renders the "
-        "premise line exactly once on an identical repeat and never on a first or changed "
-        "failure"
+        "the premise-check rule is removed by the policy trim, so the generic agent-retry "
+        "prompt no longer renders a premise line"
     ),
 }
 
@@ -128,6 +142,28 @@ def test_persisted_hint_history_accumulates_attempts_across_repeats_and_changes(
     assert changed.count(build_validation_retry_footer()) == 1
 
 
+def test_validation_retry_hint_accumulates_attempts_across_three_identical_attempts() -> None:
+    failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
+
+    first = build_validation_retry_hint("development_result", failure_a)
+    repeat = build_validation_retry_hint(
+        "development_result",
+        failure_a,
+        prior_hint=first,
+    )
+    third = build_validation_retry_hint(
+        "development_result",
+        failure_a,
+        prior_hint=repeat,
+    )
+
+    assert third.count("ATTEMPT 1") == 1
+    assert third.count("ATTEMPT 2") == 1
+    assert third.count("ATTEMPT 3") == 1
+    assert third.count(build_validation_retry_footer()) == 1
+    assert third.endswith(build_validation_retry_footer())
+
+
 def test_generic_retry_hint_keeps_the_failure_summary_and_submission_instructions() -> None:
     first = build_retry_hint("development", "artifact was not submitted")
     repeat = build_retry_hint(
@@ -147,79 +183,14 @@ def test_generic_retry_hint_keeps_the_failure_summary_and_submission_instruction
     assert changed.count("PREVIOUS ATTEMPT FAILED") == 1
 
 
-def test_prompt_readers_stay_read_only() -> None:
-    assert hasattr(materialize, "read_retry_hint")
-    assert not hasattr(materialize, "read_and_clear_retry_hint")
-    assert hasattr(commit_review, "_read_retry_hint")
-    assert not hasattr(commit_review, "_read_and_clear_retry_hint")
-
-
-def test_retry_prompt_exposes_the_premise_check_contract() -> None:
-    assert PREMISE_CHECK_LINE == "test the premise shared by the failed fixes before another patch"
-    assert callable(premise_check_line)
-
-
-def test_premise_check_line_matches_only_an_identical_repeat_fingerprint() -> None:
-    fingerprint = failure_fingerprint("artifact rejected", "line 3 invalid")
-    changed = failure_fingerprint("artifact rejected", "line 9 invalid")
-
-    assert premise_check_line(fingerprint, fingerprint) == PREMISE_CHECK_LINE
-    assert premise_check_line(fingerprint, changed) == ""
-    assert premise_check_line(fingerprint, None) == ""
-    assert premise_check_line("", fingerprint) == ""
-
-
-def test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_repeat() -> None:
-    failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
-    failure_b = [_Diagnostic("MD002", "body section is missing")]
-
-    first = build_validation_retry_hint("development_result", failure_a)
-    repeat = build_validation_retry_hint(
-        "development_result",
-        failure_a,
-        prior_hint=first,
-    )
-    changed = build_validation_retry_hint(
-        "development_result",
-        failure_b,
-        prior_hint=repeat,
-    )
-
-    assert PREMISE_CHECK_LINE not in first
-    assert repeat.count(PREMISE_CHECK_LINE) == 1
-    assert PREMISE_CHECK_LINE not in changed
-
-
-def test_validation_retry_hint_keeps_the_repeat_signal_across_three_identical_attempts() -> None:
-    failure_a = [_Diagnostic("MD001", "frontmatter is malformed")]
-
-    first = build_validation_retry_hint("development_result", failure_a)
-    repeat = build_validation_retry_hint(
-        "development_result",
-        failure_a,
-        prior_hint=first,
-    )
-    third = build_validation_retry_hint(
-        "development_result",
-        failure_a,
-        prior_hint=repeat,
-    )
-
-    assert third.count(PREMISE_CHECK_LINE) == 1
-    assert third.count("ATTEMPT 1") == 1
-    assert third.count("ATTEMPT 2") == 1
-    assert third.count("ATTEMPT 3") == 1
-    assert third.count(build_validation_retry_footer()) == 1
-    assert third.endswith(build_validation_retry_footer())
-
-
-def test_generic_retry_prompt_renders_the_premise_line_only_on_an_identical_repeat(
+def test_generic_retry_prompt_renders_the_failure_and_persists_the_failure_fingerprint(
     tmp_path: Path,
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("Repair the submitted artifact.\n", encoding="utf-8")
+    fingerprint_file = tmp_path / retry_fingerprint_path_for_hint(retry_hint_path("development"))
 
-    def render(detail: str) -> str:
+    def render(detail: str) -> tuple[str, str]:
         retry_prompt = write_agent_retry_prompt(
             workspace_root=tmp_path,
             prompt_file=str(prompt_file),
@@ -228,12 +199,72 @@ def test_generic_retry_prompt_renders_the_premise_line_only_on_an_identical_repe
             context_lines=["the agent produced no output"],
             drain="development",
         )
-        return Path(retry_prompt).read_text(encoding="utf-8")
+        rendered = Path(retry_prompt).read_text(encoding="utf-8")
+        fingerprint = fingerprint_file.read_text(encoding="utf-8").strip()
+        return rendered, fingerprint
 
-    first = render("the agent produced no output")
-    repeat = render("the agent produced no output")
-    changed = render("a different failure happened")
+    first, first_fingerprint = render("the agent produced no output")
+    repeat, repeat_fingerprint = render("the agent produced no output")
+    changed, changed_fingerprint = render("a different failure happened")
 
-    assert PREMISE_CHECK_LINE not in first
-    assert repeat.count(PREMISE_CHECK_LINE) == 1
-    assert PREMISE_CHECK_LINE not in changed
+    assert first.count("ERROR RECOVERY REQUIRED") == 1
+    assert (
+        first.count("PREVIOUS ATTEMPT FAILED: the previous attempt failed because of AgentTimeout")
+        == 1
+    )
+    assert "the agent produced no output" in first
+    assert repeat.count("ERROR RECOVERY REQUIRED") == 1
+    assert changed.count("ERROR RECOVERY REQUIRED") == 1
+
+    assert first_fingerprint == retry_hint_fingerprint(
+        "development", "the agent produced no output"
+    )
+    assert repeat_fingerprint == first_fingerprint
+    assert changed_fingerprint != repeat_fingerprint
+    assert changed_fingerprint == retry_hint_fingerprint(
+        "development", "a different failure happened"
+    )
+
+
+def test_persisted_validation_hint_is_rendered_on_a_repeat_and_cleared_afterwards(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    hint_path = retry_hint_path("development")
+    fingerprint_path = retry_fingerprint_path_for_hint(hint_path)
+    failure = [_Diagnostic("MD001", "frontmatter is malformed")]
+
+    first = build_validation_retry_hint("development_result", failure)
+    repeat = build_validation_retry_hint("development_result", failure, prior_hint=first)
+    workspace.write(hint_path, repeat)
+    workspace.write(fingerprint_path, validation_retry_fingerprint("development_result", failure))
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("Repair the retained artifact.\n", encoding="utf-8")
+    retry_prompt = Path(
+        write_agent_retry_prompt(
+            workspace_root=tmp_path,
+            prompt_file=str(prompt_file),
+            reason="ArtifactValidation",
+            detail="artifact validation rejected the retained draft",
+            context_lines=["the artifact was rejected"],
+            drain="development",
+        )
+    ).read_text(encoding="utf-8")
+
+    assert repeat in retry_prompt
+    assert retry_prompt.count("VALIDATION ERRORS (ACCUMULATED)") == 1
+    assert retry_prompt.count("ATTEMPT 1") == 1
+    assert retry_prompt.count("ATTEMPT 2") == 1
+
+    clear_validation_retry_hint(workspace, "development")
+
+    assert not workspace.exists(hint_path)
+    assert not workspace.exists(fingerprint_path)
+
+
+def test_prompt_readers_stay_read_only() -> None:
+    assert hasattr(materialize, "read_retry_hint")
+    assert not hasattr(materialize, "read_and_clear_retry_hint")
+    assert hasattr(commit_review, "_read_retry_hint")
+    assert not hasattr(commit_review, "_read_and_clear_retry_hint")

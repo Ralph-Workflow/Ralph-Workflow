@@ -112,29 +112,87 @@ def _fast_verify_ref(repo_root: Path, ref_name: str) -> str | None:
     return content if len(content) == 40 else None
 
 
+def _completed(
+    args: tuple[str, ...], stdout: str = "", *, returncode: int = 0, stderr: str = ""
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=("git", *args), stdout=stdout, stderr=stderr, returncode=returncode
+    )
+
+
+def _blob_text(repo: Repo, revision: str, path: str) -> str:
+    if revision == "":
+        entry = repo.index.entries[(path, 0)]
+        return repo.odb.stream(entry.binsha).read().decode()
+    blob = repo.commit(revision).tree / path
+    return blob.data_stream.read().decode()
+
+
+def _is_ancestor(repo: Repo, ancestor: str, descendant: str) -> bool:
+    wanted = repo.commit(ancestor).binsha
+    pending = [repo.commit(descendant)]
+    visited: set[bytes] = set()
+    while pending:
+        commit = pending.pop()
+        if commit.binsha == wanted:
+            return True
+        if commit.binsha not in visited:
+            visited.add(commit.binsha)
+            pending.extend(commit.parents)
+    return False
+
+
+def _run_in_process(
+    repo_root: Path, args: tuple[str, ...]
+) -> subprocess.CompletedProcess[str] | None:
+    supported = args in {
+        ("status", "--porcelain"),
+        ("diff", "--name-only", "--diff-filter=U"),
+        ("log", "-1", "--format=%P", "HEAD"),
+        ("for-each-ref", "refs/rebase-backup/"),
+    }
+    supported |= len(args) == 2 and args[0] == "show" and ":" in args[1]
+    supported |= len(args) == 4 and args[:2] == ("merge-base", "--is-ancestor")
+    if not supported:
+        return None
+    repo = _repo(repo_root)
+    if len(args) == 2 and args[0] == "show" and ":" in args[1]:
+        revision, path = args[1].split(":", 1)
+        return _completed(args, _blob_text(repo, revision, path))
+    if args == ("status", "--porcelain") and not repo.is_dirty(untracked_files=True):
+        return _completed(args)
+    if len(args) == 4 and args[:2] == ("merge-base", "--is-ancestor"):
+        return _completed(args, returncode=0 if _is_ancestor(repo, args[2], args[3]) else 1)
+    if args == ("diff", "--name-only", "--diff-filter=U"):
+        names = sorted(str(name) for name in repo.index.unmerged_blobs())
+        return _completed(args, "".join(f"{name}\n" for name in names))
+    if args == ("log", "-1", "--format=%P", "HEAD"):
+        parents = " ".join(parent.hexsha for parent in repo.head.commit.parents)
+        return _completed(args, parents + "\n")
+    if args == ("for-each-ref", "refs/rebase-backup/"):
+        refs = [ref.path for ref in repo.references if ref.path.startswith("refs/rebase-backup/")]
+        return _completed(args, "".join(f"{ref}\n" for ref in refs))
+    return None
+
+
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     if args == ("branch", "--show-current"):
         name = _fast_branch_name(repo_root)
         if name is not None:
-            return subprocess.CompletedProcess(
-                args=("git", *args), stdout=name + "\n", stderr="", returncode=0
-            )
+            return _completed(args, name + "\n")
     if len(args) == 2 and args[0] == "rev-parse" and not args[1].startswith("-"):
         sha = _fast_rev_parse(repo_root, args[1])
         if sha is not None:
-            return subprocess.CompletedProcess(
-                args=("git", *args), stdout=sha + "\n", stderr="", returncode=0
-            )
+            return _completed(args, sha + "\n")
     if len(args) == 3 and args[0] == "rev-parse" and args[1] == "--verify":
         sha = _fast_verify_ref(repo_root, args[2])
         if sha is not None:
-            return subprocess.CompletedProcess(
-                args=("git", *args), stdout=sha + "\n", stderr="", returncode=0
-            )
-        return subprocess.CompletedProcess(
-            args=("git", *args), stdout="", stderr="fatal: Needed a single revision\n", returncode=1
-        )
-    return subprocess.run(
+            return _completed(args, sha + "\n")
+        return _completed(args, returncode=1, stderr="fatal: Needed a single revision\n")
+    in_process = _run_in_process(repo_root, args)
+    if in_process is not None:
+        return in_process
+    result = subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
         capture_output=True,
@@ -142,6 +200,17 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=False,
         timeout=5,
     )
+    if args and args[0] in {
+        "checkout",
+        "rebase",
+        "update-ref",
+        "worktree",
+        "mv",
+    }:
+        cached = _REPO_CACHE.pop(repo_root, None)
+        if cached is not None:
+            cached[1].close()
+    return result
 
 
 def _base_branch(tmp_git_repo: Path) -> str:

@@ -6,9 +6,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.protocol.env import MCP_SNAPSHOT_DIR_ENV
-from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -88,6 +86,9 @@ def read_snapshot(snapshot_dir: Path) -> dict[str, str]:
 
 
 def compute_effective_config_fingerprint(workspace_root: Path) -> str | None:
+    from ralph.config.mcp_loader import load_mcp_config
+    from ralph.workspace.scope import WorkspaceScope
+
     try:
         scope = WorkspaceScope(workspace_root)
         cfg: McpConfig = load_mcp_config(workspace_scope=scope)

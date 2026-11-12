@@ -62,6 +62,10 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
                         return parts[0]
     except OSError:
         pass
+    try:
+        return _repo(root).commit(ref_name).hexsha
+    except Exception:
+        pass
     return None
 
 
@@ -179,6 +183,7 @@ def _seed_repo(path: Path, default_branch: str = _TARGET) -> None:
         _init_repo(path, default_branch)
         return
     shutil.copytree(template, path, ignore=_COPY_IGNORE)
+    _refreshed_repo(path)
     if default_branch != _TARGET:
         assert _run(path, "branch", "-M", default_branch).returncode == 0
 

@@ -161,6 +161,10 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/tools/_validation_retry_hints.py",
             "ralph/mcp/tools/coordination.py",
+            "ralph/mcp/tool_contract.py",
+            "ralph/mcp/server/_snapshots.py",
+            "ralph/mcp/upstream/tool_catalog_cache.py",
+            "ralph/workspace/context.py",
             "tests/**/*.py",
         ],
         "reason": (
@@ -203,6 +207,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/multimodal/capabilities.py",
+            "tests/test_integration_obstruction_real_git.py",
         ],
         "reason": (
             "Short-circuit contract validation and transport/capture state "
@@ -218,6 +223,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/agents/builtin_spec.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
+            "tests/test_integration_obstruction_real_git.py",
         ],
         "reason": (
             "Short-circuit contract validation and transport/capture state "

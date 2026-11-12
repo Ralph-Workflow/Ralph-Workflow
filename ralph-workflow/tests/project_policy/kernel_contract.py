@@ -12,27 +12,16 @@ AGENT_RULES: tuple[tuple[int, str], ...] = (
     (4, "Regression tests from the spec"),
     (5, "Independent review"),
     (6, "Handoff by artifact"),
-    (7, "Premise check"),
-    (8, "Smallest change"),
-    (9, "Context hygiene"),
-    (10, "Plan scaling"),
-    (11, "Commit-level hygiene"),
-    (12, "Human checkpoints"),
-    (13, "Rule-to-enforcer ladder"),
-    (14, "Non-inferable instruction surface"),
+    (7, "Smallest change"),
+    (8, "Context hygiene"),
+    (9, "Plan scaling"),
+    (10, "Commit-level hygiene"),
+    (11, "Human checkpoints"),
+    (12, "Rule-to-enforcer ladder"),
+    (13, "Non-inferable instruction surface"),
 )
 
 EVIDENCE_TAG_PATTERN = re.compile(r"\(evidence:\s*(strong|moderate|anecdotal|none)\)")
-
-PREMISE_CHECK_RULE_NAME: str = "Premise check"
-
-PREMISE_CHECK_EVIDENCE_TAG: str = "anecdotal"
-
-PREMISE_CHECK_ENFORCEMENT: str = (
-    "advisory: no gate decides whether a cold agent received the premise "
-    "instruction; review: when a retry reaches an agent without the premise "
-    "instruction"
-)
 
 DETERMINISTIC_TAG_ANCHOR: str = "`deterministic` whatever its evidence tag"
 
@@ -85,7 +74,6 @@ IDENTICAL_AGENT_RULE_TITLES: tuple[str, ...] = (
 PROJECT_SPECIFIC_AGENT_RULE_TITLES: tuple[str, ...] = (
     "Test integrity",
     "Independent review",
-    "Premise check",
 )
 
 SMALLEST_CHANGE_RULE_TITLE: str = "Smallest change"

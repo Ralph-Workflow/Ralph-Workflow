@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import socket
 import threading
@@ -68,11 +69,7 @@ class _FakeMcpUpstreamServer:
             try:
                 if self._stop_event.is_set():
                     break
-                sock.settimeout(0.05)
-                try:
-                    client, _ = sock.accept()
-                except TimeoutError:
-                    continue
+                client, _ = sock.accept()
                 try:
                     threading.Thread(
                         target=self._handle_client_and_close,
@@ -197,6 +194,12 @@ class _FakeMcpUpstreamServer:
 
     def stop(self) -> None:
         self._stop_event.set()
+        if self._server_socket is not None and self._port is not None:
+            with (
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM) as wakeup,
+                contextlib.suppress(OSError),
+            ):
+                wakeup.connect(("127.0.0.1", self._port))
         if self._thread is not None:
             self._thread.join(timeout=5.0)
 

@@ -30,11 +30,31 @@ from ralph.recovery.classifier import FailureCategory
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     from pytest import LogCaptureFixture
 
 COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.required_auto_integrate_e2e]
+
+_REPO_CACHE: dict[Path, Repo] = {}
+
+
+def _repo(root: Path) -> Repo:
+    repo = _REPO_CACHE.get(root)
+    if repo is None:
+        repo = Repo(root)
+        _REPO_CACHE[root] = repo
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def _close_cached_repos() -> Generator[None, None, None]:
+    yield
+    for repo in _REPO_CACHE.values():
+        repo.close()
+    _REPO_CACHE.clear()
 
 
 def _resolve_verdict(content: dict[str, object]) -> str:
@@ -350,12 +370,9 @@ def test_tracked_completion_report_md_is_declined(tmp_git_repo: Path) -> None:
     workspace = FsWorkspace(tmp_git_repo)
     report = tmp_git_repo / "completion_report.md"
     report.write_text("# tracked\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["completion_report.md"])
-        repo.index.commit("track completion report")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add(["completion_report.md"])
+    repo.index.commit("track completion report")
     _write_commit_review_artifact(
         workspace,
         {
@@ -372,12 +389,9 @@ def test_head_tracked_source_is_never_deleted(tmp_git_repo: Path) -> None:
     workspace = FsWorkspace(tmp_git_repo)
     source = tmp_git_repo / "tracked.py"
     source.write_text("print('hi')\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add(["tracked.py"])
-        repo.index.commit("track source")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add(["tracked.py"])
+    repo.index.commit("track source")
     _write_commit_review_artifact(
         workspace,
         {
@@ -563,12 +577,9 @@ def test_recognized_secret_is_untracked_and_preserved(tmp_git_repo: Path) -> Non
     workspace = FsWorkspace(tmp_git_repo)
     secret = tmp_git_repo / ".env"
     secret.write_text("TOKEN=secret\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add([".env"])
-        repo.index.commit("track secret")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add([".env"])
+    repo.index.commit("track secret")
     _write_commit_review_artifact(
         workspace,
         {
@@ -578,11 +589,8 @@ def test_recognized_secret_is_untracked_and_preserved(tmp_git_repo: Path) -> Non
     result = _run(workspace)
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
     assert secret.read_text(encoding="utf-8") == "TOKEN=secret\n"
-    repo = Repo(tmp_git_repo)
-    try:
-        tracked = repo.git.ls_files("--cached").splitlines()
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    tracked = [path for path, _stage in repo.index.entries]
     assert ".env" not in tracked
 
 
@@ -591,12 +599,9 @@ def test_tracked_engine_internal_runtime_artifact_is_deleted(tmp_git_repo: Path)
     target = tmp_git_repo / ".agent" / "raw" / "opencode.log"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("log\n", encoding="utf-8")
-    repo = Repo(tmp_git_repo)
-    try:
-        repo.index.add([".agent/raw/opencode.log"])
-        repo.index.commit("track engine log")
-    finally:
-        repo.close()
+    repo = _repo(tmp_git_repo)
+    repo.index.add([".agent/raw/opencode.log"])
+    repo.index.commit("track engine log")
     _write_commit_review_artifact(
         workspace,
         {

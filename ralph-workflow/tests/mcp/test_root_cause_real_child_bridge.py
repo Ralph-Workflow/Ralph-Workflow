@@ -716,7 +716,11 @@ def test_c3_e53_sigstopped_child_detected_and_reaped(
     inner = _make_real_standalone(proc, tmp_path, stage_id="c3-sigstop-stage")
 
     os.kill(proc.pid, signal.SIGSTOP)
-    time.sleep(0.02)
+    stopped = psutil.Process(proc.pid)
+    deadline = time.monotonic() + 2.0
+    while stopped.status() != psutil.STATUS_STOPPED and time.monotonic() < deadline:
+        time.sleep(0)
+    assert stopped.status() == psutil.STATUS_STOPPED
 
     try:
         bridge = lifecycle.RestartAwareMcpBridge(

@@ -35,6 +35,8 @@ pytestmark = [
 
 if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.display.context import DisplayContext
+    from ralph.pipeline.factory import PipelineDeps
 
 
 _TRANSPORTS: tuple[tuple[str, str, str, str], ...] = (
@@ -146,6 +148,20 @@ def _base_smoke_config() -> UnifiedConfig:
     )
 
 
+@functools.cache
+def _base_agent_config(agent_name: str) -> AgentConfig:
+    agent_config = AgentRegistry.from_config(_base_smoke_config()).get(agent_name)
+    if agent_config is None:
+        raise AssertionError(f"agent {agent_name!r} is not in the registry")
+    return agent_config
+
+
+@functools.cache
+def _pipeline_runtime() -> tuple[DisplayContext, PipelineDeps]:
+    display_context = make_display_context()
+    return display_context, DefaultPipelineFactory().build(_base_smoke_config(), display_context)
+
+
 def _end_to_end_test_for_harness(
     workspace: Path,
     transport: str,
@@ -206,12 +222,7 @@ def _end_to_end_test_for_harness(
 
     config = _base_smoke_config()
 
-    registry = AgentRegistry.from_config(config)
-    agent_config = registry.get(agent_name)
-    if agent_config is None:
-        raise AssertionError(
-            f"transport {transport!r}: agent {agent_name!r} is not in the registry"
-        )
+    agent_config = _base_agent_config(agent_name)
 
     agent_config, config = _apply_redirect(
         monkeypatch=monkeypatch,
@@ -223,8 +234,7 @@ def _end_to_end_test_for_harness(
         config=config,
     )
 
-    display_context = make_display_context()
-    deps = DefaultPipelineFactory().build(config, display_context)
+    display_context, deps = _pipeline_runtime()
 
     spec = resolve_smoke_harness_spec(agent_name)
     prompt_file = workspace / spec.relative_dir / "PROMPT.md"

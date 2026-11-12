@@ -9,6 +9,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.state import PipelineState
+    from ralph.workspace.memory import MemoryWorkspace
+
 import pytest
 from _pytest.unraisableexception import gc_collect_iterations_key
 
@@ -44,13 +49,14 @@ __all__ = [
 ]
 
 from ralph.config.enums import AgentTransport
-from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.explore import recovery as _explore_recovery
 from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
 from ralph.mcp.transport import claude as claude_transport
-from ralph.pipeline import effect_executor
 from ralph.pipeline._runner_session import set_last_captured_session_id
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.agent_retry_intent import (
+    cleared_agent_retry_intent,
+    set_last_captured_retry_intent,
+)
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -65,7 +71,6 @@ from ralph.process import reset_process_manager
 from ralph.test_suites import (
     REQUIRED_AUTO_INTEGRATE_E2E_FILES,
 )
-from ralph.workspace.memory import MemoryWorkspace
 from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin", "tests._per_test_budget")
@@ -356,7 +361,7 @@ def _autouse_home_base(tmp_path_factory: pytest.TempPathFactory) -> str:
 
 def _apply_isolate_pipeline_thread_locals() -> None:
     set_last_captured_session_id(None)
-    effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
+    set_last_captured_retry_intent(cleared_agent_retry_intent())
 
 
 def _configure_repo_identity(repo: Repo) -> None:
@@ -546,6 +551,8 @@ def minimal_pipeline_policy() -> PipelinePolicy:
 
 @pytest.fixture
 def memory_workspace() -> MemoryWorkspace:
+    from ralph.workspace.memory import MemoryWorkspace
+
     ws = MemoryWorkspace()
     ws.write("PROMPT.md", "# Test Prompt\n\nThis is a test prompt.")
     return ws
@@ -565,6 +572,8 @@ def temp_workspace(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def initial_state() -> PipelineState:
+    from ralph.pipeline.state import PipelineState
+
     return PipelineState(
         phase="planning",
         policy_entry_phase="planning",
@@ -649,6 +658,8 @@ def workspace_root(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def config_with_test_agent() -> UnifiedConfig:
+    from ralph.config.models import AgentConfig, UnifiedConfig
+
     return UnifiedConfig(
         agents={
             "test-agent": AgentConfig(

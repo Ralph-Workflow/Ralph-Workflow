@@ -7,20 +7,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
-from pydantic import ValidationError
-
-from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
-from ralph.config.loader import (
-    ConfigTomlError,
-    _attribute_validation_error_to_layer,
-    _global_config_path,
-    load_config,
-    load_toml,
-)
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.policy.loader import load_policy_for_workspace_scope
 from ralph.workspace.errors import WorkspaceContextError
-from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -29,6 +16,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
     from ralph.policy.models import PolicyBundle
+    from ralph.workspace.scope import WorkspaceScope
 
 _AGENT_REGISTRY_MODULE: Final = "ralph.agents.registry"
 _SESSION_PLAN_MODULE: Final = "ralph.mcp.session_plan"
@@ -81,6 +69,20 @@ class WorkspaceContext:
 
 @contextmanager
 def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
+    from pydantic import ValidationError
+
+    from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
+    from ralph.config.loader import (
+        ConfigTomlError,
+        _attribute_validation_error_to_layer,
+        _global_config_path,
+        load_config,
+        load_toml,
+    )
+    from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+    from ralph.policy.loader import load_policy_for_workspace_scope
+    from ralph.workspace.scope import resolve_workspace_scope
+
     target_root = Path(target_root)
     if not DEFAULT_FILE_BACKEND.exists(target_root):
         raise FileNotFoundError(f"workspace_context: target worktree does not exist: {target_root}")

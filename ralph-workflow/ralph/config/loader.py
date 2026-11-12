@@ -6,39 +6,24 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from pydantic import ValidationError
 
-from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.config._source_migrations import remove_retired_agent_can_commit_assignments
 from ralph.config._toml_fallback import load_optional_toml, validate_or_default
-from ralph.config.agent_config import AgentConfig
 from ralph.config.config_error_messages import format_config_validation_error
-from ralph.config.conflict_resolution_config import ConflictResolutionConfig
-from ralph.config.general_config import GeneralConfig
-from ralph.config.models import UnifiedConfig
 from ralph.pydantic_validation_errors import suggest_canonical_field
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from pydantic import ValidationError
+
+    from ralph.config.models import UnifiedConfig
     from ralph.pydantic_compat import RalphBaseModel
     from ralph.workspace.scope import WorkspaceScope
 
 GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 GLOBAL_AGENTS_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow-agents.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
-
-_USER_KEYED_TABLES: tuple[tuple[str, type[object] | None], ...] = (
-    ("agents", AgentConfig),
-    ("ccs_aliases", None),
-    ("agent_chains", None),
-    ("agent_drains", None),
-)
-
-_CLOSED_SUBTABLE_LEAVES: tuple[tuple[str, type[RalphBaseModel]], ...] = (
-    ("workflow", GeneralWorkflowFlags),
-)
-
 
 CLI_ONLY_CONFIG_FIELDS: frozenset[str] = frozenset({"developer_agent", "developer_model"})
 
@@ -109,6 +94,16 @@ def _format_unknown_field_message(*, full_path: str, path: Path, suggestion: str
 
 
 def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[str]:
+    from ralph.config._general_workflow_flags import GeneralWorkflowFlags
+    from ralph.config.agent_config import AgentConfig
+    from ralph.config.conflict_resolution_config import ConflictResolutionConfig
+    from ralph.config.general_config import GeneralConfig
+    from ralph.config.models import UnifiedConfig
+
+    closed_subtable_leaves: tuple[tuple[str, type[RalphBaseModel]], ...] = (
+        ("workflow", GeneralWorkflowFlags),
+    )
+
     lines: list[str] = []
     seen: set[tuple[str, Path]] = set()
 
@@ -138,7 +133,7 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
             prefix="general.",
             suggester=emit,
         )
-        for sub_name, sub_model in _CLOSED_SUBTABLE_LEAVES:
+        for sub_name, sub_model in closed_subtable_leaves:
             sub = general.get(sub_name)
             if isinstance(sub, dict):
                 _collect_unknown_leaves(
@@ -311,6 +306,8 @@ def _apply_cli_overrides(
 
 
 def _validate_agents_layer(data: dict[str, object]) -> dict[str, object]:
+    from ralph.config.models import UnifiedConfig
+
     if not data:
         return data
     cleaned = dict(data)
@@ -344,6 +341,8 @@ def _warn_retired_agent_keys(config_path: Path) -> None:
 
 
 def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
+    from pydantic import ValidationError
+
     agents_raw = load_optional_toml(
         agents_path,
         kind="agents",
@@ -378,6 +377,8 @@ def _clean_general_layer(layer_data: dict[str, object]) -> None:
 
 
 def _load_agents_layer(agents_path: Path, *, strict: bool) -> dict[str, object]:
+    from pydantic import ValidationError
+
     try:
         return _load_agents_data(agents_path, strict=strict)
     except ValidationError as exc:
@@ -393,6 +394,10 @@ def load_config(
     *,
     strict_optional_files: bool = False,
 ) -> UnifiedConfig:
+    from pydantic import ValidationError
+
+    from ralph.config.models import UnifiedConfig
+
     agents_path = _global_agents_config_path()
     agents_data = _load_agents_layer(agents_path, strict=strict_optional_files)
     global_data = load_toml(_global_config_path())
@@ -469,6 +474,10 @@ def load_config(
 
 
 def load_local_only(config_path: Path) -> UnifiedConfig:
+    from pydantic import ValidationError
+
+    from ralph.config.models import UnifiedConfig
+
     data = load_toml(config_path)
     data = _convert_legacy_config(data)
     general = data.get("general")
