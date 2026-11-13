@@ -1,8 +1,8 @@
 # Documentation Map
 
-Use this page after [`README.md`](../README.md) and
-[`START_HERE.md`](../START_HERE.md) when you already know the question
-and need the one maintained doc that answers it. Each section is one
+For what Ralph Workflow is and whether it fits, start with
+[`README.md`](../README.md). Use this page when you already know the
+question and need the one maintained doc that answers it. Each section is one
 reader job; pick the first link that matches, then stop.
 
 ## I want a successful first run (tutorial)

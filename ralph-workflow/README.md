@@ -15,6 +15,12 @@ simple Ralph loop: plan → build → verify → fix. Around it: agent review,
 retries, fallback agent chains, durable handoffs, interruption recovery,
 and Git integration.
 
+The factory terms are literal: your specification and checks are the
+input, phases are the stations, your checks are the quality gates, agent
+chains are the interchangeable workers, worktrees are the parallel
+lines, and integration is shipping to the mainline. See
+[concepts](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/concepts.md).
+
 **Ralph Workflow manages the harness, not the models.** A harness of
 harnesses: coding agents such as Claude Code, Codex, and Cursor are
 harnesses around models, and Ralph Workflow is the workflow, review,
@@ -44,7 +50,9 @@ you judge the software.
 
 It fits work with a clear finish line and checks you trust; it is not
 (yet) for open-ended exploration or repositories with no reliable tests
-or checks.
+or checks. If that is your repository, build the finish line first:
+write down what "done" means and add a test or check you trust, then
+come back.
 
 ## Install
 
@@ -86,6 +94,7 @@ Reject an empty email address in the signup validator with a clear error.
 ## Acceptance criteria
 - An empty email is rejected before a user record is created.
 - Valid signup behavior and public interfaces stay unchanged.
+- Tests cover both the rejected input and a valid signup.
 
 ## Verification
 - Run python -m pytest and fix any failures.
@@ -152,8 +161,9 @@ user-global `ralph-workflow-pipeline.toml`, `ralph-workflow-mcp.toml`, and
 
 Ralph Workflow installs its skills through the built-in update mechanism:
 artifact skills install into the project scope and follow the pipeline's
-artifact types, so adding a skill now means adding an artifact type. Three
-universal skills (`test-driven-development`, `systematic-debugging`,
+artifact types: adding a skill now means adding an artifact type, one skill
+per artifact type. Three universal skills
+(`test-driven-development`, `systematic-debugging`,
 `verification-before-completion`) install user-global and can be turned off.
 See the
 [configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#skills)

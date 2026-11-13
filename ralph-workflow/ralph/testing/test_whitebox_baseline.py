@@ -11,6 +11,7 @@ tests/agents/execution_state/test_opencode_subagent_visibility.py|0,2,0
 tests/agents/execution_state/test_strategy_classes_consolidated.py|0,2,0
 tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py|0,6,0
 tests/agents/invoke/test_claude_interactive_real_capture_replay.py|0,2,1
+tests/agents/invoke/test_cli_attempt_fact_completeness.py|0,1,0
 tests/agents/invoke/test_codex_completion_liveness.py|0,2,4
 tests/agents/invoke/test_codex_session_id_extraction.py|0,1,0
 tests/agents/invoke/test_command_builder_spec.py|0,1,0

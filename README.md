@@ -6,19 +6,20 @@
 
 Coding agents write code fast. The handoffs around them do not scale the
 same way: babysitting a session, re-explaining context, resolving conflicts,
-waiting in a review queue. A software factory removes that bottleneck.
+waiting in a review queue.
 
 Ralph Workflow is a free, open-source AI agent orchestrator and software
-factory, the operating system for autonomous coding, for developers and
-teams who already have a coding agent: you supply the specification and the
-checks you trust, and it returns integrated, checked software on one
-mainline.
+factory — the operating system for autonomous coding — for developers and
+teams who already have a coding agent: you
+supply the specification and the checks you trust, and it returns
+integrated, checked software on one mainline.
 
 **Ralph Workflow manages the harness, not the models.** A harness of
 harnesses: coding agents such as Claude Code, Codex, and Cursor are
 harnesses around models, and Ralph Workflow is the workflow, review,
 recovery, and Git layer around those agents. There is no vendor lock-in:
-nine built-in agent backends ship with it, and agent chains can mix them
+nine built-in agent backends ship with it, and
+[agent chains](ralph-workflow/docs/sphinx/configuration.md) can mix them
 and fall back to the next when an attempt fails. Ralph Workflow needs no
 API key of its own and sells no model access; it launches the agent CLI you
 installed and authenticated, so whatever login or subscription that agent
@@ -38,9 +39,10 @@ yours.
 
 Run one agent by hand and you are the scheduler, reviewer, and merger. Run
 a plain agent loop and it repeats one prompt. Ralph Workflow runs a
-configurable workflow graph with review, retries, recovery, and fallback
-agent chains, keeps independent runs in separate Git worktrees, and lands
-checked work on one mainline.
+configurable workflow graph with review
+[gates](ralph-workflow/docs/sphinx/concepts.md), retries, recovery, and
+fallback agent chains, keeps independent runs in separate Git worktrees,
+and lands checked work on one mainline.
 
 Best for tasks with a clear finish line and checks you trust; not (yet) for
 open-ended exploration or repositories with no reliable tests. See
@@ -58,8 +60,11 @@ mechanism:
   commit.
 - **Gates.** Checks are gates: a station that does not produce the evidence it owes
   returns `fix-needed`, `blocked`, or `retry` instead of opening the next gate.
+  Gate and drain semantics are in the
+  [concepts reference](ralph-workflow/docs/sphinx/concepts.md).
 - **Interchangeable workers.** An agent chain is the worker pool for a station: you
-  choose the agent, and which one takes over when an attempt fails.
+  choose the agent, and which one takes over when an attempt fails; see the
+  [configuration reference](ralph-workflow/docs/sphinx/configuration.md).
 - **Parallel lines.** Worktrees are the production lines: independent runs work in
   separate Git worktrees without sharing agent context.
 - **Shipping.** Git integration ships successful work to the configured mainline.
@@ -111,8 +116,8 @@ Drain semantics, routing, and recovery are described in the
 
 ## Independent work, shared mainline
 
-Move beyond pull requests: review and integration happen inside the
-execution graph. You define the outcome and the checks; Ralph Workflow runs
+Review and integration happen inside the execution graph, not in a
+pull-request queue. You define the outcome and the checks; Ralph Workflow runs
 the workflow; you judge the software. Branch protections and required
 checks still apply, and nothing lands without the Git result proving it.
 
@@ -252,11 +257,12 @@ Next step, by reader type:
 - **Evaluate it**: run the [first-run walkthrough](START_HERE.md).
 - **Use it**: configure your setup with the
   [operator manual](ralph-workflow/docs/sphinx/index.rst).
-- **Contribute it**: read [CONTRIBUTING.md](CONTRIBUTING.md); every
-  contribution must agree to the
+- **Contribute it**: read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+  [code of conduct](CODE_OF_CONDUCT.md); every contribution must agree to the
   [Contributor License Agreement](CLA.md).
 
-- [LICENSE](LICENSE) · [PyPI package page](https://pypi.org/project/ralph-workflow/) ·
+- [LICENSE](LICENSE) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) ·
+  [PyPI package page](https://pypi.org/project/ralph-workflow/) ·
   [Report an issue](https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new)
 
 The Ralph loop pattern is credited to [Geoffrey Huntley](https://ghuntley.com/ralph);

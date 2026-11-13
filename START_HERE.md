@@ -5,9 +5,17 @@ unattended run they can judge by what the software does and which
 checks ran. "Unattended" means you start it from your own shell and
 leave it alone until it finishes or stops with a clear error.
 
+Ralph Workflow is free and open source (AGPL-3.0-or-later): it runs on
+your machine, needs no account, and has no hosted service behind it.
+
 Ralph Workflow is the harness around the coding agent CLI you already
-installed and authenticated. It needs no API key of its own; each agent
-keeps its own authentication — a login, an API key, or either (see
+installed and authenticated — the harness of harnesses: it manages the
+workflow, review, and Git integration, never the models, so there is no
+vendor lock-in. Nine built-in agent backends ship in the package, agent
+chains can mix them and fall back when one fails, and switching or
+combining vendors is a configuration change, not a rewrite. It needs no
+API key of its own; each agent keeps its own authentication — a login,
+an API key, or either (see
 [`agents`](ralph-workflow/docs/sphinx/agents.md)).
 
 Every default ships with the package, and `ralph --init` seeds your
@@ -75,7 +83,9 @@ agent that Ralph Workflow is already driving.
    Ralph Workflow enables supported agents it finds on your `PATH`.
    If the list is empty, install and authenticate an agent CLI first
    (see [`agents`](ralph-workflow/docs/sphinx/agents.md)), then rerun
-   `ralph --init`.
+   `ralph --list-agents` — detection happens when a phase is routed to
+   an agent, not at `ralph --init` time, so an agent installed after
+   seeding is picked up without re-running `--init`.
 
 6. **Check the setup.**
 
