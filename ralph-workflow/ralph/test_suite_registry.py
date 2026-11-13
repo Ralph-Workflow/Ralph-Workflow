@@ -94,4 +94,5 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_skills_upstream_transport.py",
     "tests/agents/invoke/test_kill_attribution_subprocess_e2e.py",
     "tests/test_verify_invariants.py",
+    "tests/testing/test_audit_sast.py",
 )

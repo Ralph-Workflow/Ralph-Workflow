@@ -8,7 +8,11 @@ import pytest
 
 from ralph.testing.audit_sast import SastFinding, audit_sast_roots, diff_findings, main
 
-pytestmark = pytest.mark.timeout_seconds(60)
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(60),
+]
 
 RALPH_TEST_CHANGE_REASONS = {
     "inline-waiver-contract": (
@@ -16,6 +20,14 @@ RALPH_TEST_CHANGE_REASONS = {
         "static-analysis finding; a waiver is a configuration-level entry in "
         "the SAST configuration, so the gate honours the project Bandit "
         "configuration and reports a finding whose source carries a comment"
+    ),
+    "subprocess-e2e-classification": (
+        "the module runs the static-analysis audit CLI as a real child process, "
+        "so it carries the subprocess_e2e marker the process audit and the "
+        "test-policy audit both require for a real subprocess call; the "
+        "required_auto_integrate_e2e marker and the test-suite registry entry "
+        "keep the file in the default verification lane, so the black-box CLI "
+        "check stays inside the required gate"
     ),
 }
 
