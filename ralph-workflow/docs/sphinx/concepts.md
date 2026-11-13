@@ -460,7 +460,7 @@ An unbounded MCP call hangs the MCP server thread and starves the agent of outpu
 
 ### Recovery
 
-When the watchdog or a timeout fires, the runtime hands control to the recovery layer: the watchdog emits the diagnostic and marks the session as `recoverable` or `non-recoverable`; the recovery controller consults policy for the recovery budget; if budget remains, the runtime retries the phase with the recovery prompt template; if the recovery budget is exhausted, the recovery controller routes the run to `failed_terminal` (`ralph/recovery/controller.py`). See [Recovery](recovery.md) for the full recovery controller contract.
+When the watchdog or a timeout fires, the runtime hands control to the recovery layer: the watchdog emits the diagnostic and marks the session as `recoverable` or `non-recoverable`; the recovery controller consults policy for the recovery budget; if budget remains, the runtime retries the phase with the recovery prompt template; if the recovery budget is exhausted, the recovery controller routes the run to the recovery `failed_route` declared in `pipeline.toml` (`ralph/recovery/controller.py`); the bundled default sets `failed_route = "failed_terminal"`. See [Recovery](recovery.md) for the full recovery controller contract.
 
 ## Deprecated: Ralph Workflow-orchestrated workers {#deprecated-ralph-orchestrated-workers}
 
