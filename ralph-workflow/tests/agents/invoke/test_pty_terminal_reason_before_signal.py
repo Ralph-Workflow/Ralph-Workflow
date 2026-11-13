@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
 if TYPE_CHECKING:
     import pytest
@@ -54,9 +55,13 @@ def _make_reader(handle: _OrderHandle) -> PtyLineReader:
     return reader
 
 
-def _no_teardown(monkeypatch: pytest.MonkeyPatch, calls: list[int]) -> None:
-    def _track(pid: int, *, issuer: str) -> None:
-        assert issuer == "invoke:pty"
+def _no_teardown(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[int],
+    expected_issuer: ProcessTerminationIssuer,
+) -> None:
+    def _track(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
+        assert issuer == expected_issuer
         calls.append(pid)
 
     monkeypatch.setattr(
@@ -66,7 +71,7 @@ def _no_teardown(monkeypatch: pytest.MonkeyPatch, calls: list[int]) -> None:
 
 
 def test_on_interrupt_records_reason_before_signal(monkeypatch: pytest.MonkeyPatch) -> None:
-    _no_teardown(monkeypatch, [])
+    _no_teardown(monkeypatch, [], ProcessTerminationIssuer.OPERATOR)
     handle = _OrderHandle()
     _make_reader(handle)._on_interrupt()
     reason_at = _first(handle.events, "reason")
@@ -79,7 +84,7 @@ def test_on_interrupt_records_reason_before_signal(monkeypatch: pytest.MonkeyPat
 def test_terminate_for_quota_records_reason_before_signal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _no_teardown(monkeypatch, [])
+    _no_teardown(monkeypatch, [], ProcessTerminationIssuer.QUOTA_DETECTOR)
     handle = _OrderHandle()
     reader = _make_reader(handle)
     reader._terminate_for_quota("quota detail")
@@ -94,7 +99,7 @@ def test_terminate_for_quota_records_reason_before_signal(
 def test_request_interactive_exit_records_reason_before_signal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _no_teardown(monkeypatch, [])
+    _no_teardown(monkeypatch, [], ProcessTerminationIssuer.INVOKE_TEARDOWN)
     handle = _OrderHandle()
     _make_reader(handle)._request_interactive_exit()
     reason_at = _first(handle.events, "reason")

@@ -8,6 +8,7 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.invoke import PtyLineReader
 from ralph.agents.timeout_clock import FakeClock
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
 if TYPE_CHECKING:
     import pytest
@@ -62,7 +63,7 @@ def test_watchdog_fire_tears_down_the_session_after_terminate_reaped_the_leader(
 ) -> None:
     teardowns: list[tuple[int, str]] = []
 
-    def _record_teardown(pid: int, *, issuer: str) -> None:
+    def _record_teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         teardowns.append((pid, issuer))
 
     monkeypatch.setattr("ralph.agents.invoke._pty_line_reader.teardown_subtree", _record_teardown)
@@ -83,6 +84,6 @@ def test_watchdog_fire_tears_down_the_session_after_terminate_reaped_the_leader(
 
     assert fired is not None
     assert handle.poll() == _SIGTERM_RC, "the double must model a reaped leader"
-    assert teardowns == [(_LEADER_PID, "invoke:pty")], (
+    assert teardowns == [(_LEADER_PID, ProcessTerminationIssuer.SUPERVISOR_IDLE)], (
         "the fire path must sweep the session even though terminate() reaped the leader"
     )

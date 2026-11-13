@@ -69,7 +69,7 @@ def test_process_manager_terminate_records_typed_issuer() -> None:
 def test_teardown_records_signalled_without_changing_terminal_reason() -> None:
     manager = install_process_manager(ProcessManager())
     child = _sleeping_child(manager)
-    teardown_subtree(child.pid, issuer="invoke:process")
+    teardown_subtree(child.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
     assert {
         "stage": "teardown_subtree",
         "outcome": "signalled",

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import phase_style_for_phase
 from ralph.git.conflict_stage_entries import ConflictStageEntries
 from ralph.git.merge import MERGE_STATE_NONE
@@ -36,9 +39,11 @@ from ralph.pipeline.integration_resolution import (
 )
 from ralph.policy.loader import load_policy
 from ralph.recovery import dead_agent_probe
-from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
+from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, ProbeResult
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["src/alpha.py", "docs/beta.md"]
@@ -126,18 +131,47 @@ def _install_seams(
     return scans
 
 
+def _probe_reachable_deps(bundle: PolicyBundle) -> PipelineDeps:
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: object = None,
+        _clock: object = None,
+    ) -> object:
+        del options, _clock
+        if Path(prompt_file).name == CANARY_PROMPT_FILENAME:
+            return iter(("scripted canary reply",))
+        raise AgentInvocationError(
+            config.cmd,
+            0,
+            "agent idle timeout",
+        )
+
+    deps = make_test_pipeline_deps(
+        make_display_context(),
+        policy_bundle=bundle,
+    )
+    return replace(
+        deps,
+        invoke_agent=fake_invoke_agent,
+        recovery_sleep=lambda _: None,
+    )
+
+
 def _run(
     tmp_path: Path,
     *,
     invoke: driver_module.ResolutionInvoker,
     display: _FakeDisplay | None = None,
     session: ResolutionSession | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> bool:
     return run_conflict_resolution_pipeline(
         root=tmp_path,
         target="main",
         config=_config(),
-        pipeline_deps=None,
+        pipeline_deps=pipeline_deps,
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
         display=display,
@@ -727,7 +761,15 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
         session.last_attempt_saw_activity = True
         return False
 
-    assert _run(tmp_path, invoke=_destroys_the_file, session=session) is False
+    assert (
+        _run(
+            tmp_path,
+            invoke=_destroys_the_file,
+            session=session,
+            pipeline_deps=_probe_reachable_deps(_policy_bundle()),
+        )
+        is False
+    )
     assert session.unresolved_paths == ("src/alpha.py",)
     assert probed, "the failed resolution attempt must still reach the dead-agent probe boundary"
 

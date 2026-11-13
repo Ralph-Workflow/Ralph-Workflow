@@ -25,6 +25,7 @@ RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
     ("B5", "U6"),
     ("B6", "AC4"),
     ("B7", "U6"),
+    ("B8", "AC4"),
 )
 _PAIRING_BY_RULE: Final[Mapping[str, str]] = MappingProxyType(dict(RULE_PAIRINGS))
 B4_ALLOWLIST: Final[Mapping[str, str]] = MappingProxyType(
@@ -71,6 +72,44 @@ _B3_ALLOWED_PATHS = frozenset(
 )
 _ATTEMPT_RUNNER_PATH = "ralph/pipeline/attempt_runner.py"
 _MUTABLE_CONSTRUCTORS = frozenset({"dict", "list", "set"})
+_B8_DETECTOR_PATHS = frozenset(
+    {
+        "ralph/agents/invoke/_quota_detection.py",
+        "ralph/agents/parsers/content_channel.py",
+    }
+)
+_B8_PROCESS_IMPORT_PREFIX = "ralph.process"
+_B8_PROCESS_NAME = "ManagedProcess"
+
+
+def _b8_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
+    if relative_path not in _B8_DETECTOR_PATHS:
+        return []
+    violations: list[str] = []
+    for node in nodes:
+        reasons: list[str] = []
+        if isinstance(node, ast.Import):
+            imports_process_layer = any(
+                alias.name == _B8_PROCESS_IMPORT_PREFIX
+                or alias.name.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
+                for alias in node.names
+            )
+            if imports_process_layer:
+                reasons.append("process-layer import in detector module")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == _B8_PROCESS_IMPORT_PREFIX or (
+                node.module is not None
+                and node.module.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
+            ):
+                reasons.append("process-layer import in detector module")
+        elif (isinstance(node, ast.Name) and node.id == _B8_PROCESS_NAME) or (
+            isinstance(node, ast.Attribute) and node.attr == _B8_PROCESS_NAME
+        ):
+            reasons.append("ManagedProcess reference in detector module")
+        violations.extend(
+            _violation(relative_path, node, "B8", reason) for reason in reasons
+        )
+    return violations
 
 
 def rule_pairing(rule: str) -> str:
@@ -567,4 +606,5 @@ def collect_boundary_violations(relative_path: str, source: str) -> list[str]:
         + _b4_violations(relative_path, nodes)
         + _b5_violations(relative_path, tree, nodes)
         + _decision_violations(relative_path, tree, nodes)
+        + _b8_violations(relative_path, nodes)
     )

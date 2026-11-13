@@ -332,9 +332,14 @@ async def _until_root_exit(
 
 
 async def _reap_session(handle: ManagedAsyncProcess, pgid: int | None) -> None:
-    issuer = handle.record.label or "agent"
     with contextlib.suppress(Exception):
-        await asyncio.to_thread(teardown_subtree, handle.pid, issuer=issuer, pgid=pgid)
+        await asyncio.to_thread(
+            teardown_subtree,
+            handle.pid,
+            issuer=ProcessTerminationIssuer.OPERATOR,
+            owner_label=handle.record.label or "agent",
+            pgid=pgid,
+        )
 
 
 async def drain_agent_lines(

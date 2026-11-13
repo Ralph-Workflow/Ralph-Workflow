@@ -55,6 +55,7 @@ from ralph.agents.invoke._completion import (
     read_bounded_stderr,
     termination_issuer_for_fire_reason,
 )
+from ralph.agents.invoke._completion_supervision import _teardown_subtree_if_pid_available
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -444,9 +445,9 @@ def check_broken_agent_timer(
     pid = cast("int | None", getattr(handle, "pid", None))
     if pid is not None:
         if process_teardown is None:
-            teardown_subtree(pid, issuer="invoke:process")
+            teardown_subtree(pid, issuer=ProcessTerminationIssuer.BROKEN_AGENT_TIMER)
         else:
-            process_teardown.teardown_subtree(pid, issuer="invoke:process")
+            process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.BROKEN_AGENT_TIMER)
     error = BrokenAgentExitError(
         agent_name,
         reason="no_llm_activity" if watchdog.has_any_output() else "no_output",
@@ -960,9 +961,9 @@ class ProcessLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
-                teardown_subtree(pid, issuer="invoke:process")
+                teardown_subtree(pid, issuer=ProcessTerminationIssuer.QUOTA_DETECTOR)
             else:
-                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
+                self._process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.QUOTA_DETECTOR)
         returncode = observed_returncode(self._handle)
         self._termination.record_observed_returncode(returncode)
         self._quota_error = QuotaExhaustedError(
@@ -1001,9 +1002,9 @@ class ProcessLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
-                teardown_subtree(pid, issuer="invoke:process")
+                teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
             else:
-                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
+                self._process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -1070,9 +1071,9 @@ class ProcessLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
-                teardown_subtree(pid, issuer="invoke:process")
+                teardown_subtree(pid, issuer=process_issuer_for_fire_reason(fire_reason))
             else:
-                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
+                self._process_teardown.teardown_subtree(pid, issuer=process_issuer_for_fire_reason(fire_reason))
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         now = self._clock.monotonic()
@@ -1301,9 +1302,9 @@ class ProcessLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
-                teardown_subtree(pid, issuer="invoke:process")
+                teardown_subtree(pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
             else:
-                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
+                self._process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
         return True
 
     def _build_opencode_subagent_probe(
@@ -1494,23 +1495,13 @@ def _terminate_hung_process_exit(
     exit_pid = cast("int | None", getattr(handle, "pid", None))
     if exit_pid is not None:
         if ctx.process_teardown is None:
-            teardown_subtree(exit_pid, issuer="invoke:process")
+            teardown_subtree(exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
         else:
-            ctx.process_teardown.teardown_subtree(exit_pid, issuer="invoke:process")
+            ctx.process_teardown.teardown_subtree(exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
     raise _IdleStreamTimeoutError(
         ctx.policy.process_exit_wait_seconds,
         WatchdogFireReason.PROCESS_EXIT_HANG,
     )
-
-
-def _teardown_subtree_if_pid_available(handle: ManagedProcess, ctx: AgentRunCtx) -> None:
-    capture_pid = cast("int | None", getattr(handle, "pid", None))
-    if capture_pid is None:
-        return
-    if ctx.process_teardown is None:
-        teardown_subtree(capture_pid, issuer="invoke:process")
-    else:
-        ctx.process_teardown.teardown_subtree(capture_pid, issuer="invoke:process")
 
 
 def _run_subprocess_and_read_lines(
@@ -1553,7 +1544,11 @@ def _run_subprocess_and_read_lines(
                 grace_period_s=0.5,
                 issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             )
-            _teardown_subtree_if_pid_available(handle, ctx)
+            _teardown_subtree_if_pid_available(
+                handle,
+                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
+                teardown=ctx.process_teardown,
+            )
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)

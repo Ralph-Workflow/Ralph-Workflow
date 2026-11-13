@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import DefaultProcessTeardown, register_child_session
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(6)]
@@ -26,7 +27,7 @@ def test_teardown_of_unreaped_child_stays_within_one_ceiling() -> None:
         )
 
         start = time.monotonic()
-        teardown.teardown_subtree(child.pid, issuer="test")
+        teardown.teardown_subtree(child.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
         elapsed = time.monotonic() - start
 
         assert elapsed < _CEILING_MS / 1000.0, (

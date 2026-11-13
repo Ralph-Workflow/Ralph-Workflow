@@ -84,7 +84,7 @@ def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: Any) -> 
         f"wait:{_MAX_INTERACTIVE_EXIT_GRACE_SECONDS}",
         "poll",
         "terminate:0.5",
-        "teardown:12345:invoke:pty",
+        "teardown:12345:invoke_teardown",
     ]
 
 

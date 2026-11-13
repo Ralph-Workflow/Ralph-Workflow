@@ -10,6 +10,7 @@ from ralph.agents.invoke._session import _bounded_output_lines
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.checked_accessors import optional_int
 from ralph.process.liveness import DefaultLivenessProbe
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
@@ -31,7 +32,7 @@ def _required_option[T](value: T | None, name: str) -> T:
 def _teardown_subtree_if_pid_available(
     handle: object,
     *,
-    issuer: str,
+    issuer: ProcessTerminationIssuer,
     teardown: ProcessTeardown | None = None,
 ) -> None:
     pid = optional_int(cast("object", getattr(handle, "pid", None)))
@@ -47,6 +48,12 @@ def _record_post_exit_watchdog_fire(
 ) -> None:
     if recorder is not None and verdict in _POST_EXIT_FIRE_VERDICTS:
         recorder.record_post_exit_watchdog_fire()
+
+
+def _teardown_issuer_for_verdict(verdict: PostExitVerdict) -> ProcessTerminationIssuer:
+    if verdict in _POST_EXIT_FIRE_VERDICTS:
+        return ProcessTerminationIssuer.POST_EXIT_WATCHDOG
+    return ProcessTerminationIssuer.INVOKE_TEARDOWN
 
 
 def _wait_for_completion_grace(
@@ -90,7 +97,7 @@ def _wait_for_completion_grace(
     _record_post_exit_watchdog_fire(termination_recorder, verdict)
     _teardown_subtree_if_pid_available(
         handle,
-        issuer=f"invoke:completion:{agent_name}",
+        issuer=_teardown_issuer_for_verdict(verdict),
         teardown=teardown,
     )
     if verdict == PostExitVerdict.SIGNALS_PRESENT:
@@ -111,13 +118,11 @@ def _wait_for_descendants_then_recheck(
     termination_recorder: _TerminationRecorder | None = None,
 ) -> AgentExecutionState:
     if isinstance(agent_name_or_opts, CompletionCheckOptions):
-        agent_name = "unknown"
         opts = agent_name_or_opts
         if not isinstance(opts_or_parsed_output, list):
             raise TypeError("parsed_output must be a list")
         parsed_output = opts_or_parsed_output
     else:
-        agent_name = agent_name_or_opts
         if not isinstance(opts_or_parsed_output, CompletionCheckOptions) or parsed_output is None:
             raise TypeError("completion options and parsed_output are required")
         opts = opts_or_parsed_output
@@ -153,7 +158,7 @@ def _wait_for_descendants_then_recheck(
     _record_post_exit_watchdog_fire(termination_recorder, verdict)
     _teardown_subtree_if_pid_available(
         handle,
-        issuer=f"invoke:completion:{agent_name}",
+        issuer=_teardown_issuer_for_verdict(verdict),
         teardown=teardown,
     )
     if verdict == PostExitVerdict.SIGNALS_PRESENT:

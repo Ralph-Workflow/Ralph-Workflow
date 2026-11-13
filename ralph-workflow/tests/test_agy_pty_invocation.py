@@ -19,6 +19,10 @@ from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 if TYPE_CHECKING:
     import pytest
 
+    from ralph.process.manager.process_termination_issuer import (
+        ProcessTerminationIssuer,
+    )
+
 
 def _write_prompt(tmp_path: Path, text: str = "hello") -> Path:
     prompt_file = tmp_path / "PROMPT.md"
@@ -502,7 +506,7 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
         def read_lines(self) -> object:
             yield "Nanocoder banner\n"
 
-    def fake_teardown_subtree(pid: int, *, issuer: str) -> None:
+    def fake_teardown_subtree(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         del issuer
         teardown_calls.append(pid)
 

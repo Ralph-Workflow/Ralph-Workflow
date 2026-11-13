@@ -843,7 +843,7 @@ class PtyLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
-                teardown_subtree(pid, issuer="invoke:pty")
+                teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
 
     def _completion_evidence_enabled(self) -> bool:
         return (
@@ -889,7 +889,7 @@ class PtyLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
-                teardown_subtree(pid, issuer="invoke:pty")
+                teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
         return True
 
     def _classify_quiet(self) -> AgentExecutionState:
@@ -957,7 +957,7 @@ class PtyLineReader:
         )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
-            teardown_subtree(pid, issuer="invoke:pty")
+            teardown_subtree(pid, issuer=process_issuer_for_fire_reason(fire_reason))
         resume_safe = _is_resumable_fire_reason(fire_reason)
         captured_session_id = self._captured_session_id
         now = self._clock.monotonic()
@@ -1149,7 +1149,7 @@ class PtyLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
-                teardown_subtree(pid, issuer="invoke:pty")
+                teardown_subtree(pid, issuer=ProcessTerminationIssuer.OPERATOR)
 
     def _cleanup(
         self,
@@ -1188,7 +1188,7 @@ class PtyLineReader:
         )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
-            teardown_subtree(pid, issuer="invoke:pty")
+            teardown_subtree(pid, issuer=ProcessTerminationIssuer.QUOTA_DETECTOR)
         recorder = _TerminationRecorder()
         recorder.record_issuer(TerminationIssuer.QUOTA_DETECTOR)
         recorder.record_liveness(True)
@@ -1241,7 +1241,7 @@ class PtyLineReader:
             )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
-            teardown_subtree(pid, issuer="invoke:pty")
+            teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
         raise AgentInvocationError(
             self._agent_name,
             1,

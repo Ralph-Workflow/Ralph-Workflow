@@ -23,6 +23,7 @@ from ralph.agents.invoke._session import (
     extract_transport_session_id,
     extract_transport_session_id_with_visible_tui,
 )
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
 if TYPE_CHECKING:
     from ralph.agents.invoke._completion_termination import _TerminationRecorder
@@ -43,7 +44,7 @@ def _raise_if_pi_reported_failed_exit(
         return
     _teardown_subtree_if_pid_available(
         handle,
-        issuer=f"invoke:completion:{agent_name}",
+        issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
         teardown=teardown,
     )
     raise PiProviderFailureExitError(agent_name, provider_failure)

@@ -30,6 +30,7 @@ from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
 from ralph.agents.invoke._session import _bounded_output_lines
 from ralph.agents.invoke.termination_recorder import return_code_may_be_a_signal
 from ralph.process._agent_launch_error import AgentLaunchError
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
@@ -60,7 +61,7 @@ def _raise_if_broken_agent_exit(
     ):
         _teardown_subtree_if_pid_available(
             handle,
-            issuer=f"invoke:completion:{agent_name}",
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             teardown=teardown,
         )
         raise BrokenAgentExitError(
@@ -78,7 +79,7 @@ def _raise_if_broken_agent_exit(
     ):
         _teardown_subtree_if_pid_available(
             handle,
-            issuer=f"invoke:completion:{agent_name}",
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             teardown=teardown,
         )
         raise BrokenAgentExitError(
@@ -92,7 +93,7 @@ def _raise_if_broken_agent_exit(
     if opts.elapsed_seconds is not None and not bounded_output:
         _teardown_subtree_if_pid_available(
             handle,
-            issuer=f"invoke:completion:{agent_name}",
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             teardown=teardown,
         )
         raise BrokenAgentExitError(
@@ -109,7 +110,7 @@ def _raise_if_broken_agent_exit(
     ):
         _teardown_subtree_if_pid_available(
             handle,
-            issuer=f"invoke:completion:{agent_name}",
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             teardown=teardown,
         )
         raise BrokenAgentExitError(
@@ -180,7 +181,7 @@ def _handle_non_zero_returncode(
         )
         _teardown_subtree_if_pid_available(
             handle,
-            issuer=f"invoke:completion:{agent_name}",
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             teardown=process_teardown,
         )
         return
@@ -198,7 +199,7 @@ def _handle_non_zero_returncode(
     ):
         _teardown_subtree_if_pid_available(
             handle,
-            issuer=f"invoke:completion:{agent_name}",
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             teardown=process_teardown,
         )
         raise BrokenAgentExitError(
@@ -227,7 +228,7 @@ def _handle_non_zero_returncode(
     log_invocation_exit(exc)
     _teardown_subtree_if_pid_available(
         handle,
-        issuer=f"invoke:completion:{agent_name}",
+        issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
         teardown=process_teardown,
     )
     raise exc

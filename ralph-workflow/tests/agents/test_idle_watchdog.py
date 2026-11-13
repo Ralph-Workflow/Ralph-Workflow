@@ -102,6 +102,7 @@ from ralph.agents.invoke import (
     CompletionCheckOptions,
     InvokeOptions,
     OpenCodeResumableExitError,
+    TerminationRecorder,
     check_process_result,
     fresh_session_options,
     invoke_agent,
@@ -10873,6 +10874,8 @@ class _FakeCheckFireSelf:
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
     _captured_session_id: str | None = None
+    _termination: TerminationRecorder = field(default_factory=TerminationRecorder)
+    _completion_is_terminal: Callable[[], bool] | None = None
 
 
 @dataclass
@@ -10934,6 +10937,8 @@ class _FakeCheckFireSelfResumeAfterKillContract:
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
     _captured_session_id: str | None = None
+    _termination: TerminationRecorder = field(default_factory=TerminationRecorder)
+    _completion_is_terminal: Callable[[], bool] | None = None
 
 
 class _NoOpStrategy:

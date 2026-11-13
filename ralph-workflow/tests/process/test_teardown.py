@@ -8,6 +8,7 @@ import time
 import psutil
 import pytest
 
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import DefaultProcessTeardown, verified_child_session_pgid
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
@@ -60,7 +61,7 @@ def test_teardown_subtree_reaps_nested_children() -> None:
     child_pids = {p.pid for p in children}
 
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
-    teardown.teardown_subtree(host.pid, issuer="invoke:test")
+    teardown.teardown_subtree(host.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
 
     with contextlib.suppress(subprocess.TimeoutExpired):
         host.wait(timeout=0.5)
@@ -79,7 +80,7 @@ def _is_live_process(pid: int) -> bool:
 
 def test_teardown_subtree_missing_process_is_noop() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
-    teardown.teardown_subtree(999_999, issuer="invoke:test")
+    teardown.teardown_subtree(999_999, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
@@ -113,7 +114,7 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
         psutil.Process(host.pid)
 
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
-    teardown.teardown_subtree(host.pid, issuer="invoke:test", pgid=host_pgid)
+    teardown.teardown_subtree(host.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN, pgid=host_pgid)
 
     deadline = time.monotonic() + 0.5
     while time.monotonic() < deadline:

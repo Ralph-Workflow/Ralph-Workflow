@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import ralph.agents.invoke._pty_line_reader as _pty_module
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
@@ -26,7 +27,7 @@ def _make_reader_for_interrupt() -> PtyLineReader:
 
 
 def _track_teardown(teardown_calls: list[int]) -> Callable[..., None]:
-    def _record(pid: int, *, issuer: str) -> None:
+    def _record(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         del issuer
         teardown_calls.append(pid)
 
@@ -127,4 +128,4 @@ def test_on_interrupt_skips_teardown_when_pid_missing(
 
 
 def test_on_interrupt_real_teardown_subtree_call() -> None:
-    teardown_subtree(2**30, issuer="invoke:test")
+    teardown_subtree(2**30, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)

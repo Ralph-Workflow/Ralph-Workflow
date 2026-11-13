@@ -30,7 +30,6 @@ from ralph.process.manager import ManagedProcess, ProcessManager, ProcessRecord,
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.attempt_facts import TerminationIssuer
-from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 from tests.recovery._scenario_harness import AgentAttemptResult, run_scenario
@@ -39,6 +38,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.process.teardown import ProcessTeardown
+    from ralph.recovery.canary_probe import ProbeResult
 
 PHASE = "development"
 
@@ -59,10 +59,11 @@ INCIDENT_4_OPENCODE_TRANSPORT_ERROR_LINE = '{"type":"error","message":"the sessi
 
 def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     probed: list[str] = []
+    real_run_canary_probe = dead_agent_probe.run_canary_probe
 
-    def fake_run_canary_probe(config: AgentConfig, **_kwargs: object) -> ProbeResult:
+    def fake_run_canary_probe(config: AgentConfig, **kwargs: object) -> ProbeResult:
         probed.append(config.cmd)
-        return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
+        return real_run_canary_probe(config, **kwargs)
 
     monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
     return probed

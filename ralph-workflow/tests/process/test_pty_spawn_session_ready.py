@@ -76,7 +76,11 @@ def test_teardown_reaps_a_session_member_that_outlived_the_pty_leader() -> None:
     )
     try:
         handle.wait(timeout=5.0)
-        teardown_subtree(handle.pid, issuer="invoke:pty", kill_escalation_ms=500)
+        teardown_subtree(
+            handle.pid,
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            kill_escalation_ms=500,
+        )
         deadline = time.monotonic() + 2.0
         survivors = _sleepers(tag)
         while survivors and time.monotonic() < deadline:

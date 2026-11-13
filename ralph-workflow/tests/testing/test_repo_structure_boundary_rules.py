@@ -90,6 +90,18 @@ class RecoveryController:
             "CACHE = {}",
             "CACHE: Final = frozenset()",
         ),
+        (
+            "B8",
+            "ralph/agents/invoke/_quota_detection.py",
+            "from ralph.process import ManagedProcess",
+            "from ralph.agents.parsers import content_channel",
+        ),
+        (
+            "B8",
+            "ralph/agents/parsers/content_channel.py",
+            "from ralph.process import supervisor",
+            "from dataclasses import dataclass",
+        ),
     ],
 )
 def test_boundary_rule_rejects_violation_and_accepts_clean_source(
@@ -234,8 +246,10 @@ def test_rule_pairings_cover_every_boundary_rule() -> None:
         "B5",
         "B6",
         "B7",
+        "B8",
     }
     assert rule_pairing("B2") == "AC16"
+    assert rule_pairing("B8") == "AC4"
 
 
 @pytest.mark.parametrize(
@@ -390,3 +404,48 @@ def test_b6_flags_exception_text_conversion_in_the_decision_layer() -> None:
 
 def test_rule_module_has_no_module_docstring() -> None:
     assert boundary_rules.__doc__ is None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "ralph/agents/invoke/_quota_detection.py",
+        "ralph/agents/parsers/content_channel.py",
+    ],
+)
+def test_b8_rejects_process_imports_and_managed_process_references(path: str) -> None:
+    assert any(
+        " B8 " in item for item in collect_boundary_violations(path, "import ralph.process")
+    )
+    assert any(
+        " B8 " in item
+        for item in collect_boundary_violations(path, "import ralph.process.supervisor as sup")
+    )
+    assert any(
+        " B8 " in item
+        for item in collect_boundary_violations(path, "from ralph.process.supervisor import sup")
+    )
+    assert any(
+        " B8 " in item
+        for item in collect_boundary_violations(path, "def f(proc):\n    return proc.ManagedProcess")
+    )
+    assert not any(
+        " B8 " in item for item in collect_boundary_violations(path, "from ralph.agents import invoke")
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["import ralph.process", "ManagedProcess()", "from ralph.process import supervisor"],
+)
+def test_b8_leaves_non_detector_paths_untouched(source: str) -> None:
+    assert collect_boundary_violations("ralph/cli/run.py", source) == []
+
+
+def test_b8_missing_detector_file_is_no_violation() -> None:
+    assert not any(
+        " B8 " in item
+        for item in collect_boundary_violations(
+            "ralph/agents/parsers/content_channel.py", "from dataclasses import dataclass"
+        )
+    )

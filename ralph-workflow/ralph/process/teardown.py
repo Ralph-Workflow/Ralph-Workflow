@@ -141,7 +141,13 @@ def _resolve_target(host_pid: int, pgid: int | None) -> tuple[psutil.Process | N
 
 @runtime_checkable
 class ProcessTeardown(Protocol):
-    def teardown_subtree(self, host_pid: int, *, issuer: str) -> None: ...
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None: ...
 
 
 class DefaultProcessTeardown:
@@ -153,15 +159,26 @@ class DefaultProcessTeardown:
         self._kill_escalation_ms = kill_escalation_ms
         self._record_lookup = record_lookup
 
-    def teardown_subtree(self, host_pid: int, *, issuer: str, pgid: int | None = None) -> None:
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+        pgid: int | None = None,
+    ) -> None:
+        if not isinstance(issuer, ProcessTerminationIssuer):
+            raise TypeError(
+                "teardown_subtree issuer must be a ProcessTerminationIssuer, "
+                f"got {type(issuer).__name__}: {issuer!r}"
+            )
         host, group = _resolve_target(host_pid, pgid)
         record = self._record_for(host_pid)
-        termination_issuer = self._termination_issuer(issuer)
         label = record.label if record is not None else None
-        if label is not None and _label_family(label) != _label_family(issuer):
+        if label is not None and _label_family(label) != _label_family(owner_label):
             self._record_teardown(
                 host_pid,
-                issuer=termination_issuer,
+                issuer=issuer,
                 outcome="refused_label_mismatch",
             )
             _LOG.warning(
@@ -173,14 +190,14 @@ class DefaultProcessTeardown:
         if host is None:
             self._record_teardown(
                 host_pid,
-                issuer=termination_issuer,
+                issuer=issuer,
                 outcome="already_exited",
             )
             if group is not None:
                 self._signal_process_group(group)
             return
 
-        self._record_teardown(host_pid, issuer=termination_issuer, outcome="signalled")
+        self._record_teardown(host_pid, issuer=issuer, outcome="signalled")
         procs: list[psutil.Process] = []
         try:
             procs.append(host)
@@ -221,11 +238,6 @@ class DefaultProcessTeardown:
         if not isinstance(manager_module, _ProcessManagerModule):
             raise RuntimeError("process manager module does not expose get_process_manager")
         return manager_module.get_process_manager().get_record(host_pid)
-
-    def _termination_issuer(self, owner_label: str) -> ProcessTerminationIssuer:
-        if _label_family(owner_label) == "invoke":
-            return ProcessTerminationIssuer.INVOKE_TEARDOWN
-        return ProcessTerminationIssuer.OPERATOR
 
     def _record_teardown(
         self,
@@ -282,12 +294,18 @@ class DefaultProcessTeardown:
 def teardown_subtree(
     host_pid: int,
     *,
-    issuer: str,
+    issuer: ProcessTerminationIssuer,
+    owner_label: str = "invoke",
     kill_escalation_ms: float = KILL_ESCALATION_CEILING_MS,
     pgid: int | None = None,
 ) -> None:
+    if not isinstance(issuer, ProcessTerminationIssuer):
+        raise TypeError(
+            "teardown_subtree issuer must be a ProcessTerminationIssuer, "
+            f"got {type(issuer).__name__}: {issuer!r}"
+        )
     DefaultProcessTeardown(kill_escalation_ms=kill_escalation_ms).teardown_subtree(
-        host_pid, issuer=issuer, pgid=pgid
+        host_pid, issuer=issuer, owner_label=owner_label, pgid=pgid
     )
 
 

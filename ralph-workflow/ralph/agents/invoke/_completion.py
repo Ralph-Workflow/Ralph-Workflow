@@ -51,6 +51,7 @@ from ralph.agents.invoke._errors import OpenCodeResumableExitError
 from ralph.agents.invoke._fire_reason_issuer import termination_issuer_for_fire_reason
 from ralph.agents.invoke._session import _bounded_output_lines
 from ralph.agents.registry import lookup_empty_output_diagnostic_factory
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
 if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
@@ -319,7 +320,7 @@ def _check_process_result(
                 return
             _teardown_subtree_if_pid_available(
                 handle,
-                issuer=f"invoke:completion:{agent_name}",
+                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
                 teardown=process_teardown,
             )
             diagnostic_factory = lookup_empty_output_diagnostic_factory(agent_name)

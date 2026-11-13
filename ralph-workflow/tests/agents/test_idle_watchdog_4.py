@@ -19,6 +19,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
     WorkspaceChangeClassifier,
 )
 from ralph.agents.timeout_clock import FakeClock
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
@@ -113,7 +114,7 @@ def testcheck_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path)
             check_options=None,
         )
 
-    mock_teardown.assert_called_once_with(1234, issuer="invoke:completion:test-agent")
+    mock_teardown.assert_called_once_with(1234, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
     assert teardown_subtree is not None
 
 
@@ -138,7 +139,7 @@ def testcheck_process_result_missing_completion_evidence_calls_teardown_subtree(
             check_options=options,
         )
 
-    mock_teardown.assert_called_once_with(5678, issuer="invoke:completion:test-agent")
+    mock_teardown.assert_called_once_with(5678, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
 
 
 def testcheck_process_result_error_path_does_not_mutate_clock() -> None:

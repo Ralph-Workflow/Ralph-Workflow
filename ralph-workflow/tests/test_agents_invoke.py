@@ -8,8 +8,14 @@ from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import (
+    TYPE_CHECKING,
     Literal,
 )
+
+if TYPE_CHECKING:
+    from ralph.process.manager.process_termination_issuer import (
+        ProcessTerminationIssuer,
+    )
 
 import psutil
 import pytest
@@ -4616,8 +4622,14 @@ class _RecordingProcessTeardown:
     def __init__(self) -> None:
         self.calls: tuple[int, ...] = ()
 
-    def teardown_subtree(self, host_pid: int, *, issuer: str) -> None:
-        del issuer
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del issuer, owner_label
         self.calls = (*self.calls, host_pid)
 
 

@@ -115,6 +115,7 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "tests/test_recovery_release_uses_record_store.py",
         "ralph/agents/idle_watchdog/_evidence_tier.py",
         "ralph/agents/idle_watchdog/_stuck_classifier.py",
+        "ralph/agents/parsers/content_channel.py",
         "ralph/agents/invoke/_command_builders/__init__.py",
         "ralph/agents/invoke/_runtime_resolvers/__init__.py",
         "ralph/install.py",

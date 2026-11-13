@@ -16,7 +16,12 @@ from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.pipeline.session_bridge import scoped_reset_tool_registry_callback
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process._spawn_validation import prepare_spawn_command
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+)
 from ralph.runtime_events import RuntimeEventRecorder, current_runtime_event, runtime_event_scope
 from ralph.testing.fake_process import make_async_process_factory
 
@@ -209,7 +214,14 @@ def test_seam_5_completion_teardown_names_its_issuer() -> None:
     recorded: list[tuple[int, str]] = []
 
     class _Teardown:
-        def teardown_subtree(self, pid: int, *, issuer: str) -> None:
+        def teardown_subtree(
+            self,
+            pid: int,
+            *,
+            issuer: ProcessTerminationIssuer,
+            owner_label: str = "invoke",
+        ) -> None:
+            del owner_label
             recorded.append((pid, issuer))
 
     handle = _CompletionHandle()
@@ -218,7 +230,7 @@ def test_seam_5_completion_teardown_names_its_issuer() -> None:
         check_process_result(handle, "agent", process_teardown=_Teardown())
 
     assert raised.value.failure_origin == "agent"
-    assert recorded == [(42, "invoke:completion:agent")]
+    assert recorded == [(42, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
 
 
 def test_typed_origins_stay_distinguishable_without_stderr() -> None:

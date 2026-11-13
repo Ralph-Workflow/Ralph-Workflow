@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -9,6 +11,7 @@ from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import Verbosity
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
@@ -22,28 +25,52 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.recovery import controller as recovery_controller_module
-from ralph.recovery import dead_agent_probe
-from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
+from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.events import FailureEvent, FalloverEvent
 from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Iterator
+
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.pipeline.factory import PipelineDeps
 
 _CYCLE_CAP = 3
 
 
-def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    probed: list[str] = []
+def _probe_reachable_deps(
+    probed: list[str],
+    bundle: PolicyBundle,
+) -> PipelineDeps:
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+        _clock: object = None,
+    ) -> Iterator[str]:
+        del options, _clock
+        if Path(prompt_file).name == CANARY_PROMPT_FILENAME:
+            probed.append(config.cmd)
+            return iter(("scripted canary reply",))
+        raise AgentInvocationError(
+            config.cmd,
+            0,
+            "agent idle timeout",
+        )
 
-    def fake_run_canary_probe(config: AgentConfig, **_kwargs: object) -> ProbeResult:
-        probed.append(config.cmd)
-        return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
-
-    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
-    return probed
+    deps = make_test_pipeline_deps(
+        make_display_context(),
+        policy_bundle=bundle,
+    )
+    return replace(
+        deps,
+        invoke_agent=fake_invoke_agent,
+        recovery_sleep=lambda _: None,
+    )
 
 
 def _test_config() -> UnifiedConfig:
@@ -130,7 +157,7 @@ def test_runner_tries_the_whole_chain_before_stopping(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    probed = _stub_canary_probe_boundary(monkeypatch)
+    probed: list[str] = []
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -158,7 +185,7 @@ def test_runner_tries_the_whole_chain_before_stopping(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        _recovery_sleep=lambda _: None,
+        pipeline_deps=_probe_reachable_deps(probed, bundle),
     )
 
     assert exit_code == 1
@@ -173,7 +200,7 @@ def test_runner_records_failure_and_fallover_events(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    probed = _stub_canary_probe_boundary(monkeypatch)
+    probed: list[str] = []
     bundle = _make_policy_bundle()
 
     captured_failure_events: list[FailureEvent] = []
@@ -205,7 +232,7 @@ def test_runner_records_failure_and_fallover_events(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        _recovery_sleep=lambda _: None,
+        pipeline_deps=_probe_reachable_deps(probed, bundle),
     )
 
     assert exit_code == 1
@@ -232,7 +259,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    probed = _stub_canary_probe_boundary(monkeypatch)
+    probed: list[str] = []
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -249,7 +276,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        _recovery_sleep=lambda _: None,
+        pipeline_deps=_probe_reachable_deps(probed, bundle),
     )
 
     assert exit_code == 1
@@ -277,7 +304,7 @@ def test_runner_recovery_cycle_count_advances(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    probed = _stub_canary_probe_boundary(monkeypatch)
+    probed: list[str] = []
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -294,7 +321,7 @@ def test_runner_recovery_cycle_count_advances(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        _recovery_sleep=lambda _: None,
+        pipeline_deps=_probe_reachable_deps(probed, bundle),
     )
 
     assert exit_code == 1

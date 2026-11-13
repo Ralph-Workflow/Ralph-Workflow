@@ -27,11 +27,17 @@ TIMEOUT_EXIT_CODE = 124
 _DEFAULT_RUN_PROCESS_LABEL: Final[str] = "executor:run-process"
 
 
-def _reap_subtree(pid: int | None, pgid: int | None = None, *, label: str) -> None:
+def _reap_subtree(
+    pid: int | None,
+    pgid: int | None = None,
+    *,
+    label: str,
+    issuer: ProcessTerminationIssuer,
+) -> None:
     if pid is None:
         return
     with contextlib.suppress(Exception):
-        teardown_subtree(pid, issuer=label, pgid=pgid)
+        teardown_subtree(pid, issuer=issuer, owner_label=label, pgid=pgid)
 
 
 def _verified_pgid(pid: int | None) -> int | None:
@@ -135,7 +141,12 @@ async def run_process_async(
                 grace_period_s=0,
                 issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
             )
-            _reap_subtree(child_pid, child_pgid, label=effective_label)
+            _reap_subtree(
+                child_pid,
+                child_pgid,
+                label=effective_label,
+                issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+            )
             drained, _ = await asyncio.wait(
                 {communicate_task}, timeout=_POST_TERMINATE_DRAIN_SECONDS
             )
@@ -165,7 +176,12 @@ async def run_process_async(
                 await asyncio.wait_for(handle.wait(), timeout=0)
         raise
     finally:
-        _reap_subtree(child_pid, child_pgid, label=effective_label)
+        _reap_subtree(
+            child_pid,
+            child_pgid,
+            label=effective_label,
+            issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+        )
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
@@ -217,7 +233,12 @@ def run_process(
             grace_period_s=0,
             issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
         )
-        _reap_subtree(child_pid, child_pgid, label=effective_label)
+        _reap_subtree(
+            child_pid,
+            child_pgid,
+            label=effective_label,
+            issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+        )
         try:
             stdout_bytes, stderr_bytes = handle.communicate(timeout=_POST_TERMINATE_DRAIN_SECONDS)
         except subprocess.TimeoutExpired as drain_exc:
@@ -240,7 +261,12 @@ def run_process(
                 handle.wait(timeout=0)
         raise
     finally:
-        _reap_subtree(child_pid, child_pgid, label=effective_label)
+        _reap_subtree(
+            child_pid,
+            child_pgid,
+            label=effective_label,
+            issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+        )
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
