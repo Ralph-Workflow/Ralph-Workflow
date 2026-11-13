@@ -22,29 +22,27 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
-RALPH_TEST_CHANGE_REASONS = {
-    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the execution-kernel starter retires the advisory Premise-check retry line guard row and keeps the model-family advisory row, so the advisory starter guard set names the model-family row only",
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_starter_kernel_carries_no_premise_check_guard_row": (
+        "PRODUCT_CRITERIA unit 3 requires the runtime to own the repeated-failure "
+        "retry and the policy-v5 paired replay plan carries the Premise-check retry "
+        "line guard row, so the starter kernel again ships that advisory guard row "
+        "and the retired-absence assertion is removed"
+    ),
+    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the execution-kernel starter restores the advisory Premise-check retry line guard row and keeps the model-family advisory row, so the advisory starter guard set names both",
     "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
     "test_fresh_cli_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
     "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
-    "test_starter_kernel_carries_no_premise_check_guard_row": "the runtime mechanism that added the premise-check retry line is retired, so the starter kernel must carry no premise-check guard row and must not name the retired retry formatter",
 }
 
 ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
     {
         "Non-inferable instruction surface",
         "Independent review model-family diversification",
+        "Premise-check retry line",
         "Policy follows reality",
         "Report failures honestly",
     }
-)
-
-RETIRED_PREMISE_CHECK_GUARD: str = "Premise-check retry line"
-
-RETIRED_PREMISE_CHECK_MARKERS: tuple[str, ...] = (
-    "premise-check retry line",
-    "test the premise shared by the failed fixes",
-    "ralph/recovery/retry_prompt.py",
 )
 
 
@@ -161,23 +159,6 @@ def test_fresh_starters_follow_fill_model_no_ralph_audit_ids() -> None:
                 assert banned not in enf, (
                     f"Starter {name} pre-filled Ralph internal audit ID {banned!r} in enforcement"
                 )
-
-
-def test_starter_kernel_carries_no_premise_check_guard_row() -> None:
-    content = starters.read_starter("execution-kernel.md")
-    rows = _parse_guard_inventory_table(content)
-    guards = [row["guard"] for row in rows]
-    assert RETIRED_PREMISE_CHECK_GUARD not in guards, (
-        "the starter execution-kernel guard inventory still carries the retired "
-        f"{RETIRED_PREMISE_CHECK_GUARD!r} row; the runtime mechanism that added the "
-        "premise-check retry line is retired"
-    )
-    normalized = " ".join(content.lower().split())
-    for marker in RETIRED_PREMISE_CHECK_MARKERS:
-        assert marker not in normalized, (
-            f"the starter execution-kernel still names the retired premise-check "
-            f"material {marker!r}"
-        )
 
 
 def test_fresh_workspace_seeds_portfolio_v3_with_enforcement() -> None:
