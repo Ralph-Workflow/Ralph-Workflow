@@ -44,11 +44,13 @@ def gitdir_for_lock(lock_path: Path) -> Path:
     return _gitdir_for_lock(lock_path)
 
 
-def lock_identity(lock_path: Path) -> tuple[int, int, int] | None:
+def lock_identity(lock_path: Path) -> tuple[int, int, int, bytes] | None:
     return _lock_identity(lock_path)
 
 
-def unlink_if_unchanged(lock_path: Path, probed_identity: tuple[int, int, int] | None) -> bool:
+def unlink_if_unchanged(
+    lock_path: Path, probed_identity: tuple[int, int, int, bytes] | None
+) -> bool:
     return _unlink_if_unchanged(lock_path, probed_identity)
 
 

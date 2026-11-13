@@ -574,8 +574,8 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
         patch(
-            "ralph.pipeline.plumbing.commit_plumbing._lazy_commit_probe_runner",
-            return_value=lambda _phase, _agent: None,
+            "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
+            return_value=None,
         ),
     ):
         result = commit_module._generate_commit_message_with_agent(
@@ -650,8 +650,8 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
         patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
         patch(
-            "ralph.pipeline.plumbing.commit_plumbing._lazy_commit_probe_runner",
-            return_value=lambda _phase, _agent: None,
+            "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
+            return_value=None,
         ),
     ):
         result = commit_module._generate_commit_message_with_agent(

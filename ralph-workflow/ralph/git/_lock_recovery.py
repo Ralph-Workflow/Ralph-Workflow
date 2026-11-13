@@ -257,12 +257,14 @@ def _lock_has_no_live_holder(
 lock_has_no_live_holder = _lock_has_no_live_holder
 
 
-def _lock_identity(lock_path: Path) -> tuple[int, int, int] | None:
+def _lock_identity(lock_path: Path) -> tuple[int, int, int, bytes] | None:
     try:
-        st = lock_path.stat()
+        with lock_path.open("rb") as handle:
+            st = os.fstat(handle.fileno())
+            content = handle.read()
     except OSError:
         return None
-    return st.st_dev, st.st_ino, st.st_mtime_ns
+    return st.st_dev, st.st_ino, st.st_mtime_ns, content
 
 
 def _recover_stale_git_lock(
@@ -323,7 +325,9 @@ def _reap_mutex(ralph_dir: Path) -> Iterator[None]:
                 _flock(handle.fileno(), exclusive=False)
 
 
-def _unlink_if_unchanged(lock_path: Path, probed_identity: tuple[int, int, int] | None) -> bool:
+def _unlink_if_unchanged(
+    lock_path: Path, probed_identity: tuple[int, int, int, bytes] | None
+) -> bool:
     ralph_dir = _gitdir_for_lock(lock_path) / "ralph"
     with _reap_mutex(ralph_dir):
         if _lock_identity(lock_path) != probed_identity:
