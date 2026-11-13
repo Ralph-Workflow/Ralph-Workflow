@@ -90,7 +90,7 @@ from ralph.pipeline.session_bridge import (
     build_session_bridge,
     scoped_reset_tool_registry_callback,
 )
-from ralph.policy.models import AgentsPolicy
+from ralph.policy.models import AgentsPolicy, PolicyBundle
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -117,6 +117,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.state import PipelineState
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.controller import RecoveryController
 
 
@@ -186,6 +187,7 @@ def _attempt_deps(
     pipeline_deps: PipelineDeps,
     invoke: _AttemptInvoke,
 ) -> AttemptRunnerDeps:
+    from ralph.agents.clock import Clock
     from ralph.agents.timeout_clock import SystemClock
 
     def invoke_attempt(target: object, *args: object, **kwargs: object) -> object:
@@ -203,8 +205,11 @@ def _attempt_deps(
             )
         return invoke(target, *args, **kwargs)
 
+    clock = pipeline_deps.recovery_clock
+    if not isinstance(clock, Clock):
+        clock = None
     return AttemptRunnerDeps(
-        clock=pipeline_deps.recovery_clock or SystemClock(),
+        clock=clock if clock is not None else SystemClock(),
         invoke=invoke_attempt,
         probe_runner=None,
         workspace_probe=None,
@@ -212,18 +217,38 @@ def _attempt_deps(
     )
 
 
+def _lazy_commit_probe_runner(
+    config: UnifiedConfig,
+) -> typing.Callable[[str, str], ProbeOutcome | None]:
+    def probe_runner(phase: str, agent: str) -> ProbeOutcome | None:
+        from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
+
+        run = production_dead_agent_probe_runner(config)
+        if run is None:
+            return None
+        return run(phase, agent)
+
+    return probe_runner
+
+
 def _attempt_controller(
     config: UnifiedConfig,
     pipeline_deps: PipelineDeps,
     deps: AttemptRunnerDeps,
 ) -> RecoveryController:
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
+
+    ledger = pipeline_deps.ledger
+    store = pipeline_deps.unavailability_store
+    policy_bundle = pipeline_deps.policy_bundle
     return build_entry_point_recovery_controller(
         AgentEntryPoint.COMMIT_GENERATION,
         config=config,
-        policy_bundle=pipeline_deps.policy_bundle,
+        policy_bundle=policy_bundle if isinstance(policy_bundle, PolicyBundle) else None,
         deps=deps,
-        ledger_snapshot=(pipeline_deps.ledger.snapshot() if pipeline_deps.ledger else None),
-        unavailability_store=pipeline_deps.unavailability_store,
+        ledger_snapshot=(ledger.snapshot() if isinstance(ledger, AgentFailureLedger) else None),
+        unavailability_store=(store if isinstance(store, UnavailabilityStore) else None),
     )
 
 
@@ -709,6 +734,9 @@ def _run_commit_agent_attempt_with_recovery(
         )
         invoke = _commit_invoke_agent(commit_module)
         attempt_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
+        attempt_deps = dataclasses.replace(
+            attempt_deps, probe_runner=_lazy_commit_probe_runner(effective_general_config)
+        )
         attempt = run_agent_attempt(
             AgentEntryPoint.COMMIT_GENERATION,
             effect=effect,

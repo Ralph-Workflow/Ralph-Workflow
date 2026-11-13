@@ -5,12 +5,17 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.pipeline.agent_entry_point import AgentEntryPoint, registered_entry_points
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    registered_entry_points,
+    registered_runners,
+)
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
 )
+from tests.recovery import pipeline_matrix_scenarios
 from tests.recovery._corpus_derive import CorpusCase, load_corpus
 from tests.recovery.pipeline_matrix_scenarios import (
     AGENT_A,
@@ -27,6 +32,8 @@ from tests.recovery.pipeline_matrix_scenarios import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ralph.recovery.controller import RecoveryController
 
 _ENTRY_POINT_MODULES = (
@@ -127,6 +134,47 @@ def _assert_observation(
     if scenario.no_ledger_charge:
         assert observation.ledger_status == "eligible"
         assert observation.wait_ms == 0
+
+
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS, ids=[ep.value for ep in ENTRY_POINTS])
+def test_matrix_scenarios_execute_the_registered_route(
+    entry_point: AgentEntryPoint,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario = _scenario("workspace_progress")
+    real_runners = registered_runners()
+    registered = real_runners[entry_point]
+    dispatched: list[object] = []
+
+    def spy(*args: object, **kwargs: object) -> object:
+        dispatched.append(registered)
+        return registered(*args, **kwargs)
+
+    def spying_runners() -> Mapping[AgentEntryPoint, object]:
+        return {ep: spy if ep is entry_point else fn for ep, fn in real_runners.items()}
+
+    monkeypatch.setattr(pipeline_matrix_scenarios, "registered_runners", spying_runners)
+    run_matrix_scenario(entry_point, scenario)
+    assert dispatched == [registered]
+
+
+@pytest.mark.parametrize("entry_point", ENTRY_POINTS, ids=[ep.value for ep in ENTRY_POINTS])
+def test_matrix_scenarios_fail_when_the_registered_route_is_misdirected(
+    entry_point: AgentEntryPoint,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario = _scenario("workspace_progress")
+    real_runners = registered_runners()
+
+    def raising_route(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError(f"registered route misdirected for {entry_point.value}")
+
+    def broken_runners() -> Mapping[AgentEntryPoint, object]:
+        return {**real_runners, entry_point: raising_route}
+
+    monkeypatch.setattr(pipeline_matrix_scenarios, "registered_runners", broken_runners)
+    with pytest.raises(AssertionError, match="registered route misdirected"):
+        run_matrix_scenario(entry_point, scenario)
 
 
 def test_completeness_every_entry_point_and_corpus_fixture_is_in_the_matrix() -> None:

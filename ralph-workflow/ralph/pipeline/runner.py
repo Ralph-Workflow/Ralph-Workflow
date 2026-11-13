@@ -96,7 +96,7 @@ from ralph.pipeline.attempt_runner import (
     registered_entry_points,
     run_agent_attempt,
 )
-from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptInvoke, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
     auto_integrate_on_phase_transition,
@@ -438,6 +438,16 @@ if AgentEntryPoint.MAIN_PHASE_LOOP not in registered_entry_points():
     )
 
 
+def _keyword_effect_invoker(execute: AttemptInvoke) -> AttemptInvoke:
+    def invoke(target: object, **kwargs: object) -> object:
+        config = kwargs.pop("config")
+        pipeline_deps = kwargs.pop("pipeline_deps")
+        workspace_scope = kwargs.pop("workspace_scope")
+        return execute(target, config, pipeline_deps, workspace_scope, **kwargs)
+
+    return cast("AttemptInvoke", invoke)
+
+
 def _execute_effect(
     effect: Effect,
     config: UnifiedConfig,
@@ -460,7 +470,7 @@ def _execute_effect(
         with process_agent_phases().agent_phase(workspace_scope.root):
             deps = AttemptRunnerDeps(
                 clock=SystemClock(),
-                invoke=execute_agent_effect,
+                invoke=_keyword_effect_invoker(execute_agent_effect),
                 probe_runner=None,
                 workspace_probe=DefaultWorkspaceChangeProbe(),
                 connectivity=None,

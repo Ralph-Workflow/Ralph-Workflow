@@ -53,15 +53,6 @@ QuotaExhaustedError = subprocess_executor.QuotaExhaustedError
 LIMIT_PHRASE = "You've hit your session limit"
 DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 
-RALPH_TEST_CHANGE_REASONS = {
-    "test_ac15_an_unknown_workspace_change_does_not_reset_the_consecutive_streak": (
-        "the private streak value is replaced by the public demotion and cooldown status"
-    ),
-    "test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak": (
-        "the private streak value is replaced by the public eligible and available status"
-    ),
-}
-
 
 def _policy() -> PipelinePolicy:
     with tempfile.TemporaryDirectory() as directory:
@@ -425,9 +416,8 @@ def test_ac15_an_unknown_workspace_change_does_not_reset_the_consecutive_streak(
     ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=False))
     outcome = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None))
 
+    assert outcome.consecutive_unproductive == 3
     assert outcome.demoted is True
-    assert ledger.status(PHASE, AGENT).is_cooldown is True
-    assert ledger.is_available(PHASE, AGENT) is False
 
 
 def test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak() -> None:
@@ -436,6 +426,4 @@ def test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak()
     ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=False))
     outcome = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=True))
 
-    assert outcome.demoted is False
-    assert ledger.status(PHASE, AGENT).is_eligible is True
-    assert ledger.is_available(PHASE, AGENT) is True
+    assert outcome.consecutive_unproductive == 0

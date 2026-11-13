@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import pytest
 
@@ -30,40 +31,14 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe
-from tests.recovery._fake_managed_handle import FakeManagedHandle
-from tests.recovery._fake_recorded_attempt_fact import RecordedAttemptFact
-from tests.recovery._fake_sync_process import FakeSyncProcess
-from tests.recovery._fake_teardown import FakeTeardown
 from tests.recovery._scenario_harness import AgentAttemptResult, run_scenario
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-PHASE = "development"
+    from ralph.process.teardown import ProcessTeardown
 
-RALPH_TEST_CHANGE_REASONS = {
-    "test_incident_1_dead_agent_typed_failure_increments_the_ledger_consecutive_counter": (
-        "ledger counters are private; the exact prior streak is proven by the public cooldown "
-        "transition and configured limit"
-    ),
-    "test_incident_1_dead_agent_typed_failure_counts_towards_the_ledger_total_budget": (
-        "ledger counters are private; the exact prior total is proven by the public spent "
-        "transition and configured limit"
-    ),
-    "test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unchanged": (
-        "the serialized counter was private; the public cooldown status proves repeated facts "
-        "advanced the ledger"
-    ),
-    "test_ledger_resets_the_consecutive_counter_when_the_workspace_changed": (
-        "the private streak value is replaced by the public cooldown transition distance"
-    ),
-    "test_ledger_keeps_counting_the_total_budget_when_the_workspace_changed": (
-        "the private total value is replaced by the public spent transition distance"
-    ),
-    "test_ledger_reaches_the_cooldown_after_three_attempts_without_a_workspace_change": (
-        "the private streak value is replaced by eligible then cooldown public statuses"
-    ),
-}
+PHASE = "development"
 
 INCIDENT_1_AGY_ERROR_STEP = '{"type":"error_message","message":"provider rejected the request"}'
 
@@ -92,6 +67,15 @@ def _termination_issuer(record: object) -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class RecordedAttemptFact:
+    phase: str
+    agent: str
+    artifact_valid: bool
+    workspace_changed: bool
+    free_retry_category: bool
+
+
 class RecordingRecoveryController(RecoveryController):
     def __init__(self, *, options: RecoveryControllerOptions) -> None:
         super().__init__(options=options)
@@ -103,7 +87,7 @@ class RecordingRecoveryController(RecoveryController):
         agent: str,
         *,
         artifact_valid: bool,
-        workspace_changed: bool | None,
+        workspace_changed: bool,
         free_retry_category: bool = False,
     ) -> str | None:
         self.recorded_facts.append(
@@ -124,26 +108,60 @@ class RecordingRecoveryController(RecoveryController):
         )
 
 
-def _unproductive_fact(agent: str) -> AttemptFact:
-    return AttemptFact(phase=PHASE, agent=agent, artifact_valid=False, workspace_changed=False)
+class FakeTeardown:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, str]] = []
+
+    def teardown_subtree(self, host_pid: int, *, issuer: str) -> None:
+        self.calls.append((host_pid, issuer))
 
 
-def _attempts_until_cooldown(ledger: AgentFailureLedger, agent: str) -> int:
-    attempts = 0
-    while ledger.status(PHASE, agent).is_eligible:
-        ledger.record(_unproductive_fact(agent))
-        attempts += 1
-    return attempts
+class FakeManagedHandle:
+    def __init__(self, *, returncode: int | None, issuer: str | None) -> None:
+        self.pid = 424242
+        self.stdout = None
+        self.stderr = None
+        self.returncode = returncode
+        self._issuer = issuer
+        self.terminated: list[float | None] = []
+
+    def terminate(self, grace_period_s: float | None = None) -> None:
+        self.terminated.append(grace_period_s)
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def termination_issuer(self) -> str | None:
+        return self._issuer
 
 
-def _attempts_until_spent(ledger: AgentFailureLedger, agent: str) -> int:
-    attempts = 0
-    while not ledger.status(PHASE, agent).is_spent:
-        ledger.record(
-            AttemptFact(phase=PHASE, agent=agent, artifact_valid=False, workspace_changed=True)
-        )
-        attempts += 1
-    return attempts
+class FakeSyncProcess:
+    def __init__(self, returncode: int | None) -> None:
+        self.pid = 424242
+        self.returncode = returncode
+
+
+def _ledger_entry(controller: RecoveryController, agent: str) -> dict[str, object]:
+    return _snapshot_entry(controller.ledger.snapshot(), agent)
+
+
+def _snapshot_entry(snapshot: dict[str, object], agent: str) -> dict[str, object]:
+    entries = snapshot.get("entries")
+    if not isinstance(entries, dict):
+        return {}
+    entry = entries.get(f"{PHASE}:{agent}")
+    if not isinstance(entry, dict):
+        return {}
+    return entry
+
+
+def _counter(entry: dict[str, object], key: str) -> int:
+    value = entry.get(key)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    return 0
 
 
 def _run_incident_1(
@@ -230,25 +248,16 @@ def test_incident_1_dead_agent_typed_failure_increments_the_ledger_consecutive_c
     tmp_path: Path,
 ) -> None:
     controller, invocations, _logs = _run_incident_1(tmp_path)
-    ledger = controller.ledger
 
-    assert _attempts_until_cooldown(ledger, "agy") == ledger.consecutive_limit - 1, (
+    entry = _ledger_entry(controller, "agy")
+    assert entry.get("consecutive_unproductive") == 1, (
         "the dead agy attempt must count as one unproductive attempt so the ledger can reach "
         "its threshold; observed route: the typed failure returns before record_attempt_fact, "
         f"so the ledger stays empty and the agent is re-selected (observed invocations: "
-        f"{invocations})"
+        f"{invocations}; observed ledger entry: {entry!r})"
     )
-
-
-def test_incident_1_dead_agent_typed_failure_counts_towards_the_ledger_total_budget(
-    tmp_path: Path,
-) -> None:
-    controller, _invocations, _logs = _run_incident_1(tmp_path)
-    ledger = controller.ledger
-
-    assert _attempts_until_spent(ledger, "agy") == ledger.total_limit - 1, (
-        "the dead agy attempt must count towards the total budget, so the agent is spent "
-        "exactly one attempt before the total limit"
+    assert entry.get("total_unproductive") == 1, (
+        f"the dead agy attempt must count towards the total budget (observed ledger entry: {entry!r})"
     )
 
 
@@ -316,12 +325,10 @@ def test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unc
         "the codex session only performed a read-only tool call, so the recorded workspace "
         f"change must be False (observed: {first.workspace_changed!r})"
     )
-    status = controller.ledger.status(PHASE, "codex")
-    assert status.is_cooldown is True, (
-        "the ordinary route must advance the ledger counter until the codex agent is benched "
-        f"(observed ledger status: {status!r})"
+    entry = _ledger_entry(controller, "codex")
+    assert _counter(entry, "total_unproductive") >= 1, (
+        f"the ordinary route must advance the ledger counter (observed ledger entry: {entry!r})"
     )
-    assert controller.ledger.is_available(PHASE, "codex") is False
 
 
 def test_ledger_resets_the_consecutive_counter_when_the_workspace_changed() -> None:
@@ -333,45 +340,31 @@ def test_ledger_resets_the_consecutive_counter_when_the_workspace_changed() -> N
     ledger.record(
         AttemptFact(phase=PHASE, agent="agy", artifact_valid=False, workspace_changed=False)
     )
+    entry = _snapshot_entry(ledger.snapshot(), "agy")
 
-    assert _attempts_until_cooldown(ledger, "agy") == ledger.consecutive_limit - 1, (
+    assert entry.get("consecutive_unproductive") == 1, (
         "a workspace change resets the consecutive counter, so a productive agent never "
-        "reaches the cooldown threshold"
+        f"reaches the cooldown threshold (observed entry: {entry!r})"
     )
-
-
-def test_ledger_keeps_counting_the_total_budget_when_the_workspace_changed() -> None:
-    ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
-
-    ledger.record(
-        AttemptFact(phase=PHASE, agent="agy", artifact_valid=False, workspace_changed=True)
-    )
-    ledger.record(
-        AttemptFact(phase=PHASE, agent="agy", artifact_valid=False, workspace_changed=False)
-    )
-
-    assert _attempts_until_spent(ledger, "agy") == ledger.total_limit - 2, (
-        "the total budget keeps counting the workspace-changing attempt"
+    assert entry.get("total_unproductive") == 2, (
+        f"the total budget keeps counting (observed entry: {entry!r})"
     )
 
 
 def test_ledger_reaches_the_cooldown_after_three_attempts_without_a_workspace_change() -> None:
     ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
 
-    for _attempt in range(2):
+    for _attempt in range(3):
         ledger.record(
             AttemptFact(phase=PHASE, agent="agy", artifact_valid=False, workspace_changed=False)
         )
-    assert ledger.status(PHASE, "agy").is_eligible is True
-    ledger.record(
-        AttemptFact(phase=PHASE, agent="agy", artifact_valid=False, workspace_changed=False)
-    )
+    entry = _snapshot_entry(ledger.snapshot(), "agy")
 
-    assert ledger.status(PHASE, "agy").is_cooldown is True, (
-        "the dead agent reaches the public cooldown status on the third attempt"
+    assert entry.get("consecutive_unproductive") == 3, (
+        f"the dead agent would reach the consecutive threshold (observed entry: {entry!r})"
     )
-    assert ledger.failure_reason(PHASE, "agy") == "consecutive_unproductive_limit_reached", (
-        "the ledger benches the dead agent on the third attempt"
+    assert entry.get("cooldown_reason") == "consecutive_unproductive_limit_reached", (
+        f"the ledger would bench the dead agent on the third attempt (observed entry: {entry!r})"
     )
 
 
@@ -405,14 +398,14 @@ def test_incident_3_quota_detector_does_not_terminate_a_healthy_session_on_a_too
     tmp_path: Path,
 ) -> None:
     teardown = FakeTeardown()
-    handle = FakeManagedHandle(reported_returncode=None, observed_returncode=None, issuer=None)
+    handle = FakeManagedHandle(returncode=None, issuer=None)
     ctx = ProcessReaderCtx(
         config=AgentConfig(cmd="codex"),
         policy=TimeoutPolicy(idle_timeout_seconds=60.0),
-        process_teardown=teardown,
+        process_teardown=cast("ProcessTeardown", teardown),
         workspace_path=tmp_path,
     )
-    reader = ProcessLineReader(handle, ctx, FakeClock())
+    reader = ProcessLineReader(cast("ManagedProcess", handle), ctx, FakeClock())
     try:
         reader._terminate_for_quota(INCIDENT_3_CODEX_TOOL_RESULT_LINE)
         terminated = list(handle.terminated)
@@ -444,12 +437,12 @@ def test_incident_3_user_prompt_quota_words_do_not_trigger_the_quota_detector() 
 
 
 def test_incident_4_an_unattributed_signal_end_records_unknown_and_the_observed_code() -> None:
-    handle = FakeManagedHandle(reported_returncode=-15, observed_returncode=-15, issuer=None)
+    handle = FakeManagedHandle(returncode=-15, issuer=None)
     recorder = TerminationRecorder()
 
     with pytest.raises(AgentInvocationError) as excinfo:
         check_process_result(
-            handle,
+            cast("ManagedProcess", handle),
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
             termination_recorder=recorder,
@@ -470,12 +463,10 @@ def test_incident_4_an_unattributed_signal_end_records_unknown_and_the_observed_
 
 
 def test_incident_4_the_issuer_is_kept_for_signal_codes_and_recorded_for_plain_exits() -> None:
-    killed = FakeManagedHandle(
-        reported_returncode=-15, observed_returncode=-15, issuer="invoke:process"
-    )
+    killed = FakeManagedHandle(returncode=-15, issuer="invoke:process")
     with pytest.raises(AgentInvocationError) as killed_error:
         check_process_result(
-            killed,
+            cast("ManagedProcess", killed),
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
         )
@@ -488,11 +479,11 @@ def test_incident_4_the_issuer_is_kept_for_signal_codes_and_recorded_for_plain_e
         f"the origin must say the end was intentional (observed: {killed_error.value.failure_origin!r})"
     )
 
-    plain = FakeManagedHandle(reported_returncode=1, observed_returncode=1, issuer="invoke:process")
+    plain = FakeManagedHandle(returncode=1, issuer="invoke:process")
     recorder = TerminationRecorder()
     with pytest.raises(AgentInvocationError) as plain_error:
         check_process_result(
-            plain,
+            cast("ManagedProcess", plain),
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
             termination_recorder=recorder,

@@ -7,12 +7,11 @@ from typing import TYPE_CHECKING, cast
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_entry_point import AgentEntryPoint, registered_runners
 from ralph.pipeline.attempt_finalizer import AttemptFinalization, AttemptFinalizer
 from ralph.pipeline.attempt_runner import (
     AttemptInvoke,
     build_entry_point_recovery_controller,
-    run_agent_attempt,
 )
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -27,6 +26,7 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 from tests.recovery._corpus_derive import CorpusCase, load_corpus, load_fixtures
 
 if TYPE_CHECKING:
+    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.recovery.controller import RecoveryController
 
 PHASE = "development"
@@ -323,6 +323,13 @@ def matrix_entry_points() -> tuple[AgentEntryPoint, ...]:
     return tuple(AgentEntryPoint)
 
 
+def _registered_route(entry_point: AgentEntryPoint) -> Callable[..., AttemptResult]:
+    runners = registered_runners()
+    if entry_point not in runners:
+        raise AssertionError(f"entry point has no registered route: {entry_point.value}")
+    return cast("Callable[..., AttemptResult]", runners[entry_point])
+
+
 def matrix_config() -> UnifiedConfig:
     return UnifiedConfig(
         agents={
@@ -371,10 +378,10 @@ def run_matrix_scenario(
     config = matrix_config()
     controller = _controller(entry_point, config, deps, scenario)
     outcome_kind = ""
+    runner = _registered_route(entry_point)
     for script in scenario.attempts:
         _advance_and_prune(clock, controller, script)
-        result = run_agent_attempt(
-            entry_point,
+        result = runner(
             effect=InvokeAgentEffect(
                 agent_name=script.agent,
                 phase=PHASE,
@@ -383,6 +390,7 @@ def run_matrix_scenario(
             config=config,
             controller=controller,
             deps=deps,
+            state=None,
             run_id=RUN_ID,
         )
         outcome_kind = result.outcome.kind.value

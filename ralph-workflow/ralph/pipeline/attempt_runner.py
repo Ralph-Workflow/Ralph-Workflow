@@ -116,11 +116,14 @@ def run_agent_attempt(
     fingerprint = _config_fingerprint(config, agent, execute_kwargs)
     session_ref = _session_ref(entry_point, phase, agent, execute_kwargs)
     finalized: dict[int, tuple[AttemptFacts, AttemptOutcome]] = {}
+    finalized_failures: list[BaseException] = []
 
     def finalize(finalization: AttemptFinalization) -> AttemptOutcome:
         recorded = finalized.get(finalization.attempt_ordinal)
         if recorded is not None:
             return recorded[1]
+        if finalization.exc is not None:
+            finalized_failures.append(finalization.exc)
         facts = _attempt_facts(finalization)
         outcome = controller.finalize_attempt(
             phase,
@@ -150,16 +153,17 @@ def run_agent_attempt(
     try:
         event = deps.invoke(target, **invoke_kwargs)
     except BaseException as exc:
-        finalize(
-            AttemptFinalization(
-                max(finalized, default=0) + 1,
-                True,
-                exc,
-                None,
-                None,
-                None,
+        if all(exc is not recorded for recorded in finalized_failures):
+            finalize(
+                AttemptFinalization(
+                    max(finalized, default=0) + 1,
+                    True,
+                    exc,
+                    None,
+                    None,
+                    None,
+                )
             )
-        )
         raise
     attempt_failed = _is_agent_failure_event(event)
     ordinal = max(finalized, default=0)

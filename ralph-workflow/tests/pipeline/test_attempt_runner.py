@@ -235,6 +235,54 @@ def test_a_reducer_style_finalization_claims_the_terminal_outcome_without_a_seco
     _assert_exactly_one_ledger_charge(controller)
 
 
+def test_a_reraised_already_finalized_failure_charges_the_ledger_once() -> None:
+    exc = RuntimeError("attempt failed terminally")
+
+    def invoke(_target: object, **kwargs: object) -> object:
+        finalizer = kwargs["attempt_finalizer"]
+        assert callable(finalizer)
+        finalizer(AttemptFinalization(1, True, exc, None, None, None))
+        raise exc
+
+    deps = _deps(invoke)
+    controller = _controller(deps)
+    with pytest.raises(RuntimeError, match="attempt failed terminally"):
+        run_agent_attempt(
+            AgentEntryPoint.MAIN_PHASE_LOOP,
+            effect=_effect(),
+            config=_config(),
+            controller=controller,
+            deps=deps,
+            run_id="run-1",
+        )
+    _assert_exactly_one_ledger_charge(controller)
+
+
+def test_a_terminal_exception_that_was_never_finalized_still_charges() -> None:
+    first = RuntimeError("attempt one failed")
+    terminal = RuntimeError("terminal raise without finalization")
+
+    def invoke(_target: object, **kwargs: object) -> object:
+        finalizer = kwargs["attempt_finalizer"]
+        assert callable(finalizer)
+        finalizer(AttemptFinalization(1, True, first, None, None, None))
+        raise terminal
+
+    deps = _deps(invoke)
+    controller = _controller(deps)
+    with pytest.raises(RuntimeError, match="terminal raise without finalization"):
+        run_agent_attempt(
+            AgentEntryPoint.MAIN_PHASE_LOOP,
+            effect=_effect(),
+            config=_config(),
+            controller=controller,
+            deps=deps,
+            run_id="run-1",
+        )
+    status = controller.ledger.status(_PHASE, _AGENT)
+    assert status.is_spent is True
+
+
 def test_a_judged_failure_benches_the_agent_and_a_later_success_clears_the_bench() -> None:
     deps = _deps(_fail_then_succeed_invoke, _dead_probe)
     controller = _controller(deps)
