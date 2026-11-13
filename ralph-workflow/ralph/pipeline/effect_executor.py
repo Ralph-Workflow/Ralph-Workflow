@@ -621,7 +621,7 @@ def _handle_recovery_attempt_failure(
     ledger = ctx.deps.pipeline_deps.ledger
     demoted, demotion_reason = (
         (False, None)
-        if outcome is not None and outcome.retries_same_agent
+        if outcome is not None and outcome.retries_same_agent and controller is None
         else _demotion_after_finalization(
             controller,
             ledger,

@@ -158,6 +158,12 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
 ) -> None:
     from collections import deque
 
+    class _StubSmokePipelineDeps:
+        recovery_clock = None
+        policy_bundle = None
+        ledger = None
+        unavailability_store = None
+
     params = SmokeRunParams(
         agent_name="agy/gemini-3.6-flash-low",
         config=_agy_config(),
@@ -168,7 +174,7 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
     )
     run_id = "interactive-agy-smoke-test-model"
 

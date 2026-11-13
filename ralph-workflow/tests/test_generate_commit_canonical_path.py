@@ -40,6 +40,11 @@ class _StubBridge:
 
 
 class _StubPipelineDeps:
+    ledger = None
+    recovery_clock = None
+    policy_bundle = None
+    unavailability_store = None
+
     def __getattr__(self, name: str) -> object:
         del name
         return lambda *args: object()

@@ -23,6 +23,14 @@ from ralph.policy.loader import load_policy
 
 _STOP_CAP = 10
 
+
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
@@ -712,7 +720,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             registry=_registry_with_chain_agent(),
             display=MagicMock(),
             config=_config(),
-            pipeline_deps=object(),
+            pipeline_deps=_StubSmokePipelineDeps(),
             workspace_scope=object(),
         )
         stop = RebaseStop(
@@ -761,7 +769,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             registry=_registry_with_chain_agent(),
             display=MagicMock(),
             config=_config(),
-            pipeline_deps=object(),
+            pipeline_deps=_StubSmokePipelineDeps(),
             workspace_scope=object(),
         )
         stop = RebaseStop(
@@ -806,7 +814,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             registry=_registry_with_chain_agent(),
             display=MagicMock(),
             config=_config(),
-            pipeline_deps=object(),
+            pipeline_deps=_StubSmokePipelineDeps(),
             workspace_scope=object(),
         )
         stop = RebaseStop(

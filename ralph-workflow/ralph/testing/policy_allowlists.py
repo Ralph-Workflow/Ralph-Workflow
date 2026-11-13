@@ -37,6 +37,7 @@ IO_ALLOWLIST: set[str] = {
 }
 
 SOURCE_READ_ALLOWLIST: set[str] = {
+    "test_repo_structure_boundary_rules",
     "test_visual_verdict_policy_alignment",
     "test_developer_prompt_subagent_guidance",
     "test_linting_policy_inventory",

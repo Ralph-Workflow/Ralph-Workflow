@@ -20,6 +20,13 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 )
 
 
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
@@ -379,7 +386,7 @@ def test_execute_smoke_turns_stops_after_one_attempt_when_ceiling_below_wire(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
     )
 
     all_lines, _live_lines, _session_id, final_exception, _ceiling = _execute_smoke_turns(
@@ -477,7 +484,7 @@ def test_execute_smoke_turns_reports_ceiling_early_for_single_turn_run(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
     )
 
     buf = io.StringIO()

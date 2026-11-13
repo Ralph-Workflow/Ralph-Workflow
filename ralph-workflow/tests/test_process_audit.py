@@ -176,6 +176,9 @@ TESTS_ALLOWLIST: set[str] = {
     "test_explore_concurrency.py",
     "test_explore_resource_lifecycle.py",
     "test_commit_review_real_diff_proofs.py",
+    # Boundary-rule fixtures feed source strings such as "os.killpg(pgid, signal.SIGKILL)"
+    # to collect_boundary_violations; the calls are data, never executed.
+    "test_repo_structure_boundary_rules.py",
 }
 
 _MCP_FIXTURE_FILES = {

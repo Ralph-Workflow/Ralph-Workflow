@@ -4,6 +4,10 @@ import os
 import signal
 import threading
 
+import pytest
+
+pytestmark = pytest.mark.subprocess_e2e
+
 if os.fork() == 0:
     os.close(0)
     signal.pause()

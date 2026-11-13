@@ -19,6 +19,14 @@ from tests._artifact_format_docs_memory_backend import MemoryBackend
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
+
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 _RUN_ID = "pipeline-test-run"
 _DEVELOPMENT_RESULT = """---
 type: development_result
@@ -80,7 +88,7 @@ def test_pipeline_phase_stamps_canonical_receipt(
         effect,
         config,
         workspace_scope,
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
         display_context=object(),
     )
 

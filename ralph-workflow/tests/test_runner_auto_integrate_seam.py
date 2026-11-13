@@ -25,6 +25,14 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PolicyBundle
 
+
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -644,7 +652,7 @@ def test_the_rebase_stop_resolver_reports_its_declines_too(
         registry=_EmptyRegistry(),
         display=display,
         config=MagicMock(),
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
         workspace_scope=MagicMock(),
     )
     assert no_agent(tmp_path, "main", stop) is False

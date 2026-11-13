@@ -5,13 +5,15 @@ sessions, conflict resolution, re-running checks, and review queues cap throughp
 A plain agent loop repeats one prompt until the work stops changing, and by hand you supply every
 call. Ralph Workflow moves those calls into a configurable workflow graph.
 
-**Ralph Workflow is the operating system for autonomous coding: a free, open-source AI agent orchestrator
-and software factory that anybody can use — you give it a spec and your own checks, it runs plan →
-build → verify → fix as a configurable workflow graph across Git worktrees, and hands you integrated
-software to judge.** Run one agent by hand and you are the scheduler, reviewer, and merger; run a plain
+**The operating system for autonomous coding.**
+
+**Ralph Workflow — a free, open-source AI agent orchestrator and software factory — lets developers
+and teams with a coding agent CLI supply the spec and checks, then runs plan → build → verify → fix
+as a configurable workflow graph across Git worktrees, returning integrated software to judge.**
+Run one agent by hand and you are the scheduler, reviewer, and merger; run a plain
 agent loop and it repeats one prompt. Ralph Workflow is the harness around your coding agents: it runs
-the workflow graph with review, retries, recovery, and fallback agent chains you can configure, keeps
-independent runs in separate Git worktrees, and lands checked work on one mainline.
+that graph with the review, retries, recovery, and fallback chains you configure, and lands the checked
+result on one mainline.
 
 It runs locally under AGPL-3.0-or-later: no account, no hosted service, and nothing to sign up for.
 Your specifications, configuration, and Git history stay yours.
@@ -25,13 +27,10 @@ bring the checks you trust.
 See the [bundled defaults](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)
 for the exact set.
 
-Ralph Workflow manages the harness, not the models. The coding agents — Claude Code, Codex, Cursor,
-and the rest — are harnesses around models; Ralph Workflow is the harness around those: workflow,
-review, recovery, and Git integration on top of whichever agent CLIs you already have. A harness of
-harnesses.
-
-In plain terms: it is the workflow layer that runs your coding agents, checks their work, and lands
-the result on your mainline — not a model provider.
+Ralph Workflow manages the harness, not the models: the coding agents — Claude Code, Codex, Cursor,
+and the rest — are harnesses around models, and Ralph Workflow is the harness around those, adding
+workflow, review, recovery, and Git integration on top of whichever agent CLIs you already have —
+a harness of harnesses.
 
 No vendor lock-in. Agent chains can mix backends and fall back when one fails, so switching vendors is
 a configuration change, not a rewrite. Ralph Workflow needs no API key of its own and sells no model
@@ -74,7 +73,7 @@ Then edit `PROMPT.md`: state the outcome and the checks you expect, and remove t
 A small first task looks like this:
 
 ```markdown
-## Goal
+# Goal
 Reject an empty email address in the signup validator with a clear error.
 
 ## Acceptance criteria

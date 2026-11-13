@@ -19,6 +19,14 @@ from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 pytestmark = pytest.mark.smoke
 
+
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -113,7 +121,7 @@ def _make_params(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=_StubBridge(),
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
     )
 
 

@@ -37,6 +37,11 @@ class _StubBridge:
 
 
 class _StubPipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
     def __getattr__(self, name: str) -> Callable[..., object]:
         return lambda *args: object()
 

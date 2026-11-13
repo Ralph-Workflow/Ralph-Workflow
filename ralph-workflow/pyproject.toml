@@ -12,7 +12,7 @@ license = { text = "AGPL-3.0-or-later" }
 license-files = ["LICENSE"]
 authors = [{ name = "Mistlight" }]
 maintainers = [{ name = "Mistlight" }]
-keywords = ["ai", "agent", "orchestration", "coding"]
+keywords = ["ai", "agent", "orchestration", "coding", "software-factory", "git-worktrees", "coding-agents"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",

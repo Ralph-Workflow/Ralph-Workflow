@@ -813,6 +813,8 @@ def _all_agents_unavailable_wait_state(
     ):
         return None
     wait_ms = recovery.earliest_available_wait_ms(state.phase, chain.agents)
+    if wait_ms <= 0:
+        return None
     reason = "all agents unavailable; waiting for cooldown expiry"
     return state.copy_with(
         last_error=reason,

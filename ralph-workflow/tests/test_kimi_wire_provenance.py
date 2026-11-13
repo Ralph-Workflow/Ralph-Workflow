@@ -33,6 +33,13 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 @pytest.mark.timeout_seconds(5)
 def test_kimi_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
     tmp_path: Path,
@@ -57,7 +64,7 @@ def test_kimi_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
     )
     run_id = "kimi-wire-dispatch-run"
 

@@ -227,6 +227,7 @@ tests/pipeline/test_phase_close_failed_no_artifact.py|2,1,3
 tests/pipeline/test_planning_commit_recovery.py|4,0,5
 tests/pipeline/test_planning_requires_target_sync.py|3,0,10
 tests/pipeline/test_reducer_lock_retry.py|0,1,0
+tests/pipeline/test_retry_intent_from_outcome.py|0,1,0
 tests/pipeline/test_run_loop_cleanup_shutdown.py|0,2,0
 tests/pipeline/test_run_loop_cycle_timebox_wiring.py|2,0,1
 tests/pipeline/test_run_loop_interrupt.py|2,2,0

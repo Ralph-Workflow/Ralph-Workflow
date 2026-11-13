@@ -14,6 +14,13 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 def _seed_workspace(root: Path, *, prompt: str) -> None:
     agent_dir = root / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
@@ -201,7 +208,7 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
             registry=_registry_with_chain_agent(),
             display=MagicMock(),
             config=_config(),
-            pipeline_deps=object(),
+            pipeline_deps=_StubSmokePipelineDeps(),
             workspace_scope=object(),
         )
 

@@ -331,7 +331,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 return _Stderr()
 
             def poll(self) -> int | None:
-                return self.returncode
+                return self.returncode if self.terminated else None
 
             def __enter__(self) -> _FakeProcess:
                 return self

@@ -32,6 +32,13 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.smoke
 
 
+class _StubSmokePipelineDeps:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 @pytest.fixture(autouse=True)
 def _no_ambient_broker_secret(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
@@ -121,7 +128,7 @@ def _make_params(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=object(),
+        pipeline_deps=_StubSmokePipelineDeps(),
     )
 
 
