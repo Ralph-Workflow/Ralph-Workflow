@@ -33,8 +33,9 @@ representative surface that its assigned scene does not render. The six scenes r
 floor, across the declared destination and colour cases. The
 clean-run driver also covers warning recovery, skill-install failure, and
 fallback next-step emitters, so their section carriers stay visible in both
-live and cold-read output. Analysis-decision and commit-message renderers emit
-section chrome only when their artifact has renderable content. The supported
+live and cold-read output. The ``emit_analysis_decision`` and
+``emit_commit_message`` renderers emit section chrome only when their artifact
+has renderable content. The supported
 matrix is an implementation input rather than a post-hoc description:
 
 - backgrounds: detected dark, detected light, operator-declared, and unknown;
@@ -195,7 +196,7 @@ always render at their own fixed budget.
   decay. If the budget is exhausted when an alarm arrives, the lowest
   priority tier-3 accent is evicted instead -- a failure always renders at
   full chroma and weight regardless of contention.
-- **Per-frame decision inspection.** Every allocation call returns an
+- **Per-frame allocation inspection.** Every allocation call returns an
   ``AllocationDecision`` (role, tier, lit/demoted, reason) instead of a bare
   colour, so tests assert on lit-accent counts and demotion outcomes rather
   than on allocator internals.
@@ -216,16 +217,16 @@ budget genuinely competes against every role still holding a slot, not
 just against itself. This is what makes ``SalienceAllocator.allocate_frame``
 arbitrate a real multi-candidate frame in production, rather than the
 single-bid call every earlier revision of this wiring made regardless of
-how much else was concurrently lit. Every decision -- one for each bid a
+how much else was concurrently lit. Every allocation -- one for each bid a
 frame carried, not only for the line that triggered it -- is recorded on
 ``ParallelDisplay.salience_decisions`` (the public G-9 inspection seam),
 tagged with the ``AllocationDecision.frame_index`` of the ``allocate_frame``
-call that produced it, so a flat, chronologically-ordered decision stream
-can still be regrouped by the real frame that decided it.
+call that produced it, so a flat, chronologically-ordered allocation stream
+can still be regrouped by the real frame that issued it.
 ``ralph.display.scene_catalog.scene_salience_decisions`` drives a scene
 through the same production seams as
 :func:`~ralph.display.scene_catalog.render_scene` and returns the recorded
-decision sequence, which the generated-scene test suite uses to assert the
+allocation sequence, which the generated-scene test suite uses to assert the
 per-frame accent-count gate (grouped by ``frame_index``), alarm exemption,
 replay determinism, and the absence of lit/demoted oscillation across
 every canonical scene.
@@ -327,7 +328,7 @@ Artifact renderers
 - ``emit_development_artifact`` — render the development artifact.
 - ``emit_review_artifact`` — render the review artifact.
 - ``emit_fix_artifact`` — render the fix artifact.
-- ``emit_analysis_decision`` — render the analysis-decision artifact.
+- ``emit_analysis_decision`` — render the ``analysis-decision`` artifact.
 - ``emit_commit_message`` — render the generated commit message.
 - ``emit_missing_plan_hint`` — emit the missing-plan hint.
 

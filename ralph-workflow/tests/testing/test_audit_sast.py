@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -101,6 +103,25 @@ def test_command_line_exit_code_reflects_the_new_findings(
     current = _write_tree(tmp_path / "current", {"ralph/pkg/mod.py": current_source})
 
     assert main([str(baseline), str(current)]) == expected_exit
+
+
+def test_pre_existing_finding_run_is_warning_free(tmp_path: Path) -> None:
+    baseline = _write_tree(tmp_path / "baseline", {"ralph/pkg/mod.py": _ASSERT_PATTERN})
+    current = _write_tree(
+        tmp_path / "current", {"ralph/pkg/mod.py": "VALUE = 2\nassert VALUE == 1\n"}
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "ralph.testing.audit_sast", str(baseline), str(current)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "WARNING" not in completed.stderr
+    assert "ERROR" not in completed.stderr
 
 
 def _make_finding(

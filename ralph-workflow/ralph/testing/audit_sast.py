@@ -224,7 +224,15 @@ def scan_files(
 ) -> list[SastFinding]:
     if not relative_paths:
         return []
-    command = [sys.executable, "-m", "bandit", "-f", "json", "-q"]
+    command = [
+        sys.executable,
+        "-m",
+        "bandit",
+        "-f",
+        "json",
+        "-q",
+        "--exit-zero",
+    ]
     config_path = _sast_config_path(root)
     if config_path is not None:
         command.extend(["-c", str(config_path)])

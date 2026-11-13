@@ -306,6 +306,60 @@ def test_a_docs_marker_inside_an_inline_code_span_passes(
     assert code == 0, reason
 
 
+@pytest.mark.parametrize(
+    "marker",
+    ["decision", "decided", "do not reopen", "rationale", "non-adoption", "we chose"],
+)
+def test_an_rst_decision_marker_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    marker: str,
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate scans sphinx rst prose"
+    source = f"This text carries the word {marker} in prose.\n"
+
+    code, output = _run(tmp_path, "notes.rst", source, capsys)
+
+    assert code == 1, reason
+    assert marker in output, reason
+
+
+def test_an_rst_marker_inside_a_literal_block_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate ignores rst literal blocks"
+    source = "The output reads::\n\n    the decision is quoted code\n\nNext paragraph.\n"
+
+    code, _output = _run(tmp_path, "notes.rst", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_an_rst_marker_inside_a_code_directive_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate ignores rst code directives"
+    source = ".. code-block:: python\n\n    decision = 1\n\nNext paragraph.\n"
+
+    code, _output = _run(tmp_path, "notes.rst", source, capsys)
+
+    assert code == 0, reason
+
+
+def test_an_rst_marker_inside_an_inline_literal_passes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: absolute no-comment gate ignores rst inline literals"
+    source = "Use the ``decision`` marker in the template.\n"
+
+    code, _output = _run(tmp_path, "notes.rst", source, capsys)
+
+    assert code == 0, reason
+
+
 def test_the_cli_returns_zero_on_a_clean_tree(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

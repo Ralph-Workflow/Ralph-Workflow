@@ -26,6 +26,7 @@ __all__ = [
     "MODE_JS",
     "MODE_MAKE",
     "MODE_PYTHON",
+    "MODE_RST",
     "MODE_SHELL",
     "MODE_TOML",
     "MODE_YAML",
@@ -46,6 +47,7 @@ MODE_TOML = "toml"
 MODE_YAML = "yaml"
 MODE_JINJA = "jinja"
 MODE_DOCS = "docs"
+MODE_RST = "rst"
 MODE_HASH = "hash"
 MODE_JS = "js"
 MODE_CSS = "css"
@@ -80,9 +82,9 @@ NAME_COMMENT_MODES: dict[str, str] = {
     "py.typed": MODE_HASH,
 }
 
-DOCS_SUFFIXES: frozenset[str] = frozenset({".md"})
+DOCS_SUFFIXES: frozenset[str] = frozenset({".md", ".rst"})
 
-DOCS_TEXT_SUFFIXES: frozenset[str] = frozenset({".md", ".toml"})
+DOCS_TEXT_SUFFIXES: frozenset[str] = frozenset({".md", ".rst", ".toml"})
 
 DOCS_MARKERS: tuple[str, ...] = (
     "decision",
@@ -124,6 +126,12 @@ _DOCS_MARKER_RES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
 _FENCE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
 
 _INLINE_CODE_RE = re.compile(r"(`+)[^`]*?\1")
+
+_RST_CODE_DIRECTIVE_RE = re.compile(r"^[ \t]*\.\.[ \t]+(?:code-block|code|sourcecode)::")
+
+_RST_LITERAL_OPENER_RE = re.compile(r"::[ \t]*$")
+
+_RST_INLINE_LITERAL_RE = re.compile(r"``[^`]+``")
 
 _SHELL_WORD_SEPARATORS = ";&|("
 
@@ -465,6 +473,36 @@ def _scan_docs_markers(text: str, path: str) -> list[Finding]:
     return findings
 
 
+def _scan_rst_markers(text: str, path: str) -> list[Finding]:
+    findings: list[Finding] = []
+    literal_indent: int | None = None
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        stripped = raw.strip()
+        indent = len(raw) - len(raw.lstrip(" \t"))
+        if literal_indent is not None:
+            if not stripped:
+                continue
+            if indent > literal_indent:
+                continue
+            literal_indent = None
+        if _RST_CODE_DIRECTIVE_RE.match(raw) is not None:
+            literal_indent = indent
+            continue
+        if (
+            literal_indent is None
+            and not stripped.startswith("..")
+            and _RST_LITERAL_OPENER_RE.search(raw) is not None
+        ):
+            literal_indent = indent
+        candidate = _RST_INLINE_LITERAL_RE.sub(" ", raw)
+        for _marker, pattern in _DOCS_MARKER_RES:
+            found = pattern.search(candidate)
+            if found is not None:
+                findings.append(Finding(path, line_number, found.group(0)))
+                break
+    return findings
+
+
 def scan_source(text: str, path: str, mode: str) -> list[Finding]:
     if mode == MODE_PYTHON:
         findings = scan_python_source(text, path)
@@ -472,6 +510,8 @@ def scan_source(text: str, path: str, mode: str) -> list[Finding]:
         findings = _scan_jinja_comments(text, path)
     elif mode == MODE_DOCS:
         findings = _scan_docs_markers(text, path)
+    elif mode == MODE_RST:
+        findings = _scan_rst_markers(text, path)
     elif mode == MODE_YAML:
         findings = _scan_yaml_comments(text, path)
     elif mode == MODE_CSS:
@@ -610,7 +650,8 @@ def _docs_targets(repo_root: Path, tracked: list[Path]) -> list[_Target]:
             continue
         if not _is_docs_target(rel):
             continue
-        targets.append(_Target(path, rel.as_posix(), MODE_DOCS))
+        mode = MODE_RST if rel.suffix == ".rst" else MODE_DOCS
+        targets.append(_Target(path, rel.as_posix(), mode))
     return sorted(targets, key=_target_rel)
 
 
@@ -695,7 +736,7 @@ def audit_paths(
         if mode is None:
             if path.suffix not in DOCS_SUFFIXES:
                 continue
-            mode = MODE_DOCS
+            mode = MODE_RST if path.suffix == ".rst" else MODE_DOCS
         findings.extend(_scan_target(path, _display_path(path, root), mode))
     findings.sort(key=_finding_order)
     return findings
