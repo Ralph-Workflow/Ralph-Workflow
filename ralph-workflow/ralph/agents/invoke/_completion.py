@@ -33,10 +33,9 @@ from ralph.agents.invoke._completion_supervision import (
 )
 from ralph.agents.invoke._completion_termination import (
     TerminationRecorder,
-    attach_attempt_facts,
     attempt_facts_for_failure,
-    attempt_facts_from_exception,
     observed_returncode,
+    publish_attempt_facts,
     termination_issuer_for_exception,
     termination_issuer_for_teardown_issuer,
 )
@@ -69,13 +68,12 @@ __all__ = (
     "_extract_rejected_session_id_from_failure",
     "_truncation_marker",
     "_wait_for_descendants_then_recheck",
-    "attach_attempt_facts",
     "attempt_facts_for_failure",
-    "attempt_facts_from_exception",
     "check_process_result",
     "completion_run_id_from_extra_env",
     "log_invocation_exit",
     "observed_returncode",
+    "publish_attempt_facts",
     "read_bounded_stderr",
     "termination_issuer_for_exception",
     "termination_issuer_for_fire_reason",
@@ -105,7 +103,7 @@ def check_process_result(
             supervisor=supervisor,
         )
     except BaseException as exc:
-        attach_attempt_facts(exc, supervisor.recorder)
+        publish_attempt_facts(exc, supervisor.recorder)
         raise
 
 

@@ -1,0 +1,30 @@
+{
+  "id": "incident_7_claude_probe_trust_dialog_rc1",
+  "label": "negative",
+  "agent": "claude",
+  "transport": "claude",
+  "incident": 7,
+  "expected_attribution": "task_or_environment",
+  "expected_bench": false,
+  "expected_verdict": "unknown",
+  "captured_lines": [
+    "Do you trust the contents of this folder?",
+    "/tmp/ralph-canary-probe-7f3a2c",
+    "Yes, I trust this folder | Enter to confirm · Esc to cancel"
+  ],
+  "tool_calls": [],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 2100,
+  "exit_status": "exit_1",
+  "liveness_observed": false,
+  "subagent_activity_observed": false,
+  "termination": {
+    "issuer": "unknown",
+    "observed_returncode": 1,
+    "reported_returncode": 1,
+    "liveness_observed": false
+  },
+  "notes": "Incident 7, probe half. The canary probe launched in a fresh never-trusted temp directory and the CLI blocked on the first-run folder-trust dialog, then exited rc=1 about two seconds after launch. The captured tail is the interactive dialog; the agent never ran and no probe verdict was ever logged. A probe that could not run is a probe-infrastructure failure: nothing is benched, the verdict stays unknown, and ordinary ledger accounting only."
+}

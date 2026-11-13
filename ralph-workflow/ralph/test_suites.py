@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 from ralph.executor.process import TIMEOUT_EXIT_CODE
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.process.manager import (
+    ManagedProcess,
     ProcessManager,
     ProcessManagerPolicy,
     ProcessTerminationIssuer,
@@ -1044,10 +1045,17 @@ def _terminate_and_reap(
     for process in processes:
         if process.poll() is None:
             try:
-                process.terminate(
-                    grace_period_s=0.0,
-                    issuer=ProcessTerminationIssuer.TEST_RUNNER,
-                )
+                if isinstance(process, ManagedProcess):
+                    _PYTEST_SHARD_PROCESS_MANAGER.terminate(
+                        process,
+                        grace_period_s=0.0,
+                        issuer=ProcessTerminationIssuer.TEST_RUNNER,
+                    )
+                else:
+                    process.terminate(
+                        grace_period_s=0.0,
+                        issuer=ProcessTerminationIssuer.TEST_RUNNER,
+                    )
             except Exception as exc:
                 print(
                     f"warning: shard terminate raised {type(exc).__name__}: {exc}",

@@ -11,6 +11,7 @@ from ralph.display.vt_normalizer import normalize_vt_text
 
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
+from .content_channel import ContentChannel
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -428,13 +429,18 @@ class AgyParser(NdjsonParserBase):
         content_label = self._tool_update_content_label(
             info, tool_name, metadata, is_subagent=is_subagent
         )
+        frame_channel = ContentChannel.SUBAGENT if is_subagent else ContentChannel.TOOL_CALL
 
         if step.get("state") == "DONE":
             if call_id is None or call_id not in self._emitted_tool_use_ids:
                 if call_id:
                     self._emitted_tool_use_ids.add(call_id)
                 yield AgentOutputLine(
-                    type="tool_use", content=content_label, raw=raw, metadata=metadata
+                    type="tool_use",
+                    content=content_label,
+                    raw=raw,
+                    metadata=metadata,
+                    channel=frame_channel,
                 )
             output = info.get("output")
             result_content = (
@@ -443,14 +449,24 @@ class AgyParser(NdjsonParserBase):
                 else _completion_summary(content_label, step, info)
             )
             yield AgentOutputLine(
-                type="tool_result", content=result_content, raw=raw, metadata=metadata
+                type="tool_result",
+                content=result_content,
+                raw=raw,
+                metadata=metadata,
+                channel=(ContentChannel.SUBAGENT if is_subagent else ContentChannel.TOOL_RESULT),
             )
             return
         if call_id:
             if call_id in self._emitted_tool_use_ids:
                 return
             self._emitted_tool_use_ids.add(call_id)
-        yield AgentOutputLine(type="tool_use", content=content_label, raw=raw, metadata=metadata)
+        yield AgentOutputLine(
+            type="tool_use",
+            content=content_label,
+            raw=raw,
+            metadata=metadata,
+            channel=frame_channel,
+        )
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         yield from self._flush_text()

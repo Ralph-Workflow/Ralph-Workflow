@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast, runtime_checkable
 
-from ralph.agents.invoke import attempt_facts_for_failure
+from ralph.agents.invoke import AttemptEnded, attempt_facts_for_failure
 from ralph.agents.registry import AgentRegistry
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline.agent_entry_point import (
@@ -17,6 +17,7 @@ from ralph.pipeline.agent_entry_point import (
 from ralph.pipeline.attempt_finalizer import AttemptFinalization
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
@@ -30,7 +31,7 @@ from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
+    from collections.abc import Callable, Generator, Iterable, Mapping
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, RawAgentInvoke
@@ -71,8 +72,14 @@ def _is_text_line(value: object) -> TypeGuard[str]:
     return isinstance(value, str)
 
 
-def _validated_text_lines(lines: Iterable[object]) -> Iterator[str]:
-    for line in lines:
+def _validated_text_lines(lines: Iterable[object]) -> Generator[str, None, object]:
+    iterator = iter(lines)
+    while True:
+        try:
+            line = next(iterator)
+        except StopIteration as stop:
+            carried: object = stop.value
+            return carried
         if not _is_text_line(line):
             msg = f"agent invocation produced a non-text output line: {type(line).__name__}"
             raise TypeError(msg)
@@ -85,8 +92,11 @@ def _as_raw_agent_invoke(injected: InvokeAgentFn) -> RawAgentInvoke:
         prompt_file: str,
         *,
         options: InvokeOptions | None = None,
-    ) -> Iterator[str]:
-        return _validated_text_lines(injected(config, prompt_file, options=options))
+    ) -> Generator[str, None, object] | None:
+        lines = cast("Iterable[object] | None", injected(config, prompt_file, options=options))
+        if lines is None:
+            return None
+        return _validated_text_lines(lines)
 
     return _invoke
 
@@ -185,6 +195,7 @@ def run_agent_attempt(
     session_ref = _session_ref(entry_point, phase, agent, execute_kwargs)
     finalized: dict[int, tuple[AttemptFacts, AttemptOutcome]] = {}
     finalized_failures: list[BaseException] = []
+    carried_facts: AttemptFacts | None = None
 
     def finalize(finalization: AttemptFinalization) -> AttemptOutcome:
         recorded = finalized.get(finalization.attempt_ordinal)
@@ -192,7 +203,7 @@ def run_agent_attempt(
             return recorded[1]
         if finalization.exc is not None:
             finalized_failures.append(finalization.exc)
-        facts = _attempt_facts(finalization)
+        facts = _attempt_facts(finalization, carried_facts)
         outcome = controller.finalize_attempt(
             phase,
             agent,
@@ -235,6 +246,9 @@ def run_agent_attempt(
                 )
             )
         raise
+    if isinstance(event, AttemptEnded):
+        carried_facts = event.facts
+        event = PipelineEvent.AGENT_SUCCESS
     attempt_failed = _is_agent_failure_event(event)
     ordinal = max(finalized, default=0)
     if not attempt_failed or not finalized:
@@ -273,9 +287,14 @@ def _attempt_identity(
     return phase, agent
 
 
-def _attempt_facts(finalization: AttemptFinalization) -> AttemptFacts:
+def _attempt_facts(
+    finalization: AttemptFinalization,
+    carried: AttemptFacts | None = None,
+) -> AttemptFacts:
     if finalization.exc is not None:
         facts = attempt_facts_for_failure(finalization.exc)
+    elif carried is not None:
+        facts = replace(carried, artifact_valid=not finalization.attempt_failed)
     else:
         facts = AttemptFacts(artifact_valid=not finalization.attempt_failed)
     if finalization.workspace_changed is not None:

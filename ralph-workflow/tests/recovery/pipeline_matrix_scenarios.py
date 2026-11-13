@@ -243,6 +243,33 @@ SCENARIOS = (
         no_ledger_charge=True,
     ),
     MatrixScenario(
+        "ac17_pending_subagents_turn_end",
+        ("AC17",),
+        (
+            MatrixScenario.Script(
+                facts=AttemptFacts(
+                    event_kinds=("tool_use", "tool_result"),
+                    tool_calls=("Agent",),
+                    artifact_valid=False,
+                    workspace_changed=None,
+                    exit_status="exit_0",
+                    liveness_observed=True,
+                    subagent_activity_observed=True,
+                    termination=TerminationRecord.create(
+                        TerminationIssuer.UNKNOWN,
+                        observed_returncode=0,
+                        reported_returncode=0,
+                        liveness_observed=True,
+                    ),
+                ),
+                returncode=0,
+            ),
+        ),
+        ProbeOutcome.PASSED,
+        expected_kind="runtime_ended",
+        no_ledger_charge=True,
+    ),
+    MatrixScenario(
         "typed_signal_bench_online",
         ("AC10", "AC16"),
         (MatrixScenario.Script(typed_signal=DEAD_SIGNAL),),
@@ -457,7 +484,7 @@ def _script_exception(script: MatrixScenario.Script) -> AgentInvocationError:
         stderr=script.message,
         parsed_output=list(script.parsed_output),
     )
-    exc.attempt_facts = script.facts
+    exc.facts = script.facts
     return exc
 
 

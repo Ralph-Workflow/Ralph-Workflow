@@ -83,13 +83,18 @@ def _intent_from_exception(
     session_id: str | None,
     inactivity_error_type: type[Exception],
 ) -> AgentRetryIntent | None:
-    if type(exc).__name__ in {
-        "BrokenAgentExitError",
-        "MissingCredentialsError",
-        "PiContextExhaustedExitError",
-        "PiProviderFailureExitError",
-        "QuotaExhaustedError",
-    } or _is_subscription_limit_message(provider_message_parts(exc)):
+    if (
+        type(exc).__name__
+        in {
+            "BrokenAgentExitError",
+            "MissingCredentialsError",
+            "PiContextExhaustedExitError",
+            "PiProviderFailureExitError",
+            "QuotaExhaustedError",
+        }
+        or retryable_failure.quota_termination_observed(exc)
+        or _is_subscription_limit_message(provider_message_parts(exc))
+    ):
         return AgentRetryIntent(
             failure_reason=type(exc).__name__,
             skip_same_agent_retries=True,

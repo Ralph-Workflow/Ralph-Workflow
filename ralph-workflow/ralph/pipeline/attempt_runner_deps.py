@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from ralph.agents.invoke import InvokeOptions
+from ralph.agents.invoke import AttemptEnded, InvokeOptions
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.pipeline.attempt_runner import AttemptInvoke
@@ -32,7 +31,7 @@ class _EffectRunner(Protocol):
         workspace_scope: WorkspaceScope,
         *,
         display_context: DisplayContext | None,
-    ) -> PipelineEvent | AgentFailureEvent: ...
+    ) -> PipelineEvent | AgentFailureEvent | AttemptEnded: ...
 
 
 EffectRunner = _EffectRunner
@@ -118,6 +117,16 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
     return _invoke
 
 
+def _drained_carry_value(lines: Iterator[str]) -> object:
+    iterator = iter(lines)
+    while True:
+        try:
+            next(iterator)
+        except StopIteration as stop:
+            carry_value: object = stop.value
+            return carry_value
+
+
 def raw_attempt_invoke(invoke: _RawAgentInvoke) -> AttemptInvoke:
     def _invoke(
         target: InvokeAgentEffect | AgentConfig,
@@ -133,8 +142,11 @@ def raw_attempt_invoke(invoke: _RawAgentInvoke) -> AttemptInvoke:
         if options is not None and not isinstance(options, InvokeOptions):
             raise TypeError("raw attempts require InvokeOptions or None")
         result = invoke(target, prompt_file, options=options)
-        if result is not None:
-            deque(result, maxlen=0)
+        if result is None:
+            return PipelineEvent.AGENT_SUCCESS
+        carry_value = _drained_carry_value(result)
+        if isinstance(carry_value, AttemptEnded):
+            return carry_value
         return PipelineEvent.AGENT_SUCCESS
 
     return _invoke

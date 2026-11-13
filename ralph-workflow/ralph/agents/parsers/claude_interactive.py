@@ -13,6 +13,7 @@ from ._template import (
 )
 from .agent_output_line import AgentOutputLine
 from .claude_interactive_transcript_parser import ClaudeInteractiveTranscriptParser
+from .content_channel import ContentChannel
 from .interactive_transcript_event import InteractiveTranscriptEvent
 from .text_accumulator import TextAccumulator
 
@@ -125,6 +126,7 @@ class ClaudeInteractiveParser:
                         content=content,
                         raw=raw,
                         metadata=metadata,
+                        channel=ContentChannel.TOOL_RESULT,
                     )
         yield from self._flush_accumulators()
 

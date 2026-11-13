@@ -3,10 +3,19 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import StrEnum
+from importlib import import_module
 from typing import cast
 
-from ralph.agents.execution_state import is_user_prompt_event_line
 from ralph.recovery.failure_classifier import _SUBSCRIPTION_LIMIT_SUBSTRINGS
+
+
+def _is_user_prompt_event_line(line: str) -> bool:
+    module = cast("object", import_module("ralph.agents.execution_state"))
+    checker = cast("dict[str, object]", module.__dict__).get("is_user_prompt_event_line")
+    if not callable(checker):
+        return False
+    return cast("bool", checker(line))
+
 
 _PROVIDER_FAILURE_OUTPUT_MARKERS = (
     "retriableerror:",
@@ -90,7 +99,7 @@ def _event_kind(event: dict[str, object]) -> str:
 
 
 def channel_of(line: str) -> ContentChannel:
-    if is_user_prompt_event_line(line):
+    if _is_user_prompt_event_line(line):
         return ContentChannel.USER
     event = _parse_json_event(line)
     if event is None:
@@ -125,7 +134,7 @@ def provider_text(line: str) -> ProviderText | None:
 
 
 def provider_evidence_text(detail: str) -> ProviderText | None:
-    if is_user_prompt_event_line(detail):
+    if _is_user_prompt_event_line(detail):
         return None
     event = _parse_json_event(detail)
     if event is None or not event:

@@ -21,6 +21,8 @@ EXPECTED_NEGATIVE_IDS = frozenset(
     {
         "claude_live_session_end_no_completion",
         "codex_quote_kill",
+        "incident_7_claude_probe_trust_dialog_rc1",
+        "incident_7_claude_stop_hook_pending_subagents",
         "opencode_post_exit_watchdog_descendant_hang",
         "opencode_subagent_kill",
         "transient_reconnecting_events",
@@ -92,7 +94,7 @@ def test_the_corpus_report_line_counts_the_labelled_cases() -> None:
 
     report = f"fixtures={len(cases)}, positives={positives}, negatives={negatives}"
 
-    assert report == "fixtures=10, positives=1, negatives=9"
+    assert report == "fixtures=12, positives=1, negatives=11"
 
 
 def test_the_agy_case_derives_one_event_and_no_tool_calls() -> None:

@@ -9,6 +9,7 @@ from ralph.recovery.canary_probe import run_canary_probe
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
@@ -48,6 +49,8 @@ def build_dead_agent_probe_runner(
 
 def production_dead_agent_probe_runner(
     config: UnifiedConfig | None,
+    *,
+    trusted_parent: Path | None = None,
 ) -> Callable[[str, str], ProbeOutcome | None] | None:
     if config is None:
         return None
@@ -57,7 +60,11 @@ def production_dead_agent_probe_runner(
 
     return build_dead_agent_probe_runner(
         resolve_agent,
-        lambda agent_config: run_canary_probe(agent_config, general_config=config.general),
+        lambda agent_config: run_canary_probe(
+            agent_config,
+            general_config=config.general,
+            trusted_parent=trusted_parent,
+        ),
     )
 
 

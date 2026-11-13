@@ -31,6 +31,7 @@ from ralph.mcp.tools.coordination import (
     require_capability,
 )
 from ralph.process.manager import (
+    ManagedProcess,
     ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
@@ -48,23 +49,6 @@ type CwdProvider = Callable[[], Path]
 class WorkspaceWithRoot(Protocol):
     @property
     def root(self) -> Path: ...
-
-
-class _SpawnedProcessLike(Protocol):
-    @property
-    def stdout(self) -> object: ...
-
-    @property
-    def stderr(self) -> object: ...
-
-    def kill(
-        self,
-        *,
-        issuer: ProcessTerminationIssuer,
-        reason: str = "operator_cancellation",
-    ) -> None: ...
-
-    def communicate_and_cleanup(self, *args: object, **kwargs: object) -> object: ...
 
 
 class _ReadablePipe(Protocol):
@@ -683,16 +667,13 @@ def _collect_git_diff_capped(
     effective_cwd = cwd if cwd is not None else _workspace_root(workspace)
     timeout_seconds = GIT_READ_TIMEOUT_SECONDS
     deadline = time.monotonic() + timeout_seconds
-    proc = cast(
-        "_SpawnedProcessLike",
-        get_process_manager().spawn(
-            ["git", "diff", *_NO_EXTERNAL_DIFF_HELPER_ARGS, *git_args],
-            SpawnOptions(
-                cwd=str(effective_cwd),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                label="git-mcp-read",
-            ),
+    proc = get_process_manager().spawn(
+        ["git", "diff", *_NO_EXTERNAL_DIFF_HELPER_ARGS, *git_args],
+        SpawnOptions(
+            cwd=str(effective_cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            label="git-mcp-read",
         ),
     )
     stdout = proc.stdout
@@ -773,16 +754,12 @@ def _read_git_diff_until_cap(
     return chunks, False
 
 
-def _kill_git_diff_proc(
-    proc: _SpawnedProcessLike,
-    *,
-    issuer: ProcessTerminationIssuer,
-) -> None:
+def _kill_git_diff_proc(proc: ManagedProcess, *, issuer: ProcessTerminationIssuer) -> None:
     with contextlib.suppress(Exception):
-        proc.kill(issuer=issuer)
+        get_process_manager().terminate(proc, grace_period_s=0.0, issuer=issuer)
 
 
-def _terminate_git_diff_proc(proc: _SpawnedProcessLike, *, timeout: float) -> None:
+def _terminate_git_diff_proc(proc: ManagedProcess, *, timeout: float) -> None:
     with contextlib.suppress(Exception):
         proc.communicate_and_cleanup(timeout=timeout)
 

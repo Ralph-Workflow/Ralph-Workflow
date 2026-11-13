@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.parsers.content_channel import (
+    ContentChannel,
     ProviderText,
     _is_explicit_provider_failure_output,
     _is_provider_error_event,
     _is_provider_failure_output,
     _parse_json_event,
+    channel_of,
     provider_evidence_text,
     provider_text,
 )
@@ -32,6 +34,14 @@ def provider_quota_kill_evidence(text: ProviderText) -> bool:
 
 def provider_quota_stderr_line_matches(text: ProviderText) -> bool:
     return _is_subscription_limit_message([text.text])
+
+
+def provider_quota_log_detail_matches(detail: str) -> bool:
+    return any(
+        _is_subscription_limit_message([line])
+        for line in detail.splitlines()
+        if line.strip() and channel_of(line) is ContentChannel.PROVIDER
+    )
 
 
 def provider_quota_output_line_matches(text: ProviderText, *, include_output: bool) -> bool:
@@ -79,6 +89,7 @@ __all__ = [
     "is_quota_kill_evidence",
     "provider_quota_kill_evidence",
     "provider_quota_line_matches",
+    "provider_quota_log_detail_matches",
     "provider_quota_output_line_matches",
     "provider_quota_stderr_line_matches",
     "raise_if_quota_exhausted",

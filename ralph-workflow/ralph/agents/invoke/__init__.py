@@ -30,7 +30,6 @@ from ralph.agents.invoke._commands import (
 from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
     attempt_facts_for_failure,
-    attempt_facts_from_exception,
     check_process_result,
     termination_issuer_for_exception,
     termination_issuer_for_fire_reason,
@@ -39,6 +38,7 @@ from ralph.agents.invoke._completion import (
 from ralph.agents.invoke._completion_supervision import (
     _wait_for_descendants_then_recheck,
 )
+from ralph.agents.invoke._completion_termination import AttemptEnded
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -176,7 +176,7 @@ from ralph.timeout_defaults import (
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Generator, Iterator, Mapping
 
     from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.timeout_clock import Clock
@@ -416,7 +416,7 @@ def invoke_agent(
     *,
     options: InvokeOptions | None = None,
     _clock: Clock | None = None,
-) -> Iterator[str]:
+) -> Generator[str, None, AttemptEnded | None]:
     base_opts = options or InvokeOptions()
     _fail_for_missing_credentials(config, base_opts, env_getter=agent_environment_value)
     _fail_for_unsupported_local_opencode_model(config, base_opts)
@@ -532,16 +532,20 @@ def invoke_agent(
             requires_pty = requires_pty or support.spec.requires_pty
 
         probe, probe_workspace, probe_phase = _observe_probe_before(opts)
+        attempt_ended: AttemptEnded | None = None
         try:
             if requires_pty:
-                yield from _run_pty_execution(cmd, ctx, opts, transport, prompt_file)
+                attempt_ended = yield from _run_pty_execution(
+                    cmd, ctx, opts, transport, prompt_file
+                )
             else:
-                yield from run_subprocess_and_read_lines(cmd, ctx)
+                attempt_ended = yield from run_subprocess_and_read_lines(cmd, ctx)
         except BaseException as exc:
             _capture_failure_observation(probe, probe_workspace, probe_phase, opts, exc)
             raise
 
         _log_workspace_completion(monitor)
+        return attempt_ended
     finally:
         if runtime.cleanup is not None:
             runtime.cleanup()
@@ -728,6 +732,7 @@ __all__ = [
     "AgentInvocationError",
     "AgentRunCtx",
     "AgyIncompleteExitError",
+    "AttemptEnded",
     "BoundedLinesQueue",
     "BrokenAgentExitError",
     "BuildCommandOptions",
@@ -754,7 +759,6 @@ __all__ = [
     "WorkspaceMonitor",
     "_parent_broker_secret",
     "attempt_facts_for_failure",
-    "attempt_facts_from_exception",
     "bounded_output_lines",
     "build_command",
     "build_invoke_options_from_config",

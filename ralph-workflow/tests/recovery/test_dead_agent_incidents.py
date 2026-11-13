@@ -13,12 +13,12 @@ from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    AttemptEnded,
     InactivityTimeoutOpts,
     ProcessLineReader,
     ProcessReaderCtx,
     QuotaExhaustedError,
     TerminationRecorder,
-    attempt_facts_from_exception,
     check_process_result,
     is_provider_quota_output_line,
 )
@@ -491,8 +491,8 @@ def test_incident_4_an_unattributed_signal_end_records_unknown_and_the_observed_
         )
 
     error = excinfo.value
-    facts = attempt_facts_from_exception(error)
-    assert facts is not None
+    assert isinstance(error, AttemptEnded)
+    facts = error.facts
     assert facts.termination is not None
     assert facts.termination.issuer is TerminationIssuer.UNKNOWN, (
         "a kill nobody attributed is unknown, never an agent exit "

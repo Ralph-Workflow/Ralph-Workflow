@@ -919,16 +919,44 @@ class ProcessManager:
         grace_period_s: float | None = None,
     ) -> None:
         self._require_permitted_terminal_reason(reason)
-        self.record_terminal_reason(handle.record.pid, reason, issuer.value)
+        record = handle.record
+        if record.status in _TERMINAL_STATUSES:
+            logger.debug(
+                "Process {} already terminal ({}), skipping terminate",
+                record.pid,
+                record.status.name,
+            )
+            return
+        self.record_terminal_reason(record.pid, reason, issuer.value)
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
         if isinstance(handle, ManagedProcess):
-            self._escalate_termination_sync(handle.record, handle._proc, gp)
+            self._escalate_termination_sync(record, handle._proc, gp)
             return
         if isinstance(handle, ManagedPtyProcess):
-            self._escalate_termination_pty(handle.record, handle._proc, gp)
+            self._escalate_termination_pty(record, handle._proc, gp)
             return
-        if isinstance(handle, ManagedAsyncProcess):
-            self._escalate_async_in_sync_context(handle.record, handle._proc, gp)
+        self._escalate_async_in_sync_context(record, handle._proc, gp)
+
+    async def terminate_async(
+        self,
+        handle: ManagedAsyncProcess,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+        grace_period_s: float | None = None,
+    ) -> None:
+        self._require_permitted_terminal_reason(reason)
+        record = handle.record
+        if record.status in _TERMINAL_STATUSES:
+            logger.debug(
+                "Process {} already terminal ({}), skipping terminate",
+                record.pid,
+                record.status.name,
+            )
+            return
+        self.record_terminal_reason(record.pid, reason, issuer.value)
+        gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
+        await self._escalate_termination_async(record, handle._proc, gp)
 
     def _reconcile_stale_entries(self) -> int:
         reconciled = 0

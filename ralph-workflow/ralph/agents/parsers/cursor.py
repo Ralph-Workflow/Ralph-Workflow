@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message
+from .content_channel import ContentChannel
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -300,7 +301,13 @@ class _CursorDispatch:
     ) -> Iterator[AgentOutputLine]:
         if _cursor_tool_result_is_error(obj):
             error_msg = extract_error_message(obj)
-            yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
+            yield AgentOutputLine(
+                type="error",
+                content=error_msg,
+                raw=stripped,
+                metadata=obj,
+                channel=ContentChannel.TOOL_RESULT,
+            )
             return
         result = _cursor_tool_result_text(_cursor_tool_result_payload(obj))
         tool_name, _args = _cursor_tool_name_and_args(obj)

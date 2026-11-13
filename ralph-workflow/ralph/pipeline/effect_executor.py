@@ -13,6 +13,7 @@ from loguru import logger
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    AttemptEnded,
     InvokeOptions,
     InvokeRuntimeOptions,
     PiContextExhaustedExitError,
@@ -111,7 +112,7 @@ from ralph.workspace import FsWorkspace
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangeProbe
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -173,12 +174,14 @@ def _record_successful_attempt_session(
 
 @dataclass(frozen=True)
 class _AttemptResult:
-    event: PipelineEvent | AgentFailureEvent | None
+    event: PipelineEvent | AgentFailureEvent | AttemptEnded | None
     next_prompt_file: str
     next_session_id: str | None
 
 
-def _event_from_attempt_result(result: _AttemptResult) -> PipelineEvent | AgentFailureEvent:
+def _event_from_attempt_result(
+    result: _AttemptResult,
+) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     return result.event if result.event is not None else PipelineEvent.AGENT_FAILURE
 
 
@@ -205,7 +208,7 @@ def execute_agent_effect(
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
     attempt_finalizer: AttemptFinalizer | None = None,
     **opts: object,
-) -> PipelineEvent | AgentFailureEvent:
+) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     verdict = inspect_integration_resolution(
         workspace_scope.root,
         state.rebase if state is not None else RebaseState(),
@@ -341,7 +344,11 @@ def execute_agent_effect(
             attempt_finalizer=resolved_attempt_finalizer,
             recovery_controller=active_rec,
         )
-        invocation_outcome = "success" if result == PipelineEvent.AGENT_SUCCESS else "failure"
+        invocation_outcome = (
+            "success"
+            if result == PipelineEvent.AGENT_SUCCESS or isinstance(result, AttemptEnded)
+            else "failure"
+        )
         return result
     except KeyboardInterrupt:
         invocation_outcome = "interrupted"
@@ -917,7 +924,7 @@ def _invoke_agent_with_recovery(
     attempt_finalizer: AttemptFinalizer | None = None,
     recovery_controller: RecoveryController | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
-) -> PipelineEvent | AgentFailureEvent:
+) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     raw_fresh_bridge: object = fresh_bridge_requested()
     if raw_fresh_bridge is True:
         bridge = None
@@ -996,7 +1003,7 @@ def _invoke_agent_with_recovery(
                     bridge_ctx.bridge.reset_session_budget()
                 state.artifact_baseline = _artifact_fingerprint(ctx, resolved_required_artifact)
                 _observe_attempt_workspace(ctx, state, workspace_probe, attempt_workspace)
-                _consume_attempt_output(
+                carried_ended = _consume_attempt_output(
                     ctx,
                     bridge_ctx,
                     state.prompt_file,
@@ -1018,6 +1025,8 @@ def _invoke_agent_with_recovery(
                 if missing_artifact is not None:
                     return _AttemptResult(missing_artifact, state.prompt_file, session_id)
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
+                if carried_ended is not None:
+                    return _AttemptResult(carried_ended, state.prompt_file, session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
                 if has_valid_terminal_artifact(
@@ -1025,7 +1034,9 @@ def _invoke_agent_with_recovery(
                 ):
                     _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                     return _AttemptResult(
-                        PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id
+                        AttemptEnded(facts=attempt_facts_for_failure(exc)),
+                        state.prompt_file,
+                        session_id,
                     )
                 return _report_terminal_invocation_error(
                     _handle_recovery_attempt_failure(
@@ -1476,6 +1487,19 @@ def required_artifact_for_invocation(
     )
 
 
+def _capture_generator_return(
+    lines: Iterable[object], carry_sink: list[object]
+) -> Iterator[object]:
+    iterator = iter(lines)
+    while True:
+        try:
+            yield next(iterator)
+        except StopIteration as stop:
+            carried: object = stop.value
+            carry_sink.append(carried)
+            return
+
+
 def _consume_attempt_output(
     ctx: _AgentInvocationCtx,
     bridge_ctx: _AgentBridgeCtx,
@@ -1488,7 +1512,7 @@ def _consume_attempt_output(
     *,
     agent_label_scope: str,
     raw_line_sink: Callable[[str], None] | None = None,
-) -> None:
+) -> AttemptEnded | None:
     on_mcp_restart = (
         ctx.display_subscriber.record_mcp_restart if ctx.display_subscriber is not None else None
     )
@@ -1511,11 +1535,14 @@ def _consume_attempt_output(
     if options.initial_session_id is not None:
         capture_session_id(options.initial_session_id)
 
+    carry_sink: list[object] = []
+
     def _run_invocation() -> None:
         output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)
+        tracked_lines = _capture_generator_return(output_lines, carry_sink)
         if verbosity_rank(ctx.verbosity) >= VERBOSITY_RANK[Verbosity.NORMAL]:
             stream_parsed_agent_activity(
-                output_lines,
+                tracked_lines,
                 str(ctx.agent_config.json_parser),
                 ctx.effect.agent_name,
                 ctx.display,
@@ -1530,7 +1557,7 @@ def _consume_attempt_output(
                 subagent_source_label=_subagent_source_label,
             )
             return
-        for line in output_lines:
+        for line in tracked_lines:
             text_line = str(line)
             raw_output.append(text_line)
             if raw_line_sink is not None:
@@ -1549,6 +1576,8 @@ def _consume_attempt_output(
             _run_invocation()
     except ctx.deps.agent_invocation_error as exc:
         raise _enrich_invocation_error(exc, raw_output, rendered_output) from exc
+    carried = carry_sink[-1] if carry_sink else None
+    return carried if isinstance(carried, AttemptEnded) else None
 
 
 def _enrich_invocation_error(

@@ -184,6 +184,26 @@ def test_completeness_every_entry_point_and_corpus_fixture_is_in_the_matrix() ->
     assert covered == {case.id for case in load_corpus()}
 
 
+def test_completeness_the_ac17_scenario_and_the_incident_7_fixtures_are_registered() -> None:
+    ac17 = [scenario.name for scenario in SCENARIOS if "AC17" in scenario.acceptance]
+    assert ac17 == ["ac17_pending_subagents_turn_end"]
+    incident_7 = sorted(
+        {
+            scenario.corpus_id
+            for scenario in corpus_scenarios()
+            if scenario.corpus_id is not None and "incident_7" in scenario.corpus_id
+        }
+    )
+    assert incident_7 == [
+        "incident_7_claude_probe_trust_dialog_rc1",
+        "incident_7_claude_stop_hook_pending_subagents",
+    ]
+    assert len(incident_7) == len(set(incident_7))
+    corpus_ids = {scenario.corpus_id for scenario in ALL_SCENARIOS if scenario.corpus_id}
+    for scenario_id in incident_7:
+        assert scenario_id in corpus_ids, f"{scenario_id} is not a registered corpus scenario"
+
+
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS, ids=[ep.value for ep in ENTRY_POINTS])
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=_scenario_ids(ALL_SCENARIOS))
 def test_matrix_scenario_over_every_entry_point(

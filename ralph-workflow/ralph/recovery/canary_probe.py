@@ -9,6 +9,7 @@ from enum import StrEnum
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast
+from uuid import uuid4
 
 from loguru import logger
 
@@ -20,12 +21,18 @@ from ralph.agents.invoke import (
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
+from ralph.git.operations import find_repo_root
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     register_entry_point,
     registered_entry_points,
+)
+from ralph.recovery.canary_probe_judge import (
+    CanaryMarkerState,
+    ProbeJudgeVerdict,
+    judge_probe,
 )
 from ralph.workspace.fs import FsWorkspace
 
@@ -91,6 +98,8 @@ CANARY_PROMPT_FILENAME: Final[str] = "canary_probe_prompt.md"
 CANARY_PROBE_REPLY: Final[str] = "CANARY_WRITTEN"
 DEFAULT_PROBE_TIMEOUT_S: Final[float] = 30
 PROBE_INCONCLUSIVE_VERDICT: Final[str] = "unknown"
+PROBE_AREA_RELATIVE_DIR: Final[str] = ".agent/tmp"
+PROBE_DIR_PREFIX: Final[str] = "canary-probe-"
 
 CANARY_PROBE_TASK: Final[str] = (
     "Canary probe task.\n"
@@ -134,6 +143,13 @@ class _PreparedProbe:
     prompt_file: str
 
 
+@dataclass(frozen=True)
+class _ProbeInvoke:
+    result: AttemptResult | None
+    error: BaseException | None
+    timed_out: bool
+
+
 ProbeOutcome = _ProbeOutcome
 ProbeResult = _ProbeResult
 
@@ -148,6 +164,7 @@ def run_canary_probe(
     extra_env: dict[str, str] | None = None,
     budget_exhausted: Callable[[], bool] | None = None,
     phase_workspace: Path | None = None,
+    trusted_parent: Path | None = None,
 ) -> ProbeResult:
     started = time.monotonic()
     try:
@@ -160,6 +177,7 @@ def run_canary_probe(
             extra_env=extra_env,
             budget_exhausted=budget_exhausted,
             phase_workspace=phase_workspace,
+            trusted_parent=trusted_parent,
             started=started,
         )
     except Exception as exc:
@@ -176,6 +194,7 @@ def _run_canary_probe(
     extra_env: dict[str, str] | None,
     budget_exhausted: Callable[[], bool] | None,
     phase_workspace: Path | None,
+    trusted_parent: Path | None,
     started: float,
 ) -> _ProbeResult:
     owns_workspace = workspace_factory is None
@@ -189,6 +208,7 @@ def _run_canary_probe(
             workspace_factory,
             phase_workspace,
             owns_workspace,
+            trusted_parent,
             started,
         )
         if isinstance(workspace, _ProbeResult):
@@ -206,18 +226,23 @@ def _run_canary_probe(
         if isinstance(prepared, _ProbeResult):
             return prepared
         invoke = invoke_fn if invoke_fn is not None else _production_invoke()
-        error, timed_out = _invoke_with_timeout(
+        attempt = _invoke_with_timeout(
             invoke,
             config,
             prepared,
             general,
             timeout_s,
         )
-        if timed_out:
+        timed_out = attempt.timed_out
+        if attempt.timed_out:
             return _inconclusive_result("probe_timeout", started)
-        if error is not None:
-            return _inconclusive_result("invocation_error", started, error=_error_text(error))
-        return _judge_marker(workspace_path, started)
+        if attempt.error is not None:
+            return _inconclusive_result(
+                "invocation_error", started, error=_error_text(attempt.error)
+            )
+        marker_state = _read_marker_state(workspace_path)
+        facts = attempt.result.facts if attempt.result is not None else None
+        return _verdict_result(judge_probe(marker_state, facts), started)
     finally:
         if owns_workspace and workspace_path is not None and not timed_out:
             _remove_scratch_workspace(workspace_path)
@@ -245,17 +270,31 @@ def _scratch_workspace(
     workspace_factory: Callable[[], Path] | None,
     phase_workspace: Path | None,
     owns_workspace: bool,
+    trusted_parent: Path | None,
     started: float,
 ) -> Path | _ProbeResult:
     try:
-        workspace_path = _create_scratch_workspace(workspace_factory)
+        workspace_path = _create_scratch_workspace(workspace_factory, trusted_parent)
     except Exception as exc:
         return _inconclusive_result("workspace_creation_failed", started, error=_error_text(exc))
-    if phase_workspace is not None and _is_within(workspace_path, phase_workspace):
+    if (
+        phase_workspace is not None
+        and _is_within(workspace_path, phase_workspace)
+        and not _is_designated_probe_area(workspace_path, phase_workspace)
+    ):
         if owns_workspace:
             _remove_scratch_workspace(workspace_path)
         return _inconclusive_result("scratch_inside_phase_workspace", started)
     return workspace_path
+
+
+def _is_designated_probe_area(workspace_path: Path, phase_workspace: Path) -> bool:
+    probe_area = phase_workspace / PROBE_AREA_RELATIVE_DIR
+    try:
+        workspace_path.relative_to(probe_area)
+    except ValueError:
+        return False
+    return workspace_path.name.startswith(PROBE_DIR_PREFIX)
 
 
 def _prepare_probe(
@@ -283,15 +322,29 @@ def _prepare_probe(
     return _PreparedProbe(options=options, prompt_file=prompt_file)
 
 
-def _discard_scratch_workspace(workspace_path: Path) -> None:
-    if workspace_path.exists():
-        FsWorkspace(workspace_path.parent).delete(workspace_path.name, recursive=True)
-
-
-def _create_scratch_workspace(factory: Callable[[], Path] | None) -> Path:
-    if factory is None:
+def _create_scratch_workspace(
+    factory: Callable[[], Path] | None,
+    trusted_parent: Path | None,
+) -> Path:
+    if factory is not None:
+        return Path(factory())
+    parent = _resolve_trusted_parent(trusted_parent)
+    if parent is None:
         return Path(tempfile.mkdtemp(prefix="ralph-canary-probe-"))
-    return Path(factory())
+    probe_area = parent / PROBE_AREA_RELATIVE_DIR
+    scratch = probe_area / f"{PROBE_DIR_PREFIX}{uuid4().hex}"
+    scratch.mkdir(parents=True, exist_ok=False)
+    return scratch
+
+
+def _resolve_trusted_parent(trusted_parent: Path | None) -> Path | None:
+    if trusted_parent is not None:
+        return trusted_parent
+    try:
+        return find_repo_root(Path.cwd())
+    except Exception as exc:
+        logger.debug("canary probe trusted-parent resolution failed: {}", exc)
+        return None
 
 
 def _remove_scratch_workspace(workspace_path: Path) -> None:
@@ -348,12 +401,13 @@ def _invoke_with_timeout(
     prepared: _PreparedProbe,
     general: GeneralConfig,
     timeout_s: float,
-) -> tuple[BaseException | None, bool]:
+) -> _ProbeInvoke:
     captured: list[BaseException] = []
+    finished: list[AttemptResult | None] = []
 
     def _run() -> None:
         try:
-            _run_probe_attempt(invoke, config, prepared, general)
+            finished.append(_run_probe_attempt(invoke, config, prepared, general))
         except BaseException as exc:
             captured.append(exc)
 
@@ -361,8 +415,12 @@ def _invoke_with_timeout(
     thread.start()
     thread.join(timeout_s)
     if thread.is_alive():
-        return (None, True)
-    return (captured[0] if captured else None, False)
+        return _ProbeInvoke(result=None, error=None, timed_out=True)
+    return _ProbeInvoke(
+        result=finished[0] if finished else None,
+        error=captured[0] if captured else None,
+        timed_out=False,
+    )
 
 
 def _production_invoke() -> RawAgentInvoke:
@@ -374,7 +432,7 @@ def _run_probe_attempt(
     config: AgentConfig,
     prepared: _PreparedProbe,
     general: GeneralConfig,
-) -> None:
+) -> AttemptResult | None:
     runner = cast(
         "_AttemptRunnerModule",
         import_module("ralph.pipeline.attempt_runner"),
@@ -413,6 +471,7 @@ def _run_probe_attempt(
         options=prepared.options,
     )
     logger.info("canary probe attempt outcome: {}", result.outcome.kind)
+    return result
 
 
 if AgentEntryPoint.CANARY_PROBE not in registered_entry_points():
@@ -422,17 +481,24 @@ if AgentEntryPoint.CANARY_PROBE not in registered_entry_points():
     )
 
 
-def _judge_marker(workspace_path: Path, started: float) -> _ProbeResult:
+def _read_marker_state(workspace_path: Path) -> CanaryMarkerState:
     marker_path = workspace_path / CANARY_MARKER_FILENAME
     try:
         content = marker_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return _failed_result("marker_missing", started)
-    except OSError as exc:
-        return _inconclusive_result("marker_read_failed", started, error=_error_text(exc))
+    except OSError:
+        return CanaryMarkerState.MISSING
     if content.strip() == CANARY_MARKER_CONTENT:
-        return _passed_result("marker_written", started)
-    return _failed_result("marker_content_mismatch", started)
+        return CanaryMarkerState.MATCHED
+    return CanaryMarkerState.MISMATCHED
+
+
+def _verdict_result(verdict: ProbeJudgeVerdict, started: float) -> _ProbeResult:
+    return _ProbeResult(
+        outcome=_ProbeOutcome(verdict.outcome.value),
+        detail=verdict.detail,
+        elapsed_ms=_elapsed_ms(started),
+        marker_written=verdict.marker_written,
+    )
 
 
 def _elapsed_ms(started: float) -> int:
@@ -441,24 +507,6 @@ def _elapsed_ms(started: float) -> int:
 
 def _error_text(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
-
-
-def _passed_result(detail: str, started: float) -> _ProbeResult:
-    return _ProbeResult(
-        outcome=_ProbeOutcome.PASSED,
-        detail=detail,
-        elapsed_ms=_elapsed_ms(started),
-        marker_written=True,
-    )
-
-
-def _failed_result(detail: str, started: float) -> _ProbeResult:
-    return _ProbeResult(
-        outcome=_ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
-        detail=detail,
-        elapsed_ms=_elapsed_ms(started),
-        marker_written=False,
-    )
 
 
 def _inconclusive_result(

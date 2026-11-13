@@ -1,0 +1,33 @@
+{
+  "id": "incident_7_claude_stop_hook_pending_subagents",
+  "label": "negative",
+  "agent": "claude",
+  "transport": "claude",
+  "incident": 7,
+  "expected_attribution": "runtime",
+  "expected_bench": false,
+  "expected_verdict": "not_agent_fault",
+  "captured_lines": [
+    "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", \"id\": \"toolu_01\", \"name\": \"Agent\", \"input\": {\"description\": \"map the repository layout\", \"prompt\": \"map the repository layout\", \"subagent_type\": \"explorer\"}}]}}",
+    "{\"type\": \"user\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"toolu_01\", \"content\": \"delegated to explorer\"}]}}",
+    "Waiting on discovery agents.",
+    "Discovery agents are still running; I'll continue once they report."
+  ],
+  "tool_calls": [
+    "Agent"
+  ],
+  "workspace_changed": "false",
+  "workspace_changed_by_tool": "false",
+  "artifact_valid": false,
+  "elapsed_to_terminal_ms": 42000,
+  "exit_status": "exit_0",
+  "liveness_observed": true,
+  "subagent_activity_observed": true,
+  "termination": {
+    "issuer": "unknown",
+    "observed_returncode": 0,
+    "reported_returncode": 0,
+    "liveness_observed": true
+  },
+  "notes": "Incident 7, planning symptom. The claude parent dispatched discovery subagents, printed 'Waiting on discovery agents.' and ended its turn (Stop hook sentinel fired) while the background subagents were still outstanding, with no artifact yet. No issuer was attributed to the end. A turn end with observed subagent activity and no attributed issuer is not a completed-without-artifact agent failure and must never be benched or marked spent."
+}

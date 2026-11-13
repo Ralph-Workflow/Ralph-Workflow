@@ -48,12 +48,15 @@ from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
     _TerminationRecorder,
     _truncation_marker,
-    attach_attempt_facts,
     check_process_result,
     completion_run_id_from_extra_env,
     observed_returncode,
     read_bounded_stderr,
     termination_issuer_for_fire_reason,
+)
+from ralph.agents.invoke._completion_termination import (
+    AttemptEnded,
+    publish_attempt_facts,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -90,7 +93,6 @@ from ralph.agents.invoke.opencode_subagent_sessions import (
     default_opencode_db_path,
 )
 from ralph.agents.invoke.termination_recorder import return_code_may_be_a_signal
-from ralph.agents.parsers.content_channel import provider_evidence_text
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.checked_accessors import optional_float
 from ralph.config.agent_config import AgentConfig
@@ -136,13 +138,13 @@ from ._monitor_factory import _make_process_monitor
 from ._quota_detection import (
     is_provider_quota_output_line,
     is_quota_kill_evidence,
-    provider_quota_stderr_line_matches,
+    provider_quota_log_detail_matches,
 )
 
 _CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Generator, Iterator, Sequence
     from contextvars import Token
 
     from ralph.agents.activity import AgentActivitySignal
@@ -270,7 +272,7 @@ def _attach_fire_attempt_facts(
         and not return_code_may_be_a_signal(exited_returncode)
     ):
         converted.returncode = exited_returncode
-    attach_attempt_facts(converted, recorder)
+    publish_attempt_facts(converted, recorder)
 
 
 def _observe_attempt_event(reader: object, activity_signal: AgentActivitySignal) -> None:
@@ -417,7 +419,7 @@ def check_broken_agent_timer(
             stderr=read_bounded_stderr(handle),
         )
         if termination_recorder is not None:
-            attach_attempt_facts(error, termination_recorder)
+            publish_attempt_facts(error, termination_recorder)
         raise error
     if (
         elapsed_seconds < max(BROKEN_AGENT_OUTPUT_GRACE_SECONDS, grace_seconds)
@@ -442,7 +444,7 @@ def check_broken_agent_timer(
         grace_seconds=grace_seconds,
     )
     if termination_recorder is not None:
-        attach_attempt_facts(error, supervisor.recorder)
+        publish_attempt_facts(error, supervisor.recorder)
     raise error
 
 
@@ -956,8 +958,7 @@ class ProcessLineReader:
             return
         cli_log_path, start_offset = self._agy_cli_log
         tail = agy_fresh_cli_log_tail(cli_log_path, start_offset)
-        text = provider_evidence_text(tail)
-        if text is not None and provider_quota_stderr_line_matches(text):
+        if provider_quota_log_detail_matches(tail):
             self._terminate_for_quota(tail)
 
     def _raise_if_quota_exhausted(self, watchdog: IdleWatchdog | None = None) -> None:
@@ -965,7 +966,7 @@ class ProcessLineReader:
         if self._quota_error is not None:
             if watchdog is not None:
                 _record_watchdog_evidence(self.termination_recorder, watchdog)
-            attach_attempt_facts(self._quota_error, self.termination_recorder)
+            publish_attempt_facts(self._quota_error, self.termination_recorder)
             raise self._quota_error
 
     def _terminate_completed_process(self) -> None:
@@ -1103,7 +1104,7 @@ class ProcessLineReader:
     ) -> Iterator[str]:
         pending_lines, exc = result
         yield from self._capture_pending(pending_lines)
-        attach_attempt_facts(exc, self.termination_recorder)
+        publish_attempt_facts(exc, self.termination_recorder)
         raise exc
 
     def _teardown_read_lines(
@@ -1245,7 +1246,7 @@ class ProcessLineReader:
             if fire is not None:
                 pending, wrapper = fire
                 self._capture_pending(pending)
-                attach_attempt_facts(wrapper, self.termination_recorder)
+                publish_attempt_facts(wrapper, self.termination_recorder)
                 raise wrapper
             with self._lines_lock:
                 reader_done = self._reader_done[0]
@@ -1459,7 +1460,7 @@ def _terminate_hung_process_exit(
 def _run_subprocess_and_read_lines(
     cmd: list[str],
     ctx: AgentRunCtx,
-) -> Iterator[str]:
+) -> Generator[str, None, AttemptEnded]:
     clock: Clock = ctx.clock or SystemClock()
     argv, stdin_prompt = split_prompt_for_stdin_delivery(cmd, ctx.config)
     spawn_options = (
@@ -1641,6 +1642,7 @@ def _run_subprocess_and_read_lines(
             _clock=clock,
             termination_recorder=supervisor.recorder,
         )
+        return AttemptEnded(facts=supervisor.recorder.facts())
 
 
 def _read_lines_from_process(

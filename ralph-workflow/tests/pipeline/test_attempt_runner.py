@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, get_args, get_origin
 
 import pytest
 
+from ralph.agents.invoke import AgentInvocationError, AttemptEnded
 from ralph.agents.system_clock import SystemClock
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
@@ -13,18 +14,24 @@ from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.attempt_finalizer import AttemptFinalization, AttemptFinalizer
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.attempt_runner import (
+    _attempt_facts,
     build_entry_point_recovery_controller,
     register_entry_point,
     registered_entry_points,
     registered_runners,
     run_agent_attempt,
 )
-from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
+from ralph.pipeline.attempt_runner_deps import (
+    AttemptRunnerDeps,
+    RawAgentInvoke,
+    effect_attempt_invoke,
+    raw_attempt_invoke,
+)
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
-from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attempt_outcome import AttemptOutcome
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import ProbeOutcome
@@ -511,3 +518,110 @@ def test_attempt_runner_regression_effect_adapter_rejects_invalid_arguments(
         invoke(target, **arguments)
 
     assert calls == []
+
+
+def _carried_raw_invoke(facts: AttemptFacts) -> RawAgentInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: object | None = None,
+    ) -> object:
+        del config, prompt_file, options
+        yield "line\n"
+        return AttemptEnded(facts=facts)
+
+    return _invoke
+
+
+def test_raw_attempt_invoke_returns_the_carried_attempt_ended() -> None:
+    recorder_facts = AttemptFacts(
+        event_kinds=("output_line",),
+        termination=TerminationRecord.create(TerminationIssuer.AGENT_EXIT),
+    )
+
+    carried = raw_attempt_invoke(_carried_raw_invoke(recorder_facts))(
+        _config().agents[_AGENT],
+        prompt_file="prompt.md",
+    )
+
+    assert isinstance(carried, AttemptEnded)
+    assert carried.facts is recorder_facts
+
+
+def test_raw_attempt_invoke_without_a_carried_value_returns_agent_success() -> None:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: object | None = None,
+    ) -> object:
+        del config, prompt_file, options
+        yield "line\n"
+
+    carried = raw_attempt_invoke(_invoke)(
+        _config().agents[_AGENT],
+        prompt_file="prompt.md",
+    )
+
+    assert carried is PipelineEvent.AGENT_SUCCESS
+
+
+def test_a_successful_raw_attempt_result_uses_the_carried_recorder_facts() -> None:
+    recorder_facts = AttemptFacts(
+        event_kinds=("output_line",),
+        tool_calls=("read",),
+        termination=TerminationRecord.create(TerminationIssuer.AGENT_EXIT),
+    )
+    deps = _deps(raw_attempt_invoke(_carried_raw_invoke(recorder_facts)))
+    controller = _controller(deps)
+    result = run_agent_attempt(
+        AgentEntryPoint.MAIN_PHASE_LOOP,
+        invocation=_config().agents[_AGENT],
+        config=_config(),
+        controller=controller,
+        deps=deps,
+        prompt_file="prompt.md",
+    )
+
+    assert result.event is PipelineEvent.AGENT_SUCCESS
+    assert result.facts.event_kinds == ("output_line",)
+    assert result.facts.tool_calls == ("read",)
+    assert result.facts.artifact_valid is True
+    assert result.facts.termination is not None
+    assert result.facts.termination.issuer is TerminationIssuer.AGENT_EXIT
+    assert result.outcome.kind is AttemptOutcomeKind.COMPLETED
+
+
+def test_attempt_facts_keeps_workspace_changed_override_on_carried_facts() -> None:
+    carried = AttemptFacts(event_kinds=("output_line",))
+    finalization = AttemptFinalization(1, False, None, True, None, None)
+
+    facts = _attempt_facts(finalization, carried)
+
+    assert facts.event_kinds == ("output_line",)
+    assert facts.workspace_changed is True
+    assert facts.artifact_valid is True
+
+
+def test_a_raised_attempt_ended_failure_reads_the_typed_facts() -> None:
+    error = AgentInvocationError(_AGENT, 1, "boom")
+
+    def invoke(_target: object, **_kwargs: object) -> object:
+        raise error
+
+    deps = _deps(invoke)
+    controller = _controller(deps)
+    with pytest.raises(AgentInvocationError):
+        run_agent_attempt(
+            AgentEntryPoint.MAIN_PHASE_LOOP,
+            effect=_effect(),
+            config=_config(),
+            controller=controller,
+            deps=deps,
+        )
+
+    assert isinstance(error, AttemptEnded)
+    assert error.facts.termination is not None
+    assert error.facts.termination.issuer is TerminationIssuer.AGENT_EXIT
+    _assert_exactly_one_ledger_charge(controller)

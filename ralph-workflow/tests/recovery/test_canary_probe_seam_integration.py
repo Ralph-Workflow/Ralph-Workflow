@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
+from ralph.config.agent_config import AgentConfig
+from ralph.config.agent_transport import AgentTransport
 from ralph.pipeline.attempt_runner import seamed_dead_agent_probe_runner
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.canary_probe import (
@@ -13,6 +19,7 @@ from ralph.recovery.canary_probe import (
     CANARY_PROBE_TASK,
     CANARY_PROMPT_FILENAME,
     ProbeOutcome,
+    ProbeResult,
     run_canary_probe,
 )
 
@@ -20,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.agents.invoke import InvokeOptions
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.factory import InvokeAgentFn
 
 
@@ -111,7 +118,9 @@ def test_production_seam_runs_the_probe_through_the_injected_invoke(tmp_path: Pa
     )
 
 
-def test_production_seam_judges_a_missing_marker_as_failed(tmp_path: Path) -> None:
+def test_production_seam_judges_a_missing_marker_without_evidence_as_inconclusive(
+    tmp_path: Path,
+) -> None:
     calls: list[_RecordedInvoke] = []
     runner = seamed_dead_agent_probe_runner(
         _unified_config(), _make_recording_invoke(calls, write_marker=False)
@@ -120,8 +129,59 @@ def test_production_seam_judges_a_missing_marker_as_failed(tmp_path: Path) -> No
     assert runner is not None
     outcome = runner("development", "codex")
 
-    assert outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK, (
-        "the real canary runner must genuinely inspect the scratch workspace; a scripted "
-        f"verdict would not flip when the marker is absent (observed outcome: {outcome!r})"
+    assert outcome is ProbeOutcome.INCONCLUSIVE, (
+        "a missing marker with no recorded agent activity must be inconclusive, not a "
+        f"failure verdict (observed outcome: {outcome!r})"
     )
     assert len(calls) == 1, f"the injected invoke must still run (observed calls: {calls!r})"
+
+
+_PIPE_STUB = Path(__file__).resolve().parent / "fixtures" / "fake_pipe_activity_cli.py"
+
+pytestmark = pytest.mark.subprocess_e2e
+
+
+def _pipe_config(mode: str) -> AgentConfig:
+    return AgentConfig(
+        cmd=f"{shlex.quote(sys.executable)} {shlex.quote(str(_PIPE_STUB))} {mode}",
+        transport=AgentTransport.CLAUDE,
+        model="fake-model",
+    )
+
+
+def _run_pipe_probe(tmp_path: Path, mode: str) -> ProbeResult:
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    return run_canary_probe(
+        _pipe_config(mode),
+        workspace_factory=lambda: scratch,
+        timeout_s=15,
+        extra_env={"ANTHROPIC_API_KEY": "stub-key"},
+    )
+
+
+@pytest.mark.timeout_seconds(30)
+def test_pipe_cli_tool_use_without_marker_is_failed_through_recorded_facts(
+    tmp_path: Path,
+) -> None:
+    result = _run_pipe_probe(tmp_path, "tool_use")
+
+    assert result.outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK, (
+        "the probe attempt's own recorder facts must reach the judge: the fake CLI emitted "
+        "a structured tool_use event, so a missing marker is a real failure "
+        f"(observed: {result!r})"
+    )
+    assert result.detail == "marker_missing"
+    assert result.marker_written is False
+
+
+@pytest.mark.timeout_seconds(30)
+def test_pipe_cli_prompt_only_text_without_marker_is_inconclusive(tmp_path: Path) -> None:
+    result = _run_pipe_probe(tmp_path, "text")
+
+    assert result.outcome is ProbeOutcome.INCONCLUSIVE, (
+        "prompt-only text yields no agent-ran evidence, so the judge must stay "
+        f"inconclusive (observed: {result!r})"
+    )
+    assert result.detail == "probe_could_not_run"
+    assert result.marker_written is None

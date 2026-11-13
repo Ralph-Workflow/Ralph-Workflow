@@ -7,7 +7,7 @@ import pytest
 
 from ralph.agents.idle_watchdog import PostExitVerdict
 from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
-from ralph.agents.invoke import AgentInactivityTimeoutError, attempt_facts_from_exception
+from ralph.agents.invoke import AgentInactivityTimeoutError, AttemptEnded
 from ralph.agents.invoke._pty_runner import run_pty_and_read_lines
 from ralph.agents.invoke.attempt_supervision import (
     AttemptSupervisor,
@@ -110,8 +110,8 @@ def test_pty_post_exit_hang_records_watchdog_issuer_exactly_once(
     with pytest.raises(AgentInactivityTimeoutError) as caught:
         list(run_pty_and_read_lines(["claude", "--print"], ctx))
 
-    facts = attempt_facts_from_exception(caught.value)
-    assert facts is not None
+    assert isinstance(caught.value, AttemptEnded)
+    facts = caught.value.facts
     assert facts.termination is not None
     assert [entry.issuer for entry in facts.termination.log] == [
         TerminationIssuer.POST_EXIT_WATCHDOG

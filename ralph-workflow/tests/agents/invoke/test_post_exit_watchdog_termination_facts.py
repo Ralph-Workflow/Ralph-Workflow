@@ -8,10 +8,10 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
+    AttemptEnded,
     CompletionCheckOptions,
     OpenCodeResumableExitError,
     TerminationRecorder,
-    attempt_facts_from_exception,
     check_process_result,
 )
 from ralph.agents.timeout_clock import FakeClock
@@ -74,8 +74,8 @@ def test_post_exit_descendant_hang_fire_is_attributed_to_the_post_exit_watchdog(
 ) -> None:
     error = _run(tmp_path, descendants_alive=True)
 
-    facts = attempt_facts_from_exception(error)
-    assert facts is not None
+    assert isinstance(error, AttemptEnded)
+    facts = error.facts
     assert facts.termination is not None
     assert facts.termination.issuer is TerminationIssuer.POST_EXIT_WATCHDOG
     assert facts.termination.liveness_observed is True
@@ -89,8 +89,8 @@ def test_resumable_exit_without_a_watchdog_fire_stays_attributed_to_agent_exit(
 ) -> None:
     error = _run(tmp_path, descendants_alive=False)
 
-    facts = attempt_facts_from_exception(error)
-    assert facts is not None
+    assert isinstance(error, AttemptEnded)
+    facts = error.facts
     assert facts.termination is not None
     assert facts.termination.issuer is TerminationIssuer.AGENT_EXIT
     assert facts.termination.liveness_observed is False

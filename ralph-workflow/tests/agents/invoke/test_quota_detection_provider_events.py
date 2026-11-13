@@ -13,7 +13,10 @@ from ralph.agents.invoke import (
     is_provider_quota_output_line,
     raise_if_quota_exhausted,
 )
-from ralph.agents.invoke._quota_detection import is_quota_kill_evidence
+from ralph.agents.invoke._quota_detection import (
+    is_quota_kill_evidence,
+    provider_quota_log_detail_matches,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -300,3 +303,67 @@ def test_tool_call_line_on_stderr_never_terminates_the_session(tmp_path: Path) -
 
     assert emitted == []
     assert handle.terminate_calls == []
+
+
+_TOOL_RESULT_QUOTA_LINES = (
+    json.dumps({"type": "tool_result", "error": "RESOURCE_EXHAUSTED (code 429)", "output": "x"}),
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {"type": "tool_result", "content": _QUOTA_WORDS},
+        }
+    ),
+)
+
+
+@pytest.mark.parametrize("line", _TOOL_RESULT_QUOTA_LINES)
+def test_tool_result_channel_line_with_quota_words_never_terminates_stdout(
+    tmp_path: Path, line: str
+) -> None:
+    handle = _Handle(_FiniteStdout((line + "\n",)))
+    reader = _reader(tmp_path, handle)
+
+    emitted = list(reader.read_lines())
+
+    assert emitted == [line + "\n"]
+    assert handle.terminate_calls == []
+
+
+@pytest.mark.parametrize("line", _TOOL_RESULT_QUOTA_LINES)
+def test_tool_result_channel_line_with_quota_words_never_terminates_stderr(
+    tmp_path: Path, line: str
+) -> None:
+    handle = _Handle(_FiniteStdout(()), stderr=iter((line + "\n",)))
+    reader = _reader(tmp_path, handle)
+
+    emitted = list(reader.read_lines())
+
+    assert emitted == []
+    assert handle.terminate_calls == []
+
+
+_PROVIDER_LOG_TAILS = (
+    "RESOURCE_EXHAUSTED (code 429)",
+    " You've hit your session limit\n",
+    "INFO startup\nRetriableError: [resource_exhausted] Error; quota or rate limit is exhausted\n",
+)
+
+
+@pytest.mark.parametrize("detail", _PROVIDER_LOG_TAILS)
+def test_provider_channel_log_detail_still_matches(detail: str) -> None:
+    assert provider_quota_log_detail_matches(detail)
+
+
+_NON_PROVIDER_LOG_TAILS = (
+    json.dumps({"type": "tool_result", "error": "RESOURCE_EXHAUSTED (code 429)", "output": "x"}),
+    json.dumps({"type": "tool_result", "content": _QUOTA_WORDS}),
+    json.dumps({"type": "reasoning", "text": _QUOTA_WORDS}),
+    json.dumps({"type": "subagent", "text": _QUOTA_WORDS}),
+    json.dumps({"type": "thinking", "text": _QUOTA_WORDS}),
+    "some unrelated plain text mentioning quota exceeded mid-sentence",
+)
+
+
+@pytest.mark.parametrize("detail", _NON_PROVIDER_LOG_TAILS)
+def test_non_provider_channel_log_detail_never_matches(detail: str) -> None:
+    assert not provider_quota_log_detail_matches(detail)

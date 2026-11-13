@@ -380,7 +380,8 @@ def is_alive_process(proc: object) -> bool:
 
 def _terminate_process_for_handover(proc: object, *, grace_period_s: float | None) -> None:
     if isinstance(proc, ManagedProcess):
-        proc.terminate(
+        get_process_manager().terminate(
+            proc,
             grace_period_s=grace_period_s,
             issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
         )
@@ -392,7 +393,11 @@ def _terminate_process_for_handover(proc: object, *, grace_period_s: float | Non
 
 def _kill_process_for_handover(proc: object) -> None:
     if isinstance(proc, ManagedProcess):
-        proc.kill(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
+        get_process_manager().terminate(
+            proc,
+            grace_period_s=0.0,
+            issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
+        )
         return
     kill_fn: object = getattr(proc, "kill", None)
     if callable(kill_fn):

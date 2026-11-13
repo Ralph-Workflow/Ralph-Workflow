@@ -15,9 +15,9 @@ from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     AgentInvocationError,
+    AttemptEnded,
     CompletionCheckOptions,
     OpenCodeResumableExitError,
-    attempt_facts_from_exception,
     check_process_result,
 )
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
@@ -139,8 +139,8 @@ def test_explicit_supervisor_reaps_descendant_and_records_fire(tmp_path: Path) -
             )
 
         _assert_reaped(grandchild_pid)
-        facts = attempt_facts_from_exception(caught.value)
-        assert facts is not None
+        assert isinstance(caught.value, AttemptEnded)
+        facts = caught.value.facts
         assert facts.termination is not None
         assert facts.termination == supervisor.recorder.termination()
         assert supervisor.recorder.resolved_issuer() is TerminationIssuer.POST_EXIT_WATCHDOG
@@ -170,8 +170,8 @@ def test_standalone_supervisor_supplies_attached_facts(tmp_path: Path) -> None:
         with pytest.raises(AgentInvocationError) as caught:
             check_process_result(child, "test-agent", [], None, termination_recorder=None)
 
-        facts: AttemptFacts | None = attempt_facts_from_exception(caught.value)
-        assert facts is not None
+        assert isinstance(caught.value, AttemptEnded)
+        facts: AttemptFacts = caught.value.facts
         assert facts.termination is not None
         assert facts.termination.issuer is TerminationIssuer.AGENT_EXIT
         assert facts.termination.observed_returncode == 1

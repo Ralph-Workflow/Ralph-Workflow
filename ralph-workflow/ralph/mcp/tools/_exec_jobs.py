@@ -425,7 +425,8 @@ class ExecJobRegistry:
 
         if job.handle is not None:
             with contextlib.suppress(Exception):
-                job.handle.terminate(
+                self._pm.terminate(
+                    job.handle,
                     grace_period_s=0.0,
                     issuer=_kill_issuer_for_cause(cause),
                 )

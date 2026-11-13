@@ -9,9 +9,9 @@ import pytest
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     AgentRunCtx,
+    AttemptEnded,
     PtyLineReader,
     QuotaExhaustedError,
-    attempt_facts_from_exception,
 )
 from ralph.agents.invoke.attempt_supervision import (
     AttemptSupervisor,
@@ -152,8 +152,8 @@ def test_seeded_quota_error_is_reraised_unchanged(tmp_path: Path) -> None:
         assert facts_before.issuer is TerminationIssuer.QUOTA_DETECTOR
         terminate_before = list(handle.terminate_issuers)
         assert terminate_before == [ProcessTerminationIssuer.QUOTA_DETECTOR]
-        facts = attempt_facts_from_exception(error)
-        assert facts is not None
+        assert isinstance(error, AttemptEnded)
+        facts = error.facts
         assert facts.termination is not None
         assert facts.termination.issuer is TerminationIssuer.QUOTA_DETECTOR
 

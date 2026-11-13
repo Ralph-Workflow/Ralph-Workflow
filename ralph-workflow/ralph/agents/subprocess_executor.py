@@ -135,6 +135,9 @@ class SubprocessAgentExecutor:
         if raw_log is not None:
             raw_log.close()
 
+    def _resolve_manager(self) -> ProcessManager:
+        return self._pm if self._pm is not None else get_process_manager()
+
     async def _supervise(
         self,
         handle: ManagedAsyncProcess,
@@ -148,7 +151,8 @@ class SubprocessAgentExecutor:
                 await self._await_exit_and_drain(handle, drain_task, unit_id, session_pgid)
             except BaseException:
                 await _cancel_task(drain_task)
-                await handle.terminate(
+                await self._resolve_manager().terminate_async(
+                    handle,
                     grace_period_s=0,
                     issuer=ProcessTerminationIssuer.OPERATOR,
                 )
@@ -156,7 +160,8 @@ class SubprocessAgentExecutor:
         finally:
             if handle.record.status not in _TERMINAL_STATUSES:
                 with contextlib.suppress(Exception):
-                    await handle.terminate(
+                    await self._resolve_manager().terminate_async(
+                        handle,
                         grace_period_s=0,
                         issuer=ProcessTerminationIssuer.OPERATOR,
                     )
@@ -202,7 +207,8 @@ class SubprocessAgentExecutor:
     ) -> str:
         line = sanitize_display_line(raw_line.rstrip(b"\n"))
         if is_provider_quota_output_line(line):
-            await handle.terminate(
+            await self._resolve_manager().terminate_async(
+                handle,
                 grace_period_s=0,
                 issuer=ProcessTerminationIssuer.QUOTA_DETECTOR,
                 reason="quota_exhausted",
@@ -225,7 +231,7 @@ class SubprocessAgentExecutor:
             self._subagent_sink_token = set_subagent_sink(self._subagent_sink)
 
         env = {**os.environ, **self._extra_env} if self._extra_env else None
-        pm = self._pm if self._pm is not None else get_process_manager()
+        pm = self._resolve_manager()
         handle: ManagedAsyncProcess | None = None
         try:
             handle = await pm.spawn_async(

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from ._event_classification import is_lifecycle_event
 from ._template import ParserTemplateBase
-from .agent_output_line import AgentOutputLine
+from .agent_output_line import AgentOutputLine, channel_for_line_type
 from .base import extract_error_message
 
 if TYPE_CHECKING:
@@ -165,6 +165,7 @@ class NdjsonParserBase(ParserTemplateBase):
                 raw=stripped,
                 metadata=obj,
                 timestamp=source_timestamp,
+                channel=channel_for_line_type(str(obj.get("type", ""))),
             )
             return
 

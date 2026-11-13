@@ -7,8 +7,6 @@ import threading
 import time as _time
 from typing import IO, TYPE_CHECKING, Literal
 
-from loguru import logger
-
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
 from ralph.process.manager._git_termination import git_aware_grace
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
@@ -566,20 +564,12 @@ class ManagedProcess:
         issuer: ProcessTerminationIssuer,
         reason: str = "operator_cancellation",
     ) -> None:
-        self._manager._require_permitted_terminal_reason(reason)
-        if self._record.status in _TERMINAL_STATUSES:
-            logger.debug(
-                f"Process {self._record.pid} already terminal ({self._record.status.name}), "
-                f"skipping terminate"
-            )
-            return
-        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
-        gp = (
-            grace_period_s
-            if grace_period_s is not None
-            else self._manager.policy.default_grace_period_s
+        self._manager.terminate(
+            self,
+            issuer=issuer,
+            reason=reason,
+            grace_period_s=grace_period_s,
         )
-        self._manager._escalate_termination_sync(self._record, self._proc, gp)
 
     def kill(
         self,
@@ -587,9 +577,7 @@ class ManagedProcess:
         issuer: ProcessTerminationIssuer,
         reason: str = "operator_cancellation",
     ) -> None:
-        self._manager._require_permitted_terminal_reason(reason)
-        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
-        self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
+        self._manager.terminate(self, issuer=issuer, reason=reason, grace_period_s=0.0)
 
     def cleanup_orphans(self) -> None:
         self._manager.cleanup_orphans(self)

@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.server._mcp_server_error import McpServerError
-from ralph.process.manager import ManagedProcess, ProcessTerminationIssuer
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationIssuer,
+    get_process_manager,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,7 +23,8 @@ SHUTDOWN_REAP_WAIT_S: Final[float] = 5.0
 
 def _terminate_server_process(process: ProcessLike, *, grace_period_s: float) -> None:
     if isinstance(process, ManagedProcess):
-        process.terminate(
+        get_process_manager().terminate(
+            process,
             grace_period_s=grace_period_s,
             issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
         )

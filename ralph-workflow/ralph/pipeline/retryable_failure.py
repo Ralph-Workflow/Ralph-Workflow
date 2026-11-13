@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke._agent_launch_error import AgentLaunchError
+from ralph.agents.invoke._completion_termination import AttemptEnded, attempt_facts_for_failure
+from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.failure_classifier import (
     POST_TOOL_ACTIVITY_MARKERS,
     POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS,
@@ -43,8 +45,10 @@ def retryable_agent_failure_reason(
     inactivity_error_type: type[Exception],
 ) -> str | None:
     detail_parts = failure_detail_parts(exc)
-    if type(exc).__name__ == "QuotaExhaustedError" or _is_subscription_limit_message(
-        provider_message_parts(exc)
+    if (
+        type(exc).__name__ == "QuotaExhaustedError"
+        or quota_termination_observed(exc)
+        or _is_subscription_limit_message(provider_message_parts(exc))
     ):
         return None
     primary_text = _primary_recovery_error_text(exc)
@@ -95,6 +99,13 @@ def retryable_from_outcome(outcome: AttemptOutcome) -> bool:
     return outcome.retries_same_agent
 
 
+def quota_termination_observed(exc: BaseException) -> bool:
+    if not isinstance(exc, AttemptEnded):
+        return False
+    termination = attempt_facts_for_failure(exc).termination
+    return termination is not None and termination.issuer is TerminationIssuer.QUOTA_DETECTOR
+
+
 def _primary_recovery_error_text(exc: Exception) -> str:
     stderr = cast("object", getattr(exc, "stderr", ""))
     if isinstance(stderr, str) and stderr.strip():
@@ -107,4 +118,4 @@ def _has_transient_connectivity_signal(text: str) -> bool:
     return contains_casefolded_marker((text,), _TRANSIENT_CONNECTIVITY_MARKERS)
 
 
-__all__ = ("retryable_agent_failure_reason", "retryable_from_outcome")
+__all__ = ("quota_termination_observed", "retryable_agent_failure_reason", "retryable_from_outcome")

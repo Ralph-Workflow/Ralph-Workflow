@@ -9,11 +9,11 @@ import pytest
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     AgentRunCtx,
+    AttemptEnded,
     ProcessLineReader,
     ProcessReaderCtx,
     PtyLineReader,
     QuotaExhaustedError,
-    attempt_facts_from_exception,
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
@@ -94,8 +94,8 @@ def test_pipe_quota_kill_reports_observed_returncode_and_issuer(tmp_path: Path) 
     assert error.returncode == -15
     assert error.issuer == TerminationIssuer.QUOTA_DETECTOR.value
     assert handle.terminal_reasons == ["quota_exhausted"]
-    facts = attempt_facts_from_exception(error)
-    assert facts is not None
+    assert isinstance(error, AttemptEnded)
+    facts = error.facts
     assert facts.termination is not None
     assert facts.termination.issuer is TerminationIssuer.QUOTA_DETECTOR
     assert facts.termination.observed_returncode == -15
@@ -127,8 +127,8 @@ def test_pty_quota_kill_attributes_the_detector_and_attaches_facts(tmp_path: Pat
     error = caught.value
     assert error.returncode == -15
     assert error.issuer == TerminationIssuer.QUOTA_DETECTOR.value
-    facts = attempt_facts_from_exception(error)
-    assert facts is not None
+    assert isinstance(error, AttemptEnded)
+    facts = error.facts
     assert facts.termination is not None
     assert facts.termination.issuer is TerminationIssuer.QUOTA_DETECTOR
     assert facts.termination.observed_returncode == -15

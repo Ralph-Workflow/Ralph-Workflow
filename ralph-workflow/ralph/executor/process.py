@@ -137,7 +137,8 @@ async def run_process_async(
     try:
         done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
         if communicate_task not in done:
-            await handle.terminate(
+            await pm.terminate_async(
+                handle,
                 grace_period_s=0,
                 issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
             )
@@ -168,7 +169,8 @@ async def run_process_async(
             communicate_task.cancel()
         if handle.record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
-                await handle.terminate(
+                await pm.terminate_async(
+                    handle,
                     grace_period_s=0,
                     issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
                 )
@@ -229,7 +231,8 @@ def run_process(
     try:
         stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired as timeout_exc:
-        handle.terminate(
+        pm.terminate(
+            handle,
             grace_period_s=0,
             issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
         )
@@ -253,7 +256,8 @@ def run_process(
     except BaseException:
         if handle.record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
-                handle.terminate(
+                pm.terminate(
+                    handle,
                     grace_period_s=0,
                     issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
                 )

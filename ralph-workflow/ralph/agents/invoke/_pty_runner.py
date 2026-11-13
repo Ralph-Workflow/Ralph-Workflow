@@ -11,10 +11,13 @@ from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
-    attach_attempt_facts,
     check_process_result,
     completion_run_id_from_extra_env,
     termination_issuer_for_fire_reason,
+)
+from ralph.agents.invoke._completion_termination import (
+    AttemptEnded,
+    publish_attempt_facts,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -54,7 +57,7 @@ from ralph.process.manager import (
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator
     from pathlib import Path
 
     from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
@@ -118,7 +121,7 @@ def run_pty_and_read_lines(
     cmd: list[str],
     ctx: AgentRunCtx,
     extras: PtyExtras | None = None,
-) -> Iterator[str]:
+) -> Generator[str, None, AttemptEnded | None]:
     _extras = extras or PtyExtras()
     expected_session_id = _extras.expected_session_id
     completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)
@@ -185,7 +188,7 @@ def run_pty_and_read_lines(
                         PostExitHangObserved(verdict), teardown=teardown_subtree
                     )
                     if outcome is None:
-                        return
+                        return None
                     raise _IdleStreamTimeoutError(
                         ctx.policy.process_exit_wait_seconds,
                         WatchdogFireReason.PROCESS_EXIT_HANG,
@@ -213,7 +216,7 @@ def run_pty_and_read_lines(
                     diagnostic=exc.diagnostic,
                 ),
             )
-            attach_attempt_facts(timeout_error, termination)
+            publish_attempt_facts(timeout_error, termination)
             raise timeout_error from exc
         except BaseException:
             _close_iterator(lines_iter)
@@ -259,3 +262,4 @@ def run_pty_and_read_lines(
             _clock=clock,
             termination_recorder=termination,
         )
+        return AttemptEnded(facts=termination.facts())

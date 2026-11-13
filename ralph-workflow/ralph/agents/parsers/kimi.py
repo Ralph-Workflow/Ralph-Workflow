@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
+from .content_channel import ContentChannel
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -151,7 +152,13 @@ class KimiParser(NdjsonParserBase):
     ) -> Iterator[AgentOutputLine]:
         if _tool_payload_declares_error(obj):
             error_text = _message_content_text(obj.get("content")) or "tool execution failed"
-            yield AgentOutputLine(type="error", content=error_text, raw=raw, metadata=obj)
+            yield AgentOutputLine(
+                type="error",
+                content=error_text,
+                raw=raw,
+                metadata=obj,
+                channel=ContentChannel.TOOL_RESULT,
+            )
             return
         yield from self.flush_accumulators()
         content = _message_content_text(obj.get("content"))

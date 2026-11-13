@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
+from .content_channel import ContentChannel
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -286,6 +287,7 @@ class _PiDispatch:
                     "tool": str(obj.get("toolName", "unknown")),
                     "tool_call_id": obj.get("toolCallId"),
                 },
+                channel=ContentChannel.TOOL_RESULT,
             )
             return
         yield AgentOutputLine(
@@ -523,6 +525,7 @@ class _PiDispatch:
                 content=extracted if extracted else "tool result error",
                 raw=stripped,
                 metadata=block_dict,
+                channel=ContentChannel.TOOL_RESULT,
             )
             return
         yield AgentOutputLine(

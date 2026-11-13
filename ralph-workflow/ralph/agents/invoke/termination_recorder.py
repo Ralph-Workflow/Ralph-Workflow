@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 __all__ = (
     "TerminationRecorder",
-    "exception_exit_status",
     "observed_returncode",
     "return_code_may_be_a_signal",
     "termination_issuer_for_exception",
@@ -28,7 +27,6 @@ __all__ = (
 _MAX_OBSERVED_FACT_ENTRIES: Final[int] = 256
 _SHELL_SIGNAL_EXIT_MIN: Final[int] = 129
 _SHELL_SIGNAL_EXIT_MAX: Final[int] = 159
-_EXCEPTION_CHAIN_LIMIT: Final[int] = 8
 _COMPLETION_ISSUER_PREFIX: Final[str] = "invoke:completion:"
 
 _OPERATOR_TEARDOWN_ISSUERS: Final[frozenset[str]] = frozenset(
@@ -79,32 +77,16 @@ def termination_issuer_for_teardown_issuer(issuer: str | None) -> TerminationIss
     return TerminationIssuer.UNKNOWN
 
 
-def _exception_chain(exc: BaseException) -> tuple[BaseException, ...]:
-    chain: list[BaseException] = []
-    current: BaseException | None = exc
-    while current is not None and len(chain) < _EXCEPTION_CHAIN_LIMIT:
-        chain.append(current)
-        cause = current.__cause__
-        current = cause if isinstance(cause, BaseException) else None
-    return tuple(chain)
-
-
 def _exception_issuer_label(exc: BaseException) -> str | None:
-    for candidate in _exception_chain(exc):
-        label = cast("object", getattr(candidate, "issuer", None))
-        if isinstance(label, str) and label:
-            return label
-    return None
+    label = cast("object", getattr(exc, "issuer", None))
+    return label if isinstance(label, str) and label else None
 
 
 def _exception_fire_reason(exc: BaseException) -> WatchdogFireReason | str | None:
-    for candidate in _exception_chain(exc):
-        reason = cast("object", getattr(candidate, "reason", None))
-        if isinstance(reason, WatchdogFireReason):
-            return reason
-        if isinstance(reason, str) and reason:
-            return reason
-    return None
+    reason = cast("object", getattr(exc, "reason", None))
+    if isinstance(reason, WatchdogFireReason):
+        return reason
+    return reason if isinstance(reason, str) and reason else None
 
 
 def _exception_returncode(exc: BaseException) -> int | None:
@@ -112,14 +94,6 @@ def _exception_returncode(exc: BaseException) -> int | None:
     if isinstance(returncode, bool) or not isinstance(returncode, int):
         return None
     return returncode
-
-
-def exception_exit_status(exc: BaseException) -> str | None:
-    for candidate in _exception_chain(exc):
-        status = cast("object", getattr(candidate, "failure_origin", None))
-        if isinstance(status, str) and status:
-            return status
-    return None
 
 
 def return_code_may_be_a_signal(returncode: int | None) -> bool:

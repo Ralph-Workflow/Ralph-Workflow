@@ -14,6 +14,7 @@ from ._event_classification import is_lifecycle_event
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message, stringify_text_blocks
+from .content_channel import ContentChannel
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -591,7 +592,13 @@ class ClaudeParser(NdjsonParserBase):
         result_type = "error" if block.get("is_error") else "tool_result"
         content = block.get("content")
         if content is None:
-            yield AgentOutputLine(type=result_type, content="", raw=raw, metadata=block)
+            yield AgentOutputLine(
+                type=result_type,
+                content="",
+                raw=raw,
+                metadata=block,
+                channel=ContentChannel.TOOL_RESULT,
+            )
             return
 
         if isinstance(content, list):
@@ -601,7 +608,14 @@ class ClaudeParser(NdjsonParserBase):
                 content=tool_result,
                 raw=raw,
                 metadata=block,
+                channel=ContentChannel.TOOL_RESULT,
             )
             return
 
-        yield AgentOutputLine(type=result_type, content=str(content), raw=raw, metadata=block)
+        yield AgentOutputLine(
+            type=result_type,
+            content=str(content),
+            raw=raw,
+            metadata=block,
+            channel=ContentChannel.TOOL_RESULT,
+        )

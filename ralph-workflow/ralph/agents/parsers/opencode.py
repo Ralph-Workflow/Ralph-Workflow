@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message, stringify_text_blocks
+from .content_channel import ContentChannel
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -169,7 +170,13 @@ class _OpenCodeDispatch:
                 )
             self._owner._finish_tool_call(part)
             err = str(state_obj.get("error", "tool error"))
-            yield AgentOutputLine(type="error", content=err, raw=raw, metadata=metadata)
+            yield AgentOutputLine(
+                type="error",
+                content=err,
+                raw=raw,
+                metadata=metadata,
+                channel=ContentChannel.TOOL_RESULT,
+            )
             return
 
         self._owner._record_tool_dispatch(part)

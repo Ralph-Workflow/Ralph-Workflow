@@ -86,16 +86,12 @@ class ManagedPtyProcess:
         issuer: ProcessTerminationIssuer,
         reason: str = "operator_cancellation",
     ) -> None:
-        self._manager._require_permitted_terminal_reason(reason)
-        if self._record.status in _TERMINAL_STATUSES:
-            return
-        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
-        gp = (
-            grace_period_s
-            if grace_period_s is not None
-            else self._manager.policy.default_grace_period_s
+        self._manager.terminate(
+            self,
+            issuer=issuer,
+            reason=reason,
+            grace_period_s=grace_period_s,
         )
-        self._manager._escalate_termination_pty(self._record, self._proc, gp)
 
     def kill(
         self,
@@ -103,9 +99,7 @@ class ManagedPtyProcess:
         issuer: ProcessTerminationIssuer,
         reason: str = "operator_cancellation",
     ) -> None:
-        self._manager._require_permitted_terminal_reason(reason)
-        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
-        self._manager._escalate_termination_pty(self._record, self._proc, 0.0)
+        self._manager.terminate(self, issuer=issuer, reason=reason, grace_period_s=0.0)
 
     def has_live_descendants(self) -> bool:
         psutil_mod = self._manager._psutil

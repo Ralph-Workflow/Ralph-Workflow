@@ -41,7 +41,7 @@ _LIMIT_PHRASE = "You've hit your session limit"
 
 
 class _FactsError(AgentInvocationError):
-    attempt_facts: AttemptFacts
+    pass
 
 
 class _InvokeFn(Protocol):
@@ -281,7 +281,7 @@ def test_failure_log_line_shows_the_issuer_and_both_return_codes(tmp_path: Path)
     recorder.record_observed_returncode(7)
     recorder.record_reported_returncode(9)
     recorder.record_exit_status("agent")
-    failure.attempt_facts = recorder.facts()
+    failure.facts = recorder.facts()
     try:
         _run_effect(tmp_path, _failing_then_succeeding_invoke([], failure))
     finally:

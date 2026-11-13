@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.invoke._completion_termination import AttemptEnded
 
 
-class _IdleStreamTimeoutError(RuntimeError):
+class _IdleStreamTimeoutError(AttemptEnded, RuntimeError):
     def __init__(
         self,
         timeout_seconds: float,

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, cast
 from ralph.git.git_call_policy import GitCallClass, effective_terminate_grace_seconds
 from ralph.git.git_run_result import GitRunResult
 from ralph.process.manager import (
+    ManagedProcess,
     ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
@@ -38,6 +39,15 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
     from typing import Protocol
+
+    class _TerminableProc(Protocol):
+        def terminate(
+            self,
+            grace_period_s: float | None = None,
+            *,
+            issuer: ProcessTerminationIssuer,
+            reason: str = "operator_cancellation",
+        ) -> None: ...
 
     class _QueuedRunGit(Protocol):
         def __call__(
@@ -116,6 +126,18 @@ def run_git(
     )
 
 
+def _terminate_spawned_proc(
+    proc: ManagedProcess | _TerminableProc,
+    *,
+    grace_period_s: float,
+    issuer: ProcessTerminationIssuer,
+) -> None:
+    if isinstance(proc, ManagedProcess):
+        get_process_manager().terminate(proc, grace_period_s=grace_period_s, issuer=issuer)
+    else:
+        proc.terminate(grace_period_s=grace_period_s, issuer=issuer)
+
+
 def _spawn_git(
     args: Sequence[str],
     *,
@@ -178,20 +200,23 @@ def _spawn_git(
         with contextlib.suppress(Exception):
             get_process_manager().drain_completed()
     except subprocess.TimeoutExpired:
-        proc.terminate(
+        _terminate_spawned_proc(
+            proc,
             grace_period_s=terminate_grace_seconds,
             issuer=ProcessTerminationIssuer.GIT_TIMEOUT,
         )
         raise
     except ManagedProcessOutputLimitExceededError:
-        proc.terminate(
+        _terminate_spawned_proc(
+            proc,
             grace_period_s=terminate_grace_seconds,
             issuer=ProcessTerminationIssuer.OUTPUT_LIMIT,
         )
         raise
     except BaseException:
         with contextlib.suppress(Exception):
-            proc.terminate(
+            _terminate_spawned_proc(
+                proc,
                 grace_period_s=terminate_grace_seconds,
                 issuer=ProcessTerminationIssuer.OPERATOR,
             )

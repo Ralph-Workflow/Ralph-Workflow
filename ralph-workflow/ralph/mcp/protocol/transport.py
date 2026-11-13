@@ -164,7 +164,8 @@ class StdioTransport:
             self._process = None
             if isinstance(proc, ManagedProcess):
                 try:
-                    proc.terminate(
+                    get_process_manager().terminate(
+                        proc,
                         grace_period_s=5.0,
                         issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
                     )

@@ -59,9 +59,9 @@ _CASES: tuple[_Case, ...] = (
         expected=ProbeOutcome.PASSED,
     ),
     _Case(
-        name="marker_missing",
+        name="marker_missing_without_evidence",
         behaviour="no_marker",
-        expected=ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
+        expected=ProbeOutcome.INCONCLUSIVE,
     ),
     _Case(
         name="infrastructure_error",
@@ -198,6 +198,88 @@ def test_probe_hands_the_same_config_and_environment_to_the_invoke_fn(tmp_path: 
     assert received_options.extra_env == {"RALPH_CANARY_ENV": "kept"}
     assert received_options.phase == CANARY_PROBE_PHASE
     assert Path(received.prompt_file).parent == scratch
+
+
+def test_probe_rejects_scratch_elsewhere_inside_phase_workspace(tmp_path: Path) -> None:
+    phase_workspace = tmp_path / "phase"
+    phase_workspace.mkdir()
+    scratch = phase_workspace / "scratch"
+    scratch.mkdir()
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+        workspace_factory=lambda: scratch,
+        phase_workspace=phase_workspace,
+    )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "scratch_inside_phase_workspace"
+    assert calls == []
+    assert scratch.exists()
+
+
+def test_probe_allows_scratch_in_the_designated_probe_area(tmp_path: Path) -> None:
+    phase_workspace = tmp_path / "phase"
+    probe_area = phase_workspace / ".agent" / "tmp"
+    scratch = probe_area / "canary-probe-fixed"
+    scratch.mkdir(parents=True)
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+        workspace_factory=lambda: scratch,
+        phase_workspace=phase_workspace,
+    )
+    assert result.outcome == ProbeOutcome.PASSED
+    assert len(calls) == 1
+    assert (scratch / CANARY_MARKER_FILENAME).read_text(encoding="utf-8") == CANARY_MARKER_CONTENT
+
+
+def test_probe_places_scratch_under_the_trusted_parent_and_removes_it(
+    tmp_path: Path,
+) -> None:
+    trusted_parent = tmp_path / "trusted"
+    trusted_parent.mkdir()
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+        trusted_parent=trusted_parent,
+    )
+    assert result.outcome == ProbeOutcome.PASSED
+    assert len(calls) == 1
+    options = calls[0].options
+    assert options is not None
+    workspace_path = options.workspace_path
+    assert workspace_path is not None
+    assert workspace_path.parent == trusted_parent / ".agent" / "tmp"
+    assert workspace_path.name.startswith("canary-probe-")
+    assert options.permission_prompt_listener is None
+    assert not workspace_path.exists()
+    assert not (workspace_path / CANARY_MARKER_FILENAME).exists()
+
+
+def test_probe_falls_back_to_mkdtemp_when_trusted_parent_resolution_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _failing_find_repo_root(start: Path) -> Path:
+        raise RuntimeError("not inside a git repository")
+
+    monkeypatch.setattr("ralph.recovery.canary_probe.find_repo_root", _failing_find_repo_root)
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+    )
+    assert result.outcome == ProbeOutcome.PASSED
+    assert len(calls) == 1
+    options = calls[0].options
+    assert options is not None
+    workspace_path = options.workspace_path
+    assert workspace_path is not None
+    assert workspace_path.name.startswith("ralph-canary-probe-")
+    assert not workspace_path.exists()
 
 
 def test_inconclusive_maps_to_the_unknown_verdict_hint(tmp_path: Path) -> None:

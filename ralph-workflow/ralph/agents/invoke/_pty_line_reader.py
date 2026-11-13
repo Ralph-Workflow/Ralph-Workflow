@@ -40,9 +40,9 @@ from ralph.agents.idle_watchdog import (
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import (
-    attach_attempt_facts,
     completion_run_id_from_extra_env,
 )
+from ralph.agents.invoke._completion_termination import publish_attempt_facts
 from ralph.agents.invoke._errors import (
     AgentInvocationError,
     SupervisionInfrastructureError,
@@ -96,7 +96,6 @@ from ralph.agents.invoke.attempt_supervision import (
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
-from ralph.agents.parsers.content_channel import provider_evidence_text
 from ralph.config.enums import AgentTransport
 from ralph.display.raw_overflow import (
     RawOverflowLog,
@@ -133,7 +132,7 @@ from ._monitor_factory import _make_process_monitor
 from ._quota_detection import (
     is_provider_quota_output_line,
     is_quota_kill_evidence,
-    provider_quota_stderr_line_matches,
+    provider_quota_log_detail_matches,
 )
 
 if TYPE_CHECKING:
@@ -1182,7 +1181,7 @@ class PtyLineReader:
             returncode=0 if returncode is None else returncode,
             issuer=TerminationIssuer.QUOTA_DETECTOR.value,
         )
-        attach_attempt_facts(error, self._attempt_supervisor().recorder)
+        publish_attempt_facts(error, self._attempt_supervisor().recorder)
         self._quota_error = error
         self._lines_event.set()
 
@@ -1199,8 +1198,7 @@ class PtyLineReader:
             return
         cli_log_path, start_offset = self._agy_cli_log
         tail = agy_fresh_cli_log_tail(cli_log_path, start_offset)
-        text = provider_evidence_text(tail)
-        if text is not None and provider_quota_stderr_line_matches(text):
+        if provider_quota_log_detail_matches(tail):
             self._terminate_for_quota(tail)
 
     def _raise_if_quota_exhausted(self) -> None:
