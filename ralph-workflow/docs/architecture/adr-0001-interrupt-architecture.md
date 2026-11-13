@@ -112,10 +112,9 @@ inside the pipeline loop. It exposes the minimum seam surface:
   passed.
 - **Exception not BaseException** (line 72) — see the section below.
 
-Clock and sleep seams are **NOT** added to the entry point because
-the entry point only uses `threading.Event` coordination, not
-`time.monotonic()` or `time.sleep()`. The dispatcher's clock and
-sleep seams are sufficient for the timing tests.
+`handle_keyboard_interrupt` coordinates through `threading.Event`; it
+calls neither `time.monotonic()` nor `time.sleep()`. The dispatcher's
+`clock` and `sleep` seams cover the timing tests.
 
 The contract for every test in
 `tests/test_runner_interrupt.py` and
@@ -346,10 +345,14 @@ assert on the recorded call shape, not on the call site.
      tests. All timing in unit / integration tests MUST go
      through the dispatcher's `clock` and `sleep` seams. The
      audit module `ralph.testing.audit_test_policy` enforces this.
-   * Bare `# noqa` or blanket `# type: ignore`. The audit
-     modules `ralph.testing.audit_lint_bypass` and
-     `ralph.testing.audit_typecheck_bypass` enforce specific
-     codes and policy-compliant reason markers.
+   * Any inline lint or type-suppression comment. The tracked
+     sources contain none: `ralph.testing.audit_lint_bypass`
+     detects inline `# noqa` directives (bare or with an error
+     code) and lint-config weakening,
+     `ralph.testing.audit_typecheck_bypass` detects type-check
+     weakening in the mypy configuration, and
+     `ralph.testing.audit_comments` treats every remaining source
+     comment as a finding.
 
 5. **Long-running-task contract.** When the first SIGINT's
    executor body (or the dispatcher's `begin_interrupt` body) is
@@ -367,9 +370,9 @@ assert on the recorded call shape, not on the call site.
 
 5a. **Entry-point minimum seam surface.** `handle_keyboard_interrupt`
     exposes exactly two kwargs (`process_manager`,
-    `poll_interval_s`) and one `RuntimeError` guard. Clock and sleep
-    seams are NOT added because the entry point only uses
-    `threading.Event` coordination. Tests MUST build a real
+    `poll_interval_s`) and one `RuntimeError` guard. The entry point
+    coordinates through `threading.Event` and calls neither
+    `time.monotonic()` nor `time.sleep()`. Tests MUST build a real
     factory-built `InterruptDispatcher` with `poll_interval_s=0.001`
     override and wrap it in a thin `_RecordingDispatcher` class for
     call-argument capture, so the per-test wall-clock stays under
