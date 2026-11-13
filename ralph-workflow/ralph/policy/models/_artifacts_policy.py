@@ -13,14 +13,17 @@ class ArtifactsPolicy(_FrozenPolicyModel):
     )
 
     @model_validator(mode="after")
-    def no_duplicate_artifact_types(self) -> Self:
-        seen: dict[tuple[str, str], str] = {}
+    def one_artifact_type_per_drain(self) -> Self:
+        seen: dict[str, tuple[str, str]] = {}
         for name, contract in self.artifacts.items():
-            key = (contract.drain, contract.artifact_type)
-            if key in seen:
+            first = seen.setdefault(contract.drain, (name, contract.artifact_type))
+            if first[1] != contract.artifact_type or first[0] != name:
                 raise ValueError(
-                    f"Artifacts '{name}' and '{seen[key]}' both declare "
-                    f"drain='{contract.drain}', artifact_type='{contract.artifact_type}'"
+                    f"Artifacts '{first[0]}' and '{name}' both claim drain "
+                    f"'{contract.drain}' with artifact types '{first[1]}' and "
+                    f"'{contract.artifact_type}'. A drain is graded on exactly one "
+                    "artifact type, so a stale contract left in a project or global "
+                    "artifacts.toml would silently override the default. Remove or "
+                    "rename the obsolete contract."
                 )
-            seen[key] = name
         return self

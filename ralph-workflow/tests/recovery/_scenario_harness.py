@@ -127,11 +127,6 @@ def _build_policy_bundle(agents: list[str] | tuple[str, ...]) -> PolicyBundle:
     )
 
     artifacts = {
-        "plan": ArtifactContract(
-            drain="development",
-            artifact_type="plan",
-            artifact_path=".agent/artifacts/plan.md",
-        ),
         "development_result": ArtifactContract(
             drain="development",
             artifact_type="development_result",
