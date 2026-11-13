@@ -434,7 +434,7 @@ def _invoke_agent_from_registry_or_opts(
     invoke = cast("_InvokeAgentFn | None", opts.get("invoke_agent"))
     if invoke is not None:
         return invoke
-    deps_invoke = cast("_InvokeAgentFn | None", pipeline_deps.invoke_agent)
+    deps_invoke = pipeline_deps.invoke_agent
     if deps_invoke is not None:
         return deps_invoke
     return invoke_agent
@@ -619,12 +619,16 @@ def _handle_recovery_attempt_failure(
     )
     controller = recovery_controller
     ledger = ctx.deps.pipeline_deps.ledger
-    demoted, demotion_reason = _demotion_after_finalization(
-        controller,
-        ledger,
-        phase=phase,
-        agent=agent,
-        workspace_changed=workspace_changed,
+    demoted, demotion_reason = (
+        (False, None)
+        if outcome is not None and outcome.retries_same_agent
+        else _demotion_after_finalization(
+            controller,
+            ledger,
+            phase=phase,
+            agent=agent,
+            workspace_changed=workspace_changed,
+        )
     )
     charged_observation = _charged_observation(
         observation,
@@ -820,6 +824,15 @@ def has_valid_terminal_artifact(
         or resolved_required_artifact is None
     ):
         return False
+    return _has_fresh_valid_artifact(ctx, resolved_required_artifact, baseline=baseline)
+
+
+def _has_fresh_valid_artifact(
+    ctx: _AgentInvocationCtx,
+    resolved_required_artifact: RequiredArtifact,
+    *,
+    baseline: list[int] | None,
+) -> bool:
     if not (ctx.workspace_scope.root / resolved_required_artifact.artifact_path).exists():
         return False
     current = _artifact_fingerprint(ctx, resolved_required_artifact)
@@ -844,6 +857,33 @@ def has_valid_terminal_artifact(
         return True
     except Exception:
         return False
+
+
+def _missing_required_artifact_event(
+    ctx: _AgentInvocationCtx,
+    state: _AttemptState,
+    artifact: RequiredArtifact | None,
+    workspace_probe: WorkspaceChangeProbe | None,
+    workspace: Workspace,
+) -> AgentFailureEvent | None:
+    if str(ctx.effect.phase) == "commit":
+        return None
+    if artifact is None or not artifact.artifact_required:
+        return None
+    if _has_fresh_valid_artifact(ctx, artifact, baseline=state.artifact_baseline):
+        return None
+    changed = (
+        workspace_probe.has_changed(str(ctx.effect.phase), workspace)
+        if state.attempt_observed and workspace_probe is not None
+        else None
+    )
+    return AgentFailureEvent(
+        phase=str(ctx.effect.phase),
+        agent=ctx.effect.agent_name,
+        artifact_valid=False,
+        workspace_changed=changed,
+        reason="required artifact missing, stale, or invalid",
+    )
 
 
 def _invoke_agent_with_recovery(
@@ -884,7 +924,7 @@ def _invoke_agent_with_recovery(
         resume_session_id=session_id or _initial_resume_session_id(ctx),
         last_agent_session_id=_safe_last_agent_session_id(ctx.state),
     )
-    attempt_workspace: Workspace | None = FsWorkspace(ctx.workspace_scope.root)
+    attempt_workspace: Workspace = FsWorkspace(ctx.workspace_scope.root)
     try:
         master_prompt_file = _materialize_master_prompt(
             ctx,
@@ -955,6 +995,15 @@ def _invoke_agent_with_recovery(
                     agent_label_scope=effective_run_id,
                     raw_line_sink=raw_line_sink,
                 )
+                missing_artifact = _missing_required_artifact_event(
+                    ctx,
+                    state,
+                    resolved_required_artifact,
+                    workspace_probe,
+                    attempt_workspace,
+                )
+                if missing_artifact is not None:
+                    return _AttemptResult(missing_artifact, state.prompt_file, session_id)
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:

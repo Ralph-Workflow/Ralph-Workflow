@@ -234,8 +234,8 @@ def test_scenario_8_return_code_ignored_artifact_presence_determines_success(
     assert outcome_8b.final_state.phase == "complete"
     assert outcome_8b.exit_code == 0
 
-@pytest.mark.timeout_seconds(3)
 
+@pytest.mark.timeout_seconds(3)
 def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
     tmp_path: Path,
 ) -> None:

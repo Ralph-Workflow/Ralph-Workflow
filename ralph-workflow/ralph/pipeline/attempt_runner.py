@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import replace
-from types import MappingProxyType, SimpleNamespace
-from typing import TYPE_CHECKING, Final, Protocol, cast
+from functools import lru_cache
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke import attempt_facts_for_failure
 from ralph.agents.registry import AgentRegistry
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    register_entry_point,
+    registered_entry_points,
+    registered_runners,
+)
 from ralph.pipeline.attempt_finalizer import AttemptFinalization
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -20,9 +26,8 @@ from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
-    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
@@ -30,41 +35,19 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_CYCLE_CAP = 200
+_AGENT_REGISTRY_CACHE_SIZE: Final[int] = 8
 
 
 class _AttemptInvoke(Protocol):
     def __call__(self, target: object, *args: object, **kwargs: object) -> object: ...
 
 
+@runtime_checkable
+class _RegistryFactoryProvider(Protocol):
+    registry_factory: Callable[[object], object] | None
+
+
 AttemptInvoke = _AttemptInvoke
-EntryPointRunner = Callable[[object], AttemptResult]
-
-
-_ENTRY_POINT_REGISTRY: Final = SimpleNamespace(
-    runners=cast("dict[AgentEntryPoint, EntryPointRunner]", {})
-)
-
-
-def _mutable_entry_point_runners() -> dict[AgentEntryPoint, EntryPointRunner]:
-    return cast(
-        "dict[AgentEntryPoint, EntryPointRunner]",
-        _ENTRY_POINT_REGISTRY.runners,
-    )
-
-
-def register_entry_point(entry_point: AgentEntryPoint, runner_fn: EntryPointRunner) -> None:
-    runners = _mutable_entry_point_runners()
-    if entry_point in runners:
-        raise ValueError(f"entry point already registered: {entry_point.value}")
-    runners[entry_point] = runner_fn
-
-
-def registered_entry_points() -> tuple[AgentEntryPoint, ...]:
-    return tuple(_mutable_entry_point_runners())
-
-
-def registered_runners() -> Mapping[AgentEntryPoint, EntryPointRunner]:
-    return MappingProxyType(_mutable_entry_point_runners())
 
 
 def build_entry_point_recovery_controller(
@@ -130,7 +113,7 @@ def run_agent_attempt(
     if (effect is None) == (invocation is None):
         raise ValueError("exactly one of effect or invocation is required")
     phase, agent = _attempt_identity(effect, invocation, execute_kwargs)
-    fingerprint = _config_fingerprint(config, agent)
+    fingerprint = _config_fingerprint(config, agent, execute_kwargs)
     session_ref = _session_ref(entry_point, phase, agent, execute_kwargs)
     finalized: dict[int, tuple[AttemptFacts, AttemptOutcome]] = {}
 
@@ -235,10 +218,35 @@ def _attempt_key(
     return f"{entry_point.value}:{phase}:{agent}:{attempt_ordinal}"
 
 
-def _config_fingerprint(config: UnifiedConfig, agent: str | None) -> str | None:
+class _AgentConfigKey:
+    __slots__ = ("_config", "_identity")
+
+    def __init__(self, config: UnifiedConfig) -> None:
+        self._config = config
+        self._identity = id(config)
+
+    def __hash__(self) -> int:
+        return self._identity
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _AgentConfigKey) and other._config is self._config
+
+
+def _agent_registry_for_uncached(config_key: _AgentConfigKey) -> AgentRegistry:
+    return AgentRegistry.from_config(config_key._config)
+
+
+_agent_registry_for = lru_cache(maxsize=_AGENT_REGISTRY_CACHE_SIZE)(_agent_registry_for_uncached)
+
+
+def _config_fingerprint(
+    config: object,
+    agent: str | None,
+    execute_kwargs: Mapping[str, object],
+) -> str | None:
     if agent is None:
         return None
-    resolved = AgentRegistry.from_config(config).get(agent)
+    resolved = _resolve_agent_config(config, agent, execute_kwargs)
     if resolved is None:
         return f"agent:{agent}"
     transport = resolved.transport
@@ -250,6 +258,50 @@ def _config_fingerprint(config: UnifiedConfig, agent: str | None) -> str | None:
         json_parser=resolved.json_parser.value,
         transport=transport.value if transport is not None else None,
     )
+
+
+def _resolve_agent_config(
+    config: object,
+    agent: str,
+    execute_kwargs: Mapping[str, object],
+) -> AgentConfig | None:
+    registry = _agent_registry(config, execute_kwargs)
+    if registry is None:
+        return None
+    try:
+        resolved = registry.get(agent)
+    except Exception:
+        return None
+    return resolved if isinstance(resolved, AgentConfig) else None
+
+
+def _agent_registry(
+    config: object,
+    execute_kwargs: Mapping[str, object],
+) -> AgentRegistry | None:
+    factory = _registry_factory(execute_kwargs)
+    if factory is not None:
+        try:
+            registry = factory(config)
+        except Exception:
+            registry = None
+        if registry is not None:
+            return cast("AgentRegistry", registry)
+    if not isinstance(config, UnifiedConfig):
+        return None
+    return _agent_registry_for(_AgentConfigKey(config))
+
+
+def _registry_factory(
+    execute_kwargs: Mapping[str, object],
+) -> Callable[[object], object] | None:
+    pipeline_deps = execute_kwargs.get("pipeline_deps")
+    if not isinstance(pipeline_deps, _RegistryFactoryProvider):
+        return None
+    factory = pipeline_deps.registry_factory
+    if factory is None:
+        return None
+    return factory
 
 
 def _is_agent_failure_event(event: object) -> bool:

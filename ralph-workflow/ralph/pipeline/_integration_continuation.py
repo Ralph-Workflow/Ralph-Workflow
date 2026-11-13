@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -11,8 +11,13 @@ from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._pending_merge_commit import _git_value
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
-from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    register_entry_point,
+    registered_entry_points,
+)
+from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller, run_agent_attempt
 from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate_record import (
     MARK_REINTEGRATE_PENDING,
@@ -33,9 +38,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.state import PipelineState
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
@@ -564,4 +572,33 @@ def config_for_owned_integration(config: UnifiedConfig) -> UnifiedConfig:
                 "general": config.general.model_copy(update={"auto_integrate_enabled": True}),
             }
         )
+    )
+
+
+def _run_integration_continuation_attempt(
+    *_args: object,
+    effect: InvokeAgentEffect | None = None,
+    invocation: object | None = None,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return run_agent_attempt(
+        AgentEntryPoint.INTEGRATION_CONTINUATION,
+        effect=effect,
+        invocation=invocation,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.INTEGRATION_CONTINUATION not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.INTEGRATION_CONTINUATION,
+        cast("EntryPointRunner", _run_integration_continuation_attempt),
     )

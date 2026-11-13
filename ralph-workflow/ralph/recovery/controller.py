@@ -585,6 +585,10 @@ class RecoveryController:
     def last_resolved_verdict(self) -> PersistedVerdict | None:
         return self._last_resolved_verdict
 
+    @property
+    def last_demoted_reason(self) -> str | None:
+        return self._last_demoted_reason
+
     def handle(
         self,
         state: PipelineState,
@@ -998,34 +1002,27 @@ class RecoveryController:
         signal_name: str | None = None,
         signal_provider_originated: bool = False,
     ) -> PersistedVerdict | None:
+        attempt_facts = facts if facts is not None else AttemptFacts()
         typed_signal = (
             build_typed_agent_signal(
                 signal_name,
                 signal_provider_originated,
-                facts if facts is not None else AttemptFacts(),
+                attempt_facts,
             )
             if signal_name is not None
             else None
         )
-        outcome, _demoted_reason, resolved_verdict = self._finalize_attempt_now(
+        outcome = self.finalize_attempt(
             phase,
             agent,
-            facts=facts,
+            facts=attempt_facts,
             attempt_failed=True,
             typed_signal=typed_signal,
             exc=exc,
-            retryable_reason=None,
-            probe_mode=False,
-            config_fingerprint=None,
-            session_ref=None,
-            charge_ledger=False,
         )
-        self._last_attempt_outcome = outcome
-        self._last_demoted_reason = None
-        self._last_resolved_verdict = resolved_verdict
         if outcome.verdict is not None:
             return outcome.verdict
-        return resolved_verdict
+        return self._last_resolved_verdict
 
     def _get_chain_agents(self, phase: str) -> tuple[str, ...] | None:
         chain_config = self._chain_config_for_phase(phase)

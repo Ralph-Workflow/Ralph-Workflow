@@ -1180,6 +1180,39 @@ class ProcessLineReader:
         )
         return self._run_drain_window(watchdog, drain_deadline)
 
+    def _finish_parent_exit_with_open_stream(self) -> bool:
+        returncode = observed_returncode(self._handle)
+        if returncode is None:
+            return False
+        post_exit = PostExitWatchdog(self._policy, self._clock)
+
+        def classify_stream_state() -> AgentExecutionState:
+            with self._lines_lock:
+                reader_done = self._reader_done[0]
+            return (
+                AgentExecutionState.RESUMABLE_CONTINUE
+                if reader_done
+                else AgentExecutionState.WAITING_ON_CHILD
+            )
+
+        verdict = post_exit.wait_descendant_quiesce(classify_stream_state)
+        if verdict != PostExitVerdict.FIRE_DESCENDANT_HANG:
+            return False
+        self._termination.record_post_exit_watchdog_fire()
+        self._termination.record_observed_returncode(returncode)
+        self._termination.record_reported_returncode(returncode)
+        self._handle.terminate(
+            grace_period_s=0.5,
+            issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG,
+        )
+        pid = cast("int | None", getattr(self._handle, "pid", None))
+        if pid is not None:
+            if self._process_teardown is None:
+                teardown_subtree(pid, issuer="invoke:process")
+            else:
+                self._process_teardown.teardown_subtree(pid, issuer="invoke:process")
+        return True
+
     def _build_opencode_subagent_probe(
         self, watchdog: IdleWatchdog
     ) -> OpenCodeSubagentSessionProbe | None:
@@ -1282,7 +1315,10 @@ class ProcessLineReader:
                         yield from self._raise_timeout_result(result)
                     break
 
-                if self._finish_terminal_completion():
+                if (
+                    self._finish_terminal_completion()
+                    or self._finish_parent_exit_with_open_stream()
+                ):
                     break
 
                 result = self._check_fire(

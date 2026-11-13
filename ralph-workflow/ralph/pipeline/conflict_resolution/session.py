@@ -9,7 +9,12 @@ from loguru import logger
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    register_entry_point,
+    registered_entry_points,
+)
 from ralph.pipeline.attempt_runner import (
     build_entry_point_recovery_controller,
     run_agent_attempt,
@@ -39,7 +44,9 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
@@ -59,6 +66,35 @@ __all__ = [
     "invoke_resolution_agent",
     "resolution_chain_agents",
 ]
+
+
+def _run_conflict_resolution_attempt(
+    *_args: object,
+    effect: InvokeAgentEffect | None = None,
+    invocation: object | None = None,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return run_agent_attempt(
+        AgentEntryPoint.CONFLICT_RESOLUTION,
+        effect=effect,
+        invocation=invocation,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.CONFLICT_RESOLUTION not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.CONFLICT_RESOLUTION,
+        cast("EntryPointRunner", _run_conflict_resolution_attempt),
+    )
 
 _MIN_FALLBACK_CHAIN_LENGTH = 2
 

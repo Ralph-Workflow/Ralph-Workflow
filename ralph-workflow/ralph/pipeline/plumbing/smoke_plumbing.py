@@ -54,7 +54,12 @@ from ralph.mcp.artifacts.smoke_test_result import (
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    register_entry_point,
+    registered_entry_points,
+)
 from ralph.pipeline.attempt_runner import (
     build_entry_point_recovery_controller,
     run_agent_attempt,
@@ -95,13 +100,45 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
+    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.session_bridge import BridgeFactory
+    from ralph.pipeline.state import PipelineState
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.recovery.controller import RecoveryController
 
 _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
 _SMOKE_OUTPUT_FILE = _SMOKE_RELATIVE_DIR / "todo-list.js"
 _LEGACY_INTERACTIVE_CLAUDE_MODEL = "haiku"
 _SMOKE_RUN_ID = "interactive-claude-smoke"
+
+
+def _run_smoke_attempt(
+    *_args: object,
+    effect: InvokeAgentEffect | None = None,
+    invocation: object | None = None,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return run_agent_attempt(
+        AgentEntryPoint.SMOKE,
+        effect=effect,
+        invocation=invocation,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.SMOKE not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.SMOKE,
+        cast("EntryPointRunner", _run_smoke_attempt),
+    )
 
 execute_agent_effect = PRODUCTION_INVOKE
 

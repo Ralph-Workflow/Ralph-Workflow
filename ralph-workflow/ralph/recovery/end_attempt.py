@@ -62,28 +62,24 @@ def end_attempt(
             verdict=verdict,
             reason=attribution.reason,
         )
-    if attribution.attribution is Attribution.TASK_OR_ENVIRONMENT:
-        outcome_exists = facts.artifact_valid
-        peers_failed_identically = peer_failures_identical
-        if outcome_exists or peers_failed_identically:
-            return AttemptOutcome(
-                kind=AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE,
-                issuer=None,
-                verdict=verdict,
-                reason=attribution.reason,
-            )
-        return AttemptOutcome(
-            kind=AttemptOutcomeKind.UNKNOWN,
-            issuer=None,
-            verdict=verdict,
-            reason=attribution.reason,
-        )
-    if verdict.verdict is DeadAgentVerdict.HEALTHY and retryable_reason is not None:
+    if retryable_reason is not None:
         return AttemptOutcome(
             kind=AttemptOutcomeKind.RETRYABLE_FAILURE,
             issuer=None,
             verdict=verdict,
             reason=retryable_reason,
+        )
+    if attribution.attribution is Attribution.TASK_OR_ENVIRONMENT:
+        kind = (
+            AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE
+            if facts.artifact_valid or peer_failures_identical
+            else AttemptOutcomeKind.UNKNOWN
+        )
+        return AttemptOutcome(
+            kind=kind,
+            issuer=None,
+            verdict=verdict,
+            reason=attribution.reason,
         )
     return AttemptOutcome(
         kind=AttemptOutcomeKind.UNKNOWN,

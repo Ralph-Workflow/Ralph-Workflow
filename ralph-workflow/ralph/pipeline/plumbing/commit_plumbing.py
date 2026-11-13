@@ -55,7 +55,12 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.server._process_secrecy import mint_and_protect_broker_secret
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    register_entry_point,
+    registered_entry_points,
+)
 from ralph.pipeline.attempt_runner import (
     build_entry_point_recovery_controller,
     run_agent_attempt,
@@ -109,6 +114,8 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
+    from ralph.pipeline.attempt_result import AttemptResult
+    from ralph.pipeline.state import PipelineState
     from ralph.pro_support.hooks import ProPipelineHooks
     from ralph.recovery.controller import RecoveryController
 
@@ -140,6 +147,35 @@ _MAX_COMMIT_RAW_OUTPUT_LINES = 256
 _COMMIT_RUN_ID = "commit-plumbing"
 
 execute_agent_effect = PRODUCTION_INVOKE
+
+
+def _run_commit_generation_attempt(
+    *_args: object,
+    effect: InvokeAgentEffect | None = None,
+    invocation: object | None = None,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return run_agent_attempt(
+        AgentEntryPoint.COMMIT_GENERATION,
+        effect=effect,
+        invocation=invocation,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.COMMIT_GENERATION not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.COMMIT_GENERATION,
+        cast("EntryPointRunner", _run_commit_generation_attempt),
+    )
 
 
 class _AttemptInvoke(typing.Protocol):

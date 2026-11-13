@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import re
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -85,7 +86,9 @@ from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseLoopPolicy
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.classifier import ClassifiedFailure, FailureContext
+from ralph.recovery.controller import build_typed_agent_signal
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.failure_classifier import (
     TYPED_SIGNAL_NAMES,
@@ -112,9 +115,20 @@ def _restore_work_units(
     state: PipelineState,
     new_state: PipelineState,
 ) -> PipelineState:
+    if state.phase != new_state.phase and new_state.is_waiting_state:
+        new_state = new_state.clear_waiting().copy_with(last_retry_delay_ms=0)
     if state.work_units and not new_state.work_units:
         return new_state.copy_with(work_units=state.work_units)
     return new_state
+
+
+def _without_terminal_waiting(state: PipelineState, policy: PipelinePolicy | None) -> PipelineState:
+    if policy is None or not state.is_waiting_state:
+        return state
+    phase = policy.phases.get(state.phase)
+    if phase is None or phase.terminal_outcome != "failure":
+        return state
+    return state.clear_waiting().copy_with(last_retry_delay_ms=0)
 
 
 def _dispatch_worker_event(
@@ -210,6 +224,8 @@ def _reduce_phase_failure(
             ),
             workspace_changed=workspace_changed,
         )
+        if pipeline_policy is not None and new_state.phase == pipeline_policy.recovery.failed_route:
+            new_state = new_state.clear_waiting().copy_with(last_retry_delay_ms=0)
         if pipeline_policy is not None and state.phase != new_state.phase:
             new_state = progress.apply_execution_cycle_outcome(
                 state,
@@ -511,6 +527,9 @@ def reduce(
         pipeline_policy,
         integration_record=integration_record,
     )
+    routed_state = _without_terminal_waiting(routed_state, pipeline_policy)
+    if routed_state.phase == "failed_terminal" and routed_state.is_waiting_state:
+        routed_state = routed_state.clear_waiting().copy_with(last_retry_delay_ms=0)
     if recovery is not None and hasattr(recovery, "ledger"):
         try:
             snap = recovery.ledger.snapshot()
@@ -524,6 +543,9 @@ def reduce(
             and verdict_record != routed_state.dead_agent_verdict_record
         ):
             routed_state = routed_state.copy_with(dead_agent_verdict_record=verdict_record)
+        feedback_snapshot = recovery.false_bench_feedback.snapshot()
+        if feedback_snapshot != routed_state.false_bench_feedback:
+            routed_state = routed_state.copy_with(false_bench_feedback=feedback_snapshot)
     return routed_state, effects
 
 
@@ -587,7 +609,7 @@ def _enter_failed_recovery(
         rebase = rebase.advance_conflict_strategy(reason)
         if not rebase.resolution_exhausted:
             retry_delay_ms = min(1000 * (1 << rebase.conflict_strategy_index), 10_000)
-    new_state = progress.advance_phase(state, target, policy=policy).copy_with(
+    new_state = progress.advance_phase(state.clear_waiting(), target, policy=policy).copy_with(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
         rebase=rebase,
@@ -868,24 +890,16 @@ def _handle_owned_agent_failure(
     if current_agent is not None:
         observation = observation_from_event(event)
         if observation is None or not observation.already_charged:
-            workspace_changed: bool | None = (
-                observation.resolved_workspace_changed() if observation is not None else None
-            )
-            demoted_reason = recovery.record_attempt_fact(
+            recovery.finalize_attempt(
                 state.phase,
                 current_agent,
-                artifact_valid=False,
-                workspace_changed=workspace_changed,
-                free_retry_category=True,
+                facts=_route_attempt_facts(observation),
+                attempt_failed=True,
             )
-            if demoted_reason is not None and len(chain.agents) == 1:
-                logger.warning(demoted_reason)
-                return _enter_failed_recovery(state, demoted_reason, policy)
-        recovery.record_confirmed_dead_agent(
-            state.phase,
-            current_agent,
-            facts=observation.facts if observation is not None else None,
-        )
+        demoted_reason = recovery.last_demoted_reason
+        if demoted_reason is not None and len(chain.agents) == 1:
+            logger.warning(demoted_reason)
+            return _enter_failed_recovery(state, demoted_reason, policy)
     selection = recovery.preferred_agent_index(
         state.phase,
         chain.agents,
@@ -987,6 +1001,20 @@ def _typed_signal_from_retry_intent(intent: AgentRetryIntent) -> tuple[str | Non
     return name, provider_originated
 
 
+def _route_attempt_facts(observation: AgentFailureEvent | None) -> AttemptFacts:
+    if observation is None:
+        return AttemptFacts()
+    workspace_changed = observation.resolved_workspace_changed()
+    if observation.facts is None:
+        return AttemptFacts(
+            artifact_valid=observation.artifact_valid,
+            workspace_changed=workspace_changed,
+        )
+    if observation.facts.workspace_changed is None and workspace_changed is not None:
+        return replace(observation.facts, workspace_changed=workspace_changed)
+    return observation.facts
+
+
 def _handle_skip_same_agent_retries(
     state: PipelineState,
     chain: AgentChainState,
@@ -1002,30 +1030,27 @@ def _handle_skip_same_agent_retries(
         )
         observation = observation_from_event(event)
         if current_agent is not None:
-            if observation is None or not observation.already_charged:
-                workspace_changed: bool | None = (
-                    observation.resolved_workspace_changed() if observation is not None else None
-                )
-                demoted_reason = recovery.record_attempt_fact(
-                    state.phase,
-                    current_agent,
-                    artifact_valid=False,
-                    workspace_changed=workspace_changed,
-                    free_retry_category=True,
-                )
-                if demoted_reason is not None and len(chain.agents) == 1:
-                    logger.warning(demoted_reason)
-                    return _enter_failed_recovery(state, demoted_reason, policy)
+            facts = _route_attempt_facts(observation)
             signal_name, provider_originated = _typed_signal_from_retry_intent(
                 state.agent_retry_intent
             )
-            recovery.record_confirmed_dead_agent(
-                state.phase,
-                current_agent,
-                facts=observation.facts if observation is not None else None,
-                signal_name=signal_name,
-                signal_provider_originated=provider_originated,
+            typed_signal = (
+                build_typed_agent_signal(signal_name, provider_originated, facts)
+                if signal_name is not None
+                else None
             )
+            if observation is None or not observation.already_charged:
+                recovery.finalize_attempt(
+                    state.phase,
+                    current_agent,
+                    facts=facts,
+                    attempt_failed=True,
+                    typed_signal=typed_signal,
+                )
+            demoted_reason = recovery.last_demoted_reason
+            if demoted_reason is not None and len(chain.agents) == 1:
+                logger.warning(demoted_reason)
+                return _enter_failed_recovery(state, demoted_reason, policy)
         selection = recovery.preferred_agent_index(
             state.phase,
             chain.agents,

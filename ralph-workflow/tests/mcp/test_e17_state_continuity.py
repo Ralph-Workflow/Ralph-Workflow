@@ -787,7 +787,7 @@ def test_e17_repetition_tracker_carried_across_real_subprocess_swap(
         assert old_tracker.observe(signature) is False
         assert old_tracker.observe(signature) is False
 
-        old_inner.process.terminate()
+        old_inner.process.terminate(issuer=ProcessTerminationIssuer.OPERATOR)
         restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is True
         assert bridge.process.pid == new_proc.pid, (

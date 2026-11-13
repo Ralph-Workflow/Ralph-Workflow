@@ -26,7 +26,12 @@ from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, resolve_model_identity
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    register_entry_point,
+    registered_entry_points,
+)
 from ralph.pipeline.attempt_runner import (
     build_entry_point_recovery_controller,
     run_agent_attempt,
@@ -44,11 +49,42 @@ if TYPE_CHECKING:
     from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.pipeline.attempt_result import AttemptResult
+    from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.controller import RecoveryController
 
     from ._session_runtime_request import ManagedAgentSessionRequest
+
+
+def _run_session_runtime_attempt(
+    *_args: object,
+    effect: object | None = None,
+    invocation: object | None = None,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return run_agent_attempt(
+        AgentEntryPoint.SESSION_RUNTIME,
+        effect=effect,
+        invocation=invocation,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.SESSION_RUNTIME not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.SESSION_RUNTIME,
+        cast("EntryPointRunner", _run_session_runtime_attempt),
+    )
 
 
 class ManagedAgentSessionRuntime:

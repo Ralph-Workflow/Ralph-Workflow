@@ -31,8 +31,8 @@ if TYPE_CHECKING:
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
 
-@pytest.mark.timeout_seconds(3)
 
+@pytest.mark.timeout_seconds(3)
 def test_run_loop_real_resume_restores_ledger_without_injected_controller(
     tmp_path: Path,
 ) -> None:

@@ -22,7 +22,12 @@ from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    register_entry_point,
+    registered_entry_points,
+)
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
@@ -52,6 +57,32 @@ if TYPE_CHECKING:
     class _AttemptRunnerDepsModule(Protocol):
         PRODUCTION_INVOKE: AttemptInvoke
         AttemptRunnerDeps: type[AttemptRunnerDeps]
+
+
+def _run_canary_probe_attempt(
+    *_args: object,
+    effect: object | None = None,
+    invocation: object | None = None,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: object | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    runner = cast(
+        "_AttemptRunnerModule",
+        import_module("ralph.pipeline.attempt_runner"),
+    )
+    return runner.run_agent_attempt(
+        AgentEntryPoint.CANARY_PROBE,
+        effect=effect,
+        invocation=invocation,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
 
 
 CANARY_MARKER_FILENAME: Final[str] = "ralph_canary_marker.txt"
@@ -407,6 +438,13 @@ def _run_probe_attempt(
         options=prepared.options,
     )
     logger.info("canary probe attempt outcome: {}", result.outcome.kind)
+
+
+if AgentEntryPoint.CANARY_PROBE not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.CANARY_PROBE,
+        cast("EntryPointRunner", _run_canary_probe_attempt),
+    )
 
 
 def _judge_marker(workspace_path: Path, started: float) -> _ProbeResult:
