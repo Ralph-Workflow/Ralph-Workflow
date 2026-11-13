@@ -2382,6 +2382,13 @@ ralph.agents.parsers.codex
    :members:
    :show-inheritance:
 
+ralph.agents.parsers.content_channel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.content_channel
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers.cursor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -65,4 +65,5 @@ __all__ = [
     "DEFAULT_MAX_PROBES_PER_RUN",
     "build_dead_agent_probe_runner",
     "production_dead_agent_probe_runner",
+    "run_canary_probe",
 ]

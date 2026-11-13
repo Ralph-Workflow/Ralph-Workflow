@@ -15,15 +15,6 @@ from ralph.testing.repo_structure_boundary_rules import (
 
 _CONTROLLER_PATH = "ralph/recovery/controller.py"
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "real controller source read replaced with an inline snapshot": (
-        "the test policy audit bans repository .read_text() in tests; the real "
-        "recovery controller's _spent_agents source is inlined as a snapshot so "
-        "the B2 boundary check keeps proving the sanctioned controller "
-        "operations trigger no violations without filesystem I/O"
-    ),
-}
-
 _REAL_CONTROLLER_SPENT_AGENTS_SNAPSHOT = """
 class RecoveryController:
     def __init__(self, opts):
@@ -414,9 +405,7 @@ def test_rule_module_has_no_module_docstring() -> None:
     ],
 )
 def test_b8_rejects_process_imports_and_managed_process_references(path: str) -> None:
-    assert any(
-        " B8 " in item for item in collect_boundary_violations(path, "import ralph.process")
-    )
+    assert any(" B8 " in item for item in collect_boundary_violations(path, "import ralph.process"))
     assert any(
         " B8 " in item
         for item in collect_boundary_violations(path, "import ralph.process.supervisor as sup")
@@ -427,10 +416,13 @@ def test_b8_rejects_process_imports_and_managed_process_references(path: str) ->
     )
     assert any(
         " B8 " in item
-        for item in collect_boundary_violations(path, "def f(proc):\n    return proc.ManagedProcess")
+        for item in collect_boundary_violations(
+            path, "def f(proc):\n    return proc.ManagedProcess"
+        )
     )
     assert not any(
-        " B8 " in item for item in collect_boundary_violations(path, "from ralph.agents import invoke")
+        " B8 " in item
+        for item in collect_boundary_violations(path, "from ralph.agents import invoke")
     )
 
 
@@ -449,3 +441,14 @@ def test_b8_missing_detector_file_is_no_violation() -> None:
             "ralph/agents/parsers/content_channel.py", "from dataclasses import dataclass"
         )
     )
+
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "real controller source read replaced with an inline snapshot": (
+        "the test policy audit bans repository .read_text() in tests; the real "
+        "recovery controller's _spent_agents source is inlined as a snapshot so "
+        "the B2 boundary check keeps proving the sanctioned controller "
+        "operations trigger no violations without filesystem I/O"
+    ),
+    "test_b8_rejects_process_imports_and_managed_process_references": "ruff format rewrap only",
+}

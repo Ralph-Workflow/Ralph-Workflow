@@ -98,17 +98,14 @@ def _b8_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
                 reasons.append("process-layer import in detector module")
         elif isinstance(node, ast.ImportFrom):
             if node.module == _B8_PROCESS_IMPORT_PREFIX or (
-                node.module is not None
-                and node.module.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
+                node.module is not None and node.module.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
             ):
                 reasons.append("process-layer import in detector module")
         elif (isinstance(node, ast.Name) and node.id == _B8_PROCESS_NAME) or (
             isinstance(node, ast.Attribute) and node.attr == _B8_PROCESS_NAME
         ):
             reasons.append("ManagedProcess reference in detector module")
-        violations.extend(
-            _violation(relative_path, node, "B8", reason) for reason in reasons
-        )
+        violations.extend(_violation(relative_path, node, "B8", reason) for reason in reasons)
     return violations
 
 

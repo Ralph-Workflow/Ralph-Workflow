@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import signal
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any
 
 import psutil
 import pytest
@@ -52,6 +52,10 @@ def _raise_no_such(pid: int) -> None:
     raise psutil.NoSuchProcess(pid)
 
 
+def _untyped_fixture(value: str) -> Any:
+    return value
+
+
 def _record(label: str) -> ProcessRecord:
     return ProcessRecord(
         pid=4242,
@@ -66,19 +70,19 @@ def _record(label: str) -> ProcessRecord:
 
 def test_module_teardown_subtree_rejects_plain_str_issuer() -> None:
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown_subtree(4242, issuer=cast("ProcessTerminationIssuer", "invoke:process"))
+        teardown_subtree(4242, issuer=_untyped_fixture("invoke:process"))
 
 
 def test_default_teardown_rejects_plain_str_issuer() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=0.0)
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown.teardown_subtree(4242, issuer=cast("ProcessTerminationIssuer", "invoke:pty"))
+        teardown.teardown_subtree(4242, issuer=_untyped_fixture("invoke:pty"))
 
 
 def test_default_teardown_rejects_arbitrary_str_subclass_issuer() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=0.0)
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown.teardown_subtree(4242, issuer=cast("ProcessTerminationIssuer", "operator"))
+        teardown.teardown_subtree(4242, issuer=_untyped_fixture("operator"))
 
 
 def test_owner_label_family_mismatch_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,7 +127,7 @@ def test_owner_label_match_signals_stale_session_group(monkeypatch: pytest.Monke
         group_signals.append((pgid, sig))
 
     monkeypatch.setattr(os, "killpg", fake_killpg)
-    monkeypatch.setattr(psutil, "Process", lambda pid: cast("_FakeProcess", _raise_no_such(pid)))
+    monkeypatch.setattr(psutil, "Process", lambda pid: _untyped_fixture(_raise_no_such(pid)))
     DefaultProcessTeardown(
         kill_escalation_ms=0.0,
         record_lookup=lambda _pid: _record("executor:run-process"),

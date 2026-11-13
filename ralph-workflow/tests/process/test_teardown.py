@@ -114,7 +114,9 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
         psutil.Process(host.pid)
 
     teardown = DefaultProcessTeardown(kill_escalation_ms=5.0)
-    teardown.teardown_subtree(host.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN, pgid=host_pgid)
+    teardown.teardown_subtree(
+        host.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN, pgid=host_pgid
+    )
 
     deadline = time.monotonic() + 0.5
     while time.monotonic() < deadline:

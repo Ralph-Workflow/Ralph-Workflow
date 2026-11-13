@@ -323,9 +323,12 @@ copy of it on filesystems without symlinks.
 
 The source column names the page each path was taken from; the paths were
 last verified on 2026-11-11. A root id names a skill directory, not an agent.
-An `agy` invocation runs with a private `HOME`, so the two Antigravity roots
-are not on that invocation's skill path — see
-[Agent Compatibility](agent-compatibility.md#agy).
+An `agy` invocation runs with a private `HOME`, and Ralph Workflow projects the two
+Ralph-managed Antigravity roots — `.gemini/antigravity-cli/skills` and
+`.gemini/config/skills` relative to the home directory — into that private
+home. The installed universal skills and their companion files therefore stay
+on the invocation's skill path while the operator's own configuration stays
+isolated — see [Agent Compatibility](agent-compatibility.md#agy).
 
 ### `[skills]`
 

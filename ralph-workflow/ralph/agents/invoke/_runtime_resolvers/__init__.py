@@ -16,6 +16,7 @@ from ralph.agents.invoke._invoke_options import (
     _UPSTREAM_ENV_APPLIER_OVERRIDE,
 )
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
+from ralph.agents.invoke._runtime_resolvers._agy_skills import project_agy_skill_roots
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -576,6 +577,7 @@ class AgyRuntimeResolver:
             source_home / ".gemini" / "antigravity-cli",
             private_home / ".gemini" / "antigravity-cli",
         )
+        project_agy_skill_roots(source_home, private_home)
         runtime_env["HOME"] = str(private_home)
 
         return ResolvedInvocationRuntime(

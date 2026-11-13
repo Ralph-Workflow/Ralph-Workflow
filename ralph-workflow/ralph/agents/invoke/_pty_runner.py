@@ -204,7 +204,9 @@ def run_pty_and_read_lines(
                     )
                     exit_pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
                     if exit_pid is not None:
-                        teardown_subtree(exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
+                        teardown_subtree(
+                            exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG
+                        )
                     raise _IdleStreamTimeoutError(
                         ctx.policy.process_exit_wait_seconds,
                         WatchdogFireReason.PROCESS_EXIT_HANG,

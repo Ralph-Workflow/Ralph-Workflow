@@ -658,6 +658,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_CUSTOM_COMMAND_REGISTRY", "_PARSER_REGISTRY"),
         ),
         (
+            "tests/agents/invoke/test_cli_attempt_fact_completeness.py",
+            "ralph.agents.parsers",
+            ("_PARSER_REGISTRY",),
+        ),
+        (
             "tests/agents/test_legacy_module_dicts_are_views.py",
             "ralph.agents.execution_state._factory",
             ("_STRATEGY_DISPATCH",),

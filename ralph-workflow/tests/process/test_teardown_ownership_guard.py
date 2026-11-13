@@ -117,7 +117,9 @@ def test_own_descendant_is_reaped(monkeypatch: pytest.MonkeyPatch) -> None:
     kills: list[int] = []
     _install_tree(monkeypatch, kills, host_pid=4242, parent_pid=os.getpid())
 
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+    )
 
     assert kills == [4242]
 
@@ -128,7 +130,9 @@ def test_dead_host_without_verified_pgid_does_not_signal_a_group(
     group_signals = _capture_group_signals(monkeypatch)
     monkeypatch.setattr(psutil, "Process", _no_such_process)
 
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(999_999, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        999_999, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+    )
 
     assert group_signals == [], (
         "blind killpg on a dead PID — this SIGKILLs whichever unrelated "
@@ -191,7 +195,9 @@ def test_registered_session_is_reaped_after_its_leader_exits(
     group_signals = _capture_group_signals(monkeypatch)
     monkeypatch.setattr(psutil, "Process", _no_such_process)
 
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+    )
 
     assert (4242, signal.SIGTERM) in group_signals
 
@@ -210,10 +216,14 @@ def test_registration_is_dropped_once_the_subtree_is_reaped(
     register_child_session(4242)
 
     monkeypatch.setattr(psutil, "Process", _no_such_process)
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+    )
 
     group_signals = _capture_group_signals(monkeypatch)
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+    )
 
     assert group_signals == []
 
@@ -231,7 +241,9 @@ def test_registration_refuses_a_pid_we_do_not_own(monkeypatch: pytest.MonkeyPatc
 
     group_signals = _capture_group_signals(monkeypatch)
     monkeypatch.setattr(psutil, "Process", _no_such_process)
-    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+    DefaultProcessTeardown(kill_escalation_ms=0.0).teardown_subtree(
+        4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+    )
 
     assert group_signals == []
 

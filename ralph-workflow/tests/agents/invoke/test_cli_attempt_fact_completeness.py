@@ -112,8 +112,7 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
     (
         "codex",
         "tool_calls",
-        "codex runs GenericExecutionStrategy, which classifies every captured"
-        " line as output_line",
+        "codex runs GenericExecutionStrategy, which classifies every captured line as output_line",
     ),
     (
         "codex",
@@ -128,8 +127,7 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
     (
         "gemini",
         "tool_calls",
-        "gemini runs GenericExecutionStrategy, which classifies every captured"
-        " line as output_line",
+        "gemini runs GenericExecutionStrategy, which classifies every captured line as output_line",
     ),
     (
         "gemini",
@@ -260,9 +258,6 @@ def _populated_fields(facts: AttemptFacts) -> set[str]:
 
 def _param_id(parser_key: str) -> str:
     if parser_key == "agy":
-        # tests/conftest.py auto-marks any nodeid containing the agy CLI name as
-        # smoke (deselected from the default gate); the upstream binary's full
-        # name keeps this case in the default suite.
         return "antigravity"
     return parser_key
 

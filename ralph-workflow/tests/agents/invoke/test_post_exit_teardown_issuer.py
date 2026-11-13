@@ -102,6 +102,4 @@ def test_quiesced_teardown_issuer_is_invoke_teardown(tmp_path: Path) -> None:
     _error, teardown = _run(tmp_path, descendants_alive=False)
 
     assert teardown.calls, "quiesced completion must still tear down the process subtree"
-    assert {issuer for _pid, issuer in teardown.calls} == {
-        ProcessTerminationIssuer.INVOKE_TEARDOWN
-    }
+    assert {issuer for _pid, issuer in teardown.calls} == {ProcessTerminationIssuer.INVOKE_TEARDOWN}

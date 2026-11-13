@@ -447,7 +447,9 @@ def check_broken_agent_timer(
         if process_teardown is None:
             teardown_subtree(pid, issuer=ProcessTerminationIssuer.BROKEN_AGENT_TIMER)
         else:
-            process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.BROKEN_AGENT_TIMER)
+            process_teardown.teardown_subtree(
+                pid, issuer=ProcessTerminationIssuer.BROKEN_AGENT_TIMER
+            )
     error = BrokenAgentExitError(
         agent_name,
         reason="no_llm_activity" if watchdog.has_any_output() else "no_output",
@@ -963,7 +965,9 @@ class ProcessLineReader:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer=ProcessTerminationIssuer.QUOTA_DETECTOR)
             else:
-                self._process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.QUOTA_DETECTOR)
+                self._process_teardown.teardown_subtree(
+                    pid, issuer=ProcessTerminationIssuer.QUOTA_DETECTOR
+                )
         returncode = observed_returncode(self._handle)
         self._termination.record_observed_returncode(returncode)
         self._quota_error = QuotaExhaustedError(
@@ -1004,7 +1008,9 @@ class ProcessLineReader:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
             else:
-                self._process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+                self._process_teardown.teardown_subtree(
+                    pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+                )
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -1073,7 +1079,9 @@ class ProcessLineReader:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer=process_issuer_for_fire_reason(fire_reason))
             else:
-                self._process_teardown.teardown_subtree(pid, issuer=process_issuer_for_fire_reason(fire_reason))
+                self._process_teardown.teardown_subtree(
+                    pid, issuer=process_issuer_for_fire_reason(fire_reason)
+                )
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         now = self._clock.monotonic()
@@ -1304,7 +1312,9 @@ class ProcessLineReader:
             if self._process_teardown is None:
                 teardown_subtree(pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
             else:
-                self._process_teardown.teardown_subtree(pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
+                self._process_teardown.teardown_subtree(
+                    pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG
+                )
         return True
 
     def _build_opencode_subagent_probe(
@@ -1497,7 +1507,9 @@ def _terminate_hung_process_exit(
         if ctx.process_teardown is None:
             teardown_subtree(exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
         else:
-            ctx.process_teardown.teardown_subtree(exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG)
+            ctx.process_teardown.teardown_subtree(
+                exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG
+            )
     raise _IdleStreamTimeoutError(
         ctx.policy.process_exit_wait_seconds,
         WatchdogFireReason.PROCESS_EXIT_HANG,
