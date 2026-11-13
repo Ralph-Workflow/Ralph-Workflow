@@ -27,6 +27,14 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "behaviourally by the provider_quota_kill_evidence and "
         "is_quota_kill_evidence assertions"
     ),
+    "provider_evidence_text requires positive provider provenance": (
+        "structured JSON detail yields ProviderText only when the envelope is a "
+        "positively classified provider error event (declared error type, error "
+        "item, or non-null error field); command_execution, tool, user, "
+        "reasoning, and subagent envelopes plus error-null content lines are "
+        "rejected so quota-sounding phrases inside them never raise; malformed "
+        "or unparseable structured lines and plain text stay evidence candidates"
+    ),
 }
 
 _QUOTA_WORDS = "Your account has credits exhausted for this period."
@@ -103,6 +111,20 @@ _NON_PROVIDER_LINES = (
     json.dumps({"type": "thinking", "text": _QUOTA_WORDS}),
     json.dumps({"type": "subagent", "text": _QUOTA_WORDS}),
     "{not json",
+)
+
+_STRUCTURED_NON_PROVIDER_DATA_LINES = (
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "aggregated_output": _QUOTA_WORDS,
+                "exit_code": 0,
+            },
+        }
+    ),
+    json.dumps({"error": None, "content": _QUOTA_WORDS}),
 )
 
 
@@ -278,6 +300,31 @@ def test_json_non_provider_detail_is_not_kill_evidence(line: str) -> None:
     text = provider_evidence_text(line)
     assert text is None or not provider_quota_kill_evidence(text)
     assert not is_quota_kill_evidence(line)
+
+
+@pytest.mark.parametrize("line", _STRUCTURED_NON_PROVIDER_DATA_LINES)
+def test_structured_non_provider_data_is_never_provider_text(line: str) -> None:
+    assert channel_of(line) is not ContentChannel.PROVIDER
+    assert provider_text(line) is None
+    assert provider_evidence_text(line) is None
+    assert not is_provider_quota_output_line(line)
+    assert not is_quota_kill_evidence(line)
+
+
+_PROVIDER_ERROR_EVENT_LINES = (
+    json.dumps({"type": "error", "message": _QUOTA_WORDS}),
+    json.dumps({"type": "item.completed", "item": {"type": "error", "message": _QUOTA_WORDS}}),
+    json.dumps({"type": "error_message", "message": _QUOTA_WORDS}),
+)
+
+
+@pytest.mark.parametrize("line", _PROVIDER_ERROR_EVENT_LINES)
+def test_provider_error_events_remain_provider_evidence(line: str) -> None:
+    assert channel_of(line) is ContentChannel.PROVIDER
+    text = provider_evidence_text(line)
+    assert isinstance(text, ProviderText)
+    assert provider_quota_kill_evidence(text)
+    assert is_quota_kill_evidence(line)
 
 
 def test_provider_text_is_frozen_value_type() -> None:

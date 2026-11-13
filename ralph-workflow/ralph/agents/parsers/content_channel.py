@@ -52,7 +52,7 @@ def _is_provider_error_event(event: dict[str, object]) -> bool:
         return False
     event_type = event.get("type")
     declared = event_type.casefold() if isinstance(event_type, str) else ""
-    if declared == "error":
+    if declared.startswith("error"):
         return True
     if declared.startswith("item."):
         item = event.get("item")
@@ -128,11 +128,11 @@ def provider_evidence_text(detail: str) -> ProviderText | None:
     if is_user_prompt_event_line(detail):
         return None
     event = _parse_json_event(detail)
-    if event is None:
+    if event is None or not event:
         return ProviderText(text=detail)
-    if _event_kind(event) in _NON_PROVIDER_EVENT_KINDS:
-        return None
-    return ProviderText(text=detail)
+    if _is_provider_error_event(event):
+        return ProviderText(text=detail)
+    return None
 
 
 __all__ = [

@@ -217,6 +217,33 @@ def test_provider_subscription_stderr_still_raises(line: str) -> None:
         raise_if_quota_exhausted("codex", line, None, include_output=False)
 
 
+_STRUCTURED_NON_PROVIDER_ENVELOPE_LINES = (
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "aggregated_output": _QUOTA_WORDS,
+                "exit_code": 0,
+            },
+        }
+    ),
+    json.dumps({"error": None, "content": _QUOTA_WORDS}),
+)
+
+
+@pytest.mark.parametrize("line", _STRUCTURED_NON_PROVIDER_ENVELOPE_LINES)
+def test_structured_non_provider_envelope_is_never_kill_evidence(line: str) -> None:
+    assert not is_quota_kill_evidence(line)
+
+
+@pytest.mark.parametrize("line", _STRUCTURED_NON_PROVIDER_ENVELOPE_LINES)
+@pytest.mark.parametrize("include_output", [True, False])
+def test_structured_non_provider_envelope_never_raises(line: str, include_output: bool) -> None:
+    raise_if_quota_exhausted("codex", line, None, include_output=include_output)
+    raise_if_quota_exhausted("codex", "", [line], include_output=include_output)
+
+
 _MALFORMED_PROVIDER_STDERR_LINES = (
     '{"type": "error_message", "message": "quota exceeded: resource exhausted"}',
     '{"error": "RESOURCE_EXHAUSTED (code 429)',
