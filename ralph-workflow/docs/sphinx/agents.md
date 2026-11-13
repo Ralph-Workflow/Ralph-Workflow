@@ -20,12 +20,14 @@ own native authentication:
 - **Pi** — `pi` provider configuration
 - **Cursor** — Cursor Agent uses `CURSOR_API_KEY` or a projected file-backed login at `~/.config/cursor/auth.json` / `~/.cursor/auth.json`. If neither file is valid, Ralph Workflow extracts the logged-in IDE token from local Cursor state into both private file-store paths. Every invocation coerces `AGENT_CLI_CREDENTIAL_STORE` to `file`, except explicit `memory`, so macOS and Linux never select a Keychain or show an authentication dialog. Missing, empty, and invalid credentials fail with `MissingCredentialsError` before Cursor starts; run `AGENT_CLI_CREDENTIAL_STORE=file agent login` once or set `CURSOR_API_KEY`. 
 
-You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
-Ralph Workflow then calls the agent CLI as-is and supervises the workflow.
-It does not read, store, or proxy credentials.
+Ralph Workflow has no credentials of its own and does not proxy agent
+traffic. It calls each agent CLI with that agent's own authentication.
+For Cursor and AGY, which run in a private per-run home, it copies your
+existing local login files into that home so the agent can use them.
 
 > This is a deliberate trust boundary: **you** own your agent credentials.
-> Ralph Workflow's job is to orchestrate work, not to handle secrets.
+> Ralph Workflow keeps no credentials of its own; its job is to orchestrate
+> work, not to hold secrets.
 
 ## Selection — the nine built-in agents
 

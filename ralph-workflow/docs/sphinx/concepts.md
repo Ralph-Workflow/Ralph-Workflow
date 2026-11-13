@@ -136,30 +136,74 @@ contracts before a run starts.
 
 ## Phase routing
 
-A **phase** is one unit of work in the Ralph Workflow pipeline. A **route** is the choice about which agent handles the phase. A **drain** is the named terminal condition a phase produces. Together they define the run lifecycle.
+A **phase** is one unit of work in the Ralph Workflow pipeline. Each phase
+names a **drain** — the routing label that binds an agent-running phase to
+an agent chain through `[agent_drains.<name>]` in `agents.toml`. The
+phase's result follows its **declared transitions**. Together they define
+the run lifecycle.
 
 ### What a phase is
 
-A phase has: a **name** (e.g. `planning`, `development`, `review`); a **route** — which agent handles it (e.g. `claude-headless`); a **prompt template** — the Jinja template that materializes the phase's prompt from the current state; an **artifact contract** — what the phase must produce; a **drain set** — the terminal conditions the phase can return. Phases are declared in policy under `[phases]` and `[phases.<name>]`. The runtime reads the declaration and binds the route to an agent via `ralph/agents/registry.py`.
+A phase has: a **name** (e.g. `planning`, `development`,
+`development_commit_review`); a **drain** — the routing label that binds
+the phase to an agent chain through `[agent_drains.<name>]` in `agents.toml`;
+a **prompt template** — the Jinja template that materializes the phase's
+prompt from the current state; an **artifact contract** — what the phase
+must produce; and **transitions** — `on_success`, `on_failure`,
+`on_loopback`, and `on_reject` (`ralph/policy/models/_phase_transition.py`).
+Phases are declared in policy under `[phases]` and `[phases.<name>]`, with
+transitions under `[phases.<name>.transitions]`. The runtime reads the
+declaration and resolves the agent chain from policy.
 
 ### What a drain is
 
-A **drain** is a named terminal condition that a phase can end in: `done` (phase produced the required artifact), `fix-needed` (downstream phase should route to a fix cycle), `blocked` (phase cannot complete without human intervention), `retry` (phase hit a transient failure, runtime should re-attempt). Drains are declared in policy under `[phases.<name>.drains]`. The runtime uses the drain name to decide the next effect.
+A **drain** is the routing label between a phase and an agent chain. The
+practical takeaway, matching the [glossary](#glossary): a phase is not
+hard-wired to one specific agent. Phases that run an agent declare
+`drain = "<name>"`, which binds through `[agent_drains.<name>]` in
+`agents.toml` to an agent chain with fallback. The drain decides **who**
+does the work; the phase's declared transitions decide **what happens
+next**.
 
 ### The run lifecycle
 
-A typical Ralph Workflow run looks like:
+A typical run of the bundled default pipeline follows this order, with the
+transitions declared in `ralph/policy/defaults/pipeline.toml`:
 
 ```text
-[planning] --done--> [development] --done--> [verification] --done--> [review]
-                              |                          |                |
-                          fix-needed                  blocked        approve
-                              |                          |                |
-                              v                          v                v
-                        [development-fix]          [recovery]       [commit]
+planning
+  on_success → planning_analysis
+planning_analysis
+  on_success → development
+  on_loopback → planning
+development
+  on_success → development_commit_review
+  on_loopback → development (another iteration)
+development_commit_review
+  on_success → development_commit
+  on_loopback → development_commit_review
+  on_reject → development
+  on_failure → failed_terminal
+development_commit
+  on_success → development_analysis
+  on_failure → failed_terminal
+development_analysis
+  on_success → development_final_commit_review
+  on_loopback → development
+development_final_commit_review
+  on_success → development_final_commit
+  on_loopback → development_final_commit_review
+  on_reject → development
+  on_failure → failed_terminal
+development_final_commit
+  on_success → complete
+  on_failure → failed_terminal
 ```
 
-The shape is declared entirely in policy. The runtime is a state machine that consults policy at each transition. If a transition is unspecified, the runtime fails closed with a policy validation error.
+Only the two commit-review phases carry `on_reject`, and the two commit
+phases carry only `on_success` and `on_failure`. A phase without a declared
+transition for the current result fails the run, because an unset
+transition means the pipeline fails.
 
 ### Runtime behavior
 
@@ -172,7 +216,11 @@ you change policy. For the reducer and effect implementation, see
 
 ### Checkpoints
 
-After every reducer the runtime writes a checkpoint to `.agent/checkpoint.json` capturing: the current `PipelineState`, the drain the previous phase returned, the artifact path the previous phase produced, the agent and model the previous phase used, and the prompt template that was materialized. If the run is interrupted, the next `ralph` invocation reads the checkpoint and resumes from the last completed phase. `ralph --inspect-checkpoint` prints the current checkpoint in human-readable form.
+The runtime persists its current `PipelineState` as a checkpoint at
+`.agent/checkpoint.json` (`ralph/pipeline/checkpoint.py`). If the run is
+interrupted, the next `ralph` invocation reads the checkpoint and resumes
+from the saved state. `ralph --inspect-checkpoint` prints the checkpoint
+contents as raw JSON.
 
 ### Fan-out
 
@@ -180,7 +228,10 @@ For multi-unit plans, the policy can declare `parallel_plan` or `work_units`. Pa
 
 ### Terminal outcomes
 
-A run ends in one of four terminal outcomes: `done` (every phase produced its artifact; commit is ready), `blocked` (a phase returned `blocked`; human intervention needed), `budget-exceeded` (the retry budget or session ceiling was hit; current state is recoverable), `regression` (verification failed after retry; partial result). The terminal outcome is what the runtime hands back to the user via `declare_complete`. It is what the user reviews in the morning.
+A run ends at a terminal phase: `complete` (`terminal_outcome = "success"`)
+or `failed_terminal` (`terminal_outcome = "failure"`), both declared in
+`pipeline.toml`. The terminal outcome and the run's artifacts are what the
+user reviews afterward.
 
 ---
 
@@ -190,7 +241,7 @@ An **artifact** is the durable evidence a phase produces. Ralph Workflow's artif
 
 ### Artifacts and transcripts
 
-A chat transcript shows what the agent *said*. An artifact shows what the agent *did*. An artifact is the durable evidence a phase produces; policy declares an **artifact contract** per phase; the runtime validates the contract before accepting the phase as `done`; a missing contract yields `fix-needed` or `blocked`, not `done`.
+A chat transcript shows what the agent *said*. An artifact shows what the agent *did*. An artifact is the durable evidence a phase produces; policy declares an **artifact contract** per phase; the runtime validates the contract before the phase can take its `on_success` transition; a phase that fails its contract does not advance — it follows its declared `on_failure` or `on_loopback` transition.
 
 ### The artifact format
 
@@ -231,13 +282,17 @@ Each type's contract lives at `ralph/mcp/artifacts/format_docs/<type>.md`.
 
 A phase is `done` when **all** of: the agent invocation returned (no timeout, no crash); the artifact was submitted through the canonical path; the artifact satisfies the phase's declared contract; the reducer for the artifact type advances the pipeline state.
 
-If any step fails, the phase is not `done`. The reducer typically returns `fix-needed` (artifact missing or malformed) or `blocked` (a precondition failed) instead of advancing.
+If any step fails, the phase is not done. The phase then follows its
+declared `on_failure` or `on_loopback` transition instead of advancing.
 
 ### The `declare_complete` terminal
 
-When the final reducer decides the run is at a terminal state, the runtime calls `declare_complete`. The terminal is the single, structured handoff the user reviews: `done` (the development_result is the review surface), `blocked` (the issues artifact explains what blocked), `budget-exceeded` (the most recent artifact shows what was achieved), `regression` (the verification artifact shows what failed).
-
-The terminal is the **only** signal the runtime hands back. There is no "trust the transcript" path. If the terminal is `done`, the run is done.
+`declare_complete` is the MCP tool the executing agent calls to declare its
+task complete. It writes a durable completion sentinel for the run and
+emits a completion event to the pipeline; the completion gate re-validates
+the submitted artifact before accepting it. The run's terminal outcome —
+`complete` or `failed_terminal` — is declared in policy, and the artifacts
+are the review surface. There is no "trust the transcript" path.
 
 ### The canonical submission path
 
@@ -405,7 +460,7 @@ An unbounded MCP call hangs the MCP server thread and starves the agent of outpu
 
 ### Recovery
 
-When the watchdog or a timeout fires, the runtime hands control to the recovery layer: the watchdog emits the diagnostic and marks the session as `recoverable` or `non-recoverable`; the recovery controller consults policy for the recovery budget; if budget remains, the runtime retries the phase with the recovery prompt template; if budget is exhausted, the run declares `budget-exceeded` and the terminal artifact is the most recent partial artifact. See [Recovery](recovery.md) for the full recovery controller contract.
+When the watchdog or a timeout fires, the runtime hands control to the recovery layer: the watchdog emits the diagnostic and marks the session as `recoverable` or `non-recoverable`; the recovery controller consults policy for the recovery budget; if budget remains, the runtime retries the phase with the recovery prompt template; if the recovery budget is exhausted, the recovery controller routes the run to `failed_terminal` (`ralph/recovery/controller.py`). See [Recovery](recovery.md) for the full recovery controller contract.
 
 ## Deprecated: Ralph Workflow-orchestrated workers {#deprecated-ralph-orchestrated-workers}
 

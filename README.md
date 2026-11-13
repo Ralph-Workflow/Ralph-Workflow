@@ -9,8 +9,7 @@ same way: babysitting a session, re-explaining context, resolving conflicts,
 waiting in a review queue.
 
 Ralph Workflow is a free, open-source AI agent orchestrator and software
-factory — the operating system for autonomous coding — for developers and
-teams who already have a coding agent: you
+factory for developers and teams who already have a coding agent: you
 supply the specification and the checks you trust, and it returns
 integrated, checked software on one mainline.
 
@@ -20,7 +19,8 @@ harnesses around models, and Ralph Workflow is the workflow, review,
 recovery, and Git layer around those agents. There is no vendor lock-in:
 nine built-in agent backends ship with it, and
 [agent chains](ralph-workflow/docs/sphinx/configuration.md) can mix them
-and fall back to the next when an attempt fails. Ralph Workflow needs no
+and fall back to the next when an attempt fails. Switching or combining
+vendors is a configuration change, not a rewrite. Ralph Workflow needs no
 API key of its own and sells no model access; it launches the agent CLI you
 installed and authenticated, so whatever login or subscription that agent
 supports is what runs. Each agent defines its own authentication (a login,
@@ -44,8 +44,8 @@ configurable workflow graph with review
 fallback agent chains, keeps independent runs in separate Git worktrees,
 and lands checked work on one mainline.
 
-Best for tasks with a clear finish line and checks you trust; not (yet) for
-open-ended exploration or repositories with no reliable tests. See
+A fit for tasks with a clear finish line and checks you trust; not (yet)
+for open-ended exploration or repositories with no reliable tests. See
 [Is Ralph Workflow for you?](#is-ralph-workflow-for-you).
 
 [**Start your first run →**](START_HERE.md)
@@ -58,10 +58,11 @@ mechanism:
 
 - **Stations.** Phases are stations on the line: planning, development, review, fix,
   commit.
-- **Gates.** Checks are gates: a station that does not produce the evidence it owes
-  returns `fix-needed`, `blocked`, or `retry` instead of opening the next gate.
-  Gate and drain semantics are in the
-  [concepts reference](ralph-workflow/docs/sphinx/concepts.md).
+- **Gates.** Checks are gates: a phase advances only on `on_success`, and its
+  declared transitions loop work back (`on_loopback`), send a rejected commit
+  review back to development (`on_reject`), or route a failure to
+  `failed_terminal` (`on_failure`). See the
+  [pipeline configuration reference](ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md).
 - **Interchangeable workers.** An agent chain is the worker pool for a station: you
   choose the agent, and which one takes over when an attempt fails; see the
   [configuration reference](ralph-workflow/docs/sphinx/configuration.md).
@@ -92,13 +93,14 @@ script, or a recognizable diff.
 
 A plain agent loop repeats one prompt until the work stops changing: give
 an agent a task, let it work, check the result, iterate. That is the whole
-Ralph loop: plan, build, verify, fix. Run it by hand and you supply every
+Ralph loop: plan → build → verify → fix. Run it by hand and you supply every
 call yourself: the next prompt, the retry, the merge.
 
 A workflow graph keeps that loop and moves those calls into configuration:
 
-- **Which phase runs next.** A phase ends in a drain: `done` advances, `fix-needed`
-  routes into a fix cycle, `blocked` waits for a human, `retry` re-attempts.
+- **Which phase runs next.** Each phase's drain binds it to an agent chain, and
+  the transitions declared in `pipeline.toml` pick the next phase; a run ends
+  at `complete` or `failed_terminal`.
 - **Which agent handles it.** Routing is policy, not code. A phase is bound to an
   agent chain, so planning can go to one agent and development to another.
 - **What evidence is produced.** Each phase declares a contract the runtime
@@ -111,7 +113,7 @@ A workflow graph keeps that loop and moves those calls into configuration:
 - **How work resumes.** Checkpoints and durable recovery state carry an interrupted
   run forward, including a half-finished Git operation.
 
-Drain semantics, routing, and recovery are described in the
+Routing and recovery are described in the
 [concepts reference](ralph-workflow/docs/sphinx/concepts.md).
 
 ## Independent work, shared mainline

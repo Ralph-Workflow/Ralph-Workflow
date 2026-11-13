@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -14,20 +12,19 @@ pytestmark = [
     pytest.mark.timeout_seconds(60),
 ]
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "inline-waiver-contract": (
         "the retired expectation asserted that a source comment suppresses a "
         "static-analysis finding; a waiver is a configuration-level entry in "
         "the SAST configuration, so the gate honours the project Bandit "
         "configuration and reports a finding whose source carries a comment"
     ),
-    "subprocess-e2e-classification": (
-        "the module runs the static-analysis audit CLI as a real child process, "
-        "so it carries the subprocess_e2e marker the process audit and the "
-        "test-policy audit both require for a real subprocess call; the "
-        "required_auto_integrate_e2e marker and the test-suite registry entry "
-        "keep the file in the default verification lane, so the black-box CLI "
-        "check stays inside the required gate"
+    "in-process-sast-invocation": (
+        "the process audit forbids subprocess.run in tests, so "
+        "test_pre_existing_finding_run_is_warning_free now calls "
+        "audit_sast.main in-process; the same three checks are still asserted "
+        "(exit code 0 and no WARNING or ERROR on stderr, observed via capsys "
+        "instead of a CompletedProcess)"
     ),
 }
 
@@ -117,23 +114,19 @@ def test_command_line_exit_code_reflects_the_new_findings(
     assert main([str(baseline), str(current)]) == expected_exit
 
 
-def test_pre_existing_finding_run_is_warning_free(tmp_path: Path) -> None:
+def test_pre_existing_finding_run_is_warning_free(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     baseline = _write_tree(tmp_path / "baseline", {"ralph/pkg/mod.py": _ASSERT_PATTERN})
     current = _write_tree(
         tmp_path / "current", {"ralph/pkg/mod.py": "VALUE = 2\nassert VALUE == 1\n"}
     )
 
-    completed = subprocess.run(
-        [sys.executable, "-m", "ralph.testing.audit_sast", str(baseline), str(current)],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
+    assert main([str(baseline), str(current)]) == 0
 
-    assert completed.returncode == 0
-    assert "WARNING" not in completed.stderr
-    assert "ERROR" not in completed.stderr
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
+    assert "ERROR" not in captured.err
 
 
 def _make_finding(

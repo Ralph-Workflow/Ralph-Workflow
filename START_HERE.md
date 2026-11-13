@@ -10,12 +10,13 @@ your machine, needs no account, and has no hosted service behind it.
 
 Ralph Workflow is the harness around the coding agent CLI you already
 installed and authenticated — the harness of harnesses: it manages the
-workflow, review, and Git integration, never the models, so there is no
-vendor lock-in. Nine built-in agent backends ship in the package, agent
-chains can mix them and fall back when one fails, and switching or
-combining vendors is a configuration change, not a rewrite. It needs no
-API key of its own; each agent keeps its own authentication — a login,
-an API key, or either (see
+workflow, review, and Git integration, never the models. Agent chains
+mix the nine built-in backends with fallback, and switching or combining
+vendors is a configuration change, not a rewrite. It launches the agent
+CLI with that agent's own authentication, so your existing login or
+subscription is what runs; Ralph Workflow needs no API key of its own.
+Each agent defines its own authentication — a login, an API key, or
+either — and its vendor sets model access, rate limits, and cost (see
 [`agents`](ralph-workflow/docs/sphinx/agents.md)).
 
 Every default ships with the package, and `ralph --init` seeds your
@@ -80,14 +81,15 @@ agent that Ralph Workflow is already driving.
    ralph --list-agents
    ```
 
-   `ralph --init` detects the agent CLIs on your `PATH`, enables them
-   in the configuration, and points the default chains at a detected
-   agent. `ralph --list-agents` shows the configured agents; it does not
-   change configuration. If the list is empty, or you install an agent
-   CLI later, install and authenticate it (see
+   `ralph --init` detects agent CLIs on your `PATH`, enables them, and —
+   when the default chains are unchanged and their default agent is not
+   installed — points those chains at a detected agent.
+   `ralph --list-agents` shows the configured agents; it does not change
+   configuration. If the list is empty, or you install an agent CLI
+   later, install and authenticate it (see
    [`agents`](ralph-workflow/docs/sphinx/agents.md)) and rerun
-   `ralph --init` — rerunning is safe and only enables newly detected
-   agents.
+   `ralph --init` — rerunning is safe: it may enable newly detected
+   agents, rewire eligible default chains, and ensure baseline capabilities.
 
 6. **Check the setup.**
 
