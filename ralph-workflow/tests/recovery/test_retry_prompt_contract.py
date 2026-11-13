@@ -6,28 +6,20 @@ from ralph.phases.required_artifacts import (
     build_retry_hint,
     build_validation_retry_hint,
     clear_validation_retry_hint,
-    retry_fingerprint_path_for_hint,
-    retry_hint_fingerprint,
     retry_hint_path,
-    validation_retry_fingerprint,
 )
 from ralph.pipeline.effect_executor import write_agent_retry_prompt
 from ralph.prompts import commit_review, materialize
 from ralph.recovery.retry_prompt import (
     build_retry_error_block,
     build_validation_retry_footer,
-    failure_fingerprint,
 )
 from ralph.workspace.fs import FsWorkspace
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_retry_prompt_still_exposes_the_formatter_contract": (
-        "the repeated-failure retry rule is removed, so the ordinary formatter "
-        "contract stays exported beside the failure fingerprint helper"
-    ),
-    "test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures": (
-        "the runtime still computes the failure fingerprint for the retry state, so "
-        "the failure fingerprint stays stable per failure and differs across failures"
+        "the dead failure fingerprint helper is removed with the retry fingerprint path, "
+        "so the ordinary formatter contract stays exported"
     ),
     "test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies": (
         "the repeated-failure retry rule is removed, so the persisted history is "
@@ -45,10 +37,9 @@ RALPH_TEST_CHANGE_REASONS = {
         "the repeated-failure retry rule is removed, so the generic retry hint is "
         "unchanged and is asserted through its failure summary and submission instructions"
     ),
-    "test_generic_retry_prompt_renders_the_failure_and_persists_the_failure_fingerprint": (
-        "the runtime still persists the failure fingerprint for the retry state, so the "
-        "generic agent-retry prompt is asserted through its rendered failure and the "
-        "persisted fingerprint"
+    "test_generic_retry_prompt_renders_the_failure_without_a_fingerprint_artifact": (
+        "the runtime no longer persists a failure fingerprint, so the generic agent-retry "
+        "prompt is asserted through its rendered failure and the absence of a fingerprint file"
     ),
     "test_persisted_validation_hint_is_rendered_on_a_repeat_and_cleared_afterwards": (
         "the repeated-failure retry rule is removed, so the persisted validation hint "
@@ -73,15 +64,6 @@ class _Diagnostic:
 def test_retry_prompt_still_exposes_the_formatter_contract() -> None:
     assert callable(build_validation_retry_footer)
     assert callable(build_retry_error_block)
-    assert callable(failure_fingerprint)
-
-
-def test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures() -> None:
-    first = failure_fingerprint("artifact rejected", "line 3 invalid")
-    repeat = failure_fingerprint("artifact rejected", "line 3 invalid")
-    changed = failure_fingerprint("artifact rejected", "line 9 invalid")
-    assert first == repeat
-    assert first != changed
 
 
 def test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies() -> None:
@@ -164,14 +146,20 @@ def test_generic_retry_hint_keeps_the_failure_summary_and_submission_instruction
     assert changed.count("PREVIOUS ATTEMPT FAILED") == 1
 
 
-def test_generic_retry_prompt_renders_the_failure_and_persists_the_failure_fingerprint(
+def _fingerprint_artifacts(tmp_path: Path) -> list[str]:
+    tmp_dir = tmp_path / ".agent" / "tmp"
+    if not tmp_dir.is_dir():
+        return []
+    return [path.name for path in tmp_dir.iterdir() if "fingerprint" in path.name]
+
+
+def test_generic_retry_prompt_renders_the_failure_without_a_fingerprint_artifact(
     tmp_path: Path,
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("Repair the submitted artifact.\n", encoding="utf-8")
-    fingerprint_file = tmp_path / retry_fingerprint_path_for_hint(retry_hint_path("development"))
 
-    def render(detail: str) -> tuple[str, str]:
+    def render(detail: str) -> str:
         retry_prompt = write_agent_retry_prompt(
             workspace_root=tmp_path,
             prompt_file=str(prompt_file),
@@ -180,13 +168,11 @@ def test_generic_retry_prompt_renders_the_failure_and_persists_the_failure_finge
             context_lines=["the agent produced no output"],
             drain="development",
         )
-        rendered = Path(retry_prompt).read_text(encoding="utf-8")
-        fingerprint = fingerprint_file.read_text(encoding="utf-8").strip()
-        return rendered, fingerprint
+        return Path(retry_prompt).read_text(encoding="utf-8")
 
-    first, first_fingerprint = render("the agent produced no output")
-    repeat, repeat_fingerprint = render("the agent produced no output")
-    changed, changed_fingerprint = render("a different failure happened")
+    first = render("the agent produced no output")
+    repeat = render("the agent produced no output")
+    changed = render("a different failure happened")
 
     assert first.count("ERROR RECOVERY REQUIRED") == 1
     assert (
@@ -197,14 +183,7 @@ def test_generic_retry_prompt_renders_the_failure_and_persists_the_failure_finge
     assert repeat.count("ERROR RECOVERY REQUIRED") == 1
     assert changed.count("ERROR RECOVERY REQUIRED") == 1
 
-    assert first_fingerprint == retry_hint_fingerprint(
-        "development", "the agent produced no output"
-    )
-    assert repeat_fingerprint == first_fingerprint
-    assert changed_fingerprint != repeat_fingerprint
-    assert changed_fingerprint == retry_hint_fingerprint(
-        "development", "a different failure happened"
-    )
+    assert _fingerprint_artifacts(tmp_path) == []
 
 
 def test_persisted_validation_hint_is_rendered_on_a_repeat_and_cleared_afterwards(
@@ -212,13 +191,11 @@ def test_persisted_validation_hint_is_rendered_on_a_repeat_and_cleared_afterward
 ) -> None:
     workspace = FsWorkspace(tmp_path)
     hint_path = retry_hint_path("development")
-    fingerprint_path = retry_fingerprint_path_for_hint(hint_path)
     failure = [_Diagnostic("MD001", "frontmatter is malformed")]
 
     first = build_validation_retry_hint("development_result", failure)
     repeat = build_validation_retry_hint("development_result", failure, prior_hint=first)
     workspace.write(hint_path, repeat)
-    workspace.write(fingerprint_path, validation_retry_fingerprint("development_result", failure))
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("Repair the retained artifact.\n", encoding="utf-8")
@@ -241,7 +218,7 @@ def test_persisted_validation_hint_is_rendered_on_a_repeat_and_cleared_afterward
     clear_validation_retry_hint(workspace, "development")
 
     assert not workspace.exists(hint_path)
-    assert not workspace.exists(fingerprint_path)
+    assert _fingerprint_artifacts(tmp_path) == []
 
 
 def test_prompt_readers_stay_read_only() -> None:

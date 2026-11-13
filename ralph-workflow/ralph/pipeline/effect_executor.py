@@ -53,8 +53,6 @@ from ralph.mcp.server.lifecycle import (
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
     build_retry_hint,
-    retry_fingerprint_path_for_hint,
-    retry_hint_fingerprint,
     retry_hint_path,
 )
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
@@ -1813,24 +1811,6 @@ def _validation_retry_context(
     )
 
 
-def _retry_fingerprint_file(
-    *,
-    workspace_root: Path,
-    drain: str | None,
-    worker_namespace: Path | None,
-    reason: str | None = None,
-) -> Path | None:
-    scope = drain or reason
-    if scope is None:
-        return None
-    hint_file = (
-        worker_namespace / "tmp" / f"last_retry_error_{scope}.txt"
-        if worker_namespace is not None
-        else workspace_root / retry_hint_path(scope)
-    )
-    return Path(retry_fingerprint_path_for_hint(hint_file.as_posix()))
-
-
 def _retry_prompt_file_for_context(
     *,
     workspace_root: Path,
@@ -1962,13 +1942,6 @@ def _write_agent_retry_prompt(
     summary = "\n".join(condensed) if condensed else "(no output captured)"
     validation_hint = _validation_retry_context(workspace_root, drain, worker_namespace)
     validation_retry = reason == "ArtifactValidation" or bool(validation_hint)
-    fingerprint_file = _retry_fingerprint_file(
-        workspace_root=workspace_root,
-        drain=drain,
-        worker_namespace=worker_namespace,
-        reason=reason,
-    )
-    current_fingerprint = retry_hint_fingerprint(str(drain or reason), detail or reason)
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         detail=detail,
@@ -1976,14 +1949,6 @@ def _write_agent_retry_prompt(
         context_path=str(context_path),
         validation=validation_retry,
     )
-    if fingerprint_file is not None:
-        fingerprint_file.parent.mkdir(parents=True, exist_ok=True)
-        write_text_if_changed(
-            DEFAULT_FILE_BACKEND,
-            fingerprint_file,
-            current_fingerprint,
-            encoding="utf-8",
-        )
     validation_block = (
         "VALIDATION ERRORS (ACCUMULATED)\n"
         f"{validation_hint}\n\n"
@@ -2108,7 +2073,6 @@ def _write_terminal_missing_artifact_hint(
             phase_name,
             pipeline_policy=ctx.policy_bundle.pipeline if ctx.policy_bundle is not None else None,
         )
-        fingerprint_file = workspace_root / retry_fingerprint_path_for_hint(hint_file.as_posix())
         hint = build_retry_hint(
             phase_name,
             str(exc),
@@ -2116,12 +2080,6 @@ def _write_terminal_missing_artifact_hint(
         )
         hint_file.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(DEFAULT_FILE_BACKEND, hint_file, hint, encoding="utf-8")
-        write_text_if_changed(
-            DEFAULT_FILE_BACKEND,
-            fingerprint_file,
-            retry_hint_fingerprint(phase_name, str(exc), registry=registry),
-            encoding="utf-8",
-        )
     except Exception:
         return
 

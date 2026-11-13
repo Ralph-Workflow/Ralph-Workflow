@@ -12,6 +12,10 @@ if TYPE_CHECKING:
 TEST_REASON_CONSTANT = "RALPH_TEST_CHANGE_REASONS"
 
 DELETED_TEST_MODULES: dict[str, str] = {
+    "ralph-workflow/tests/project_policy/test_policy_skill_technique_ownership.py": (
+        "the test encoded an editorial prose judgment as a machine constant; the "
+        "structural policy audits and human review remain the safeguards"
+    ),
     "ralph-workflow/tests/recovery/test_retry_prompt_premise_check.py": (
         "the premise-check rule was removed; the shipped systematic-debugging skill "
         "teaches the technique"

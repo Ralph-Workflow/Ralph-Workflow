@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-import hashlib
 from typing import Final
 
 VALIDATION_FAILURE_BANNER: Final[str] = "VALIDATION FAILURE"
-
-
-def failure_fingerprint(failure_summary: str, diagnostic_identity: str = "") -> str:
-    payload = "\x1f".join((failure_summary.strip(), diagnostic_identity.strip()))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def build_validation_retry_footer() -> str:
@@ -72,5 +66,4 @@ __all__ = [
     "VALIDATION_FAILURE_BANNER",
     "build_retry_error_block",
     "build_validation_retry_footer",
-    "failure_fingerprint",
 ]

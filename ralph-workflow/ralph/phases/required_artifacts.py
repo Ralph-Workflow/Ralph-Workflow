@@ -15,7 +15,6 @@ from ralph.recovery.retry_prompt import (
     VALIDATION_FAILURE_BANNER,
     build_retry_error_block,
     build_validation_retry_footer,
-    failure_fingerprint,
 )
 
 if TYPE_CHECKING:
@@ -109,22 +108,6 @@ def retry_hint_path(phase: str, *, pipeline_policy: object | None = None) -> str
     return f".agent/tmp/last_retry_error_{drain}.txt"
 
 
-def retry_fingerprint_path(phase: str, *, pipeline_policy: object | None = None) -> str:
-    phase_def = (
-        pipeline_policy.phases.get(phase) if isinstance(pipeline_policy, PipelinePolicy) else None
-    )
-    drain = phase_def.drain if phase_def is not None else phase
-    return f".agent/tmp/last_retry_fingerprint_{drain}.txt"
-
-
-def retry_fingerprint_path_for_hint(hint_path: str) -> str:
-    head, separator, name = hint_path.rpartition("/")
-    if not name.startswith("last_retry_error_") or not name.endswith(".txt"):
-        return hint_path
-    companion = name.replace("last_retry_error_", "last_retry_fingerprint_")
-    return f"{head}{separator}{companion}" if separator else companion
-
-
 def read_validation_retry_hint(
     workspace_root: Path,
     drain: str,
@@ -151,21 +134,11 @@ def clear_validation_retry_hint(
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=pipeline_policy)
     legacy_path = retry_hint_path(phase)
-    fingerprint_path = retry_fingerprint_path(phase, pipeline_policy=pipeline_policy)
-    legacy_fingerprint_path = retry_fingerprint_path(phase)
-    derived_fingerprint_path = retry_fingerprint_path_for_hint(hint_path)
     try:
         if workspace.exists(hint_path):
             workspace.remove(hint_path)
         if legacy_path != hint_path and workspace.exists(legacy_path):
             workspace.remove(legacy_path)
-        for candidate in (
-            fingerprint_path,
-            legacy_fingerprint_path,
-            derived_fingerprint_path,
-        ):
-            if workspace.exists(candidate):
-                workspace.remove(candidate)
     except Exception:
         return
 
@@ -201,15 +174,6 @@ def validation_corrective_action(artifact_type: str, diagnostics: list[Diagnosti
         "place with ralph_edit_md_artifact, which resubmits automatically once valid. "
         "Fix the underlying document issue before resubmitting."
     )
-
-
-def validation_retry_fingerprint(artifact_type: str, diagnostics: list[Diagnostic]) -> str:
-    signature = "\n".join(
-        f"{diagnostic.rule_id}|{diagnostic.section or ''}|{diagnostic.message}"
-        for diagnostic in diagnostics
-        if diagnostic.severity == "error"
-    )
-    return failure_fingerprint(artifact_type, signature)
 
 
 def build_validation_retry_hint(
@@ -311,23 +275,6 @@ def _bound_validation_retry_attempt(headline: str, attempt: str, body_budget: in
     return f"{headline}\n{body[:body_budget].rstrip()}\n[older attempt body truncated]"
 
 
-def retry_hint_fingerprint(
-    phase: str,
-    detail: str,
-    *,
-    registry: dict[str, RequiredArtifact] | None = None,
-) -> str:
-    ra = registry.get(phase) if registry is not None else None
-    if ra is None:
-        summary = "the required artifact was not submitted before completion was declared"
-    else:
-        summary = (
-            f"required artifact '{ra.artifact_type}' at '{ra.artifact_path}' "
-            "was not submitted or was invalid"
-        )
-    return failure_fingerprint(summary, detail)
-
-
 def build_retry_hint(
     phase: str,
     detail: str,
@@ -407,9 +354,5 @@ __all__ = [
     "build_validation_retry_hint",
     "resolve_phase_required_artifact",
     "resolve_required_artifact",
-    "retry_fingerprint_path",
-    "retry_fingerprint_path_for_hint",
-    "retry_hint_fingerprint",
     "retry_hint_path",
-    "validation_retry_fingerprint",
 ]

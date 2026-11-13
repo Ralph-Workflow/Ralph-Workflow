@@ -37,14 +37,15 @@ from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 from tests._tool_artifact_2_helper_mocksession import MockSession
 from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_failure": (
         "the deleted agent rule is removed by the policy trim, so the persisted hint is "
         "asserted against the rendered validation trailer and the accumulated attempt history"
     ),
-    "test_execution_persisted_hint_tracks_the_failure_fingerprint_across_attempts": (
-        "the deleted agent rule is removed by the policy trim, so the execution-phase persisted "
-        "hint is asserted against the failure fingerprint and the accumulated attempt history"
+    "test_execution_persisted_hint_accumulates_attempts_across_attempts": (
+        "the deleted agent rule is removed by the policy trim and the dead failure fingerprint "
+        "is removed with the retry fingerprint path, so the execution-phase persisted hint is "
+        "asserted against the accumulated attempt history"
     ),
 }
 
@@ -275,7 +276,7 @@ def test_persisted_hint_renders_the_trailer_once_across_a_repeat_and_a_changed_f
     assert changed_attempt_bodies.count("PREVIOUS ATTEMPT FAILED") == 3
 
 
-def test_execution_persisted_hint_tracks_the_failure_fingerprint_across_attempts() -> None:
+def test_execution_persisted_hint_accumulates_attempts_across_attempts() -> None:
     phase = "development"
     detail = "required artifact was not submitted"
 
@@ -291,13 +292,10 @@ def test_execution_persisted_hint_tracks_the_failure_fingerprint_across_attempts
         prior_hint=repeat.hint,
     )
 
-    assert first.fingerprint != ""
     assert first.hint.count("PREVIOUS ATTEMPT FAILED") == 1
 
-    assert repeat.fingerprint == first.fingerprint
     assert repeat.hint.startswith(first.hint)
     assert repeat.hint.count("PREVIOUS ATTEMPT FAILED") == 2
 
-    assert changed.fingerprint != repeat.fingerprint
     assert changed.hint.startswith(repeat.hint)
     assert changed.hint.count("PREVIOUS ATTEMPT FAILED") == 3
