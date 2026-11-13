@@ -7,6 +7,7 @@ from ralph.agents.invoke.termination_recorder import (
     TerminationRecorder,
     exception_exit_status,
     observed_returncode,
+    return_code_may_be_a_signal,
     termination_issuer_for_exception,
     termination_issuer_for_teardown_issuer,
 )
@@ -26,6 +27,8 @@ _ATTEMPT_FACTS_ATTRIBUTE = "attempt_facts"
 
 _TerminationRecorder = TerminationRecorder
 
+_return_code_may_be_a_signal = return_code_may_be_a_signal
+
 
 def _exception_returncode(exc: BaseException) -> int | None:
     returncode = cast("object", getattr(exc, "returncode", None))
@@ -34,7 +37,7 @@ def _exception_returncode(exc: BaseException) -> int | None:
     return returncode
 
 
-def attach_attempt_facts(exc: BaseException, recorder: TerminationRecorder) -> None:
+def attach_attempt_facts(exc: BaseException, recorder: _TerminationRecorder) -> None:
     recorder.record_reported_returncode(_exception_returncode(exc))
     facts = recorder.facts()
     setattr(exc, _ATTEMPT_FACTS_ATTRIBUTE, facts)

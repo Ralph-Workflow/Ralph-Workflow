@@ -573,6 +573,16 @@ def _prepare_recovery_attempt(
     return options
 
 
+def _report_terminal_invocation_error(
+    recovered: _AttemptResult,
+    agent_invocation_error_sink: Callable[[Exception], object] | None,
+    exc: Exception,
+) -> _AttemptResult:
+    if agent_invocation_error_sink is not None:
+        agent_invocation_error_sink(exc)
+    return recovered
+
+
 def _handle_recovery_attempt_failure(
     ctx: _AgentInvocationCtx,
     exc: Exception,
@@ -1017,20 +1027,23 @@ def _invoke_agent_with_recovery(
                     return _AttemptResult(
                         PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id
                     )
-                return _handle_recovery_attempt_failure(
-                    ctx=ctx,
-                    exc=exc,
-                    state=state,
-                    session_id=session_id,
-                    effective_run_id=effective_run_id,
-                    raw_output=raw_output,
-                    rendered_output=rendered_output,
-                    observation=_attempt_failure_observation(
-                        ctx, state, workspace_probe, attempt_workspace, exc
+                return _report_terminal_invocation_error(
+                    _handle_recovery_attempt_failure(
+                        ctx=ctx,
+                        exc=exc,
+                        state=state,
+                        session_id=session_id,
+                        effective_run_id=effective_run_id,
+                        raw_output=raw_output,
+                        rendered_output=rendered_output,
+                        observation=_attempt_failure_observation(
+                            ctx, state, workspace_probe, attempt_workspace, exc
+                        ),
+                        attempt_finalizer=attempt_finalizer,
+                        recovery_controller=recovery_controller,
                     ),
-                    attempt_finalizer=attempt_finalizer,
-                    recovery_controller=recovery_controller,
-                    agent_invocation_error_sink=agent_invocation_error_sink,
+                    agent_invocation_error_sink,
+                    exc,
                 )
 
         try:

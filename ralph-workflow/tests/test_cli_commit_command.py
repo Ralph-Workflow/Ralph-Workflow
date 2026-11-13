@@ -36,6 +36,8 @@ from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import AgentsPolicy
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
+from ralph.recovery import dead_agent_probe
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._support.typed_accessors import (
     must_mapping,
@@ -96,6 +98,17 @@ def _write_commit_message_doc(repo_root: Path, message: str) -> None:
 
 
 _OUTPUT_BATCH = 80
+
+
+def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    probed: list[str] = []
+
+    def fake_run_canary_probe(config: AgentConfig, **_kwargs: object) -> ProbeResult:
+        probed.append(config.cmd)
+        return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
+
+    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
+    return probed
 
 
 class _FakePipelineFactory:
@@ -439,6 +452,7 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
 
 def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -484,6 +498,8 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
         _write_commit_message_doc(tmp_path, "fix: recovered after retry")
         return iter([])
 
+    probed = _stub_canary_probe_boundary(monkeypatch)
+
     with (
         patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
@@ -500,11 +516,13 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     assert result.message == "fix: recovered after retry"
     assert bridge.reset_calls == 1
     assert calls == [None, "sess-post-tool"]
+    assert probed, "the failed commit attempt must still reach the dead-agent probe boundary"
 
 
 @pytest.mark.timeout_seconds(2.0)
 def test_generate_commit_message_retries_repeated_post_tool_empty_response_until_success(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -550,6 +568,8 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         _write_commit_message_doc(tmp_path, "fix: recovered after repeated retry")
         return iter([])
 
+    probed = _stub_canary_probe_boundary(monkeypatch)
+
     with (
         patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
@@ -571,10 +591,12 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
     assert bridge.reset_calls == 2
     assert calls == [None, "sess-post-tool", "sess-post-tool"]
     assert result.failure_details != []
+    assert probed, "the failed commit attempt must still reach the dead-agent probe boundary"
 
 
 def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -622,6 +644,8 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
         _write_commit_message_doc(tmp_path, "fix: recovered after midstream retry")
         return iter([])
 
+    probed = _stub_canary_probe_boundary(monkeypatch)
+
     with (
         patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
@@ -642,6 +666,7 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
     assert result.message == "fix: recovered after midstream retry"
     assert bridge.reset_calls == 1
     assert calls == [None, "sess-midstream"]
+    assert probed, "the failed commit attempt must still reach the dead-agent probe boundary"
 
 
 def test_handle_agent_commit_generation_reports_stage_failure_without_traceback(

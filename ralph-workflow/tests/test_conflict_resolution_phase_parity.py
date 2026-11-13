@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.config.models import UnifiedConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -18,7 +18,9 @@ from ralph.pipeline.conflict_resolution.session import (
     invoke_resolution_agent,
 )
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
     _config,
@@ -28,6 +30,17 @@ from tests._conflict_resolution_phase_parity_seams import (
 
 if TYPE_CHECKING:
     import pytest
+
+
+def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    probed: list[str] = []
+
+    def fake_run_canary_probe(config: AgentConfig, **_kwargs: object) -> ProbeResult:
+        probed.append(config.cmd)
+        return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
+
+    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
+    return probed
 
 
 def test_four_agent_chain_tries_every_candidate(
@@ -218,6 +231,7 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     captured: list[int] = []
+    probed = _stub_canary_probe_boundary(monkeypatch)
 
     def _capture_execute(*args: object, **kwargs: object) -> object:
         config = args[1] if len(args) > 1 else kwargs.get("config")
@@ -254,6 +268,7 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
         is False
     )
     assert captured == [4]
+    assert probed, "the failed resolution attempt must still reach the dead-agent probe boundary"
 
 
 def test_launch_failure_is_not_collapsed_to_candidate_declined(

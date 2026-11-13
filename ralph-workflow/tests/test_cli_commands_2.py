@@ -31,7 +31,8 @@ from ralph.mcp.multimodal.capabilities import (
 from ralph.mcp.protocol.session import AgentSession
 from ralph.onboarding import init_local_config_help_text
 from ralph.policy.loader import default_dir as _policy_default_dir
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig
+from ralph.recovery import dead_agent_probe
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.skills._capability_state import CapabilityState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -113,12 +114,12 @@ def _simple_config() -> UnifiedConfig:
             verbosity=2,
         ),
         agent_drains={
-            "commit": AgentDrainConfig(chain="commit_chain"),
-            "review": AgentDrainConfig(chain="review_chain"),
+            "commit": "commit_chain",
+            "review": "review_chain",
         },
         agent_chains={
-            "commit_chain": AgentChainConfig(agents=["commit_agent"]),
-            "review_chain": AgentChainConfig(agents=["review_agent"]),
+            "commit_chain": ["commit_agent"],
+            "review_chain": ["review_agent"],
         },
     )
 
@@ -136,6 +137,23 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
     monkeypatch.setattr(commit_module, "start_commit_bridge", lambda _repo_root: FakeBridge())
+
+
+def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    probed: list[str] = []
+
+    def fake_run_canary_probe(
+        config: AgentConfig,
+        **_kwargs: object,
+    ) -> ProbeResult:
+        probed.append(config.cmd)
+        return ProbeResult(
+            outcome=ProbeOutcome.INCONCLUSIVE,
+            detail="scripted",
+        )
+
+    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
+    return probed
 
 
 def test_generate_commit_preserves_artifacts_when_commit_fails(
@@ -338,6 +356,7 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: str(prompt_path)
     )
     _stub_commit_bridge(monkeypatch)
+    _stub_canary_probe_boundary(monkeypatch)
 
     class FakeRegistry:
         @classmethod
@@ -405,6 +424,7 @@ def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
+    _stub_canary_probe_boundary(monkeypatch)
 
     class FakeRegistry:
         @classmethod

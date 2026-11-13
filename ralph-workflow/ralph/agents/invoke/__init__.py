@@ -29,7 +29,6 @@ from ralph.agents.invoke._commands import (
 )
 from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
-    TerminationRecorder,
     _wait_for_descendants_then_recheck,
     attempt_facts_for_failure,
     attempt_facts_from_exception,
@@ -112,6 +111,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
     WorkspaceChangeClassifier,
     _normalize_workspace_change_weights,
 )
+from ralph.agents.invoke.termination_recorder import TerminationRecorder
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.spec import AgentSpec
 from ralph.api.opencode import opencode_model_id_from_flag, validate_local_model_support

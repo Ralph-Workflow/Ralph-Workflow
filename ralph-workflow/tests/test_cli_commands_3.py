@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from io import StringIO
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from rich.console import Console
 
 from ralph.cli.commands import commit as commit_module
-from ralph.config.models import GeneralConfig
+from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.multimodal.capabilities import (
@@ -15,7 +14,6 @@ from ralph.mcp.multimodal.capabilities import (
     ResolvedCapabilityProfile,
 )
 from ralph.mcp.protocol.session import AgentSession
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 
 if TYPE_CHECKING:
     import pytest
@@ -53,20 +51,20 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
     return stream
 
 
-def _simple_config() -> SimpleNamespace:
-    return SimpleNamespace(
+def _simple_config() -> UnifiedConfig:
+    return UnifiedConfig(
         general=GeneralConfig(
             git_user_name="user",
             git_user_email="user@example.com",
             verbosity=2,
         ),
         agent_drains={
-            "commit": AgentDrainConfig(chain="commit_chain"),
-            "review": AgentDrainConfig(chain="review_chain"),
+            "commit": "commit_chain",
+            "review": "review_chain",
         },
         agent_chains={
-            "commit_chain": AgentChainConfig(agents=["commit_agent"]),
-            "review_chain": AgentChainConfig(agents=["review_agent"]),
+            "commit_chain": ["commit_agent"],
+            "review_chain": ["review_agent"],
         },
     )
 

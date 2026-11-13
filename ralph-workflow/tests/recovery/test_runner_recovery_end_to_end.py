@@ -8,7 +8,7 @@ import pytest
 from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import Verbosity
 from ralph.config.general_config import GeneralConfig
-from ralph.config.models import UnifiedConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
@@ -22,6 +22,8 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.recovery import controller as recovery_controller_module
+from ralph.recovery import dead_agent_probe
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.events import FailureEvent, FalloverEvent
 from ralph.recovery.testing import FakeConnectivityMonitor
@@ -31,6 +33,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _CYCLE_CAP = 3
+
+
+def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    probed: list[str] = []
+
+    def fake_run_canary_probe(config: AgentConfig, **_kwargs: object) -> ProbeResult:
+        probed.append(config.cmd)
+        return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
+
+    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
+    return probed
 
 
 def _test_config() -> UnifiedConfig:
@@ -117,6 +130,7 @@ def test_runner_tries_the_whole_chain_before_stopping(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    probed = _stub_canary_probe_boundary(monkeypatch)
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -151,6 +165,7 @@ def test_runner_tries_the_whole_chain_before_stopping(
     assert invocation_count == 2, (
         f"Expected both agents of the chain to run, got {invocation_count} invocations"
     )
+    assert probed, "the failed chain attempt must still reach the recovery probe boundary"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -158,7 +173,7 @@ def test_runner_records_failure_and_fallover_events(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-
+    probed = _stub_canary_probe_boundary(monkeypatch)
     bundle = _make_policy_bundle()
 
     captured_failure_events: list[FailureEvent] = []
@@ -210,12 +225,14 @@ def test_runner_records_failure_and_fallover_events(
         assert evt.from_agent == "claude"
         assert evt.to_agent == "opencode"
         assert evt.phase == "development"
+    assert probed, "the failed chain attempt must still reach the recovery probe boundary"
 
 
 def test_runner_fallover_history_reflects_agent_transitions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    probed = _stub_canary_probe_boundary(monkeypatch)
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -252,6 +269,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
         assert record.from_agent == "claude"
         assert record.to_agent == "opencode"
         assert record.phase == "development"
+    assert probed, "the failed chain attempt must still reach the recovery probe boundary"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -259,6 +277,7 @@ def test_runner_recovery_cycle_count_advances(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    probed = _stub_canary_probe_boundary(monkeypatch)
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -284,3 +303,4 @@ def test_runner_recovery_cycle_count_advances(
         f"Expected recovery_cycle_count to reach at least 1 in saved states; "
         f"got max={max(cycle_counts, default=0)}"
     )
+    assert probed, "the failed chain attempt must still reach the recovery probe boundary"

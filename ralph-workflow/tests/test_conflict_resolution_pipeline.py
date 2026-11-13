@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.config.models import UnifiedConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.parallel_display import phase_style_for_phase
 from ralph.git.conflict_stage_entries import ConflictStageEntries
 from ralph.git.merge import MERGE_STATE_NONE
@@ -35,6 +35,8 @@ from ralph.pipeline.integration_resolution import (
     inspect_integration_resolution,
 )
 from ralph.policy.loader import load_policy
+from ralph.recovery import dead_agent_probe
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -82,6 +84,17 @@ def _policy_bundle() -> PolicyBundle:
 
 def _config() -> UnifiedConfig:
     return _CONFIG
+
+
+def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    probed: list[str] = []
+
+    def fake_run_canary_probe(config: AgentConfig, **_kwargs: object) -> ProbeResult:
+        probed.append(config.cmd)
+        return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
+
+    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
+    return probed
 
 
 def _install_seams(
@@ -329,19 +342,13 @@ def test_invoker_exception_is_contained_and_returns_false(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
-    monkeypatch.setattr(
-        "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
-        lambda _config: lambda _phase, _agent: None,
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.attempt_runner.production_dead_agent_probe_runner",
-        lambda _config: lambda _phase, _agent: None,
-    )
+    probed = _stub_canary_probe_boundary(monkeypatch)
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         raise RuntimeError("agent exploded")
 
     assert _run(tmp_path, invoke=_invoke) is False
+    assert probed, "the failed resolution attempt must still reach the dead-agent probe boundary"
 
 
 def test_agent_success_over_surviving_markers_is_not_a_resolution(
@@ -721,6 +728,7 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
         lambda _config: lambda _phase, _agent: None,
     )
     session = ResolutionSession(max_rounds_per_stop=1)
+    probed = _stub_canary_probe_boundary(monkeypatch)
 
     def _destroys_the_file(name: str, _p: Path, _r: int) -> bool:
         (tmp_path / "src" / "alpha.py").unlink()
@@ -729,6 +737,7 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
 
     assert _run(tmp_path, invoke=_destroys_the_file, session=session) is False
     assert session.unresolved_paths == ("src/alpha.py",)
+    assert probed, "the failed resolution attempt must still reach the dead-agent probe boundary"
 
 
 def test_a_deletion_is_still_unresolved_on_the_round_after_it(
