@@ -25,7 +25,7 @@ def _terminate_server_process(process: ProcessLike, *, grace_period_s: float) ->
         )
         return
     if hasattr(process, "terminate"):
-        process.terminate(grace_period_s=grace_period_s)
+        process.terminate(grace_period_s, issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
 
 
 @dataclass

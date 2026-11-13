@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.invoke._completion_options import CompletionCheckOptions, _completion_run_id
 from ralph.agents.invoke._session import _bounded_output_lines
+from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
+from ralph.agents.invoke.attempt_supervision._issuer_mapping import _teardown_issuer_for_verdict
+from ralph.agents.invoke.attempt_supervision.teardown_fn import TeardownFn, resolve_teardown
 from ralph.agents.timeout_clock import Clock, SystemClock
-from ralph.checked_accessors import optional_int
 from ralph.process.liveness import DefaultLivenessProbe
-from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
-    from ralph.agents.invoke._completion_termination import _TerminationRecorder
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
     from ralph.process.teardown import ProcessTeardown
 
@@ -29,31 +29,15 @@ def _required_option[T](value: T | None, name: str) -> T:
     return value
 
 
-def _teardown_subtree_if_pid_available(
-    handle: object,
-    *,
-    issuer: ProcessTerminationIssuer,
-    teardown: ProcessTeardown | None = None,
-) -> None:
-    pid = optional_int(cast("object", getattr(handle, "pid", None)))
-    if pid is not None:
-        if teardown is None:
-            teardown_subtree(pid, issuer=issuer)
-        else:
-            teardown.teardown_subtree(pid, issuer=issuer)
+def completion_teardown(process_teardown: ProcessTeardown | None) -> TeardownFn:
+    return resolve_teardown(process_teardown, teardown_subtree)
 
 
 def _record_post_exit_watchdog_fire(
-    recorder: _TerminationRecorder | None, verdict: PostExitVerdict
+    supervisor: AttemptSupervisor, verdict: PostExitVerdict
 ) -> None:
-    if recorder is not None and verdict in _POST_EXIT_FIRE_VERDICTS:
-        recorder.record_post_exit_watchdog_fire()
-
-
-def _teardown_issuer_for_verdict(verdict: PostExitVerdict) -> ProcessTerminationIssuer:
     if verdict in _POST_EXIT_FIRE_VERDICTS:
-        return ProcessTerminationIssuer.POST_EXIT_WATCHDOG
-    return ProcessTerminationIssuer.INVOKE_TEARDOWN
+        supervisor.recorder.record_post_exit_watchdog_fire()
 
 
 def _wait_for_completion_grace(
@@ -64,7 +48,7 @@ def _wait_for_completion_grace(
     *,
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
-    termination_recorder: _TerminationRecorder | None = None,
+    supervisor: AttemptSupervisor | None = None,
 ) -> AgentExecutionState:
     workspace_path = _required_option(opts.workspace_path, "workspace_path")
     execution_strategy = _required_option(opts.execution_strategy, "execution_strategy")
@@ -92,13 +76,13 @@ def _wait_for_completion_grace(
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
+    effective_supervisor = supervisor or AttemptSupervisor.for_recorder(None, handle)
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_parent_exit_grace(classify_exit_state)
-    _record_post_exit_watchdog_fire(termination_recorder, verdict)
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=_teardown_issuer_for_verdict(verdict),
-        teardown=teardown,
+    _record_post_exit_watchdog_fire(effective_supervisor, verdict)
+    effective_supervisor.cleanup(
+        _teardown_issuer_for_verdict(verdict),
+        teardown=completion_teardown(teardown),
     )
     if verdict == PostExitVerdict.SIGNALS_PRESENT:
         return AgentExecutionState.TERMINAL_COMPLETE
@@ -115,7 +99,7 @@ def _wait_for_descendants_then_recheck(
     *,
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
-    termination_recorder: _TerminationRecorder | None = None,
+    supervisor: AttemptSupervisor | None = None,
 ) -> AgentExecutionState:
     if isinstance(agent_name_or_opts, CompletionCheckOptions):
         opts = agent_name_or_opts
@@ -153,13 +137,13 @@ def _wait_for_descendants_then_recheck(
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
+    effective_supervisor = supervisor or AttemptSupervisor.for_recorder(None, handle)
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_descendant_quiesce(classify_exit_state)
-    _record_post_exit_watchdog_fire(termination_recorder, verdict)
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=_teardown_issuer_for_verdict(verdict),
-        teardown=teardown,
+    _record_post_exit_watchdog_fire(effective_supervisor, verdict)
+    effective_supervisor.cleanup(
+        _teardown_issuer_for_verdict(verdict),
+        teardown=completion_teardown(teardown),
     )
     if verdict == PostExitVerdict.SIGNALS_PRESENT:
         return AgentExecutionState.TERMINAL_COMPLETE
@@ -168,7 +152,7 @@ def _wait_for_descendants_then_recheck(
 
 __all__ = [
     "_record_post_exit_watchdog_fire",
-    "_teardown_subtree_if_pid_available",
     "_wait_for_completion_grace",
     "_wait_for_descendants_then_recheck",
+    "completion_teardown",
 ]

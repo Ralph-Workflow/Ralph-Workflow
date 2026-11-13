@@ -5065,7 +5065,7 @@ def test_pi_strategy_classifies_tool_execution_start_as_tool_use() -> None:
     assert signal.raw == line
 
 
-def test_pi_strategy_classifies_toolcall_end_as_tool_result() -> None:
+def test_pi_strategy_classifies_toolcall_end_as_tool_use() -> None:
     strategy = _make_pi_strategy()
     line = json.dumps(
         {
@@ -5080,7 +5080,7 @@ def test_pi_strategy_classifies_toolcall_end_as_tool_result() -> None:
     signal = strategy.classify_activity_line(line)
 
     assert signal is not None
-    assert signal.kind == AgentActivityKind.TOOL_RESULT
+    assert signal.kind == AgentActivityKind.TOOL_USE
     assert signal.raw == line
 
 

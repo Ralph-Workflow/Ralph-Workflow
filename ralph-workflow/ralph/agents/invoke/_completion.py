@@ -27,9 +27,9 @@ from ralph.agents.invoke._completion_failures import (
 )
 from ralph.agents.invoke._completion_options import CompletionCheckOptions, _completion_run_id
 from ralph.agents.invoke._completion_supervision import (
-    _teardown_subtree_if_pid_available,
     _wait_for_completion_grace,
     _wait_for_descendants_then_recheck,
+    completion_teardown,
 )
 from ralph.agents.invoke._completion_termination import (
     TerminationRecorder,
@@ -50,6 +50,7 @@ from ralph.agents.invoke._completion_verdicts import (
 from ralph.agents.invoke._errors import OpenCodeResumableExitError
 from ralph.agents.invoke._fire_reason_issuer import termination_issuer_for_fire_reason
 from ralph.agents.invoke._session import _bounded_output_lines
+from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.registry import lookup_empty_output_diagnostic_factory
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
@@ -92,6 +93,7 @@ def check_process_result(
     process_teardown: ProcessTeardown | None = None,
     termination_recorder: TerminationRecorder | None = None,
 ) -> None:
+    supervisor = AttemptSupervisor.for_recorder(termination_recorder, handle)
     try:
         _check_process_result(
             handle,
@@ -100,11 +102,10 @@ def check_process_result(
             check_options,
             _clock=_clock,
             process_teardown=process_teardown,
-            termination_recorder=termination_recorder,
+            supervisor=supervisor,
         )
     except BaseException as exc:
-        if termination_recorder is not None:
-            attach_attempt_facts(exc, termination_recorder)
+        attach_attempt_facts(exc, supervisor.recorder)
         raise
 
 
@@ -116,10 +117,10 @@ def _check_process_result(
     *,
     _clock: Clock | None = None,
     process_teardown: ProcessTeardown | None = None,
-    termination_recorder: TerminationRecorder | None = None,
+    supervisor: AttemptSupervisor,
 ) -> None:
     if _has_interactive_completion_bypass(handle, parsed_output, check_options):
-        _record_exit_termination(termination_recorder, handle, None)
+        _record_exit_termination(supervisor.recorder, handle, None)
         return
 
     returncode = terminal_returncode(handle, agent_name=agent_name)
@@ -136,11 +137,11 @@ def _check_process_result(
             stderr_text,
             stderr_available,
             process_teardown,
-            termination_recorder=termination_recorder,
+            supervisor=supervisor,
         )
         return
 
-    _record_exit_termination(termination_recorder, handle, returncode)
+    _record_exit_termination(supervisor.recorder, handle, returncode)
 
     _raise_quota_unless_agy_completed(
         agent_name,
@@ -160,6 +161,7 @@ def _check_process_result(
             agent_name,
             bounded_output,
             process_teardown,
+            supervisor=supervisor,
         )
         return
     if (
@@ -202,6 +204,7 @@ def _check_process_result(
             opts,
             exit_state,
             process_teardown,
+            supervisor=supervisor,
         ):
             return
 
@@ -216,7 +219,7 @@ def _check_process_result(
                 bounded_output,
                 clock=_clock,
                 teardown=process_teardown,
-                termination_recorder=termination_recorder,
+                supervisor=supervisor,
             )
 
         if (
@@ -230,7 +233,7 @@ def _check_process_result(
                 bounded_output,
                 clock=_clock,
                 teardown=process_teardown,
-                termination_recorder=termination_recorder,
+                supervisor=supervisor,
             )
             descendants_still_active = (
                 opts.execution_strategy.classify_exit(
@@ -249,6 +252,7 @@ def _check_process_result(
                 opts,
                 exit_state,
                 process_teardown,
+                supervisor=supervisor,
                 waited_on_child=descendants_still_active,
             ):
                 return
@@ -259,6 +263,7 @@ def _check_process_result(
                 opts,
                 stderr_text=stderr_text,
                 teardown=process_teardown,
+                supervisor=supervisor,
             )
             session_id = _resolved_session_id(opts, bounded_output)
             _raise_if_pi_reported_failed_exit(
@@ -266,6 +271,7 @@ def _check_process_result(
                 agent_name,
                 bounded_output,
                 process_teardown,
+                supervisor=supervisor,
             )
             raise OpenCodeResumableExitError(
                 agent_name,
@@ -275,7 +281,7 @@ def _check_process_result(
                 elapsed_seconds=opts.elapsed_seconds,
                 transcript_tail=opts.transcript_tail,
                 returncode=observed_returncode(handle) or 0,
-                issuer=_recorded_issuer_value(termination_recorder),
+                issuer=_recorded_issuer_value(supervisor.recorder),
             )
     elif (
         opts is not None
@@ -316,12 +322,12 @@ def _check_process_result(
                 opts,
                 exit_state,
                 process_teardown,
+                supervisor=supervisor,
             ):
                 return
-            _teardown_subtree_if_pid_available(
-                handle,
-                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-                teardown=process_teardown,
+            supervisor.cleanup(
+                ProcessTerminationIssuer.INVOKE_TEARDOWN,
+                teardown=completion_teardown(process_teardown),
             )
             diagnostic_factory = lookup_empty_output_diagnostic_factory(agent_name)
             diagnostic = (

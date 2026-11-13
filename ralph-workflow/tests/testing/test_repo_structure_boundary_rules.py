@@ -238,9 +238,11 @@ def test_rule_pairings_cover_every_boundary_rule() -> None:
         "B6",
         "B7",
         "B8",
+        "B9",
     }
     assert rule_pairing("B2") == "AC16"
     assert rule_pairing("B8") == "AC4"
+    assert rule_pairing("B9") == "AC3/AC15"
 
 
 @pytest.mark.parametrize(
@@ -441,6 +443,90 @@ def test_b8_missing_detector_file_is_no_violation() -> None:
             "ralph/agents/parsers/content_channel.py", "from dataclasses import dataclass"
         )
     )
+
+
+_B9_INVOKE_SOURCE = """
+def f(handle, td, pid, issuer):
+    handle.terminate(issuer=issuer)
+    teardown_subtree(pid, issuer=issuer)
+    td.teardown_subtree(pid, issuer=issuer)
+"""
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "ralph/agents/invoke/_completion_supervision.py",
+        "ralph/agents/idle_watchdog/_detector.py",
+    ],
+)
+def test_b9_rejects_signalling_calls_in_invoke_layer_files(path: str) -> None:
+    b9_hits = [
+        item for item in collect_boundary_violations(path, _B9_INVOKE_SOURCE) if " B9 " in item
+    ]
+    assert len(b9_hits) == 3
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "handle.terminate(issuer=issuer)",
+        "teardown_subtree(pid, issuer=issuer)",
+        "td.teardown_subtree(pid, issuer=issuer)",
+    ],
+)
+def test_b9_accepts_signalling_calls_in_the_attempt_supervisor(source: str) -> None:
+    path = "ralph/agents/invoke/attempt_supervision/attempt_supervisor.py"
+    assert not any(" B9 " in item for item in collect_boundary_violations(path, source))
+
+
+def test_b9_accepts_teardown_subtree_passed_as_a_reference() -> None:
+    source = "supervisor.act(observation, teardown=teardown_subtree)"
+    assert not any(
+        " B9 " in item
+        for item in collect_boundary_violations("ralph/agents/invoke/_pty_line_reader.py", source)
+    )
+
+
+@pytest.mark.parametrize("call", ["proc.terminate()", "proc.kill()"])
+def test_b9_rejects_untyped_termination_outside_the_process_layer(call: str) -> None:
+    assert any(
+        " B9 " in item
+        for item in collect_boundary_violations("ralph/mcp/protocol/transport.py", call)
+    )
+
+
+def test_b9_accepts_typed_termination_outside_the_process_layer() -> None:
+    assert not any(
+        " B9 " in item
+        for item in collect_boundary_violations(
+            "ralph/mcp/protocol/transport.py", "handle.terminate(issuer=issuer)"
+        )
+    )
+
+
+def test_b9_leaves_module_level_signalling_to_b4() -> None:
+    assert not any(
+        " B9 " in item
+        for item in collect_boundary_violations("ralph/git/_worktree_lease.py", "os.kill(pid, 0)")
+    )
+    assert not any(
+        " B9 " in item
+        for item in collect_boundary_violations(
+            "ralph/interrupt/dispatcher.py", "os.killpg(pgid, signal.SIGKILL)"
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "ralph/process/manager/_managed_process.py",
+        "ralph/testing/pytest_timeout_plugin.py",
+    ],
+)
+def test_b9_skips_the_process_and_testing_trees(path: str) -> None:
+    assert not any(" B9 " in item for item in collect_boundary_violations(path, "proc.terminate()"))
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {

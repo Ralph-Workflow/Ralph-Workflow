@@ -26,6 +26,7 @@ RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
     ("B6", "AC4"),
     ("B7", "U6"),
     ("B8", "AC4"),
+    ("B9", "AC3/AC15"),
 )
 _PAIRING_BY_RULE: Final[Mapping[str, str]] = MappingProxyType(dict(RULE_PAIRINGS))
 B4_ALLOWLIST: Final[Mapping[str, str]] = MappingProxyType(
@@ -80,6 +81,14 @@ _B8_DETECTOR_PATHS = frozenset(
 )
 _B8_PROCESS_IMPORT_PREFIX = "ralph.process"
 _B8_PROCESS_NAME = "ManagedProcess"
+# B9 is an invoke-layer signalling boundary plus a typed-issuer clause; it does
+# not make ProcessManager.terminate the sole signalling entry point.
+_B9_INVOKE_PREFIXES: Final = ("ralph/agents/invoke/", "ralph/agents/idle_watchdog/")
+_B9_SUPERVISOR_PATH: Final = "ralph/agents/invoke/attempt_supervision/attempt_supervisor.py"
+_B9_SIGNALING_ATTRIBUTES: Final = frozenset({"terminate", "kill", "killpg", "teardown_subtree"})
+_B9_TYPED_ISSUER_ATTRIBUTES: Final = frozenset({"terminate", "kill"})
+_B9_MODULE_RECEIVERS: Final = frozenset({"os", "signal"})
+_B9_SKIPPED_PREFIXES: Final = ("ralph/process/", "ralph/testing/")
 
 
 def _b8_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
@@ -106,6 +115,46 @@ def _b8_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
         ):
             reasons.append("ManagedProcess reference in detector module")
         violations.extend(_violation(relative_path, node, "B8", reason) for reason in reasons)
+    return violations
+
+
+def _b9_is_signalling_call(func: ast.AST) -> bool:
+    if isinstance(func, ast.Name):
+        return func.id == "teardown_subtree"
+    return isinstance(func, ast.Attribute) and func.attr in _B9_SIGNALING_ATTRIBUTES
+
+
+def _b9_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
+    if relative_path == _B9_SUPERVISOR_PATH:
+        return []
+    in_invoke_layer = relative_path.startswith(_B9_INVOKE_PREFIXES)
+    skipped = relative_path.startswith(_B9_SKIPPED_PREFIXES)
+    violations: list[str] = []
+    for node in nodes:
+        if not isinstance(node, ast.Call) or not _b9_is_signalling_call(node.func):
+            continue
+        if in_invoke_layer:
+            violations.append(
+                _violation(
+                    relative_path,
+                    node,
+                    "B9",
+                    "signalling call outside the attempt supervisor",
+                )
+            )
+            continue
+        if skipped or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in _B9_TYPED_ISSUER_ATTRIBUTES:
+            continue
+        receiver = node.func.value
+        if isinstance(receiver, ast.Name) and receiver.id in _B9_MODULE_RECEIVERS:
+            continue
+        if any(keyword.arg == "issuer" for keyword in node.keywords):
+            continue
+        violations.append(
+            _violation(relative_path, node, "B9", "termination call without a typed issuer")
+        )
     return violations
 
 
@@ -604,4 +653,5 @@ def collect_boundary_violations(relative_path: str, source: str) -> list[str]:
         + _b5_violations(relative_path, tree, nodes)
         + _decision_violations(relative_path, tree, nodes)
         + _b8_violations(relative_path, nodes)
+        + _b9_violations(relative_path, nodes)
     )

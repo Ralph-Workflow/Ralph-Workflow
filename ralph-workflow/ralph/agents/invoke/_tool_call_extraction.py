@@ -83,15 +83,30 @@ def _extract_plain_text_tool_call(raw: str) -> tuple[str, dict[str, object]] | N
     return None
 
 
+def _unwrap_stream_event_envelope(obj: dict[str, object]) -> dict[str, object]:
+    event = obj.get("event")
+    if isinstance(event, dict):
+        inner_obj = cast("dict[str, object]", event)
+        content_block = inner_obj.get("content_block")
+        if isinstance(content_block, dict):
+            inner_obj = cast("dict[str, object]", content_block)
+        return inner_obj
+    step_update = obj.get("step_update")
+    if isinstance(step_update, dict):
+        tool_info = step_update.get("tool_info")
+        if isinstance(tool_info, dict):
+            merged: dict[str, object] = dict(tool_info)
+            merged.setdefault("tool_name", step_update.get("tool_name", merged.get("name")))
+            return merged
+        return cast("dict[str, object]", step_update)
+    return obj
+
+
 def _unwrap_tool_use_envelope(obj: dict[str, object]) -> dict[str, object]:
     if obj.get("type") == "stream_event" or "event" in obj:
-        event = obj.get("event")
-        if isinstance(event, dict):
-            inner_obj = cast("dict[str, object]", event)
-            content_block = inner_obj.get("content_block")
-            if isinstance(content_block, dict):
-                inner_obj = cast("dict[str, object]", content_block)
-            return inner_obj
+        return _unwrap_stream_event_envelope(obj)
+    if obj.get("type") == "content_block_start" and isinstance(obj.get("content_block"), dict):
+        return cast("dict[str, object]", obj["content_block"])
     assistant_event = obj.get("assistantMessageEvent")
     if isinstance(assistant_event, dict):
         return cast("dict[str, object]", assistant_event)
@@ -168,6 +183,8 @@ def _resolve_flat_tool_call(
         args_field = obj.get("arguments")
     if not isinstance(args_field, dict):
         args_field = obj.get("args")
+    if not isinstance(args_field, dict):
+        args_field = obj.get("parameters")
     if not isinstance(args_field, dict):
         args_field = {}
     return tool_name, cast("dict[str, object]", args_field)

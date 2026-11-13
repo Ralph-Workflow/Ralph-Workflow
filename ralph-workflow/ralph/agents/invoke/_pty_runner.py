@@ -11,7 +11,6 @@ from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
-    _TerminationRecorder,
     attach_attempt_facts,
     check_process_result,
     completion_run_id_from_extra_env,
@@ -39,6 +38,10 @@ from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
     _bounded_output_lines,
     extract_transport_session_id_with_visible_tui,
+)
+from ralph.agents.invoke.attempt_supervision import (
+    AttemptSupervisor,
+    PostExitHangObserved,
 )
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
@@ -68,23 +71,6 @@ class _ClosableIterator(Protocol):
     def close(self) -> None: ...
 
 
-@runtime_checkable
-class _TerminablePtyHandle(Protocol):
-    def terminate(
-        self,
-        grace_period_s: float,
-        *,
-        issuer: ProcessTerminationIssuer,
-        reason: str = ...,
-    ) -> None: ...
-
-
-@runtime_checkable
-class _PtyHandleWithPid(Protocol):
-    @property
-    def pid(self) -> int | None: ...
-
-
 def _has_completion_exit_sent(reader: object) -> TypeGuard[_CompletionExitSentReader]:
     return hasattr(reader, "completion_exit_sent")
 
@@ -103,17 +89,12 @@ def _close_iterator(iterator: object) -> None:
             iterator.close()
 
 
-def _terminate_pty_tree(handle: object) -> None:
-    if isinstance(handle, _TerminablePtyHandle):
-        with contextlib.suppress(Exception):
-            handle.terminate(
-                grace_period_s=0.5,
-                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            )
-    pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
-    if pid is not None:
-        with contextlib.suppress(Exception):
-            teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+def _terminate_pty_tree(supervisor: AttemptSupervisor) -> None:
+    supervisor.cleanup(
+        ProcessTerminationIssuer.INVOKE_TEARDOWN,
+        terminate=True,
+        teardown=teardown_subtree,
+    )
 
 
 def _spawn_pty_with_agy_log_offset(
@@ -157,6 +138,7 @@ def run_pty_and_read_lines(
     handle, agy_cli_log = _spawn_pty_with_agy_log_offset(cmd, ctx)
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
+    supervisor = AttemptSupervisor(handle)
     with handle:
         pty_reader = PtyLineReader(
             handle,
@@ -165,9 +147,10 @@ def run_pty_and_read_lines(
             clock,
             _extras,
             agy_cli_log=agy_cli_log,
+            supervisor=supervisor,
         )
         lines_iter = pty_reader.read_lines()
-        termination = _TerminationRecorder()
+        termination = supervisor.recorder
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
         captured_session_id = expected_session_id
@@ -198,23 +181,16 @@ def run_pty_and_read_lines(
                 post_exit = PostExitWatchdog(ctx.policy, clock)
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
                 if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
-                    handle.terminate(
-                        grace_period_s=0.5,
-                        issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG,
-                    )
-                    exit_pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
-                    if exit_pid is not None:
-                        teardown_subtree(
-                            exit_pid, issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG
-                        )
+                    supervisor.act(PostExitHangObserved(verdict), teardown=teardown_subtree)
                     raise _IdleStreamTimeoutError(
                         ctx.policy.process_exit_wait_seconds,
                         WatchdogFireReason.PROCESS_EXIT_HANG,
                     )
         except _IdleStreamTimeoutError as exc:
             session_resume_safe = _is_resumable_fire_reason(exc.reason)
-            termination.record_issuer(termination_issuer_for_fire_reason(exc.reason))
-            termination.record_liveness(True)
+            if supervisor.winner is None:
+                termination.record_issuer(termination_issuer_for_fire_reason(exc.reason))
+                termination.record_liveness(True)
             timeout_error = AgentInactivityTimeoutError(
                 _agent_command_name(ctx.config),
                 exc.timeout_seconds,
@@ -237,7 +213,7 @@ def run_pty_and_read_lines(
             raise timeout_error from exc
         except BaseException:
             _close_iterator(lines_iter)
-            _terminate_pty_tree(handle)
+            _terminate_pty_tree(supervisor)
             raise
 
         (

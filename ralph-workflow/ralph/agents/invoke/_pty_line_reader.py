@@ -40,10 +40,8 @@ from ralph.agents.idle_watchdog import (
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import (
-    _TerminationRecorder,
     attach_attempt_facts,
     completion_run_id_from_extra_env,
-    observed_returncode,
 )
 from ralph.agents.invoke._errors import (
     AgentInvocationError,
@@ -59,7 +57,6 @@ from ralph.agents.invoke._process_reader import (
     _is_resumable_fire_reason,
     _raise_on_relay_health_error,
     check_broken_agent_timer,
-    process_issuer_for_fire_reason,
 )
 from ralph.agents.invoke._pty_extras import PtyExtras
 from ralph.agents.invoke._pty_helpers import (
@@ -87,6 +84,14 @@ from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.invoke._session import (
     TURN_BOUNDARY_MARKER,
     extract_visible_tui_transport_session_id,
+)
+from ralph.agents.invoke.attempt_supervision import (
+    AttemptSupervisor,
+    InteractiveCompletionObserved,
+    OperatorInterruptObserved,
+    ProviderErrorObserved,
+    SilenceObserved,
+    TerminalStartupErrorObserved,
 )
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
@@ -231,24 +236,17 @@ class PtyLineReader:
         *,
         max_pending_chars: int = DEFAULT_MAX_BUFFER_CHARS,
         agy_cli_log: tuple[Path, int] | None = None,
+        supervisor: AttemptSupervisor | None = None,
     ) -> None:
         _extras = extras or PtyExtras()
         self._handle = handle
+        self._supervisor = supervisor
         self._agent_name = agent_name
         self._started_at_wall_clock = time.time()
         self._config = ctx.config
         self._policy = ctx.policy
         self._quota_error: QuotaExhaustedError | None = None
-        agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
-        self._agy_cli_log = (
-            agy_cli_log
-            if agy_cli_log is not None
-            else (
-                agy_cli_log_start_offset(agy_cli_log_path)
-                if self._config.transport == AgentTransport.AGY
-                else None
-            )
-        )
+        self._agy_cli_log = self._resolve_agy_cli_log(agy_cli_log, ctx)
         self._monitor = ctx.monitor
         self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
         self._pre_existing_transcript_names: frozenset[str] = (
@@ -320,6 +318,18 @@ class PtyLineReader:
             self._transcript_session_ids.append(self._expected_session_id)
         self._subagent_tails: ClaudeSubagentTranscriptTails | None = None
 
+    @staticmethod
+    def _resolve_agy_cli_log(
+        agy_cli_log: tuple[Path, int] | None,
+        ctx: AgentRunCtx,
+    ) -> tuple[Path, int] | None:
+        if agy_cli_log is not None:
+            return agy_cli_log
+        agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
+        if ctx.config.transport == AgentTransport.AGY:
+            return agy_cli_log_start_offset(agy_cli_log_path)
+        return None
+
     def _configure_runtime_hooks(self, ctx: AgentRunCtx, extras: PtyExtras) -> None:
         self._expected_session_id = extras.expected_session_id
         self._input_prompt = extras.input_prompt
@@ -336,6 +346,14 @@ class PtyLineReader:
     @property
     def completion_exit_sent(self) -> bool:
         return self._completion_exit_sent
+
+    def _attempt_supervisor(self) -> AttemptSupervisor:
+        attributes = cast("dict[str, object]", self.__dict__)
+        supervisor = attributes.get("_supervisor")
+        if supervisor is None:
+            supervisor = AttemptSupervisor(self._handle)
+            self._supervisor = supervisor
+        return cast("AttemptSupervisor", supervisor)
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
         thread = threading.Thread(target=target, daemon=True)
@@ -833,21 +851,9 @@ class PtyLineReader:
             else _DEFAULT_INTERACTIVE_EXIT_GRACE_SECONDS
         )
         grace = min(grace, _MAX_INTERACTIVE_EXIT_GRACE_SECONDS)
-        with contextlib.suppress(
-            AttributeError, OSError, ProcessLookupError, RuntimeError, TimeoutError
-        ):
-            self._handle.wait(timeout=grace)
-        with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
-            if self._handle.poll() is None:
-                self._handle.terminate(
-                    grace_period_s=0.5,
-                    issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-                    reason="interactive_completion",
-                )
-        pid = cast("int | None", getattr(self._handle, "pid", None))
-        if pid is not None:
-            with contextlib.suppress(Exception):
-                teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+        self._attempt_supervisor().act(
+            InteractiveCompletionObserved(grace), teardown=teardown_subtree
+        )
 
     def _completion_evidence_enabled(self) -> bool:
         return (
@@ -890,10 +896,9 @@ class PtyLineReader:
                 terminal = self._durable_completion_is_terminal()
         if not terminal:
             return False
-        pid = cast("int | None", getattr(self._handle, "pid", None))
-        if pid is not None:
-            with contextlib.suppress(Exception):
-                teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+        self._attempt_supervisor().cleanup(
+            ProcessTerminationIssuer.INVOKE_TEARDOWN, teardown=teardown_subtree
+        )
         return True
 
     def _classify_quiet(self) -> AgentExecutionState:
@@ -950,18 +955,14 @@ class PtyLineReader:
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
+        outcome = self._attempt_supervisor().act(
+            SilenceObserved(fire_reason), teardown=teardown_subtree
+        )
+        if outcome is None:
+            return None
         with self._lines_lock:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
-        self._record_terminal_reason("conflict_inactivity")
-        self._handle.terminate(
-            grace_period_s=0.5,
-            issuer=process_issuer_for_fire_reason(fire_reason),
-            reason="conflict_inactivity",
-        )
-        pid = cast("int | None", getattr(self._handle, "pid", None))
-        if pid is not None:
-            teardown_subtree(pid, issuer=process_issuer_for_fire_reason(fire_reason))
         resume_safe = _is_resumable_fire_reason(fire_reason)
         captured_session_id = self._captured_session_id
         now = self._clock.monotonic()
@@ -1139,21 +1140,7 @@ class PtyLineReader:
 
     def _on_interrupt(self) -> None:
         self._monitor_stop.set()
-        if hasattr(self, "_quota_error") and self._quota_error is not None:
-            return
-        self._record_terminal_reason("operator_cancellation")
-        with contextlib.suppress(Exception):
-            self._handle.close()
-        with contextlib.suppress(Exception):
-            self._handle.terminate(
-                grace_period_s=0.5,
-                issuer=ProcessTerminationIssuer.OPERATOR,
-                reason="operator_cancellation",
-            )
-        pid = cast("int | None", getattr(self._handle, "pid", None))
-        if pid is not None:
-            with contextlib.suppress(Exception):
-                teardown_subtree(pid, issuer=ProcessTerminationIssuer.OPERATOR)
+        self._attempt_supervisor().act(OperatorInterruptObserved(), teardown=teardown_subtree)
 
     def _cleanup(
         self,
@@ -1182,29 +1169,19 @@ class PtyLineReader:
     def _terminate_for_quota(self, detail: str) -> None:
         if not is_quota_kill_evidence(detail):
             return
-        if self._quota_error is not None:
-            return
-        self._record_terminal_reason("quota_exhausted")
-        self._handle.terminate(
-            grace_period_s=0.5,
-            issuer=ProcessTerminationIssuer.QUOTA_DETECTOR,
-            reason="quota_exhausted",
+        outcome = self._attempt_supervisor().act(
+            ProviderErrorObserved(detail), teardown=teardown_subtree
         )
-        pid = cast("int | None", getattr(self._handle, "pid", None))
-        if pid is not None:
-            teardown_subtree(pid, issuer=ProcessTerminationIssuer.QUOTA_DETECTOR)
-        recorder = _TerminationRecorder()
-        recorder.record_issuer(TerminationIssuer.QUOTA_DETECTOR)
-        recorder.record_liveness(True)
-        returncode = observed_returncode(self._handle)
-        recorder.record_observed_returncode(returncode)
+        if outcome is None:
+            return
+        returncode = outcome.returncode
         error = QuotaExhaustedError(
             self._agent_name,
             detail,
             returncode=0 if returncode is None else returncode,
             issuer=TerminationIssuer.QUOTA_DETECTOR.value,
         )
-        attach_attempt_facts(error, recorder)
+        attach_attempt_facts(error, self._attempt_supervisor().recorder)
         self._quota_error = error
         self._lines_event.set()
 
@@ -1237,16 +1214,10 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
-        self._record_terminal_reason("terminal_startup_error")
-        with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
-            self._handle.terminate(
-                grace_period_s=0.5,
-                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-                reason="terminal_startup_error",
-            )
-        pid = cast("int | None", getattr(self._handle, "pid", None))
-        if pid is not None:
-            teardown_subtree(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+        self._attempt_supervisor().act(
+            TerminalStartupErrorObserved(terminal_startup_error),
+            teardown=teardown_subtree,
+        )
         raise AgentInvocationError(
             self._agent_name,
             1,

@@ -83,21 +83,9 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "agy",
-        "tool_calls",
-        "agy step_update tool frames name the tool under step_update.tool_info,"
-        " which extract_tool_call_from_activity_signal does not unwrap",
-    ),
-    (
-        "agy",
         "subagent_activity_observed",
         "agy_wire_tool.jsonl carries no subagent step; subagent activity is"
         " populated by the child-liveness seam, not step_update frames",
-    ),
-    (
-        "claude",
-        "tool_calls",
-        "claude_wire.jsonl emits content_block_start tool_use frames whose tool"
-        " name extract_tool_call_from_activity_signal does not unwrap",
     ),
     (
         "claude",
@@ -156,12 +144,6 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
         "nanocoder",
         "subagent_activity_observed",
         "nanocoder_wire.jsonl carries no subagent frame",
-    ),
-    (
-        "pi",
-        "tool_calls",
-        "the pi capture's toolcall_end frames classify as tool_result; tool"
-        " names are only extracted from tool_use signals",
     ),
     (
         "pi",

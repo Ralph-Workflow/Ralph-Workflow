@@ -2285,6 +2285,111 @@ ralph.agents.invoke
    :show-inheritance:
    :noindex:
 
+ralph.agents.invoke.attempt_supervision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.attempt_observation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.attempt_observation
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.attempt_supervisor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.attempt_supervisor
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.broken_agent_timeout_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.broken_agent_timeout_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.completion_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.completion_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.interactive_completion_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.interactive_completion_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.observation_record
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.observation_record
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.operator_interrupt_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.operator_interrupt_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.post_exit_hang_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.post_exit_hang_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.provider_error_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.provider_error_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.silence_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.silence_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.startup_failure_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.startup_failure_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.teardown_fn
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.teardown_fn
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.terminal_startup_error_observed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.terminal_startup_error_observed
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.attempt_supervision.termination_outcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.attempt_supervision.termination_outcome
+   :members:
+   :show-inheritance:
+
 ralph.agents.invoke._completion_exit_logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

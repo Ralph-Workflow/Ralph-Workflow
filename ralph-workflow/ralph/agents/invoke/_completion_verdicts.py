@@ -7,7 +7,7 @@ from ralph.agents.completion_signals import completion_signals_terminal, evaluat
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.invoke._completion_evidence import apply_sentinel_signal
 from ralph.agents.invoke._completion_options import CompletionCheckOptions, _completion_run_id
-from ralph.agents.invoke._completion_supervision import _teardown_subtree_if_pid_available
+from ralph.agents.invoke._completion_supervision import completion_teardown
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.invoke._implicit_completion import is_implicit_development_exit
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
@@ -27,6 +27,7 @@ from ralph.process.manager.process_termination_issuer import ProcessTerminationI
 
 if TYPE_CHECKING:
     from ralph.agents.invoke._completion_termination import _TerminationRecorder
+    from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
     from ralph.process.teardown import ProcessTeardown
 
@@ -36,16 +37,17 @@ def _raise_if_pi_reported_failed_exit(
     agent_name: str,
     output: list[str],
     teardown: ProcessTeardown | None,
+    *,
+    supervisor: AttemptSupervisor,
 ) -> None:
     if has_pi_context_exhaustion_signal(agent_name, output):
         raise PiContextExhaustedExitError(agent_name)
     provider_failure = pi_provider_failure_reason(agent_name, output)
     if provider_failure is None:
         return
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-        teardown=teardown,
+    supervisor.cleanup(
+        ProcessTerminationIssuer.INVOKE_TEARDOWN,
+        teardown=completion_teardown(teardown),
     )
     raise PiProviderFailureExitError(agent_name, provider_failure)
 
@@ -72,6 +74,7 @@ def _accepts_implicit_development_exit(
     exit_state: AgentExecutionState,
     teardown: ProcessTeardown | None,
     *,
+    supervisor: AttemptSupervisor,
     waited_on_child: bool = False,
 ) -> bool:
     if (
@@ -81,7 +84,7 @@ def _accepts_implicit_development_exit(
     ):
         return False
     _raise_if_transport_reported_error(handle, agent_name, output)
-    _raise_if_pi_reported_failed_exit(handle, agent_name, output, teardown)
+    _raise_if_pi_reported_failed_exit(handle, agent_name, output, teardown, supervisor=supervisor)
     return True
 
 

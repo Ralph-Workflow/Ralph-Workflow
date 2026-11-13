@@ -183,7 +183,7 @@ def _classify_pi_message_event(obj: dict[str, object], line: str) -> AgentActivi
         return None
     event = cast("dict[str, object]", assistant_event)
     if event.get("type") == "toolcall_end":
-        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
+        return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
     if event.get("type") == "error":
         return AgentActivitySignal(
             AgentActivityKind.ERROR_LINE, raw=str(event.get("reason", "error"))

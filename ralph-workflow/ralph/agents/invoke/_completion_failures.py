@@ -15,7 +15,7 @@ from ralph.agents.invoke._completion_exit_status import (
     credentials_failure_needs_broken_exit,
     looks_like_credentials_failure,
 )
-from ralph.agents.invoke._completion_supervision import _teardown_subtree_if_pid_available
+from ralph.agents.invoke._completion_supervision import completion_teardown
 from ralph.agents.invoke._completion_termination import (
     observed_returncode,
     termination_issuer_for_teardown_issuer,
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke._completion_options import CompletionCheckOptions
     from ralph.agents.invoke._completion_termination import _TerminationRecorder
+    from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
     from ralph.process.teardown import ProcessTeardown
 
@@ -51,6 +52,7 @@ def _raise_if_broken_agent_exit(
     *,
     stderr_text: str = "",
     teardown: ProcessTeardown | None = None,
+    supervisor: AttemptSupervisor,
 ) -> None:
     returncode = int(handle.returncode or 0)
     credentials_marker_seen = looks_like_credentials_failure(stderr_text) or any(
@@ -59,10 +61,9 @@ def _raise_if_broken_agent_exit(
     if credentials_marker_seen and (
         not bounded_output or is_structurally_small_bounded_output(bounded_output)
     ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=teardown,
+        supervisor.cleanup(
+            ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            teardown=completion_teardown(teardown),
         )
         raise BrokenAgentExitError(
             agent_name,
@@ -77,10 +78,9 @@ def _raise_if_broken_agent_exit(
         and opts.has_meaningful_output is False
         and is_structurally_small_bounded_output(bounded_output)
     ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=teardown,
+        supervisor.cleanup(
+            ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            teardown=completion_teardown(teardown),
         )
         raise BrokenAgentExitError(
             agent_name,
@@ -91,10 +91,9 @@ def _raise_if_broken_agent_exit(
             stderr=stderr_text,
         )
     if opts.elapsed_seconds is not None and not bounded_output:
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=teardown,
+        supervisor.cleanup(
+            ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            teardown=completion_teardown(teardown),
         )
         raise BrokenAgentExitError(
             agent_name,
@@ -108,10 +107,9 @@ def _raise_if_broken_agent_exit(
     if nonblank_output and all(
         is_prompt_echo_line(line, opts.input_prompt) for line in nonblank_output
     ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=teardown,
+        supervisor.cleanup(
+            ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            teardown=completion_teardown(teardown),
         )
         raise BrokenAgentExitError(
             agent_name,
@@ -154,21 +152,21 @@ def _handle_non_zero_returncode(
     stderr_available: bool,
     process_teardown: ProcessTeardown | None,
     *,
-    termination_recorder: _TerminationRecorder | None = None,
+    supervisor: AttemptSupervisor,
 ) -> None:
     issuer_method = cast(
         "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
     )
     issuer = issuer_method() if issuer_method is not None else None
     intentional = returncode in {-15, 143} and isinstance(issuer, str)
-    if termination_recorder is not None:
-        termination_recorder.record_observed_returncode(observed_returncode(handle))
-        termination_recorder.record_reported_returncode(returncode)
-        termination_recorder.record_issuer(
-            termination_issuer_for_teardown_issuer(issuer)
-            if return_code_may_be_a_signal(returncode)
-            else TerminationIssuer.AGENT_EXIT
-        )
+    termination_recorder = supervisor.recorder
+    termination_recorder.record_observed_returncode(observed_returncode(handle))
+    termination_recorder.record_reported_returncode(returncode)
+    termination_recorder.record_issuer(
+        termination_issuer_for_teardown_issuer(issuer)
+        if return_code_may_be_a_signal(returncode)
+        else TerminationIssuer.AGENT_EXIT
+    )
     bounded_output = _bounded_output_lines(
         parsed_output or [],
         explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
@@ -179,10 +177,9 @@ def _handle_non_zero_returncode(
             agent_name,
             returncode,
         )
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=process_teardown,
+        supervisor.cleanup(
+            ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            teardown=completion_teardown(process_teardown),
         )
         return
     raise_if_quota_exhausted(
@@ -192,15 +189,20 @@ def _handle_non_zero_returncode(
         include_output=True,
     )
     if not intentional:
-        _raise_if_pi_reported_failed_exit(handle, agent_name, bounded_output, process_teardown)
+        _raise_if_pi_reported_failed_exit(
+            handle,
+            agent_name,
+            bounded_output,
+            process_teardown,
+            supervisor=supervisor,
+        )
     if credentials_failure_needs_broken_exit(
         stderr_text,
         check_options.elapsed_seconds if check_options is not None else None,
     ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=process_teardown,
+        supervisor.cleanup(
+            ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            teardown=completion_teardown(process_teardown),
         )
         raise BrokenAgentExitError(
             agent_name,
@@ -226,10 +228,9 @@ def _handle_non_zero_returncode(
         issuer=issuer if intentional else None,
     )
     log_invocation_exit(exc)
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-        teardown=process_teardown,
+    supervisor.cleanup(
+        ProcessTerminationIssuer.INVOKE_TEARDOWN,
+        teardown=completion_teardown(process_teardown),
     )
     raise exc
 

@@ -43,9 +43,9 @@ if TYPE_CHECKING:
         @property
         def stderr(self) -> IO[bytes] | None: ...
 
-        def terminate(self) -> None: ...
+        def terminate(self, *, issuer: ProcessTerminationIssuer) -> None: ...
         def wait(self, timeout: float | None = None) -> int: ...
-        def kill(self) -> None: ...
+        def kill(self, *, issuer: ProcessTerminationIssuer) -> None: ...
 
     class ThreadLike(Protocol):
         def start(self) -> None: ...
@@ -178,11 +178,11 @@ class StdioTransport:
                             with contextlib.suppress(Exception):
                                 pipe.close()
             else:
-                proc.terminate()
+                proc.terminate(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
                 try:
                     proc.wait(timeout=5.0)
                 except subprocess.TimeoutExpired:
-                    proc.kill()
+                    proc.kill(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
                     with contextlib.suppress(subprocess.TimeoutExpired):
                         proc.wait(timeout=5.0)
         for thread_attr in ("_reader_thread", "_writer_thread"):
