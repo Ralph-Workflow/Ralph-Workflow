@@ -96,9 +96,8 @@ overrides without requiring Python changes.
 
 | Section              | Declares                                                                       |
 | -------------------- | ------------------------------------------------------------------------------ |
-| `[phases]`           | Which phases exist, in what order, with what drains and routes                 |
+| `[blocks]`           | Which phases exist, in what order, with what drains and routes; group blocks compose them, including the development iteration loop |
 | `[agents]`           | Which agent specs are available and what flags they accept                     |
-| `[pipeline]`         | The composition of phases, including the development iteration loop            |
 | `[recovery]`         | Retry budgets, watchdog settings, and recovery transitions                     |
 | `[artifacts]`        | The artifact contracts each phase must produce                                 |
 | `[mcp]`              | MCP upstream configuration and transport selection                             |
@@ -151,9 +150,17 @@ a **prompt template** — the Jinja template that materializes the phase's
 prompt from the current state; an **artifact contract** — what the phase
 must produce; and **transitions** — `on_success`, `on_failure`,
 `on_loopback`, and `on_reject` (`ralph/policy/models/_phase_transition.py`).
-Phases are declared in policy under `[phases]` and `[phases.<name>]`, with
-transitions under `[phases.<name>.transitions]`. The runtime reads the
-declaration and resolves the agent chain from policy.
+In the runtime's abstract model, a pipeline is a graph of named phases
+(`ralph/policy/models/_pipeline_policy.py`). To customize the bundled default
+pipeline you author that graph as blocks in `pipeline.toml`: phase settings
+live under `[blocks.<block>.phase]`, with transitions under
+`[blocks.<block>.phase.transitions]`, as the bundled default declares them in
+`ralph/policy/defaults/pipeline.toml`. A `pipeline.toml` that declares a
+top-level `[phases]` table with no `blocks` and no `entry_block` is
+classified as the obsolete phase-authored schema: strict validation rejects
+it with a policy validation error, and a non-strict load warns and falls
+back to the bundled default (`ralph/policy/loader.py`). The runtime reads
+the declaration and resolves the agent chain from policy.
 
 ### What a drain is
 

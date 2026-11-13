@@ -149,7 +149,7 @@ Agents are configured in `ralph-workflow.toml` under four top-level sections:
   The drain name is the pipeline key (`planning`, `development`, `analysis`,
   `commit`, …) and its value is the chain name that handles it. The drain
   is NOT parallel fan-out — that is a separate effect handled by
-  `[phases.<name>].parallelization`, not by `[agent_drains]`.
+  `[blocks.<name>.phase.parallelization]`, not by `[agent_drains]`.
 
 The shorthand forms for built-in transports are also accepted as agent names
 (`claude/<model>`, `opencode/<provider>/<model>`, `agy/<model>`,

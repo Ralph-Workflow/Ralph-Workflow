@@ -213,16 +213,16 @@ When a phase has `artifact_history.enabled = true` in its `pipeline.toml` policy
 Artifact history is a per-phase option configured in `pipeline.toml`. Any execution phase can opt in by declaring an `artifact_history` block:
 
 ```toml
-[phases.planning.artifact_history]
+[blocks.planning.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = true
 
-[phases.planning_analysis.artifact_history]
+[blocks.planning_analysis.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = false
 
 # Example: development phase opting in to artifact history
-[phases.development.artifact_history]
+[blocks.development.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = true
 ```
@@ -236,7 +236,7 @@ clear_on_fresh_entry = true
 
 Phases that share a drain must agree on `artifact_history.enabled`; the policy loader raises a `PolicyValidationError` if they do not.
 
-**Default pipeline behavior:** The default pipeline enables `artifact_history` on `planning` (with `clear_on_fresh_entry = true`), `planning_analysis` (with `clear_on_fresh_entry = false`), and `development` (with `clear_on_fresh_entry = true`). This means each fresh planning or development cycle starts with a clean history, while the planning editor agent retains history across analysis loopbacks within the same planning cycle.
+**Default pipeline behavior:** The default pipeline enables `artifact_history` on `planning` (with `clear_on_fresh_entry = true`), `planning_analysis` (with `clear_on_fresh_entry = false`), and `development` (with `clear_on_fresh_entry = true`), and also on the commit and analysis phases `development_commit`, `development_analysis`, and `development_final_commit` (each with `clear_on_fresh_entry = false`). This means each fresh planning or development cycle starts with a clean history, while the planning editor agent retains history across analysis loopbacks within the same planning cycle.
 
 ### Prompt integration
 
@@ -253,13 +253,13 @@ Archival is handled by `ralph.mcp.artifacts.history`. When history is enabled an
 In addition to the artifact history archive, Ralph Workflow can delete the primary artifact files (the canonical markdown artifact plus its handoff copy) for one or more drains at the start of a fresh phase entry. This is controlled by the `clear_drains_on_fresh_entry` field on a phase definition in `pipeline.toml`:
 
 ```toml
-[phases.planning]
+[blocks.planning.phase]
 clear_drains_on_fresh_entry = ["planning", "planning_analysis", "development_analysis"]
 
-[phases.development]
+[blocks.development.phase]
 clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
 
-[phases.development_commit]
+[blocks.development_commit.phase]
 clear_drains_on_fresh_entry = ["development", "development_analysis"]
 ```
 

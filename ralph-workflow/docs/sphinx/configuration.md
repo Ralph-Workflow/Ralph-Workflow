@@ -646,9 +646,9 @@ To create the local override set, use `ralph --init-local-config` explicitly.
 
 `pipeline.toml` defines the workflow shape Ralph Workflow uses for a run. The top-level ideas are:
 
-- `entry_phase` — where the run starts
+- `entry_block` — where the run starts
 - `terminal_phase` — what counts as successful completion
-- `[phases.<name>]` — the individual steps in the workflow
+- `[blocks.<name>.phase]` — the individual steps in the workflow
 - transitions — where Ralph Workflow goes next on success, failure, or loopback
 - counters and budgets — how Ralph Workflow limits iteration and retry behavior
 - post-commit routes — what happens after a commit-producing step

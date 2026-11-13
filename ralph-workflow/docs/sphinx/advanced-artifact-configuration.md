@@ -69,7 +69,7 @@ If you add or rename a choice in `artifacts.toml`, you must update the matching 
 ### I want to add a new analysis choice
 
 1. update `decision_vocabulary` in `artifacts.toml`
-2. update the matching `[phases.<name>.decisions.*]` routing in `pipeline.toml`
+2. update the matching `[blocks.<name>.phase.decisions.*]` routing in `pipeline.toml`
 3. run `ralph --check-policy`
 
 ### I want human-readable summaries written to different files

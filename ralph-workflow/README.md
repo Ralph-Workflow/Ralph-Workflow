@@ -43,13 +43,13 @@ productive on day 1, preconfigured, and yours to tweak. See the
 [bundled defaults](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#bundled-defaults).
 
 It runs on your machine: local, free, AGPL-3.0-or-later, no account, no
-hosted service. Your specifications, configuration, and Git history stay
-yours. Run one agent by hand and you are the scheduler, reviewer, and
-merger; run a plain loop and it repeats one prompt; Ralph Workflow runs
-the graph for you and lands checked work on one mainline. Move beyond
-pull requests: review and integration happen inside the execution graph.
-You define the outcome and the checks; Ralph Workflow runs the workflow;
-you judge the software.
+hosted service, and no metering from Ralph Workflow. Your specifications,
+configuration, and Git history stay yours. Run one agent by hand and you
+are the scheduler, reviewer, and merger; run a plain loop and it repeats
+one prompt; Ralph Workflow runs the graph for you and lands checked work
+on one mainline. Move beyond pull requests: review and integration happen
+inside the execution graph. You define the outcome and the checks;
+Ralph Workflow runs the workflow; you judge the software.
 
 It fits work with a clear finish line and checks you trust; it is not
 (yet) for open-ended exploration or repositories with no reliable tests

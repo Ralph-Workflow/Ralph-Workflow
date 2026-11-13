@@ -91,7 +91,7 @@ increments_counter = "iteration"
 loop_resets = ["development_analysis_iteration", "commit_review_iteration"]
 ```
 
-Use `[blocks.*]` when you want to compose the workflow from reusable units rather than declaring a flat phase graph. Most operators can start with the bundled block layout and override only the `[phases.<name>]` details inside the blocks they want to change.
+Use `[blocks.*]` when you want to compose the workflow from reusable units rather than declaring a flat phase graph. Most operators can start with the bundled block layout and override only the `[blocks.<name>.phase]` details inside the blocks they want to change; the loader merges each named block override into the bundled default. A `pipeline.toml` whose only workflow-graph content is top-level `[phases.<name>]` tables is rejected as the obsolete phase-authored schema: strict loading fails validation, and a non-strict load logs a warning and falls back to the bundled default.
 
 ### `[loop_counters.*]`
 
@@ -122,9 +122,16 @@ default_max = 5
 
 Use this when you want post-commit routing to depend on remaining budget.
 
-### `[phases.<name>]`
+### `[blocks.<name>.phase]`
 
-Each phase defines one step in the workflow graph.
+Each phase defines one step in the workflow graph. With the bundled block layout you declare phase fields under `[blocks.<name>.phase]` in the block that owns the phase.
+
+For example, this `.agent/pipeline.toml` override adds a failure route to the development phase while keeping every other bundled default in force:
+
+```toml
+[blocks.development.phase.transitions]
+on_failure = "failed_terminal"
+```
 
 Common fields include:
 
@@ -147,7 +154,7 @@ Roles include:
 - `verification`
 - `terminal`
 
-### `[phases.<name>.transitions]`
+### `[blocks.<name>.phase.transitions]`
 
 This controls where Ralph Workflow goes next.
 
@@ -156,31 +163,33 @@ Typical keys:
 - `on_success`
 - `on_failure`
 - `on_loopback`
+- `on_reject`
 
-### `[phases.<name>.decisions.*]`
+### `[blocks.<name>.phase.decisions.*]`
 
 Analysis phases can map explicit choice vocabulary to targets.
 
 Example:
 
 ```toml
-[phases.development_analysis.decisions.completed]
-target = "development_commit"
+[blocks.development_analysis.phase.decisions.completed]
+target = "development_final_commit_review"
 reset_loop = true
+cycle_outcome = "completed"
 
-[phases.development_analysis.decisions.request_changes]
+[blocks.development_analysis.phase.decisions.request_changes]
 target = "development"
 reset_loop = false
 ```
 
-### `[phases.<name>.invocation_gate]`
+### `[blocks.<name>.phase.invocation_gate]`
 
 An optional gate on an analysis phase that delays analysis until the upstream
 execution phase has accumulated enough wall-clock time in the current outer
 cycle. The bundled `development_analysis` phase ships one:
 
 ```toml
-[phases.development_analysis.invocation_gate]
+[blocks.development_analysis.phase.invocation_gate]
 upstream_execution_phase = "development"
 minimum_elapsed_seconds = 900.0
 always_invoke_statuses = ["partial", "failed"]
@@ -228,18 +237,17 @@ through the phase's `decisions` table:
   The label itself never fails the pipeline; terminal failure is reserved for
   real pipeline or recovery exhaustion.
 
-### `[phases.<name>.commit_policy]`
+### `[blocks.<name>.phase.commit_policy]`
 
 Commit phases define whether a commit advances budget and resets loops.
 
 Example:
 
 ```toml
-[phases.development_commit.commit_policy]
+[blocks.development_commit.phase.commit_policy]
 requires_artifact = true
-skipped_advances_progress = true
-increments_counter = "iteration"
-loop_resets = ["development_analysis_iteration"]
+skipped_advances_progress = false
+loop_resets = ["commit_review_iteration"]
 ```
 
 ### Commit review phase and safety tripwires
@@ -306,14 +314,14 @@ The mass-deletion tripwires count the diff against `HEAD`; they do not consult t
   git checkout refs/ralph/proposals/<run>/<iteration> -- .
   ```
 
-### `[phases.<name>.parallelization]`
+### `[blocks.<name>.phase.parallelization]`
 
 This is where same-workspace fan-out is configured.
 
 Example:
 
 ```toml
-[phases.development.parallelization]
+[blocks.development.phase.parallelization]
 dispatch_mode = "agent_subagents"
 mode = "same_workspace"
 max_parallel_workers = 8
@@ -406,7 +414,7 @@ contract.
 Existing configuration may still contain the recognized compatibility value:
 
 ```toml
-[phases.development.parallelization]
+[blocks.development.phase.parallelization]
 dispatch_mode = "ralph_fan_out"
 mode = "same_workspace"
 max_parallel_workers = 4
@@ -427,7 +435,7 @@ through its native subagent tools.
 
 ### Per-phase parallelization configuration
 
-Parallelization is configured per phase, under `[phases.<name>.parallelization]`; the bundled default declares it on the development phase. A `pipeline.toml` that contains a top-level `[parallel_execution]` block fails fast at validation: the policy model rejects it with a `ValueError` that the loader reports as a `pipeline.toml validation failed` error, and the message points the operator at `ralph --regenerate-config` to refresh the bundled template. `ralph --check-policy` exits non-zero on such a file, while a run that loads it non-strictly logs the failure and uses the built-in default pipeline. The error message names the replacement path, so the fix is one line per moved field: `max_parallel_workers`, `max_work_units`, `require_allowed_directories`, and `post_fanout_verification` each move under the phase's `parallelization` block. Run `ralph --explain-policy` after the refresh to confirm the resulting layout.
+Parallelization is configured per phase, under `[blocks.<name>.phase.parallelization]` in the bundled block layout; the bundled default declares it on the development phase. A `pipeline.toml` that contains a top-level `[parallel_execution]` block fails fast at validation: the policy model rejects it with a `ValueError` that the loader reports as a `pipeline.toml validation failed` error, and the message points the operator at `ralph --regenerate-config` to refresh the bundled template. `ralph --check-policy` exits non-zero on such a file, while a run that loads it non-strictly logs the failure and uses the built-in default pipeline. The error message names the replacement path, so the fix is one line per moved field: `max_parallel_workers`, `max_work_units`, `require_allowed_directories`, and `post_fanout_verification` each move under the phase's `parallelization` block. Run `ralph --explain-policy` after the refresh to confirm the resulting layout.
 
 ### `[[post_commit_routes]]`
 
@@ -683,7 +691,7 @@ Edit `[[post_commit_routes]]`.
 
 ### I want a new phase in the workflow
 
-Add a new `[phases.<name>]` block and ensure all transitions into and out of it are valid.
+Declare a new individual `[blocks.<name>]` block with a `phase_name` and a `[blocks.<name>.phase]` table, and ensure all transitions into and out of the new phase are valid.
 
 ### I want the workflow to fail faster
 
@@ -691,7 +699,7 @@ Lower loop caps, budget caps, retry policy, or recovery-cycle limits.
 
 ### I want parallel development fan-out
 
-Edit `[phases.<name>.parallelization]` on the execution phase that should split into work units.
+Edit `[blocks.<name>.phase.parallelization]` on the block whose execution phase should split into work units.
 
 ## Safe editing workflow
 
