@@ -20,7 +20,7 @@ from ralph.agents._agy_upstream_diagnostic import (
     agy_fresh_cli_log_tail,
 )
 from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, clamp_tail
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import completion_signals_terminal
 from ralph.agents.execution_state import (
@@ -130,8 +130,8 @@ from ralph.runtime_events import current_runtime_event
 
 from ._monitor_factory import _make_process_monitor
 from ._quota_detection import (
-    is_provider_quota_output_line,
     is_quota_kill_evidence,
+    provider_quota_line_evidence,
     provider_quota_log_detail_matches,
 )
 
@@ -875,8 +875,8 @@ class PtyLineReader:
             [],
             required_artifact=self._required_artifact,
             run_id=self._completion_run_id,
-            sentinel_secret=_parent_broker_secret(),
-            receipt_secret=_parent_broker_secret(),
+            sentinel_secret=parent_broker_secret(),
+            receipt_secret=parent_broker_secret(),
         )
         return completion_signals_terminal(signals)
 
@@ -1169,6 +1169,9 @@ class PtyLineReader:
     def _terminate_for_quota(self, detail: str) -> None:
         if not is_quota_kill_evidence(detail):
             return
+        self._terminate_for_provider_quota(detail)
+
+    def _terminate_for_provider_quota(self, detail: str) -> None:
         outcome = self._attempt_supervisor().act(
             ProviderErrorObserved(detail), teardown=teardown_subtree
         )
@@ -1227,10 +1230,11 @@ class PtyLineReader:
         )
 
     def _handle_queued_line(self, queued_line: str, watchdog: IdleWatchdog) -> Iterator[str]:
-        if is_provider_quota_output_line(queued_line):
+        evidence = provider_quota_line_evidence(queued_line)
+        if evidence is not None:
             if self._raw_overflow is not None:
                 self._raw_overflow.append(queued_line)
-            self._terminate_for_quota(queued_line)
+            self._terminate_for_provider_quota(queued_line)
             self._raise_if_quota_exhausted()
         self._record_transcript_session_id(queued_line)
         self._observe_queued_line(queued_line)

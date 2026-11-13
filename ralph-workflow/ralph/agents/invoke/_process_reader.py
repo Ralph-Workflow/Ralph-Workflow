@@ -20,7 +20,7 @@ from ralph.agents._agy_upstream_diagnostic import (
     agy_cli_log_start_offset,
     agy_fresh_cli_log_tail,
 )
-from ralph.agents._broker_secret import _BROKER_ENV_VAR_NAME, _parent_broker_secret
+from ralph.agents._broker_secret import _BROKER_ENV_VAR_NAME, parent_broker_secret
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.agents.execution_state import (
@@ -136,8 +136,8 @@ from ralph.timeout_defaults import (
 
 from ._monitor_factory import _make_process_monitor
 from ._quota_detection import (
-    is_provider_quota_output_line,
     is_quota_kill_evidence,
+    provider_quota_line_evidence,
     provider_quota_log_detail_matches,
 )
 
@@ -854,8 +854,9 @@ class ProcessLineReader:
         try:
             for line in stderr_pipe:
                 self._append_stderr(line)
-                if is_provider_quota_output_line(line):
-                    self._terminate_for_quota(line)
+                evidence = provider_quota_line_evidence(line)
+                if evidence is not None:
+                    self._terminate_for_provider_quota(evidence.text)
                     break
         except (UnicodeDecodeError, ValueError):
             return
@@ -896,8 +897,9 @@ class ProcessLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(line)
                     self._lines_event.set()
-                if is_provider_quota_output_line(line):
-                    self._terminate_for_quota(line)
+                evidence = provider_quota_line_evidence(line)
+                if evidence is not None:
+                    self._terminate_for_provider_quota(evidence.text)
                     break
                 session_id = extract_transport_session_id_from_line(line)
                 if session_id is not None:
@@ -936,6 +938,9 @@ class ProcessLineReader:
     def _terminate_for_quota(self, detail: str) -> None:
         if not is_quota_kill_evidence(detail):
             return
+        self._terminate_for_provider_quota(detail)
+
+    def _terminate_for_provider_quota(self, detail: str) -> None:
         if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS:
             return
         outcome = self._attempt_supervisor().act(
@@ -1501,7 +1506,7 @@ def _run_subprocess_and_read_lines(
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)
-        broker_secret = _parent_broker_secret()
+        broker_secret = parent_broker_secret()
 
         def completion_is_terminal() -> bool:
             if (
@@ -1635,8 +1640,8 @@ def _run_subprocess_and_read_lines(
                 has_meaningful_output=_has_meaningful_output_from_reader(reader),
                 input_prompt=ctx.input_prompt,
                 transcript_tail=transcript_tail,
-                sentinel_secret=_parent_broker_secret(),
-                receipt_secret=_parent_broker_secret(),
+                sentinel_secret=parent_broker_secret(),
+                receipt_secret=parent_broker_secret(),
                 activity_only_supervision=ctx.policy.profile.value == "activity_only",
             ),
             _clock=clock,

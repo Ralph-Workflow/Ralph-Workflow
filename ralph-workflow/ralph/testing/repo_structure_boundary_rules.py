@@ -27,6 +27,7 @@ RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
     ("B7", "U6"),
     ("B8", "AC4"),
     ("B9", "AC3/AC15"),
+    ("B10", "AC13"),
 )
 _PAIRING_BY_RULE: Final[Mapping[str, str]] = MappingProxyType(dict(RULE_PAIRINGS))
 B4_ALLOWLIST: Final[Mapping[str, str]] = MappingProxyType(
@@ -84,9 +85,12 @@ _B8_PROCESS_NAME = "ManagedProcess"
 _B9_INVOKE_PREFIXES: Final = ("ralph/agents/invoke/", "ralph/agents/idle_watchdog/")
 _B9_SUPERVISOR_PATH: Final = "ralph/agents/invoke/attempt_supervision/attempt_supervisor.py"
 _B9_SIGNALING_ATTRIBUTES: Final = frozenset({"terminate", "kill", "killpg", "teardown_subtree"})
-_B9_TYPED_ISSUER_ATTRIBUTES: Final = frozenset({"terminate", "kill"})
+_B9_HANDLE_ATTRIBUTES: Final = frozenset({"terminate", "kill"})
 _B9_MODULE_RECEIVERS: Final = frozenset({"os", "signal"})
 _B9_SKIPPED_PREFIXES: Final = ("ralph/process/", "ralph/testing/")
+_B9_MANAGER_FACTORIES: Final = frozenset({"get_process_manager", "ProcessManager"})
+_B10_FACTS_ATTRIBUTE: Final = "attempt_facts"
+_B10_DELETED_NAMES: Final = frozenset({"attach_attempt_facts", "attempt_facts_from_exception"})
 
 
 def _b8_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
@@ -133,24 +137,97 @@ def _b9_invoke_layer_signalling_violation(relative_path: str, node: ast.Call) ->
     )
 
 
-def _b9_typed_issuer_violation(relative_path: str, node: ast.Call) -> str | None:
+def _call_name(func: ast.AST) -> str | None:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _contains_manager_factory(node: ast.AST) -> bool:
+    return any(
+        isinstance(child, ast.Call)
+        and isinstance(child.func, (ast.Name, ast.Attribute))
+        and _call_name(child.func) in _B9_MANAGER_FACTORIES
+        for child in ast.walk(node)
+    )
+
+
+def _manager_bound_names(tree: ast.Module) -> frozenset[str]:
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            targets: tuple[ast.AST, ...] = tuple(node.targets)
+            value: ast.AST | None = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = (node.target,)
+            value = node.value
+        else:
+            continue
+        if value is None or not _contains_manager_factory(value):
+            continue
+        for target in targets:
+            bound.update(_target_root_names(target))
+    return frozenset(bound)
+
+
+def _target_root_names(target: ast.AST) -> set[str]:
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, ast.Attribute):
+        return {target.attr}
+    if isinstance(target, ast.Starred):
+        return _target_root_names(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: set[str] = set()
+        for element in target.elts:
+            names.update(_target_root_names(element))
+        return names
+    return set()
+
+
+def _b9_manager_receiver(node: ast.Call, manager_names: frozenset[str]) -> bool:
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    receiver = node.func.value
+    if isinstance(receiver, ast.Call):
+        return _call_name(receiver.func) in _B9_MANAGER_FACTORIES
+    if isinstance(receiver, ast.Name):
+        return receiver.id in manager_names
+    if isinstance(receiver, ast.Attribute):
+        return receiver.attr in manager_names
+    return False
+
+
+def _b9_handle_termination_violation(
+    relative_path: str,
+    node: ast.Call,
+    manager_names: frozenset[str],
+) -> str | None:
     if relative_path.startswith(_B9_SKIPPED_PREFIXES):
         return None
     if not isinstance(node.func, ast.Attribute):
         return None
-    if node.func.attr not in _B9_TYPED_ISSUER_ATTRIBUTES:
+    if node.func.attr not in _B9_HANDLE_ATTRIBUTES:
         return None
     receiver = node.func.value
     if isinstance(receiver, ast.Name) and receiver.id in _B9_MODULE_RECEIVERS:
         return None
-    if any(keyword.arg == "issuer" for keyword in node.keywords):
+    if _b9_manager_receiver(node, manager_names):
         return None
-    return _violation(relative_path, node, "B9", "termination call without a typed issuer")
+    return _violation(
+        relative_path,
+        node,
+        "B9",
+        "handle-level termination call outside the process layer",
+    )
 
 
-def _b9_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
+def _b9_violations(relative_path: str, nodes: list[ast.AST], tree: ast.Module) -> list[str]:
     if relative_path == _B9_SUPERVISOR_PATH:
         return []
+    manager_names = _manager_bound_names(tree)
     violations: list[str] = []
     for node in nodes:
         if not isinstance(node, ast.Call) or not _b9_is_signalling_call(node.func):
@@ -159,9 +236,52 @@ def _b9_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
         if invoke_layer_violation is not None:
             violations.append(invoke_layer_violation)
             continue
-        typed_issuer_violation = _b9_typed_issuer_violation(relative_path, node)
-        if typed_issuer_violation is not None:
-            violations.append(typed_issuer_violation)
+        handle_violation = _b9_handle_termination_violation(relative_path, node, manager_names)
+        if handle_violation is not None:
+            violations.append(handle_violation)
+    return violations
+
+
+def _b10_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
+    if relative_path.startswith(_B9_SKIPPED_PREFIXES):
+        return []
+    violations: list[str] = []
+    for node in nodes:
+        if isinstance(node, ast.ImportFrom) and any(
+            alias.name in _B10_DELETED_NAMES for alias in node.names
+        ):
+            violations.append(
+                _violation(
+                    relative_path,
+                    node,
+                    "B10",
+                    "deleted attempt-facts helper reference",
+                )
+            )
+        elif isinstance(node, ast.Call) and _call_name(node.func) in {"setattr", "getattr"}:
+            if any(
+                isinstance(arg, ast.Constant) and arg.value == _B10_FACTS_ATTRIBUTE
+                for arg in node.args
+            ):
+                violations.append(
+                    _violation(
+                        relative_path,
+                        node,
+                        "B10",
+                        "dynamic attempt_facts transport",
+                    )
+                )
+        elif (isinstance(node, ast.Name) and node.id in _B10_DELETED_NAMES) or (
+            isinstance(node, ast.Attribute) and node.attr in _B10_DELETED_NAMES
+        ):
+            violations.append(
+                _violation(
+                    relative_path,
+                    node,
+                    "B10",
+                    "deleted attempt-facts helper reference",
+                )
+            )
     return violations
 
 
@@ -660,5 +780,6 @@ def collect_boundary_violations(relative_path: str, source: str) -> list[str]:
         + _b5_violations(relative_path, tree, nodes)
         + _decision_violations(relative_path, tree, nodes)
         + _b8_violations(relative_path, nodes)
-        + _b9_violations(relative_path, nodes)
+        + _b9_violations(relative_path, nodes, tree)
+        + _b10_violations(relative_path, nodes)
     )

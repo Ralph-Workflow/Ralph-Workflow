@@ -10,6 +10,7 @@ tests/agents/execution_state/test_opencode_sink_registry_parity.py|0,1,0
 tests/agents/execution_state/test_opencode_subagent_visibility.py|0,2,0
 tests/agents/execution_state/test_strategy_classes_consolidated.py|0,2,0
 tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py|0,6,0
+tests/agents/invoke/test_attempt_ended_termination.py|0,1,0
 tests/agents/invoke/test_claude_interactive_real_capture_replay.py|0,2,1
 tests/agents/invoke/test_codex_completion_liveness.py|0,2,4
 tests/agents/invoke/test_codex_session_id_extraction.py|0,1,0
@@ -33,6 +34,7 @@ tests/agents/invoke/test_line_reader_queue_bound.py|0,4,8
 tests/agents/invoke/test_missing_credentials_preflight.py|0,1,0
 tests/agents/invoke/test_native_mcp_private_root_concurrency.py|0,1,0
 tests/agents/invoke/test_opencode_prompt_delivered_on_stdin.py|0,1,0
+tests/agents/invoke/test_pending_subagents_turn_end.py|0,4,0
 tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py|0,2,0
 tests/agents/invoke/test_prompt_echo_line_reader.py|0,2,1
 tests/agents/invoke/test_pty_check_fire_resume_metadata.py|0,3,3
@@ -99,6 +101,7 @@ tests/agents/test_registry_seeds_catalog.py|0,4,0
 tests/agents/test_stream_parsed_agent_activity_invokes_parser_emit_subagent.py|0,1,0
 tests/agents/test_subagent_activity_emission.py|0,1,0
 tests/agents/test_subprocess_executor_quota.py|0,1,0
+tests/agents/test_subprocess_executor_terminate_await_order.py|2,2,0
 tests/agents/test_support.py|0,1,1
 tests/agents/test_terminal_state_restored_on_exit.py|0,2,0
 tests/agents/test_workspace_change_classifier.py|0,4,0
@@ -220,6 +223,7 @@ tests/mcp/test_wire_ledger_incremental.py|0,4,0
 tests/mcp/test_wire_ledger_lock_contention.py|0,5,0
 tests/mcp/websearch/test_brave_backend.py|0,0,1
 tests/pipeline/_terminal_mcp_error_seams.py|0,2,1
+tests/pipeline/test_attempt_runner.py|0,1,0
 tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py|1,3,2
 tests/pipeline/test_integration_log_dedupe.py|2,1,5
 tests/pipeline/test_integration_resolution_dispatch_inventory.py|0,0,10
@@ -293,6 +297,7 @@ tests/recovery/test_priority_agent_selection.py|0,2,0
 tests/recovery/test_prompt_scenario_unavailability.py|0,2,0
 tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py|0,6,0
 tests/recovery/test_runner_offline_pause_resume.py|1,0,0
+tests/recovery/test_termination_facts.py|0,0,1
 tests/recovery/test_two_main_retry_rules.py|0,2,0
 tests/recovery/test_two_state_invariant.py|0,2,0
 tests/recovery/test_unavailability_reason.py|0,3,0

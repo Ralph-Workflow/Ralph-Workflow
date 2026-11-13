@@ -9,5 +9,5 @@ if TYPE_CHECKING:
 _BROKER_ENV_VAR_NAME = "RALPH_BROKER_SECRET"
 
 
-def _parent_broker_secret(getenv: Callable[[str], str | None] = os.getenv) -> str | None:
+def parent_broker_secret(getenv: Callable[[str], str | None] = os.getenv) -> str | None:
     return getenv(_BROKER_ENV_VAR_NAME)

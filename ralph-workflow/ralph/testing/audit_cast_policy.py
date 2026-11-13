@@ -97,6 +97,7 @@ SEAM_EXEMPT_CALL_SITES: frozenset[tuple[str, str]] = frozenset(
         ("ralph/agents/invoke/_command_builders/__init__.py", "AgentTransport"),
         ("ralph/agents/invoke/_commands.py", "AgentTransport"),
         ("ralph/agents/invoke/_completion.py", "int | None"),
+        ("ralph/agents/invoke/_completion_termination.py", "BaseException"),
         ("ralph/agents/invoke/_options.py", "float | None"),
         ("ralph/agents/invoke/_process_reader.py", "ChildLivenessRegistry | None"),
         ("ralph/agents/invoke/_process_reader.py", "IO[str] | None"),
@@ -110,6 +111,9 @@ SEAM_EXEMPT_CALL_SITES: frozenset[tuple[str, str]] = frozenset(
         ("ralph/agents/invoke/_pty_line_reader.py", "dict[str, str] | None"),
         ("ralph/agents/invoke/_pty_line_reader.py", "frozenset[str] | None"),
         ("ralph/agents/invoke/_pty_line_reader.py", "int | None"),
+        ("tests/agents/invoke/test_pending_subagents_turn_end.py", "ManagedPtyProcess"),
+        ("tests/agents/test_subprocess_executor_terminate_await_order.py", "ManagedAsyncProcess"),
+        ("tests/agents/test_subprocess_executor_terminate_await_order.py", "ProcessManager"),
         (
             "ralph/agents/invoke/attempt_supervision/attempt_supervisor.py",
             "Callable[[float | None], int] | None",

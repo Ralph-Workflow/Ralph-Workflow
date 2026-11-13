@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from loguru import logger
 
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.catalog import default_catalog
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import strategy_for_command
@@ -176,7 +176,7 @@ from ralph.timeout_defaults import (
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterator, Mapping
+    from collections.abc import Callable, Generator, Mapping
 
     from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.timeout_clock import Clock
@@ -260,11 +260,13 @@ def _run_shared_interactive_pty(
     opts: InvokeOptions,
     transport: AgentTransport,
     prompt_file: str,
-) -> Iterator[str]:
-    yield from run_pty_and_read_lines(
-        cmd,
-        ctx,
-        _shared_interactive_pty_extras(transport, opts, prompt_file),
+) -> Generator[str, None, AttemptEnded | None]:
+    return (
+        yield from run_pty_and_read_lines(
+            cmd,
+            ctx,
+            _shared_interactive_pty_extras(transport, opts, prompt_file),
+        )
     )
 
 
@@ -391,23 +393,24 @@ def _run_pty_execution(
     opts: InvokeOptions,
     transport: AgentTransport,
     prompt_file: str,
-) -> Iterator[str]:
+) -> Generator[str, None, AttemptEnded | None]:
     if transport in {
         AgentTransport.CLAUDE_INTERACTIVE,
         AgentTransport.NANOCODER,
     }:
-        yield from _run_shared_interactive_pty(cmd, ctx, opts, transport, prompt_file)
-    elif transport == AgentTransport.AGY:
+        return (yield from _run_shared_interactive_pty(cmd, ctx, opts, transport, prompt_file))
+    if transport == AgentTransport.AGY:
         run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
         if opts.workspace_path is not None:
             _clear_session_completion_sentinel(opts.workspace_path, run_id)
-        yield from run_pty_and_read_lines(
-            cmd,
-            ctx,
-            PtyExtras(expected_session_id=run_id),
+        return (
+            yield from run_pty_and_read_lines(
+                cmd,
+                ctx,
+                PtyExtras(expected_session_id=run_id),
+            )
         )
-    else:
-        yield from run_pty_and_read_lines(cmd, ctx, PtyExtras())
+    return (yield from run_pty_and_read_lines(cmd, ctx, PtyExtras()))
 
 
 def invoke_agent(
@@ -757,7 +760,6 @@ __all__ = [
     "UnsupportedMcpTransportError",
     "WatchdogFireReason",
     "WorkspaceMonitor",
-    "_parent_broker_secret",
     "attempt_facts_for_failure",
     "bounded_output_lines",
     "build_command",
@@ -789,6 +791,7 @@ __all__ = [
     "load_existing_cursor_upstream_servers",
     "load_existing_kimi_upstream_servers",
     "load_existing_nanocoder_upstream_servers",
+    "parent_broker_secret",
     "pending_vt_snapshot_line",
     "permission_prompt_action_message",
     "plan_choice_menu_response",

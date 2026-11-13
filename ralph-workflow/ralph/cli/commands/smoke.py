@@ -11,7 +11,7 @@ import click
 from loguru import logger
 from rich.table import Table
 
-from ralph.agents.invoke import _parent_broker_secret
+from ralph.agents.invoke import parent_broker_secret
 from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.cli.commands._smoke_ccs import smoke_interactive_ccs_command
 from ralph.cli.commands.smoke_agent_defaults import resolve_default_smoke_agent
@@ -282,7 +282,7 @@ render_smoke_report = _render_smoke_report
 
 
 def _ensure_smoke_broker_secret() -> None:
-    if not _parent_broker_secret():
+    if not parent_broker_secret():
         os.environ["RALPH_BROKER_SECRET"] = secrets.token_hex(32)
     protect_broker_secret()
 

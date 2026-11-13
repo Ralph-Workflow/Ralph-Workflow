@@ -6,7 +6,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from ralph.agents._agy_upstream_diagnostic import agy_cli_log_start_offset
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
@@ -255,8 +255,8 @@ def run_pty_and_read_lines(
                 has_meaningful_output=_has_meaningful_output_from_reader(pty_reader),
                 input_prompt=_extras.input_prompt,
                 transcript_tail=transcript_tail,
-                sentinel_secret=_parent_broker_secret(),
-                receipt_secret=_parent_broker_secret(),
+                sentinel_secret=parent_broker_secret(),
+                receipt_secret=parent_broker_secret(),
                 activity_only_supervision=ctx.policy.profile.value == "activity_only",
             ),
             _clock=clock,

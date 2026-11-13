@@ -176,14 +176,14 @@ is entered only when a caller injects a custom runner or replaces
 it. The rule table for the production kills is under
 "Cause 1 — production liveness subsystem (CURRENT)" below.
 
-- `ralph-workflow/ralph/process/manager/_managed_process.py:285` resets
+- `ralph-workflow/ralph/process/manager/_managed_process.py:283` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
   only when a non-empty `chunk` arrives from the child's `stdout`/`stderr`.
-- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:343-365`
+- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:341-372`
   computes `inactivity_deadline = last_output_at_ref[0] + timeout`
-  (`:353-355`) and arms the kill with `timeout_cause = "inactivity"` and
-  `timeout_value = timeout` (`:364-365`); the terminate-then-raise is at
-  `:366-373`.
+  (`:351-353`) and arms the kill with `timeout_cause = "inactivity"` and
+  `timeout_value = timeout` (`:362-363`); the terminate-then-raise is at
+  `:367-372`.
 - `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:37`)
   — the inactivity window the exec seam applies when the caller passes no
   timeout. A command that stays silent is killed there with cause
@@ -552,12 +552,12 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ```
 
   (`ralph/mcp/server/lifecycle.py:2166-2177`; the `"ralph.mcp.server"` module name is at
-  `:2170`). The MCP server runs as a separate child
+  `:2175`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
-  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:48-53`),
+  `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:58-63`),
   which calls `_terminate_server_process(process, grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)`
-  at line 51 and `process.wait(timeout=SHUTDOWN_REAP_WAIT_S)` at line 53.
-  Both waits are module constants (`_standalone_mcp_process.py:15` and `:17`,
+  at line 61 and `process.wait(timeout=SHUTDOWN_REAP_WAIT_S)` at line 63.
+  Both waits are module constants (`_standalone_mcp_process.py:20` and `:22`,
   5.0 seconds each) so the E6.4 restart-budget arithmetic in
   `lifecycle.py:_FAILED_ATTEMPT_CLEANUP_S` is derived from the real teardown
   bound rather than a duplicated literal.

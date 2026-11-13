@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.chain import ChainManager
 from ralph.agents.completion_signals import evaluate_completion, graded_phase_verdict
 from ralph.agents.registry import AgentRegistry
@@ -352,7 +352,7 @@ def _compute_graded_phase_verdict(
     *,
     shared_capture: bool = False,
 ) -> tuple[str, Provenance, str]:
-    secret = _parent_broker_secret()
+    secret = parent_broker_secret()
     signals = evaluate_completion(
         workspace_root,
         required_artifact=required_artifact,

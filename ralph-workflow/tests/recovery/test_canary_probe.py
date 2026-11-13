@@ -112,6 +112,23 @@ def _make_invoke(behaviour: str, calls: list[_Call]) -> _FakeInvoke:
     return _invoke
 
 
+def _unreadable_marker_invoke(calls: list[_Call]) -> _FakeInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        assert options is not None
+        workspace_path = options.workspace_path
+        assert workspace_path is not None
+        (workspace_path / CANARY_MARKER_FILENAME).mkdir()
+        return iter(())
+
+    return _invoke
+
+
 def _is_within(candidate: Path, parent: Path) -> bool:
     try:
         candidate.relative_to(parent)
@@ -174,6 +191,20 @@ def test_probe_uses_a_scratch_workspace_and_leaves_the_phase_workspace_untouched
     assert (phase_workspace / "keep.txt").read_text(encoding="utf-8") == "keep"
     assert (scratch / CANARY_MARKER_FILENAME).read_text(encoding="utf-8") == CANARY_MARKER_CONTENT
     assert (scratch / CANARY_PROMPT_FILENAME).exists()
+
+
+def test_unreadable_marker_with_agent_activity_is_inconclusive(tmp_path: Path) -> None:
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_unreadable_marker_invoke(calls),
+        workspace_factory=lambda: scratch,
+    )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "probe_could_not_run"
+    assert result.marker_written is None
 
 
 def test_probe_hands_the_same_config_and_environment_to_the_invoke_fn(tmp_path: Path) -> None:

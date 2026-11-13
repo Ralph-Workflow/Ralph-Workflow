@@ -55,9 +55,7 @@ def _state(
 ) -> PipelineState:
     return PipelineState(
         phase=PHASE,
-        phase_chains={
-            PHASE: AgentChainState(agents=list(agents), current_index=0, retries=0)
-        },
+        phase_chains={PHASE: AgentChainState(agents=list(agents), current_index=0, retries=0)},
         last_connectivity_state="online",
         agent_retry_intent=intent if intent is not None else AgentRetryIntent(),
     )

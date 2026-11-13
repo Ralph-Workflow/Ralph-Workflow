@@ -966,14 +966,7 @@ def _invoke_agent_with_recovery(
             else deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
         )
 
-        if resolved_required_artifact is not None and resolved_required_artifact.artifact_required:
-            from ralph.phases.artifact_freshness import record_invocation_baseline
-
-            record_invocation_baseline(
-                FsWorkspace(ctx.workspace_scope.root),
-                str(ctx.effect.phase),
-                resolved_required_artifact.artifact_path,
-            )
+        _record_invocation_baseline_if_required(ctx, resolved_required_artifact)
 
         terminal_mcp_error = False
 
@@ -1126,6 +1119,21 @@ def _invoke_agent_with_recovery(
     finally:
         if (own_bridge or terminal_mcp_error) and bridge is not None:
             bridge.shutdown()
+
+
+def _record_invocation_baseline_if_required(
+    ctx: _AgentInvocationCtx,
+    resolved_required_artifact: RequiredArtifact | None,
+) -> None:
+    if resolved_required_artifact is None or not resolved_required_artifact.artifact_required:
+        return
+    from ralph.phases.artifact_freshness import record_invocation_baseline
+
+    record_invocation_baseline(
+        FsWorkspace(ctx.workspace_scope.root),
+        str(ctx.effect.phase),
+        resolved_required_artifact.artifact_path,
+    )
 
 
 def _start_bridge(

@@ -11,11 +11,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents._session_markers import TURN_BOUNDARY_MARKER
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.idle_watchdog import TimeoutPolicy
@@ -31,16 +31,15 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
+from ralph.process.manager import ManagedPtyProcess
 from ralph.recovery.attempt_facts import TerminationIssuer
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from ralph.process.manager import ManagedPtyProcess
 
 pytestmark = pytest.mark.subprocess_e2e
 
-_STUB_CLI = r'''
+_STUB_CLI = r"""
 import json
 import pathlib
 import sys
@@ -83,7 +82,7 @@ sentinel_path.touch()
 
 # The session stays alive until the harness asks it to exit.
 sys.stdin.readline()
-'''
+"""
 
 
 def _spawn_stub(tmp_path: Path) -> tuple[int, subprocess.Popen[bytes], Path]:
@@ -103,16 +102,24 @@ def _spawn_stub(tmp_path: Path) -> tuple[int, subprocess.Popen[bytes], Path]:
     return master_fd, child, sentinel_path
 
 
-class _StubCliHandle:
+class _StubCliHandle(ManagedPtyProcess):
     def __init__(self, master_fd: int, child: subprocess.Popen[bytes]) -> None:
-        self.master_fd = master_fd
+        self._stub_master_fd = master_fd
         self._child = child
         self.terminate_issuers: list[object] = []
         self.terminal_reasons: list[str] = []
 
     @property
+    def master_fd(self) -> int:
+        return self._stub_master_fd
+
+    @property
     def pid(self) -> int:
         return self._child.pid
+
+    @property
+    def returncode(self) -> int | None:
+        return self._child.poll()
 
     def poll(self) -> int | None:
         return self._child.poll()
@@ -139,13 +146,9 @@ def _write_completion_sentinel(workspace: Path) -> None:
     sentinel_path = workspace / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=_RUN_ID)
     sentinel_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, str] = {"note": "stop hook fired while subagents were pending"}
-    secret = _parent_broker_secret()
+    secret = parent_broker_secret()
     if secret is not None:
-        payload = {
-            "hmac": hmac.new(
-                secret.encode(), _RUN_ID.encode(), hashlib.sha256
-            ).hexdigest()
-        }
+        payload = {"hmac": hmac.new(secret.encode(), _RUN_ID.encode(), hashlib.sha256).hexdigest()}
     sentinel_path.write_text(json.dumps(payload), encoding="utf-8")
 
 
@@ -173,7 +176,7 @@ def _reader(
         input_prompt="plan the discovery",
     )
     return PtyLineReader(
-        cast("ManagedPtyProcess", handle),
+        handle,
         "claude",
         ctx,
         SystemClock(),

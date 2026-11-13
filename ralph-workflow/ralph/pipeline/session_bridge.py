@@ -4,7 +4,7 @@ import threading
 import uuid
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -162,7 +162,7 @@ def build_session_bridge(
         worker_artifact_dir=worker_artifact_dir,
         worker_namespace=worker_namespace,
         allowed_roots=allowed_roots or (),
-        broker_secret=_parent_broker_secret(),
+        broker_secret=parent_broker_secret(),
     )
     workspace = workspace_fn(workspace_root)
     materialize_all_format_docs(workspace_root)

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.parsers.content_channel import (
+    _NON_PROVIDER_EVENT_KINDS,
     ContentChannel,
     ProviderText,
+    _event_kind,
     _is_explicit_provider_failure_output,
     _is_provider_error_event,
     _is_provider_failure_output,
@@ -58,9 +60,25 @@ def is_quota_kill_evidence(detail: str) -> bool:
     return text is not None and provider_quota_kill_evidence(text)
 
 
-def is_provider_quota_output_line(line: str) -> bool:
+def provider_quota_line_evidence(line: str) -> ProviderText | None:
+    event = _parse_json_event(line)
+    if event:
+        if _event_kind(event) in _NON_PROVIDER_EVENT_KINDS:
+            return None
+        if not _is_provider_error_event(event):
+            return None
+        parsed_text = ProviderText(text=line)
+        if provider_quota_line_matches(parsed_text):
+            return parsed_text
+        return None
     text = provider_text(line)
-    return text is not None and provider_quota_line_matches(text)
+    if text is not None and provider_quota_line_matches(text):
+        return text
+    return None
+
+
+def is_provider_quota_output_line(line: str) -> bool:
+    return provider_quota_line_evidence(line) is not None
 
 
 def raise_if_quota_exhausted(
@@ -88,6 +106,7 @@ __all__ = [
     "is_provider_quota_output_line",
     "is_quota_kill_evidence",
     "provider_quota_kill_evidence",
+    "provider_quota_line_evidence",
     "provider_quota_line_matches",
     "provider_quota_log_detail_matches",
     "provider_quota_output_line_matches",

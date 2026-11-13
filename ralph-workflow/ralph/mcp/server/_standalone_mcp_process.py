@@ -10,6 +10,7 @@ from ralph.process.manager import (
     ProcessTerminationIssuer,
     get_process_manager,
 )
+from ralph.process.unmanaged_terminate import TerminableProcessLike, terminate_unmanaged
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,8 +30,12 @@ def _terminate_server_process(process: ProcessLike, *, grace_period_s: float) ->
             issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
         )
         return
-    if hasattr(process, "terminate"):
-        process.terminate(grace_period_s, issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
+    if isinstance(process, TerminableProcessLike):
+        terminate_unmanaged(
+            process,
+            grace_period_s=grace_period_s,
+            issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
+        )
 
 
 @dataclass

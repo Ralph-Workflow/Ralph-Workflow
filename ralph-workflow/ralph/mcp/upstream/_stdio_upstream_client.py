@@ -147,7 +147,9 @@ def _make_stdio_caller(
                 input=payload.encode(), timeout=probe_timeout_s
             )
         except subprocess.TimeoutExpired:
-            effective_pm.terminate(handle, grace_period_s=0, issuer=ProcessTerminationIssuer.TOOL_TIMEOUT)
+            effective_pm.terminate(
+                handle, grace_period_s=0, issuer=ProcessTerminationIssuer.TOOL_TIMEOUT
+            )
             raise UpstreamCallError(
                 f"upstream server '{server.name}' timed out after {probe_timeout_s:g}s"
             ) from None

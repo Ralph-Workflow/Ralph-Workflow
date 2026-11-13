@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from ralph.agents.agent_activity_kind import AgentActivityKind
+from ralph.recovery.canary_marker_state import CanaryMarkerState
 
 if TYPE_CHECKING:
     from ralph.recovery.attempt_facts import AttemptFacts
@@ -49,12 +50,6 @@ if tuple(outcome.value for outcome in _ProbeJudgeOutcome) != _REQUIRED_PROBE_JUD
     )
 
 
-class CanaryMarkerState(StrEnum):
-    MISSING = "marker_missing"
-    MISMATCHED = "marker_content_mismatch"
-    MATCHED = "marker_written"
-
-
 ProbeJudgeOutcome = _ProbeJudgeOutcome
 
 
@@ -74,6 +69,12 @@ def judge_probe(
             outcome=ProbeJudgeOutcome.PASSED,
             detail=CanaryMarkerState.MATCHED.value,
             marker_written=True,
+        )
+    if marker_state is CanaryMarkerState.UNREADABLE:
+        return ProbeJudgeVerdict(
+            outcome=ProbeJudgeOutcome.INCONCLUSIVE,
+            detail="probe_could_not_run",
+            marker_written=None,
         )
     if facts is not None and _agent_ran(facts):
         return ProbeJudgeVerdict(

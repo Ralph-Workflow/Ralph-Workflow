@@ -89,5 +89,6 @@ def test_agent_output_line_remains_available_as_legacy_parser_output() -> None:
         "raw",
         "metadata",
         "timestamp",
+        "channel",
     }
     assert AgentOutputLine.__module__ == "ralph.agents.parsers.agent_output_line"

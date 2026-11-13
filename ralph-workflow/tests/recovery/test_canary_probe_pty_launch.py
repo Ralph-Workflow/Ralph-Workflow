@@ -135,4 +135,3 @@ def test_stub_refuses_pipe_route(tmp_path: Path) -> None:
         check=False,
     )
     assert proc.returncode == 2
-

@@ -3790,10 +3790,24 @@ ralph.recovery.attribution
    :members:
    :show-inheritance:
 
+ralph.recovery.canary_marker_state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.canary_marker_state
+   :members:
+   :show-inheritance:
+
 ralph.recovery.canary_probe
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.canary_probe
+   :members:
+   :show-inheritance:
+
+ralph.recovery.canary_probe_judge
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.canary_probe_judge
    :members:
    :show-inheritance:
 
@@ -3995,6 +4009,20 @@ ralph.process.teardown
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.process.teardown
+   :members:
+   :show-inheritance:
+
+ralph.process.killable_process_like
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.killable_process_like
+   :members:
+   :show-inheritance:
+
+ralph.process.unmanaged_terminate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.unmanaged_terminate
    :members:
    :show-inheritance:
 

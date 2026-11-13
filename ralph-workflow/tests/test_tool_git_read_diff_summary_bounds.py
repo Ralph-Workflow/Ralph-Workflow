@@ -88,12 +88,23 @@ class _RecordingManager:
     def __init__(self, process: _FakeProcess) -> None:
         self.process = process
         self.commands: list[list[str]] = []
+        self.terminated: list[tuple[_FakeProcess, ProcessTerminationIssuer]] = []
 
     def spawn(self, command: list[str], *args: object, **kwargs: object) -> _FakeProcess:
         self.commands.append(list(command))
         if "--numstat" in command:
             return _FakeProcess(_BytesPipe(b"1\t0\ta.py\n"), _BytesPipe(b""))
         return self.process
+
+    def terminate(
+        self,
+        proc: _FakeProcess,
+        *,
+        grace_period_s: float | None = None,
+        issuer: ProcessTerminationIssuer,
+    ) -> None:
+        self.terminated.append((proc, issuer))
+        proc.killed.set()
 
 
 def _summary(

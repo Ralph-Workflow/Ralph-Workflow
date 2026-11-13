@@ -482,7 +482,9 @@ def _run_subprocess(
             hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000,
         )
     except subprocess.TimeoutExpired:
-        effective_pm.terminate(handle, grace_period_s=0, issuer=ProcessTerminationIssuer.TOOL_TIMEOUT)
+        effective_pm.terminate(
+            handle, grace_period_s=0, issuer=ProcessTerminationIssuer.TOOL_TIMEOUT
+        )
         raise
     except ManagedProcessOutputLimitExceededError as exc:
         return _CompletedProcessAdapter(

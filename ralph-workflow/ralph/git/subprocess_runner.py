@@ -19,6 +19,7 @@ from ralph.process.manager import (
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
+from ralph.process.unmanaged_terminate import terminate_unmanaged
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 
 _GIT_BATCH_MODE_ENV: dict[str, str] = {
@@ -40,14 +41,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from typing import Protocol
 
-    class _TerminableProc(Protocol):
-        def terminate(
-            self,
-            grace_period_s: float | None = None,
-            *,
-            issuer: ProcessTerminationIssuer,
-            reason: str = "operator_cancellation",
-        ) -> None: ...
+    from ralph.process.unmanaged_terminate import TerminableProcessLike
 
     class _QueuedRunGit(Protocol):
         def __call__(
@@ -127,7 +121,7 @@ def run_git(
 
 
 def _terminate_spawned_proc(
-    proc: ManagedProcess | _TerminableProc,
+    proc: ManagedProcess | TerminableProcessLike,
     *,
     grace_period_s: float,
     issuer: ProcessTerminationIssuer,
@@ -135,7 +129,7 @@ def _terminate_spawned_proc(
     if isinstance(proc, ManagedProcess):
         get_process_manager().terminate(proc, grace_period_s=grace_period_s, issuer=issuer)
     else:
-        proc.terminate(grace_period_s=grace_period_s, issuer=issuer)
+        terminate_unmanaged(proc, grace_period_s=grace_period_s, issuer=issuer)
 
 
 def _spawn_git(

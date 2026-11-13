@@ -14,7 +14,8 @@ def _is_user_prompt_event_line(line: str) -> bool:
     checker = cast("dict[str, object]", module.__dict__).get("is_user_prompt_event_line")
     if not callable(checker):
         return False
-    return cast("bool", checker(line))
+    result: object = checker(line)
+    return bool(result)
 
 
 _PROVIDER_FAILURE_OUTPUT_MARKERS = (

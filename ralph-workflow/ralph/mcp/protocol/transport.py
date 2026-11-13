@@ -19,6 +19,7 @@ from ralph.process.manager import (
     SpawnOptions,
     get_process_manager,
 )
+from ralph.process.unmanaged_terminate import kill_unmanaged, terminate_unmanaged
 
 __all__ = [
     "MCPMessage",
@@ -43,7 +44,13 @@ if TYPE_CHECKING:
         @property
         def stderr(self) -> IO[bytes] | None: ...
 
-        def terminate(self, *, issuer: ProcessTerminationIssuer) -> None: ...
+        def terminate(
+            self,
+            grace_period_s: float | None = None,
+            *,
+            issuer: ProcessTerminationIssuer,
+        ) -> None: ...
+
         def wait(self, timeout: float | None = None) -> int: ...
         def kill(self, *, issuer: ProcessTerminationIssuer) -> None: ...
 
@@ -179,11 +186,11 @@ class StdioTransport:
                             with contextlib.suppress(Exception):
                                 pipe.close()
             else:
-                proc.terminate(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
+                terminate_unmanaged(proc, issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
                 try:
                     proc.wait(timeout=5.0)
                 except subprocess.TimeoutExpired:
-                    proc.kill(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
+                    kill_unmanaged(proc, issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
                     with contextlib.suppress(subprocess.TimeoutExpired):
                         proc.wait(timeout=5.0)
         for thread_attr in ("_reader_thread", "_writer_thread"):

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Final, cast
 from loguru import logger
 
 from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.catalog import AgentCatalog
 from ralph.agents.completion_signals import (
     _check_completion_sentinel,
@@ -1250,7 +1250,7 @@ def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_
         workspace_root,
         run_id,
         SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-        receipt_secret=_parent_broker_secret(),
+        receipt_secret=parent_broker_secret(),
     )
 
 
@@ -1262,7 +1262,7 @@ def _explicit_completion_seen(
     return _check_completion_sentinel(
         workspace_root,
         run_id,
-        sentinel_secret=_parent_broker_secret(),
+        sentinel_secret=parent_broker_secret(),
     )
 
 
@@ -1428,7 +1428,7 @@ def _detect_multimodal_break(
         output_file=params.output_file,
         fixture_relpath=SMOKE_FIXTURE_RELNAME,
         fixture_size=fixture_size,
-        secret=_parent_broker_secret(),
+        secret=parent_broker_secret(),
         require_perception_secret=params.require_multimodal_perception_secret,
     )
     object.__setattr__(params, "_multimodal_tool_used_evidence", mult_evidence)
@@ -1734,7 +1734,7 @@ def _run_smoke_agent(
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
     _clear_mock_broken_signals(params.workspace_root, run_id)
-    secret = _parent_broker_secret()
+    secret = parent_broker_secret()
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
     explicit_completion_present = _explicit_completion_seen(
         params.workspace_root,

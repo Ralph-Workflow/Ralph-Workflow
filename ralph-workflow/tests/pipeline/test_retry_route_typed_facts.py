@@ -10,9 +10,7 @@ _UNSEEN_QUOTA_WORDING = "provider halted the attempt: reason zq-17 (unrecognized
 
 def _quota_stopped_attempt() -> AgentInvocationError:
     exc = AgentInvocationError("claude", 0, _UNSEEN_QUOTA_WORDING)
-    exc.facts = AttemptFacts(
-        termination=TerminationRecord.create(TerminationIssuer.QUOTA_DETECTOR)
-    )
+    exc.facts = AttemptFacts(termination=TerminationRecord.create(TerminationIssuer.QUOTA_DETECTOR))
     return exc
 
 
@@ -41,9 +39,7 @@ def test_unseen_wording_with_typed_facts_matches_the_old_text_path_intent() -> N
 
 
 def test_unseen_wording_with_typed_facts_is_not_retryable() -> None:
-    reason = retryable_agent_failure_reason(
-        _quota_stopped_attempt(), AgentInactivityTimeoutError
-    )
+    reason = retryable_agent_failure_reason(_quota_stopped_attempt(), AgentInactivityTimeoutError)
 
     assert reason is None
 
@@ -64,9 +60,7 @@ def test_unseen_wording_without_facts_keeps_the_prior_route_behavior() -> None:
 
 def test_non_quota_typed_facts_do_not_suppress_retryable_reasons() -> None:
     exc = AgentInvocationError("claude", 1, "session not found: sess-9")
-    exc.facts = AttemptFacts(
-        termination=TerminationRecord.create(TerminationIssuer.AGENT_EXIT)
-    )
+    exc.facts = AttemptFacts(termination=TerminationRecord.create(TerminationIssuer.AGENT_EXIT))
 
     intent = resolve_retry_intent(
         exc,

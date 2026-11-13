@@ -1,25 +1,37 @@
 from __future__ import annotations
 
 import json
+import os
+import pty
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
+    AgentRunCtx,
+    AttemptEnded,
     ProcessLineReader,
     ProcessReaderCtx,
+    PtyLineReader,
     QuotaExhaustedError,
     is_provider_quota_output_line,
     raise_if_quota_exhausted,
 )
 from ralph.agents.invoke._quota_detection import (
     is_quota_kill_evidence,
+    provider_quota_line_evidence,
     provider_quota_log_detail_matches,
+)
+from ralph.agents.invoke.attempt_supervision import (
+    AttemptSupervisor,
+    CompletionObserved,
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+from ralph.process.manager import ProcessTerminationIssuer
+from ralph.recovery.attempt_facts import TerminationIssuer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -367,3 +379,155 @@ _NON_PROVIDER_LOG_TAILS = (
 @pytest.mark.parametrize("detail", _NON_PROVIDER_LOG_TAILS)
 def test_non_provider_channel_log_detail_never_matches(detail: str) -> None:
     assert not provider_quota_log_detail_matches(detail)
+
+
+_NON_PROVIDER_PAYLOAD_LINES = (
+    _TOOL_AND_REASONING_LINES
+    + _TOOL_QUOTA_ERROR_LINES
+    + _TOOL_RESULT_QUOTA_LINES
+    + _STRUCTURED_NON_PROVIDER_ENVELOPE_LINES
+)
+
+
+@pytest.mark.parametrize("line", _NON_PROVIDER_PAYLOAD_LINES)
+def test_typed_channel_evidence_never_comes_from_non_provider_payloads(line: str) -> None:
+    assert provider_quota_line_evidence(line) is None
+
+
+@pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
+def test_typed_channel_evidence_accepts_provider_error_events_and_plain_failures(
+    line: str,
+) -> None:
+    evidence = provider_quota_line_evidence(line)
+    assert evidence is not None
+    assert evidence.text == line
+
+
+def test_typed_channel_evidence_falls_back_to_channel_of_for_unparsed_lines() -> None:
+    assert provider_quota_line_evidence("RESOURCE_EXHAUSTED (code 429)") is not None
+    assert (
+        provider_quota_line_evidence(
+            "some unrelated plain text mentioning quota exceeded mid-sentence"
+        )
+        is None
+    )
+
+
+def test_json_provider_error_event_on_stderr_terminates_the_session(tmp_path: Path) -> None:
+    handle = _Handle(_FiniteStdout(()), stderr=iter((_PROVIDER_ERROR_LINES[0] + "\n",)))
+    reader = _reader(tmp_path, handle)
+
+    with pytest.raises(QuotaExhaustedError):
+        list(reader.read_lines())
+
+    assert handle.terminate_calls == [0.5]
+
+
+def _noop_teardown(pid: int, *, issuer: object) -> None:
+    del pid, issuer
+
+
+class _PtyHandle:
+    pid: None = None
+
+    def __init__(self, master_fd: int, *, polls_before_death: int = 5) -> None:
+        self.master_fd = master_fd
+        self._polls_before_death = polls_before_death
+        self._polls = 0
+        self.terminate_issuers: list[ProcessTerminationIssuer] = []
+
+    def poll(self) -> int | None:
+        self._polls += 1
+        return -15 if self._polls >= self._polls_before_death else None
+
+    def terminate(self, grace_period_s: float = 0.5, **kwargs: object) -> None:
+        del grace_period_s
+        issuer = kwargs.get("issuer")
+        assert isinstance(issuer, ProcessTerminationIssuer)
+        self.terminate_issuers.append(issuer)
+
+    def record_terminal_reason(self, reason: str) -> None:
+        del reason
+
+
+def _pty_reader(
+    tmp_path: Path,
+    handle: _PtyHandle,
+    supervisor: AttemptSupervisor,
+) -> PtyLineReader:
+    ctx = AgentRunCtx(
+        config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE),
+        show_progress=False,
+        extra_env=None,
+        workspace_path=tmp_path,
+        policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
+    )
+    return PtyLineReader(
+        handle, "claude", ctx, FakeClock(start=0.0), extras=None, supervisor=supervisor
+    )
+
+
+def test_pty_provider_error_event_terminates_the_session(tmp_path: Path) -> None:
+    master_fd, slave_fd = pty.openpty()
+    handle = _PtyHandle(master_fd, polls_before_death=1_000_000)
+    supervisor = AttemptSupervisor(handle)
+    reader = _pty_reader(tmp_path, handle, supervisor)
+    try:
+        os.write(slave_fd, (_PROVIDER_ERROR_LINES[0] + "\n").encode("utf-8"))
+
+        with pytest.raises(QuotaExhaustedError) as caught:
+            list(reader.read_lines())
+
+        assert isinstance(caught.value, AttemptEnded)
+        assert handle.terminate_issuers == [ProcessTerminationIssuer.QUOTA_DETECTOR]
+        assert supervisor.recorder.termination().issuer is TerminationIssuer.QUOTA_DETECTOR
+    finally:
+        os.close(slave_fd)
+        os.close(master_fd)
+
+
+def test_pty_tool_and_narrative_payloads_do_not_terminate_and_the_session_continues(
+    tmp_path: Path,
+) -> None:
+    payload_lines = [line + "\n" for line in _TOOL_RESULT_QUOTA_LINES]
+    payload_lines.append(_TOOL_AND_REASONING_LINES[2] + "\n")
+    provider_line = _PROVIDER_ERROR_LINES[0] + "\n"
+    master_fd, slave_fd = pty.openpty()
+    handle = _PtyHandle(master_fd, polls_before_death=1_000_000)
+    supervisor = AttemptSupervisor(handle)
+    reader = _pty_reader(tmp_path, handle, supervisor)
+    try:
+        for line in (*payload_lines, provider_line):
+            os.write(slave_fd, line.encode("utf-8"))
+
+        emitted: list[str] = []
+        with pytest.raises(QuotaExhaustedError):
+            emitted.extend(delivered for delivered in reader.read_lines())
+
+        assert emitted == payload_lines
+        assert handle.terminate_issuers == [ProcessTerminationIssuer.QUOTA_DETECTOR]
+    finally:
+        os.close(slave_fd)
+        os.close(master_fd)
+
+
+def test_pty_tool_result_payload_after_completion_never_terminates(tmp_path: Path) -> None:
+    master_fd, slave_fd = pty.openpty()
+    handle = _PtyHandle(master_fd)
+    supervisor = AttemptSupervisor(handle)
+    reader = _pty_reader(tmp_path, handle, supervisor)
+    try:
+        outcome = supervisor.act(CompletionObserved(), teardown=_noop_teardown)
+        assert outcome is not None
+        facts_before = supervisor.recorder.termination()
+        terminate_before = list(handle.terminate_issuers)
+
+        line = _TOOL_RESULT_QUOTA_LINES[0] + "\n"
+        os.write(slave_fd, line.encode("utf-8"))
+
+        assert list(reader.read_lines()) == [line]
+        assert supervisor.recorder.termination() == facts_before
+        assert handle.terminate_issuers == terminate_before
+    finally:
+        os.close(slave_fd)
+        os.close(master_fd)

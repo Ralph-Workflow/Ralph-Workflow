@@ -6,7 +6,7 @@ import secrets
 import sys
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph.agents._broker_secret import _parent_broker_secret
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.checked_accessors import as_int
 
 if TYPE_CHECKING:
@@ -124,7 +124,7 @@ def mint_and_protect_broker_secret(
 
 
 def erase_broker_secret_environment() -> None:
-    secret = _parent_broker_secret()
+    secret = parent_broker_secret()
     if not secret:
         return
     if os.name == "posix":

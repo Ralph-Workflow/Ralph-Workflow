@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from ralph.agents import subprocess_executor
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.process.manager import ProcessManager, ProcessTerminationIssuer
+from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._process_status import ProcessStatus
-
-if TYPE_CHECKING:
-    from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 
 
 class _FakeRecord:
@@ -20,12 +17,18 @@ class _FakeRecord:
         self.label = "agent:unit-1:root"
 
 
-class _FakeHandle:
+class _FakeHandle(ManagedAsyncProcess):
     def __init__(self, events: list[str]) -> None:
-        self.pid = 424_242
-        self.record = _FakeRecord()
-        self.returncode: int | None = None
+        self._record = _FakeRecord()
         self._events = events
+
+    @property
+    def pid(self) -> int:
+        return 424_242
+
+    @property
+    def returncode(self) -> int | None:
+        return None
 
     async def wait_supervised(self) -> int:
         await asyncio.Event().wait()
@@ -36,7 +39,7 @@ class _FakeHandle:
         return 0
 
 
-class _FakeManager:
+class _FakeManager(ProcessManager):
     def __init__(self, events: list[str]) -> None:
         self._events = events
         self.calls: list[dict[str, object]] = []
@@ -52,9 +55,7 @@ class _FakeManager:
         del handle
         await asyncio.sleep(0)
         self._events.append("terminate_async")
-        self.calls.append(
-            {"issuer": issuer, "reason": reason, "grace_period_s": grace_period_s}
-        )
+        self.calls.append({"issuer": issuer, "reason": reason, "grace_period_s": grace_period_s})
 
 
 @pytest.mark.asyncio
@@ -77,12 +78,12 @@ async def test_supervise_error_path_awaits_terminate_before_wait_and_reap(
 
     executor = SubprocessAgentExecutor(
         command=("/opt/agents/worker-cli",),
-        _pm=cast("ProcessManager", manager),
+        _pm=manager,
     )
 
     with pytest.raises(RuntimeError, match="drain failed"):
         await executor._supervise(
-            cast("ManagedAsyncProcess", handle),
+            handle,
             _failing_drain(),
             "unit-1",
         )

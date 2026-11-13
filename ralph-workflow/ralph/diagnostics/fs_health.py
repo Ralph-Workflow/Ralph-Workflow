@@ -100,7 +100,7 @@ def _run_subprocess_mdutil(
     try:
         stdout, stderr = handle.communicate_and_cleanup(timeout=timeout)
     except subprocess.TimeoutExpired:
-        handle.terminate(grace_period_s=0, issuer=ProcessTerminationIssuer.DIAGNOSTICS)
+        manager.terminate(handle, grace_period_s=0, issuer=ProcessTerminationIssuer.DIAGNOSTICS)
         raise
     finally:
         manager.cleanup_orphans(handle)

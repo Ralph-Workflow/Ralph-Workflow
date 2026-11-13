@@ -485,8 +485,10 @@ def _read_marker_state(workspace_path: Path) -> CanaryMarkerState:
     marker_path = workspace_path / CANARY_MARKER_FILENAME
     try:
         content = marker_path.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         return CanaryMarkerState.MISSING
+    except OSError:
+        return CanaryMarkerState.UNREADABLE
     if content.strip() == CANARY_MARKER_CONTENT:
         return CanaryMarkerState.MATCHED
     return CanaryMarkerState.MISMATCHED

@@ -27,6 +27,14 @@ def test_invoke_resolution_agent_does_not_require_declare_complete(
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         _capture_execute,
     )
+    monkeypatch.setattr(
+        "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
+        lambda config: None,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.attempt_runner.production_dead_agent_probe_runner",
+        lambda config: None,
+    )
     prompt = Path("/repo/prompt.md")
     invoke_resolution_agent(
         agent_name="claude",

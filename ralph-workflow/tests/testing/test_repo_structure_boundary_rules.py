@@ -239,10 +239,12 @@ def test_rule_pairings_cover_every_boundary_rule() -> None:
         "B7",
         "B8",
         "B9",
+        "B10",
     }
     assert rule_pairing("B2") == "AC16"
     assert rule_pairing("B8") == "AC4"
     assert rule_pairing("B9") == "AC3/AC15"
+    assert rule_pairing("B10") == "AC13"
 
 
 @pytest.mark.parametrize(
@@ -496,12 +498,85 @@ def test_b9_rejects_untyped_termination_outside_the_process_layer(call: str) -> 
     )
 
 
-def test_b9_accepts_typed_termination_outside_the_process_layer() -> None:
+@pytest.mark.parametrize("call", ["handle.terminate(issuer=issuer)", "handle.kill(issuer=issuer)"])
+def test_b9_rejects_typed_termination_outside_the_process_layer(call: str) -> None:
+    assert any(
+        " B9 " in item
+        for item in collect_boundary_violations("ralph/mcp/protocol/transport.py", call)
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "get_process_manager().terminate(proc, issuer=issuer)",
+        "get_process_manager().terminate(\n    proc,\n    grace_period_s=5.0,\n    issuer=issuer,\n    reason='mcp_shutdown',\n)",
+        "get_process_manager().kill(proc, issuer=issuer)",
+        "pm = get_process_manager()\npm.terminate(handle, issuer=issuer)",
+        "pm = _pm if _pm is not None else get_process_manager()\npm.terminate(handle, issuer=issuer)",
+        "_SHARD_MANAGER = ProcessManager(policy=policy)\n_SHARD_MANAGER.terminate(proc, issuer=issuer)",
+        "self._pm = (\n    process_manager if process_manager is not None else get_process_manager()\n)\nself._pm.terminate(handle, grace_period_s=0.0, issuer=issuer)",
+        "terminate_unmanaged(process, grace_period_s=0.0, issuer=issuer)",
+        "kill_unmanaged(process, issuer=issuer)",
+    ],
+)
+def test_b9_accepts_manager_routed_termination_outside_the_process_layer(source: str) -> None:
     assert not any(
         " B9 " in item
-        for item in collect_boundary_violations(
-            "ralph/mcp/protocol/transport.py", "handle.terminate(issuer=issuer)"
-        )
+        for item in collect_boundary_violations("ralph/mcp/protocol/transport.py", source)
+    )
+
+
+def test_b9_accepts_manager_bound_local_shadowing() -> None:
+    source = """
+def run(handle, pm):
+    pm = get_process_manager()
+    pm.terminate(handle, issuer=issuer)
+"""
+    assert not any(
+        " B9 " in item for item in collect_boundary_violations("ralph/executor/process.py", source)
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'setattr(exc, "attempt_facts", facts)',
+        'getattr(exc, "attempt_facts", None)',
+        "attach_attempt_facts(exc, facts)",
+        "value = attempt_facts_from_exception(exc)",
+        "from ralph.recovery.attempt_facts import attempt_facts_from_exception",
+    ],
+)
+def test_b10_rejects_dynamic_transport_of_attempt_facts(source: str) -> None:
+    assert any(
+        " B10 " in item
+        for item in collect_boundary_violations("ralph/pipeline/attempt_runner_deps.py", source)
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "setattr(exc, 'attempt_facts_path', path)",
+        "getattr(exc, 'termination_record')",
+        "publish_attempt_facts(exc, recorder)",
+        "facts = attempt_facts_for_failure(exc)",
+        "from ralph.recovery.attempt_facts import AttemptFacts",
+    ],
+)
+def test_b10_accepts_typed_attempt_facts_access(source: str) -> None:
+    assert not any(
+        " B10 " in item
+        for item in collect_boundary_violations("ralph/pipeline/attempt_runner_deps.py", source)
+    )
+
+
+def test_b10_skips_the_process_tree() -> None:
+    source = 'setattr(record, "attempt_facts", facts)'
+    assert not any(
+        " B10 " in item
+        for item in collect_boundary_violations("ralph/process/manager/_process_manager.py", source)
     )
 
 
@@ -514,6 +589,12 @@ def test_b9_leaves_module_level_signalling_to_b4() -> None:
         " B9 " in item
         for item in collect_boundary_violations(
             "ralph/interrupt/dispatcher.py", "os.killpg(pgid, signal.SIGKILL)"
+        )
+    )
+    assert not any(
+        " B9 " in item
+        for item in collect_boundary_violations(
+            "ralph/interrupt/dispatcher.py", "os.kill(record.pid, signal.SIGKILL)"
         )
     )
 

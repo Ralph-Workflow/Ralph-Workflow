@@ -22,6 +22,7 @@ from ralph.process.manager import (
     ProcessTerminationIssuer,
     SpawnOptions,
 )
+from ralph.process.unmanaged_terminate import terminate_unmanaged
 from ralph.test_suite_registry import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
@@ -1052,7 +1053,8 @@ def _terminate_and_reap(
                         issuer=ProcessTerminationIssuer.TEST_RUNNER,
                     )
                 else:
-                    process.terminate(
+                    terminate_unmanaged(
+                        process,
                         grace_period_s=0.0,
                         issuer=ProcessTerminationIssuer.TEST_RUNNER,
                     )
