@@ -62,13 +62,6 @@ def end_attempt(
             verdict=verdict,
             reason=attribution.reason,
         )
-    if retryable_reason is not None:
-        return AttemptOutcome(
-            kind=AttemptOutcomeKind.RETRYABLE_FAILURE,
-            issuer=None,
-            verdict=verdict,
-            reason=retryable_reason,
-        )
     if attribution.attribution is Attribution.TASK_OR_ENVIRONMENT:
         kind = (
             AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE
@@ -80,6 +73,13 @@ def end_attempt(
             issuer=None,
             verdict=verdict,
             reason=attribution.reason,
+        )
+    if retryable_reason is not None:
+        return AttemptOutcome(
+            kind=AttemptOutcomeKind.RETRYABLE_FAILURE,
+            issuer=None,
+            verdict=verdict,
+            reason=retryable_reason,
         )
     return AttemptOutcome(
         kind=AttemptOutcomeKind.UNKNOWN,

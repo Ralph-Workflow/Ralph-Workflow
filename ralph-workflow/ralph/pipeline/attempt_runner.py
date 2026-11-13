@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke import attempt_facts_for_failure
 from ralph.agents.registry import AgentRegistry
@@ -20,18 +20,25 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.canary_probe import run_canary_probe
 from ralph.recovery.controller import RecoveryController
-from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
+from ralph.recovery.dead_agent_probe import (
+    build_dead_agent_probe_runner,
+    production_dead_agent_probe_runner,
+)
 from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
-    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, RawAgentInvoke
+    from ralph.pipeline.factory import InvokeAgentFn
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.attempt_outcome import AttemptOutcome
+    from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 
 
 _DEFAULT_CYCLE_CAP = 200
@@ -58,6 +65,45 @@ class _RegistryFactoryProvider(Protocol):
 
 
 AttemptInvoke = _AttemptInvoke
+
+
+def _as_raw_agent_invoke(injected: InvokeAgentFn) -> RawAgentInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        return iter(cast("Iterable[str]", injected(config, prompt_file, options=options)))
+
+    return _invoke
+
+
+def seamed_dead_agent_probe_runner(
+    config: UnifiedConfig | None,
+    injected_invoke: InvokeAgentFn | None,
+) -> Callable[[str, str], ProbeOutcome | None] | None:
+    if config is None or injected_invoke is None:
+        return None
+
+    def resolve_agent(name: str) -> AgentConfig | None:
+        return AgentRegistry.from_config(config).get(name)
+
+    def probe(agent_config: AgentConfig) -> ProbeResult:
+        return run_canary_probe(
+            agent_config,
+            invoke_fn=_as_raw_agent_invoke(injected_invoke),
+            general_config=config.general,
+        )
+
+    return build_dead_agent_probe_runner(resolve_agent, probe)
+
+
+def fail_open_dead_agent_probe_runner() -> Callable[[str, str], ProbeOutcome | None]:
+    def run(phase: str, agent: str) -> ProbeOutcome | None:
+        return None
+
+    return run
 
 
 def build_entry_point_recovery_controller(
@@ -349,8 +395,10 @@ __all__ = (
     "AttemptInvoke",
     "EntryPointRunner",
     "build_entry_point_recovery_controller",
+    "fail_open_dead_agent_probe_runner",
     "register_entry_point",
     "registered_entry_points",
     "registered_runners",
     "run_agent_attempt",
+    "seamed_dead_agent_probe_runner",
 )

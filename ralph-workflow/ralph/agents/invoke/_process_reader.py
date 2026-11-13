@@ -1219,9 +1219,7 @@ class ProcessLineReader:
     def _evaluate_idle_fire(
         self, watchdog: IdleWatchdog
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
-        return self._check_fire(
-            watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
-        )
+        return self._check_fire(watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet))
 
     def _run_drain_window(
         self, watchdog: IdleWatchdog, drain_deadline: float | None
@@ -1410,9 +1408,8 @@ class ProcessLineReader:
                         yield from self._raise_timeout_result(result)
                     break
 
-                if (
-                    self._finish_terminal_completion()
-                    or self._finish_parent_exit_with_open_stream(watchdog)
+                if self._finish_terminal_completion() or self._finish_parent_exit_with_open_stream(
+                    watchdog
                 ):
                     break
 

@@ -54,7 +54,11 @@ from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
-from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+from ralph.pipeline.attempt_runner import (
+    build_entry_point_recovery_controller,
+    fail_open_dead_agent_probe_runner,
+    seamed_dead_agent_probe_runner,
+)
 from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate import recovery_retained_record
 from ralph.pipeline.auto_integrate_agent import (
@@ -137,6 +141,7 @@ if TYPE_CHECKING:
     from ralph.pro_support.state_query import SnapshotRegistry
     from ralph.pro_support.watcher import ProMarkerWatcher
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.workspace.scope import WorkspaceScope
 
     class _PipelineSubscriberProtocol(Protocol):
@@ -1199,10 +1204,20 @@ def _resolve_recovery_controller(
         controller, _ = recovery_controller_factory(state, policy_bundle, config)
         return controller
     clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
+    builder = _build_recovery_controller
+    if builder is not _PRODUCTION_BUILD_RECOVERY_CONTROLLER:
+        # Injected builders keep the original (state, policy_bundle, config[, clock]) contract.
+        if clock is not None:
+            controller, _ = builder(state, policy_bundle, config, clock=clock)
+        else:
+            controller, _ = builder(state, policy_bundle, config)
+        return controller
     if clock is not None:
-        controller, _ = _build_recovery_controller(state, policy_bundle, config, clock=clock)
+        controller, _ = builder(
+            state, policy_bundle, config, clock=clock, pipeline_deps=pipeline_deps
+        )
     else:
-        controller, _ = _build_recovery_controller(state, policy_bundle, config)
+        controller, _ = builder(state, policy_bundle, config, pipeline_deps=pipeline_deps)
     return controller
 
 
@@ -3503,12 +3518,34 @@ def _emit_post_loop_result(
                     )
 
 
+def _effect_executor_seam_injected() -> bool:
+    return (
+        _runner_module.execute_effect is not _runner_module._execute_effect
+        or _runner_module.execute_effect_with_optional_display
+        is not _runner_module._production_execute_effect_with_optional_display
+        or _runner_module.invoke_execute_effect_with_optional_display
+        is not _runner_module._invoke_execute_effect_with_optional_display
+    )
+
+
+def _seamed_loop_probe_runner(
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+) -> Callable[[str, str], ProbeOutcome | None] | None:
+    injected = pipeline_deps.invoke_agent if pipeline_deps is not None else None
+    probe_runner = seamed_dead_agent_probe_runner(config, injected)
+    if probe_runner is None and _effect_executor_seam_injected():
+        return fail_open_dead_agent_probe_runner()
+    return probe_runner
+
+
 def _build_recovery_controller(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     config: UnifiedConfig,
     clock: Clock | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> tuple[RecoveryController, int]:
     _cycle_cap: int = 200
     _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
@@ -3546,7 +3583,7 @@ def _build_recovery_controller(
         deps=AttemptRunnerDeps(
             clock=effective_clock,
             invoke=PRODUCTION_INVOKE,
-            probe_runner=None,
+            probe_runner=_seamed_loop_probe_runner(config, pipeline_deps),
             workspace_probe=effective_probe,
             connectivity=None,
         ),
@@ -3557,6 +3594,9 @@ def _build_recovery_controller(
         agent_max_total_unproductive=total_limit,
     )
     return controller, _cycle_cap
+
+
+_PRODUCTION_BUILD_RECOVERY_CONTROLLER = _build_recovery_controller
 
 
 def build_recovery_controller(

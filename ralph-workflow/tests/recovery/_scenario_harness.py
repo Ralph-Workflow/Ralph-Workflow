@@ -32,6 +32,7 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
+from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.testing import FakeConnectivityMonitor
@@ -74,6 +75,7 @@ class ScenarioOutcome:
     workspace_root: Path
     cooldown_durations: dict[str, list[float]] = field(default_factory=dict)
     agent_outputs: list[str] = field(default_factory=list)
+    probe_invocations: list[str] = field(default_factory=list)
 
 
 class _ScenarioRegistry:
@@ -138,6 +140,43 @@ def _build_policy_bundle(agents: list[str] | tuple[str, ...]) -> PolicyBundle:
     }
     artifacts_policy = ArtifactsPolicy(artifacts=artifacts)
     return PolicyBundle(agents=agents_policy, pipeline=pipeline_policy, artifacts=artifacts_policy)
+
+
+def _resolve_scripted_result(
+    script: ScriptedAgent,
+    agent: str,
+    attempt_num: int,
+    workspace: FsWorkspace,
+) -> AgentAttemptResult:
+    if callable(script):
+        return script(agent, SCENARIO_PHASE, attempt_num, workspace)
+    return script.get((agent, attempt_num), AgentAttemptResult())
+
+
+def _raise_scripted_failure(result: AgentAttemptResult, agent: str) -> None:
+    if result.raise_error is not None:
+        raise result.raise_error
+    if result.failure_category is not None:
+        _raise_configured_failure(result.failure_category, agent)
+    if result.exit_code != 0:
+        raise AgentInvocationError(
+            agent, result.exit_code, f"Simulated process exit code {result.exit_code} for {agent}"
+        )
+
+
+def _scripted_probe_attempt(
+    script: ScriptedAgent,
+    agent: str,
+    workspace: FsWorkspace,
+    probe_attempts: dict[str, int],
+    probe_invocations: list[str],
+) -> Iterator[str]:
+    probe_invocations.append(agent)
+    probe_num = probe_attempts.get(agent, 0) + 1
+    probe_attempts[agent] = probe_num
+    result = _resolve_scripted_result(script, agent, probe_num, workspace)
+    _raise_scripted_failure(result, agent)
+    return iter(result.output_lines or (f"Probe output from {agent} probe {probe_num}",))
 
 
 def _raise_configured_failure(category: FailureCategory, agent: str) -> None:
@@ -310,17 +349,14 @@ def run_scenario(
 
     invocations: list[str] = []
     agent_attempts: dict[str, int] = {}
+    probe_invocations: list[str] = []
+    probe_attempts: dict[str, int] = {}
     cooldown_durations: dict[str, list[float]] = {}
     captured_logs: list[str] = []
     agent_outputs: list[str] = []
 
     def log_sink(msg: object) -> None:
         captured_logs.append(str(msg))
-
-    def resolve_attempt_result(agent: str, phase: str, attempt_num: int) -> AgentAttemptResult:
-        if callable(script):
-            return script(agent, phase, attempt_num, workspace)
-        return script.get((agent, attempt_num), AgentAttemptResult())
 
     def iter_attempt_output(
         agent: str,
@@ -342,13 +378,17 @@ def run_scenario(
         options: InvokeOptions | None = None,
         _clock: object = None,
     ) -> Iterator[str]:
-        del prompt_file, options, _clock
+        del options, _clock
         agent = config.cmd
+        if Path(prompt_file).name == CANARY_PROMPT_FILENAME:
+            return _scripted_probe_attempt(
+                script, agent, workspace, probe_attempts, probe_invocations
+            )
         invocations.append(agent)
         attempt_num = agent_attempts.get(agent, 0) + 1
         agent_attempts[agent] = attempt_num
 
-        result = resolve_attempt_result(agent, SCENARIO_PHASE, attempt_num)
+        result = _resolve_scripted_result(script, agent, attempt_num, workspace)
         return iter_attempt_output(agent, attempt_num, result)
 
     deps = make_test_pipeline_deps(
@@ -423,6 +463,7 @@ def run_scenario(
             workspace_root=tmp_path,
             cooldown_durations=cooldown_durations,
             agent_outputs=agent_outputs,
+            probe_invocations=probe_invocations,
         )
     finally:
         logger.remove(sink_id)

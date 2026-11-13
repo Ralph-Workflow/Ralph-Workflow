@@ -17,7 +17,6 @@ from ralph.agents.invoke._completion_exit_status import (
 )
 from ralph.agents.invoke._completion_supervision import _teardown_subtree_if_pid_available
 from ralph.agents.invoke._completion_termination import (
-    _return_code_may_be_a_signal,
     observed_returncode,
     termination_issuer_for_teardown_issuer,
 )
@@ -29,6 +28,7 @@ from ralph.agents.invoke._completion_verdicts import (
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
 from ralph.agents.invoke._session import _bounded_output_lines
+from ralph.agents.invoke.termination_recorder import return_code_may_be_a_signal
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
@@ -165,7 +165,7 @@ def _handle_non_zero_returncode(
         termination_recorder.record_reported_returncode(returncode)
         termination_recorder.record_issuer(
             termination_issuer_for_teardown_issuer(issuer)
-            if _return_code_may_be_a_signal(returncode)
+            if return_code_may_be_a_signal(returncode)
             else TerminationIssuer.AGENT_EXIT
         )
     bounded_output = _bounded_output_lines(

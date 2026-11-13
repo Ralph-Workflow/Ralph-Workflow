@@ -94,6 +94,7 @@ from ralph.pipeline.attempt_runner import (
     register_entry_point,
     registered_entry_points,
     run_agent_attempt,
+    seamed_dead_agent_probe_runner,
 )
 from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptInvoke, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate import (
@@ -241,6 +242,7 @@ if TYPE_CHECKING:
         PipelinePolicy,
         PolicyBundle,
     )
+    from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.controller import RecoveryController
     from ralph.visual.capture_request import CaptureRequest
     from ralph.visual.policy_facts import PolicyFacts
@@ -410,6 +412,15 @@ def _main_phase_loop_controller(
     )
 
 
+def _deps_seamed_probe_runner(
+    pipeline_deps: PipelineDeps | None,
+    config: UnifiedConfig,
+) -> Callable[[str, str], ProbeOutcome | None] | None:
+    if pipeline_deps is None:
+        return None
+    return seamed_dead_agent_probe_runner(config, pipeline_deps.invoke_agent)
+
+
 def _run_main_phase_loop_attempt(
     *_args: object,
     effect: object | None = None,
@@ -476,7 +487,7 @@ def _execute_effect(
             deps = AttemptRunnerDeps(
                 clock=SystemClock(),
                 invoke=_keyword_effect_invoker(execute_agent_effect),
-                probe_runner=None,
+                probe_runner=_deps_seamed_probe_runner(pipeline_deps, config),
                 workspace_probe=DefaultWorkspaceChangeProbe(),
                 connectivity=None,
             )
@@ -1400,8 +1411,6 @@ def _finalize_agent_invocation(
         return state, event
     state = _apply_session_capture(state)
     if event == PipelineEvent.AGENT_SUCCESS:
-        if recovery_controller is not None:
-            recovery_controller.reset_backoff(effect.phase, effect.agent_name)
         event = phase_event_after_agent_run(
             effect=effect,
             config=config,
@@ -2676,6 +2685,7 @@ def write_start_commit_if_absent(workspace_root: Path) -> None:
 
 
 execute_effect = _execute_effect
+_production_execute_effect_with_optional_display = execute_effect_with_optional_display
 handle_inline_effect = _handle_inline_effect
 call_determine_effect_from_policy = _call_determine_effect_from_policy
 invoke_execute_effect_with_optional_display = _invoke_execute_effect_with_optional_display

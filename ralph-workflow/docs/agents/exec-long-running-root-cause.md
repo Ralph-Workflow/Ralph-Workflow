@@ -807,7 +807,7 @@ stale, and the fastest drift check is a re-read of:
   (`exit_when_owner_exits`) and `:652-663` (`main`) — the Cause 5c seam
 - `ralph-workflow/ralph/mcp/server/lifecycle.py:1862` and `:1879` (the
   two `_spawn_mcp_process` call sites), `:2081-2095` (its definition) and
-  `:2156-2167` (the `sys.executable -m ralph.mcp.server` argv list)
+  `:2166-2177` (the `sys.executable -m ralph.mcp.server` argv list)
 - `ralph-workflow/ralph/mcp/server/_standalone_mcp_process.py:15` and
   `:17` (`SHUTDOWN_TERMINATE_GRACE_S` / `SHUTDOWN_REAP_WAIT_S`, 5.0 s each)
 - `ralph-workflow/ralph/mcp/server/_timing_safety.py:35`

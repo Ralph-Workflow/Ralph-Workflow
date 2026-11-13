@@ -340,6 +340,19 @@ def test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unc
         "the codex session only performed a read-only tool call, so the recorded workspace "
         f"change must be False (observed: {first.workspace_changed!r})"
     )
+    assert outcome.probe_invocations, (
+        "the dead-agent canary probe must run through the injected scripted seam "
+        "(observed probe invocations: none)"
+    )
+    real_spawns = [
+        line
+        for line in outcome.logs
+        if "Invoking agent:" in line and "canary_probe_prompt.md" in line
+    ]
+    assert real_spawns == [], (
+        "the fake scenario must never launch a real agent CLI from the canary probe "
+        f"(observed real spawns: {real_spawns})"
+    )
     entry = _ledger_entry(controller, "codex")
     assert _counter(entry, "total_unproductive") >= 1, (
         f"the ordinary route must advance the ledger counter (observed ledger entry: {entry!r})"
