@@ -171,9 +171,13 @@ for update cadence and the trust statement.
 
 ## Protections
 
-A two-stage commit review acts as a damage gate before any commit, and
-Ralph Workflow's own engine writes are auto-committed so they never leak
-into an agent's commit. See [commit review configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration)
+A two-stage commit review acts as a damage gate during the pipeline's
+commit phases: the commit review phases run immediately before their
+corresponding commit phases. Ralph Workflow's own engine writes are
+auto-committed in isolation at the producer boundary: each commit covers
+only the exact paths the writer just modified, paths that are already
+dirty are skipped and stay in the agent or user commit flow, and an
+auto-commit failure is logged but never blocks the run. See [commit review configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration)
 and the [auto-commit contract](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/deterministic-auto-commit.md).
 
 ## Documentation
