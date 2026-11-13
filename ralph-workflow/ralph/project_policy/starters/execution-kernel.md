@@ -82,7 +82,12 @@ and the comment audit enforces it.
 Every rule below is an agent rule or a runtime rule. No rule asks an
 agent to count its own retries, to keep state across sessions, to
 detect its own loops, or to police its own budget: the runtime owns
-those.
+those. One runtime rule owns the repeated-failure retry: when the
+same failure summary repeats, the retry formatter adds the line
+"test the premise shared by the failed fixes before another patch"
+(`ralph/recovery/retry_prompt.py`). The formatter line is the whole
+requirement: agents never count retries, never remember earlier
+attempts, and never infer that a failure repeated. (evidence: anecdotal)
 
 1. **Check first.** Before implementing, name the runnable pass/fail
    check that decides whether the change is done, and write it down.
@@ -290,6 +295,7 @@ Then delete this comment. -->
 | Real-artifact evidence | Verification owner | the claim cites the command, its exit code, and the output that matters | the result body records the command and its exit code | the exit code and output recorded for the claim | deterministic: PROJECT-FACT-UNRESOLVED | when the recorded evidence is produced by the gate without an agent step |
 | Independent review model-family diversification | Analysis owner | the analysis phases run in a different model family from the phase whose work they review | the agent-chain configuration records the model family of the analysis phase and it differs from the authoring phase's model family | the model-family assignment recorded in the agent-chain configuration | advisory: no gate reads the agent chain's model family assignment, so a different-model-family review stays a configuration recommendation; review: when the harness records the per-phase model family in the run ledger | when a gate verifies the analysis phase runs in a different model family from the phase under review |
 | Non-inferable instruction surface | Policy owner | the instruction surfaces carry no line a reader can infer from the code | the recorded instruction-surface review names the lines of the managed AGENTS.md block and the project AGENTS.md a reader can infer | the instruction-surface lines named in the recorded review | advisory: only line-count and path-existence checks run, and neither detects an inferable line; review: on every policy remediation pass that edits AGENTS.md content, and whenever a managed-block or AGENTS.md line-budget warning fires | when a gate decides the content of the instruction surfaces |
+| Premise-check retry line | Recovery owner | the repeated-failure retry prompt names the premise shared by the failed fixes | the retry formatter adds the premise-check line when the current and prior failure summaries match (`ralph/recovery/retry_prompt.py`) | the premise-check line the retry formatter adds on a repeated failure | advisory: only the formatter requirement on the premise-check line exists and no gate reads the retry prompt a session receives; review: when the runtime records the retry prompts delivered to a session | when a gate checks the repeated-failure retry prompt for the premise-check line |
 
 The agent rules in `## Agent rules` are enforced through the
 rule-to-enforcer ladder above. A rule whose ladder status is

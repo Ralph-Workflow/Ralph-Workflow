@@ -82,6 +82,8 @@ REQUIREMENT_PATTERN = re.compile(
 
 RESOLVABLE_SOURCE_KEYS: frozenset[str] = frozenset({"registry", "url", "git"})
 
+LOCAL_SOURCE_KEYS: frozenset[str] = frozenset({"directory", "editable", "virtual"})
+
 SOURCE_CONTROL_HOSTS: frozenset[str] = frozenset(
     {
         "bitbucket.org",
@@ -271,8 +273,31 @@ def _lock_entry_has_hash(entry: Mapping[str, object]) -> bool:
     return False
 
 
-def _lock_entry_is_downloaded(entry: Mapping[str, object]) -> bool:
-    return _lock_source(entry) is not None
+def _lock_entry_is_local(entry: Mapping[str, object]) -> bool:
+    source = entry.get("source")
+    if not isinstance(source, Mapping):
+        return False
+    for key in LOCAL_SOURCE_KEYS:
+        value = cast("Mapping[str, object]", source).get(key)
+        if isinstance(value, str) and value:
+            return True
+    return False
+
+
+def _lock_entry_publisher(
+    entry: Mapping[str, object],
+    current_data: Mapping[str, object],
+    name: str,
+) -> str | None:
+    publisher = _evidence_publisher(current_data, _normalize_name(name))
+    if publisher is not None:
+        return publisher
+    source = entry.get("source")
+    if isinstance(source, Mapping):
+        git_url = cast("Mapping[str, object]", source).get("git")
+        if isinstance(git_url, str) and git_url:
+            return _publisher_from_url(git_url)
+    return None
 
 
 def _index_sources(data: Mapping[str, object]) -> dict[str, str]:
@@ -513,25 +538,63 @@ def audit_dependency_change(
             ]
         )
 
+    new_direct_names = {requirement.name for requirement in new_requirements}
+    lock_text = current_lock or ""
     for key in sorted(set(current_packages) - set(baseline_packages)):
         entry = current_packages[key]
-        if not _lock_entry_is_downloaded(entry):
-            continue
-        if _lock_entry_has_hash(entry):
-            continue
         name, version = key
-        findings.append(
-            DependencyFinding(
-                file_path=LOCKFILE_MANIFEST,
-                line=0,
-                category=CATEGORY_MISSING_HASH,
-                detail=(
-                    f"new lockfile entry '{name}=={version}' pins no artifact hash: the "
-                    "lockfile cannot guarantee which bytes are installed. fix: re-lock the "
-                    "dependency set so every artifact carries its sha256 hash"
-                ),
+        if _lock_entry_is_local(entry):
+            continue
+        line = _find_line(lock_text, f'"{name}"')
+        if _lock_source(entry) is None:
+            findings.append(
+                DependencyFinding(
+                    file_path=LOCKFILE_MANIFEST,
+                    line=line,
+                    category=CATEGORY_MISSING_SOURCE,
+                    detail=(
+                        f"new lockfile entry '{name}=={version}' names no downloaded "
+                        "source: it is not a registry, URL or git source, so its "
+                        "provenance is unverifiable. fix: re-lock the dependency set "
+                        "so the entry pins a registry, URL or git source with "
+                        "artifact hashes"
+                    ),
+                )
             )
-        )
+            continue
+        if not _lock_entry_has_hash(entry):
+            findings.append(
+                DependencyFinding(
+                    file_path=LOCKFILE_MANIFEST,
+                    line=line,
+                    category=CATEGORY_MISSING_HASH,
+                    detail=(
+                        f"new lockfile entry '{name}=={version}' pins no artifact hash: "
+                        "the lockfile cannot guarantee which bytes are installed. fix: "
+                        "re-lock the dependency set so every artifact carries its "
+                        "sha256 hash"
+                    ),
+                )
+            )
+        if _normalize_name(name) in new_direct_names:
+            continue
+        if _lock_entry_publisher(entry, current_data, name) is None:
+            findings.append(
+                DependencyFinding(
+                    file_path=LOCKFILE_MANIFEST,
+                    line=line,
+                    category=CATEGORY_MISSING_PUBLISHER,
+                    detail=(
+                        f"new lockfile entry '{name}=={version}' has no publisher "
+                        "reference: the change names no owner or maintainer for it. "
+                        "fix: record the publisher in a "
+                        "[tool.ralph.dependency-evidence.<package>] table (publisher, "
+                        "maintainer or owner key) or lock it from a source-control "
+                        "URL that names the owner, so the package can be verified "
+                        "against the registry"
+                    ),
+                )
+            )
 
     findings.sort(key=lambda finding: (finding.file_path, finding.line, finding.category))
     return findings

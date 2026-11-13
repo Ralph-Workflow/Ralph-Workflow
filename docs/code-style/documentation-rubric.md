@@ -103,7 +103,6 @@ Minimum structure:
 
 - problem or concept being explained
 - mental model
-- tradeoffs / why it is shaped this way
 - links to practical pages for action
 
 ### 8. Proof / example page

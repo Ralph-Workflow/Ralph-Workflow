@@ -16,7 +16,7 @@ from ralph.testing.audit_dependency_integrity import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS = {
     "comment publisher evidence": (
         "an inline publisher comment is no longer accepted evidence, so the "
         "publisher check now requires the structured dependency-evidence table "
@@ -25,6 +25,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "structured publisher evidence": (
         "the publisher and source checks read one categories value so both "
         "categories are asserted from the same finding set"
+    ),
+    "transitive lock entry publisher evidence": (
+        "the v6 brief requires provenance verification for every new "
+        "third-party lock entry; the skip contradicted the brief"
     ),
 }
 
@@ -280,7 +284,13 @@ version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://example.invalid/halfgated.tar.gz", hash = "sha256:ccc" }
 """
-    current = _current(_BASE_PYPROJECT, lock_with_hash)
+    current = _current(
+        _BASE_PYPROJECT
+        + "\n"
+        + "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        + 'publisher = "Acme Inc"\n',
+        lock=lock_with_hash,
+    )
 
     assert CATEGORY_MISSING_HASH not in _categories(audit_dependency_change(_baseline(), current))
 
@@ -351,7 +361,7 @@ sdist = { url = "https://example.invalid/halfgated.tar.gz", hash = "sha256:ccc" 
     assert findings == []
 
 
-def test_transitive_dependency_in_lockfile_requires_hash_not_publisher() -> None:
+def test_transitive_dependency_in_lockfile_requires_publisher_evidence() -> None:
     baseline = _baseline()
     lock_with_transitive = (
         _BASE_LOCK
@@ -366,6 +376,101 @@ wheels = [
 """
     )
     current = _current(_BASE_PYPROJECT, lock=lock_with_transitive)
+    findings = audit_dependency_change(baseline, current)
+
+    assert _categories(findings) == {CATEGORY_MISSING_PUBLISHER}
+    publisher_finding = next(f for f in findings if f.category == CATEGORY_MISSING_PUBLISHER)
+    assert "transitive-lib" in publisher_finding.detail
+    assert "publisher" in publisher_finding.detail
+    assert "fix:" in publisher_finding.detail
+    assert publisher_finding.file_path == "uv.lock"
+
+
+def test_transitive_dependency_in_lockfile_with_publisher_evidence_passes() -> None:
+    baseline = _baseline()
+    lock_with_transitive = (
+        _BASE_LOCK
+        + """
+[[package]]
+name = "transitive-lib"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://example.invalid/transitive.whl", hash = "sha256:111" },
+]
+"""
+    )
+    current = _current(
+        _BASE_PYPROJECT
+        + "\n"
+        + "[tool.ralph.dependency-evidence.transitive-lib]\n"
+        + 'publisher = "Transitive Authors"\n',
+        lock=lock_with_transitive,
+    )
+    findings = audit_dependency_change(baseline, current)
+    assert findings == []
+
+
+def test_new_local_lock_entries_pass() -> None:
+    baseline = _baseline()
+    lock_with_local = (
+        _BASE_LOCK
+        + """
+[[package]]
+name = "workspace-lib"
+version = "0.1.0"
+source = { editable = "." }
+
+[[package]]
+name = "workspace-util"
+version = "0.1.0"
+source = { directory = "libs/util" }
+
+[[package]]
+name = "workspace-root"
+version = "0.1.0"
+source = { virtual = "." }
+"""
+    )
+    current = _current(_BASE_PYPROJECT, lock=lock_with_local)
+    findings = audit_dependency_change(baseline, current)
+    assert findings == []
+
+
+def test_new_lock_entry_without_a_source_is_a_finding() -> None:
+    baseline = _baseline()
+    lock_with_unsourced = (
+        _BASE_LOCK
+        + """
+[[package]]
+name = "unverified-transitive"
+version = "1"
+"""
+    )
+    current = _current(_BASE_PYPROJECT, lock=lock_with_unsourced)
+    findings = audit_dependency_change(baseline, current)
+
+    assert _categories(findings) == {CATEGORY_MISSING_SOURCE}
+    source_finding = next(f for f in findings if f.category == CATEGORY_MISSING_SOURCE)
+    assert "unverified-transitive" in source_finding.detail
+    assert "fix:" in source_finding.detail
+    assert source_finding.file_path == "uv.lock"
+    assert source_finding.line > 0
+
+
+def test_new_git_sourced_lock_entry_carries_publisher_from_owner() -> None:
+    baseline = _baseline()
+    lock_with_git = (
+        _BASE_LOCK
+        + """
+[[package]]
+name = "transitive-lib"
+version = "2.1.0"
+source = { git = "https://github.com/acme-org/transitive-lib" }
+sdist = { url = "https://example.invalid/transitive.tar.gz", hash = "sha256:111" }
+"""
+    )
+    current = _current(_BASE_PYPROJECT, lock=lock_with_git)
     findings = audit_dependency_change(baseline, current)
     assert findings == []
 
@@ -385,6 +490,27 @@ def test_main_returns_one_on_findings(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (current_root / "uv.lock").write_text(_BASE_LOCK, encoding="utf-8")
+
+    assert main([str(baseline_root), str(current_root)]) == 1
+
+
+def test_main_returns_one_on_lock_only_entry_without_source(tmp_path: Path) -> None:
+    baseline_root = tmp_path / "baseline"
+    current_root = tmp_path / "current"
+    baseline_root.mkdir()
+    current_root.mkdir()
+    (baseline_root / "pyproject.toml").write_text(_BASE_PYPROJECT, encoding="utf-8")
+    (baseline_root / "uv.lock").write_text(_BASE_LOCK, encoding="utf-8")
+    (current_root / "pyproject.toml").write_text(_BASE_PYPROJECT, encoding="utf-8")
+    (current_root / "uv.lock").write_text(
+        _BASE_LOCK
+        + """
+[[package]]
+name = "unverified-transitive"
+version = "1"
+""",
+        encoding="utf-8",
+    )
 
     assert main([str(baseline_root), str(current_root)]) == 1
 

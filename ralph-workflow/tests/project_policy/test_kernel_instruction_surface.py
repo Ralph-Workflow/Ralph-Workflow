@@ -35,6 +35,15 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
 }
 
+PREMISE_CHECK_GUARD_NAME = "Premise-check retry line"
+
+PREMISE_CHECK_RULE_OBLIGATIONS: tuple[str, ...] = (
+    "test the premise shared by the failed fixes before another patch",
+    "never count retries",
+    "never remember earlier attempts",
+    "(evidence: anecdotal)",
+)
+
 INSTRUCTION_SURFACE_RULE_NAME = "Non-inferable instruction surface"
 
 INSTRUCTION_SURFACE_OBLIGATIONS: tuple[str, ...] = (
@@ -262,6 +271,42 @@ def test_kernels_state_the_pre_fix_failure_obligation() -> None:
             f"{source_name} kernel rule 'Regression tests from the spec' does not "
             "state that the bug-fix test fails on the pre-fix revision"
         )
+
+
+def test_kernels_state_the_runtime_owned_premise_check_rule() -> None:
+    for source_name, content in (("root", _root_kernel()), ("starter", _starter_kernel())):
+        normalized = " ".join(content.lower().split())
+        for obligation in PREMISE_CHECK_RULE_OBLIGATIONS:
+            assert obligation in normalized, (
+                f"{source_name} kernel does not state the runtime-owned premise-check "
+                f"obligation {obligation!r}"
+            )
+
+
+def test_kernel_root_and_starter_carry_the_same_premise_check_row() -> None:
+    root_row = _guard_row(_root_kernel(), PREMISE_CHECK_GUARD_NAME, "root kernel")
+    starter_row = _guard_row(_starter_kernel(), PREMISE_CHECK_GUARD_NAME, "starter kernel")
+    enforcement_index = GUARD_INVENTORY_COLUMNS.index("Enforcement")
+    root_enforcement = root_row[enforcement_index]
+    starter_enforcement = starter_row[enforcement_index]
+    for source_name, enforcement in (
+        ("root kernel", root_enforcement),
+        ("starter kernel", starter_enforcement),
+    ):
+        assert enforcement.startswith("advisory:"), (
+            f"{source_name} guard-inventory row for {PREMISE_CHECK_GUARD_NAME!r} must "
+            f"carry an advisory enforcement; observed: {enforcement!r}"
+        )
+        assert "; review:" in enforcement, (
+            f"{source_name} guard-inventory row for {PREMISE_CHECK_GUARD_NAME!r} must "
+            f"name its review trigger; observed: {enforcement!r}"
+        )
+    assert " ".join(root_enforcement.lower().split()) == " ".join(
+        starter_enforcement.lower().split()
+    ), (
+        f"root kernel premise-check enforcement {root_enforcement!r} differs from "
+        f"the starter kernel enforcement {starter_enforcement!r}"
+    )
 
 
 def test_kernels_drop_the_rule_history_sentence() -> None:

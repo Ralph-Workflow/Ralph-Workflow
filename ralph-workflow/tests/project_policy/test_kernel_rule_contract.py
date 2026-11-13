@@ -7,6 +7,8 @@ from tests.project_policy.kernel_contract import (
     COMMENT_BAN_CURRENT_FACT_STATEMENTS,
     IDENTICAL_AGENT_RULE_TITLES,
     INVERTED_SMALLEST_CHANGE_OBLIGATION,
+    PREMISE_CHECK_GUARD_NAME,
+    PREMISE_CHECK_RULE_OBLIGATIONS,
     PROJECT_SPECIFIC_AGENT_RULE_TITLES,
     RETIRED_PRE_FIX_REASON_SUBSTRINGS,
     SMALLEST_CHANGE_OBLIGATION,
@@ -16,6 +18,7 @@ from tests.project_policy.kernel_contract import (
     advisory_reason_and_trigger,
     agent_rule_body,
     agent_rule_statements,
+    assert_premise_check_guard_contract,
     assert_spec_value_guard_contract,
     commenting_evidence_paragraph,
     enforcement_cell,
@@ -234,6 +237,21 @@ def test_kernels_carry_the_model_family_review_advisory() -> None:
         assert MODEL_FAMILY_EVIDENCE_TAG in " ".join(statement.split()), (
             f"{source_name} kernel rule 5 (Independent review) does not tag the "
             f"model-family recommendation {MODEL_FAMILY_EVIDENCE_TAG!r}"
+        )
+
+
+def test_kernels_carry_the_runtime_owned_premise_check_advisory() -> None:
+    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
+        normalized = " ".join(content.lower().split())
+        for obligation in PREMISE_CHECK_RULE_OBLIGATIONS:
+            assert obligation in normalized, (
+                f"{source_name} kernel does not state the runtime-owned premise-check "
+                f"obligation {obligation!r}"
+            )
+        enforcement = assert_premise_check_guard_contract(content, source_name)
+        assert "premise" in enforcement.lower(), (
+            f"{source_name} guard-inventory enforcement for {PREMISE_CHECK_GUARD_NAME!r} "
+            f"does not name the premise; observed: {enforcement!r}"
         )
 
 

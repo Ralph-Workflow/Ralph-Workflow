@@ -19,6 +19,8 @@ _FORBIDDEN_NARRATION = (
 
 _MODEL_FAMILY_ROW_GUARD = "Independent review model-family diversification"
 
+_PREMISE_CHECK_ROW_GUARD = "Premise-check retry line"
+
 _CITED_POLICY_SCHEMA_SOURCE = "ralph-workflow/ralph/project_policy/markers.py"
 _CITED_POLICY_SCHEMA_SYMBOLS = (
     "SCHEMA_VERSION",
@@ -64,6 +66,32 @@ def test_plan_copies_carry_the_model_family_replay_row(relative_path: str) -> No
     )
     assert "review.md" in row, (
         f"{relative_path} §13 row for {_MODEL_FAMILY_ROW_GUARD!r} names no replay procedure output"
+    )
+
+
+@pytest.mark.parametrize("relative_path", _PLAN_RELATIVE_PATHS)
+def test_plan_copies_carry_the_premise_check_replay_row(relative_path: str) -> None:
+    text = _read_bytes(relative_path).decode("utf-8")
+    rows = [
+        line
+        for line in text.splitlines()
+        if line.startswith("| ") and _PREMISE_CHECK_ROW_GUARD in line
+    ]
+    assert len(rows) == 1, (
+        f"{relative_path} must carry exactly one §13 row for {_PREMISE_CHECK_ROW_GUARD!r}; "
+        f"found {len(rows)}"
+    )
+    row = rows[0]
+    assert "advisory:" in row and "; review:" in row, (
+        f"{relative_path} §13 row for {_PREMISE_CHECK_ROW_GUARD!r} must keep an advisory "
+        f"disposition with a review trigger; observed: {row!r}"
+    )
+    assert "review.md" in row, (
+        f"{relative_path} §13 row for {_PREMISE_CHECK_ROW_GUARD!r} names no replay procedure output"
+    )
+    assert "premise shared by the failed fixes" in row, (
+        f"{relative_path} §13 row for {_PREMISE_CHECK_ROW_GUARD!r} names no procedure that "
+        f"tests the premise shared by the failed fixes; observed: {row!r}"
     )
 
 
