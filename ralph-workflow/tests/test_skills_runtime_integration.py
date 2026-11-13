@@ -4,15 +4,17 @@ import hashlib
 import json
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.cli.commands import run as run_module
-from ralph.skills import get_skill_content
-from ralph.skills.upstream import UpdateOutcome
+from ralph.git.operations import get_head_sha, has_uncommitted_changes
+from ralph.skills import get_skill_content, upstream
+from ralph.skills.upstream import HttpClient, UpdateOutcome
+from tests.test_skills_upstream_update import _SKILL_FILES, _client_for
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -151,9 +153,14 @@ def transport_probe(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return transports
 
 
-def _run_seam(tmp_path: Path, dependencies: run_module.SetupDependencies) -> None:
+def _run_seam(
+    tmp_path: Path,
+    dependencies: run_module.SetupDependencies,
+    *,
+    workspace_root: Path | None = None,
+) -> None:
     run_module.sync_shipped_skills(
-        workspace_root=tmp_path,
+        workspace_root=workspace_root or tmp_path,
         keep_run_id=None,
         retention_max_age_seconds=None,
         dependencies=dependencies,
@@ -272,14 +279,16 @@ def test_run_start_migrates_retired_user_global_skills(
     )
 
 
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
 def test_run_start_makes_no_updater_call_when_the_env_kill_switch_is_set(
     tmp_path: Path,
     sandbox: _Sandbox,
     updater_probe: _UpdaterProbe,
     transport_probe: list[str],
     monkeypatch: pytest.MonkeyPatch,
+    value: str,
 ) -> None:
-    monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
+    monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", value)
     warnings: list[str] = []
 
     _run_seam(tmp_path, _build_dependencies(warnings))
@@ -292,6 +301,32 @@ def test_run_start_makes_no_updater_call_when_the_env_kill_switch_is_set(
     )
     assert transport_probe == [], (
         f"the kill switch must stop every transport call; got {transport_probe!r}"
+    )
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", ""])
+def test_run_start_calls_the_updater_when_the_env_kill_switch_is_not_truthy(
+    tmp_path: Path,
+    sandbox: _Sandbox,
+    updater_probe: _UpdaterProbe,
+    transport_probe: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", value)
+    warnings: list[str] = []
+
+    _run_seam(tmp_path, _build_dependencies(warnings))
+
+    assert updater_probe.event.wait(timeout=5), (
+        f"the updater must run for the non-truthy kill-switch value {value!r}"
+    )
+    assert len(updater_probe.calls) == 1, (
+        f"the updater must run exactly once; got {updater_probe.calls!r}"
+    )
+    assert updater_probe.calls[0]["enabled"] is True
+    assert transport_probe == [], (
+        f"the stubbed updater must not reach the transport; got {transport_probe!r}"
     )
 
 
@@ -370,4 +405,76 @@ def test_run_start_survives_a_failing_user_global_migration(
     assert install_calls, "the project-scope install must still run after a migration failure"
     assert any("migration" in warning for warning in warnings), (
         f"the migration failure must be reported; got {warnings!r}"
+    )
+
+
+def _assert_every_companion_is_readable(files: dict[str, dict[str, bytes]]) -> None:
+    for root in (upstream.canonical_skills_root(), *upstream.sibling_skills_roots()):
+        for skill, companions in files.items():
+            for relative, data in companions.items():
+                assert (root / skill / relative).read_bytes() == data, (
+                    f"{root}: the companion {relative} of {skill} must be readable"
+                )
+
+
+def _make_the_next_attempt_due() -> None:
+    cache = upstream.attempt_cache_path()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    stamp = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+    cache.write_text(json.dumps({"last_attempt": stamp}), encoding="utf-8")
+
+
+def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tree(
+    tmp_path: Path,
+    tmp_git_repo: Path,
+    sandbox: _Sandbox,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_client, first_calls = _client_for("v-test-1", _SKILL_FILES)
+    update_done = threading.Event()
+    real_update = upstream.maybe_update_universal_skills
+
+    def _tracked_update(*, enabled: bool, now: datetime, http: HttpClient) -> UpdateOutcome:
+        try:
+            return real_update(enabled=enabled, now=now, http=http)
+        finally:
+            update_done.set()
+
+    monkeypatch.setattr("ralph.skills.upstream.maybe_update_universal_skills", _tracked_update)
+    monkeypatch.setattr("ralph.skills.upstream.default_http_client", lambda: first_client)
+    warnings: list[str] = []
+    head_before = get_head_sha(tmp_git_repo)
+
+    _run_seam(tmp_path, _build_dependencies(warnings), workspace_root=tmp_git_repo)
+
+    assert update_done.wait(timeout=5), "the universal-skill updater never ran"
+    assert first_calls == [
+        upstream.RELEASES_API_URL,
+        upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
+    ]
+    _assert_every_companion_is_readable(_SKILL_FILES)
+    assert get_head_sha(tmp_git_repo) != head_before, (
+        "the seam must commit its own project writes instead of leaving them uncommitted"
+    )
+    assert has_uncommitted_changes(tmp_git_repo) is False, (
+        "the run must leave the user's git tree clean"
+    )
+
+    changed = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    changed["test-driven-development"]["SKILL.md"] = b"# Test driven development v2\n"
+    second_client, second_calls = _client_for("v-test-2", changed)
+    monkeypatch.setattr("ralph.skills.upstream.default_http_client", lambda: second_client)
+    _make_the_next_attempt_due()
+    update_done.clear()
+
+    _run_seam(tmp_path, _build_dependencies(warnings), workspace_root=tmp_git_repo)
+
+    assert update_done.wait(timeout=5), "the universal-skill updater never ran for the new release"
+    assert second_calls == [
+        upstream.RELEASES_API_URL,
+        upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-2"),
+    ]
+    _assert_every_companion_is_readable(changed)
+    assert has_uncommitted_changes(tmp_git_repo) is False, (
+        "the run that installs the newer release must leave the user's git tree clean"
     )

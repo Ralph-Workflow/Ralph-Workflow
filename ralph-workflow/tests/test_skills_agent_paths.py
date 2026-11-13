@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -156,3 +157,49 @@ def test_agent_skill_root_dataclass_is_frozen() -> None:
         "last_verified_iso",
         "is_canonical",
     }
+
+
+def _parse_iso(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def test_every_supported_agent_has_a_user_global_root() -> None:
+    roots = agent_skill_roots()
+
+    assert {entry.agent for entry in roots} == set(_EXPECTED_AGENT_PATHS)
+    assert len({entry.agent for entry in roots}) == len(roots), (
+        "every supported agent must appear exactly once"
+    )
+
+
+def test_every_agent_root_carries_a_source_url_and_an_iso_verification_date() -> None:
+    for entry in agent_skill_roots():
+        assert entry.source_url.strip(), f"{entry.agent}: source_url must not be empty"
+        assert entry.last_verified_iso.strip(), (
+            f"{entry.agent}: last_verified_iso must not be empty"
+        )
+        assert _parse_iso(entry.last_verified_iso) is not None, (
+            f"{entry.agent}: last_verified_iso {entry.last_verified_iso!r} is not an ISO date"
+        )
+
+
+def test_every_agent_root_lives_in_the_user_home_and_not_inside_a_project() -> None:
+    home = Path.home().resolve()
+    project = Path.cwd().resolve()
+
+    for entry in agent_skill_roots():
+        resolved = entry.resolve()
+        assert resolved.is_absolute(), f"{entry.agent}: {resolved} must be absolute"
+        assert resolved.is_relative_to(home), (
+            f"{entry.agent}: {resolved} must live under the user home {home}"
+        )
+        assert not resolved.is_relative_to(project), (
+            f"{entry.agent}: {resolved} must not live inside the project {project}"
+        )
+        assert entry.path_segments[0].startswith("."), (
+            f"{entry.agent}: a user-global root must start at a hidden home directory, "
+            f"got {entry.path_segments!r}"
+        )

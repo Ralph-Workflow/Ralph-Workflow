@@ -353,6 +353,11 @@ def test_a_valid_release_installs_every_skill_and_mirrors_the_siblings(
         for skill in upstream.UNIVERSAL_SKILL_NAMES:
             assert (sibling / skill / "SKILL.md").is_file()
             assert (sibling / skill / upstream.MANAGED_MARKER_NAME).is_file()
+        for skill, files in _SKILL_FILES.items():
+            for relative, data in files.items():
+                assert (sibling / skill / relative).read_bytes() == data, (
+                    f"{sibling}: the companion {relative} of {skill} must be readable"
+                )
 
 
 def test_a_payload_without_a_skill_file_is_refused_and_keeps_the_install(

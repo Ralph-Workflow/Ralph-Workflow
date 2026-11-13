@@ -305,6 +305,28 @@ the single upstream `obra/superpowers` at **release versions** (never a moving
 branch) and installed **user-global**. They are never committed into your
 project, so upstream changes never dirty your git tree.
 
+### User-global skill roots
+
+Ralph Workflow installs the universal skills into the user-global skill
+directory each supported agent documents. The canonical install is
+`~/.claude/skills`; every other root holds a link to the canonical copy, or a
+copy of it on filesystems without symlinks.
+
+| Root id | User-global skill root | Source |
+|---|---|---|
+| `claude` (canonical) | `~/.claude/skills` | <https://code.claude.com/docs/en/skills> |
+| `codex` | `~/.codex/skills` | <https://github.com/openai/codex/blob/main/codex-rs/skills/src/assets/samples/skill-installer/SKILL.md> |
+| `opencode` | `~/.config/opencode/skills` | <https://opencode.ai/docs/skills/> |
+| `agy` | `~/.gemini/antigravity-cli/skills` | <https://antigravity.google/docs/skills/> |
+| `codex-agents` | `~/.agents/skills` | <https://learn.chatgpt.com/docs/build-skills> |
+| `agy-config` | `~/.gemini/config/skills` | <https://antigravity.google/docs/skills/> |
+
+The source column names the page each path was taken from; the paths were
+last verified on 2026-11-11. A root id names a skill directory, not an agent.
+An `agy` invocation runs with a private `HOME`, so the two Antigravity roots
+are not on that invocation's skill path — see
+[Agent Compatibility](agent-compatibility.md#agy).
+
 ### `[skills]`
 
 ```toml
@@ -382,8 +404,10 @@ policy wins.
 
 On the first run after upgrading, Ralph Workflow removes the default skills it
 manages — in the project scope, in sibling agent locations, and user-global —
-and only those it manages. User-owned and user-edited skills are untouched.
-Project-level removals land in the usual single automatic skill-sync commit.
+and only those it manages. You are free to add your own skills to those
+directories: Ralph Workflow never touches a skill it does not manage, so
+user-owned and user-edited skills are untouched. Project-level removals land in
+the usual single automatic skill-sync commit.
 
 ## Auto-integration
 

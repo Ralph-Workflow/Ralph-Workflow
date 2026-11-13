@@ -241,6 +241,11 @@ def test_the_sibling_roots_mirror_the_installed_skills(sandbox: Path) -> None:
         for skill in UNIVERSAL_SKILL_NAMES:
             assert (sibling / skill / "SKILL.md").is_file()
             assert (sibling / skill / ".ralph-managed.json").is_file()
+        for skill, files in _SKILL_FILES.items():
+            for relative, data in files.items():
+                assert (sibling / skill / relative).read_bytes() == data, (
+                    f"{sibling}: the companion {relative} of {skill} must be readable"
+                )
 
 
 def test_the_upgrade_installs_the_changed_companion_set(
@@ -406,6 +411,43 @@ def test_two_invocations_within_a_day_make_one_attempt(sandbox: Path) -> None:
     assert second.attempted is False
     assert len(calls) == 2
     assert _tree_snapshot(_canonical_root()) == snapshot
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["release-500", "release-timeout", "garbage-archive", "oversize-archive", "denied-extension"],
+)
+def test_a_failed_attempt_keeps_the_skills_and_schedules_a_retry(
+    sandbox: Path, failure: str
+) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    root = _canonical_root()
+    before = _tree_snapshot(root)
+
+    failed = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=_failing_client(failure)
+    )
+
+    assert failed.status == "failed"
+    assert _tree_snapshot(root) == before, "a failed attempt must keep the installed skills"
+
+    retry_client, retry_calls = _client_for("v-test-2", _SKILL_FILES)
+    skipped = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=26), http=retry_client
+    )
+
+    assert skipped.status == "skipped"
+    assert skipped.attempted is False
+    assert retry_calls == [], "a failed attempt must not be retried inside the 24 h window"
+
+    later_client, later_calls = _client_for("v-test-2", _SKILL_FILES)
+    retried = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=49, minutes=1), http=later_client
+    )
+
+    assert retried.status == "updated"
+    assert later_calls == [RELEASES_API_URL, _archive_url("v-test-2")]
 
 
 def test_concurrent_starts_make_one_attempt_and_keep_the_cache_parseable(
