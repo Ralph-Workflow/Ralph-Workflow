@@ -850,7 +850,7 @@ tests/test_unreadable_record_entry_points.py|0,4,17
 tests/test_unsafe_exec_stderr_and_timeout_consistency.py|0,1,5
 tests/test_upstream_result_shapes_are_all_normalised.py|0,1,0
 tests/test_validation_error_injection.py|0,1,0
-tests/test_verify.py|5,0,36
+tests/test_verify.py|5,0,16
 tests/test_visual_capture.py|0,5,2
 tests/test_visual_capture_command_contract.py|0,0,4
 tests/test_visual_capture_lifecycle.py|0,0,1

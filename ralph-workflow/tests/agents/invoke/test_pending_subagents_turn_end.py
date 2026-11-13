@@ -11,7 +11,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -33,9 +32,6 @@ from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
 from ralph.process.manager import ManagedPtyProcess
 from ralph.recovery.attempt_facts import TerminationIssuer
-
-if TYPE_CHECKING:
-    from ralph.process.manager import ManagedPtyProcess
 
 pytestmark = pytest.mark.subprocess_e2e
 

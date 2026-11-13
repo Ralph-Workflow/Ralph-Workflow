@@ -1,5 +1,3 @@
-"""Cross-component invariant: the artifact type the engine grades equals the type the agent is told to submit."""
-
 from __future__ import annotations
 
 import re

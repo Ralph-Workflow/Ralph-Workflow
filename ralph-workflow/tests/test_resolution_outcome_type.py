@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -109,6 +108,6 @@ def test_union_is_closed_and_consumer_rejects_unknown_variant() -> None:
         Exhausted,
         ConfigFailure,
     }
-    unknown = cast("ResolutionOutcomeType", "unhandled")
+    unknown: object = "unhandled"
     with pytest.raises(AssertionError, match="Expected code to be unreachable"):
         record_resolution_outcome(unknown, target="main")
