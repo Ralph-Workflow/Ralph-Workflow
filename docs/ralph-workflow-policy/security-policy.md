@@ -207,7 +207,7 @@ Audit log of agent actions. The agent's actions leave a record that
 names the session, the capability, and the outcome. (evidence: moderate)
 
 Ralph's audit sink is `RalphAuditSinkAdapter`
-(`ralph/mcp/artifacts/audit_adapter.py:125`). It buffers records in
+(`ralph/mcp/artifacts/audit_adapter.py:103`). It buffers records in
 memory and writes nothing to disk: `emit` appends to a bounded
 `collections.deque` whose default cap is 4096 records, so the oldest
 record is evicted FIFO; `drain_records` returns the buffered records and

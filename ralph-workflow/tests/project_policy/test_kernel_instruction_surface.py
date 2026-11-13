@@ -6,14 +6,10 @@ from pathlib import Path
 from ralph.project_policy import starters
 
 RALPH_TEST_CHANGE_REASONS = {
-    "retired_repeated_failure_retry_rule_contract": (
-        "the repeated-failure retry rule is removed end to end, so the checks that "
-        "required the runtime-owned retry guidance and its guard row are retired with it"
-    ),
-    "retired_pre_fix_failure_obligation_contract": (
-        "the shipped test-driven-development and verification-before-completion skills "
-        "teach the red-green cycle, so the kernel states the spec-derived expected "
-        "value and the library-documentation clause and not the pre-fix failure"
+    "restored_pre_fix_failure_obligation_contract": (
+        "the kernel restores the pre-fix-revision clause to the regression-tests "
+        "rule, so the check pins the spec-derived expected value and the "
+        "library-documentation clause alongside the pre-fix clause"
     ),
     "test_kernels_state_the_non_inferable_instruction_surface_rule": (
         "the kernel now states the non-inferable instruction-surface rule, so both "

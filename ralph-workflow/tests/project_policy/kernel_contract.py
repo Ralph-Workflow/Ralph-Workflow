@@ -6,9 +6,11 @@ from pathlib import Path
 from ralph.project_policy import markers, starters
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "retired_repeated_failure_retry_guard_contract": (
-        "the repeated-failure retry rule is removed end to end, so the guard-row "
-        "contract helper for that rule is retired with it"
+    "bounded_deterministic_evidence_rule": (
+        "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
+        "`moderate` rules; the comment and docstring ban is the single bounded "
+        "exception, so the broad any-tag wording and its contract statements are "
+        "replaced"
     ),
 }
 
@@ -30,15 +32,17 @@ AGENT_RULES: tuple[tuple[int, str], ...] = (
 
 EVIDENCE_TAG_PATTERN = re.compile(r"\(evidence:\s*(strong|moderate|anecdotal|none)\)")
 
-DETERMINISTIC_TAG_ANCHOR: str = "`deterministic` whatever its evidence tag"
+DETERMINISTIC_TAG_ANCHOR: str = (
+    "Only a rule tagged `strong` or `moderate` may carry a `deterministic` enforcement status"
+)
 
-RETIRED_BLANKET_TAG_ANCHOR: str = (
-    "Only a rule tagged `strong` or `moderate` may carry a `deterministic`"
+RETIRED_BROAD_DETERMINISTIC_ANCHORS: tuple[str, ...] = (
+    "`deterministic` whatever its evidence tag",
+    "does not make a rule advisory when a deterministic gate decides it",
 )
 
 COMMENT_BAN_ANCHOR: str = (
-    "the absolute comment and docstring ban in `clean-code-policy.md` is a "
-    "project rule tagged `none`"
+    "the absolute comment and docstring ban in `clean-code-policy.md`, a project rule tagged `none`"
 )
 
 GUARD_INVENTORY_COLUMNS: tuple[str, ...] = (
@@ -100,7 +104,8 @@ COMMENT_BAN_CURRENT_FACT_STATEMENTS: tuple[str, ...] = (
     "The evidence tag and the enforcement status are separate properties",
     "the tag names the kind of source behind the rule, the enforcement status names who decides it",
     "The ban ships as `deterministic` because the comment audit enforces it",
-    "a `none` tag does not make a rule advisory when a deterministic gate decides it",
+    "it is the single exception to the execution-kernel rule that a rule tagged "
+    "`anecdotal` or `none` ships advisory",
 )
 
 STARTER_COMMENT_BAN_ENFORCEMENT: str = "deterministic: PROJECT-FACT-UNRESOLVED"

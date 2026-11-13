@@ -10,10 +10,6 @@ if TYPE_CHECKING:
     from ralph.project_policy._readiness_assessment import ReadinessAssessment
     from ralph.workspace.protocol import Workspace
 
-_AGENTS_BLOCK_BEGIN_RE: Final[re.Pattern[str]] = re.compile(
-    r"<!-- ralph-workflow-policy:begin v\d+ -->"
-)
-
 _READINESS_DIMENSIONS_RE: Final[re.Pattern[str]] = re.compile(
     r"structure complete=(?P<structure_complete>[a-z]+), "
     r"implementation verified=(?P<implementation_verified>[a-z]+), "
@@ -174,7 +170,7 @@ def _render_ready_block(
 
 
 def _locate_managed_block(content: str) -> _ManagedBlock | None:
-    begin_matches = list(_AGENTS_BLOCK_BEGIN_RE.finditer(content))
+    begin_matches = list(markers.AGENTS_BLOCK_BEGIN_RE.finditer(content))
     end_count = content.count(markers.AGENTS_BLOCK_END)
     if len(begin_matches) != 1 or end_count != 1:
         return None
@@ -259,7 +255,10 @@ def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
 
 
 def _has_any_managed_marker(content: str) -> bool:
-    return _AGENTS_BLOCK_BEGIN_RE.search(content) is not None or markers.AGENTS_BLOCK_END in content
+    return (
+        markers.AGENTS_BLOCK_BEGIN_RE.search(content) is not None
+        or markers.AGENTS_BLOCK_END in content
+    )
 
 
 def _bootstrap_claude_md(workspace: Workspace) -> list[str]:

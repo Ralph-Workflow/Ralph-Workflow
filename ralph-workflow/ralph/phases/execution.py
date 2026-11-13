@@ -29,6 +29,8 @@ from ralph.phases.required_artifacts import (
     build_retry_hint,
     clear_validation_retry_hint,
     resolve_phase_required_artifact,
+    retry_fingerprint_path_for_hint,
+    retry_hint_fingerprint,
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -446,6 +448,7 @@ def _validate_output_artifact(
 
 class PersistedRetryHint(NamedTuple):
     hint: str
+    fingerprint: str
 
 
 def compose_persisted_retry_hint(
@@ -456,6 +459,7 @@ def compose_persisted_retry_hint(
     registry: dict[str, RequiredArtifact] | None = None,
     unsubmitted_draft: bool = False,
 ) -> PersistedRetryHint:
+    fingerprint = retry_hint_fingerprint(phase, detail, registry=registry)
     block = build_retry_hint(
         phase,
         detail,
@@ -465,7 +469,7 @@ def compose_persisted_retry_hint(
     )
     history = prior_hint.strip()
     hint = f"{history}\n\n{block}" if history else block
-    return PersistedRetryHint(hint=hint)
+    return PersistedRetryHint(hint=hint, fingerprint=fingerprint)
 
 
 def _write_retry_hint(
@@ -478,6 +482,7 @@ def _write_retry_hint(
     preserve_existing: bool = True,
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
+    fingerprint_path = retry_fingerprint_path_for_hint(hint_path)
     try:
         registry = build_required_artifacts(ctx.artifacts_policy)
     except AttributeError:
@@ -495,6 +500,7 @@ def _write_retry_hint(
     )
     with suppress(Exception):
         ctx.workspace.write(hint_path, persisted.hint)
+        ctx.workspace.write(fingerprint_path, persisted.fingerprint)
 
 
 def _worker_retry_hint_path(

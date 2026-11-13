@@ -90,8 +90,9 @@ establishes that the ban lowers the defect rate, and the ban does not
 rest on one. The evidence tag and the enforcement status are separate
 properties: the tag names the kind of source behind the rule, the
 enforcement status names who decides it. The ban ships as
-`deterministic` because the comment audit enforces it, and a `none`
-tag does not make a rule advisory when a deterministic gate decides it.
+`deterministic` because the comment audit enforces it; it is the
+single exception to the execution-kernel rule that a rule tagged
+`anecdotal` or `none` ships advisory.
 No percentage, multiplier, or benchmark figure from either claim
 belongs in this policy until it is confirmed against the primary
 source.

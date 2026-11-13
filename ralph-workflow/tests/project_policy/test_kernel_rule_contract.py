@@ -48,10 +48,6 @@ RETIRED_COMMENT_BAN_STATEMENT: str = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "retired_repeated_failure_retry_rule_advisory": (
-        "the repeated-failure retry rule is removed end to end, so the check that "
-        "required the runtime-owned retry guidance and its guard row is retired with it"
-    ),
     "test_kernels_declare_exactly_the_thirteen_agent_rules": (
         "the shipped skills teach the repeated-failure technique, so the "
         "repeated-failure retry rule is retired and the kernel declares "

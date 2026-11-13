@@ -9,18 +9,21 @@ from tests.project_policy.kernel_contract import (
     AGENT_RULES,
     COMMENT_BAN_ANCHOR,
     DETERMINISTIC_TAG_ANCHOR,
-    RETIRED_BLANKET_TAG_ANCHOR,
+    RETIRED_BROAD_DETERMINISTIC_ANCHORS,
     agent_rule_statements,
+    enforcement_cell,
     evidence_tag,
+    guard_inventory_rows,
     kernel,
     kernel_rules_section,
     root_kernel,
+    root_policy,
     rule_statements,
     section_of,
     starter,
 )
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_kernels_number_the_agent_rules_to_match_the_contract": (
         "the shipped skills teach the repeated-failure technique, so the "
         "repeated-failure retry rule is retired and the numbered contract is "
@@ -39,11 +42,16 @@ RALPH_TEST_CHANGE_REASONS = {
         "evidence tags of the thirteen shipped rules"
     ),
     "test_kernel_anchors_the_deterministic_evidence_rule": (
-        "the blanket sentence that only a `strong` or `moderate` rule may carry "
-        "a `deterministic` enforcement status is replaced by the rule that the "
-        "evidence tag and the enforcement status are separate properties, so the "
-        "anchor names the replacement text and the retired blanket sentence must "
-        "be absent"
+        "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
+        "`moderate` rules; the comment and docstring ban is the single bounded "
+        "exception, so the broad any-tag wording and its contract statements are "
+        "replaced"
+    ),
+    "test_anecdotal_and_none_guard_rows_ship_advisory_enforcement": (
+        "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
+        "`moderate` rules; the comment and docstring ban is the single bounded "
+        "exception, so every `anecdotal` or `none`-tagged guard row must ship an "
+        "advisory enforcement with a review trigger"
     ),
 }
 
@@ -560,21 +568,71 @@ def test_kernel_evidence_tags_match_the_brief() -> None:
 
 
 def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
-    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
-        assert DETERMINISTIC_TAG_ANCHOR in content, (
-            f"{source_name} kernel does not anchor the rule that the evidence tag and "
-            f"the enforcement status are separate properties and that a rule a "
-            f"deterministic gate decides carries `deterministic` whatever its tag"
-        )
+    policy_sources = (
+        ("root kernel", root_kernel()),
+        ("starter kernel", kernel()),
+        ("root clean-code policy", root_policy("clean-code-policy.md")),
+        ("starter clean-code policy", starter("clean-code-policy.md")),
+    )
+    for source_name, content in policy_sources:
         normalized = " ".join(content.split())
+        for retired in RETIRED_BROAD_DETERMINISTIC_ANCHORS:
+            assert retired not in normalized, (
+                f"{source_name} still states the retired broad deterministic wording: {retired!r}"
+            )
+    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
+        normalized = " ".join(content.split())
+        assert DETERMINISTIC_TAG_ANCHOR in normalized, (
+            f"{source_name} kernel does not anchor the bounded evidence-tag rule that "
+            f"only a rule tagged `strong` or `moderate` may carry a `deterministic` "
+            f"enforcement status"
+        )
         assert COMMENT_BAN_ANCHOR in normalized, (
             f"{source_name} kernel does not name the absolute comment and docstring "
-            f"ban as the `none`-tagged rule a deterministic gate decides"
+            f"ban as the single `none`-tagged exception to the bounded evidence-tag rule"
         )
-        assert RETIRED_BLANKET_TAG_ANCHOR not in normalized, (
-            f"{source_name} kernel still states the retired blanket rule that only a "
-            f"`strong` or `moderate` rule may carry a `deterministic` enforcement status"
-        )
+
+
+GUARD_ROW_EVIDENCE_TAGS: dict[str, str] = {
+    "independent review model-family diversification": "moderate",
+    "premise-check retry line": "anecdotal",
+}
+
+
+def _guard_row_evidence_tag(content: str, guard: str) -> str:
+    key = guard.lower()
+    if key in GUARD_ROW_EVIDENCE_TAGS:
+        return GUARD_ROW_EVIDENCE_TAGS[key]
+    statements = {
+        **rule_statements(kernel_rules_section(content)),
+        **agent_rule_statements(content),
+    }
+    statement = statements.get(key)
+    assert statement is not None, (
+        f"no kernel rule statement matches the guard-inventory row {guard!r}"
+    )
+    return evidence_tag(statement)
+
+
+def test_anecdotal_and_none_guard_rows_ship_advisory_enforcement() -> None:
+    unresolved_placeholder = "deterministic: PROJECT-FACT-UNRESOLVED"
+    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
+        for row in guard_inventory_rows(content):
+            tag = _guard_row_evidence_tag(content, row[0])
+            if tag not in ("anecdotal", "none"):
+                continue
+            enforcement = enforcement_cell(row)
+            if enforcement == unresolved_placeholder:
+                continue
+            assert enforcement.startswith("advisory:"), (
+                f"{source_name} guard-inventory row for {row[0]!r} is tagged "
+                f"{tag!r} but carries enforcement {enforcement!r}; the bounded "
+                f"evidence-tag rule ships `anecdotal` and `none` rules advisory"
+            )
+            assert "; review:" in enforcement, (
+                f"{source_name} guard-inventory row for {row[0]!r} keeps an advisory "
+                f"enforcement without a review trigger; observed: {enforcement!r}"
+            )
 
 
 def test_every_agent_rule_has_a_research_basis_supports_line() -> None:

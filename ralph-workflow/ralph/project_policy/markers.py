@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Final
 
@@ -17,6 +18,10 @@ SIGNIFICANT_NONEMPTY_LINE_THRESHOLD: Final[int] = 10
 AGENTS_BLOCK_BEGIN_V1: Final[str] = "<!-- ralph-workflow-policy:begin v1 -->"
 AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v2 -->"
 AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
+
+AGENTS_BLOCK_BEGIN_RE: Final[re.Pattern[str]] = re.compile(
+    r"<!-- ralph-workflow-policy:begin v\d+ -->"
+)
 
 CANONICAL_DIR: Final[str] = "docs/ralph-workflow-policy/"
 APPLICABILITY_OVERRIDES_PATH: Final[str] = "docs/ralph-workflow-policy/applicability.toml"
@@ -435,6 +440,7 @@ CLAIM_SCOPE_PHRASES: Final[tuple[str, ...]] = (
 
 __all__ = [
     "AGENTS_BLOCK_BEGIN",
+    "AGENTS_BLOCK_BEGIN_RE",
     "AGENTS_BLOCK_BEGIN_V1",
     "AGENTS_BLOCK_END",
     "AGENTS_MD",

@@ -18,10 +18,11 @@ _SCRATCH_PATHS: tuple[str, ...] = (
 
 
 def _strip_managed_block(content: str) -> str:
-    begin = content.find(markers.AGENTS_BLOCK_BEGIN)
+    begin_match = markers.AGENTS_BLOCK_BEGIN_RE.search(content)
     end = content.find(markers.AGENTS_BLOCK_END)
-    if begin == -1 or end == -1 or end < begin:
+    if begin_match is None or end == -1 or end < begin_match.start():
         return content
+    begin = begin_match.start()
     tail = end + len(markers.AGENTS_BLOCK_END)
     stripped = content[:begin] + content[tail:]
     return stripped.replace("\n\n\n", "\n\n")

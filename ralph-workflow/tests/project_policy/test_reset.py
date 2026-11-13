@@ -57,6 +57,61 @@ def test_reset_strips_the_managed_block_but_keeps_the_users_own_content() -> Non
     assert "More of my own rules." in content
 
 
+def test_reset_strips_a_legacy_v1_managed_block() -> None:
+    ws = _seeded()
+    ws.write(
+        markers.AGENTS_MD,
+        "# My project\n\nMy own house rules.\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN_V1}\nLegacy Ralph wrote this.\n{markers.AGENTS_BLOCK_END}\n"
+        "\nMore of my own rules.\n",
+    )
+
+    reset.reset_policy_state(ws)
+
+    content = ws.read(markers.AGENTS_MD)
+    assert markers.AGENTS_BLOCK_BEGIN_V1 not in content
+    assert markers.AGENTS_BLOCK_END not in content
+    assert "Legacy Ralph wrote this." not in content
+    assert "My own house rules." in content
+    assert "More of my own rules." in content
+
+
+def test_reset_strips_a_v2_managed_block() -> None:
+    ws = _seeded()
+    ws.write(
+        markers.AGENTS_MD,
+        "# My project\n\nMy own house rules.\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\nCurrent Ralph wrote this.\n{markers.AGENTS_BLOCK_END}\n"
+        "\nMore of my own rules.\n",
+    )
+
+    reset.reset_policy_state(ws)
+
+    content = ws.read(markers.AGENTS_MD)
+    assert markers.AGENTS_BLOCK_BEGIN not in content
+    assert markers.AGENTS_BLOCK_END not in content
+    assert "Current Ralph wrote this." not in content
+    assert "My own house rules." in content
+    assert "More of my own rules." in content
+
+
+def test_reset_is_idempotent_for_a_stripped_agents_md() -> None:
+    ws = _seeded()
+    ws.write(
+        markers.AGENTS_MD,
+        "# My project\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN_V1}\nLegacy Ralph wrote this.\n{markers.AGENTS_BLOCK_END}\n"
+        "\nMy own house rules.\n",
+    )
+
+    reset.reset_policy_state(ws)
+    once = ws.read(markers.AGENTS_MD)
+    reset.reset_policy_state(ws)
+    twice = ws.read(markers.AGENTS_MD)
+
+    assert once == twice
+
+
 def test_reset_strips_the_opt_out_marker() -> None:
     ws = _seeded()
     ws.write(markers.AGENTS_MD, f"# Rules\n\n{markers.OPT_OUT_MARKER}\n")

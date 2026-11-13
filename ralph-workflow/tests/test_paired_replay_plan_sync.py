@@ -5,9 +5,11 @@ import pytest
 from tests.doc_roots import REPOSITORY_ROOT
 
 RALPH_TEST_CHANGE_REASONS = {
-    "retired_repeated_failure_retry_replay_row": (
-        "the repeated-failure retry rule is removed end to end, so the replay row "
-        "that reviewed it is retired from both plan copies"
+    "test_plan_copies_bound_deterministic_status_to_strong_or_moderate_evidence": (
+        "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
+        "`moderate` rules; the comment and docstring ban is the single bounded "
+        "exception, so both plan copies must carry the bounded statements and reject "
+        "the broad wording"
     ),
 }
 
@@ -25,6 +27,21 @@ _FORBIDDEN_NARRATION = (
 )
 
 _MODEL_FAMILY_ROW_GUARD = "Independent review model-family diversification"
+
+_PLAN_BOUNDED_DETERMINISTIC_STATEMENTS = (
+    "Only a rule tagged `strong` or `moderate` may carry a `deterministic` "
+    "enforcement status; a rule tagged `none` (judgment) or `anecdotal` ships "
+    "`advisory` with a review trigger, and no rule is marked `deterministic` on "
+    "the strength of an enforcer that is planned but not wired.",
+    "The single exception is the absolute comment and docstring ban, a project "
+    "rule tagged `none` that ships `deterministic` because the comment audit "
+    "(`audit_comments`) enforces it.",
+)
+
+_PLAN_BROAD_DETERMINISTIC_PHRASES = (
+    "a `none` rule a wired deterministic gate decides ships as `deterministic`",
+    "`deterministic` whatever its evidence tag",
+)
 
 _CITED_POLICY_SCHEMA_SOURCE = "ralph-workflow/ralph/project_policy/markers.py"
 _CITED_POLICY_SCHEMA_SYMBOLS = (
@@ -72,6 +89,22 @@ def test_plan_copies_carry_the_model_family_replay_row(relative_path: str) -> No
     assert "review.md" in row, (
         f"{relative_path} §13 row for {_MODEL_FAMILY_ROW_GUARD!r} names no replay procedure output"
     )
+
+
+@pytest.mark.parametrize("relative_path", _PLAN_RELATIVE_PATHS)
+def test_plan_copies_bound_deterministic_status_to_strong_or_moderate_evidence(
+    relative_path: str,
+) -> None:
+    text = _read_bytes(relative_path).decode("utf-8")
+    normalized = " ".join(text.split())
+    for statement in _PLAN_BOUNDED_DETERMINISTIC_STATEMENTS:
+        assert statement in normalized, (
+            f"{relative_path} does not state the bounded evidence-tag rule: {statement!r}"
+        )
+    for phrase in _PLAN_BROAD_DETERMINISTIC_PHRASES:
+        assert phrase not in normalized, (
+            f"{relative_path} still carries the broad deterministic wording: {phrase!r}"
+        )
 
 
 def test_cited_policy_schema_source_defines_the_cited_symbols() -> None:

@@ -104,16 +104,23 @@ or secondary engineering source; a rule tagged `anecdotal` or `none`
 rests on judgment or practitioner experience rather than a recorded
 source. A rule whose
 enforcer does not exist yet stays advisory with a review trigger and is
-never marked `deterministic`. A rule a deterministic gate decides
-carries `deterministic` whatever its evidence tag: the absolute comment
-and docstring ban in `clean-code-policy.md` is a project rule tagged
-`none`, and the comment audit (`ralph.testing.audit_comments`) enforces
-it.
+never marked `deterministic`. Only a rule tagged `strong` or `moderate`
+may carry a `deterministic` enforcement status; a rule tagged
+`anecdotal` or `none` ships `advisory` with a review trigger. The
+single exception is the absolute comment and docstring ban in
+`clean-code-policy.md`, a project rule tagged `none` that ships
+`deterministic` because the comment audit (`ralph.testing.audit_comments`)
+enforces it.
 
 Every rule below is an agent rule or a runtime rule. No rule asks an
 agent to count its own retries, to keep state across sessions, to
 detect its own loops, or to police its own budget: the runtime owns
-those.
+those. One runtime rule owns the repeated-failure retry: when the
+same failure summary repeats, the retry formatter adds the line
+"test the premise shared by the failed fixes before another patch"
+(`ralph/recovery/retry_prompt.py`). The formatter line is the whole
+requirement: agents never count retries, never remember earlier
+attempts, and never infer that a failure repeated. (evidence: anecdotal)
 
 1. **Check first.** Before implementing, name the runnable pass/fail
    check that decides whether the change is done, and write it down.
@@ -134,9 +141,10 @@ those.
    editing the expectation. (evidence: strong)
 4. **Regression tests from the spec.** A bug-fix test's expected value
    is written down from the spec rather than computed by calling the
-   code under test. When the behaviour belongs to a third-party library,
-   that library's own documentation is the spec: check it before relying
-   on the behaviour. (evidence: moderate)
+   code under test, and the test fails on the pre-fix revision. When
+   the behaviour belongs to a third-party library, that library's own
+   documentation is the spec: check it before relying on the behaviour.
+   (evidence: moderate)
 5. **Independent review.** Review belongs to the analysis phases
    (`planning_analysis`, `development_analysis`), which are already
    separate cold invocations. The reviewer judges the work against the
@@ -294,6 +302,7 @@ names who decides it.
 | Human checkpoints | Session owner | a confirmation is asked only for an irreversible or outward-facing action | the session records the blocked question and the reversible assumption it proceeded with | the recorded question and the reversible assumption in the session | advisory: the runtime cannot classify every irreversible action; review: when an agent blocks on a reversible step | when the runtime classifies irreversible actions mechanically |
 | Rule-to-enforcer ladder | Policy owner | each rule names an enforcement level and an enforcer recorded in this inventory | this inventory carries a row for every rule the kernel states | the rule rows carried in this inventory | advisory: the inventory review is a recurring human review; review: at the guard-inventory review cadence | when the inventory review becomes a scheduled gate |
 | Non-inferable instruction surface | Policy owner | the instruction surfaces carry no line a reader can infer from the code | the recorded instruction-surface review names the lines of the managed AGENTS.md block and the project AGENTS.md a reader can infer | the instruction-surface lines named in the recorded review | advisory: only line-count and path-existence checks run, and neither detects an inferable line; review: on every policy remediation pass that edits AGENTS.md content, and whenever a managed-block or AGENTS.md line-budget warning fires | when a gate decides the content of the instruction surfaces |
+| Premise-check retry line | Recovery owner | the repeated-failure retry prompt names the premise shared by the failed fixes | the retry formatter adds the premise-check line when the current and prior failure summaries match (`ralph/recovery/retry_prompt.py`) | the premise-check line the retry formatter adds on a repeated failure | advisory: only the formatter requirement on the premise-check line exists and no gate reads the retry prompt a session receives; review: when the runtime records the retry prompts delivered to a session | when a gate checks the repeated-failure retry prompt for the premise-check line |
 
 
 ## Project facts to resolve

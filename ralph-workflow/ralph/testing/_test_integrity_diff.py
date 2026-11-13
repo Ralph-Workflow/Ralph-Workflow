@@ -16,10 +16,6 @@ DELETED_TEST_MODULES: dict[str, str] = {
         "the test encoded an editorial prose judgment as a machine constant; the "
         "structural policy audits and human review remain the safeguards"
     ),
-    "ralph-workflow/tests/recovery/test_retry_prompt_premise_check.py": (
-        "the premise-check rule was removed; the shipped systematic-debugging skill "
-        "teaches the technique"
-    ),
     "ralph-workflow/tests/test_audit_public_docstrings.py": (
         "the audit_public_docstrings module and its verify step were deleted; "
         "the absolute comment gate covers the docstring floor"

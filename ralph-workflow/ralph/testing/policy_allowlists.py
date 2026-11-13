@@ -24,6 +24,7 @@ IO_ALLOWLIST: set[str] = {
     "test_audit_artifact_submission_dumb_agent_proof",
     "test_audit_artifact_submission_standardization",
     "test_audit_artifact_submission_canonical_path",
+    "test_audit_sast",
     "test_timing_safety_transports",
     "test_git_rebase_preconditions",
     "test_git_wrapper",

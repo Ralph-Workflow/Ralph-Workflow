@@ -7,9 +7,9 @@ import pytest
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "TESTS_ALLOWLIST": (
-        "the retired sync-script absence assertion moved to the consolidated "
-        "test_retired_skills_package_absent module, so its obsolete process-audit "
-        "allowlist entry was removed"
+        "test_audit_sast.py subprocess-runs the SAST audit CLI as a black-box "
+        "warning-free regression, so it joins the allowlist by the same "
+        "basename convention as the other audit tests"
     ),
     "test_no_direct_subprocess_calls_in_tests": (
         "test_repo_structure_boundary_rules.py carries os.killpg fixture strings "
@@ -104,6 +104,7 @@ ALLOWLIST: list[tuple[str, str]] = [
 
 TESTS_ALLOWLIST: set[str] = {
     "test_audit_secret_scan.py",
+    "test_audit_sast.py",
     "test_repo_structure_boundary_rules.py",
     "test_process_audit.py",
     "test_process_cross_platform.py",
