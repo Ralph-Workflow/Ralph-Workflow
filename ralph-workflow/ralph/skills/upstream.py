@@ -126,8 +126,19 @@ except AttributeError:
 _ATTEMPT_LOCK = threading.Lock()
 
 _REFERENCE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"`([^`\n]+)`|\]\(([^)\n]+)\)|^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(<[^>\n]*>|\S+)", re.MULTILINE
+    r"`([^`\n]+)"
+    r"|\]\((<[^>\n]*>)\)"
+    r"|\]\(((?:[^()\n]|\([^()\n]*\))*)\)"
+    r"|\]\(([^)\n]+)\)"
+    r"|^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(<[^>\n]*>|\S+)",
+    re.MULTILINE,
 )
+
+_HTML_ATTRIBUTE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"""\b(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'<>`\n]+))""",
+    re.IGNORECASE,
+)
+
 
 _FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*\.[A-Za-z]+$")
 
@@ -725,22 +736,46 @@ def _carried_suffix(path: str) -> str | None:
     return None
 
 
+def _reference_offset(item: tuple[int, _CompanionReference]) -> int:
+    return item[0]
+
+
 def _iter_references(text: str, relative: str) -> Iterator[_CompanionReference]:
+    found: list[tuple[int, _CompanionReference]] = []
     for match in _REFERENCE_PATTERN.finditer(text):
         raw_code: object = match.group(1)
-        raw_link: object = match.group(2)
-        raw_definition: object = match.group(3)
+        raw_angle: object = match.group(2)
+        raw_balanced: object = match.group(3)
+        raw_plain: object = match.group(4)
+        raw_definition: object = match.group(5)
         reference: _CompanionReference | None
         if isinstance(raw_code, str):
             reference = _code_reference(text, match, raw_code, relative)
-        elif isinstance(raw_link, str):
-            reference = _destination_reference(raw_link, relative)
+        elif isinstance(raw_angle, str):
+            reference = _destination_reference(raw_angle, relative)
+        elif isinstance(raw_balanced, str):
+            reference = _destination_reference(raw_balanced, relative)
+        elif isinstance(raw_plain, str):
+            reference = _destination_reference(raw_plain, relative)
         elif isinstance(raw_definition, str):
             reference = _destination_reference(raw_definition, relative)
         else:
             continue
         if reference is not None:
-            yield reference
+            found.append((match.start(), reference))
+    for match in _HTML_ATTRIBUTE_PATTERN.finditer(text):
+        raw: object = match.group(1)
+        if raw is None:
+            raw = match.group(2)
+        if raw is None:
+            raw = match.group(3)
+        if not isinstance(raw, str):
+            continue
+        reference = _destination_reference(raw, relative)
+        if reference is not None:
+            found.append((match.start(), reference))
+    for _position, reference in sorted(found, key=_reference_offset):
+        yield reference
 
 
 def _code_reference(

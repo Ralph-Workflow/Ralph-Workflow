@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.cli.commands._load_result import _LoadResult
-from ralph.config.models import UnifiedConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.state import PipelineState
@@ -15,6 +15,8 @@ from ralph.policy.models._agent_chain_config import AgentChainConfig
 from ralph.policy.models._agent_drain_config import AgentDrainConfig
 from ralph.project_policy import cli_integration, remediation
 from ralph.project_policy.pipeline_graph import DEFAULT_ANALYSIS_CAP, PHASE_REMEDIATION
+from ralph.recovery import dead_agent_probe
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.workspace.scope import WorkspaceScope
 from tests._support.typed_accessors import (
     must_str,
@@ -60,6 +62,25 @@ def _load_result(bundle: PolicyBundle | None) -> _LoadResult:
         policy_bundle=bundle,
         run_id="test-run-id",
     )
+
+
+def _stub_canary_probe_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[str]:
+    probed: list[str] = []
+
+    def fake_run_canary_probe(
+        config: AgentConfig,
+        **_kwargs: object,
+    ) -> ProbeResult:
+        probed.append(config.cmd)
+        return ProbeResult(
+            outcome=ProbeOutcome.INCONCLUSIVE,
+            detail="scripted",
+        )
+
+    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
+    return probed
 
 
 def test_chain_agents_resolve_through_drain_binding() -> None:
@@ -331,6 +352,7 @@ def test_production_closure_raises_on_launch_crash(
 ) -> None:
     bundle = _default_bundle()
     load_result = _load_result(bundle)
+    probed = _stub_canary_probe_boundary(monkeypatch)
 
     def crashing_execute_agent_effect(*args: object, **opts: object) -> object:
         raise TypeError("display_context is required when display is None")
@@ -347,8 +369,12 @@ def test_production_closure_raises_on_launch_crash(
         None,
         make_display_context(),
     )
-    with pytest.raises(remediation.RemediationInvocationError):
+    with pytest.raises(
+        remediation.RemediationInvocationError,
+        match="display_context is required when display is None",
+    ):
         invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
+    assert probed, "the crashed launch must still reach the recovery probe boundary"
 
 
 def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
@@ -356,6 +382,7 @@ def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
 ) -> None:
     load_result = _load_result(_bundle_with_development_bound_remediation())
     invoked: list[str] = []
+    _stub_canary_probe_boundary(monkeypatch)
 
     def fake_execute_agent_effect(
         effect: object,
@@ -389,6 +416,7 @@ def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     load_result = _load_result(_bundle_with_development_bound_remediation())
+    probed = _stub_canary_probe_boundary(monkeypatch)
 
     def always_crash(*_args: object, **_opts: object) -> object:
         raise RuntimeError("no agent binaries at all")
@@ -402,5 +430,9 @@ def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
         make_display_context(),
     )
 
-    with pytest.raises(remediation.RemediationInvocationError):
+    with pytest.raises(
+        remediation.RemediationInvocationError,
+        match="no agent binaries at all",
+    ):
         invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
+    assert probed, "the crashed launch must still reach the recovery probe boundary"

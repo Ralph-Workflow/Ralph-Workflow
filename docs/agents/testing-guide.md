@@ -449,20 +449,19 @@ a ledger row is a defect, and so is a ledger row without a retained entry.
 The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
-| --- | --- | --- | --- | --- | --- | --- |
-| root | 461 | 397 | 858 | 857 | 2112 | follow-up: backlog white-box conversion unit |
-| mcp-bridge | 82 | 23 | 265 | 141 | 429 | mcp-bridge |
-| agents | 97 | 34 | 278 | 100 | 412 | agents |
-| auto-integrate | 41 | 162 | 38 | 54 | 254 | auto-integrate |
-| project-policy | 28 | 4 | 53 | 158 | 215 | project-policy |
-| run-loop | 17 | 103 | 29 | 89 | 221 | run-loop |
-| display | 21 | 22 | 85 | 75 | 182 | display |
-| pipeline | 32 | 72 | 33 | 79 | 184 | pipeline |
-| integration | 22 | 21 | 40 | 98 | 159 | integration |
-| property | 11 | 0 | 59 | 35 | 94 | property |
-| recovery | 24 | 6 | 40 | 23 | 69 | recovery |
-| tool-exec | 9 | 0 | 36 | 29 | 65 | tool-exec |
-| process | 8 | 5 | 10 | 12 | 27 | process |
+| root | 463 | 394 | 859 | 855 | 2108 | follow-up: backlog white-box conversion unit |
+| mcp-bridge | 82 | 23 | 265 | 141 | 429 | follow-up: mcp public-seam unit |
+| agents | 97 | 34 | 278 | 100 | 412 | follow-up: agent public-seam unit |
+| auto-integrate | 41 | 162 | 38 | 54 | 254 | follow-up: auto-integrate public-seam unit |
+| project-policy | 28 | 4 | 53 | 158 | 215 | follow-up: policy public-seam unit |
+| run-loop | 17 | 103 | 29 | 89 | 221 | follow-up: run-loop public-seam unit |
+| display | 21 | 22 | 85 | 75 | 182 | follow-up: display public-seam unit |
+| pipeline | 32 | 72 | 33 | 80 | 185 | follow-up: pipeline public-seam unit |
+| integration | 22 | 21 | 40 | 98 | 159 | follow-up: integration public-seam unit |
+| property | 11 | 0 | 58 | 32 | 90 | follow-up: property public-seam unit |
+| recovery | 24 | 6 | 40 | 23 | 69 | follow-up: recovery public-seam unit |
+| tool-exec | 9 | 0 | 36 | 29 | 65 | follow-up: tool public-seam unit |
+| process | 8 | 5 | 10 | 12 | 27 | follow-up: process public-seam unit |
 | dir:unit | 5 | 4 | 7 | 8 | 19 | follow-up: backlog white-box conversion unit |
 | dir:config | 5 | 0 | 6 | 2 | 8 | follow-up: backlog white-box conversion unit |
 | dir:git | 1 | 0 | 1 | 0 | 1 | follow-up: backlog white-box conversion unit |
@@ -504,6 +503,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | test file | setattr_private | private_import | private_attr | cluster | observable-surface gap | seam sketch | follow-up owner |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `tests/_fake_git_ops.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/_support/mock_multimodal_agent.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/agents/execution_state/test_generic_child_signal.py` | 0 | 5 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/execution_state/test_opencode_sink_registry_parity.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/execution_state/test_opencode_subagent_visibility.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
@@ -698,7 +698,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/mcp/test_respawn_no_discovery.py` | 0 | 1 | 7 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_root_cause_real_child_bridge.py` | 0 | 9 | 12 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_runtime_blocked_registry_built_surfaces_typed_error.py` | 0 | 3 | 2 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
-| `tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py` | 1 | 0 | 0 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
+| `tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py` | 1 | 0 | 0 | mcp-bridge | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: mcp public-seam unit |
 | `tests/mcp/test_runtime_respawn_precheck.py` | 0 | 1 | 0 | mcp-bridge | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: mcp public-seam unit |
 | `tests/mcp/test_s1_independent_counters_contract.py` | 0 | 2 | 1 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_session_id_persisted_across_respawn.py` | 0 | 1 | 0 | mcp-bridge | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: mcp public-seam unit |
@@ -718,7 +718,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/pipeline/_terminal_mcp_error_seams.py` | 0 | 2 | 1 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py` | 1 | 3 | 2 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_integration_log_dedupe.py` | 2 | 1 | 5 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
-| `tests/pipeline/test_integration_resolution_dispatch_inventory.py` | 0 | 0 | 9 | pipeline | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: pipeline public-seam unit |
+| `tests/pipeline/test_integration_resolution_dispatch_inventory.py` | 0 | 0 | 10 | pipeline | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_interrupt_reports_the_state_reached.py` | 2 | 0 | 3 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_kimi_smoke_harness.py` | 0 | 3 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_next_attempt_gets_fresh_bridge.py` | 0 | 1 | 1 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
@@ -888,7 +888,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_busy_refusal_state_factory.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_canonical_artifact_submit.py` | 2 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_capability_state_idempotent.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_catchup_observed_case_composed.py` | 2 | 1 | 0 | auto-integrate | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |
+| `tests/test_catchup_observed_case_composed.py` | 2 | 1 | 0 | auto-integrate | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
 | `tests/test_checkpoint_idempotent.py` | 0 | 0 | 6 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_claude_interactive_parser.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_claude_interactive_pty.py` | 1 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
@@ -1200,7 +1200,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_property_a_one_transport_one_behavior.py` | 0 | 2 | 1 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_c_liveness_contract.py` | 0 | 10 | 13 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_d_failure_observability.py` | 0 | 10 | 4 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
-| `tests/test_property_e_streaming_terminates.py` | 0 | 10 | 0 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
+| `tests/test_property_e_streaming_terminates.py` | 0 | 10 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
 | `tests/test_property_f_retry_side_effects.py` | 0 | 1 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
 | `tests/test_property_g_recovery_signal.py` | 0 | 11 | 1 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_h_bounded_resources.py` | 0 | 5 | 13 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
@@ -1276,15 +1276,16 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_skills_installer_sibling_symlinks.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_installer_update.py` | 6 | 2 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_manager.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_skills_prune_ownership.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_process_view.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_project_paths_research.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_skills_prune_ownership.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_recheck_policy.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_recheck_policy_config.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_skill_resolver.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_state.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_state_store.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_upstream_install.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_skills_upstream_references.py` | 0 | 0 | 4 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_agy_end_to_end.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_agy_full_lifecycle_e2e.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_canonical_path.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

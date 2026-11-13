@@ -123,7 +123,7 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     ("ralph/mcp/tools/_exec_jobs.py", 208, "EXEC_JOB_CEILING_MAX_S"),
     ("ralph/mcp/tools/_exec_jobs.py", 464, "job.ceiling_ms / 1000.0"),
     ("ralph/mcp/transport/pi.py", 58, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
-    ("ralph/mcp/server/lifecycle.py", 2160, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/lifecycle.py", 2170, '"ralph.mcp.server",'),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
         51,
