@@ -352,6 +352,11 @@ exactly as they are and is retried later. There is no bundled copy of the
 universal skills, so nothing can go stale; a machine that is never online
 simply has no universal skills, while the artifact skills still work.
 
+A publication that reaches only some user-global roots reports itself as
+incomplete. A later run restores the missing skill, with its companion files,
+from the installed copy, without fetching the release archive again. A skill
+you own at that root is preserved and reported instead.
+
 ### Kill switches
 
 Two independent switches disable **all** skill-update network activity. When

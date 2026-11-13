@@ -335,6 +335,40 @@ def test_a_publication_left_half_finished_is_repaired_before_the_attempt_window(
     assert _root_entries(root) == sorted(upstream.UNIVERSAL_SKILL_NAMES)
 
 
+def test_a_missing_canonical_skill_is_reported_as_incomplete(sandbox: Path) -> None:
+    root = _install_fixture_release()
+    shutil.rmtree(root / "test-driven-development")
+    client, calls = _client_for("v-test-1", _SKILL_FILES)
+
+    outcome = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=client
+    )
+
+    assert outcome.status == "incomplete"
+    assert calls == [upstream.RELEASES_API_URL]
+    assert any(
+        "test-driven-development" in message and "missing" in message
+        for message in outcome.messages
+    ), outcome.messages
+
+
+def test_a_user_edited_sibling_entry_is_preserved_by_the_repair(sandbox: Path) -> None:
+    root = _install_fixture_release()
+    entry = upstream.sibling_skills_roots()[0] / "test-driven-development"
+    if entry.is_symlink():
+        entry.unlink()
+    shutil.copytree(root / "test-driven-development", entry)
+    (entry / "SKILL.md").write_text("# my own edit\n", encoding="utf-8")
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+
+    outcome = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=client
+    )
+
+    assert (entry / "SKILL.md").read_text(encoding="utf-8") == "# my own edit\n"
+    assert any("preserved" in message for message in outcome.messages), outcome.messages
+
+
 def test_a_valid_release_installs_every_skill_and_mirrors_the_siblings(
     sandbox: Path,
 ) -> None:
@@ -358,6 +392,35 @@ def test_a_valid_release_installs_every_skill_and_mirrors_the_siblings(
                 assert (sibling / skill / relative).read_bytes() == data, (
                     f"{sibling}: the companion {relative} of {skill} must be readable"
                 )
+
+
+def test_upstream_mirror_regression_failed_early_root_does_not_skip_later_roots(
+    sandbox: Path,
+) -> None:
+    sibling_roots = upstream.sibling_skills_roots()
+    failed_root = sibling_roots[0]
+    later_root = sibling_roots[1]
+    failed_root.parent.mkdir(parents=True, exist_ok=True)
+    failed_root.write_text("not a skill root directory\n", encoding="utf-8")
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "incomplete"
+    canonical_root = upstream.canonical_skills_root()
+    for skill in upstream.UNIVERSAL_SKILL_NAMES:
+        canonical_skill = canonical_root / skill
+        later_skill = later_root / skill
+        assert later_skill.is_dir()
+        assert (later_skill / upstream.MANAGED_MARKER_NAME).is_file()
+        for relative in _SKILL_FILES[skill]:
+            assert (later_skill / relative).read_bytes() == (
+                canonical_skill / relative
+            ).read_bytes()
+    assert any(
+        str(failed_root) in message and upstream.UNIVERSAL_SKILL_NAMES[0] in message
+        for message in outcome.messages
+    )
 
 
 def test_a_payload_without_a_skill_file_is_refused_and_keeps_the_install(

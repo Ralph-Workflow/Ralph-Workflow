@@ -59,6 +59,14 @@ class _StagedSkill:
     digest: str
 
 
+@dataclass(frozen=True)
+class _MirrorSettlement:
+    status: str
+    repaired: tuple[str, ...]
+    preserved: tuple[str, ...]
+    messages: tuple[str, ...]
+
+
 def extract_archive(body: bytes, limits: _ArchiveLimits) -> dict[str, _SkillPayload]:
     buckets: dict[str, list[tuple[str, tarfile.TarInfo]]] = {}
     member_count = 0
@@ -296,31 +304,143 @@ def write_json(path: Path, document: dict[str, object]) -> None:
 
 def mirror_skill(
     canonical_root: Path, skill_name: str, sibling_roots: tuple[Path, ...]
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
+    messages: list[str] = []
+    failed_roots: list[str] = []
+    for sibling_root in sibling_roots:
+        try:
+            messages.extend(mirror_skill_into(canonical_root, skill_name, sibling_root))
+        except OSError as exc:
+            failed_roots.append(str(sibling_root))
+            messages.append(
+                f"{skill_name}: the sibling mirror in {sibling_root} failed ({type(exc).__name__})"
+            )
+    return messages, failed_roots
+
+
+def mirror_skill_into(canonical_root: Path, skill_name: str, sibling_root: Path) -> list[str]:
     canonical_dir = canonical_root / skill_name
     canonical_target = _resolved(canonical_dir)
     messages: list[str] = []
-    for sibling_root in sibling_roots:
-        resolved_root = _resolved(sibling_root)
-        if resolved_root == _resolved(canonical_root):
-            continue
-        sibling_dir = sibling_root / skill_name
-        if sibling_dir.is_symlink() and _resolved(sibling_dir) == canonical_target:
-            continue
-        if sibling_dir.exists() or sibling_dir.is_symlink():
-            if not _may_replace_sibling(sibling_dir):
+    resolved_root = _resolved(sibling_root)
+    if resolved_root == _resolved(canonical_root):
+        return messages
+    sibling_dir = sibling_root / skill_name
+    if sibling_dir.is_symlink() and _resolved(sibling_dir) == canonical_target:
+        return messages
+    if sibling_dir.exists() or sibling_dir.is_symlink():
+        if not _may_replace_sibling(sibling_dir):
+            messages.append(
+                f"{skill_name}: the sibling entry in {sibling_root} is preserved; "
+                "it is not provably Ralph-managed"
+            )
+            return messages
+        if sibling_dir.is_symlink():
+            remove_file(sibling_dir)
+        else:
+            discard_tree(sibling_dir)
+    ensure_dir(sibling_root)
+    _link_skill(sibling_dir, canonical_dir)
+    return messages
+
+
+def publish_sibling_mirrors(
+    canonical_root: Path, skill_names: tuple[str, ...], sibling_roots: tuple[Path, ...]
+) -> tuple[list[str], list[str]]:
+    messages: list[str] = []
+    failed_skills: list[str] = []
+    for skill_name in skill_names:
+        skill_messages, failed_roots = mirror_skill(canonical_root, skill_name, sibling_roots)
+        messages.extend(skill_messages)
+        if failed_roots:
+            failed_skills.append(skill_name)
+    return messages, failed_skills
+
+
+def settle_mirrors(
+    canonical_root: Path,
+    skill_names: tuple[str, ...],
+    sibling_roots: tuple[Path, ...],
+    tag: str,
+) -> _MirrorSettlement:
+    repaired: list[str] = []
+    preserved: list[str] = []
+    missing: list[str] = []
+    messages: list[str] = []
+    for skill_name in skill_names:
+        canonical_dir = canonical_root / skill_name
+        canonical_digest = _managed_digest(canonical_dir)
+        if canonical_digest is None:
+            if not canonical_dir.exists() and _mirror_entry_exists(sibling_roots, skill_name):
+                missing.append(skill_name)
                 messages.append(
-                    f"{skill_name}: the sibling entry in {sibling_root} is preserved; "
-                    "it is not provably Ralph-managed"
+                    f"{skill_name}: the canonical installation is missing and cannot be mirrored"
+                )
+            continue
+        for sibling_root in sibling_roots:
+            if _mirror_is_current(canonical_dir, sibling_root / skill_name, canonical_digest):
+                continue
+            try:
+                root_messages = mirror_skill_into(canonical_root, skill_name, sibling_root)
+            except OSError as exc:
+                missing.append(skill_name)
+                messages.append(
+                    f"{skill_name}: the sibling mirror in {sibling_root} failed "
+                    f"({type(exc).__name__})"
                 )
                 continue
-            if sibling_dir.is_symlink():
-                remove_file(sibling_dir)
-            else:
-                discard_tree(sibling_dir)
-        ensure_dir(sibling_root)
-        _link_skill(sibling_dir, canonical_dir)
-    return messages
+            if root_messages:
+                preserved.append(skill_name)
+                messages.extend(root_messages)
+                continue
+            repaired.append(skill_name)
+    if missing:
+        status = "incomplete"
+        names = ", ".join(_unique_names(missing))
+        summary = f"the universal skill mirrors are incomplete ({tag}): {names}"
+    elif repaired:
+        status = "repaired"
+        summary = f"the universal skill mirrors were restored ({tag})"
+    else:
+        status = "up-to-date"
+        summary = f"the universal skills are up to date ({tag})"
+    messages.append(summary)
+    return _MirrorSettlement(
+        status=status,
+        repaired=_unique_names(repaired),
+        preserved=_unique_names(preserved),
+        messages=tuple(messages),
+    )
+
+
+def _mirror_entry_exists(sibling_roots: tuple[Path, ...], skill_name: str) -> bool:
+    return any(
+        (root / skill_name).exists() or (root / skill_name).is_symlink() for root in sibling_roots
+    )
+
+
+def _unique_names(values: list[str]) -> tuple[str, ...]:
+    unique: dict[str, None] = {}
+    for value in values:
+        unique.setdefault(value, None)
+    return tuple(unique)
+
+
+def _mirror_is_current(canonical_dir: Path, sibling_dir: Path, canonical_digest: str) -> bool:
+    if sibling_dir.is_symlink():
+        return _resolved(sibling_dir) == _resolved(canonical_dir)
+    return _managed_digest(sibling_dir) == canonical_digest
+
+
+def _managed_digest(skill_dir: Path) -> str | None:
+    marker = read_managed_marker(skill_dir)
+    if marker is None or marker.get("managed_by") != UNIVERSAL_MANAGED_BY:
+        return None
+    recorded = verified_recorded_files(marker)
+    if recorded is None or not managed_content_matches(skill_dir, recorded):
+        return None
+    digest = marker.get("installed_sha256")
+    return digest if isinstance(digest, str) else None
 
 
 def _may_replace_sibling(entry: Path) -> bool:

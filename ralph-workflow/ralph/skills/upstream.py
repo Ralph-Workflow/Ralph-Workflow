@@ -40,10 +40,11 @@ from ralph.skills._upstream_install import (
     discard_staged,
     discard_tree,
     extract_archive,
-    mirror_skill,
+    publish_sibling_mirrors,
     publish_staged,
     recover_publication,
     rollback,
+    settle_mirrors,
     stage_skill,
     sweep_staging,
 )
@@ -273,12 +274,7 @@ def _run_update(*, enabled: bool, now: datetime, http: HttpClient) -> UpdateOutc
             messages=("the upstream release could not be read",),
         )
     if not _needs_update(tag, _read_state()):
-        return UpdateOutcome(
-            status="up-to-date",
-            attempted=True,
-            tag=tag,
-            messages=(f"the universal skills are up to date ({tag})",),
-        )
+        return _settle_mirrors(tag)
     payload, error = _load_release_payload(http, tag)
     if payload is None:
         return UpdateOutcome(
@@ -575,10 +571,13 @@ def _install_release(tag: str, payload: Mapping[str, _SkillPayload]) -> UpdateOu
             error="install-failed",
         )
     messages = list(plan.messages)
-    _mirror_installed(canonical_root, installed, messages)
+    mirror_messages, failed_skills = publish_sibling_mirrors(
+        canonical_root, tuple(installed), sibling_skills_roots()
+    )
+    messages.extend(mirror_messages)
     _write_state(tag, digests)
     return UpdateOutcome(
-        status="updated",
+        status="incomplete" if failed_skills else "updated",
         attempted=True,
         tag=tag,
         installed=tuple(installed),
@@ -939,13 +938,18 @@ def _is_external_reference(candidate: str) -> bool:
     return _URL_SCHEME_PATTERN.match(candidate) is not None
 
 
-def _mirror_installed(canonical_root: Path, installed: list[str], messages: list[str]) -> None:
-    siblings = sibling_skills_roots()
-    for name in installed:
-        try:
-            messages.extend(mirror_skill(canonical_root, name, siblings))
-        except OSError as exc:
-            messages.append(f"{name}: the sibling mirror failed ({type(exc).__name__})")
+def _settle_mirrors(tag: str) -> UpdateOutcome:
+    settlement = settle_mirrors(
+        canonical_skills_root(), UNIVERSAL_SKILL_NAMES, sibling_skills_roots(), tag
+    )
+    return UpdateOutcome(
+        status=settlement.status,
+        attempted=True,
+        tag=tag,
+        installed=settlement.repaired,
+        preserved=settlement.preserved,
+        messages=settlement.messages,
+    )
 
 
 __all__ = [

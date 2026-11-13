@@ -446,9 +446,9 @@ a ledger row is a defect, and so is a ledger row without a retained entry.
 The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
-| root | 463 | 394 | 859 | 855 | 2108 | follow-up: backlog white-box conversion unit |
+| root | 464 | 394 | 860 | 855 | 2109 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | follow-up: mcp public-seam unit |
-| agents | 97 | 34 | 278 | 100 | 412 | follow-up: agent public-seam unit |
+| agents | 101 | 34 | 286 | 114 | 434 | follow-up: agent public-seam unit |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | follow-up: auto-integrate public-seam unit |
 | project-policy | 28 | 4 | 53 | 158 | 215 | follow-up: policy public-seam unit |
 | run-loop | 17 | 103 | 29 | 89 | 221 | follow-up: run-loop public-seam unit |
@@ -506,6 +506,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/agents/execution_state/test_opencode_subagent_visibility.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/execution_state/test_strategy_classes_consolidated.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py` | 0 | 6 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
+| `tests/agents/invoke/test_check_process_result_supervisor.py` | 0 | 4 | 14 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_claude_interactive_real_capture_replay.py` | 0 | 2 | 1 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_codex_completion_liveness.py` | 0 | 2 | 4 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_codex_session_id_extraction.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
@@ -537,14 +538,17 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/agents/invoke/test_pty_graceful_teardown_timing.py` | 2 | 3 | 0 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_pty_line_reader_interrupt_teardown.py` | 0 | 2 | 1 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_pty_line_reader_transcript_handle.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
+| `tests/agents/invoke/test_pty_post_exit_single_issuer.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_pty_subagent_pid_source_wiring.py` | 0 | 1 | 4 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_pty_terminal_reason_before_signal.py` | 0 | 1 | 3 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_pty_transcript_tailer_wiring.py` | 1 | 3 | 4 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_pty_visible_tui_session_id_promotion.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
+| `tests/agents/invoke/test_quota_detection_provider_events.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_reader_stall_lifetime.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py` | 0 | 6 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_runtime_resolver_endpoint_delivery.py` | 0 | 3 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_subagent_transcript_tail.py` | 0 | 3 | 8 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
+| `tests/agents/invoke/test_tool_call_extraction.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_transcript_discovery_concurrent_session.py` | 0 | 4 | 3 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_transcript_thread_single_feed.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/parsers/test_claude_headless_wire_capture.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
@@ -1283,6 +1287,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_skills_state_store.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_upstream_install.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_upstream_references.py` | 0 | 0 | 4 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
+| `tests/test_skills_user_global_root_migration.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_agy_end_to_end.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_agy_full_lifecycle_e2e.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_canonical_path.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
