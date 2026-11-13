@@ -115,6 +115,8 @@ _FILESYSTEM_READ_CONSOLIDATION_STEP_LABEL: Final = (
 _WORKSPACE_RESOURCE_INVENTORY_STEP_LABEL: Final = (
     "workspace resource inventory audit (audit_workspace_resource_inventory)"
 )
+_SKILL_AUTO_COMMIT_STEP_LABEL: Final = "skill auto-commit audit (audit_skill_auto_commit)"
+_ARTIFACT_SKILL_TYPES_STEP_LABEL: Final = "artifact skill types audit (audit_artifact_skill_types)"
 
 
 if not _KNOWN_TEST_STEP_LABELS:
@@ -169,6 +171,18 @@ if not any(_WORKSPACE_RESOURCE_INVENTORY_STEP_LABEL in label for label, *_rest i
         "A verify step running 'audit_workspace_resource_inventory' must be present in "
         "_VERIFY_STEPS (the workspace resource inventory completeness contract cannot be "
         "silently dropped)"
+    )
+
+if not any(_SKILL_AUTO_COMMIT_STEP_LABEL in label for label, *_rest in _VERIFY_STEPS):
+    raise RuntimeError(
+        "A verify step running 'audit_skill_auto_commit' must be present in "
+        "_VERIFY_STEPS (the skill auto-commit contract cannot be silently dropped)"
+    )
+
+if not any(_ARTIFACT_SKILL_TYPES_STEP_LABEL in label for label, *_rest in _VERIFY_STEPS):
+    raise RuntimeError(
+        "A verify step running 'audit_artifact_skill_types' must be present in "
+        "_VERIFY_STEPS (the artifact skill-types contract cannot be silently dropped)"
     )
 
 if _VERIFY_STEP_TIMEOUT_SECONDS != _verify_steps._VERIFY_STEP_TIMEOUT_SECONDS:

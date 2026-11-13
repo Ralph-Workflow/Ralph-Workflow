@@ -20,9 +20,7 @@ obligations, and the documentation update obligations.
   touches (testing policy for tests, type-checking policy for typed
   code, etc.).
 * Every AI agent MUST run the authoritative verification gate
-  (`make -C ralph-workflow verify`) before claiming completion. The
-  agent MUST report the actual command and outcome; "I think it
-  works" is not evidence.
+  (`make -C ralph-workflow verify`) before claiming completion.
 * Every AI agent MUST report failures accurately. Weakening a check
   to obtain a passing result is forbidden.
 * Every AI agent MUST update affected policies and documentation in
@@ -83,11 +81,10 @@ Run every gate below before claiming a change complies with this policy.
 RALPH-COMMAND: make -C ralph-workflow verify
 
 The expected successful result is exit 0 from the authoritative
-verification gate. Report the actual command output. The verify gate
-exercises ruff, mypy --strict, `make test` (60 s combined budget), every
-mandatory audit in `ralph.verify._VERIFY_STEPS`, and the social-proof
-gate; a green run is the minimum evidence of compliance with this
-policy.
+verification gate. The verify gate exercises ruff, mypy --strict,
+`make test` (60 s combined budget), every mandatory audit in
+`ralph.verify._VERIFY_STEPS`, and the social-proof gate; a green run is
+the minimum evidence of compliance with this policy.
 
 The dogfooded commit rule (commit generation) is mandatory when an agent
 creates a commit, but it is not a bounded verification gate. It launches a

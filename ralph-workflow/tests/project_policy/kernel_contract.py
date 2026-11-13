@@ -5,6 +5,13 @@ from pathlib import Path
 
 from ralph.project_policy import markers, starters
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "retired_repeated_failure_retry_guard_contract": (
+        "the repeated-failure retry rule is removed end to end, so the guard-row "
+        "contract helper for that rule is retired with it"
+    ),
+}
+
 AGENT_RULES: tuple[tuple[int, str], ...] = (
     (1, "Check first"),
     (2, "Real-artifact evidence"),
@@ -43,18 +50,6 @@ GUARD_INVENTORY_COLUMNS: tuple[str, ...] = (
     "Enforcement",
     "Retirement trigger",
 )
-
-PREMISE_CHECK_GUARD_NAME: str = "Premise-check retry line"
-
-PREMISE_CHECK_RULE_OBLIGATIONS: tuple[str, ...] = (
-    "test the premise shared by the failed fixes before another patch",
-    "never count retries",
-    "never remember earlier attempts",
-)
-
-PREMISE_CHECK_ADVISORY_REASON_SUBSTRINGS: tuple[str, ...] = ("no gate reads the retry prompt",)
-
-PREMISE_CHECK_REVIEW_TRIGGER_SUBSTRINGS: tuple[str, ...] = ("retry prompts delivered to a session",)
 
 SPEC_VALUE_GUARD_NAME: str = "Regression tests from the spec"
 
@@ -347,38 +342,6 @@ def assert_spec_value_guard_contract(content: str, source_name: str) -> str:
     assert "expected value" in claim_scope.lower(), (
         f"{source_name} guard-inventory Claim scope for {SPEC_VALUE_GUARD_NAME!r} does not "
         f"name the expected value; observed: {claim_scope!r}"
-    )
-    return enforcement
-
-
-def assert_premise_check_guard_contract(content: str, source_name: str) -> str:
-    row = guard_row(content, PREMISE_CHECK_GUARD_NAME, source_name)
-    enforcement = row[GUARD_INVENTORY_COLUMNS.index("Enforcement")]
-    protected_outcome = row[GUARD_INVENTORY_COLUMNS.index("Protected outcome")]
-    claim_scope = row[GUARD_INVENTORY_COLUMNS.index("Claim scope")]
-    reason, trigger = advisory_reason_and_trigger(
-        enforcement, PREMISE_CHECK_GUARD_NAME, source_name
-    )
-    reason_lower = reason.lower()
-    for substring in PREMISE_CHECK_ADVISORY_REASON_SUBSTRINGS:
-        assert substring in reason_lower, (
-            f"{source_name} guard-inventory row for {PREMISE_CHECK_GUARD_NAME!r} does not "
-            f"state the advisory reason {substring!r}; observed reason: {reason!r}"
-        )
-    trigger_lower = trigger.lower()
-    assert any(
-        substring in trigger_lower for substring in PREMISE_CHECK_REVIEW_TRIGGER_SUBSTRINGS
-    ), (
-        f"{source_name} guard-inventory row for {PREMISE_CHECK_GUARD_NAME!r} names no review "
-        f"trigger about the retry prompts delivered to a session; observed trigger: {trigger!r}"
-    )
-    assert "premise" in protected_outcome.lower(), (
-        f"{source_name} guard-inventory Protected outcome for {PREMISE_CHECK_GUARD_NAME!r} "
-        f"does not name the premise; observed: {protected_outcome!r}"
-    )
-    assert "premise-check line" in claim_scope.lower(), (
-        f"{source_name} guard-inventory Claim scope for {PREMISE_CHECK_GUARD_NAME!r} does not "
-        f"name the premise-check line; observed: {claim_scope!r}"
     )
     return enforcement
 

@@ -27,17 +27,12 @@ RALPH_TEST_CHANGE_REASONS = {
     "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
     "test_fresh_cli_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
     "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
-    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids:premise-check": "the execution-kernel starter ships an advisory guard row for the runtime-owned premise-check retry line, with a review trigger",
-    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns:premise-check": "the execution-kernel starter ships an advisory guard row for the runtime-owned premise-check retry line, with a review trigger",
-    "test_fresh_cli_init_seeds_v6_policy_pack:premise-check": "the execution-kernel starter ships an advisory guard row for the runtime-owned premise-check retry line, with a review trigger",
-    "test_fresh_real_filesystem_init_seeds_v6_policy_pack:premise-check": "the execution-kernel starter ships an advisory guard row for the runtime-owned premise-check retry line, with a review trigger",
 }
 
 ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
     {
         "Non-inferable instruction surface",
         "Independent review model-family diversification",
-        "Premise-check retry line",
     }
 )
 

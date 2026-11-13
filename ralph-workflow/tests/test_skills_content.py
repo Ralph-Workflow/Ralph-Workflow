@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import pytest
 
@@ -11,19 +11,21 @@ from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.skills._content import (
     BASELINE_SKILL_NAMES,
     get_skill_content,
-    get_skill_metadata,
     materialize_skills_to_claude_dir,
     materialize_skills_to_dir,
 )
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_shipped_skill_set_is_exactly_the_artifact_skills": (
-        "the verify step ralph.testing.audit_artifact_skill_types already enforces the same "
-        "shipped-skills/metadata alignment contract, so this duplicated check was removed"
+RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
+    "test_shipped_bundle_metadata_carries_no_upstream_provenance": (
+        "the packaged metadata manifest was removed; installed metadata is generated "
+        "from the packaged skill content"
     ),
-    "test_shipped_skill_metadata_lists_exactly_the_artifact_skills": (
-        "the verify step ralph.testing.audit_artifact_skill_types already enforces the same "
-        "shipped-skills/metadata alignment contract, so this duplicated check was removed"
+    "test_shipped_skill_directory_holds_only_the_artifact_skill_files": (
+        "the artifact-skill audit is the single drift authority for the packaged skill set"
+    ),
+    "test_materialized_metadata_lists_exactly_the_installed_skill_names": (
+        "installed metadata is generated from the packaged skill content and is verified "
+        "against the materialized SKILL.md files"
     ),
 }
 
@@ -33,33 +35,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _derived_bundle_skills() -> tuple[str, ...]:
-    from importlib import import_module
-
-    import_module("ralph.mcp.artifacts.markdown.specs")
-    from ralph.mcp.artifacts.markdown.registry import registered_specs
-
-    types = sorted({spec.artifact_type for spec in registered_specs()})
-    return (
-        "submit-artifact",
-        *(f"submit-{artifact_type.replace('_', '-')}-artifact" for artifact_type in types),
-    )
-
-
-EXPECTED_BUNDLE_SKILLS: tuple[str, ...] = _derived_bundle_skills()
-
 MANAGED_MARKER_NAME = ".ralph-managed.json"
-
-UPSTREAM_PROVENANCE_KEYS: tuple[str, ...] = (
-    "bundles",
-    "mirrored_at",
-    "skill_sources",
-    "source_commit",
-    "source_ref",
-    "source_repo",
-    "source_repos",
-    "source_version",
-)
 
 
 class _CountingBackend(FileBackend):
@@ -90,19 +66,13 @@ class _CountingBackend(FileBackend):
         return self._delegate.glob(path, pattern)
 
 
-def test_shipped_bundle_metadata_carries_no_upstream_provenance() -> None:
-    metadata = get_skill_metadata()
-    for key in UPSTREAM_PROVENANCE_KEYS:
-        assert key not in metadata, f"metadata.json must not carry {key!r}"
-    assert set(metadata) == {"skills"}
+def test_materialized_metadata_lists_exactly_the_installed_skill_names(tmp_path: Path) -> None:
+    materialize_skills_to_claude_dir(tmp_path)
 
+    payload = json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
+    installed_names = sorted(path.parent.name for path in tmp_path.glob("*/SKILL.md"))
 
-def test_shipped_skill_directory_holds_only_the_artifact_skill_files() -> None:
-    from importlib.resources import files
-
-    content_dir = files("ralph.skills") / "content"
-    shipped = sorted(entry.name for entry in content_dir.iterdir() if entry.name.endswith(".md"))
-    assert shipped == sorted(f"{name}.md" for name in EXPECTED_BUNDLE_SKILLS)
+    assert payload == {"skills": installed_names}
 
 
 def test_each_shipped_skill_has_substantial_content() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from ralph.testing.audit_test_integrity import DELETED_TEST_MODULES, audit_test_integrity_diff
 from tests.doc_roots import REPOSITORY_ROOT
 
-_LIVE_TEST_MODULE = "ralph-workflow/tests/recovery/test_retry_prompt_premise_check.py"
+_LIVE_TEST_MODULE = "ralph-workflow/tests/recovery/test_retry_prompt_contract.py"
 
 _PRODUCTION_DIFF = """\
 diff --git a/ralph/core.py b/ralph/core.py

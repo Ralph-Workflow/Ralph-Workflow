@@ -7,8 +7,6 @@ from tests.project_policy.kernel_contract import (
     COMMENT_BAN_CURRENT_FACT_STATEMENTS,
     IDENTICAL_AGENT_RULE_TITLES,
     INVERTED_SMALLEST_CHANGE_OBLIGATION,
-    PREMISE_CHECK_GUARD_NAME,
-    PREMISE_CHECK_RULE_OBLIGATIONS,
     PROJECT_SPECIFIC_AGENT_RULE_TITLES,
     RETIRED_PRE_FIX_REASON_SUBSTRINGS,
     SMALLEST_CHANGE_OBLIGATION,
@@ -18,7 +16,6 @@ from tests.project_policy.kernel_contract import (
     advisory_reason_and_trigger,
     agent_rule_body,
     agent_rule_statements,
-    assert_premise_check_guard_contract,
     assert_spec_value_guard_contract,
     commenting_evidence_paragraph,
     enforcement_cell,
@@ -50,27 +47,31 @@ RETIRED_COMMENT_BAN_STATEMENT: str = (
     "the ban rests on the project rule rather than on a measured effect size"
 )
 
-RALPH_TEST_CHANGE_REASONS = {
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "retired_repeated_failure_retry_rule_advisory": (
+        "the repeated-failure retry rule is removed end to end, so the check that "
+        "required the runtime-owned retry guidance and its guard row is retired with it"
+    ),
     "test_kernels_declare_exactly_the_thirteen_agent_rules": (
-        "the shipped skills teach the premise-check technique, so the "
-        "premise-check agent rule is retired and the kernel declares "
+        "the shipped skills teach the repeated-failure technique, so the "
+        "repeated-failure retry rule is retired and the kernel declares "
         "thirteen numbered agent rules"
     ),
     "test_kernels_number_the_enforcer_ladder_rows_to_match_the_contract": (
-        "the premise-check agent rule is retired, so the enforcer ladder "
+        "the repeated-failure retry rule is retired, so the enforcer ladder "
         "carries one numbered row per shipped rule and the rows below the "
         "retired rule move up one number"
     ),
     "test_root_kernel_guard_inventory_covers_every_agent_rule": (
-        "the premise-check agent rule is retired, so the root guard "
+        "the repeated-failure retry rule is retired, so the root guard "
         "inventory covers the thirteen shipped agent rules"
     ),
     "test_kernel_root_and_starter_agent_rules_carry_the_same_titles_and_evidence_tags": (
-        "the premise-check agent rule is retired, so both kernels carry "
+        "the repeated-failure retry rule is retired, so both kernels carry "
         "the same thirteen rule titles with the same evidence tags"
     ),
     "test_every_advisory_enforcer_status_names_its_review_trigger": (
-        "the premise-check agent rule is retired, so the advisory status "
+        "the repeated-failure retry rule is retired, so the advisory status "
         "of every shipped rule carries the review trigger the kernel "
         "contract requires"
     ),
@@ -100,10 +101,10 @@ RALPH_TEST_CHANGE_REASONS = {
     "test_the_shared_and_project_specific_agent_rule_titles_cover_every_agent_rule": (
         "the shared and the project-specific agent-rule sets are named explicitly, so "
         "the parity check cannot silently skip a rule when the rule list changes; the "
-        "retired premise-check rule leaves the project-specific set"
+        "retired repeated-failure retry rule leaves the project-specific set"
     ),
     "test_smallest_change_requires_deleting_the_replaced_api_in_both_kernels": (
-        "the premise-check agent rule is retired, so the smallest-change "
+        "the repeated-failure retry rule is retired, so the smallest-change "
         "rule is rule 7 and the check names its new number"
     ),
     "test_kernels_carry_the_model_family_review_advisory": (
@@ -237,21 +238,6 @@ def test_kernels_carry_the_model_family_review_advisory() -> None:
         assert MODEL_FAMILY_EVIDENCE_TAG in " ".join(statement.split()), (
             f"{source_name} kernel rule 5 (Independent review) does not tag the "
             f"model-family recommendation {MODEL_FAMILY_EVIDENCE_TAG!r}"
-        )
-
-
-def test_kernels_carry_the_runtime_owned_premise_check_advisory() -> None:
-    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
-        normalized = " ".join(content.lower().split())
-        for obligation in PREMISE_CHECK_RULE_OBLIGATIONS:
-            assert obligation in normalized, (
-                f"{source_name} kernel does not state the runtime-owned premise-check "
-                f"obligation {obligation!r}"
-            )
-        enforcement = assert_premise_check_guard_contract(content, source_name)
-        assert "premise" in enforcement.lower(), (
-            f"{source_name} guard-inventory enforcement for {PREMISE_CHECK_GUARD_NAME!r} "
-            f"does not name the premise; observed: {enforcement!r}"
         )
 
 

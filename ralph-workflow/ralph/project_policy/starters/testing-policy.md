@@ -156,11 +156,7 @@ Suite admission, and fixing the production seam.
     A test needing edits during a behavior-preserving refactor is a defect.
 20. A test MUST be able to fail. Zero-assertion tests, assertions behind a
     skippable conditional, a constant asserted against itself, and
-    assert-no-exception where the contract is a value are DEFECTS. Before
-    admitting a test, confirm it fails when the behavior is broken — the
-    purpose of the WRITE instruction below. Where that instruction's
-    exemption applies, demonstrate falsifiability by mutating the artifact
-    instead; the exemption is from ORDERING, never from falsifiability.
+    assert-no-exception where the contract is a value are DEFECTS.
 21. A test MUST NOT assert what a static gate already proves. Type
     conformance, lint, formatting, and schema validity belong to the
     type-checking and linting policies; re-asserting them at runtime is pure
@@ -454,22 +450,16 @@ follow the rule, do not re-derive it.
 
 1. ROUTE every acceptance criterion through Suite admission, and state each
    lane by name, before writing any test.
-2. WRITE the test before the production change and report the observed red
-   result. If it unexpectedly passes, confirm existing behavior and refine
-   the missing contract. The one exemption is a test over a static data file
-   or generated artifact where no production code executes: record why, and
-   demonstrate falsifiability by mutating the artifact instead (rule 20).
-   Never manufacture a failure.
-3. NAME the distinct failure, the nearest existing test, and the search
+2. NAME the distinct failure, the nearest existing test, and the search
    performed (rule 16). When uncertain, add the test.
-4. ISOLATE: mock real I/O and pin every ambient dependency the test does not
+3. ISOLATE: mock real I/O and pin every ambient dependency the test does not
    own — clock, timezone, locale, encoding, seed (rules 6, 7, 18, 23).
-5. PREFER existing helpers, fixtures, and utilities; do not add a testing
+4. PREFER existing helpers, fixtures, and utilities; do not add a testing
    dependency the existing stack can express.
-6. RETIRE superseded coverage in the same change, only from recorded green,
+5. RETIRE superseded coverage in the same change, only from recorded green,
    saying what went and why (rules 29 and Test optimization and retirement).
-7. RUN every `RALPH-COMMAND:` gate below.
-8. UPDATE this policy when the test command, framework, isolation strategy,
+6. RUN every `RALPH-COMMAND:` gate below.
+7. UPDATE this policy when the test command, framework, isolation strategy,
    mocking approach, parallelism mechanism, profile set, or budget changes.
 
 ## High-churn evidence (B8)

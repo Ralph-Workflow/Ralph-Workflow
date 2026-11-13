@@ -3,9 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 from importlib.resources import files
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
-from ralph.checked_accessors import as_mapping, as_str_list
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._ownership import Ownership, classify_entry
@@ -16,22 +15,22 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.file_backend import FileBackend
 
 
-class SkillMetadata(TypedDict):
-    skills: list[str]
-
-
 _MANAGED_MARKER = ".ralph-managed.json"
 
 
-def _read_skill_metadata() -> SkillMetadata:
-    content_dir = files(__package__) / "content"
-    raw = (content_dir / "metadata.json").read_text(encoding="utf-8")
-    parsed: object = json.loads(raw)
-    document = as_mapping(parsed, field="skill metadata")
-    return {"skills": as_str_list(document.get("skills"), field="skill metadata skills")}
+_CONTENT_DIR = files("ralph.skills") / "content"
+
+BASELINE_SKILL_NAMES: tuple[str, ...] = tuple(
+    sorted(
+        path.name.removesuffix(".md")
+        for path in _CONTENT_DIR.iterdir()
+        if path.is_file() and path.name.endswith(".md")
+    )
+)
 
 
-BASELINE_SKILL_NAMES: tuple[str, ...] = tuple(_read_skill_metadata()["skills"])
+def _metadata_payload() -> dict[str, list[str]]:
+    return {"skills": list(BASELINE_SKILL_NAMES)}
 
 
 def list_skill_names() -> tuple[str, ...]:
@@ -42,12 +41,7 @@ def get_skill_content(name: str) -> str:
     if name not in BASELINE_SKILL_NAMES:
         msg = f"Unknown baseline skill: {name}"
         raise ValueError(msg)
-    content_dir = files(__package__) / "content"
-    return (content_dir / f"{name}.md").read_text(encoding="utf-8")
-
-
-def get_skill_metadata() -> SkillMetadata:
-    return _read_skill_metadata()
+    return (_CONTENT_DIR / f"{name}.md").read_text(encoding="utf-8")
 
 
 def managed_skill_marker(name: str, *, installed_sha256: str) -> dict[str, str]:
@@ -65,7 +59,7 @@ def materialize_skills_to_dir(
 ) -> list[str]:
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
-    metadata = get_skill_metadata()
+    metadata = _metadata_payload()
     for name in BASELINE_SKILL_NAMES:
         write_text_if_changed(
             backend,
@@ -97,7 +91,7 @@ def materialize_skills_to_claude_dir(
 ) -> list[str]:
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
-    metadata = get_skill_metadata()
+    metadata = _metadata_payload()
     for name in BASELINE_SKILL_NAMES:
         skill_dir = target / name
         if not _may_materialize_skill_dir(skill_dir):
@@ -128,7 +122,6 @@ __all__ = [
     "BASELINE_SKILL_NAMES",
     "_MANAGED_MARKER",
     "get_skill_content",
-    "get_skill_metadata",
     "list_skill_names",
     "managed_skill_marker",
     "materialize_skills_to_claude_dir",

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from ralph.skills._content import (
     BASELINE_SKILL_NAMES,
     get_skill_content,
-    get_skill_metadata,
+    materialize_skills_to_dir,
 )
 from ralph.skills._process_view import SkillsProcessView, has_machine_global_skills
 
@@ -35,6 +35,15 @@ def test_has_machine_global_skills_false_when_partial_install(
     assert has_machine_global_skills() is False
 
 
+def _copy_generated_metadata(source: Path, target: Path) -> None:
+    generated_dir = source / "generated"
+    materialize_skills_to_dir(generated_dir)
+    (target / "metadata.json").write_text(
+        (generated_dir / "metadata.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+
 def test_has_machine_global_skills_true_when_all_skills_present(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -45,10 +54,7 @@ def test_has_machine_global_skills_true_when_all_skills_present(
         skill_dir = skills_dir / name
         skill_dir.mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text(get_skill_content(name), encoding="utf-8")
-    (skills_dir / "metadata.json").write_text(
-        json.dumps(get_skill_metadata(), indent=2) + "\n",
-        encoding="utf-8",
-    )
+    _copy_generated_metadata(tmp_path, skills_dir)
     for name in BASELINE_SKILL_NAMES:
         ((skills_dir / name) / ".ralph-managed.json").write_text(
             json.dumps({"managed_by": "ralph-workflow", "skill": name}) + "\n",
@@ -71,10 +77,7 @@ def test_has_machine_global_skills_false_when_conflicting_user_skill_present(
         "# user override\n",
         encoding="utf-8",
     )
-    (skills_dir / "metadata.json").write_text(
-        json.dumps(get_skill_metadata(), indent=2) + "\n",
-        encoding="utf-8",
-    )
+    _copy_generated_metadata(tmp_path, skills_dir)
     assert has_machine_global_skills() is False
 
 

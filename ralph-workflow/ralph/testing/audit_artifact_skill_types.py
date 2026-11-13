@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import importlib
-import json
 import re
 import sys
 from importlib.resources import files
 from pathlib import Path
-from typing import cast
 
 from ralph.mcp.artifacts.format_docs import FORMAT_DOC_ARTIFACT_TYPES
 from ralph.mcp.artifacts.markdown.registry import registered_specs
@@ -16,8 +14,6 @@ __all__ = ["audit_artifact_skill_types", "main"]
 importlib.import_module("ralph.mcp.artifacts.markdown.specs")
 
 UMBRELLA_SKILL_NAME = "submit-artifact"
-
-METADATA_FILE_NAME = "metadata.json"
 
 SKILL_FILE_GLOB = "*.md"
 
@@ -193,43 +189,6 @@ def _audit_skill_files(content_root: Path, artifact_types: tuple[str, ...]) -> l
     return violations
 
 
-def _audit_metadata(content_root: Path, expected_names: set[str]) -> list[str]:
-    metadata_path = content_root / METADATA_FILE_NAME
-    if not metadata_path.is_file():
-        return [f"missing skills metadata manifest: {METADATA_FILE_NAME}"]
-    try:
-        payload_raw: object = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return [f"skills metadata manifest is unreadable: {exc}"]
-    if not isinstance(payload_raw, dict):
-        return ["skills metadata manifest is not a JSON object"]
-    payload = cast("dict[str, object]", payload_raw)
-    listed = payload.get("skills")
-    if not isinstance(listed, list):
-        return ["skills metadata manifest has no 'skills' list of strings"]
-    names: list[str] = []
-    for item in listed:
-        if not isinstance(item, str):
-            return ["skills metadata manifest has no 'skills' list of strings"]
-        names.append(item)
-
-    violations: list[str] = []
-    listed_names: set[str] = set(names)
-    violations.extend(
-        f"metadata.json skills list is missing: {name}"
-        for name in sorted(expected_names - listed_names)
-    )
-    violations.extend(
-        f"metadata.json skills list has an unknown entry: {name}"
-        for name in sorted(listed_names - expected_names)
-    )
-    violations.extend(
-        f"metadata.json skills list has a duplicate entry: {name}"
-        for name in sorted({name for name in names if names.count(name) > 1})
-    )
-    return violations
-
-
 def _resolve_content_root(root: Path | None) -> Path:
     if root is not None:
         return Path(root)
@@ -268,7 +227,6 @@ def audit_artifact_skill_types(root: Path | None = None) -> list[str]:
     )
 
     violations.extend(_audit_skill_files(content_root, artifact_types))
-    violations.extend(_audit_metadata(content_root, expected_names))
     return violations
 
 
@@ -294,13 +252,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {violation}")
         print(
             "\nThe shipped skills must cover exactly the registered artifact types. "
-            "Fix the skill files (and metadata.json), never the audit."
+            "Fix the skill files, never the audit."
         )
         return 1
 
     print(
-        "Artifact-skill audit: OK (every registered artifact type has exactly one "
-        "matching skill, and metadata.json mirrors the derived set)"
+        "Artifact-skill audit: OK (every registered artifact type has exactly one matching skill)"
     )
     return 0
 

@@ -59,6 +59,10 @@ def _invariant_cases() -> list[_CaseSpec]:
         '"filesystem read consolidation audit (audit_filesystem_read_consolidation)"'
     )
     read_label_gone = '"filesystem read consolidation audit (REMOVED)"'
+    skill_auto_commit_label_anchor = '"skill auto-commit audit (audit_skill_auto_commit)"'
+    skill_auto_commit_label_gone = '"skill auto-commit audit (REMOVED)"'
+    artifact_skill_types_label_anchor = '"artifact skill types audit (audit_artifact_skill_types)"'
+    artifact_skill_types_label_gone = '"artifact skill types audit (REMOVED)"'
 
     return [
         {
@@ -272,6 +276,42 @@ def _invariant_cases() -> list[_CaseSpec]:
             "minus_o": True,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "audit_filesystem_read_consolidation"],
+        },
+        {
+            "name": "audit_skill_auto_commit_step_must_be_present",
+            "patches": [(skill_auto_commit_label_anchor, skill_auto_commit_label_gone)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "audit_skill_auto_commit",
+                "must be present",
+            ],
+        },
+        {
+            "name": "audit_skill_auto_commit_survives_minus_o",
+            "patches": [(skill_auto_commit_label_anchor, skill_auto_commit_label_gone)],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "audit_skill_auto_commit"],
+        },
+        {
+            "name": "audit_artifact_skill_types_step_must_be_present",
+            "patches": [(artifact_skill_types_label_anchor, artifact_skill_types_label_gone)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "audit_artifact_skill_types",
+                "must be present",
+            ],
+        },
+        {
+            "name": "audit_artifact_skill_types_survives_minus_o",
+            "patches": [(artifact_skill_types_label_anchor, artifact_skill_types_label_gone)],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "audit_artifact_skill_types"],
         },
     ]
 

@@ -160,8 +160,6 @@ Shared execution rules (truthful evidence, run every declared gate and report ac
 
 When working in this domain, the agent additionally MUST:
 
-* WRITE the test before the production change when fixing a bug or
-  adding behaviour; watch it fail for the expected reason first.
 * PREFER existing test helpers, fixtures, and utilities. Do not add a
   new testing dependency when the existing stack can express the case.
 * AVOID adding a dependency, abstraction, or numeric target without

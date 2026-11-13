@@ -16,7 +16,6 @@ from ralph.recovery.retry_prompt import (
     build_retry_error_block,
     build_validation_retry_footer,
     failure_fingerprint,
-    premise_check_line,
 )
 
 if TYPE_CHECKING:
@@ -243,10 +242,6 @@ def build_validation_retry_hint(
     current_attempt = "\n".join(lines)
     prior_attempts = _validation_retry_attempts(prior_hint)
     attempts = [*prior_attempts, current_attempt]
-    premise = premise_check_line(
-        failure_fingerprint(current_attempt),
-        failure_fingerprint(prior_attempts[-1]) if prior_attempts else "",
-    )
     numbered_attempts = [
         _number_validation_retry_attempt(attempt, index)
         for index, attempt in enumerate(attempts, start=1)
@@ -258,8 +253,6 @@ def build_validation_retry_hint(
             f"THIS VALIDATION HAS FAILED {len(attempts)} TIMES - FIX THE UNDERLYING ISSUE, "
             "DO NOT RESUBMIT UNCHANGED"
         )
-    if premise:
-        blocks.append(premise)
     blocks.append("\n\n".join(bounded_attempts))
     blocks.append(build_validation_retry_footer())
     return "\n\n".join(blocks)
