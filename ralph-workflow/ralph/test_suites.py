@@ -203,6 +203,13 @@ SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_worktree_lease.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
+_BUDGETED_LANE_EXCLUDED_MARKERS: Final = frozenset(
+    {"subprocess_e2e", "smoke", "live_agy", "verify_budget_real_time"}
+)
+_BUDGETED_LANE_EXCLUDED_MARKER_BYTES: Final = tuple(
+    marker.encode() for marker in sorted(_BUDGETED_LANE_EXCLUDED_MARKERS)
+)
+_BUDGETED_LANE_REQUIRED_MARKER: Final = "required_auto_integrate_e2e"
 NON_SELECTABLE_REQUIRED_REGISTRY_FILES: frozenset[str] = frozenset({"tests/conftest.py"})
 _SUBPROCESS_E2E_MARK_EXPRESSION = (
     "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
@@ -726,41 +733,125 @@ def _shard_command(
     )
 
 
-def _is_subprocess_e2e_marker(expression: ast.expr) -> bool:
-    return (
-        isinstance(expression, ast.Attribute)
-        and expression.attr == "subprocess_e2e"
-        and isinstance(expression.value, ast.Attribute)
-        and expression.value.attr == "mark"
-        and isinstance(expression.value.value, ast.Name)
-        and expression.value.value.id == "pytest"
-    )
+def _pytest_mark_names(expression: ast.expr) -> frozenset[str]:
+    target = expression.func if isinstance(expression, ast.Call) else expression
+    if not isinstance(target, ast.Attribute):
+        return frozenset()
+    if not (isinstance(target.value, ast.Attribute) and target.value.attr == "mark"):
+        return frozenset()
+    if not (isinstance(target.value.value, ast.Name) and target.value.value.id == "pytest"):
+        return frozenset()
+    return frozenset({target.attr})
 
 
-def _is_module_subprocess_e2e(source: str, *, filename: str) -> bool:
-    if "pytestmark" not in source or "subprocess_e2e" not in source:
-        return False
-    tree = ast.parse(source, filename=filename)
-    final_marker: ast.expr | None = None
+def _marker_names_from_value(expression: ast.expr) -> frozenset[str]:
+    if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
+        names: set[str] = set()
+        for element in expression.elts:
+            names |= _pytest_mark_names(element)
+        return frozenset(names)
+    return _pytest_mark_names(expression)
+
+
+def _module_level_marker_names(tree: ast.Module) -> frozenset[str] | None:
+    names: frozenset[str] = frozenset()
+    undeterminable = False
     for statement in tree.body:
         if isinstance(statement, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == "pytestmark"
             for target in statement.targets
         ):
-            final_marker = statement.value
+            names = _marker_names_from_value(statement.value)
+            undeterminable = False
         elif (
-            isinstance(statement, (ast.AnnAssign, ast.AugAssign))
+            isinstance(statement, ast.AnnAssign)
             and isinstance(statement.target, ast.Name)
-            and (statement.target.id == "pytestmark")
+            and statement.target.id == "pytestmark"
         ):
-            final_marker = None
-    if final_marker is None:
+            names = (
+                frozenset()
+                if statement.value is None
+                else _marker_names_from_value(statement.value)
+            )
+            undeterminable = False
+        elif (
+            isinstance(statement, ast.AugAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == "pytestmark"
+        ):
+            undeterminable = True
+    return None if undeterminable else names
+
+
+def _decorator_marker_names(decorators: list[ast.expr]) -> frozenset[str]:
+    names: set[str] = set()
+    for decorator in decorators:
+        names |= _pytest_mark_names(decorator)
+    return frozenset(names)
+
+
+def _class_inherits_testcase(statement: ast.ClassDef) -> bool:
+    for base in statement.bases:
+        if isinstance(base, ast.Name) and base.id.endswith("TestCase"):
+            return True
+        if isinstance(base, ast.Attribute) and base.attr.endswith("TestCase"):
+            return True
+    return False
+
+
+def _collect_test_marker_sets(
+    tree: ast.Module, module_markers: frozenset[str]
+) -> list[frozenset[str]] | None:
+    collected: list[frozenset[str]] = []
+    for statement in tree.body:
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if statement.name.startswith("test"):
+                collected.append(module_markers | _decorator_marker_names(statement.decorator_list))
+            continue
+        if not isinstance(statement, ast.ClassDef):
+            continue
+        if _class_inherits_testcase(statement):
+            return None
+        class_markers: frozenset[str] | None = None
+        class_tests: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        for child in statement.body:
+            if isinstance(child, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "pytestmark"
+                for target in child.targets
+            ):
+                class_markers = _marker_names_from_value(child.value)
+            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                child.name.startswith("test")
+            ):
+                class_tests.append(child)
+        effective_class_markers = module_markers | (class_markers or frozenset())
+        collected.extend(
+            effective_class_markers | _decorator_marker_names(child.decorator_list)
+            for child in class_tests
+        )
+    return collected
+
+
+def _module_is_excluded_from_budgeted_lane(source: str, *, filename: str) -> bool:
+    try:
+        tree = ast.parse(source, filename=filename)
+    except SyntaxError:
         return False
-    if _is_subprocess_e2e_marker(final_marker):
-        return True
-    if not isinstance(final_marker, (ast.List, ast.Tuple, ast.Set)):
+    module_markers = _module_level_marker_names(tree)
+    if module_markers is None:
         return False
-    return any(_is_subprocess_e2e_marker(element) for element in final_marker.elts)
+    if _BUDGETED_LANE_REQUIRED_MARKER in module_markers:
+        return False
+    test_marker_sets = _collect_test_marker_sets(tree, module_markers)
+    if test_marker_sets is None:
+        return False
+    if not test_marker_sets:
+        return bool(module_markers & _BUDGETED_LANE_EXCLUDED_MARKERS)
+    return all(
+        _BUDGETED_LANE_REQUIRED_MARKER not in markers
+        and bool(markers & _BUDGETED_LANE_EXCLUDED_MARKERS)
+        for markers in test_marker_sets
+    )
 
 
 def _discover_all_test_files(cwd: Path) -> tuple[str, ...]:
@@ -820,15 +911,16 @@ def _inspect_test_file(
         weight = estimate_test_file_weight(source)
         return path, source, weight, True
     source_bytes = (cwd / path).read_bytes()
+    source = source_bytes.decode("utf-8")
+    if any(marker in source_bytes for marker in _BUDGETED_LANE_EXCLUDED_MARKER_BYTES) and (
+        _module_is_excluded_from_budgeted_lane(source, filename=path)
+    ):
+        return path, source, 0, False
     if b"pytestmark" not in source_bytes or b"subprocess_e2e" not in source_bytes:
-        source = source_bytes.decode("utf-8")
         weight = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(path) or _fast_test_count(source)
         return path, source, weight, True
-    source = source_bytes.decode("utf-8")
-    if not _is_module_subprocess_e2e(source, filename=path):
-        weight = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(path) or estimate_test_file_weight(source)
-        return path, source, weight, True
-    return path, source, 0, False
+    weight = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(path) or estimate_test_file_weight(source)
+    return path, source, weight, True
 
 
 def discover_test_files(cwd: Path) -> tuple[str, ...]:

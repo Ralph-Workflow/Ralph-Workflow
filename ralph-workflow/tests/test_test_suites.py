@@ -526,6 +526,78 @@ def test_static_discovery_excludes_only_module_marked_e2e_files(
     )
 
 
+def test_static_discovery_drops_modules_whose_every_test_is_deselected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_all_deselected.py").write_text(
+        "import pytest\n\n"
+        "@pytest.mark.subprocess_e2e\n"
+        "def test_first() -> None: pass\n\n"
+        "@pytest.mark.smoke\n"
+        "def test_second() -> None: pass\n",
+        encoding="utf-8",
+    )
+    (tests_root / "test_partially_deselected.py").write_text(
+        "import pytest\n\n"
+        "@pytest.mark.subprocess_e2e\n"
+        "def test_deselected() -> None: pass\n\n"
+        "def test_selected() -> None: pass\n",
+        encoding="utf-8",
+    )
+    (tests_root / "test_required_marker.py").write_text(
+        "import pytest\n\n"
+        "@pytest.mark.subprocess_e2e\n"
+        "@pytest.mark.required_auto_integrate_e2e\n"
+        "def test_reselected() -> None: pass\n",
+        encoding="utf-8",
+    )
+    (tests_root / "test_unparsable.py").write_text("def test_broken(:\n", encoding="utf-8")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        (),
+    )
+    test_suites_module.reset_discovery_cache()
+
+    assert set(test_suites_module.discover_test_files(tmp_path)) == {
+        "tests/test_partially_deselected.py",
+        "tests/test_required_marker.py",
+        "tests/test_unparsable.py",
+    }
+
+
+def test_static_discovery_keeps_modules_whose_class_tests_are_deselected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_deselected_class.py").write_text(
+        "import pytest\n\n"
+        "class TestGroup:\n"
+        "    @pytest.mark.subprocess_e2e\n"
+        "    def test_deselected(self) -> None: pass\n",
+        encoding="utf-8",
+    )
+    (tests_root / "test_selected_class.py").write_text(
+        "import pytest\n\n"
+        "class TestGroup:\n"
+        "    @pytest.mark.subprocess_e2e\n"
+        "    def test_deselected(self) -> None: pass\n\n"
+        "    def test_selected(self) -> None: pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        (),
+    )
+    test_suites_module.reset_discovery_cache()
+
+    assert set(test_suites_module.discover_test_files(tmp_path)) == {"tests/test_selected_class.py"}
+
+
 def test_static_discovery_finds_pytest_patterns_and_required_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
