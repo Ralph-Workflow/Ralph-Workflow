@@ -51,6 +51,27 @@ class _RawAgentInvoke(Protocol):
 RawAgentInvoke = _RawAgentInvoke
 
 
+def _forward_effect(
+    runner: _EffectRunner,
+    target: InvokeAgentEffect,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps,
+    workspace_scope: WorkspaceScope,
+    display_context: DisplayContext | None,
+    *positional: object,
+    **kwargs: object,
+) -> object:
+    return runner(
+        target,
+        config,
+        pipeline_deps,
+        workspace_scope,
+        *positional,
+        display_context=display_context,
+        **kwargs,
+    )
+
+
 def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
     def _invoke(
         target: InvokeAgentEffect | AgentConfig,
@@ -81,13 +102,16 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             raise TypeError("effect attempts require PipelineDeps")
         if not isinstance(workspace_scope, WorkspaceScope):
             raise TypeError("effect attempts require WorkspaceScope")
-        return runner(
+        if display_context is not None and not isinstance(display_context, DisplayContext):
+            raise TypeError("effect attempts require DisplayContext or None")
+        return _forward_effect(
+            runner,
             target,
             config,
             pipeline_deps,
             workspace_scope,
+            display_context,
             *positional,
-            display_context=display_context,
             **kwargs,
         )
 

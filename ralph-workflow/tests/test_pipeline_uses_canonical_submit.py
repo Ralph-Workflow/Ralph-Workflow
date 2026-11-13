@@ -25,6 +25,7 @@ class _StubSmokePipelineDeps:
     policy_bundle = None
     ledger = None
     unavailability_store = None
+    invoke_agent = None
 
 
 _RUN_ID = "pipeline-test-run"

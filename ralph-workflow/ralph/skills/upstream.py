@@ -816,9 +816,20 @@ def _destination_reference(raw: str, relative: str) -> _CompanionReference | Non
 
 
 def _is_directed_code_span(text: str, match: re.Match[str]) -> bool:
-    if _has_location_cue(text, match.end()):
+    span_end = _closed_code_span_end(text, match)
+    if span_end is not None and _has_location_cue(text, span_end):
         return True
     return _has_imperative_cue(_line_prefix(text, match.start()))
+
+
+def _closed_code_span_end(text: str, match: re.Match[str]) -> int | None:
+    end = match.end()
+    if end >= len(text) or text[end] != "`":
+        return None
+    end += 1
+    while end < len(text) and text[end] == "`":
+        end += 1
+    return end
 
 
 def _has_location_cue(text: str, end: int) -> bool:

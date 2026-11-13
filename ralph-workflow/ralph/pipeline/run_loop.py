@@ -1206,7 +1206,6 @@ def _resolve_recovery_controller(
     clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
     builder = _build_recovery_controller
     if builder is not _PRODUCTION_BUILD_RECOVERY_CONTROLLER:
-        # Injected builders keep the original (state, policy_bundle, config[, clock]) contract.
         if clock is not None:
             controller, _ = builder(state, policy_bundle, config, clock=clock)
         else:

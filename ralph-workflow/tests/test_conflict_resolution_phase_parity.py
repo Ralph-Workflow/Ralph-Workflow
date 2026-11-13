@@ -243,14 +243,6 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         _capture_execute,
     )
-    monkeypatch.setattr(
-        "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
-        lambda _config: lambda _phase, _agent: None,
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.attempt_runner.production_dead_agent_probe_runner",
-        lambda _config: lambda _phase, _agent: None,
-    )
     prompt = tmp_path / "prompt.md"
     prompt.write_text("resolve", encoding="utf-8")
     config = UnifiedConfig.model_validate({"general": {"max_same_agent_retries": 4}})

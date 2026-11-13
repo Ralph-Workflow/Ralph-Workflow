@@ -719,14 +719,6 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
-    monkeypatch.setattr(
-        "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
-        lambda _config: lambda _phase, _agent: None,
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.attempt_runner.production_dead_agent_probe_runner",
-        lambda _config: lambda _phase, _agent: None,
-    )
     session = ResolutionSession(max_rounds_per_stop=1)
     probed = _stub_canary_probe_boundary(monkeypatch)
 

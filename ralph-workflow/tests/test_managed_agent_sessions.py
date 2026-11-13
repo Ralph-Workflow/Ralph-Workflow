@@ -454,3 +454,60 @@ def test_managed_runtime_reports_observed_session_id_on_success(
     assert result == ['{"type":"session","session_id":"sess-observed"}', "ok"]
     assert observed_session_ids == ["sess-observed"]
     assert bridge_state["shutdown_calls"] == 1
+
+
+def test_default_invoke_agent_streams_the_raw_agent_invocation(
+    tmp_path: Path,
+    config_with_test_agent: UnifiedConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Describe a notes app.", encoding="utf-8")
+
+    bridge, _bridge_state = _make_fake_bridge()
+    captured: dict[str, object] = {}
+
+    def fake_start_mcp_server(*args: object) -> object:
+        del args
+        return bridge
+
+    def fake_raw_invoke_agent(
+        agent_config: object,
+        prompt_file_path: str,
+        *,
+        options: object,
+    ) -> Iterator[str]:
+        captured["agent_config"] = agent_config
+        captured["prompt_file"] = prompt_file_path
+        captured["options"] = options
+        yield "raw-first"
+        yield "raw-second"
+
+    monkeypatch.setattr("ralph.agents.invoke.invoke_agent", fake_raw_invoke_agent)
+
+    deps = _session_runtime().ManagedAgentSessionDeps(
+        start_mcp_server=fake_start_mcp_server,
+        materialize_master_prompt=lambda *args: str(tmp_path / "system.md"),
+        workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
+    )
+
+    with _session_runtime().ManagedAgentSessionRuntime.open(
+        config=config_with_test_agent,
+        workspace_root=tmp_path,
+        agent_config=config_with_test_agent.agents["test-agent"],
+        request=_session_runtime().ManagedAgentSessionRequest(
+            session_id_prefix="managed-agent",
+            drain="standalone",
+            capabilities=frozenset({"workspace.read", "artifact.submit"}),
+            master_prompt_name="managed-agent",
+        ),
+        deps=deps,
+    ) as runtime:
+        result = list(runtime.invoke_prompt_file(prompt_file))
+
+    assert result == ["raw-first", "raw-second"]
+    assert captured["agent_config"] == config_with_test_agent.agents["test-agent"]
+    assert captured["prompt_file"] == str(prompt_file)
+    options = captured["options"]
+    assert options.master_prompt_file == str(tmp_path / "system.md")
+    assert options.workspace_path == tmp_path

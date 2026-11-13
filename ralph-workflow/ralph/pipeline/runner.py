@@ -1411,6 +1411,8 @@ def _finalize_agent_invocation(
         return state, event
     state = _apply_session_capture(state)
     if event == PipelineEvent.AGENT_SUCCESS:
+        if recovery_controller is not None:
+            recovery_controller.reset_backoff(effect.phase, effect.agent_name)
         event = phase_event_after_agent_run(
             effect=effect,
             config=config,

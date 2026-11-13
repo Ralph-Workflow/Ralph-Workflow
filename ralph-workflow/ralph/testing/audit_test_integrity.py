@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ralph.testing._audit_baseline import worktree_diff
 from ralph.testing._test_integrity_diff import (
     CATEGORY_TEST_WEAKENING,
+    DELETED_TEST_MODULES,
     PRODUCTION_PACKAGE_DIR,
     TEST_REASON_CONSTANT,
     TEST_TREE_DIR,
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 __all__ = [
     "CATEGORY_PYTEST_DETECTION",
     "CATEGORY_TEST_WEAKENING",
+    "DELETED_TEST_MODULES",
     "PRODUCTION_PACKAGE_DIR",
     "TEST_REASON_CONSTANT",
     "TEST_TREE_DIR",

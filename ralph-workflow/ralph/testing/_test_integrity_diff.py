@@ -21,11 +21,6 @@ DELETED_TEST_MODULES: dict[str, str] = {
         "deleted; the live skill auto-commit path stays pinned by "
         "tests/test_audit_skill_auto_commit.py"
     ),
-    "ralph-workflow/tests/recovery/test_retry_prompt_premise_check.py": (
-        "the retired agent rule and its runtime machinery were removed by the policy "
-        "trim; the surviving retry behaviour stays pinned by "
-        "tests/recovery/test_retry_prompt_contract.py"
-    ),
     "ralph-workflow/tests/test_audit_skill_mirror_freshness.py": (
         "the retired mirror-freshness audit was deleted with the mirrored bundle; the "
         "retired package stays absent under "

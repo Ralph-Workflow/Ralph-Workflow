@@ -8,6 +8,7 @@ import pytest
 
 from ralph.agents.system_clock import SystemClock
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.attempt_finalizer import AttemptFinalization, AttemptFinalizer
 from ralph.pipeline.attempt_result import AttemptResult
@@ -18,16 +19,20 @@ from ralph.pipeline.attempt_runner import (
     registered_runners,
     run_agent_attempt,
 )
-from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineDeps
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attempt_outcome import AttemptOutcome
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ralph.recovery.controller import RecoveryController
 
 _PHASE = "development"
@@ -58,6 +63,15 @@ def _config() -> UnifiedConfig:
 
 def _effect() -> InvokeAgentEffect:
     return InvokeAgentEffect(agent_name=_AGENT, phase=_PHASE, prompt_file="prompt.md")
+
+
+def _effect_adapter_context(
+    tmp_path: Path,
+) -> tuple[DisplayContext, PipelineDeps, WorkspaceScope]:
+    display_context = make_display_context()
+    pipeline_deps = PipelineDeps(display_context=display_context)
+    workspace_scope = WorkspaceScope(root=tmp_path)
+    return display_context, pipeline_deps, workspace_scope
 
 
 def _no_probe(_phase: str, _agent: str) -> ProbeOutcome | None:
@@ -377,3 +391,123 @@ def test_attempt_result_preserves_ordered_attempt_outcomes() -> None:
         attempt_outcomes=((1, first), (2, second)),
     )
     assert result.attempt_outcomes == ((1, first), (2, second))
+
+
+@pytest.mark.parametrize("binding", ["positional", "keyword"])
+def test_attempt_runner_regression_effect_adapter_forwards_arguments(
+    tmp_path: Path,
+    binding: str,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def runner(
+        effect: InvokeAgentEffect,
+        config: UnifiedConfig,
+        pipeline_deps: PipelineDeps,
+        workspace_scope: WorkspaceScope,
+        *,
+        display_context: DisplayContext | None,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        calls.append(
+            {
+                "effect": effect,
+                "config": config,
+                "pipeline_deps": pipeline_deps,
+                "workspace_scope": workspace_scope,
+                "display_context": display_context,
+                "options": kwargs,
+            }
+        )
+        return PipelineEvent.AGENT_SUCCESS
+
+    display_context, pipeline_deps, workspace_scope = _effect_adapter_context(tmp_path)
+    effect = _effect()
+    config = _config()
+    finalizer = object()
+    state = object()
+    invoke = effect_attempt_invoke(runner)
+
+    if binding == "positional":
+        result = invoke(
+            effect,
+            config,
+            pipeline_deps,
+            workspace_scope,
+            display_context=display_context,
+            attempt_finalizer=finalizer,
+            state=state,
+        )
+    else:
+        result = invoke(
+            effect,
+            config=config,
+            pipeline_deps=pipeline_deps,
+            workspace_scope=workspace_scope,
+            display_context=display_context,
+            attempt_finalizer=finalizer,
+            state=state,
+        )
+
+    assert result is PipelineEvent.AGENT_SUCCESS
+    assert calls == [
+        {
+            "effect": effect,
+            "config": config,
+            "pipeline_deps": pipeline_deps,
+            "workspace_scope": workspace_scope,
+            "display_context": display_context,
+            "options": {"attempt_finalizer": finalizer, "state": state},
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("invalid", "message"),
+    [
+        ("target", "effect attempts require an InvokeAgentEffect target"),
+        ("config", "effect attempts require a UnifiedConfig"),
+        ("pipeline_deps", "effect attempts require PipelineDeps"),
+        ("workspace_scope", "effect attempts require WorkspaceScope"),
+        ("display_context", "effect attempts require DisplayContext or None"),
+    ],
+)
+def test_attempt_runner_regression_effect_adapter_rejects_invalid_arguments(
+    tmp_path: Path,
+    invalid: str,
+    message: str,
+) -> None:
+    calls: list[object] = []
+
+    def runner(
+        effect: InvokeAgentEffect,
+        config: UnifiedConfig,
+        pipeline_deps: PipelineDeps,
+        workspace_scope: WorkspaceScope,
+        *,
+        display_context: DisplayContext | None,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        calls.append(effect)
+        return PipelineEvent.AGENT_SUCCESS
+
+    display_context, pipeline_deps, workspace_scope = _effect_adapter_context(tmp_path)
+    effect = _effect()
+    config = _config()
+    arguments: dict[str, object] = {
+        "config": config,
+        "pipeline_deps": pipeline_deps,
+        "workspace_scope": workspace_scope,
+        "display_context": display_context,
+    }
+    if invalid == "target":
+        target = config.agents[_AGENT]
+    else:
+        target = effect
+        arguments[invalid] = object()
+
+    invoke = effect_attempt_invoke(runner)
+    with pytest.raises(TypeError, match=message):
+        invoke(target, **arguments)
+
+    assert calls == []

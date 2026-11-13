@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, runtime_checkable
 
 from ralph.agents.invoke import attempt_facts_for_failure
 from ralph.agents.registry import AgentRegistry
@@ -67,14 +67,26 @@ class _RegistryFactoryProvider(Protocol):
 AttemptInvoke = _AttemptInvoke
 
 
+def _is_text_line(value: object) -> TypeGuard[str]:
+    return isinstance(value, str)
+
+
+def _validated_text_lines(lines: Iterable[object]) -> Iterator[str]:
+    for line in lines:
+        if not _is_text_line(line):
+            msg = f"agent invocation produced a non-text output line: {type(line).__name__}"
+            raise TypeError(msg)
+        yield line
+
+
 def _as_raw_agent_invoke(injected: InvokeAgentFn) -> RawAgentInvoke:
     def _invoke(
         config: AgentConfig,
         prompt_file: str,
         *,
         options: InvokeOptions | None = None,
-    ) -> Iterator[str] | None:
-        return iter(cast("Iterable[str]", injected(config, prompt_file, options=options)))
+    ) -> Iterator[str]:
+        return _validated_text_lines(injected(config, prompt_file, options=options))
 
     return _invoke
 
