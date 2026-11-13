@@ -39,6 +39,13 @@ DELETED_TEST_MODULES: dict[str, str] = {
         "the skills sync script was deleted with the mirrored bundle; the retired "
         "package and script stay absent under tests/test_retired_skills_package_absent.py"
     ),
+    "ralph-workflow/tests/recovery/test_retry_prompt_premise_check.py": (
+        "the runtime duplicate of the debugging technique was retired, so the tests "
+        "that pinned only the premise-check retry line and the fingerprint artifact "
+        "that fed it were deleted; the retry prompt contract stays pinned by "
+        "tests/recovery/test_retry_prompt_contract.py and "
+        "tests/test_validation_retry_prompt_persistence.py"
+    ),
     "ralph-workflow/tests/test_skills_package_version_parity.py": (
         "the separate skills package and its version parity were deleted with the "
         "mirrored bundle; the retired package stays absent under "

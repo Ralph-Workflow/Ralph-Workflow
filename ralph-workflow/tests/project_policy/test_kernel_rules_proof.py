@@ -53,6 +53,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "exception, so every `anecdotal` or `none`-tagged guard row must ship an "
         "advisory enforcement with a review trigger"
     ),
+    "test_kernels_drop_the_retired_premise_check_rule": (
+        "the runtime mechanism that added the premise-check retry line is retired, so "
+        "neither kernel names the premise-check line, the retired retry formatter, or "
+        "the guard-inventory row that covered it"
+    ),
 }
 
 KERNEL_RULES: tuple[str, ...] = (
@@ -595,8 +600,15 @@ def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
 
 GUARD_ROW_EVIDENCE_TAGS: dict[str, str] = {
     "independent review model-family diversification": "moderate",
-    "premise-check retry line": "anecdotal",
 }
+
+RETIRED_PREMISE_CHECK_GUARD: str = "Premise-check retry line"
+
+RETIRED_PREMISE_CHECK_MARKERS: tuple[str, ...] = (
+    "premise-check retry line",
+    "test the premise shared by the failed fixes",
+    "ralph/recovery/retry_prompt.py",
+)
 
 
 def _guard_row_evidence_tag(content: str, guard: str) -> str:
@@ -630,6 +642,22 @@ def test_anecdotal_and_none_guard_rows_ship_advisory_enforcement() -> None:
                 f"{source_name} guard-inventory row for {row[0]!r} keeps an advisory "
                 f"enforcement without a review trigger; observed: {enforcement!r}"
             )
+
+
+def test_kernels_drop_the_retired_premise_check_rule() -> None:
+    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
+        normalized = " ".join(content.lower().split())
+        for marker in RETIRED_PREMISE_CHECK_MARKERS:
+            assert marker not in normalized, (
+                f"{source_name} kernel still names the retired premise-check material "
+                f"{marker!r}; the runtime mechanism that added the premise-check retry "
+                "line is retired"
+            )
+        guards = [row[0] for row in guard_inventory_rows(content)]
+        assert RETIRED_PREMISE_CHECK_GUARD not in guards, (
+            f"{source_name} kernel guard inventory still carries the retired "
+            f"{RETIRED_PREMISE_CHECK_GUARD!r} row"
+        )
 
 
 def test_every_agent_rule_has_a_research_basis_supports_line() -> None:

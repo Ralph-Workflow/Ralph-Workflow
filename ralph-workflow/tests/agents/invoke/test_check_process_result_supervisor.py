@@ -15,6 +15,7 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
+    AgentInvocationError,
     CompletionCheckOptions,
     OpenCodeResumableExitError,
     _completion,
@@ -24,7 +25,6 @@ from ralph.agents.invoke import (
     attempt_facts_from_exception,
     check_process_result,
 )
-from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.timeout_clock import FakeClock, SystemClock
 from ralph.phases.required_artifacts import RequiredArtifact

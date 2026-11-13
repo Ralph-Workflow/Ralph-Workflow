@@ -76,6 +76,11 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
             "unbounded_accumulator",
         ),
         (
+            "ralph/agents/invoke/attempt_supervision/attempt_supervisor.py",
+            "AttemptSupervisor.__init__",
+            "unbounded_accumulator",
+        ),
+        (
             "ralph/agents/invoke/opencode_subagent_sessions/_probe.py",
             "OpenCodeSubagentSessionProbe.__init__",
             "unbounded_accumulator",

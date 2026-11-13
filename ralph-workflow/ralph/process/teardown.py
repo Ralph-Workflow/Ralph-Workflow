@@ -310,7 +310,7 @@ def teardown_subtree(
     )
 
 
-def teardown_subtree_if_pid_available(
+def _teardown_subtree_if_pid_available(
     handle: object,
     *,
     issuer: ProcessTerminationIssuer,
@@ -321,8 +321,8 @@ def teardown_subtree_if_pid_available(
         return
     if teardown is None:
         teardown_subtree(pid, issuer=issuer)
-    else:
-        teardown.teardown_subtree(pid, issuer=issuer)
+        return
+    teardown.teardown_subtree(pid, issuer=issuer)
 
 
 __all__ = [
@@ -330,6 +330,5 @@ __all__ = [
     "ProcessTeardown",
     "register_child_session",
     "teardown_subtree",
-    "teardown_subtree_if_pid_available",
     "verified_child_session_pgid",
 ]
