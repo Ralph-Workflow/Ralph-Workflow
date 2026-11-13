@@ -9,7 +9,11 @@ import pytest
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline import resolve_rebase_with_config
+from ralph.pipeline import (
+    RebaseResolutionResult,
+    StopResolutionTrigger,
+    attempt_stop_resolution,
+)
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery_record import (
     compute_continuation_retry_gate_key,
@@ -34,7 +38,6 @@ from ralph.recovery.events import FailureEventBus
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
-    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.policy.models import PolicyBundle
 
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
@@ -114,13 +117,18 @@ def drive_conflict_resolution_session(
     invoke: Any = None,
 ) -> RebaseResolutionResult:
     runner = _TestSessionRunner(session, invoke=invoke)
-    return resolve_rebase_with_config(
-        root,
-        "main",
-        lambda *args: False,
-        config=None,
-        agent_runner=runner,
+    result = attempt_stop_resolution(
+        None,
+        StopResolutionTrigger(
+            name="rebase_stop",
+            root=root,
+            target="main",
+            resolver=lambda *args: False,
+            agent_runner=runner,
+        ),
     )
+    assert isinstance(result, RebaseResolutionResult)
+    return result
 
 
 def test_prior_dead_launch_records_tool_surface_dead(
@@ -218,13 +226,17 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
 
     monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", _fake_resolve_rebase)
 
-    result = resolve_rebase_with_config(
-        tmp_path,
-        "main",
-        lambda *args: False,
-        config=None,
+    result = attempt_stop_resolution(
+        None,
+        StopResolutionTrigger(
+            name="rebase_stop",
+            root=tmp_path,
+            target="main",
+            resolver=lambda *args: False,
+        ),
     )
 
+    assert isinstance(result, RebaseResolutionResult)
     assert result.succeeded is False
     assert result.reason is not None
     assert "spent/unavailable" in result.reason

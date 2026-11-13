@@ -1,12 +1,88 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.terminal_state_violation_error import TerminalStateViolationError
+
+if TYPE_CHECKING:
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
+
+__all__ = (
+    "RESOLUTION_TERMINAL_MARKER_FIELD",
+    "RESUME_COMMAND",
+    "ResolutionAttemptKey",
+    "ResolutionTerminalMarker",
+    "ResolutionTerminalMarkerValue",
+    "TerminalStateViolationError",
+    "delete_rebase_backup_refs",
+    "post_attempt_verify",
+    "resolution_terminal_marker",
+    "terminal_marker_blocks_attempt",
+)
+
+type ResolutionAttemptKey = tuple[str | None, tuple[str, ...], str | None]
+type ResolutionTerminalMarkerValue = tuple[ResolutionAttemptKey | None, str, str]
+
+RESOLUTION_TERMINAL_MARKER_FIELD = "resolution_terminal_marker"
+RESUME_COMMAND = "ralph --resume"
+_MARKER_PARTS = 3
+
+
+@dataclass(frozen=True, slots=True)
+class ResolutionTerminalMarker:
+    attempt_key: ResolutionAttemptKey | None
+    state: str
+    resume_command: str
+
+    def as_record_value(self) -> ResolutionTerminalMarkerValue:
+        return (self.attempt_key, self.state, self.resume_command)
+
+
+def resolution_terminal_marker(record: IntegrationRecord) -> ResolutionTerminalMarker | None:
+    values = record.model_dump(mode="python")
+    raw = values.get(RESOLUTION_TERMINAL_MARKER_FIELD)
+    if isinstance(raw, ResolutionTerminalMarker):
+        return raw
+    if not isinstance(raw, (tuple, list)) or len(raw) != _MARKER_PARTS:
+        return None
+    attempt_key, state, resume_command = raw
+    if not isinstance(state, str) or not isinstance(resume_command, str):
+        return None
+    parsed_key = _resolution_attempt_key(attempt_key)
+    if attempt_key is not None and parsed_key is None:
+        return None
+    return ResolutionTerminalMarker(parsed_key, state, resume_command)
+
+
+def _resolution_attempt_key(raw: object) -> ResolutionAttemptKey | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, (tuple, list)) or len(raw) != _MARKER_PARTS:
+        return None
+    stop, agents, config = raw
+    valid = (
+        (stop is None or isinstance(stop, str))
+        and isinstance(agents, (tuple, list))
+        and all(isinstance(agent, str) for agent in agents)
+        and (config is None or isinstance(config, str))
+    )
+    return (stop, tuple(agents), config) if valid else None
+
+
+def terminal_marker_blocks_attempt(
+    record: IntegrationRecord,
+    attempt_key: ResolutionAttemptKey | None,
+) -> bool:
+    marker = resolution_terminal_marker(record)
+    return marker is not None and marker.attempt_key == attempt_key
+
 
 _TERMINAL_MARKER_FILES: frozenset[str] = frozenset(
     {
@@ -19,10 +95,6 @@ _TERMINAL_MARKER_FILES: frozenset[str] = frozenset(
         "sequencer",
     }
 )
-
-
-class TerminalStateViolationError(RuntimeError):
-    pass
 
 
 def post_attempt_verify(

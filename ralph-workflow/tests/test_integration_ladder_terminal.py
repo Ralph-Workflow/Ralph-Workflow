@@ -124,6 +124,42 @@ def test_disabled_rung6_ends_the_ladder_in_a_terminal_outcome(tmp_path: Path) ->
     assert not any(call.startswith(_DESTRUCTIVE_GIT_CALLS) for call in git.calls), git.calls
 
 
+def test_changed_resolution_key_reopens_the_terminal_attempt(tmp_path: Path) -> None:
+    ledger = _exhausted_ledger(tmp_path)
+    git = _FakePlumbing(changed=())
+    first_key = ("stop-a", ("resolver-a",), "config-a")
+    second_key = ("stop-b", ("resolver-a",), "config-a")
+
+    with _captured_records() as captured:
+        first = escalate_record_fact_outcome(
+            tmp_path,
+            _record(resolution_gate_key=first_key),
+            RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            reason="diagnostic budget spent",
+            ledger=ledger,
+            git=git,
+            fs=_FakeQuarantineFs(),
+            clock=FakeClock(),
+            state_dir=tmp_path / ".agent",
+        )
+        second = escalate_record_fact_outcome(
+            tmp_path,
+            _record(resolution_gate_key=second_key),
+            RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            reason="diagnostic budget spent",
+            ledger=ledger,
+            git=git,
+            fs=_FakeQuarantineFs(),
+            clock=FakeClock(),
+            state_dir=tmp_path / ".agent",
+        )
+
+    terminal = [message for _level, message in captured if "NeedsOperator" in message]
+    assert first.outcome == "terminal"
+    assert second.outcome == "terminal"
+    assert len(terminal) == 2, captured
+
+
 def test_terminal_operator_message_names_head_expected_shas_and_resume_command(
     tmp_path: Path,
 ) -> None:

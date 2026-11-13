@@ -10,6 +10,7 @@ from loguru import logger
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_diagnostic import _bump_attempt
 from ralph.pipeline._integration_diagnostic_handoff import observe_workspace_change
@@ -164,7 +165,9 @@ def _repair_owned_merge(
         else pending_merge_identity_matches(root, record)
     )
     if record is None or not matches:
-        logger.critical("Pending integration identity unavailable or changed; repair withheld")
+        terminal_emitter.critical(
+            "Pending integration identity unavailable or changed; repair withheld"
+        )
         return False
     try:
         before = capture_unstaged_work(root)
@@ -207,7 +210,7 @@ def _repair_owned_merge(
             )
         return False
     except Exception as exc:
-        logger.critical("Pending integration retained; source repair refused: {}", exc)
+        terminal_emitter.critical("Pending integration retained; source repair refused: {}", exc)
         retained = read_record(root)
         if retained is not None:
             write_record(
@@ -232,7 +235,7 @@ def handoff_pending_merge_repair(
     from ralph.pipeline._integration_diagnostic_handoff import check_target_worktree_context
 
     if not agents:
-        logger.critical("Pending integration retained: no installed repair agent")
+        terminal_emitter.critical("Pending integration retained: no installed repair agent")
         return False
     failure_reason = check_target_worktree_context(root)
     if failure_reason is not None:
@@ -311,7 +314,7 @@ def handoff_pending_merge_repair(
 
         workspace_changed = observe_workspace_change(controller, root, _attempt)
     except Exception as exc:
-        logger.critical("Pending integration retained; repair handoff failed: {}", exc)
+        terminal_emitter.critical("Pending integration retained; repair handoff failed: {}", exc)
         bench_resolver(controller, agent, exc)
         return False
     invoked_ok = bool(reported[0]) if reported else False

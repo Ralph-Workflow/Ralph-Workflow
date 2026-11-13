@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, overload
 
@@ -13,6 +14,49 @@ if TYPE_CHECKING:
 _MAX_FALLBACK_WARNING_REGISTRY_ENTRIES = 256
 
 _FALLBACK_WARNING_REGISTRY: dict[tuple[Path, str | type[BaseException]], None] = {}
+
+_CONFIG_PARSE_ERROR_ATTR = "config_parse_error"
+
+
+@dataclass(frozen=True)
+class ConfigParseError:
+    file: Path
+    parse_error: BaseException
+
+
+def config_parse_error(file: Path | str, parse_error: BaseException) -> ConfigParseError:
+    return ConfigParseError(file=Path(file), parse_error=parse_error)
+
+
+def _cause_chain(exc: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in chain:
+        chain.append(current)
+        current = current.__cause__
+    return chain
+
+
+def _attach_config_parse_error(exc: BaseException, file: Path | str) -> None:
+    chain = _cause_chain(exc)
+    payload = config_parse_error(file, chain[-1])
+    try:
+        setattr(exc, _CONFIG_PARSE_ERROR_ATTR, payload)
+    except (AttributeError, TypeError):
+        return
+
+
+def config_parse_error_of(exc: BaseException) -> ConfigParseError | None:
+    chain = _cause_chain(exc)
+    for entry in chain:
+        payload: object = getattr(entry, _CONFIG_PARSE_ERROR_ATTR, None)
+        if isinstance(payload, ConfigParseError):
+            return payload
+    for entry in chain:
+        file: object = getattr(entry, "file", None)
+        if isinstance(file, (str, Path)):
+            return config_parse_error(file, chain[-1])
+    return None
 
 
 def reset_fallback_warning_registry() -> None:
@@ -103,6 +147,7 @@ def emit_config_failure_warning(
     path_obj = Path(path)
     resolved = path_obj.resolve()
     effective_hint = effective_fix_hint(path_obj, kind, fix_hint)
+    _attach_config_parse_error(exc, path_obj)
 
     fingerprint = _compute_file_fingerprint(resolved, exc, raw_bytes=raw_bytes)
     key = (resolved, fingerprint)
@@ -176,6 +221,7 @@ def load_optional_toml[T](
         return default_factory() if default_factory is not None else {}
     except (OSError, UnicodeDecodeError) as exc:
         if strict:
+            _attach_config_parse_error(exc, path_obj)
             raise
         _emit_fallback_warning(path_obj, exc, kind=kind, raw_bytes=raw_bytes)
         return default_factory() if default_factory is not None else {}
@@ -186,6 +232,7 @@ def load_optional_toml[T](
         return data
     except (ValueError, UnicodeDecodeError) as exc:
         if strict:
+            _attach_config_parse_error(exc, path_obj)
             raise
         _emit_fallback_warning(path_obj, exc, kind=kind, raw_bytes=raw_bytes)
         return default_factory() if default_factory is not None else {}
@@ -205,12 +252,16 @@ def validate_or_default[DataT, T](
         return validator(data)
     except (Exception, SystemExit) as exc:
         if strict:
+            _attach_config_parse_error(exc, path_obj)
             raise
         _emit_fallback_warning(path_obj, exc, kind=kind)
         return default
 
 
 __all__ = [
+    "ConfigParseError",
+    "config_parse_error",
+    "config_parse_error_of",
     "describe_config_failure",
     "emit_config_failure_warning",
     "load_optional_toml",

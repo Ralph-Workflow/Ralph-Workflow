@@ -12,6 +12,7 @@ from ralph.git.rebase.rebase_checkpoint import (
     inspect_legacy_rebase_checkpoint,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_dir_lock_paths as _common_dir_lock_paths,
 )
@@ -112,7 +113,7 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         )
         return None
     if _unowned_operation_may_be_live(root, git_dir):
-        logger.critical(
+        terminal_emitter.critical(
             "recovery: live merge/rebase metadata in {} has no readable ownership record; "
             "retaining operation and resolved index for supervised recovery",
             root,

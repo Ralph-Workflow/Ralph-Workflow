@@ -18,7 +18,6 @@ from ralph.pipeline._git_operation_authority import (
 )
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import (
-    ExhaustedResolutionFailure,
     compute_continuation_retry_gate_key,
     continue_retained_resolution,
     reset_continuation_gate_state,
@@ -37,6 +36,7 @@ from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline._recovery_fast_forward_landing import (
     _record_skip,
 )
+from ralph.pipeline._terminal_emitter import critical
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     refresh_outcome_is_healthy,
@@ -52,7 +52,6 @@ from ralph.pipeline.auto_integrate_record import (
     record_path,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
-from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.integration_observation import InProgressKind, read_in_progress_kind
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
@@ -195,7 +194,7 @@ def _read_outcome_or_skip(root: Path, backend: FileBackend) -> RebaseState | Non
     try:
         outcome = read_record_outcome(root, backend=backend)
     except Exception as exc:
-        logger.critical("Integration ownership unreadable; recovery retained: {}", exc)
+        critical("Integration ownership unreadable; recovery retained: {}", exc)
         return _record_skip(
             reason=f"integration ownership unreadable: {exc}",
             target=None,
@@ -514,13 +513,9 @@ def _recover_pending_merge(
         )
     if isinstance(resumed, str):
         latest_record = read_record_outcome(root).record or record
-        terminal_reason = (
-            resumed.terminal_reason if isinstance(resumed, ExhaustedResolutionFailure) else None
-        )
         return _resumed_failure_outcome(
             latest_record,
             resumed,
-            terminal_reason=terminal_reason,
         )
     if resumed.reintegrate_pending:
         return _replay_stale_resolution(
@@ -545,28 +540,16 @@ recover_pending_merge = _recover_pending_merge
 def _resumed_failure_outcome(
     record: IntegrationRecord,
     reason: str,
-    *,
-    terminal_reason: ResolutionTerminationReason | None = None,
 ) -> RebaseState:
     from ralph.git.resolution_failure_cause import ResolutionFailureCause
 
     effective_cause = record.last_failure_cause
 
-    if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
-
-        return record_resolution_exhausted(
-            reason=reason,
-            target=record.target,
-            failure_cause=effective_cause,
-            terminal_reason=terminal_reason,
-        )
-
     if (
         not reason.startswith("WAITING:")
         and effective_cause != ResolutionFailureCause.CONFIG_FAILURE
     ):
-        logger.critical("CRITICAL: {}", reason)
+        critical("CRITICAL: {}", reason)
     if is_in_active_resolution_state(record):
         from ralph.pipeline.auto_integrate_outcome import record_conflict
 

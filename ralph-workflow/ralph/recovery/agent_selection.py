@@ -30,6 +30,7 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
         ),
         None,
     )
+    selected_agent = rows[selected_index][0] if selected_index is not None else None
     skipped_reasons: list[tuple[str, str]] = []
     for index, (agent, available, cooldown_ms_remaining, spent, cooldown_reason) in enumerate(rows):
         if index == selected_index:
@@ -45,12 +46,14 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
             skipped_reasons.append((agent, "spent"))
         else:
             skipped_reasons.append((agent, "lower_priority"))
-    selected_agent = rows[selected_index][0] if selected_index is not None else None
     return AgentSelection(selected_index, selected_agent, tuple(skipped_reasons))
 
 
 def format_selection_evidence(phase: str, selection: AgentSelection) -> str:
-    skipped = "; ".join(f"{agent}: {reason}" for agent, reason in selection.skipped_reasons)
+    skipped = "; ".join(
+        f"{agent}: {_selection_reason(reason, selection.agent)}"
+        for agent, reason in selection.skipped_reasons
+    )
     if selection.agent is None:
         return (
             f"Phase {phase}: No selectable agent (skipped {skipped})"
@@ -61,4 +64,14 @@ def format_selection_evidence(phase: str, selection: AgentSelection) -> str:
         f"Phase {phase}: Selected agent {selection.agent} (skipped {skipped})"
         if skipped
         else f"Phase {phase}: Selected agent {selection.agent}"
+    )
+
+
+def _selection_reason(reason: str, selected_agent: str | None) -> str:
+    if reason != "lower_priority":
+        return reason
+    if selected_agent is None:
+        return "lower_priority (listed later in configured chain order)"
+    return (
+        f"lower_priority (listed after selected agent {selected_agent} in configured chain order)"
     )

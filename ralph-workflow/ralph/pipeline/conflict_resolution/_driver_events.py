@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.pipeline._integration_status import IntegrationStatus
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -34,14 +35,22 @@ def _emit(display: ParallelDisplay | None, line: str) -> None:
 
 
 def announce_declared_decisions(
-    display: ParallelDisplay | None, decision_paths: tuple[str, ...]
+    display: ParallelDisplay | None, status: IntegrationStatus | tuple[str, ...] | None
 ) -> None:
-    if not decision_paths:
+    if status is None:
         return
+    facts = (
+        status.paths_with_reasons
+        if isinstance(status, IntegrationStatus)
+        else tuple((path, "marker-less declaration") for path in status)
+    )
+    if not facts:
+        return
+    details = "; ".join(f"{path}: {reason}" for path, reason in facts)
     _emit(
         display,
         "conflict(s) git could not write markers into, so the resolution cannot be "
-        f"read off the file and must be declared: {', '.join(decision_paths)}",
+        f"read off the file and must be declared: {details}",
     )
 
 

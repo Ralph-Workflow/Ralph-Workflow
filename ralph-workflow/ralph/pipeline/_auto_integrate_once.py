@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
+from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline._target_reconciliation_handoff import scheduled_landing
 from ralph.pipeline.auto_integrate_context import record_refresh
@@ -239,7 +238,7 @@ def _integrate_once_owned(
             }
         )
         if not ok:
-            logger.critical(
+            terminal_emitter.critical(
                 "CRITICAL: feature {} did NOT land on '{}': {}; committed work remains on the feature",
                 feature_sha,
                 target,

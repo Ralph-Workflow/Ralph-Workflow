@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline._integration_status import IntegrationStatus
 
     class _StatusBarHost(Protocol):
         _ctx: DisplayContext
@@ -193,6 +194,7 @@ class StatusBarModel:
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
     integration_alert: str | None = None
+    integration_status: IntegrationStatus | None = None
     outer_label: str | None = None
     elapsed_seconds: float | None = None
     agent_name: str | None = None
@@ -677,7 +679,12 @@ def _finalize_status_bar_width(
         return Text(" ")
     if cell_len(text.plain) <= ctx.width:
         return text
-    if model.integration_alert or "check-config" in text.plain or "fix " in text.plain:
+    if (
+        model.integration_alert
+        or model.integration_status is not None
+        or "check-config" in text.plain
+        or "fix " in text.plain
+    ):
         lines = text.wrap(ctx.console, ctx.width)
         return Text("\n").join(lines)
     text.truncate(ctx.width)
@@ -698,9 +705,14 @@ def render_status_bar(
     has_outer_dev = model.outer_dev_iteration is not None
     has_inner_analysis = model.inner_analysis is not None
     outer_label = _safe_single_line(model.outer_label) if model.outer_label else None
+    integration_alert = (
+        model.integration_status.summary
+        if model.integration_status is not None
+        else model.integration_alert
+    )
     alert_len = 0
-    if model.integration_alert:
-        alert_len = cell_len(_safe_single_line(model.integration_alert)) + cell_len(separator) + 2
+    if integration_alert:
+        alert_len = cell_len(_safe_single_line(integration_alert)) + cell_len(separator) + 2
     budgets = _field_overhead_and_label_budgets(
         ctx,
         has_outer_dev=has_outer_dev,
@@ -720,8 +732,8 @@ def render_status_bar(
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
     _append_attention_slot(text, model, ctx, separator)
-    if model.integration_alert:
-        _append_integration_alert(text, model.integration_alert, ctx, separator)
+    if integration_alert:
+        _append_integration_alert(text, integration_alert, ctx, separator)
     if ctx.glyphs_enabled and budgets.render_marker:
         marker = ctx.glyph_for("phase_marker")
         text.append(marker + " ", style="theme.status.bar_marker")

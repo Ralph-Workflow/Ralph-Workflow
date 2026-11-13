@@ -13,12 +13,7 @@ from ralph.display.context import make_display_context
 from ralph.display.status_bar import render_status_bar
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline import (
-    RebaseOutcomeKind,
-    RebaseResolutionResult,
-    resolve_conflicted_rebase,
-    resolve_rebase_with_config,
-)
+from ralph.pipeline import RebaseOutcomeKind, resolve_conflicted_rebase
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
@@ -349,17 +344,20 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
     mock_runner.resolve_rebase.side_effect = _fake_resolve_rebase
 
     try:
-        res = resolve_rebase_with_config(
+        res = resolve_conflicted_rebase(
             tmp_path,
             "main",
             _failing_resolver,
             None,
+            None,
             agent_runner=mock_runner,
         )
-        assert isinstance(res, RebaseResolutionResult)
-        assert res.succeeded is False
-        assert res.failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
-        assert res.reason == "target worktree context failed: simulated context fault"
+        assert res is not None
+        assert res.short_circuit is not None
+        assert res.short_circuit.last_failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
+        assert res.short_circuit.last_reason == (
+            "target worktree context failed: simulated context fault"
+        )
 
         warning_messages = [
             r["message"]

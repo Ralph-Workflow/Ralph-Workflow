@@ -39,8 +39,15 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
-def test_resolve_guarded_config_dirs_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_guarded_config_dirs_defaults(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake_home = tmp_path / "fake_home"
+    fake_config = fake_home / ".config"
+    fake_config.mkdir(parents=True)
     monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
     dirs = _resolve_guarded_config_dirs()
     assert len(dirs) >= 1
     dir_strings = [str(d) for d in dirs]
@@ -572,7 +579,16 @@ def test_bundled_defaults_agents_toml_is_protected_and_valid() -> None:
     assert bundled_agents.read_bytes() == initial_bytes
 
 
-def test_default_guard_snapshot_includes_bundled_agents_template() -> None:
+def test_default_guard_snapshot_includes_bundled_agents_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_home = tmp_path / "fake_home"
+    fake_config = fake_home / ".config"
+    fake_config.mkdir(parents=True)
+    monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
+
     snapshot = _scan_guarded_config_files()
 
     assert _BUNDLED_AGENTS_TEMPLATE.resolve() in snapshot

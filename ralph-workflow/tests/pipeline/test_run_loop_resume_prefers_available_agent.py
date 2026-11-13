@@ -11,6 +11,7 @@ from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import auto_integrate_resolve, run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.integration_resolution import (
@@ -422,9 +423,26 @@ def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(monkeypatch
     assert merge_calls == []
 
 
-def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -> None:
-    from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
+class _RecordingContinuationExecutor:
+    def __init__(self) -> None:
+        self.root: Path | None = None
+        self.target: str | None = None
+        self.resolver: Any = None
 
+    def continue_rebase(
+        self,
+        root: Path,
+        target: str,
+        resolver: Any,
+        config: Any,
+    ) -> tuple[bool, str | None, ResolutionFailureCause]:
+        self.root = root
+        self.target = target
+        self.resolver = resolver
+        return True, None, ResolutionFailureCause.NONE
+
+
+def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     built: list[str] = []
@@ -432,14 +450,13 @@ def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -
         "ralph.pipeline.auto_integrate_agent.build_agent_rebase_stop_resolver",
         lambda **_k: built.append("stop-resolver") or (lambda *_a: True),
     )
-    monkeypatch.setattr(
-        rebase_merge,
-        "_resolve_rebase_with_config",
-        lambda _root, _target, _resolver, _config: (True, None),
-    )
+    executor = _RecordingContinuationExecutor()
 
-    assert run_loop._resolve_paused_rebase(ctx, "main") is True
+    assert run_loop.resolve_paused_rebase(ctx, "main", executor=executor) is True
     assert built == ["stop-resolver"]
+    assert executor.root == Path("/workspace")
+    assert executor.target == "main"
+    assert executor.resolver is not None
 
 
 def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: Any) -> None:

@@ -235,7 +235,7 @@ tests/pipeline/test_run_loop_cycle_timebox_wiring.py|2,0,1
 tests/pipeline/test_run_loop_interrupt.py|2,2,0
 tests/pipeline/test_run_loop_phase_entry_prefers_available_agent.py|0,0,11
 tests/pipeline/test_run_loop_recovery_surface.py|0,3,0
-tests/pipeline/test_run_loop_resume_prefers_available_agent.py|34,0,33
+tests/pipeline/test_run_loop_resume_prefers_available_agent.py|33,0,32
 tests/pipeline/test_run_loop_status_bar_wiring.py|4,7,0
 tests/pipeline/test_run_loop_unavailable_surface.py|0,1,0
 tests/pipeline/test_run_loop_waiting_state_logs.py|0,2,0
@@ -437,7 +437,7 @@ tests/test_conflict_budget_durability.py|0,1,0
 tests/test_conflict_budget_typed_setter.py|0,1,0
 tests/test_conflict_resolution_attempt_attribution.py|5,1,1
 tests/test_conflict_resolution_cross_path_budget.py|6,0,0
-tests/test_conflict_resolution_futile_loop.py|9,1,4
+tests/test_conflict_resolution_futile_loop.py|9,0,2
 tests/test_conflict_resolution_lifecycle.py|0,2,0
 tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0

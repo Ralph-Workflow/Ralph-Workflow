@@ -4,9 +4,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_diagnostic_evidence import EVIDENCE_LEASE_SECONDS
@@ -86,7 +85,7 @@ def _settle_spent_budget(
             clock=clock,
         )
     except Exception:
-        logger.critical(
+        terminal_emitter.critical(
             "Integration diagnostic budget spent but ladder escalation raised; "
             "the durable ledger keeps the climb and the next seam resumes it",
         )

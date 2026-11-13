@@ -1179,6 +1179,7 @@ ralph.pipeline.auto_integrate_recovery_terminal
 
 .. automodule:: ralph.pipeline.auto_integrate_recovery_terminal
    :members:
+   :exclude-members: TerminalStateViolationError
    :show-inheritance:
 
 ralph.pipeline.auto_integrate_terminal
@@ -1540,6 +1541,7 @@ ralph.pipeline.auto_integrate_recovery
 
 .. automodule:: ralph.pipeline.auto_integrate_recovery
    :members:
+   :exclude-members: TerminalStateViolationError
    :show-inheritance:
 
 ralph.pipeline.auto_integrate_planning
@@ -5467,5 +5469,173 @@ ralph.testing.repo_structure_boundary_rules
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.repo_structure_boundary_rules
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.key_unavailable
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.key_unavailable
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.ladder_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.ladder_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.ladder_effect_kind
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.ladder_effect_kind
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.ladder_facts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.ladder_facts
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.ladder_state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.ladder_state
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.ladder_step_result
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.ladder_step_result
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.ladder_transition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.ladder_transition
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.landed_verdict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.landed_verdict
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_attempt_key
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_attempt_key
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_gate_decision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_gate_decision
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_gate_facts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_gate_facts
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_outcome_config_failure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_outcome_config_failure
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_outcome_exhausted
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_outcome_exhausted
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_outcome_needs_operator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_outcome_needs_operator
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_outcome_producer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_outcome_producer
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_outcome_resolved
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_outcome_resolved
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_outcome_retry_later
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_outcome_retry_later
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.resolution_outcome_type
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.resolution_outcome_type
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.stop_resolution_blocked
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.stop_resolution_blocked
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.stop_resolution_trigger
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.stop_resolution_trigger
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.terminal_state_violation_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.terminal_state_violation_error
+   :members:
+   :show-inheritance:
+
+ralph.recovery.eligibility_wait
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.eligibility_wait
+   :members:
+   :show-inheritance:
+
+ralph.recovery.wait_kind
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.wait_kind
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_integration_invariants
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_integration_invariants
    :members:
    :show-inheritance:

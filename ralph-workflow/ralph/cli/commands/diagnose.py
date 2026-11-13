@@ -37,6 +37,9 @@ from ralph.onboarding import (
     RUN_COMMAND,
     starter_prompt_validation_hint,
 )
+from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
+from ralph.pipeline.checkpoint import load as load_checkpoint
+from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 from ralph.policy.loader import (
     load_policy,
     load_policy_for_workspace_scope,
@@ -107,6 +110,7 @@ def diagnose_command(
     config_ok &= _check_workspace_files(workspace_scope, display=display)
     _check_capability_state(display=display)
     _check_filesystem_health(workspace_scope.root, display=display)
+    _check_integration_status(workspace_scope.root, display=display)
 
     validation_ok = _run_preflight_validation(
         config_path, cli_overrides, workspace_scope, display=display
@@ -173,6 +177,41 @@ def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
         )
 
 
+def _persisted_integration_status(workspace_root: Path) -> IntegrationStatus | None:
+    state = load_checkpoint(workspace_root / ".agent" / "checkpoint.json")
+    if state is None:
+        return None
+    rebase = state.rebase
+    if not rebase.resolution_exhausted and not rebase.integration_unresolved:
+        return None
+    reason = rebase.resolution_exhaustion_reason or rebase.last_reason or ""
+    prefix, separator, _detail = reason.partition(":")
+    cause = prefix if separator and prefix.isupper() else rebase.last_failure_cause.value
+    paths = tuple(rebase.last_conflict_paths)
+    return build_integration_status(
+        cause=cause,
+        paths_with_reasons=tuple((path, "persisted integration conflict") for path in paths),
+        command=operator_command_for_paths(paths),
+        agents_can_finish=False,
+    )
+
+
+def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
+    status = _persisted_integration_status(workspace_root)
+    if status is None:
+        return True
+    rows: list[tuple[object, ...]] = [
+        ("Summary", status.summary),
+        ("Cause", status.cause),
+        ("Paths", ", ".join(status.paths) or "(none)"),
+        ("Operator command", status.command or "(none)"),
+        ("Agents can finish", "yes" if status.agents_can_finish else "no"),
+        ("Build", status.build_identity),
+    ]
+    _emit_simple_table(display, "Integration Status", rows)
+    return True
+
+
 def _check_capability_state(*, display: object) -> bool:
     from ralph.display.parallel_display import ParallelDisplay
 
@@ -234,6 +273,7 @@ def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...
         "Workspace Files": ["File", "Status"],
         "Filesystem Health": ["Volume", "Spotlight", "Journal", "Warnings"],
         "Terminal / colour": ["Check", "Value"],
+        "Integration Status": ["Fact", "Value"],
     }.get(title, ["Check", "Result"])
     column_styles = [
         "theme.cat.meta",

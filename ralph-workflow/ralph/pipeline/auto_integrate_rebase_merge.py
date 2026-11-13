@@ -32,7 +32,6 @@ from ralph.pipeline._auto_integrate_rebase_resolve import (
     RebaseRunResult,
     _clear_record_if_no_inflight_op,
     _resolve_conflicted_rebase,
-    _resolve_rebase_with_config,
     verify_terminal_state,
 )
 from ralph.pipeline.auto_integrate_backup_refs import create_stale_resolution_snapshot
@@ -133,7 +132,6 @@ __all__ = [
     "SKIP_RETRY_AFTER_MERGE_COMMIT",
     "SKIP_ROOT_COMMITS_IN_RANGE",
     "RebaseRunResult",
-    "_resolve_rebase_with_config",
     "is_registered_skip_reason",
     "merge_state",
     "read_record",

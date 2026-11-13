@@ -446,12 +446,12 @@ a ledger row is a defect, and so is a ledger row without a retained entry.
 The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
-| root | 464 | 394 | 860 | 855 | 2109 | follow-up: backlog white-box conversion unit |
+| root | 464 | 394 | 859 | 853 | 2106 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | follow-up: mcp public-seam unit |
 | agents | 100 | 34 | 282 | 100 | 416 | follow-up: agent public-seam unit |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | follow-up: auto-integrate public-seam unit |
 | project-policy | 28 | 4 | 53 | 158 | 215 | follow-up: policy public-seam unit |
-| run-loop | 17 | 103 | 29 | 89 | 221 | follow-up: run-loop public-seam unit |
+| run-loop | 17 | 102 | 29 | 88 | 219 | follow-up: run-loop public-seam unit |
 | display | 21 | 22 | 85 | 75 | 182 | follow-up: display public-seam unit |
 | pipeline | 32 | 72 | 33 | 80 | 185 | follow-up: pipeline public-seam unit |
 | integration | 22 | 21 | 40 | 98 | 159 | follow-up: integration public-seam unit |
@@ -731,7 +731,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/pipeline/test_run_loop_interrupt.py` | 2 | 2 | 0 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_phase_entry_prefers_available_agent.py` | 0 | 0 | 11 | run-loop | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_recovery_surface.py` | 0 | 3 | 0 | run-loop | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: run-loop public-seam unit |
-| `tests/pipeline/test_run_loop_resume_prefers_available_agent.py` | 34 | 0 | 33 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
+| `tests/pipeline/test_run_loop_resume_prefers_available_agent.py` | 33 | 0 | 32 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_status_bar_wiring.py` | 4 | 7 | 0 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_unavailable_surface.py` | 0 | 1 | 0 | run-loop | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_waiting_state_logs.py` | 0 | 2 | 0 | run-loop | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: run-loop public-seam unit |
@@ -933,7 +933,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_conflict_budget_typed_setter.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_attempt_attribution.py` | 5 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_cross_path_budget.py` | 6 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
-| `tests/test_conflict_resolution_futile_loop.py` | 9 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_conflict_resolution_futile_loop.py` | 9 | 0 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_lifecycle.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_liveness_matrix.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_outcome_judging.py` | 5 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |

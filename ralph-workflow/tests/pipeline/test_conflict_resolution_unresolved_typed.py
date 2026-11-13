@@ -451,8 +451,12 @@ def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
     assert invocations == ["lead", "lead", "lead", "second"]
     selection_lines = [line for line in logs if "Selected agent second" in line]
     assert selection_lines, "the next eligible candidate must be selected after demotion"
-    assert all(line.count("lower_priority") == 5 for line in selection_lines), (
-        f"expected exactly five lower_priority skips in: {selection_lines}"
+    list_order_reason = (
+        "lower_priority (listed after selected agent second in configured chain order)"
+    )
+    assert all(line.count(list_order_reason) == 5 for line in selection_lines), (
+        f"expected exactly five list-order skip reasons naming the selected "
+        f"predecessor in: {selection_lines}"
     )
     assert all("lead" in line for line in selection_lines), (
         "the demoted resolver must be named in the skip evidence"

@@ -20,6 +20,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/integration/test_retained_integration_acceptance.py",
     "tests/test_auto_integrate_remote_sync_fast_forward_contract.py",
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py",
+    "tests/test_integration_recovery_scenarios.py",
     "tests/test_auto_rebase_idempotence_e2e.py",
     "tests/test_backup_ref_operation_scope.py",
     "tests/test_tool_git_read_path_validation.py",

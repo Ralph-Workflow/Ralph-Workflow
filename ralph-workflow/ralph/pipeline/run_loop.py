@@ -17,6 +17,7 @@ from git.exc import InvalidGitRepositoryError, NoSuchPathError
 from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
+from ralph._build_identity import build_identity
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import Verbosity
 from ralph.display._run_start_orientation import RunStartOrientation
@@ -50,6 +51,7 @@ from ralph.pipeline._integration_owner_seam import (
 from ralph.pipeline._integration_record_facts import busy_refusal_outcome
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
+from ralph.pipeline._terminal_emitter import critical
 from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_entry_point import AgentEntryPoint
@@ -225,7 +227,6 @@ class LoopContext:
     process_teardown: Callable[[], None] | None = None
     _session_handoff_dispatched: bool = False
     cold_capped_escalation_attempted: bool = False
-    _retained_round_fingerprints: dict[str, str] = field(default_factory=dict)
     hooks: RetryDiagnosticHooks = field(default_factory=RetryDiagnosticHooks)
 
 
@@ -2343,7 +2344,7 @@ def _ensure_planning_in_sync(
     alarm = f"CRITICAL: integration did not land; planning blocked: {detail}"
 
     def _emit_planning_blocked(message: str) -> None:
-        logger.critical("{}", message)
+        critical("{}", message)
         with suppress(Exception):
             emit_integration_warn_line(ctx.active_display, message)
 
@@ -2452,7 +2453,7 @@ def _repair_pending_merge_commit(ctx: LoopContext, failure: str) -> None:
             controller=ctx.controller,
         )
     except Exception as exc:
-        logger.critical("Merge commit retained; repair agent unavailable: {}", exc)
+        critical("Merge commit retained; repair agent unavailable: {}", exc)
 
 
 def _diagnose_retained_integration(ctx: LoopContext, failure: str) -> None:
@@ -2490,12 +2491,13 @@ def _handoff_retained_failure(
         hooks.handoff_retained_failure(ctx, failure)
         return
     from ralph.pipeline._integration_diagnostic import diagnostic_needed
+    from ralph.pipeline._stop_resolution_entry import retained_round_is_new
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcomeDisposition,
         read_record_outcome,
     )
 
-    if not _retained_round_is_new(ctx, "retained-handoff", _retained_round_fingerprint(ctx)):
+    if not retained_round_is_new(ctx.workspace_scope.root, _retained_round_fingerprint(ctx)):
         return
     outcome = read_record_outcome(ctx.workspace_scope.root, backend=backend)
     if outcome.disposition is RecordReadOutcomeDisposition.PRESENT and outcome.record is not None:
@@ -2948,18 +2950,6 @@ def _retained_round_fingerprint(ctx: LoopContext) -> str:
         return "unreadable"
 
 
-def _retained_round_is_new(ctx: LoopContext, key: str, fingerprint: str) -> bool:
-    try:
-        seen = ctx._retained_round_fingerprints
-    except AttributeError:
-        seen = {}
-        ctx._retained_round_fingerprints = seen
-    if seen.get(key) == fingerprint:
-        return False
-    seen[key] = fingerprint
-    return True
-
-
 def _ladder_escalation_reason(detail: str, preserved_copy: str) -> str:
     return (
         f"{detail}; preserved copy: {preserved_copy}; "
@@ -2978,7 +2968,7 @@ def _wait_for_integration_retry(
     alarm = f"CRITICAL: integration has not landed; recovery will retry: {detail}"
 
     def _emit_retry_alarm(message: str) -> None:
-        logger.critical("{}", message)
+        critical("{}", message)
         with suppress(Exception):
             emit_integration_warn_line(ctx.active_display, message)
 
@@ -4090,7 +4080,12 @@ def run(
 
     _runner_module.register_role_handlers(policy_bundle.pipeline)
     _unsubscribe_bus = _subscribe_recovery_logger(_controller)
-    logger.info("Starting pipeline: phase={}, budget_caps={}", state.phase, state.budget_caps)
+    logger.info(
+        "Starting pipeline: phase={}, budget_caps={} [build={}]",
+        state.phase,
+        state.budget_caps,
+        build_identity(),
+    )
     if pipeline_subscriber is None:
         pipeline_subscriber = dashboard_subscriber
     active_display, display_context, _display_stop = _setup_active_display(

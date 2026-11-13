@@ -30,6 +30,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.text import Text as _RichText
 
+from ralph._build_identity import build_identity
 from ralph.display import theme as _display_theme
 from ralph.display._activity_line_options import ActivityLineOptions as _ActivityLineOptions
 from ralph.display._frequency_tier import FrequencyTier
@@ -2415,7 +2416,10 @@ class ParallelDisplay:
                 f"[run-start] {self._ctx.glyph_for('milestone')} ",
                 style="theme.banner.ascii",
             )
-            t.append("Ralph Workflow run start", style="theme.banner.title")
+            t.append(
+                f"Ralph Workflow run start ({build_identity()})",
+                style="theme.banner.title",
+            )
             self._console.print(t, markup=False, highlight=False, no_wrap=True)
 
             self._emit_run_start(timestamp, orientation, height_constrained=height_constrained)

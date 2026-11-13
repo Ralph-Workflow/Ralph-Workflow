@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from loguru import logger
 
@@ -13,12 +13,8 @@ from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     post_attempt_verify,
 )
-from ralph.pipeline.config_file_fingerprint import extract_config_path_from_reason
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
-)
-from ralph.pipeline.conflict_resolution.attempt_fault import (
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
@@ -27,6 +23,12 @@ from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
+from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
+from ralph.pipeline.resolution_outcome_exhausted import Exhausted
+from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+from ralph.pipeline.resolution_outcome_resolved import Resolved
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -35,18 +37,18 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseFailed, RebaseNoOp
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.integration_actions import AgentRunner
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 
 __all__ = [
     "RebaseResolutionResult",
     "RebaseRunResult",
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
-    "_resolve_rebase_with_config",
     "resolve_conflicted_rebase",
-    "resolve_rebase_with_config",
     "verify_terminal_state",
 ]
 
@@ -84,29 +86,6 @@ def verify_terminal_state(
         )
 
 
-class _RebaseResolutionOutcome(tuple[bool, str | None]):
-    failure_cause: ResolutionFailureCause
-
-    def __new__(
-        cls,
-        succeeded: bool,
-        reason: str | None,
-        failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE,
-    ) -> _RebaseResolutionOutcome:
-        obj = super().__new__(cls, (succeeded, reason))
-        obj.failure_cause = failure_cause
-        return obj
-
-    @property
-    def succeeded(self) -> bool:
-        return bool(self[0])
-
-    @property
-    def reason(self) -> str | None:
-        val = self[1]
-        return str(val) if isinstance(val, str) else None
-
-
 def resolve_conflicted_rebase(
     root: Path,
     target: str,
@@ -124,57 +103,151 @@ def resolve_conflicted_rebase(
             target,
         )
         return None
+    blocked_reason: str | None = None
     with conflict_status_bar_session(display, root):
-        res = resolve_rebase_with_config(
-            root,
-            target,
-            rebase_stop_resolver,
-            conflict_resolution_config,
-            agent_runner,
+        from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+        from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+        from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
+        from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
+
+        outcome = attempt_stop_resolution(
+            None,
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=root,
+                target=target,
+                resolver=rebase_stop_resolver,
+                record=resolution_gate_record(root, target),
+                conflict_config=conflict_resolution_config,
+                agent_runner=agent_runner,
+            ),
         )
-        resolved = res.succeeded
-        exhaustion_reason = res.reason
-        failure_cause = res.failure_cause
-        terminal_reason = res.terminal_reason
-    if resolved and not _merge_mod.set_resolving_rebase(root, False):
+        res: RebaseResolutionResult
+        if isinstance(outcome, StopResolutionBlocked):
+            blocked_reason = outcome.reason
+            res = RebaseResolutionResult(
+                False,
+                outcome.reason,
+                ResolutionFailureCause.UNRESOLVED_CONFLICT,
+            )
+        elif isinstance(outcome, RebaseResolutionResult):
+            blocked_reason = None
+            res = outcome
+        else:
+            raise TypeError("rebase stop resolution returned an invalid result")
+    if res.succeeded and not _merge_mod.set_resolving_rebase(root, False):
         logger.warning(
             "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
         )
     record = _merge_mod.read_record(root)
+    if blocked_reason is not None:
+        return _blocked_run(record, target, blocked_reason)
     if record is not None and record.rebase_continue_pending:
-        pending_reason = record.rebase_continue_error or "verified rebase continuation pending"
-        pending_cause = (
-            ResolutionFailureCause.CONFIG_FAILURE
-            if extract_config_path_from_reason(pending_reason) is not None
-            else ResolutionFailureCause.CONTEXT_FAILURE
-        )
-        return RebaseRunResult(
-            rebase_outcome=RebaseConflicts(files=[]),
-            merge_attempted=False,
-            merge_outcome=None,
-            short_circuit=record_conflict(
-                reason=pending_reason,
-                target=target,
-                failure_cause=pending_cause,
-            ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
-        )
-    if not resolved:
-        effective_cause = (
-            failure_cause
-            if failure_cause != ResolutionFailureCause.NONE
-            else ResolutionFailureCause.UNRESOLVED_CONFLICT
-        )
-        effective_reason = (
-            exhaustion_reason or "rebase resolution incomplete; progress retained for next agent"
-        )
-        if record is not None:
-            from ralph.pipeline.auto_integrate_record import write_record
+        return _pending_continue_run(record, target)
+    return _rebase_run_result(root, record, target, res)
 
-            write_record(
-                root,
-                record.model_copy(update={"last_failure_cause": effective_cause}),
+
+def _blocked_run(
+    record: IntegrationRecord | None,
+    target: str,
+    blocked_reason: str,
+) -> RebaseRunResult:
+    blocked_cause = (
+        record.last_failure_cause
+        if record is not None and record.last_failure_cause is not ResolutionFailureCause.NONE
+        else ResolutionFailureCause.UNRESOLVED_CONFLICT
+    )
+    return RebaseRunResult(
+        rebase_outcome=RebaseConflicts(files=[]),
+        merge_attempted=False,
+        merge_outcome=None,
+        short_circuit=record_conflict(
+            reason=blocked_reason,
+            target=target,
+            failure_cause=blocked_cause,
+        ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
+    )
+
+
+def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunResult:
+    pending_reason = record.rebase_continue_error or "verified rebase continuation pending"
+    pending_cause = (
+        ResolutionFailureCause.CONFIG_FAILURE
+        if record.last_failure_cause is ResolutionFailureCause.CONFIG_FAILURE
+        else ResolutionFailureCause.CONTEXT_FAILURE
+    )
+    return RebaseRunResult(
+        rebase_outcome=RebaseConflicts(files=[]),
+        merge_attempted=False,
+        merge_outcome=None,
+        short_circuit=record_conflict(
+            reason=pending_reason,
+            target=target,
+            failure_cause=pending_cause,
+        ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
+    )
+
+
+def _rebase_outcome(result: RebaseResolutionResult) -> ResolutionOutcomeType:
+    if result.succeeded:
+        return Resolved()
+    return classify_resolution_failure(
+        terminal_reason=result.terminal_reason,
+        failure_cause=result.failure_cause,
+        reason=result.reason,
+    )
+
+
+def _conflict_run(
+    target: str,
+    reason: str,
+    failure_cause: ResolutionFailureCause,
+) -> RebaseRunResult:
+    return RebaseRunResult(
+        rebase_outcome=RebaseConflicts(files=[]),
+        merge_attempted=False,
+        merge_outcome=None,
+        short_circuit=record_conflict(
+            reason=reason,
+            target=target,
+            failure_cause=failure_cause,
+        ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
+    )
+
+
+def _rebase_run_result(
+    root: Path,
+    record: IntegrationRecord | None,
+    target: str,
+    result: RebaseResolutionResult,
+) -> RebaseRunResult:
+    outcome = _rebase_outcome(result)
+    failure_cause = (
+        result.failure_cause
+        if result.failure_cause is not ResolutionFailureCause.NONE
+        else ResolutionFailureCause.UNRESOLVED_CONFLICT
+    )
+    failure_reason = (
+        result.reason or "rebase resolution incomplete; progress retained for next agent"
+    )
+    if record is not None and not result.succeeded:
+        from ralph.pipeline.auto_integrate_record import write_record
+
+        write_record(root, record.model_copy(update={"last_failure_cause": failure_cause}))
+    match outcome:
+        case Resolved():
+            logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
+            return RebaseRunResult(
+                rebase_outcome=RebaseSuccess(),
+                merge_attempted=False,
+                merge_outcome=None,
+                short_circuit=None,
             )
-        if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+        case NeedsOperator():
+            return _conflict_run(target, failure_reason, failure_cause)
+        case RetryLater():
+            return _conflict_run(target, failure_reason, failure_cause)
+        case Exhausted():
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha if record is not None else None,
@@ -188,168 +261,23 @@ def resolve_conflicted_rebase(
                 merge_attempted=False,
                 merge_outcome=None,
                 short_circuit=record_resolution_exhausted(
-                    reason=effective_reason,
+                    reason=failure_reason,
                     target=target,
-                    failure_cause=effective_cause,
-                    terminal_reason=terminal_reason,
+                    failure_cause=failure_cause,
+                    terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
                 ),
             )
-        return RebaseRunResult(
-            rebase_outcome=RebaseConflicts(files=[]),
-            merge_attempted=False,
-            merge_outcome=None,
-            short_circuit=record_conflict(
-                reason=effective_reason,
-                target=target,
-                failure_cause=effective_cause,
-            ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
-        )
-    logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
-    return RebaseRunResult(
-        rebase_outcome=RebaseSuccess(),
-        merge_attempted=False,
-        merge_outcome=None,
-        short_circuit=None,
-    )
+        case ConfigFailure(file=file):
+            return _conflict_run(
+                target,
+                f"fix {file} then run ralph --check-config",
+                ResolutionFailureCause.CONFIG_FAILURE,
+            )
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 _resolve_conflicted_rebase = resolve_conflicted_rebase
-
-
-def resolve_rebase_with_config(
-    root: Path,
-    target: str,
-    resolver: RebaseStopResolver,
-    config: ConflictResolutionConfig | None,
-    agent_runner: AgentRunner | None = None,
-) -> RebaseResolutionResult:
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
-
-    session = (
-        ResolutionSession()
-        if config is None
-        else ResolutionSession(
-            inactivity_timeout_seconds=config.inactivity_timeout_seconds,
-            max_rounds_per_stop=config.max_rounds_per_stop,
-            max_rebase_conflict_stops=config.max_rebase_conflict_stops,
-            max_fallback_agents=config.max_fallback_agents,
-            total_resolution_cap_seconds=config.total_resolution_cap_seconds,
-        )
-    )
-    from ralph.pipeline import auto_integrate_rebase_merge as _merge_mod
-
-    resolved = (
-        agent_runner.resolve_rebase(root, target, resolver, session=session)
-        if agent_runner is not None
-        else _merge_mod.resolve_rebase_in_progress(root, target, resolver, session=session)
-    )
-    if resolved:
-        return RebaseResolutionResult(
-            True,
-            None,
-            ResolutionFailureCause.NONE,
-            session.terminal_reason,
-        )
-    carried_cause = (
-        session.last_failure_cause
-        if session.last_failure_cause != ResolutionFailureCause.NONE
-        else (
-            ResolutionFailureCause.CONFIG_FAILURE
-            if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
-            else (
-                ResolutionFailureCause.CONTEXT_FAILURE
-                if session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE
-                else ResolutionFailureCause.NONE
-            )
-        )
-    )
-    if (
-        not session.charge_conflict_budget
-        or session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-    ):
-        logger.warning(
-            "auto_integrate: rebase conflict resolution for '{}' ended on {} "
-            "without the resolver chain being spent; not recording it as exhausted",
-            target,
-            session.terminal_reason.value if session.terminal_reason else "no terminal evidence",
-        )
-        if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH:
-            carried_reason = session.operator_action_message or session.exhaustion_reason
-            if not carried_reason and session.unresolved_paths:
-                from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
-
-                carried_reason = gitlink_escalation_message(session.unresolved_paths)
-        elif session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-            carried_reason = session.operator_action_message or session.exhaustion_reason
-            if not carried_reason or "needs operator action:" not in carried_reason:
-                from ralph.pipeline.conflict_resolution._operator_command import (
-                    operator_command_for_paths,
-                )
-
-                paths = tuple(session.unresolved_paths)
-                paths_str = ", ".join(paths)
-                cmd = operator_command_for_paths(paths)
-                carried_reason = (
-                    f"all resolver agents are spent/unavailable; "
-                    f"conflict on {paths_str} needs operator action: {cmd}"
-                )
-        elif carried_cause in (
-            ResolutionFailureCause.CONFIG_FAILURE,
-            ResolutionFailureCause.CONTEXT_FAILURE,
-        ) or session.terminal_reason in (
-            ResolutionTerminationReason.CONFIG_FAILURE,
-            ResolutionTerminationReason.CONTEXT_FAILURE,
-        ):
-            carried_reason = session.exhaustion_reason or (
-                session.terminal_reason.value if session.terminal_reason is not None else None
-            )
-        else:
-            carried_reason = None
-        return RebaseResolutionResult(
-            False,
-            carried_reason,
-            carried_cause,
-            session.terminal_reason,
-        )
-    final_reason = (
-        session.operator_action_message
-        if session.operator_action_message
-        and "needs operator action:" in session.operator_action_message
-        else session.exhaustion_reason
-    )
-    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED and (
-        not final_reason or "needs operator action:" not in final_reason
-    ):
-        from ralph.pipeline.conflict_resolution._operator_command import (
-            operator_command_for_paths,
-        )
-
-        paths = tuple(session.unresolved_paths)
-        paths_str = ", ".join(paths)
-        cmd = operator_command_for_paths(paths)
-        final_reason = (
-            f"all resolver agents are spent/unavailable; "
-            f"conflict on {paths_str} needs operator action: {cmd}"
-        )
-    return RebaseResolutionResult(
-        False,
-        final_reason,
-        carried_cause
-        if carried_cause != ResolutionFailureCause.NONE
-        else ResolutionFailureCause.UNRESOLVED_CONFLICT,
-        session.terminal_reason,
-    )
-
-
-def _resolve_rebase_with_config(
-    root: Path,
-    target: str,
-    resolver: RebaseStopResolver,
-    config: ConflictResolutionConfig | None,
-    agent_runner: AgentRunner | None = None,
-) -> _RebaseResolutionOutcome:
-    result = resolve_rebase_with_config(root, target, resolver, config, agent_runner)
-    return _RebaseResolutionOutcome(result.succeeded, result.reason, result.failure_cause)
 
 
 def _clear_record_if_no_inflight_op(root: Path) -> None:

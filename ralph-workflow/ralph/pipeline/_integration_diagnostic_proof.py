@@ -7,6 +7,7 @@ from ralph.pipeline._integration_diagnostic_evidence import (
     diagnostic_evidence_verdict,
     snapshot_has_unreadable,
 )
+from ralph.pipeline._landed_predicate import operation_landed
 from ralph.pipeline.auto_integrate_record import parse_lease
 from ralph.pipeline.operation_evidence import EvidenceVerdict, identity_fingerprint
 
@@ -16,32 +17,10 @@ if TYPE_CHECKING:
 
 
 def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    from ralph.git.subprocess_runner import run_git
-
-    try:
-        head_res = run_git(
-            ("rev-parse", "--verify", "HEAD"),
-            cwd=root,
-            label="integration_diagnostic:verify_head",
-        )
-    except (OSError, RuntimeError) as exc:
-        return False, f"HEAD rev-parse failed: {exc}"
-    if head_res.returncode != 0:
-        return False, "HEAD is unreadable"
-    head = head_res.stdout.strip()
-    allowed_heads = {
-        record.integrated_feature_sha,
-        record.pre_target_sha,
-        record.pre_feature_sha,
-    } - {None, ""}
-    if head not in allowed_heads:
-        return (
-            False,
-            f"HEAD {head} does not match integrated_feature_sha="
-            f"{record.integrated_feature_sha}, pre_target_sha={record.pre_target_sha}, "
-            f"or pre_feature_sha={record.pre_feature_sha}",
-        )
-    return True, "HEAD matches"
+    decision = operation_landed(root, record)
+    if decision.landed:
+        return True, f"HEAD matches recorded operation via {decision.proof}"
+    return False, decision.operator_status("all recorded Git state")
 
 
 def _check_parent_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:

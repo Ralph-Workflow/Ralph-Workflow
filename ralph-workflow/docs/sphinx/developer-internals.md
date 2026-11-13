@@ -377,7 +377,7 @@ During auto-integrate rebase conflict resolution, conflict resolution executes w
 
 Target worktree activation is isolated via `workspace_context(target_root)` in `ralph.workspace.context`. When loading configuration and policies for the target worktree:
 
-1. **Error wrapping**: Syntactic defects raise `ConfigTomlError`, while schema validation defects trigger a `SystemExit` wrapping `pydantic.ValidationError`. `workspace_context` intercepts both exceptions and wraps them into a typed `WorkspaceContextError(file=file_path, reason=..., fix=...)`. The error attributes the failure to the specific offending file (such as `.agent/ralph-workflow.toml` or `.agent/agents.toml`) and provides an actionable remediation command: `fix <path> then run ralph --check-config`.
+1. **Error wrapping**: Syntactic defects raise `ConfigTomlError`, while schema validation defects trigger a `SystemExit` wrapping `pydantic.ValidationError`. `workspace_context` intercepts both exceptions and wraps them into a typed `WorkspaceContextError(file=file_path, reason=..., fix=...)`. The error attributes the failure to the specific offending file (such as `.agent/ralph-workflow.toml` or `.agent/agents.toml`) and provides an actionable remediation command: `fix <path> then run ralph --check-config`. The underlying parse error is also carried as the typed `ConfigParseError(file, parse_error)` payload from `ralph.config._toml_fallback`, so a configuration failure is classified by the file it came from rather than by matching text in a reason string.
 2. **Resolver transport**: The rebase stop resolver in `ralph.pipeline.auto_integrate_agent` catches `WorkspaceContextError`. Rather than crashing or classifying the failure as an unresolved git conflict, it sets:
    - `session.charge_conflict_budget = False`
    - `session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE`
@@ -431,21 +431,66 @@ When auto-integrate conflict resolution runs through its configured resolver age
    - Generated via `operator_command_for_paths(paths)`, the command properly escapes and formats pathnames for direct shell execution.
    - On the merge seam (`ralph.pipeline.auto_integrate_resolve`), an exhausted resolution returns `MergeResult(outcome=MERGE_COMMIT_PENDING, failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)` with this operator hand-off message, eliminating misleading "conflict resolution incomplete; progress retained" summaries.
 
-### Durable continuation retry gate across processes
+### Sealed resolution outcome
 
-Continuation attempts often run in fresh supervisor processes where in-memory state is discarded. To prevent hot retry loops across process invocations:
+The result of a resolution attempt is one closed type, not a tuple of loosely related values.
 
-1. **Durable gate key in `IntegrationRecord`**:
-   - The engine computes a composite retry gate key `(stop_identity, sorted_eligible_agents, config_fingerprint)` and persists it inside `IntegrationRecord` in `.agent/auto_integrate_in_progress.json`.
-   - When a subsequent process starts, `_integration_continuation` re-reads the durable record.
-2. **Gate evaluation**:
-   - If the stop identity, eligible resolver agents, and configuration fingerprints are unchanged, continuation resolution is refused. Exactly one actionable `WAITING` status line is emitted instead of repeated `CRITICAL` log floods and busy process respawns.
-   - Resolution is re-entered only when the gate key changes (such as when conflict identity, eligible agents, or configuration change, or when backoff is reset).
-   - Pre-existing integration records lacking the gate key field deserialize safely and operate in ungated mode for backward compatibility.
-3. **Forced operator retry via `ralph --retry`**:
+1. **The variants**: `ralph.pipeline.resolution_outcome_type` declares `type ResolutionOutcomeType = Resolved | NeedsOperator | RetryLater | Exhausted | ConfigFailure`. Each variant lives in its own module: `resolution_outcome_resolved`, `resolution_outcome_needs_operator` (cause, paths, command), `resolution_outcome_retry_later` (exactly one of `until` or `on_change`), `resolution_outcome_exhausted` (agents) and `resolution_outcome_config_failure` (file, parse error).
+2. **Typed classification**: `ralph.pipeline.resolution_outcome_producer` classifies observed facts into the variants. A configuration failure is recognised by the typed `ConfigParseError(file, parse_error)` payload, never by matching text in a reason string.
+3. **Exhaustive consumption**: every consumer matches on the union with an exhaustive `match` whose default branch is `mypy.assert_never(...)`. A variant that no consumer handles is a type error rather than a runtime fall-through to `UNRESOLVED_CONFLICT`.
+
+### Single resolution entry and single attempt key
+
+Every path that wants to attempt resolution of a rebase or merge stop goes through one function, `attempt_stop_resolution(stop_identity, trigger)` in `ralph.pipeline._stop_resolution_entry`. It alone checks the retry gate, charges budgets, launches agents and writes the record. The rebase resolver itself is private to that module: `ralph.pipeline` does not export it, and `ralph.pipeline.attempt_stop_resolution` is the only public way to attempt a resolution.
+
+1. **One attempt key**:
+   - `ResolutionAttemptKey(stop_identity, eligible_agents, config_fingerprint)` is computed in one place and persisted on `IntegrationRecord.resolution_gate_key` inside `.agent/auto_integrate_in_progress.json`.
+   - The key is the only definition of "state changed": the stop identity, the set of eligible resolver agents, and the configuration fingerprint.
+2. **Pure gate evaluation**:
+   - `decide_resolution_attempt(ResolutionGateFacts)` is a pure function of the stored key, the stop identity, the eligible agents, the configuration fingerprint and the clock. It performs no git read, no policy load, no controller construction and no record write.
+   - Git reads, the configuration loader, the ledger snapshot, the clock and the agent launcher are injected through `StopResolutionTrigger`, so the evaluation is testable without patching internals.
+3. **Typed key failure**:
+   - When the key cannot be computed, the key provider returns the typed `KeyUnavailable(reason)` and the entry returns a blocked outcome carrying that reason. The attempt is blocked and the reason is stated; the key never silently changes shape.
+4. **Gate effect**:
+   - If the stored key equals the computed key, the attempt is refused and one actionable `WAITING` status line is emitted instead of repeated `CRITICAL` log floods and busy process respawns.
+   - Resolution is re-entered only when the key changes (when the conflict identity, the eligible agents or the configuration change, or when the backoff is reset).
+   - Pre-existing integration records lacking the gate key field deserialize safely and operate in ungated mode.
+5. **Forced operator retry via `ralph --retry`**:
    - Operators can bypass the durable retry gate at any time using `ralph --retry` (or `ralph --retry-integration`).
    - The CLI passes `force_retry=True` to `recover_incomplete_integration`, which constructs or forwards launch-capable conflict/rebase resolver callbacks and an active `RecoveryController` from the pipeline context.
    - Forced retry executes exactly one resolution attempt; if resolution cannot complete, the new gate key is recorded back to disk so subsequent regular runs remain gated.
+
+### Agent eligibility ownership
+
+The failure ledger answers eligibility for every agent, and every other consumer is a projection of that answer.
+
+1. **The ledger answer**: `ralph.recovery.agent_failure_ledger` classifies each agent as `Eligible`, `Cooldown(until_ms, reason)`, `Spent(reason)` or `Unavailable(reason)`. `project_eligibility(snapshot, phase=..., agent=..., clock=...)` is the pure projection of a ledger snapshot plus a clock; `project_chain_eligibility(...)` answers for a whole chain.
+2. **The wait answer**: `RecoveryController.eligibility_wait(phase, agents)` returns an `EligibilityWait` whose `WaitKind` is `AVAILABLE_NOW`, `COOLING_DOWN` or `NEVER_ELIGIBLE`. `NEVER_ELIGIBLE` carries `wait_ms=None`, so "nobody will ever become eligible in this run" is distinct from "someone is available now" (wait 0).
+3. **Projections**: `agents_now_available`, `earliest_wait_ms`, `preferred_agent_index` and the launch gate are derived from the ledger answer rather than computing eligibility independently.
+4. **Sanctioned writes**: an unavailable or spent candidate is recorded through `AgentFailureLedger.mark_unavailable(phase, agent, reason=...)` or `RecoveryController.mark_agent_unavailable(...)`. The `Spent` state is constructed by the ledger; the controller does not construct it.
+
+### Terminal states are terminal
+
+The recovery ladder is a table of states with explicit transitions and a persisted terminal marker.
+
+1. **Pure transition**: `ralph.pipeline.integration_ladder` exposes `decide_ladder_transition(...)` over `LadderFacts`, producing a `LadderTransition` (a `LadderState`, a `LandedVerdict` and the `LadderEffect` to apply). Git reads, record writes and escalation emission are effects, not decisions.
+2. **No enabled rung**: a state with no enabled next rung ends in `NeedsOperator` once. It names the observed HEAD, the expected facts, why each proof failed, the resume command and what is preserved. A rung that did nothing is never reported as an autonomous escalation.
+3. **Durable terminal marker**: `IntegrationRecord.resolution_terminal_marker` holds `(resolution_gate_key, "NeedsOperator", "ralph --resume")`. It is written with the terminal transition, before the terminal status is emitted, and it is cleared when `resolution_gate_key` changes.
+4. **Unchanged facts**: the terminal fingerprint covers HEAD, the target tip, the record's proof facts and `resolution_gate_key`. Unchanged facts therefore produce no additional CRITICAL line, no diagnostic retry and no resolver selection, including across a supervisor restart that discards process-local state.
+
+### One integration status model
+
+The facts about an integration stop are produced once and rendered by every surface that shows them.
+
+1. **The model**: `ralph.pipeline._integration_status.IntegrationStatus` carries the cause, the paths with their per-path reasons, the operator command, whether agents can finish the stop, and the build identity. Its `summary` renders the one operator-facing sentence for those facts.
+2. **The renderers**: the conflict-entry log line, the declared-conflict announcement, the agent-selection evidence, the status bar and `ralph --diagnose` all render that model. The conflict-entry line reports the resolvable count and the paths that need operator action with their command, and states that agents cannot finish the stop. The declared-conflict announcement names, per file, why the file has no conflict markers and what form the declaration takes. The agent-selection evidence explains a skipped candidate by naming the candidate it ranks below. `ralph --diagnose` reconstructs the same facts from the persisted checkpoint and renders the cause, the paths, the operator command, the agent-completion flag and the build.
+
+### Expected process exit codes and build attribution
+
+1. **One severity table**: `ralph.process.manager._process_manager_runtime` owns `EXPECTED_EXIT_CODES` and `expected_exit_codes(label)`, mapping a process label to the exit codes that are an answer rather than a failure. A registered label whose exit code is in its expected set is logged at DEBUG; every other non-zero exit, including exit code 2 and above, is logged at WARNING. Killed processes stay at WARNING.
+2. **Registered labels** include the detached-HEAD observation (`integration-observation-head`), the ancestry answer (`git-is-ancestor`) and the `integration_diagnostic:` family (`check_merge_head`, `check_rebase_head`, `check_ancestor`, `verify_head`, `head_parents`, `gitdir`, `diff_head`).
+3. **Build identity**: every integration CRITICAL and terminal line is emitted through `ralph.pipeline._terminal_emitter`, which appends ` [build=<package version>+<commit SHA>]`. The identity comes from `ralph._build_identity.build_identity()`.
+4. **Structural guards**: `ralph.testing.audit_integration_invariants` runs in `make verify` and fails when a module outside `ralph.pipeline._stop_resolution_entry` references the private resolver, when `ralph.pipeline` re-exports it, when a second module competes for the exit-code table, or when a pipeline module calls `logger.critical` directly instead of using the emitter.
 
 ### Gitlink conflict resolution and escalation on sight
 
