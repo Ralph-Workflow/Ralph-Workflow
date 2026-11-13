@@ -69,15 +69,18 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             pipeline_deps = positional.pop(0)
         if workspace_scope is None and positional:
             workspace_scope = positional.pop(0)
-        display_context = kwargs.pop("display_context", None)
+        display_context: DisplayContext | None = None
+        if "display_context" in kwargs:
+            candidate = kwargs.pop("display_context")
+            if candidate is not None and not isinstance(candidate, DisplayContext):
+                raise TypeError("effect attempts require DisplayContext or None")
+            display_context = candidate
         if not isinstance(config, UnifiedConfig):
             raise TypeError("effect attempts require a UnifiedConfig")
         if not isinstance(pipeline_deps, PipelineDeps):
             raise TypeError("effect attempts require PipelineDeps")
         if not isinstance(workspace_scope, WorkspaceScope):
             raise TypeError("effect attempts require WorkspaceScope")
-        if display_context is not None and not isinstance(display_context, DisplayContext):
-            raise TypeError("effect attempts require DisplayContext or None")
         return runner(
             target,
             config,

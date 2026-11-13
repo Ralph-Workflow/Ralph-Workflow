@@ -15,6 +15,7 @@ from ralph.cli.commands._load_result import _LoadResult
 from ralph.config.enums import AgentTransport
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.attempt_runner_deps import effect_attempt_invoke
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -113,8 +114,8 @@ def test_remediation_effect_opts_out_of_completion_evidence(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
-        cli_integration,
-        "PRODUCTION_INVOKE",
+        effect_executor_module,
+        "execute_agent_effect",
         effect_attempt_invoke(fake_execute_agent_effect),
     )
 
