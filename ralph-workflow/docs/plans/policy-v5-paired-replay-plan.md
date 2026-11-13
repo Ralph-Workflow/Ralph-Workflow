@@ -192,11 +192,9 @@ M8 is wall-clock seconds; M9 is prompt+completion token count. They are dimensio
 
 ```
 decide(v4, v5, per_run):
-    # 1. Protected regressions veto retention
     if v5.M2 > v4.M2 or per_run.get("kernel_rule_regression", False):
         return KEEP_FALSE
 
-    # 2. Evaluate primary metrics (M1–M7)
     restores = count(== RESTORE,  primary_decisions)
     improves = count(== IMPROVE,  primary_decisions)
     ties     = count(== KEEP_TIE, primary_decisions)
@@ -204,19 +202,16 @@ decide(v4, v5, per_run):
     if restores >= 1:
         return KEEP_FALSE
 
-    # 3. Independent secondary cost ratios (never sum seconds + tokens)
     time_ratio  = v5.M8 / v4.M8  (if v4.M8 > 0 else 1.0)
     token_ratio = v5.M9 / v4.M9  (if v4.M9 > 0 else 1.0)
     cost_exceeded = (time_ratio > 1.25) or (token_ratio > 1.25)
 
-    # 4. Final resolution
     if improves >= 1:
         if cost_exceeded:
             return KEEP_TRUE_REDESIGN
         return KEEP_TRUE
 
     if ties == 7 and not cost_exceeded:
-        # Equal primary outcomes with lower time/cost handled consistently
         has_cost_improvement = (v5.M8 < v4.M8 and token_ratio <= 1.0) or \
                                (v5.M9 < v4.M9 and time_ratio <= 1.0) or \
                                (v5.M8 < v4.M8 and v5.M9 < v4.M9)
@@ -351,13 +346,11 @@ def decide(
     v5: Mapping[str, float | int],
     per_run: Mapping[str, object] | None = None,
 ) -> str:
-    # 1. Protected regressions (M2): ANY increase in regressions vetoes retention.
     v4_m2 = float(v4.get("M2", 0))
     v5_m2 = float(v5.get("M2", 0))
     if v5_m2 > v4_m2 or bool(per_run and per_run.get("kernel_rule_regression", False)):
         return "KEEP_FALSE"
 
-    # 2. Evaluate primary metrics (M1-M7) with metric-specific directions.
     n_restore, n_improve, n_tie = 0, 0, 0
     for m in PRIMARY_METRICS:
         res = per_metric_decision(float(v4.get(m, 0)), float(v5.get(m, 0)), m)
@@ -371,8 +364,6 @@ def decide(
     if n_restore >= 1:
         return "KEEP_FALSE"
 
-    # 3. Dimensional cost comparisons (M8 seconds, M9 tokens).
-    # Evaluated independently; do NOT sum seconds and tokens together.
     v4_m8 = float(v4.get("M8", 0.0))
     v5_m8 = float(v5.get("M8", 0.0))
     time_ratio = (v5_m8 / v4_m8) if v4_m8 > 0.0 else 1.0
@@ -383,7 +374,6 @@ def decide(
 
     cost_exceeded = (time_ratio > 1.25) or (token_ratio > 1.25)
 
-    # 4. Resolve decision.
     if n_improve >= 1:
         return "KEEP_TRUE_REDESIGN" if cost_exceeded else "KEEP_TRUE"
 
@@ -475,7 +465,7 @@ The `Enforcement` column uses the v6 guard-inventory grammar: `deterministic: <i
 | Static analysis coverage | `development`, `development_commit_review` | deterministic: sast baseline-diff audit (audit_sast) | In the Security-sensitive category the reviewer introduces a known static-analysis finding (e.g., Bandit shell injection or insecure binding) in a test commit; verifies that the SAST baseline-diff audit flags the new finding while ignoring pre-existing baseline findings |
 | Instruction and MCP-config integrity | `planning`, `development`, `development_commit_review` | deterministic: instruction integrity audit (audit_instruction_integrity) | In the Feature and Security-sensitive categories the reviewer tests instruction/MCP-config modifications; verifies that instructions do not treat external payloads as prompt instructions, third-party MCP servers are pinned with review triggers, and zero-width/bidirectional unicode characters fail the audit |
 | Pinned dependencies | `development`, `development_commit_review` | deterministic: dependency integrity audit (audit_dependency_integrity) | In the Feature category the reviewer adds a mock or candidate dependency; verifies that adding an unverified package lacking a resolvable source/publisher or lacking lockfile artifact hashes fails the dependency integrity audit |
-| Comment content | `development`, `development_commit_review` | deterministic: comment policy audit (audit_comments) | In the Refactor category the reviewer inspects newly added and changed comments; verifies that the comment policy audit raises a blocking finding for every source comment except a line-1 shebang and for every docstring, so a comment narrating changes ("added for", "fixed", "now"), commented-out code, or an ownerless TODO is no exception and neither a permitted intent comment nor an inline exemption annotation passes |
+| Comment content | `development`, `development_commit_review` | deterministic: absolute comment and docstring policy audit (audit_comments) | In the Refactor category the reviewer inspects newly added and changed comments; verifies that the comment policy audit raises a blocking finding for every source comment except a line-1 shebang and for every docstring, so a comment narrating changes ("added for", "fixed", "now"), commented-out code, or an ownerless TODO is no exception and neither a permitted intent comment nor an inline exemption annotation passes |
 
 **Review triggers are not optional.** The evidence tag and the enforcement status are separate properties: the tag names the kind of source behind the rule, the enforcement status names who decides it. A rule tagged `none` (judgment) or `anecdotal` that no wired deterministic gate decides remains `advisory` with a review trigger, and it is never marked `deterministic` on the strength of an enforcer that is planned but not wired; a `none` rule a wired deterministic gate decides ships as `deterministic`, as the absolute comment and docstring ban does. An `advisory` row for a rule with `strong` or `moderate` evidence is promoted to `deterministic` only when the named enforcer exists and resolves; until then the rule's behavior change is scored from the reviewer evidence above, and the trigger says what has to land first. A rule whose enforcer lands mid-replay is replayed again as its own paired arm, because a rule that changed halfway through a pair is not comparable.
 
@@ -494,29 +484,21 @@ The script specification below defines the reference fixture construction. When 
 
 ```bash
 #!/usr/bin/env bash
-# scripts/policy_v5_replay_freeze.sh
-# Construct a real pinned snapshot for the v5 paired replay.
-# Usage: scripts/policy_v5_replay_freeze.sh <category> <snapshot-name> <base-ref>
-# Example: scripts/policy_v5_replay_freeze.sh feature add-feature-flag-journey f760933b2fae095ecdb8bf9f06ae8125a5dd9e90
 set -euo pipefail
 
 category="$1"
 name="$2"
 base_ref="$3"
 
-# 1. Materialize the base ref into a tmp worktree at a fixed path.
 worktree="/tmp/policy-v5-replay-snapshots/${category}/${name}"
 git worktree add --detach "${worktree}" "${base_ref}"
 
-# 2. Run the focused suite on the fresh worktree to prove the
-#    snapshot is self-consistent (no pre-existing failure).
 ( cd "${worktree}/ralph-workflow" && \
   PYTEST_SUITE_TIMEOUT_SECONDS=60 \
   PYTEST_WORKERS=auto \
   python -m pytest -q "tests/integration/test_pipeline_commit_review_to_commit_e2e.py::test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end" \
 )
 
-# 3. Hash the worktree and write the hash to the snapshot ledger.
 sha="$(cd "${worktree}" && git rev-parse HEAD)"
 size="$(du -sb "${worktree}" | cut -f1)"
 printf '{"category":"%s","name":"%s","base_ref":"%s","worktree":"%s","head":"%s","size_bytes":%s}\n' \

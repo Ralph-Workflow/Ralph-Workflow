@@ -61,10 +61,11 @@ one and follow its native install + auth flow:
   **Pi** (`pi`), **Cursor** (`agent`): install and auth URLs for every agent
   are listed in [Agent Compatibility → Supported agents](agent-compatibility.md).
 
-Verify the binary is on `PATH` before continuing:
+Verify the installed binary is on `PATH` before continuing (substitute the
+binary you installed, e.g. `codex --version`, `opencode --version`):
 
 ```bash
-claude --version     # or: codex --version / opencode --version / etc.
+claude --version
 ```
 
 ### 3. Initialize the project

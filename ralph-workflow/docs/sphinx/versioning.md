@@ -90,8 +90,9 @@ touching the production index:
 
 ```bash
 uv run --with twine python -m twine upload --repository testpypi dist/*
-# or: make twine-upload-testpypi
 ```
+
+Equivalent Make target: `make twine-upload-testpypi`.
 
 Credentials are read from `~/.pypirc`. A minimal configuration:
 
@@ -119,8 +120,9 @@ After confirming the Test PyPI release looks correct:
 
 ```bash
 uv run --with twine python -m twine upload dist/*
-# or: make twine-upload
 ```
+
+Equivalent Make target: `make twine-upload`.
 
 ## 6. Tag the release
 

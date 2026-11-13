@@ -121,6 +121,34 @@ def test_find_hidden_unicode_detects_zero_width_and_bidi_characters() -> None:
     assert occurrences[1] == (3, 9, "U+202E")
 
 
+def test_find_hidden_unicode_detects_word_joiner_and_arabic_letter_mark() -> None:
+    dirty_text = "word\u2060join\narabic\u061cmark\n"
+    occurrences = instruction_surface.find_hidden_unicode(dirty_text)
+    assert len(occurrences) == 2
+    assert occurrences[0] == (1, 5, "U+2060")
+    assert occurrences[1] == (2, 7, "U+061C")
+
+
+def test_check_hidden_unicode_fires_for_new_characters() -> None:
+    for code_point in ("\u2060", "\u061c"):
+        findings = instruction_surface.check_hidden_unicode(
+            f"text {code_point} hidden", "docs/t.md"
+        )
+        assert len(findings) == 1
+        assert f"U+{ord(code_point):04X}" in findings[0].missing_evidence
+
+
+def test_check_hidden_unicode_passes_on_multilingual_text() -> None:
+    clean = (
+        "Arabic: هذا نص عربي عادي\n"
+        "CJK: これは普通の日本語です 中文文本\n"
+        "Accented: àéîöü ñ ç\n"
+        "Emoji: 🎉\n"
+    )
+    assert instruction_surface.find_hidden_unicode(clean) == []
+    assert instruction_surface.check_hidden_unicode(clean, "docs/i18n.md") == []
+
+
 def test_check_hidden_unicode_fires_policy_finding() -> None:
     dirty = "Policy with \ufeff BOM"
     findings = instruction_surface.check_hidden_unicode(dirty, "docs/test.md")

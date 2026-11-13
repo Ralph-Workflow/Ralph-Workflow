@@ -26,11 +26,9 @@ If you need deeper architecture context (how `FsWorkspace` wraps the real filesy
 from ralph.workspace import Workspace
 
 def save_prompt_context(workspace: Workspace, content: str) -> None:
-    """Write rendered prompt to the standard location."""
     workspace.write(".agent/prompt.md", content)
 
 def load_checkpoint_if_exists(workspace: Workspace) -> dict | None:
-    """Return checkpoint dict or None if no checkpoint exists."""
     if not workspace.exists(".agent/checkpoint.json"):
         return None
     return json.loads(workspace.read(".agent/checkpoint.json"))
@@ -50,13 +48,10 @@ def load_checkpoint_if_exists(workspace: Workspace) -> dict | None:
 from ralph.workspace.memory import MemoryWorkspace
 
 def test_save_prompt_context_writes_to_correct_path() -> None:
-    # Arrange
     ws = MemoryWorkspace()
 
-    # Act
     save_prompt_context(ws, "# Feature\n\nBuild the thing.")
 
-    # Assert
     assert ws.exists(".agent/prompt.md")
     assert "Build the thing." in ws.read(".agent/prompt.md")
 

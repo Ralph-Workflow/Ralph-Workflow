@@ -332,8 +332,9 @@ isolated — see [Agent Compatibility](agent-compatibility.md#agy).
 
 ### `[skills]`
 
+In the user-global `~/.config/ralph-workflow.toml`:
+
 ```toml
-# ~/.config/ralph-workflow.toml
 [skills]
 universal_updates_enabled = true
 ```

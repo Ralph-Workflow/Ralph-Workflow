@@ -143,47 +143,22 @@ This is a fail-closed static three-file profile with `not subprocess_e2e and not
 Use these focused commands when a smoke check is required for the area you are touching. Most commands below live outside the budget-tracked combined budget (per-suite caps only) so they do not inflate the 60-second gate. `make verify` runs every deterministic install, multimodal, and visual smoke case together through `make test-verification-smoke`, charged to the same immutable budget as `make test`. Sharing one pytest startup reduces overhead without dropping cases. The separate smoke targets remain available for focused checks.
 
 ```bash
-# Policy loader smoke check (after changing policy defaults)
 python -c "from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 
-# Project policy v6 starter smoke check (ralph --init / preflight bootstrap):
-# verifies all bundled starters carry the v6 schema marker and 7-column guard table.
 python -c "from ralph.project_policy import starters, markers; assert all(starters.read_starter(f).splitlines()[0] == markers.POLICY_SCHEMA_MARKER for f in starters.iter_starter_names())"
 
-# Parallel-mode regression tests (work-units / namespaced payloads)
 uv run pytest -q tests/test_parallel_mode_docs_banned_phrases_across_all_docs.py tests/test_parallel_mode_docs_namespaced_payload_docs.py
 
-# Parallel worker bootstrap tests
 uv run pytest -q tests/test_parallel_worker_runtime.py tests/integration/test_parallel_worker_bootstrap.py
 
-# Interactive Claude PTY tests
 uv run pytest -q tests/test_process_manager_pty.py tests/test_claude_interactive_pty.py tests/test_claude_interactive_session_resume.py tests/test_claude_interactive_parser.py
 
-# Recovery tests
 uv run pytest -x tests/recovery/ tests/test_recovery_first_invariant.py tests/test_pipeline_runner.py
 
-# Offline real-process install smoke: drives the public `make install`
-# transaction with isolated HOME/PATH and a fail-closed fake `uv`.
 make test-install-make-smoke
 
-# This smoke verifies the missing-uv diagnostic, immutable-generation `rdev`
-# installation, source-checkout independence, lock contention, and failed
-# candidate preservation. It does not contact a network and is budget-tracked by
-# `make verify` through the combined `test-verification-smoke` target.
-
-# Multimodal smoke (criterion 5): drives the deterministic multimodal
-# stub agent across every harness identity. Runs under ``make verify``
-# through the combined budget-tracked smoke entry -- unlike the commands
-# above, this one IS counted toward the immutable 60-second combined
-# budget so a future endpoint-delivery regression like the OpenCode
-# multimodal break fails CI rather than passing silently.
 make test-multimodal-smoke
 
-# Per-harness multimodal smoke (manual, paid-backend dialling where
-# the harness is live). These do NOT run under ``make verify`` -- they
-# consume live tokens. Each command drives one harness identity
-# through the multimodal scenario and grades the multimodal fact at
-# WIRE on success (exit 0).
 python -m ralph smoke-interactive-claude --multimodal
 python -m ralph smoke-headless-claude --multimodal
 python -m ralph smoke-interactive-agy --multimodal

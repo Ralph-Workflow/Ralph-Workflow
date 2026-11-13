@@ -461,17 +461,17 @@ exception, and any re-raise path. The canonical example of the
 exception-safety failure this rule prevents:
 
 ```python
-# WRONG — leaks the fd on any readline/parse raise
 file_obj = path.open(...)
 while not stop.is_set():
-    line = file_obj.readline()      # raises here → fd leaks
+    line = file_obj.readline()
     process(line)
 if file_obj is not None:
-    file_obj.close()                # never reached on the raise path
+    file_obj.close()
 ```
 
+The same loop with the handle closed on every exit path:
+
 ```python
-# RIGHT — try/finally guarantees close on every exit path
 file_obj = path.open(...)
 try:
     while not stop.is_set():
@@ -480,9 +480,7 @@ try:
 finally:
     if file_obj is not None:
         file_obj.close()
-        file_obj = None              # belt-and-suspenders; the
-                                     # post-loop close (if any) is
-                                     # a no-op on the closed handle
+        file_obj = None
 ```
 
 This is exactly the fix applied to `PtyLineReader._transcript_thread`

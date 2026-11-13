@@ -43,6 +43,7 @@ __all__ = [
     "NdjsonParserBase",
     "OpenCodeParser",
     "PiParser",
+    "list_parser_keys",
     "resolve_parser_key",
 ]
 
@@ -117,6 +118,10 @@ def resolve_parser_key(
         if transport_key in parser_registry:
             return transport_key
     return str(json_parser)
+
+
+def list_parser_keys() -> tuple[str, ...]:
+    return tuple(sorted(_view("_PARSER_REGISTRY")))
 
 
 def get_parser(

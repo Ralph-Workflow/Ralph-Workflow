@@ -227,10 +227,8 @@ pytest suites that cover the public surface end-to-end without
 touching the network or a real `pi` binary:
 
 ```bash
-# Drive the public surface (AgentRegistry -> catalog.get('pi') -> build_command)
 uv run pytest tests/agents/test_pi_dev_blackbox.py -q
 
-# Pin the documented AgentSessionEvent vocabulary against the committed fixture
 uv run pytest tests/agents/parsers/test_pi_dev_wire_format_spec.py -q
 ```
 

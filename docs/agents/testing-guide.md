@@ -109,7 +109,7 @@ The most common parallelism hazard: production code calling `os.environ` directl
 **BEFORE — requires test isolation workaround:**
 ```python
 def test_feature_disabled_by_default() -> None:
-    os.environ.pop("RALPH_FEATURE_ENABLED", None)   # mutates process-global state ❌
+    os.environ.pop("RALPH_FEATURE_ENABLED", None)
     cfg = ServiceConfig.from_env()
     assert not cfg.enabled
 ```
@@ -130,12 +130,10 @@ def test_feature_enabled_with_env() -> None:
 ```python
 @classmethod
 def from_env_fn(cls, get: Callable[[str], str | None]) -> "ServiceConfig":
-    """Build config from an injected env-lookup function."""
     ...
 
 @classmethod
 def from_env(cls) -> "ServiceConfig":
-    """Build config from the real process environment."""
     return cls.from_env_fn(os.environ.get)
 ```
 
@@ -182,19 +180,19 @@ def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
 
 ### FakeControllableAsyncProcess — async liveness simulation
 
+The fake's `wait()` and `communicate()` block until `completion.set()`; `terminate()` and `kill()` set the event and unblock waiters. Until the event is set, the process reports as alive.
+
 ```python
 from ralph.testing.fake_process import FakeControllableAsyncProcess
 import asyncio
 
 async def test_async_process_stays_alive_until_event() -> None:
-    completion = asyncio.Event()  # not set → process stays running
+    completion = asyncio.Event()
     proc = FakeControllableAsyncProcess(
         pid=42,
         stdout_data=b"ready\n",
         completion_event=completion,
     )
-    # proc.wait() and proc.communicate() block until completion.set()
-    # proc.terminate() / proc.kill() both set the event and unblock waiters
     completion.set()
     rc = await proc.wait()
     assert rc == 0
@@ -333,7 +331,6 @@ pass/fail check that decides the change is done.
   a run of the code under test.
 
 ```python
-# The check that decides the change: one test, one observable outcome
 def test_pipeline_rejects_empty_agent_chain() -> None:
     state = PipelineState(phase="planning", dev_chain=AgentChainState(agents=[]))
     agents_policy, pipeline_policy, _ = load_default_policy()

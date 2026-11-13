@@ -228,14 +228,13 @@ directed to read the relevant format doc before retrying a failed submission.
 ## Upstream MCP Servers
 
 Ralph Workflow can proxy tools from user-configured MCP servers. Register a server in
-`.agent/mcp.toml`:
+`.agent/mcp.toml`, optionally with an environment table:
 
 ```toml
 [[servers]]
 name = "my-docs"
 command = ["npx", "my-mcp-server"]
 
-# Optional: pass environment variables
 [servers.env]
 MY_API_KEY = "..."
 ```

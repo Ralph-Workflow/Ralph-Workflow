@@ -658,10 +658,7 @@ To update an agent atomically, call the `unregister` method on the registry (whi
 from ralph.agents import register_agent_support
 from ralph.config.enums import AgentTransport
 
-# 1. Remove the old registration from the registry and catalog
 my_registry.unregister("my-agent")
-
-# 2. Re-register the agent with new parameters
 register_agent_support(
     name="my-agent",
     transport=AgentTransport.GENERIC,
@@ -680,7 +677,6 @@ register_agent_support(
 To remove an agent from both the configuration registry and the global catalog, call the `unregister` method on your `AgentRegistry` instance:
 
 ```python
-# Unregisters the agent from both the registry and the catalog
 registry.unregister("my-agent")
 ```
 
@@ -689,7 +685,6 @@ registry.unregister("my-agent")
 Alternatively, you can manually delete it from the registry's config mapping, but this does not clean up the catalog:
 
 ```python
-# Legacy fallback (removes from registry configuration only):
 del registry.agents["my-agent"]
 ```
 

@@ -13,7 +13,7 @@ import pytest
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import ProcessLineReader, ProcessReaderCtx, check_process_result
-from ralph.agents.parsers import _PARSER_REGISTRY, AgentParser, get_parser
+from ralph.agents.parsers import AgentParser, get_parser, list_parser_keys
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -50,7 +50,7 @@ _COMMANDS: dict[str, str] = {
     "pi": "pi",
 }
 
-_REGISTRY_KEYS: tuple[str, ...] = tuple(sorted(_PARSER_REGISTRY))
+_REGISTRY_KEYS: tuple[str, ...] = list_parser_keys()
 
 _CAPTURES: dict[str, Path | None] = {
     "agy": _DISPLAY_FIXTURES / "agy_wire_tool.jsonl",
@@ -290,7 +290,7 @@ def test_recorded_capture_populates_attempt_facts(parser_key: str) -> None:
 
 
 def test_gap_tables_equal_replayed_gaps() -> None:
-    registry_keys = sorted(_PARSER_REGISTRY)
+    registry_keys = list(list_parser_keys())
     assert set(_CAPTURES) == set(registry_keys)
     assert set(_COMMANDS) == set(registry_keys)
     for parser_key in registry_keys:

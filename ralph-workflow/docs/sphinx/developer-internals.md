@@ -342,7 +342,6 @@ subscriber = PipelineSubscriber(
     ...,
     on_snapshot=tracker.update_from_snapshot,
 )
-# Inspect current state:
 view = tracker.view
 ```
 

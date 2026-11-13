@@ -7,7 +7,7 @@ from ralph.project_policy import markers
 from ralph.project_policy.models import PolicyFinding
 
 HIDDEN_UNICODE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff\u00ad]"
+    r"[\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\u00ad]"
 )
 
 
