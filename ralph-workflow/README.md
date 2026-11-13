@@ -150,13 +150,14 @@ user-global `ralph-workflow-pipeline.toml`, `ralph-workflow-mcp.toml`, and
 
 ## Skills
 
-Artifact skills ship with Ralph Workflow and install into the project
-scope; the set follows the pipeline's artifact types, so adding a skill
-now means adding an artifact type. Three universal skills
-(`test-driven-development`, `systematic-debugging`,
-`verification-before-completion`) install user-global and can be turned
-off. See the [configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#skills)
-for the update cadence, the trust statement, and the off switches.
+Ralph Workflow installs its skills through the built-in update mechanism:
+artifact skills install into the project scope and follow the pipeline's
+artifact types, so adding a skill now means adding an artifact type. Three
+universal skills (`test-driven-development`, `systematic-debugging`,
+`verification-before-completion`) install user-global and can be turned off.
+See the
+[configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#skills)
+for update cadence and the trust statement.
 
 ## Protections
 

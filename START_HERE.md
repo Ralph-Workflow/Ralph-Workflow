@@ -3,14 +3,15 @@
 This path is for evaluators who have one real coding task and want one
 unattended run they can judge by what the software does and which
 checks ran. "Unattended" means you start it from your own shell and
-leave it alone until it finishes or stops with a clear error. Ralph
-Workflow manages the harness, not the models: it is the workflow,
-review, recovery, and Git layer around the coding agent CLI you already
-installed and authenticated, it needs no API key of its own, and each
-agent keeps its own auth (see
-[`agents`](ralph-workflow/docs/sphinx/agents.md)). Every default ships
-with the package and `ralph --init` seeds it, so you are productive on
-day 1, preconfigured and yours to tweak (see
+leave it alone until it finishes or stops with a clear error.
+
+Ralph Workflow is the harness around the coding agent CLI you already
+installed and authenticated. It needs no API key of its own; each agent
+keeps its own authentication — a login, an API key, or either (see
+[`agents`](ralph-workflow/docs/sphinx/agents.md)).
+
+Every default ships with the package, and `ralph --init` seeds your
+setup, so you are productive on day 1 (see
 [`bundled defaults`](ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)).
 
 ## Goal
