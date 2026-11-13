@@ -15,9 +15,10 @@ from ralph.cli.commands._load_result import _LoadResult
 from ralph.config.enums import AgentTransport
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
-from ralph.pipeline import effect_executor as effect_executor_module
+from ralph.pipeline.attempt_runner_deps import effect_attempt_invoke
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import default_dir, load_policy
 from ralph.project_policy import cli_integration
@@ -78,11 +79,15 @@ def test_invoke_agent_effect_requires_completion_evidence_by_default() -> None:
 
 
 @pytest.fixture(scope="module")
-def _remediation_invoke_inputs() -> tuple[_LoadResult, DisplayContext]:
+def _remediation_invoke_inputs(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[_LoadResult, DisplayContext]:
+    root = tmp_path_factory.mktemp("project")
+    (root / "prompt.md").write_text("task", encoding="utf-8")
     return (
         _LoadResult(
             config=UnifiedConfig(),
-            workspace_scope=WorkspaceScope(root="/test/project", allowed_roots=["/test/project"]),
+            workspace_scope=WorkspaceScope(root=root, allowed_roots=[root]),
             initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
             policy_bundle=load_policy(default_dir()),
             run_id="test-run-id",
@@ -107,20 +112,25 @@ def test_remediation_effect_opts_out_of_completion_evidence(
         observed.append(effect)
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(
+        cli_integration,
+        "PRODUCTION_INVOKE",
+        effect_attempt_invoke(fake_execute_agent_effect),
+    )
 
     load_result, display_context = _remediation_invoke_inputs
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        object(),
+        PipelineDeps(display_context=display_context),
         load_result.workspace_scope,
         None,
         display_context,
     )
 
-    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    prompt_path = str(load_result.workspace_scope.root / "prompt.md")
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path=prompt_path) is True
     assert observed and observed[0].requires_completion_evidence is False
 
     observed.clear()
-    assert invoke(phase=PHASE_ANALYSIS, prompt_path="prompt.md") is True
+    assert invoke(phase=PHASE_ANALYSIS, prompt_path=prompt_path) is True
     assert observed and observed[0].requires_completion_evidence is True

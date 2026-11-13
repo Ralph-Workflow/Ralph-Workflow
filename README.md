@@ -14,10 +14,12 @@ the same way. A software factory removes that bottleneck.
 Code, Codex, Cursor, and the rest — are harnesses around models; Ralph Workflow is
 the harness around those: a harness of harnesses, the workflow layer that runs your
 coding agents, checks their work, and lands the result on your mainline. There is no
-vendor lock-in — nine built-in agent backends ship with it, agent chains can mix them
-and fall back to the next when an attempt fails, and Ralph Workflow needs no API key
-of its own because each agent defines its own authentication (a login, an API key,
-or either) and its vendor determines model access, rate limits, and cost.
+vendor lock-in — nine built-in agent backends ship with it, and agent chains can mix them
+and fall back to the next when an attempt fails. Ralph Workflow needs no API key
+of its own: it launches the agent CLI you already installed and authenticated, so whatever
+login or subscription that agent supports is what runs. Each agent defines its own
+authentication — a login, an API key, or either — and its vendor determines model
+access, rate limits, and cost.
 
 Every default ships with the package — workflow graph, agent chains, tool
 configuration, artifact contracts, retries, recovery, and Git sync — and
@@ -120,8 +122,8 @@ installed and authenticated, and each agent's own login or key is what runs.
 - **Cursor** (`agent`) — `CURSOR_API_KEY` or a file-backed Cursor login; if no valid
   Cursor auth file exists, Ralph Workflow copies your existing Cursor IDE login into
   Cursor's file-backed auth paths.
-- **Kimi Code** (`kimi`) — an interactive `kimi` login wires the managed Kimi Code
-  subscription.
+- **Kimi Code** (`kimi`) — an interactive `kimi` login wires the `managed:kimi-code`
+  subscription provider.
 
 The [agent guide](ralph-workflow/docs/sphinx/agents.md) covers the CLI lifecycle; the
 [compatibility reference](ralph-workflow/docs/sphinx/agent-compatibility.md) lists

@@ -84,13 +84,10 @@ def _simple_config() -> UnifiedConfig:
             git_user_email="user@example.com",
             verbosity=2,
         ),
-        agent_drains={
-            "commit": AgentDrainConfig(chain="commit_chain"),
-            "review": AgentDrainConfig(chain="review_chain"),
-        },
+        agent_drains={"commit": "commit_chain", "review": "review_chain"},
         agent_chains={
-            "commit_chain": AgentChainConfig(agents=["commit_agent"]),
-            "review_chain": AgentChainConfig(agents=["review_agent"]),
+            "commit_chain": ["commit_agent"],
+            "review_chain": ["review_agent"],
         },
     )
 

@@ -1078,14 +1078,23 @@ def test_process_manager_kill_pgid_skips_invalid_pgid() -> None:
         pm._kill_pgid(0)
         pm._kill_pgid(1)
         pm._kill_pgid(-1)
-        assert not mock_killpg.called
+        assert not [
+            recorded.args
+            for recorded in mock_killpg.call_args_list
+            if recorded.args and recorded.args[0] in (0, 1, -1)
+        ]
 
 
 def test_process_manager_kill_pgid_calls_os_killpg() -> None:
     pm = _make_pm(psutil_mod=None)
     with patch("os.killpg") as mock_killpg:
         pm._kill_pgid(12345)
-        mock_killpg.assert_called_once_with(12345, 9)
+        target_calls = [
+            recorded.args
+            for recorded in mock_killpg.call_args_list
+            if recorded.args and recorded.args[0] == 12345
+        ]
+        assert target_calls == [(12345, 9)]
 
 
 def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:

@@ -329,6 +329,14 @@ def test_invoker_exception_is_contained_and_returns_false(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
+    monkeypatch.setattr(
+        "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
+        lambda _config: lambda _phase, _agent: None,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.attempt_runner.production_dead_agent_probe_runner",
+        lambda _config: lambda _phase, _agent: None,
+    )
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         raise RuntimeError("agent exploded")
@@ -704,6 +712,14 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["src/alpha.py"])
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
+    monkeypatch.setattr(
+        "ralph.recovery.dead_agent_probe.production_dead_agent_probe_runner",
+        lambda _config: lambda _phase, _agent: None,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.attempt_runner.production_dead_agent_probe_runner",
+        lambda _config: lambda _phase, _agent: None,
+    )
     session = ResolutionSession(max_rounds_per_stop=1)
 
     def _destroys_the_file(name: str, _p: Path, _r: int) -> bool:

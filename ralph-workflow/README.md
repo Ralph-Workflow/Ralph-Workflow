@@ -1,45 +1,36 @@
 # ralph-workflow — the AI agent orchestrator and software factory
 
-Coding agents write code quickly; the human coordination around them does not scale — babysitting
-sessions, conflict resolution, re-running checks, and review queues cap throughput at the handoffs.
-A plain agent loop repeats one prompt until the work stops changing, and by hand you supply every
-call. Ralph Workflow moves those calls into a configurable workflow graph.
+Coding agents write code quickly; the human coordination around them does not scale — babysitting,
+conflicts, re-running checks, and review queues cap throughput at the handoffs.
 
 **The operating system for autonomous coding.**
 
 **Ralph Workflow — a free, open-source AI agent orchestrator and software factory — lets developers
 and teams with a coding agent CLI supply the spec and checks, then runs plan → build → verify → fix
 as a configurable workflow graph across Git worktrees, returning integrated software to judge.**
-Run one agent by hand and you are the scheduler, reviewer, and merger; run a plain
-agent loop and it repeats one prompt. Ralph Workflow is the harness around your coding agents: it runs
-that graph with the review, retries, recovery, and fallback chains you configure, and lands the checked
-result on one mainline.
+By hand you are the scheduler, reviewer, and merger; a plain loop repeats one prompt. Ralph Workflow
+runs that graph with review, retries, recovery, and fallback chains, landing checked work on one
+mainline.
 
-It runs locally under AGPL-3.0-or-later: no account, no hosted service, and nothing to sign up for.
-Your specifications, configuration, and Git history stay yours.
+It runs locally under AGPL-3.0-or-later: no account, no hosted service, nothing to sign up for — your
+specifications, configuration, and Git history stay yours.
 
-Every default ships with the package — the workflow graph (plan, build, verify, review, fix, commit and
-integrate), agent definitions and chains, MCP tool configuration, artifact contracts, retries,
-recovery, and Git sync — so there is no setup project before the first useful run and you can be
-productive on day 1. Everything is preconfigured, and you can tweak phases, routing, and agent chains
-(including adding a fallback agent when you need one) as you see fit without starting over. You still
-bring the checks you trust.
-See the [bundled defaults](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)
+Every default ships with the package — workflow graph, agent chains, MCP tools, artifact contracts,
+retries, recovery, Git sync — so there is no setup project before the first useful run: productive on
+day 1, preconfigured and yours to tweak. See the
+[bundled defaults](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)
 for the exact set.
 
 Ralph Workflow manages the harness, not the models: the coding agents — Claude Code, Codex, Cursor,
-and the rest — are harnesses around models, and Ralph Workflow is the harness around those, adding
-workflow, review, recovery, and Git integration on top of whichever agent CLIs you already have —
-a harness of harnesses.
+and the rest — are harnesses around models; Ralph Workflow is the harness around those. There is no
+vendor lock-in — agent chains mix backends and fall back when one fails, so switching vendors is a
+configuration change. It launches the agent CLI you installed and authenticated, so whatever login or
+subscription that agent supports is what runs; it needs no API key of its own, each agent defines its
+own authentication (a login, an API key, or either), and its vendor determines model access, rate
+limits, and cost.
 
-No vendor lock-in. Agent chains can mix backends and fall back when one fails, so switching vendors is
-a configuration change, not a rewrite. Ralph Workflow needs no API key of its own and sells no model
-access; it launches the agent CLI you installed and authenticated, and each agent's own login or key is
-what runs. Each agent defines its own authentication — a login, an API key, or either — and its vendor
-determines model access, rate limits, and cost.
-
-It fits work with a clear finish line and checks you trust. It is not (yet) for open-ended
-exploration with no defined finish line, or for repositories with no reliable tests or checks.
+It fits work with a clear finish line and checks you trust; it is not (yet) for open-ended
+exploration or repositories with no reliable tests or checks.
 
 ## Install
 
@@ -176,6 +167,7 @@ Two mechanisms guard the tree you work in.
 
 The maintained operator manual is the Sphinx build at [`docs/sphinx/index.rst`](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/index.rst).
 
+- [Docs map](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/README.md) — route by reader job
 - [Getting started](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/getting-started.md) — the first run, end to end
 - [Agent CLI lifecycle](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/agents.md) and [agent compatibility](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/agent-compatibility.md) — selection, authentication, model syntax
 - [Configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md) — every setting
