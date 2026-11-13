@@ -34,6 +34,8 @@ ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
         "Non-inferable instruction surface",
         "Independent review model-family diversification",
         "Premise-check retry line",
+        "Policy follows reality",
+        "Report failures honestly",
     }
 )
 

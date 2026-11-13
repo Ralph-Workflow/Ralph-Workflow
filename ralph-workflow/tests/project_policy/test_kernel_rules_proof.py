@@ -615,15 +615,12 @@ def _guard_row_evidence_tag(content: str, guard: str) -> str:
 
 
 def test_anecdotal_and_none_guard_rows_ship_advisory_enforcement() -> None:
-    unresolved_placeholder = "deterministic: PROJECT-FACT-UNRESOLVED"
     for source_name, content in (("root", root_kernel()), ("starter", kernel())):
         for row in guard_inventory_rows(content):
             tag = _guard_row_evidence_tag(content, row[0])
             if tag not in ("anecdotal", "none"):
                 continue
             enforcement = enforcement_cell(row)
-            if enforcement == unresolved_placeholder:
-                continue
             assert enforcement.startswith("advisory:"), (
                 f"{source_name} guard-inventory row for {row[0]!r} is tagged "
                 f"{tag!r} but carries enforcement {enforcement!r}; the bounded "

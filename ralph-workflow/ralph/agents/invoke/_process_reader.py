@@ -119,10 +119,16 @@ from ralph.process.manager import (
     ManagedProcess,
     ProcessEvent,
     ProcessStatus,
+    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
 )
-from ralph.process.teardown import teardown_subtree
+from ralph.process.teardown import (
+    teardown_subtree,
+)
+from ralph.process.teardown import (
+    teardown_subtree_if_pid_available as _teardown_subtree_if_pid_available,
+)
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.runtime_events import current_runtime_event
 from ralph.timeout_defaults import (
@@ -1494,6 +1500,10 @@ def _run_subprocess_and_read_lines(
             supervisor.act(
                 StartupFailureObserved(msg),
                 teardown=resolve_teardown(ctx.process_teardown, teardown_subtree),
+            )
+            _teardown_subtree_if_pid_available(
+                handle,
+                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             )
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 

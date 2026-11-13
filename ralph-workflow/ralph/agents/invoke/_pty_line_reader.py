@@ -123,7 +123,12 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
-from ralph.process.teardown import teardown_subtree
+from ralph.process.teardown import (
+    teardown_subtree,
+)
+from ralph.process.teardown import (
+    teardown_subtree_if_pid_available as _teardown_subtree_if_pid_available,
+)
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.runtime_events import current_runtime_event
 
@@ -349,11 +354,11 @@ class PtyLineReader:
 
     def _attempt_supervisor(self) -> AttemptSupervisor:
         attributes = cast("dict[str, object]", self.__dict__)
-        supervisor = attributes.get("_supervisor")
-        if supervisor is None:
-            supervisor = AttemptSupervisor(self._handle)
-            self._supervisor = supervisor
-        return cast("AttemptSupervisor", supervisor)
+        candidate = attributes.get("_supervisor")
+        if not isinstance(candidate, AttemptSupervisor):
+            candidate = AttemptSupervisor(self._handle)
+            self._supervisor = candidate
+        return candidate
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
         thread = threading.Thread(target=target, daemon=True)
@@ -1217,6 +1222,10 @@ class PtyLineReader:
         self._attempt_supervisor().act(
             TerminalStartupErrorObserved(terminal_startup_error),
             teardown=teardown_subtree,
+        )
+        _teardown_subtree_if_pid_available(
+            self._handle,
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
         )
         raise AgentInvocationError(
             self._agent_name,

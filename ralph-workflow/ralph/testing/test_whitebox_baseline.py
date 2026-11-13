@@ -10,6 +10,7 @@ tests/agents/execution_state/test_opencode_sink_registry_parity.py|0,1,0
 tests/agents/execution_state/test_opencode_subagent_visibility.py|0,2,0
 tests/agents/execution_state/test_strategy_classes_consolidated.py|0,2,0
 tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py|0,6,0
+tests/agents/invoke/test_check_process_result_supervisor.py|0,1,0
 tests/agents/invoke/test_claude_interactive_real_capture_replay.py|0,2,1
 tests/agents/invoke/test_codex_completion_liveness.py|0,2,4
 tests/agents/invoke/test_codex_session_id_extraction.py|0,1,0
@@ -41,7 +42,9 @@ tests/agents/invoke/test_pty_graceful_teardown.py|0,3,2
 tests/agents/invoke/test_pty_graceful_teardown_timing.py|2,3,0
 tests/agents/invoke/test_pty_line_reader_interrupt_teardown.py|0,2,1
 tests/agents/invoke/test_pty_line_reader_transcript_handle.py|0,2,0
+tests/agents/invoke/test_pty_post_exit_single_issuer.py|0,2,0
 tests/agents/invoke/test_pty_subagent_pid_source_wiring.py|0,1,4
+tests/agents/invoke/test_pty_suppressed_quota_observation.py|0,0,2
 tests/agents/invoke/test_pty_terminal_reason_before_signal.py|0,1,3
 tests/agents/invoke/test_pty_transcript_tailer_wiring.py|1,3,4
 tests/agents/invoke/test_pty_visible_tui_session_id_promotion.py|0,2,0
@@ -50,6 +53,7 @@ tests/agents/invoke/test_reader_stall_lifetime.py|0,1,0
 tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py|0,6,0
 tests/agents/invoke/test_runtime_resolver_endpoint_delivery.py|0,3,0
 tests/agents/invoke/test_subagent_transcript_tail.py|0,3,8
+tests/agents/invoke/test_tool_call_extraction.py|0,1,0
 tests/agents/invoke/test_transcript_discovery_concurrent_session.py|0,4,3
 tests/agents/invoke/test_transcript_thread_single_feed.py|0,1,0
 tests/agents/parsers/test_claude_headless_wire_capture.py|0,1,0

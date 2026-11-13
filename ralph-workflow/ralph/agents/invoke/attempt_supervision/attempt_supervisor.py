@@ -4,7 +4,8 @@ import contextlib
 import subprocess
 import threading
 import weakref
-from typing import TYPE_CHECKING, Protocol, cast
+from collections import deque
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke._quota_detection import is_quota_kill_evidence
 from ralph.agents.invoke.attempt_supervision import _issuer_mapping
@@ -27,6 +28,7 @@ _OWNERS_BY_RECORDER_ID: weakref.WeakValueDictionary[int, AttemptSupervisor] = (
 )
 
 
+@runtime_checkable
 class _SignalFn(Protocol):
     def __call__(
         self,
@@ -35,6 +37,21 @@ class _SignalFn(Protocol):
         issuer: ProcessTerminationIssuer,
         reason: str = ...,
     ) -> None: ...
+
+
+@runtime_checkable
+class _WaitFn(Protocol):
+    def __call__(self, timeout: float | None = None) -> int: ...
+
+
+def _signal_fn_of(handle: object) -> _SignalFn | None:
+    candidate = cast("object", getattr(handle, "terminate", None))
+    return candidate if isinstance(candidate, _SignalFn) else None
+
+
+def _wait_fn_of(handle: object) -> _WaitFn | None:
+    candidate = cast("object", getattr(handle, "wait", None))
+    return candidate if isinstance(candidate, _WaitFn) else None
 
 
 class _TeardownFn(Protocol):
@@ -68,7 +85,7 @@ class AttemptSupervisor:
         self._recorder = recorder if recorder is not None else TerminationRecorder()
         self._lock = threading.Lock()
         self._winner: ObservationRecord | None = None
-        self._observations: list[ObservationRecord] = []
+        self._observations: deque[ObservationRecord] = deque(maxlen=128)
         _OWNERS_BY_RECORDER_ID[id(self._recorder)] = self
 
     @classmethod
@@ -132,7 +149,7 @@ class AttemptSupervisor:
     ) -> None:
         with self._lock:
             if terminate:
-                terminate_fn = cast("_SignalFn | None", getattr(self._handle, "terminate", None))
+                terminate_fn = _signal_fn_of(self._handle)
                 if terminate_fn is not None:
                     if suppress:
                         with contextlib.suppress(Exception):
@@ -194,7 +211,7 @@ class AttemptSupervisor:
         waits_for_exit = _issuer_mapping.waits_for_exit_before_signal(observation)
         if waits_for_exit:
             self._wait_for_grace(observation)
-        terminate_fn = cast("_SignalFn | None", getattr(self._handle, "terminate", None))
+        terminate_fn = _signal_fn_of(self._handle)
         if terminate_fn is None:
             return _RETURNCODE_NOT_POLLED
         if not waits_for_exit:
@@ -240,7 +257,7 @@ class AttemptSupervisor:
             teardown(pid, issuer=process_issuer)
 
     def _wait_for_grace(self, observation: AttemptObservation) -> None:
-        wait_fn = cast("Callable[[float | None], int] | None", getattr(self._handle, "wait", None))
+        wait_fn = _wait_fn_of(self._handle)
         if wait_fn is None:
             return
         with contextlib.suppress(
