@@ -10,6 +10,15 @@ UNIVERSAL_SKILL_NAMES = (
     "verification-before-completion",
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "skill-model assertion reworded off the process-receipt phrase": (
+        "the documentation rubric bans process-receipt prose, so the owning docs "
+        "state the artifact-skill model as a current fact; the assertion checks "
+        "the fact itself (artifact skills follow the artifact types) instead of "
+        "the exact banned sentence"
+    ),
+}
+
 RETIRED_BUNDLE_TERMS = (
     "29 skills",
     "29 default skills",
@@ -18,6 +27,11 @@ RETIRED_BUNDLE_TERMS = (
 )
 
 OWNING_DOCS = ("README.md", "CONTRIBUTING.md", "CHANGELOG.md")
+
+SKILL_MODEL_FACT_PHRASES = (
+    "each artifact type carries at most one skill",
+    "artifact type adds its skill",
+)
 
 CURRENT_FACING_DOCS = ("README.md", "CONTRIBUTING.md")
 
@@ -47,8 +61,8 @@ def _package_doc(tmp_path: Path, name: str) -> str:
 def test_owning_docs_state_the_current_default_skill_model(tmp_path: Path) -> None:
     for name in OWNING_DOCS:
         text = " ".join(_package_doc(tmp_path, name).split())
-        assert "adding a skill now means adding an artifact type" in text, (
-            f"{name} must state that adding a skill means adding an artifact type"
+        assert any(phrase in text for phrase in SKILL_MODEL_FACT_PHRASES), (
+            f"{name} must state that artifact skills follow the artifact types"
         )
         for skill_name in UNIVERSAL_SKILL_NAMES:
             assert skill_name in text, f"{name} must list the universal skill {skill_name}"

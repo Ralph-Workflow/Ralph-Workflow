@@ -296,8 +296,8 @@ Ralph Workflow installs two kinds of skills.
 **Artifact skills** describe how to produce one of the pipeline's artifact
 types. They ship with Ralph Workflow, are installed into the **project
 scope**, and follow the pipeline's artifact types automatically: adding an
-artifact type adds its skill, so adding a skill now means adding an artifact
-type.
+artifact type adds its skill, and each artifact type carries at most one
+skill.
 
 **Universal skills** are exactly three — `test-driven-development`,
 `systematic-debugging`, and `verification-before-completion` — fetched from

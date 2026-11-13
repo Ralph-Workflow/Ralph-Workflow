@@ -619,8 +619,8 @@ Ralph Workflow installs two kinds of skills, and they have different owners.
   types. They ship with Ralph Workflow, are installed into the project
   scope, and are derived from the pipeline's artifact types: the set follows
   the artifact contract automatically, so there is no separate hand-maintained
-  skill list to keep in parity. Adding an artifact type adds its skill —
-  adding a skill now means adding an artifact type.
+  skill list to keep in parity. Adding an artifact type adds its skill, and
+  each artifact type carries at most one skill.
 - **Universal skills** are exactly three — `test-driven-development`,
   `systematic-debugging`, and `verification-before-completion` — and are
   **not vendored in this repository**. They are fetched at runtime from the

@@ -80,12 +80,14 @@ agent that Ralph Workflow is already driving.
    ralph --list-agents
    ```
 
-   Ralph Workflow enables supported agents it finds on your `PATH`.
-   If the list is empty, install and authenticate an agent CLI first
-   (see [`agents`](ralph-workflow/docs/sphinx/agents.md)), then rerun
-   `ralph --list-agents` — detection happens when a phase is routed to
-   an agent, not at `ralph --init` time, so an agent installed after
-   seeding is picked up without re-running `--init`.
+   `ralph --init` detects the agent CLIs on your `PATH`, enables them
+   in the configuration, and points the default chains at a detected
+   agent. `ralph --list-agents` shows the configured agents; it does not
+   change configuration. If the list is empty, or you install an agent
+   CLI later, install and authenticate it (see
+   [`agents`](ralph-workflow/docs/sphinx/agents.md)) and rerun
+   `ralph --init` — rerunning is safe and only enables newly detected
+   agents.
 
 6. **Check the setup.**
 

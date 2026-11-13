@@ -56,17 +56,20 @@ input across phases — see [Configuration](configuration.md).
 ## Detection — finding agents on PATH
 
 Ralph Workflow discovers each agent CLI via `shutil.which(agent_binary)`.
-Detection happens at the moment a phase is routed to an agent, not at
-`--init` time, so a CLI you install between `ralph --init` and `ralph` is
-picked up automatically.
+Detection runs during `ralph --init`, which enables detected agents in
+the configuration and points the default chains at a detected agent;
+chains you have customized are left untouched. A CLI you install after
+`ralph --init` is picked up by re-running `ralph --init`, which is
+idempotent and only enables newly detected agents.
 
-To verify detection before a run:
+To view the configured agents before a run:
 
 ```bash
 ralph --list-agents
 ```
 
-To validate availability alongside the rest of the pre-flight:
+This displays the agents table without changing configuration. To
+validate availability alongside the rest of the pre-flight:
 
 ```bash
 ralph --diagnose
