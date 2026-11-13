@@ -65,9 +65,7 @@ def _iter_py_files(root: Path) -> list[Path]:
     return result
 
 
-_TEARDOWN_WIRED_NAMES: frozenset[str] = frozenset(
-    {"teardown_subtree", "_teardown_subtree_if_pid_available"}
-)
+_TEARDOWN_WIRED_NAMES: frozenset[str] = frozenset({"teardown_subtree"})
 
 
 def _function_wires_teardown(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -535,8 +533,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Fix the wiring: pass process_monitor= to IdleWatchdog, wire "
             "set_active_sink/set_subagent_sink, bind WorkspaceMonitor.set_on_event "
             "with a 2-arg (kind, weight) forwarding lambda, call teardown_subtree "
-            "after self._handle.terminate, call teardown_subtree (or "
-            "_teardown_subtree_if_pid_available) before raise AgentInvocationError "
+            "after self._handle.terminate, call teardown_subtree "
+            "before raise AgentInvocationError "
             "on error/crash paths, and construct DefaultProcessMonitor with "
             "role_classifier=role_classifier_for_transport(...), discovery_strategy=, "
             "and subagent_pid_source=. Reader corroborators (_corroborate in "

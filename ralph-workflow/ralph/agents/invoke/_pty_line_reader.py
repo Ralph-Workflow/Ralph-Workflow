@@ -123,7 +123,9 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
-from ralph.process.teardown import _teardown_subtree_if_pid_available, teardown_subtree
+from ralph.process.teardown import (
+    teardown_subtree,
+)
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.runtime_events import current_runtime_event
 
@@ -1213,14 +1215,12 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
-        self._attempt_supervisor().act(
+        outcome = self._attempt_supervisor().act(
             TerminalStartupErrorObserved(terminal_startup_error),
             teardown=teardown_subtree,
         )
-        _teardown_subtree_if_pid_available(
-            self._handle,
-            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
-        )
+        if outcome is None:
+            return
         raise AgentInvocationError(
             self._agent_name,
             1,

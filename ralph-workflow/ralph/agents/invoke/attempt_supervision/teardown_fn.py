@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke.attempt_supervision.attempt_supervisor import _TeardownFn
+from ralph.agents.invoke.attempt_supervision._teardown_fn import _TeardownFn
 
 if TYPE_CHECKING:
     from ralph.process.teardown import ProcessTeardown

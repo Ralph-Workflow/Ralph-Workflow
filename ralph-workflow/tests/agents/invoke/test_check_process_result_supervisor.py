@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import inspect
 import os
 import signal
 import subprocess
@@ -18,10 +17,6 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     CompletionCheckOptions,
     OpenCodeResumableExitError,
-    _completion,
-    _completion_failures,
-    _completion_supervision,
-    _completion_verdicts,
     attempt_facts_from_exception,
     check_process_result,
 )
@@ -35,6 +30,20 @@ from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "white-box helper signature/inventory assertions removed": (
+        "the completion chain is asserted at the public boundary instead: "
+        "check_process_result threads the attempt's AttemptSupervisor, whose "
+        "recorder supplies the attached attempt facts, the descendant is "
+        "reaped, and POST_EXIT_WATCHDOG is the resolved issuer"
+    ),
+    "TypeError-on-missing-supervisor expectations removed": (
+        "helpers are no longer called directly; requiring the supervisor "
+        "keyword is enforced by construction inside check_process_result "
+        "and observed through public recorder facts"
+    ),
+}
 
 _LINGERING_DESCENDANT_CHILD = (
     "import os, sys;"
@@ -115,104 +124,58 @@ def _session_continuation_options(tmp_path: Path) -> CompletionCheckOptions:
     )
 
 
-_INTERNAL_HELPERS_REQUIRING_SUPERVISOR = (
-    _completion_supervision._wait_for_completion_grace,
-    _completion_supervision._wait_for_descendants_then_recheck,
-    _completion_failures._raise_if_broken_agent_exit,
-    _completion_failures._handle_non_zero_returncode,
-    _completion_verdicts._raise_if_pi_reported_failed_exit,
-    _completion_verdicts._accepts_implicit_development_exit,
-    _completion._check_process_result,
-)
-
-
-class TestCheckProcessResultSupervisor:
-    def test_internal_helpers_require_supervisor_keyword(self) -> None:
-        for helper in _INTERNAL_HELPERS_REQUIRING_SUPERVISOR:
-            params = inspect.signature(helper).parameters
-            assert "supervisor" in params, f"{helper.__qualname__} must accept supervisor"
-            assert params["supervisor"].default is inspect.Parameter.empty, (
-                f"{helper.__qualname__} must not default-construct a supervisor"
+def test_explicit_supervisor_reaps_descendant_and_records_fire(tmp_path: Path) -> None:
+    _manager, child, grandchild_pid = _spawn_exited_child_with_lingering_descendant(tmp_path)
+    try:
+        supervisor = AttemptSupervisor(child)
+        with pytest.raises(OpenCodeResumableExitError) as caught:
+            check_process_result(
+                child,
+                "opencode",
+                [],
+                _session_continuation_options(tmp_path),
+                _clock=FakeClock(start=0.0),
+                termination_recorder=supervisor.recorder,
             )
 
-    def test_internal_helpers_raise_type_error_without_supervisor(self) -> None:
-        with pytest.raises(TypeError):
-            _completion_supervision._wait_for_completion_grace(
-                object(), "agent", object(), [], clock=None, teardown=None
-            )
-        with pytest.raises(TypeError):
-            _completion_supervision._wait_for_descendants_then_recheck(
-                object(), "agent", object(), [], clock=None, teardown=None
-            )
-        with pytest.raises(TypeError):
-            _completion_failures._raise_if_broken_agent_exit(
-                object(), "agent", [], object(), stderr_text="", teardown=None
-            )
-        with pytest.raises(TypeError):
-            _completion_failures._handle_non_zero_returncode(
-                object(), "agent", [], None, 1, "", True, None
-            )
-        with pytest.raises(TypeError):
-            _completion_verdicts._raise_if_pi_reported_failed_exit(object(), "agent", [], None)
-        with pytest.raises(TypeError):
-            _completion_verdicts._accepts_implicit_development_exit(
-                object(), "agent", [], object(), object(), None
-            )
-        with pytest.raises(TypeError):
-            _completion._check_process_result(
-                object(), "agent", [], None, _clock=None, process_teardown=None
-            )
+        _assert_reaped(grandchild_pid)
+        facts = attempt_facts_from_exception(caught.value)
+        assert facts is not None
+        assert facts.termination is not None
+        assert facts.termination == supervisor.recorder.termination()
+        assert supervisor.recorder.resolved_issuer() is TerminationIssuer.POST_EXIT_WATCHDOG
+        assert facts.termination.issuer is TerminationIssuer.POST_EXIT_WATCHDOG
+        assert TerminationIssuer.POST_EXIT_WATCHDOG in [
+            entry.issuer for entry in supervisor.recorder.termination().log
+        ]
+    finally:
+        with contextlib.suppress(Exception):
+            os.kill(grandchild_pid, signal.SIGKILL)
+        with contextlib.suppress(Exception):
+            child.kill(issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
 
-    def test_explicit_supervisor_reaps_descendant_and_records_fire(self, tmp_path: Path) -> None:
-        _manager, child, grandchild_pid = _spawn_exited_child_with_lingering_descendant(tmp_path)
+
+def test_standalone_supervisor_supplies_attached_facts(tmp_path: Path) -> None:
+    manager = ProcessManager()
+    child = manager.spawn(
+        [sys.executable, "-c", "import sys; sys.exit(1)"],
+        SpawnOptions(label="invoke:completion-supervisor"),
+    )
+    try:
         try:
-            supervisor = AttemptSupervisor(child)
-            with pytest.raises(OpenCodeResumableExitError) as caught:
-                check_process_result(
-                    child,
-                    "opencode",
-                    [],
-                    _session_continuation_options(tmp_path),
-                    _clock=FakeClock(start=0.0),
-                    termination_recorder=supervisor.recorder,
-                )
+            child.wait(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            pytest.fail("child did not exit")
 
-            _assert_reaped(grandchild_pid)
-            facts = attempt_facts_from_exception(caught.value)
-            assert facts is not None
-            assert facts.termination is not None
-            assert facts.termination == supervisor.recorder.termination()
-            assert facts.termination.issuer is TerminationIssuer.POST_EXIT_WATCHDOG
-            assert TerminationIssuer.POST_EXIT_WATCHDOG in [
-                entry.issuer for entry in supervisor.recorder.termination().log
-            ]
-        finally:
-            with contextlib.suppress(Exception):
-                os.kill(grandchild_pid, signal.SIGKILL)
-            with contextlib.suppress(Exception):
-                child.kill(issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+        with pytest.raises(AgentInvocationError) as caught:
+            check_process_result(child, "test-agent", [], None, termination_recorder=None)
 
-    def test_standalone_supervisor_supplies_attached_facts(self, tmp_path: Path) -> None:
-        manager = ProcessManager()
-        child = manager.spawn(
-            [sys.executable, "-c", "import sys; sys.exit(1)"],
-            SpawnOptions(label="invoke:completion-supervisor"),
-        )
-        try:
-            try:
-                child.wait(timeout=10.0)
-            except subprocess.TimeoutExpired:
-                pytest.fail("child did not exit")
-
-            with pytest.raises(AgentInvocationError) as caught:
-                check_process_result(child, "test-agent", [], None, termination_recorder=None)
-
-            facts: AttemptFacts | None = attempt_facts_from_exception(caught.value)
-            assert facts is not None
-            assert facts.termination is not None
-            assert facts.termination.issuer is TerminationIssuer.AGENT_EXIT
-            assert facts.termination.observed_returncode == 1
-            assert facts.termination.reported_returncode == 1
-        finally:
-            with contextlib.suppress(Exception):
-                child.kill(issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+        facts: AttemptFacts | None = attempt_facts_from_exception(caught.value)
+        assert facts is not None
+        assert facts.termination is not None
+        assert facts.termination.issuer is TerminationIssuer.AGENT_EXIT
+        assert facts.termination.observed_returncode == 1
+        assert facts.termination.reported_returncode == 1
+    finally:
+        with contextlib.suppress(Exception):
+            child.kill(issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)

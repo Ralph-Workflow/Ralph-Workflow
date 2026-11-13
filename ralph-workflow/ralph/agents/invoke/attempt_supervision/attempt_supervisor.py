@@ -5,10 +5,12 @@ import subprocess
 import threading
 import weakref
 from collections import deque
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke._quota_detection import is_quota_kill_evidence
 from ralph.agents.invoke.attempt_supervision import _issuer_mapping
+from ralph.agents.invoke.attempt_supervision._signal_fn import _SignalFn
+from ralph.agents.invoke.attempt_supervision._wait_fn import _WaitFn
 from ralph.agents.invoke.attempt_supervision.observation_record import ObservationRecord
 from ralph.agents.invoke.attempt_supervision.post_exit_hang_observed import PostExitHangObserved
 from ralph.agents.invoke.attempt_supervision.provider_error_observed import ProviderErrorObserved
@@ -28,22 +30,6 @@ _OWNERS_BY_RECORDER_ID: weakref.WeakValueDictionary[int, AttemptSupervisor] = (
 )
 
 
-@runtime_checkable
-class _SignalFn(Protocol):
-    def __call__(
-        self,
-        grace_period_s: float | None = None,
-        *,
-        issuer: ProcessTerminationIssuer,
-        reason: str = ...,
-    ) -> None: ...
-
-
-@runtime_checkable
-class _WaitFn(Protocol):
-    def __call__(self, timeout: float | None = None) -> int: ...
-
-
 def _signal_fn_of(handle: object) -> _SignalFn | None:
     candidate = cast("object", getattr(handle, "terminate", None))
     return candidate if isinstance(candidate, _SignalFn) else None
@@ -52,10 +38,6 @@ def _signal_fn_of(handle: object) -> _SignalFn | None:
 def _wait_fn_of(handle: object) -> _WaitFn | None:
     candidate = cast("object", getattr(handle, "wait", None))
     return candidate if isinstance(candidate, _WaitFn) else None
-
-
-class _TeardownFn(Protocol):
-    def __call__(self, host_pid: int, /, *, issuer: ProcessTerminationIssuer) -> None: ...
 
 
 def _handle_pid(handle: object) -> int | None:

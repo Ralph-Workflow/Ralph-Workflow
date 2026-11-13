@@ -8,11 +8,10 @@ import threading
 import time
 from collections import OrderedDict
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import psutil
 
-from ralph.checked_accessors import optional_int
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.timeout_defaults import KILL_ESCALATION_CEILING_MS
 
@@ -308,21 +307,6 @@ def teardown_subtree(
     DefaultProcessTeardown(kill_escalation_ms=kill_escalation_ms).teardown_subtree(
         host_pid, issuer=issuer, owner_label=owner_label, pgid=pgid
     )
-
-
-def _teardown_subtree_if_pid_available(
-    handle: object,
-    *,
-    issuer: ProcessTerminationIssuer,
-    teardown: ProcessTeardown | None = None,
-) -> None:
-    pid = optional_int(cast("object", getattr(handle, "pid", None)))
-    if pid is None:
-        return
-    if teardown is None:
-        teardown_subtree(pid, issuer=issuer)
-        return
-    teardown.teardown_subtree(pid, issuer=issuer)
 
 
 __all__ = [
