@@ -99,6 +99,7 @@ ALLOWLIST: list[tuple[str, str]] = [
 
 TESTS_ALLOWLIST: set[str] = {
     "test_audit_secret_scan.py",
+    "test_repo_structure_boundary_rules.py",
     "test_process_audit.py",
     "test_process_cross_platform.py",
     "test_process_manager.py",

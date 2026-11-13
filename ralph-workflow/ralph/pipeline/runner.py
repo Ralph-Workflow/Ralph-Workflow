@@ -2483,13 +2483,17 @@ def _handle_inline_effect(
             status_text("Recovery triggered", effect.reason, "yellow"),
         )
         current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
-        recovered_state = progress.advance_phase(
-            state,
-            pipeline_policy.recovery.failed_route,
-            policy=pipeline_policy,
-        ).copy_with(
-            last_error=effect.reason,
-            recovery_epoch=current_epoch + 1,
+        recovered_state = (
+            progress.advance_phase(
+                state,
+                pipeline_policy.recovery.failed_route,
+                policy=pipeline_policy,
+            )
+            .copy_with(
+                last_error=effect.reason,
+                recovery_epoch=current_epoch + 1,
+            )
+            .clear_waiting()
         )
         ckpt.save(recovered_state, checkpoint_path)
         _notify_pipeline_subscriber(effective_subscriber, recovered_state)

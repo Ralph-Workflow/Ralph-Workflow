@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import sys
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
@@ -28,7 +29,6 @@ from ralph.pipeline.attempt_runner import (
     run_agent_attempt,
 )
 from ralph.pipeline.attempt_runner_deps import (
-    PRODUCTION_INVOKE,
     AttemptInvoke,
     AttemptRunnerDeps,
 )
@@ -64,7 +64,7 @@ from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.cli.commands._load_result import _LoadResult
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
@@ -343,8 +343,23 @@ def _make_production_invoke_agent(
     return typed
 
 
+_effect_executor_module = importlib.import_module("ralph.pipeline.effect_executor")
+
+
 def _production_effect_invoke() -> AttemptInvoke:
-    return PRODUCTION_INVOKE
+    def invoke(
+        target: InvokeAgentEffect | AgentConfig,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        config = kwargs.pop("config")
+        pipeline_deps = kwargs.pop("pipeline_deps")
+        workspace_scope = kwargs.pop("workspace_scope")
+        runner: AttemptInvoke = _effect_executor_module.execute_agent_effect
+        result: object = runner(target, config, pipeline_deps, workspace_scope, *args, **kwargs)
+        return result
+
+    return invoke
 
 
 def _run_project_policy_attempt(

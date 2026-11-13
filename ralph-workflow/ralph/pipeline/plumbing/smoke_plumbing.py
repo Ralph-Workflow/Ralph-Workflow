@@ -91,6 +91,7 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from ralph.agents.clock import Clock
     from ralph.agents.display_capabilities import DisplayCapability
     from ralph.agents.display_capability_stance import DisplayCapabilityStance
     from ralph.agents.invoke._workspace import WorkspaceMonitor
@@ -101,7 +102,10 @@ if TYPE_CHECKING:
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.session_bridge import BridgeFactory
+    from ralph.policy.models import PolicyBundle
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.controller import RecoveryController
 
 _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
@@ -1089,8 +1093,14 @@ def _execute_smoke_turns(
         pipeline_deps = params.pipeline_deps
         if pipeline_deps is None:
             raise RuntimeError("SmokeRunParams.pipeline_deps is required")
+        recovery_clock: Clock | None = getattr(pipeline_deps, "recovery_clock", None)
+        deps_ledger: AgentFailureLedger | None = getattr(pipeline_deps, "ledger", None)
+        policy_bundle: PolicyBundle | None = getattr(pipeline_deps, "policy_bundle", None)
+        unavailability_store: UnavailabilityStore | None = getattr(
+            pipeline_deps, "unavailability_store", None
+        )
         attempt_deps = AttemptRunnerDeps(
-            clock=pipeline_deps.recovery_clock or SystemClock(),
+            clock=recovery_clock or SystemClock(),
             invoke=_invoke_smoke_effect,
             probe_runner=None,
             workspace_probe=None,
@@ -1099,10 +1109,10 @@ def _execute_smoke_turns(
         controller = build_entry_point_recovery_controller(
             AgentEntryPoint.SMOKE,
             config=params.unified_config,
-            policy_bundle=pipeline_deps.policy_bundle,
+            policy_bundle=policy_bundle,
             deps=attempt_deps,
-            ledger_snapshot=(pipeline_deps.ledger.snapshot() if pipeline_deps.ledger else None),
-            unavailability_store=pipeline_deps.unavailability_store,
+            ledger_snapshot=(deps_ledger.snapshot() if deps_ledger is not None else None),
+            unavailability_store=unavailability_store,
         )
         try:
             attempt = run_agent_attempt(

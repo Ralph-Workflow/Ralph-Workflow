@@ -1216,14 +1216,19 @@ class ProcessLineReader:
         else:
             watchdog.record_activity()
 
+    def _evaluate_idle_fire(
+        self, watchdog: IdleWatchdog
+    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        return self._check_fire(
+            watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
+        )
+
     def _run_drain_window(
         self, watchdog: IdleWatchdog, drain_deadline: float | None
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         while True:
             self._poll_opencode_subagent_probe()
-            result = self._check_fire(
-                watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
-            )
+            result = self._evaluate_idle_fire(watchdog)
             if result is not None:
                 return result
             if (
@@ -1264,13 +1269,19 @@ class ProcessLineReader:
         )
         return self._run_drain_window(watchdog, drain_deadline)
 
-    def _finish_parent_exit_with_open_stream(self) -> bool:
+    def _finish_parent_exit_with_open_stream(self, watchdog: IdleWatchdog) -> bool:
         returncode = observed_returncode(self._handle)
         if returncode is None:
             return False
         post_exit = PostExitWatchdog(self._policy, self._clock)
 
         def classify_stream_state() -> AgentExecutionState:
+            fire = self._evaluate_idle_fire(watchdog)
+            if fire is not None:
+                pending, wrapper = fire
+                self._capture_pending(pending)
+                attach_attempt_facts(wrapper, self._termination)
+                raise wrapper
             with self._lines_lock:
                 reader_done = self._reader_done[0]
             return (
@@ -1401,7 +1412,7 @@ class ProcessLineReader:
 
                 if (
                     self._finish_terminal_completion()
-                    or self._finish_parent_exit_with_open_stream()
+                    or self._finish_parent_exit_with_open_stream(watchdog)
                 ):
                     break
 

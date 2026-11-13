@@ -96,6 +96,8 @@ def recover_missing_plan_handoff(
         last_error=str(exc),
         recovery_epoch=current_epoch + 1,
     )
+    if bound_exceeded:
+        recovered_state = recovered_state.clear_waiting()
     ckpt.save(recovered_state, checkpoint_path)
     notify_pipeline_subscriber(subscriber, recovered_state)
     return recovered_state

@@ -1789,15 +1789,19 @@ class RecoveryController:
         self._spent_agents.pop(state.phase, None)
         if self._policy_bundle is not None:
             failed_route = self._policy_bundle.pipeline.recovery.failed_route
-            return progress.advance_phase(
-                state,
-                failed_route,
-                policy=self._policy_bundle.pipeline,
-            ).copy_with(
-                last_error=reason,
-                recovery_epoch=state.recovery_epoch + 1,
-                last_failure_category=str(category),
-                last_retry_delay_ms=0,
+            return (
+                progress.advance_phase(
+                    state,
+                    failed_route,
+                    policy=self._policy_bundle.pipeline,
+                )
+                .copy_with(
+                    last_error=reason,
+                    recovery_epoch=state.recovery_epoch + 1,
+                    last_failure_category=str(category),
+                    last_retry_delay_ms=0,
+                )
+                .clear_waiting()
             )
         return state.copy_with(
             phase="failed_terminal",
@@ -1805,4 +1809,4 @@ class RecoveryController:
             recovery_epoch=state.recovery_epoch + 1,
             last_failure_category=str(category),
             last_retry_delay_ms=0,
-        )
+        ).clear_waiting()
