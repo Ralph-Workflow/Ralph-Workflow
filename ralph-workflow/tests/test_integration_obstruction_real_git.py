@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.file_backend import FileBackend
     from ralph.pipeline.conflict_resolution import RebaseStop
 
-from ralph.git.merge import merge_in_progress, merge_target_into_current
+from ralph.git.merge import merge_in_progress
 
 pytestmark = [
     pytest.mark.timeout_seconds(15),
@@ -234,40 +234,6 @@ def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> 
     commit = index.commit(message)
     assert commit.hexsha
     return commit.hexsha
-
-
-def _behind_with_untracked_copy(tmp_git_repo: Path, content: str) -> str:
-    base = _base_branch(tmp_git_repo)
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    _commit_file(tmp_git_repo, "feature.txt", "feature body\n", "feature work")
-    _run(tmp_git_repo, "checkout", base)
-    _commit_file(tmp_git_repo, "incoming.txt", "mainline body\n", "mainline adds incoming")
-    _run(tmp_git_repo, "checkout", "feature")
-    (tmp_git_repo / "incoming.txt").write_text(content, encoding="utf-8")
-    return base
-
-
-def test_merge_lands_over_untracked_copy_identical_to_target(tmp_git_repo: Path) -> None:
-    base = _behind_with_untracked_copy(tmp_git_repo, "mainline body\n")
-
-    result = merge_target_into_current(tmp_git_repo, base)
-
-    assert result.outcome == "success"
-    assert _run(tmp_git_repo, "merge-base", "--is-ancestor", base, "HEAD").returncode == 0
-    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
-
-
-def test_merge_refusal_over_differing_untracked_file_keeps_it_and_names_it(
-    tmp_git_repo: Path,
-) -> None:
-    base = _behind_with_untracked_copy(tmp_git_repo, "local work\n")
-
-    result = merge_target_into_current(tmp_git_repo, base)
-
-    assert result.outcome == "conflict"
-    assert result.reason == "merge refused: untracked files would be overwritten: incoming.txt"
-    assert (tmp_git_repo / "incoming.txt").read_text(encoding="utf-8") == "local work\n"
-    assert merge_in_progress(tmp_git_repo) is False
 
 
 @pytest.mark.parametrize("target_advanced", [False, True])

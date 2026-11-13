@@ -753,7 +753,28 @@ class TestSmokePlumbingCharacterization:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("export const todos = [];\n", encoding="utf-8")
 
-        monkeypatch.setattr(smoke_plumbing_module, "invoke_agent", _fake_invoke_agent)
+        def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
+            raw_sink = kwargs.get("raw_output_sink")
+            if raw_sink is not None:
+                raw_sink.extend(
+                    [
+                        '{"type":"assistant","message":{"type":"message","content":'
+                        '[{"type":"text","text":"I am creating the todo list now."}]}\n',
+                        '{"type":"assistant","message":{"type":"message","content":'
+                        '[{"type":"text","text":"The file has been written successfully."}]}\n',
+                        "Claude session ready. Session ID: interactive-smoke-session\n",
+                        "claude tool: write_file\n",
+                        "Task declared complete: session_id=interactive-smoke-session, "
+                        "summary=done, timestamp=1\n",
+                    ]
+                )
+            return PipelineEvent.AGENT_SUCCESS
+
+        monkeypatch.setattr(
+            smoke_plumbing_module,
+            "execute_agent_effect",
+            fake_execute_agent_effect,
+        )
 
         result = smoke_plumbing_module.run_smoke_plumbing(
             config=_fake_config(),
@@ -796,27 +817,6 @@ def _make_fake_registry(agent_name: str = "claude/haiku") -> object:
             return None
 
     return FakeRegistry
-
-
-def _fake_invoke_agent(
-    _config: AgentConfig,
-    _prompt_file: str,
-    *,
-    options: InvokeOptions | None = None,
-) -> object:
-    del options
-    return iter(
-        [
-            '{"type":"assistant","message":{"type":"message","content":'
-            '[{"type":"text","text":"I am creating the todo list now."}]}\n',
-            '{"type":"assistant","message":{"type":"message","content":'
-            '[{"type":"text","text":"The file has been written successfully."}]}\n',
-            "Claude session ready. Session ID: interactive-smoke-session\n",
-            "claude tool: write_file\n",
-            "Task declared complete: session_id=interactive-smoke-session, "
-            "summary=done, timestamp=1\n",
-        ]
-    )
 
 
 def _fake_config() -> UnifiedConfig:

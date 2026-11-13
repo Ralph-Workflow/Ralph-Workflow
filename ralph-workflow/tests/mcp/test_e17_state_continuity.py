@@ -339,7 +339,7 @@ def test_e17_wrap_up_flags_reset_safe_across_child_swap(tmp_path: pathlib.Path) 
         assert session_before_warning() is False
         assert session_warning_fired() is True
 
-        old_inner.process.terminate()
+        old_inner.process.terminate(issuer=ProcessTerminationIssuer.OPERATOR)
         restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is True
 

@@ -124,6 +124,7 @@ from ralph.mcp.upstream.tool_catalog_cache import (
 from ralph.process.manager import (
     ManagedProcess,
     ProcessManagerPolicy,
+    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
 )
@@ -1142,7 +1143,10 @@ class RestartAwareMcpBridge:
                     kill_fn: object = getattr(proc, "kill", None)
                     if callable(kill_fn):
                         with contextlib.suppress(Exception):
-                            kill_fn()
+                            if isinstance(proc, ManagedProcess):
+                                kill_fn(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
+                            else:
+                                kill_fn()
                     poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
                     old_exited = False
                     if poll_fn is not None and callable(poll_fn):

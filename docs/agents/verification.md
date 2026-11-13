@@ -60,7 +60,7 @@ Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx o
 
 ## Total test budget
 
-The combined total test budget is **pinned**: 60 seconds of wall clock net of host contention, and 700 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. All selected files join the same LPT partition, distributed across the parallel shards (`ralph/test_suites.py:1958-1969`). The critical path is the slowest shard.
+The combined total test budget is **pinned**: 60 seconds of wall clock net of host contention, and 700 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. All selected files join the same LPT partition, distributed across the parallel shards (`ralph/test_suites.py:588-623`). The critical path is the slowest shard.
 
 Wall clock on a shared host also measures every other process, so `ralph/verify.py` judges the tracked steps once they have all passed (`ralph/verify_budget.py` documents the rule):
 

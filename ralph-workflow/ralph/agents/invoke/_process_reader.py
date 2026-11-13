@@ -79,6 +79,7 @@ from ralph.agents.invoke.opencode_subagent_sessions import (
     SqliteOpenCodeChildPartSource,
     default_opencode_db_path,
 )
+from ralph.agents.invoke.termination_recorder import return_code_may_be_a_signal
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.checked_accessors import optional_float
 from ralph.config.agent_config import AgentConfig
@@ -206,6 +207,59 @@ def _record_fire_termination(
     recorder.record_issuer(termination_issuer_for_fire_reason(fire_reason))
     recorder.record_liveness(True)
     _record_watchdog_evidence(recorder, watchdog)
+
+
+def _reclassify_supervisor_idle_fire(
+    fire_reason: WatchdogFireReason,
+    handle: object,
+    recorder: _TerminationRecorder,
+    *,
+    completion_gated: bool,
+) -> WatchdogFireReason:
+    if not completion_gated:
+        return fire_reason
+    if not isinstance(handle, ManagedProcess):
+        return fire_reason
+    if termination_issuer_for_fire_reason(fire_reason) is not TerminationIssuer.SUPERVISOR_IDLE:
+        return fire_reason
+    exited_returncode = observed_returncode(handle)
+    if exited_returncode is None or return_code_may_be_a_signal(exited_returncode):
+        return fire_reason
+    if not _has_live_session_orphan(handle):
+        return fire_reason
+    recorder.record_observed_returncode(exited_returncode)
+    recorder.record_reported_returncode(exited_returncode)
+    return WatchdogFireReason.DESCENDANT_HANG
+
+
+def _has_live_session_orphan(handle: ManagedProcess) -> bool:
+    try:
+        process_group = handle.record.pgid
+        for proc in psutil.process_iter(["pgid", "status"]):
+            info: dict[str, object] = dict(proc.info)
+            if info.get("pgid") != process_group or proc.pid == handle.pid:
+                continue
+            if info.get("status") != "zombie":
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _attach_fire_attempt_facts(
+    exc: _IdleStreamTimeoutError,
+    converted: AgentInactivityTimeoutError,
+    handle: ManagedProcess,
+    recorder: _TerminationRecorder,
+) -> None:
+    exited_returncode = observed_returncode(handle)
+    if (
+        termination_issuer_for_fire_reason(exc.reason) is TerminationIssuer.POST_EXIT_WATCHDOG
+        and exited_returncode is not None
+        and not return_code_may_be_a_signal(exited_returncode)
+    ):
+        converted.returncode = exited_returncode
+    attach_attempt_facts(converted, recorder)
 
 
 def _observe_attempt_event(reader: object, activity_signal: AgentActivitySignal) -> None:
@@ -955,6 +1009,12 @@ class ProcessLineReader:
         )
         fire_reason = watchdog.last_fire_reason
         assert fire_reason is not None
+        fire_reason = _reclassify_supervisor_idle_fire(
+            fire_reason,
+            self._handle,
+            self._termination,
+            completion_gated=self._completion_is_terminal is not None,
+        )
         timeout_val = (
             self._policy.max_session_seconds
             if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
@@ -1491,7 +1551,9 @@ def _run_subprocess_and_read_lines(
             workspace_path=ctx.workspace_path,
             connectivity_state_provider=ctx.connectivity_state_provider,
             is_waiting_state_provider=ctx.is_waiting_state_provider,
-            completion_is_terminal=completion_is_terminal,
+            completion_is_terminal=(
+                completion_is_terminal if completion_evidence_gates_reader(ctx) else None
+            ),
             input_prompt=ctx.input_prompt,
             relay_activity_sink_register=ctx.relay_activity_sink_register,
             relay_health_error=ctx.relay_health_error,
@@ -1551,7 +1613,7 @@ def _run_subprocess_and_read_lines(
                 captured_session_id=captured_session_id,
                 expected_session_id=reader_ctx.expected_session_id,
             )
-            attach_attempt_facts(converted, reader.termination_recorder)
+            _attach_fire_attempt_facts(exc, converted, handle, reader.termination_recorder)
             raise converted from exc
 
         (

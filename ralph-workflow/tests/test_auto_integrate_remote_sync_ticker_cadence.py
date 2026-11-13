@@ -521,10 +521,14 @@ def test_runner_marks_the_agent_phase_for_its_whole_run_on_every_exit_path(
     seen: list[bool] = []
 
     def _agent(
-        _effect: object, _config: object, _deps: object, scope: object, **_kw: object
+        _effect: object,
+        _config: object = None,
+        _deps: object = None,
+        workspace_scope: object = None,
+        **_kw: object,
     ) -> PipelineEvent:
-        assert isinstance(scope, WorkspaceScope)
-        seen.append(process_agent_phases().is_active(scope.root))
+        assert isinstance(workspace_scope, WorkspaceScope)
+        seen.append(process_agent_phases().is_active(workspace_scope.root))
         raise failure
 
     monkeypatch.setattr(runner_module, "execute_agent_effect", _agent)
