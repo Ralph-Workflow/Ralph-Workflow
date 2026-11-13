@@ -99,8 +99,10 @@ from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_N
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import (
+    PREMISE_CHECK_LINE,
     build_retry_error_block,
     build_validation_retry_footer,
+    premise_check_line,
 )
 from ralph.workspace import FsWorkspace
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangeProbe
@@ -1769,6 +1771,17 @@ def _write_agent_retry_prompt(
         reason=reason,
     )
     current_fingerprint = retry_hint_fingerprint(str(drain or reason), detail or reason)
+    prior_fingerprint = ""
+    if fingerprint_file is not None and DEFAULT_FILE_BACKEND.exists(fingerprint_file):
+        try:
+            prior_fingerprint = DEFAULT_FILE_BACKEND.read_text(
+                fingerprint_file, encoding="utf-8"
+            ).strip()
+        except (OSError, ValueError):
+            prior_fingerprint = ""
+    premise = premise_check_line(current_fingerprint, prior_fingerprint)
+    if premise and PREMISE_CHECK_LINE in validation_hint:
+        premise = ""
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         detail=detail,
@@ -1797,6 +1810,7 @@ def _write_agent_retry_prompt(
         retry_prompt_path.write_text(
             (
                 f"{error_block}\n\n"
+                f"{premise + chr(10) + chr(10) if premise else ''}"
                 f"{validation_block + chr(10) + chr(10) if validation_block else ''}"
                 f"PREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}"
                 f"{chr(10) + chr(10) + validation_footer if validation_footer else ''}\n"
@@ -1819,6 +1833,8 @@ def _write_agent_retry_prompt(
     ]
     if validation_block:
         body_parts[1:1] = ["", validation_block]
+    if premise:
+        body_parts[1:1] = ["", premise]
     if stale_session_id and not condensed:
         body_parts[3:3] = [
             "STALE SESSION EMPTY PRIOR OUTPUT",

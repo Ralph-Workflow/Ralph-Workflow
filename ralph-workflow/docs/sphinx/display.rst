@@ -241,8 +241,8 @@ which scans every ``*.py`` under ``ralph/display/`` at test time:
 - ``os.environ`` and ``os.getenv`` may only appear in
   ``ralph/display/context.py`` and ``ralph/display/content_condenser.py``.
 
-To opt a line out of the invariant scan, append ``# noqa: di-allow`` to it
-and document why in the same commit.
+The invariant scan has no inline opt-out; every violation must be fixed in the
+scanned source.
 
 Single display owner
 --------------------

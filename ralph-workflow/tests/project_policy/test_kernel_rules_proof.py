@@ -22,22 +22,20 @@ from tests.project_policy.kernel_contract import (
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_kernels_number_the_agent_rules_to_match_the_contract": (
-        "the retired cold-agent retry rule was removed by the policy trim, so the "
-        "numbered contract is thirteen rules and every rule that followed it moves "
-        "down one number"
+        "the policy-v6 product requirement restores the runtime premise check, so the "
+        "numbered contract is fourteen rules and every following rule moves up one number"
     ),
     "test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules": (
-        "the retired cold-agent retry rule was removed by the policy trim, so the "
-        "rule-to-phase table covers the thirteen numbered rules"
+        "the policy-v6 product requirement restores the runtime premise check, so the "
+        "rule-to-phase table covers the fourteen numbered rules"
     ),
     "test_every_agent_rule_has_a_research_basis_supports_line": (
-        "the retired cold-agent retry rule was removed by the policy trim, so each of "
-        "the thirteen rules names its number in a research-basis supports line"
+        "the policy-v6 product requirement restores the runtime premise check, so each of "
+        "the fourteen rules names its number in a research-basis supports line"
     ),
     "test_kernel_evidence_tags_match_the_brief": (
-        "the retired cold-agent retry rule was removed by the policy trim, so the "
-        "brief assigns no evidence tag to it and the check pins the tags of the "
-        "remaining agent rules"
+        "the policy-v6 product requirement restores the runtime premise check with "
+        "practitioner evidence, so the check pins its anecdotal evidence tag"
     ),
     "test_kernel_anchors_the_deterministic_evidence_rule": (
         "the blanket sentence that only a `strong` or `moderate` rule may carry "
@@ -45,11 +43,6 @@ RALPH_TEST_CHANGE_REASONS = {
         "evidence tag and the enforcement status are separate properties, so the "
         "anchor names the replacement text and the retired blanket sentence must "
         "be absent"
-    ),
-    "the_removed_cold_agent_retry_rule_check": (
-        "the retired cold-agent retry rule was removed by the policy trim, so the "
-        "check that pinned that rule, its advisory ladder cell and its "
-        "guard-inventory row in both kernels no longer applies"
     ),
 }
 
@@ -89,6 +82,7 @@ LOAD_STEP_DOMAIN_MARKER = "LOAD only the domain polic"
 
 BRIEF_EVIDENCE_TAGS: dict[str, str] = {
     "Regression tests from the spec": "moderate",
+    "Premise check": "anecdotal",
     "Smallest change": "anecdotal",
     "Context hygiene": "strong",
 }

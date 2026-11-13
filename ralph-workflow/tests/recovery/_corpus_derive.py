@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.parsers import get_parser
@@ -54,7 +54,9 @@ def load_fixtures(directory: Path | None = None) -> tuple[dict[str, object], ...
     payloads: list[dict[str, object]] = []
     for path in sorted(root.glob("*.json")):
         decoded: object = json.loads(path.read_text(encoding="utf-8"))
-        payloads.append(cast("dict[str, object]", decoded))
+        if not isinstance(decoded, dict):
+            raise ValueError(f"corpus fixture must be a JSON object: {path}")
+        payloads.append({str(key): value for key, value in decoded.items()})
     return tuple(payloads)
 
 

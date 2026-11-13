@@ -1,37 +1,16 @@
 # ADR-0010: Source-of-truth closure (typed display projection and defensive collector guard)
 
-* Status: Accepted
 * Related: [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
-
-## Context
-
-[ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md) establishes the
-typed-authority model for the pipeline. Every cited site delegates to the
-typed authorities (the integration owner seam `decide_integration` /
-`decide_seam_action`, `decide_phase_transition`,
-`is_terminal_success_eligible`, `classify_git_operation`,
-`fan_out_decision`, `PublicationDecision`).
-
-Two display-side prose-comparison sites and a missing defensive guard on the
-operation-scoped evidence collector are the remaining gaps: the two sites
-compare strings instead of typed enum members, and the collector emits
-whatever its helpers produce without checking the emitted kinds. The
-contract below closes invariant 7 / 13 and adds the defensive
-`RuntimeError` that fails closed if a future contributor reintroduces a
-repository-global evidence key.
 
 ## Architecture
 
-The architecture is **not extended** by this ADR. The two residual
-prose-comparison sites use typed enum-identity checks, the
-operation-scoped evidence collector gains a fail-closed `RuntimeError`
-boundary, and the audit tables returned by the PARALLEL-1 / PARALLEL-2 /
-PARALLEL-3 fixtures are pinned as regression coverage. No new authority, no
-new enum, no new layer.
+Display projections use typed enum-identity checks. The operation-scoped
+evidence collector enforces a fail-closed `RuntimeError` boundary, and the
+delegation fixtures pin the authority call sites.
 
-### 1. Typed comparison at `run_loop._integration_alert_for_state`
+### 1. Typed comparison at `run_loop.integration_alert_for_state`
 
-`ralph/pipeline/run_loop.py:650` compares the persisted
+`ralph/pipeline/run_loop.py:685` compares the persisted
 `rebase.last_decision` against `PhaseDecision.REPORT_INTERVENTION_REQUIRED.value`,
 the typed enum value rather than a bare string literal, so the comparison
 cannot disagree with the reducer. The static
@@ -74,31 +53,33 @@ The `test_subprocess_collector_guard_rejects_forbidden_kind` and
 `test_subprocess_collector_guard_accepts_only_closed_vocabulary`
 fixtures pin both the helper and the boundary raise.
 
-### 4. Audit-and-pin existing delegation
+### 4. Delegation sites
 
-The PARALLEL-1 / PARALLEL-2 / PARALLEL-3 fixtures pin the delegation sites:
+The delegation fixtures pin these call sites:
 
-* `ralph/pipeline/runner.py:972, :1881-1882, :1935-1936, :2516`
-  delegate to `is_terminal_success_eligible`, `decide_seam_action`
-  (the integration owner seam), `decide_phase_transition`. Regression
+* `ralph/pipeline/runner.py:913` and `:2382` delegate to
+  `is_terminal_success_eligible`; `runner.py:1679` and `:1734` delegate to
+  `decide_seam_action` (the integration owner seam); `runner.py:1686` and
+  `:1741` delegate to `decide_phase_transition`. Regression
   coverage extended in
   `tests/test_runner_decision_delegation.py`.
-* `ralph/pipeline/run_loop.py:1422, :2071, :2149, :2549,
-  :3138-3140, :3149` delegate to `classify_git_operation`,
-  `decide_seam_action` (the integration owner seam),
-  `decide_phase_transition`,
-  `is_terminal_success_eligible`. Regression coverage extended in
+* `ralph/pipeline/run_loop.py:1518` and `:2489` delegate to
+  `classify_git_operation`; `run_loop.py:2648` delegates to
+  `decide_seam_action` (the integration owner seam); `run_loop.py:3873`
+  delegates to `decide_phase_transition`; `run_loop.py:3377`, `:3397`, and
+  `:3883` delegate to `is_terminal_success_eligible`. Regression coverage
+  extended in
   `tests/test_run_loop_decision_delegation.py`,
   `tests/test_run_loop_setters_only.py`,
   `tests/test_run_loop_pro_integration.py`.
-* `ralph/pipeline/auto_integrate_recovery.py:142, :777, :802,
-  :897-900` delegate to `busy_refusal_outcome`,
-  `decide_integration` (the integration owner seam),
-  `classify_git_operation`. Regression
+* `ralph/pipeline/auto_integrate_recovery.py:92-97` delegates to
+  `busy_refusal_outcome`; `auto_integrate_recovery.py:112` delegates to
+  `classify_git_operation`; `auto_integrate_recovery.py:303` delegates to
+  `decide_seam_action` (the integration owner seam). Regression
   coverage extended in `tests/test_auto_integrate_recovery.py`,
   `tests/test_recovery_release_uses_record_store.py`.
 
-### 5. Public-boundary matrix test (PARALLEL-7)
+### 5. Public-boundary matrix test
 
 `tests/test_public_workflow_entry_point_matrix.py` contains
 `test_entry_point_matrix_six_seams_agree` (parameterised over the
@@ -110,7 +91,7 @@ parallel join, terminal handling — produce the **same**
 `PhaseDecision` value. A divergence surfaces as a single test
 failure; no per-seam patched fixture is needed.
 
-### 6. Kill-at-cap restart fixture (PARALLEL-6)
+### 6. Kill-at-cap restart fixture
 
 `tests/test_authority_audit_scenario_3_4_9_restart_retry.py::test_kill_at_cap_does_not_replenish_after_restart`
 proves that a deliberate SIGKILL at
@@ -136,38 +117,6 @@ closed vocabulary `_DIAGNOSIS_ACTION_VERBS` plus the typed `is_diagnosis` flag:
 | `OperationFact.kind`               | `SubprocessOperationEvidenceCollector.snapshot()`                                      | Same (closed `_KIND_*` set)                           | `IntegrationRecord.diagnostic_evidence`                 | Tuple of facts (boundary-checked)             | Re-snapshotted | Closed vocab only          | Yes — RuntimeError boundary fails closed                 |
 | `last_decision`                    | `ralph/pipeline/reducer.py`                                                            | Same (sole writer)                                    | `display/snapshot.py`, `_integration_alert_for_state`  | `PhaseDecision.value` (typed)                 | Re-derived | Off-vocab → reducer refuses  | Yes — comparison via `PhaseDecision.value`               |
 
-## Consequences
-
-* Invariant 7 ("A projection cannot overrule or mutate its source")
-  is mechanical: the two display-side residual projections read
-  the typed value, not a string.
-* Invariant 11 ("Retries and strategy progression survive restart
-  and terminate in a visible state") is mechanically pinned: the
-  kill-at-cap fixture is a regression test for the cap, not for
-  the helper that sets it.
-* Invariant 13 ("UI and logs describe the actual authoritative
-  state rather than the helper currently executing") is closed:
-  prose substring matching is absent from the display path.
-* The defensive guard makes a repository-global evidence key fail
-  closed at the collector boundary, not at the loader's
-  `RecordUnreadableError`.
-* `_DIAGNOSIS_ACTION_VERBS` is a closed vocabulary duplicated against
-  `_ACTION_TO_DISPLAY_STATE` and the `OperationDisplayState` enum.
-  Each table is a closed vocabulary pinned by its own test, and the
-  projection layer re-derives the label from the closed enum rather
-  than from a shared mutable dict.
-* The defensive `RuntimeError` may surface in tests that
-  monkey-patch the collector's helpers to inject a forbidden
-  kind. The companion test
-  `test_subprocess_collector_guard_rejects_forbidden_kind`
-  documents the contract; tests that want to bypass the
-  guard must add a closed kind to `_CLOSED_OPERATION_FACT_KINDS`.
-* `IntegrationAction`, `PhaseDecision`, `RebaseOutcomeKind`,
-  `OperationDisplayState`, `FanOutDecision`, `PublicationDecision`
-  keep their closed vocabularies.
-* `make verify` enforces the 60-second combined test
-  budget. The fixtures add <2s to the per-suite timing.
-
 ## Compatibility
 
 * `last_decision` persists as a `str | None` field
@@ -186,7 +135,7 @@ closed vocabulary `_DIAGNOSIS_ACTION_VERBS` plus the typed `is_diagnosis` flag:
 
 | Required outcome | Implementation                                                        | Runnable proof                                                                              |
 |------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| (1) No prose compare at run_loop:650 | `run_loop.py:650` (1 line)                                          | `uv run pytest tests/test_run_loop_decision_delegation.py -q`                                |
+| (1) No prose compare at run_loop:685 | `run_loop.py:685` (1 line)                                          | `uv run pytest tests/test_run_loop_decision_delegation.py -q`                                |
 | (2) No prose substring at the display seam | `auto_integrate_message.py:_DIAGNOSIS_ACTION_VERBS` + lookup        | `uv run pytest tests/test_display_lifecycle_label_taxonomy.py -q`                            |
 | (3) Defensive guard on collector         | `operation_evidence.py:_is_closed_kind` + boundary raise            | `uv run pytest tests/test_operation_evidence.py -q`                                          |
 | (4) Audit-and-pin runner / run_loop / recovery | `tests/test_runner_decision_delegation.py`, `test_run_loop_*` | `uv run pytest tests/test_runner_decision_delegation.py tests/test_run_loop_*.py tests/test_auto_integrate_recovery.py tests/test_recovery_release_uses_record_store.py -q` |
@@ -201,5 +150,5 @@ closed vocabulary `_DIAGNOSIS_ACTION_VERBS` plus the typed `is_diagnosis` flag:
 * [ADR-0008: Integration lifecycle consolidation](adr-0008-integration-lifecycle-consolidation.md)
 * [ADR-0009: Pipeline source-of-truth ownership, observation boundaries, and durable state authorities](adr-0009-pipeline-source-of-truth-ownership.md)
 * Canonical verification policy: `docs/ralph-workflow-policy/verification-policy.md`
-* Operator surface: `docs/sphinx/operator-states.md`
-* Recovery surface: `docs/sphinx/recovery.md`
+* Operator surface: `ralph-workflow/docs/sphinx/operator-states.md`
+* Recovery surface: `ralph-workflow/docs/sphinx/recovery.md`

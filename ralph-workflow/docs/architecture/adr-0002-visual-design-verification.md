@@ -1,32 +1,10 @@
 # ADR-0002: Visual design verification — renderer, capture, verdict, ledger
 
-- **Status:** Accepted
-- **Date:** 2026-08-10
-- **Supersedes:** None
 - **Scope:** Maintained Python package (`ralph-workflow/ralph/`)
 
-## Context
+## Architecture
 
-`PROMPT.md` and `.agent/PRODUCT_CRITERIA.md` describe eighteen
-binding criteria for visual design verification. Criteria 1–5 are met
-for byte transport only — an agent never knows it cannot see; criteria
-6–18 are unbuilt.
-
-The implementation must:
-
-- Render the managed repository's UI through a **declared command**
-  supplied by policy, never a bundled headless browser.
-- Cover states design actually breaks in, not a single screenshot.
-- Judge from rendered pixels plus design intent, and from nothing else.
-- Carry the verdict and its captures as durable, ledger-backed evidence.
-
-A deterministic tier exercises the machinery against fixture capture
-sets; a judgement tier exercises it against a real renderer and a
-real vision model on demand.
-
-## Choice
-
-### D1. Renderer is a bounded declared capture command for web UI only
+### Renderer is a bounded declared capture command for web UI only
 
 `ralph.visual.policy_facts` parses a bounded managed-repo `design_capture_command` from
 managed-repo policy. `ralph.mcp.tools.workspace._media_capture`
@@ -38,7 +16,7 @@ or invokes a headless browser itself. A no renderer or non-web UI
 fails closed with a recorded visual-review blocker rather than a
 partial or guessed capture.
 
-### D2. Capture matrix is the unit of evidence
+### Capture matrix
 
 A `design_capture_command` produces a **capture set** — a matrix of
 viewport × theme × state per target. The matrix is declared once per
@@ -46,14 +24,14 @@ repo from `policy_facts`. A single screenshot is never admissible
 visual evidence. A declared cell that fails to render fails the whole
 request.
 
-### D3. Server mints evidence, agents do not
+### Server-minted evidence
 
 Every capture carries a `ralph://media/{artifact_id}` handle on the
 criterion 5 wire ledger. Geometry and sha256 are server-computed; the
 agent never writes its own captures into evidence. An agent that does
 is rejected at the proof-validation boundary.
 
-### D4. Verdict is exactly three inputs
+### Verdict inputs
 
 A design verdict accepts ONLY:
 
@@ -65,9 +43,8 @@ A design verdict accepts ONLY:
    declarations.
 
 Source, diff, DOM, stylesheets, and any other judgement input have no
-place in a verdict. **The enforcement built for that rule is narrower
-than the rule**, and this ADR records what exists rather than what was
-intended. The only automated check is a case-insensitive,
+place in a verdict. **The automated enforcement of that rule is narrower
+than the rule**. The automated check is a case-insensitive,
 word-boundary regex over `## Design Intent` in the `design_verdict`
 markdown spec (`ralph/mcp/artifacts/markdown/specs/design_verdict.py`,
 diagnostic `DV008`). That is a wording heuristic, not a typed
@@ -84,7 +61,7 @@ finding must appear in the artifact's own `cell_ids` (`DV003`), and a
 capture handle the active-run wire ledger cannot authenticate fails
 validation (`DV013`).
 
-### D5. Pre-change baseline is run-scoped and immutable
+### Run-scoped immutable baseline
 
 `ralph.visual.capture_lifecycle` owns the comparative baseline. After
 the MCP bridge establishes a run ID but before the first developer
@@ -93,9 +70,9 @@ complete `before` matrix. Retries and continuations reuse it; the
 baseline never overwrites after workspace mutation. A verdict whose
 `before` cannot be sourced from a retained manifest fails closed.
 
-### D6. Review lane retains named human verdict authority
+### Human review authority
 
-Criteria 9 and 10 revisit `testing-policy.md` and
+Criteria 9 and 10 apply the rules in `testing-policy.md` and
 `design-system-policy.md`. A capture-backed criterion 8 verdict is
 agent-produced evidence and requires the named human review verdict;
 it does not close the review lane autonomously. Unverified evidence
@@ -108,9 +85,9 @@ visual-verdict evidence"), and the `design_verdict` markdown spec
 (`ralph/mcp/artifacts/markdown/specs/design_verdict.py`) enforces it at
 the artifact boundary: a `## Design Intent` that pivots the review into
 a code-reading task is rejected with diagnostic `DV008` when the
-artifact is submitted (D4).
+artifact is submitted.
 
-### D7. Two visual smoke tiers
+### Visual smoke tiers
 
 - **Deterministic tier** — offline, stubbed judge, fixture capture
   sets. Lives in `tests/test_visual_smoke.py` (and the focused
@@ -121,51 +98,22 @@ artifact is submitted (D4).
   redesigned when it does not fit.
 - **Judgement tier** — real renderer, real vision model, on demand.
   `ralph visual-judgement` makes this lane explicit. Recorded as a dated
-  artifact. Never a blocking gate (a nondeterministic judge wired as a
-  blocker is the exact failure mode a later run weakens to green).
+  artifact. Never a blocking gate.
 
-### D8. Per-call agent attribution
+### Per-call agent attribution
 
 Capability and evidence resolve per media call. The wire-ledger row
 carries an authenticated `agent_id` (parent or delegated subagent)
 plus the resolved `provider`/`model_id`/`delivery_mode`. A parent
 and its subagent remain distinguishable; session-level model
-guesses no longer gate image delivery.
+guesses do not gate image delivery.
 
-### D9. Delegation is declared per transport
+### Per-transport delegation
 
 A transport that cannot spawn a subagent says so at registration
 (`ralph.agents.delegation_capabilities`). A genuinely blind parent
 fails criteria 13/15; criterion 3's `UNSUPPORTED` warning keeps the
 underlying media call usable but never grades perception.
-
-## Consequences
-
-### Positive
-
-- Visual criteria become evidence, not aspirations.
-- The chain is provable offline at the deterministic tier; on-demand
-  judgement is a dated artifact, not a flapping gate.
-- Policies align: appearance assertions never prove design quality;
-  design-system, UX, and accessibility policies all share the same
-  rule.
-
-### Negative
-
-- The renderer is the managed repo's responsibility; capture
-  quality becomes the managed repo's problem (D1).
-- Adding eight vision-capable transports to the smoke suite spends
-  against the 60 s budget; the deterministic tier absorbs them
-  offline (D7).
-- A non-`covered` transport must declare so at registration, or
-  registration closes; a future transport cannot quietly inherit
-  "unaccounted".
-
-### Neutral
-
-- The `ralph.visual` component is new. It joins `ralph.mcp`,
-  `ralph.pipeline`, and `ralph.skills` as the fourth trust-boundary
-  carrier.
 
 ## Trust Boundaries
 
@@ -183,9 +131,9 @@ underlying media call usable but never grades perception.
    capture handles the active-run ledger cannot authenticate
    (`DV013`). It is a **partial** boundary — the typed three-input
    contract in `ralph.visual.design_verdict` is not wired into any
-   production path (D4), so no code enforces the three-input rule
+   production path, so no code enforces the three-input rule
    itself.
-5. **Per-call agent identity** — `ralph.mcp.server.wire_ledger`.
+5. **Per-call agent identity** — `ralph/mcp/server/_wire_ledger.py`.
    Every record carries `agent_id` plus resolved identity and
    delivery mode.
 
@@ -197,7 +145,7 @@ underlying media call usable but never grades perception.
 | Capture argv execution | `ralph.executor.process` | `_media_capture.py` |
 | Server-minted handle | `ralph.mcp.multimodal.resources` | `_wire_ledger.append_wire_record` |
 | Verdict inputs | `ralph/mcp/artifacts/markdown/specs/design_verdict.py` | `tests/test_visual_evidence_artifact.py` |
-| Per-call agent identity | `ralph.mcp.server.wire_ledger` | `_wire_ledger_capture.py` |
+| Per-call agent identity | `ralph/mcp/server/_wire_ledger.py` | `_wire_ledger_capture.py` |
 
 ## Dependency Direction
 
@@ -234,8 +182,6 @@ ledger is the only downstream carrier for both.
 ## References
 
 - `.agent/PRODUCT_CRITERIA.md` criteria 6–18 (binding spec).
-- `docs/architecture/adr-0001-interrupt-architecture.md` for ADR
-  format precedent.
 - `docs/ralph-workflow-policy/testing-policy.md` and
   `design-system-policy.md` (review-lane, suite-admission, and
-  appearance-assertion rules this ADR revisits).
+  appearance-assertion rules).

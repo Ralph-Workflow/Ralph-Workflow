@@ -49,6 +49,7 @@ from ralph.recovery.classifier import (
 )
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.cycle_cap import CycleCap
+from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.failure_classifier import (
     typed_signal_name,
@@ -284,7 +285,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
     from ralph.recovery.attribution import AttributionVerdict
     from ralph.recovery.canary_probe import ProbeOutcome
-    from ralph.recovery.dead_agent_verdict import DeadAgentVerdict, PersistedVerdict, TypedSignal
+    from ralph.recovery.dead_agent_verdict import DeadAgentVerdict, PersistedVerdict
     from ralph.workspace.probe import WorkspaceChangeProbe
 
     _DeadAgentVerdictPredicate = Callable[[DeadAgentVerdict], bool]
@@ -348,6 +349,13 @@ def _dead_agent_verdict_namespace() -> dict[str, object]:
     return cast("dict[str, object]", module.__dict__)
 
 
+def _typed_signal_type(namespace: dict[str, object]) -> type[TypedSignal]:
+    candidate = namespace["TypedSignal"]
+    if candidate is not TypedSignal:
+        raise TypeError("ralph.recovery.dead_agent_verdict.TypedSignal must be a TypedSignal type")
+    return TypedSignal
+
+
 def build_typed_agent_signal(
     signal_name: str | None,
     signal_provider_originated: bool,
@@ -356,7 +364,7 @@ def build_typed_agent_signal(
     if signal_name is None:
         return None
     namespace = _dead_agent_verdict_namespace()
-    typed_signal_type = cast("type[TypedSignal]", namespace["TypedSignal"])
+    typed_signal_type = _typed_signal_type(namespace)
     runtime_issued = cast(
         "_RuntimeIssuedPredicate",
         namespace["runtime_issued_termination_is_not_agent_fault"],

@@ -1,23 +1,11 @@
 # ADR-0007: Single source of truth for the integration lifecycle
 
-* Status: Accepted
-* Superseded in part by: [ADR-0008](adr-0008-integration-lifecycle-consolidation.md), [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
 * Related: [ADR-0004](adr-0004-conflict-resolution-liveness.md), [ADR-0005](adr-0005-conflict-resolution-pipeline-parity.md), [ADR-0006](adr-0006-owned-landing-recovery.md)
-
-## Context
-
-Ralph Workflow coordinates multi-phase agent execution, automated Git integration,
-and crash recovery across linked worktrees. Linked worktrees share a common Git
-ref namespace (`commondir`), so a repository-wide ref observation is not
-worktree-private evidence: an unrelated agent advancing an unrelated branch in
-another worktree changes that observation without touching the operation under
-inspection. Lifecycle facts therefore require one authoritative owner each, and
-the Git observation behind a fact must be scoped to the operation that owns it.
 
 ## Architecture
 
-The pipeline and integration lifecycle have an authoritative single source of
-truth, governed by the following contract:
+The pipeline and integration lifecycle use one authority for each lifecycle
+fact and operation-scoped Git evidence.
 
 ### 1. One authority per domain fact
 
@@ -97,7 +85,7 @@ the typed `Transition` definitions in `ralph.pipeline.auto_integrate_transition`
 | any | `BUMP_DIAGNOSTIC_ATTEMPT` | Increment `merge_commit_repair_attempts` | `handoff_integration_diagnostic` |
 | any | `RAISE_DIAGNOSTIC_INTERVENTION` | Set `diagnostic_intervention_required=True` | `handoff_integration_diagnostic` (at cap) |
 | any | `MARK_REINTEGRATE_PENDING` | Set `reintegrate_pending=True` | `reintegrate_owned_landing` |
-| any | `MARK_LEGACY_FIELDS_PRESERVED` | Annotate preserved legacy migration state | `_parse_record_payload` |
+| any | `MARK_LEGACY_FIELDS_PRESERVED` | Annotate preserved compatibility state | `_parse_record_payload` |
 | any | `CLEAR` | Unlink record file after proof | `clear_record` |
 
 Direct untyped record mutation is prohibited. Furthermore, `clear_record` enforces a
@@ -163,9 +151,9 @@ Adjacent contracts keep their own owners:
 - **Pipeline-wide ownership matrix**: [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
   owns the per-fact ownership matrix across the whole pipeline, the dependency
   injection boundaries, and the durable writer inventory.
-- **Reducer compatibility fields**: `RebaseState` carries the compatibility fields
-  `last_action` and `last_reason` alongside `operation_display_state`, so legacy
-  checkpoints deserialize without data loss.
+- **Reducer compatibility fields**: `RebaseState` carries `last_action` and
+  `last_reason` alongside `operation_display_state`; checkpoints containing
+  those fields deserialize without data loss.
 - **Conflict-resolution session contracts**: the resolution ladder, strategy
   definitions, and candidate rotation in
   `ralph/pipeline/auto_integrate_conflict_budget.py` and `ralph/conflict_resolution/`
@@ -177,16 +165,6 @@ Adjacent contracts keep their own owners:
   before any remote push mutator runs. Non-fast-forward remote reconciliation
   loops follow the existing retry policies; every mutation fails closed when
   freshness or remote reachability is absent.
-
-## Consequences
-
-- Linked worktrees with concurrent branch activity do not trigger false diagnostic
-  drift or lockup.
-- Diagnostic recovery terminates predictably at the attempt cap, surfacing clear operator
-  intervention requirements.
-- Status displays, transcripts, and logs clearly distinguish evidence diagnosis from
-  conflict resolution and landing.
-- Legacy records and checkpoints deserialize safely with one-way migration of evidence keys.
 
 ## Verification
 
@@ -200,4 +178,4 @@ test suite:
 - `tests/test_fan_out_authority.py`: Parallel join decisions for `FanOutDecision`.
 - `tests/test_terminal_authority.py`: Single authority for terminal success eligibility.
 - `tests/test_auto_integrate_record_idempotent.py`: `Transition` table validation and transition guards.
-- `tests/test_integration_record_legacy_migration.py`: One-way legacy evidence migration.
+- `tests/test_integration_record_legacy_migration.py`: Compatibility evidence loading.

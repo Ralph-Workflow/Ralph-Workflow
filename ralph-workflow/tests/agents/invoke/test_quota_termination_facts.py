@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import os
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -23,14 +23,10 @@ from ralph.recovery.attempt_facts import TerminationIssuer, has_return_code_disc
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
-
 _QUOTA_LINE = "RESOURCE_EXHAUSTED (code 429)\n"
 
 
-class _KilledOnTerminate:
-    """Fake process: running until terminated, then reports SIGTERM (-15)."""
-
+class _FakeSigtermOnTerminateProcess:
     stdin = None
     pid: int | None = None
     master_fd: int | None = None
@@ -69,10 +65,12 @@ class _OneLineThenBlock:
         return self._line
 
 
-def _quota_error_from_pipe(tmp_path: Path) -> tuple[QuotaExhaustedError, _KilledOnTerminate]:
-    handle = _KilledOnTerminate(_OneLineThenBlock(_QUOTA_LINE))
+def _quota_error_from_pipe(
+    tmp_path: Path,
+) -> tuple[QuotaExhaustedError, _FakeSigtermOnTerminateProcess]:
+    handle = _FakeSigtermOnTerminateProcess(_OneLineThenBlock(_QUOTA_LINE))
     reader = ProcessLineReader(
-        cast("ManagedProcess", handle),
+        handle,
         ProcessReaderCtx(
             config=AgentConfig(cmd="codex", transport=AgentTransport.CODEX),
             policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
@@ -102,7 +100,7 @@ def test_pipe_quota_kill_reports_observed_returncode_and_issuer(tmp_path: Path) 
 
 def test_pty_quota_kill_attributes_the_detector_and_attaches_facts(tmp_path: Path) -> None:
     master_fd = os.open("/dev/null", os.O_RDONLY)
-    handle = _KilledOnTerminate()
+    handle = _FakeSigtermOnTerminateProcess()
     handle.master_fd = master_fd
     ctx = SimpleNamespace(
         config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE),
@@ -113,9 +111,7 @@ def test_pty_quota_kill_attributes_the_detector_and_attaches_facts(tmp_path: Pat
         waiting_listener=None,
         workspace_path=tmp_path,
     )
-    reader = PtyLineReader(
-        cast("ManagedPtyProcess", handle), "claude", ctx, FakeClock(start=0.0), extras=None
-    )
+    reader = PtyLineReader(handle, "claude", ctx, FakeClock(start=0.0), extras=None)
     try:
         reader._terminate_for_quota(_QUOTA_LINE)
         with pytest.raises(QuotaExhaustedError) as caught:

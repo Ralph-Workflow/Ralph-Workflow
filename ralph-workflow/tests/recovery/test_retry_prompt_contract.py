@@ -22,60 +22,47 @@ from ralph.workspace.fs import FsWorkspace
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_retry_prompt_still_exposes_the_formatter_contract": (
-        "the premise-check rule is removed by the policy trim, so the ordinary retry "
-        "formatter contract stays exported"
+        "the policy-v6 product requirement puts the premise instruction back on the "
+        "deterministic retry channels, so the ordinary formatter contract stays exported "
+        "beside the premise helper"
     ),
     "test_failure_fingerprint_is_stable_per_failure_and_differs_across_failures": (
-        "the premise-check rule is removed by the policy trim, so the failure fingerprint "
-        "stays stable per failure and differs across failures"
+        "the policy-v6 product requirement decides the premise instruction from the "
+        "failure fingerprint, so the failure fingerprint stays stable per failure and "
+        "differs across failures"
     ),
     "test_validation_retry_history_keeps_the_rendered_trailer_out_of_the_attempt_bodies": (
-        "the premise-check rule is removed by the policy trim, so the persisted history is "
-        "asserted against the rendered validation trailer"
+        "the policy-v6 product requirement adds the premise instruction beside the "
+        "repeated-failure banner, so the persisted history is asserted against the "
+        "rendered validation trailer"
     ),
     "test_persisted_hint_history_accumulates_attempts_across_repeats_and_changes": (
-        "the premise-check rule is removed by the policy trim, so the persisted attempt "
-        "history is asserted through the accumulated attempts"
+        "the policy-v6 product requirement adds the premise instruction to the "
+        "repeated-failure path, so the persisted attempt history is asserted through the "
+        "accumulated attempts"
     ),
     "test_validation_retry_hint_accumulates_attempts_across_three_identical_attempts": (
-        "the premise-check rule is removed by the policy trim, so a third identical attempt "
-        "keeps accumulating attempts and the rendered validation trailer"
+        "the policy-v6 product requirement renders the premise instruction once on an "
+        "identical repeat, so a third identical attempt keeps accumulating attempts and "
+        "the rendered validation trailer"
     ),
     "test_generic_retry_hint_keeps_the_failure_summary_and_submission_instructions": (
-        "the premise-check rule is removed by the policy trim, so the generic retry hint is "
-        "asserted through its failure summary and submission instructions"
+        "the policy-v6 product requirement leaves the generic retry hint unchanged, so it "
+        "is asserted through its failure summary and submission instructions"
     ),
     "test_generic_retry_prompt_renders_the_failure_and_persists_the_failure_fingerprint": (
-        "the premise-check rule is removed by the policy trim, so the generic agent-retry "
-        "prompt is asserted through its rendered failure and the persisted fingerprint"
+        "the policy-v6 product requirement reads the persisted failure fingerprint to "
+        "decide the premise instruction, so the generic agent-retry prompt is asserted "
+        "through its rendered failure and the persisted fingerprint"
     ),
     "test_persisted_validation_hint_is_rendered_on_a_repeat_and_cleared_afterwards": (
-        "the premise-check rule is removed by the policy trim, so the persisted validation "
-        "hint is asserted through its rendering on a repeat and its clearing"
+        "the policy-v6 product requirement renders the premise instruction once on an "
+        "identical repeat, so the persisted validation hint is asserted through its "
+        "rendering on a repeat and its clearing"
     ),
     "test_prompt_readers_stay_read_only": (
-        "the premise-check rule is removed by the policy trim, so the runtime owns the retry "
-        "state and the hint readers stay read-only"
-    ),
-    "test_retry_prompt_exposes_the_premise_check_contract": (
-        "the premise-check rule is removed by the policy trim, so the premise-check contract "
-        "no longer applies"
-    ),
-    "test_premise_check_line_matches_only_an_identical_repeat_fingerprint": (
-        "the premise-check rule is removed by the policy trim, so the premise line no longer "
-        "applies"
-    ),
-    "test_validation_retry_hint_renders_the_premise_line_only_on_an_identical_repeat": (
-        "the premise-check rule is removed by the policy trim, so the runtime-owned retry hint "
-        "no longer renders a premise line"
-    ),
-    "test_validation_retry_hint_keeps_the_repeat_signal_across_three_identical_attempts": (
-        "the premise-check rule is removed by the policy trim, so the premise line no longer "
-        "applies"
-    ),
-    "test_generic_retry_prompt_renders_the_premise_line_only_on_an_identical_repeat": (
-        "the premise-check rule is removed by the policy trim, so the generic agent-retry "
-        "prompt no longer renders a premise line"
+        "the policy-v6 product requirement keeps the retry state in the runtime, so the "
+        "runtime owns the retry state and the hint readers stay read-only"
     ),
 }
 

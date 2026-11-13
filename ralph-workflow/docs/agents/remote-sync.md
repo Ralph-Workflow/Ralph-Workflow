@@ -93,9 +93,9 @@ table in `auto_integrate_ff.fast_forward_target`.
 The ticker is a daemon thread in the run loop's own process. The
 repository mutation lease cannot protect an agent: nothing takes it for an
 agent phase, and it is per common git dir, so holding it for a whole phase
-would lock out parallel agents in sibling worktrees. Before this rule only
-"the worktree is dirty" protected an agent. A clean checkout (the agent is
-planning, reading, or between edits) could be fast-forwarded underneath it.
+would lock out parallel agents in sibling worktrees. A marked checkout is
+protected for the whole phase even when it is clean — the agent may be
+planning, reading, or between edits.
 
 - **Marking.** `runner._execute_effect` wraps every `InvokeAgentEffect` in
   `process_agent_phases().agent_phase(workspace_scope.root)`
@@ -141,46 +141,31 @@ The pull side of the commit and phase seams honours
 `refs/ralph-reclaim/<target>/…` and reset it before retrying. Background
 paths never reclaim.
 
-## The 2026-10-30 bug
+## Failure shapes the contract rules out
 
-Reported symptom: with remote sync enabled, the automatic rebase did not
-fast-forward local branches to origin, and the periodic task did not either.
-The root causes, with pre-fix line numbers at `77b10ca38`:
+Remote sync has to hold these four shapes. Each is enforced by the code paths
+named in [Entry points that pull](#entry-points-that-pull) and pinned by
+[Regression tests](#regression-tests):
 
-1. **Post-commit skipped before pulling.** `auto_integrate._auto_integrate_check_skip_conditions`
-   (`auto_integrate.py:740`, `:747`) recorded `on target branch` and `no
-   commits beyond target` from the local pointer. `auto_integrate_after_commit`
-   (`:337`) and the attempt loop (`_auto_integrate_attempt_loop.py:259`)
-   returned those skips before `freshen_target` (`:315`) could fetch. A run
-   on the target branch (trunk layout) or a feature at the local target never
-   pulled or published after a commit.
-2. **Ticker coupled fetch and advance.** `auto_integrate_catchup._synchronize_remote_target`
-   returned early on a throttled lease (`auto_integrate_catchup.py:541`).
-   Inside the five-minute cadence a known-ahead tracking ref was never
-   applied. A refused advance (dirty owner) armed the cadence and was not
-   retried for five minutes.
-3. **Publication delegated to the whole tick.**
-   `auto_integrate_remote_sync._dispatch_ref_comparison`
-   (`auto_integrate_remote_sync.py:477-509`) and
-   `auto_integrate_remote_push._align_target_with_remote`
-   (`auto_integrate_remote_push.py:568-575`) called
-   `attempt_catchup_fast_forward` and required the literal `fast-forwarded`.
-   That tick is fetch-throttled. Inside the ticker's post-tick publication it
-   re-acquired the mutation lease the worker already held
-   (`auto_integrate_catchup.py:984` → `:383`), so it always refused itself.
-   It also reported the checkout's catch-up, not the target's. The startup
-   seam therefore reported `pull failed` with a false `origin unreachable`
-   refresh even when the target had moved, and did not advance at all inside
-   the cadence.
-4. **Detached checkout stopped the tick.** `attempt_catchup_fast_forward`
-   returned `not-on-branch` (`auto_integrate_catchup.py:318`) before the
-   target sync.
+1. **No skip before the fetch.** The post-commit seam and the attempt loop
+   fetch and reconcile the remote target before an `on target branch` or
+   `no commits beyond target` skip is recorded, so a run on the target branch
+   (trunk layout) and a feature at the local target both pull and publish.
+2. **Fetch and advance are separate.** A throttled lease defers the fetch
+   only: a known-ahead tracking ref is still applied inside the five-minute
+   cadence, and a refused advance (dirty owner) is retried on the next tick.
+3. **Publication advances the target itself.** The publication path does not
+   delegate to the checkout's catch-up, so it neither re-acquires the mutation
+   lease the worker already holds nor reports the checkout's catch-up in
+   place of the target's.
+4. **A detached checkout does not stop the tick.** The target sync runs
+   whatever the run checkout is on, including a detached HEAD.
 
 ## Regression tests
 
 | Test | Pins |
 |---|---|
-| `tests/test_auto_integrate_remote_sync_fast_forward_contract.py` | Real-Git contract across post-commit, ticker and startup, in feature-worktree, trunk, detached, dirty, diverged, non-default-remote and remote-disabled topologies (root causes 1-4); an agent phase leaves its checkout alone while `main` keeps following origin. |
+| `tests/test_auto_integrate_remote_sync_fast_forward_contract.py` | Real-Git contract across post-commit, ticker and startup, in feature-worktree, trunk, detached, dirty, diverged, non-default-remote and remote-disabled topologies (the four failure shapes above); an agent phase leaves its checkout alone while `main` keeps following origin. |
 | `tests/test_auto_integrate_remote_sync_ticker_cadence.py` | Fast in-process proofs: a throttled tick applies only a strictly-ahead tracking ref; publication advances the target itself and reports a refusal by its cause; an agent phase defers its checkout (and, in the trunk layout, the target and publication) without a stall, the target still syncs, the first tick after the phase lands the move, and the runner marks the phase on every exit path. |
 | `tests/test_auto_integrate_catchup_e2e.py` | Real-Git ticker landing, clean and dirty target owners, cross-worktree lock. |
 | `tests/test_auto_integrate_catchup_remote_coordination.py` | The fetch cadence (configured interval, 300 s when unset or `0.0`) and the shared persisted throttle. |

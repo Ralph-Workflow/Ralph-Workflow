@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import shutil
 import tempfile
 import threading
 import time
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
@@ -16,6 +16,9 @@ from ralph.agents.invoke import (
     invoke_agent,
 )
 from ralph.config.general_config import GeneralConfig
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -168,7 +171,7 @@ def _run_canary_probe(
         return _judge_marker(workspace_path, started)
     finally:
         if owns_workspace and workspace_path is not None and not timed_out:
-            shutil.rmtree(workspace_path, ignore_errors=True)
+            _remove_scratch_workspace(workspace_path)
 
 
 def _preflight_failure(
@@ -201,7 +204,7 @@ def _scratch_workspace(
         return _inconclusive_result("workspace_creation_failed", started, error=_error_text(exc))
     if phase_workspace is not None and _is_within(workspace_path, phase_workspace):
         if owns_workspace:
-            shutil.rmtree(workspace_path, ignore_errors=True)
+            _remove_scratch_workspace(workspace_path)
         return _inconclusive_result("scratch_inside_phase_workspace", started)
     return workspace_path
 
@@ -235,6 +238,15 @@ def _create_scratch_workspace(factory: Callable[[], Path] | None) -> Path:
     if factory is None:
         return Path(tempfile.mkdtemp(prefix="ralph-canary-probe-"))
     return Path(factory())
+
+
+def _remove_scratch_workspace(workspace_path: Path) -> None:
+    workspace = FsWorkspace(workspace_path)
+    root = workspace.root
+    if not root.is_dir():
+        return
+    with suppress(OSError):
+        workspace.delete(str(root), recursive=True)
 
 
 def _is_within(candidate: Path, parent: Path) -> bool:
@@ -273,7 +285,7 @@ def _build_probe_options(
 
 def _write_prompt(workspace_path: Path) -> str:
     prompt_path = workspace_path / CANARY_PROMPT_FILENAME
-    prompt_path.write_text(CANARY_PROBE_TASK, encoding="utf-8")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, prompt_path, CANARY_PROBE_TASK, encoding="utf-8")
     return str(prompt_path)
 
 

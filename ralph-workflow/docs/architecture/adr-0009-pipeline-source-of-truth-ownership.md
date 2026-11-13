@@ -1,29 +1,10 @@
 # ADR-0009: Pipeline source-of-truth ownership, observation boundaries, and durable state authorities
 
-* Status: Accepted
-
-## Context
-
-Ralph Workflow runs multi-phase agent execution, automated Git integration, and
-crash recovery across linked worktrees. The indicators a pipeline can observe —
-checkpoint fields, the durable integration record
-(`.agent/integration_record.json`), live Git markers (`MERGE_HEAD`,
-`REBASE_HEAD`), worktree cleanliness, agent exit statuses, and human-readable
-diagnostic strings — are observations, not authorities. Each lifecycle fact
-therefore has exactly one owner, every projection is derived one way from its
-source, and query failures, unreadable Git states, timeouts, or missing remote
-information are represented as `UNKNOWN` and fail closed.
-
-[ADR-0007](adr-0007-integration-source-of-truth.md) and
-[ADR-0008](adr-0008-integration-lifecycle-consolidation.md) scope integration
-evidence, `IntegrationAction`, and `RebaseOutcomeKind`. The model below covers
-source-of-truth ownership, dependency injection boundaries, and the
-authoritative lifecycle domain matrix across the entire pipeline.
-
 ## Architecture
 
-Four fundamental principles and an authoritative per-fact ownership model
-govern the pipeline:
+Each pipeline fact has one authority. Observations enter through typed
+boundaries, durable transitions are atomic, and unreadable evidence fails
+closed.
 
 ### 1. One Authority Per Domain Fact
 
@@ -67,19 +48,17 @@ The following table documents the complete 8-field architectural contract for ev
 | **Retry & Conflict Budget** | `AgentFailureLedger` & `apply_conflict_budget` | Ledger `.record_attempt_fact()`, `apply_conflict_budget()` | Conflict driver, run loop, backoff wait | `consecutive_unproductive`, `total_unproductive`, `consecutive_conflicts`, `retry_deadline` | Consecutive or total reaches limit &rarr; demotion/exhaustion &rarr; `REQUIRE_INTERVENTION` | `AgentFailureLedger` snapshot persisted in `PipelineState.ledger_snapshot` atomically in checkpoint; restored via `from_snapshot` | Malformed or contradictory snapshots fail closed to intervention | Exhausted budget blocks automatic retry and requires operator intervention |
 | **Operator Surface Display** | `OperationDisplayState` taxonomy | `RebaseState.set_operation_display_state` (10 operation-display sites in `run_loop.py` and `runner.py`) | Rich console, status bar, event streams | 8 display labels (`INTEGRATING`, `LANDING`, `PUBLISHING`, `WAITING`, etc.) | Derived synchronously from `last_outcome` and `last_decision` | Re-projected immediately upon state load | Unknown state falls back to safe generic indicator | Pure display projection; never gates or mutates pipeline dispatch |
 
-## Refinements
+## Typed ownership contracts
 
-The following implementation refinements strengthen the ownership model above; each cites its code authority.
+### Terminal eligibility compares typed enum members
 
-### Terminal eligibility compares typed enum members (U2)
+`ralph.pipeline._terminal_authority` compares publication and fan-out states against the imported enum members `PublicationDecision.PUBLICATION_TERMINAL` and `FanOutDecision.JOIN_COMPLETE` rather than string literals (`_terminal_authority.py:35-36`). Because these enums are `StrEnum`, legacy checkpoints that serialized plain strings still compare equal. Unknown or unrecognized checkpoint strings are not equal to any terminal member and therefore continue to block terminal success (fail closed).
 
-`ralph.pipeline._terminal_authority` compares publication and fan-out states against the imported enum members `PublicationDecision.PUBLICATION_TERMINAL` and `FanOutDecision.JOIN_COMPLETE` rather than string literals (`_terminal_authority.py:44-45`). Because these enums are `StrEnum`, legacy checkpoints that serialized plain strings still compare equal. Unknown or unrecognized checkpoint strings are not equal to any terminal member and therefore continue to block terminal success (fail closed).
+### Single diagnostic evidence-gate reason
 
-### Single diagnostic evidence-gate reason (U3)
+The retention reason `"diagnostic evidence changed; original evidence must be restored before recovery"` has exactly one definition: `ralph.pipeline._diagnostic_evidence_gate.diagnostic_evidence_gate_reason`. The gate covers both *changed* and *unreadable* diagnostic verdicts, and both `auto_integrate_recovery_record.py:284` and `_remote_reconcile_recovery.py:107` import the reason from that single site.
 
-The retention reason `"diagnostic evidence changed; original evidence must be restored before recovery"` has exactly one definition: `ralph.pipeline._diagnostic_evidence_gate.diagnostic_evidence_gate_reason`. The gate covers both *changed* and *unreadable* diagnostic verdicts, and both `auto_integrate_recovery.py:649` and `_remote_reconcile_recovery.py:123` import the reason from that single site. `grep` confirms exactly one definition in the tree.
-
-### Typed record reads and BUSY/UNREADABLE ownership (U4a)
+### Typed record reads and BUSY/UNREADABLE ownership
 
 `ralph.pipeline.auto_integrate_record.read_record_outcome` returns a `RecordReadOutcome` with a closed four-disposition set — `ABSENT`, `PRESENT`, `BUSY`, `UNREADABLE`:
 
@@ -87,7 +66,7 @@ The retention reason `"diagnostic evidence changed; original evidence must be re
 - `BUSY` is reserved for demonstrably transient lock contention (the backend reported `EAGAIN`/`EWOULDBLOCK`). It carries NO freshly computed attempt count or deadline: `busy_attempt`/`busy_deadline` are always `None`; they come only from existing persisted retry state. An absent, invalid, or expired persisted deadline means the consumer requires intervention.
 - Both `clear_record` and `IntegrationRecordStore.transition` refuse EVERY mutation — including `START_INTEGRATING` creation and `CLEAR` — on a `BUSY` record (`RecordBusyError`) or an `UNREADABLE` record (`RecordUnreadableError`); the file bytes are preserved. `ABSENT` is idempotent and missing-ok.
 
-### Run-loop consumption of record outcomes (U4b)
+### Run-loop consumption of record outcomes
 
 `ralph.pipeline.run_loop` consumes the typed outcomes choice-completely:
 
@@ -95,24 +74,24 @@ The retention reason `"diagnostic evidence changed; original evidence must be re
 - `BUSY` authorizes bounded retry ONLY with a valid, unexpired persisted retry deadline; otherwise it routes to intervention.
 - `_post_recovery_verdict` returns `None` when post-recovery dispatch is allowed, threading the reconciled state through `ctx.latest_state` and checkpointing it via `reconcile_stale_unresolved_state` / `_save_recovered_rebase_checkpoint`, so the caller proceeds to dispatch instead of converting a successful recovery into another block. It returns the still-blocking verdict only when recovery did not land.
 
-### Operation-scoped rebase backup refs (U5)
+### Operation-scoped rebase backup refs
 
-Rebase backup refs are operation-scoped: `refs/rebase-backup/<wt8>-<sha8>-<sha>`, where `wt8` is the first 8 hex chars of the SHA-256 of `owning_worktree`, named by `qualified_backup_ref` (`auto_integrate_backup_refs.py:16`). Deletion during recovery is by exact ref name only (`delete_rebase_backup_refs`, `auto_integrate_recovery_terminal.py:88-131`) — never `for-each-ref` namespace enumeration. Refs from other linked worktrees sharing the same pre-feature SHA, and legacy SHA-only refs (`refs/rebase-backup/<sha8>-<sha>`), are never deleted; under-delete is the accepted failure direction and is logged. Verified by `tests/test_backup_ref_operation_scope.py` (6 cases, including the same-SHA linked-worktree collision where worktree A's cleanup preserves worktree B's ref).
+Rebase backup refs are operation-scoped: `refs/rebase-backup/<wt8>-<sha8>-<sha>`, where `wt8` is the first 8 hex chars of the SHA-256 of `owning_worktree`, named by `qualified_backup_ref` (`auto_integrate_backup_refs.py:21`). Deletion during recovery is by exact ref name only (`delete_rebase_backup_refs`, `auto_integrate_recovery_terminal.py:97-121`) — never `for-each-ref` namespace enumeration. Refs from other linked worktrees sharing the same pre-feature SHA, and legacy SHA-only refs (`refs/rebase-backup/<sha8>-<sha>`), are never deleted; under-delete is the accepted failure direction and is logged. Verified by `tests/test_backup_ref_operation_scope.py` (6 cases, including the same-SHA linked-worktree collision where worktree A's cleanup preserves worktree B's ref).
 
-**Reclaim namespace pruning**: `_auto_integrate_reclaim.py:140` `_prune_reclaim_refs` enumerates `refs/ralph-reclaim/<target>/` by prefix and prunes by age/count. That namespace is keyed by target branch only, so two worktrees reclaiming the same target share one prune pool — a snapshot from one worktree may be pruned by the other. Reclaim snapshots are snapshot hygiene for worktree reset, not a recovery authority; recovery relies on the operation-scoped backup refs above.
+**Reclaim namespace pruning**: `_auto_integrate_reclaim.py:129` `_prune_reclaim_refs` enumerates `refs/ralph-reclaim/<target>/` by prefix and prunes by age/count. That namespace is keyed by target branch only, so two worktrees reclaiming the same target share one prune pool — a snapshot from one worktree may be pruned by the other. Reclaim snapshots are snapshot hygiene for worktree reset, not a recovery authority; recovery relies on the operation-scoped backup refs above.
 
-### Closed operator display label taxonomy (U8)
+### Closed operator display label taxonomy
 
 The operator surface exposes exactly seven integration display labels — `conflict resolution`, `evidence diagnosis`, `integration`, `landing`, `publication`, `waiting`, `intervention` — defined in `ralph.display.integration_display_label.IntegrationDisplayLabel`. Pairwise distinctness of all seven is verified by `tests/test_display_lifecycle_label_taxonomy.py`. These labels are pure display projections (Architecture §1 / matrix row "Operator Surface Display") and never gate dispatch or terminal success.
 
-### Closed-transition loader + recovery release guarantee (U9)
+### Closed-transition loader and recovery release guarantee
 
 The loader and the three sibling release sites flow through the closed transition table and the typed record store:
 
-- **Loader intervention path** — `_migrate_payload_evidence` returns a transient marker for the legacy global-evidence case; `parse_record_payload` constructs a bare `IntegrationRecord.model_validate(...)` and applies `RAISE_DIAGNOSTIC_INTERVENTION` through the closed transition table. The intervention flag's only path to flip is the transition table.
+- **Loader intervention path** — `_migrate_payload_evidence` returns a transient marker for the global-evidence compatibility case; `parse_record_payload` constructs a bare `IntegrationRecord.model_validate(...)` and applies `RAISE_DIAGNOSTIC_INTERVENTION` through the closed transition table. The intervention flag's only path to flip is the transition table.
 - **Recovery release path** — the three sibling release sites (`auto_integrate_recovery`, `_integration_diagnostic._complete_or_intervene`, and `_remote_reconcile_recovery._apply_release_or_refuse`) route `RELEASE_DIAGNOSTIC_EVIDENCE` through `IntegrationRecordStore.transition` (via `apply_record_transition`). Each site catches `RecordBusyError` (mapped to a typed retained-skip outcome so the bounded retry owner — `RebaseState.retry_deadline` per `_integration_action._conflict_action` — decides WAIT_FOR_BOUNDED_RETRY vs REQUIRE_INTERVENTION) and `RecordUnreadableError` (mapped to `DIAGNOSTIC_INTERVENTION_REQUIRED` with `recovery_record_retained=True` and bytes preserved on disk). The release path NEVER erases UNREADABLE bytes.
 
-Both refinements are public-boundary: `tests/test_integration_record_closed_transition_loader.py` and `tests/test_recovery_release_uses_record_store.py` exercise the seam without AST walks.
+Both contracts are public-boundary: `tests/test_integration_record_closed_transition_loader.py` and `tests/test_recovery_release_uses_record_store.py` exercise the seam without AST walks.
 
 ## Recovery boundaries
 
@@ -149,14 +128,17 @@ unrelated worktree's branch advance.
 ## Writer inventory
 
 Every `RebaseState` choice-field writer is a typed setter. The
-operation-display field is written through `set_operation_display_state` at 10
+operation-display field is written through `set_operation_display_state` at 13
 sites in `run_loop.py` and `runner.py`; the fan-out field is written through
 `set_fan_out_decision` at 1 site in `_fan_out_authority.py`. The
-conflict-strategy / deadline / intervention fields are owned by typed setters at
-`reducer.py:610-617`,
-`auto_integrate_conflict_budget.py:257-312`,
-`run_loop.py:2339-2347`, `runner.py:1002-1011`, and
-`auto_integrate_resolution_state.py:77`. The reducer branches on
+conflict-strategy / deadline / intervention fields are owned by typed setters:
+`advance_conflict_strategy` at `reducer.py:587`, `record_consecutive_conflicts`
+and `set_retry_deadline` at `auto_integrate_conflict_budget.py:212`,
+`auto_integrate_conflict_budget.py:232-233` and `:253-254`,
+`record_consecutive_conflicts` and `set_ladder_escalation` at `run_loop.py:1799`
+and `run_loop.py:3014-3015` / `:3088-3089`, and `project_conflict_strategy_from`
+through `_merge_strategy_onto_outcome` at `runner.py:927`, `runner.py:937-938`,
+and `runner.py:1287`. The reducer branches on
 the typed `FailureCategory.INTEGRATION` field of `PhaseFailureEvent`
 (consumed via an optional `failure_category` parameter on
 `_enter_failed_recovery` and `_handle_agent_failure`); the prose
@@ -167,14 +149,14 @@ reducer.
 |---|---|---|
 | `last_publication_decision` | `RebaseState.set_publication_decision(value: PublicationDecision) -> Self` | `_publication_state_machine.next_publication_action` |
 | `last_fan_out_decision` | `RebaseState.set_fan_out_decision(value: FanOutDecision) -> Self` | `_fan_out_authority.fan_out_decision` |
-| `operation_display_state` | `RebaseState.set_operation_display_state(value: OperationDisplayState) -> Self` | Display projection of the authoritative lifecycle state (see `docs/sphinx/operator-states.md`) |
+| `operation_display_state` | `RebaseState.set_operation_display_state(value: OperationDisplayState) -> Self` | Display projection of the authoritative lifecycle state (see `ralph-workflow/docs/sphinx/operator-states.md`) |
 | `retry_deadline` | `RebaseState.set_retry_deadline(value: float \| None) -> Self` | `apply_conflict_budget` and `_wait_for_integration_retry` via the typed `FailureCategory.INTEGRATION` seam |
 | `consecutive_conflicts` | `RebaseState.record_consecutive_conflicts(value: int) -> Self` (clamped to `MAX_TRACKED_CONFLICT_ATTEMPTS` inside the setter; repository bookkeeping only -- resolver eligibility is owned by `AgentFailureLedger`) | `apply_conflict_budget` CONFLICT branch only |
 | `conflict_strategy_index`, `conflict_strategies_tried`, `resolution_exhausted`, `resolution_exhaustion_reason` (bounded advancement) | `RebaseState.advance_conflict_strategy(reason: str) -> Self` | `_enter_failed_recovery` / `_handle_agent_failure` when `failure_category is FailureCategory.INTEGRATION` |
-| `conflict_strategy_index`, `conflict_strategies_tried`, `resolution_exhausted`, `resolution_exhaustion_reason` (exact one-way projection) | `RebaseState.project_conflict_strategy_from(source: RebaseState) -> Self` | `_merge_strategy_onto_outcome` (the projection applied at `runner.py:1002-1011`) |
+| `conflict_strategy_index`, `conflict_strategies_tried`, `resolution_exhausted`, `resolution_exhaustion_reason` (exact one-way projection) | `RebaseState.project_conflict_strategy_from(source: RebaseState) -> Self` | `_merge_strategy_onto_outcome` (the projection applied at `runner.py:927` and `runner.py:1287`) |
 | `conflict_strategy_index`, `conflict_strategies_tried`, `resolution_exhausted`, `resolution_exhaustion_reason` (reset to defaults) | `RebaseState.clear_conflict_strategy() -> Self` | `reconcile_stale_unresolved_state` when the strategy block is stale or never started |
 | `resolution_exhausted`, `resolution_exhaustion_reason` (exhaustion-only reset, preserves strategy index and tried list) | `RebaseState.clear_resolution_exhausted() -> Self` | `reconcile_stale_unresolved_state` when the exhausted flag must be released without losing operator history |
-| `last_outcome`, `last_reason` (persistent `INTERVENTION_REQUIRED` / `DIAGNOSTIC_INTERVENTION_REQUIRED` transition) | `RebaseState.set_intervention_required(reason: str, *, diagnostic: bool = False) -> Self` | `_wait_for_integration_retry` on the exhaustion path |
+| `last_outcome`, `last_reason` (intervention transition) | `RebaseState.set_ladder_escalation(reason: str) -> Self` | `_wait_for_integration_retry` on the exhaustion path |
 | `last_planning_obstruction` | assigned by `auto_integrate_planning.record_conflict` to one of the closed `PlanningObstructionKind` members; the single producer is `identify_planning_obstruction` in `ralph/pipeline/_planning_obstruction.py` | `_route_planning_commit` reads only the typed kind from `state.rebase.last_planning_obstruction` |
 
 `set_publication_decision` is the publication writer.
@@ -182,9 +164,9 @@ reducer.
 operation-display fields. `set_retry_deadline`, `record_consecutive_conflicts`,
 `advance_conflict_strategy`, `project_conflict_strategy_from`,
 `clear_conflict_strategy`, `clear_resolution_exhausted`, and
-`set_intervention_required` own the conflict-strategy and intervention fields
-in `reducer.py`, `auto_integrate_conflict_budget.py`, `run_loop.py`,
-`runner.py`, and `auto_integrate_resolution_state.py`.
+`set_ladder_escalation` own the conflict-strategy and intervention fields
+in `reducer.py`, `auto_integrate_conflict_budget.py`, `run_loop.py`, and
+`runner.py`.
 
 Ad-hoc `model_copy(update=...)` on any of the 11 fields named in
 this table is forbidden (Architecture §1 / §3). The audit that enforces
@@ -205,7 +187,7 @@ The reducer consumes the typed `failure_category` field of
 `failure_category=FailureCategory.INTEGRATION`. No prose comparison exists
 on the failure reason: the prefix
 `"integration conflict requires resolution:"` is not consulted at
-`reducer.py:603` or `:626`, and no string fallback is permitted (when
+`reducer.py:586` or `:597`, and no string fallback is permitted (when
 `failure_category is None` the reducer does NOT advance the
 conflict-strategy ladder).
 
@@ -221,31 +203,31 @@ The planning-obstruction substrings are represented by a closed
 `identify_planning_obstruction(reason)` translates the free-form
 reason into a kind; the run loop reads only the typed kind from
 `state.rebase.last_planning_obstruction`. No `any(text in reason ...)`
-substring scan runs in the run loop (`run_loop.py:1797`); the helper is the
+substring scan runs in the run loop (`run_loop.py:2049`); the helper is the
 only allowed prose-substring scan on the planning-seam reason.
 
 ### Attempt-fault trust boundary
 
 `ralph/pipeline/conflict_resolution/attempt_fault.py::classify_attempt_fault`
 authorizes `AttemptFault.AGENT_HEALTHY` only on an exact match:
-`text.lower() == "healthy"` (line 154). Arbitrary agent output
+`text.lower() == "healthy"` (`attempt_fault.py:126`). Arbitrary agent output
 containing `"healthy"` as a substring classifies to
 `AttemptFault.AGENT_EXITED`, not `AGENT_HEALTHY`. The two
-closed-vocabulary scans at
-`attempt_fault.py:115` (the named token
-`SUPERVISION_INFRASTRUCTURE_FAILURE`) and
-`attempt_fault.py:154` (`any(k in lowered for k in (...))` against
-`ResolutionTerminationReason` enum member identifiers) consult a closed
-vocabulary, not free-form prose.
+closed-vocabulary scans — the named token
+`_RELAY_FAULT = "SUPERVISION_INFRASTRUCTURE_FAILURE"`
+(`attempt_fault.py:10`, matched at `:88`) and `any(k in lowered for k in
+(...))` against `ResolutionTerminationReason` enum member identifiers
+(`attempt_fault.py:102-112`) — consult a closed vocabulary, not free-form
+prose.
 
 ## Dependency Injection Boundaries
 
 To ensure complete black-box testability without live Git or filesystem side-effects in unit suites:
 1. **Filesystem and Persistence**: `IntegrationRecordStore` and `Checkpoint` accept an injected `FileBackend` (defaulting to atomic filesystem I/O, substituted with `_InMemoryBackend` in tests).
-2. **Git Observations**: Operations accept injectable query callables (`porcelain`, `rebase_active`, `merge_status`) and runner options, reporting typed structures (`GitRunResult`, `MergeState`) rather than raw returncodes.
+2. **Git Observations**: Operations accept injectable query callables (`porcelain_status_z`, `rebase_active`, `merge_status`) and runner options, reporting typed structures (`GitRunResult`, merge-state labels) rather than raw returncodes.
 3. **Monotonic Clock**: Durations, backoff deadlines, and retry expirations accept an injected monotonic callable (`clock: Callable[[], float]`), allowing simulated time advancement (`FakeClock`) without real-time sleeps.
 4. **Remote Operations**: Remote synchronization accepts an injected `RemoteClient` (`push_branch`, `refresh_target`, `observe_remote_sha`) returning structured `PushResult` objects, isolating network state.
-5. **Agent Invocation**: Conflict resolution and phase dispatch interact with agents via injected invoker interfaces (`AgentInvokerLike`), preventing out-of-process subprocess spawns during testing.
+5. **Agent Invocation**: Conflict resolution and phase dispatch interact with agents via injected invoker interfaces (`ResolutionInvoker`, `ralph/pipeline/conflict_resolution/driver.py`), preventing out-of-process subprocess spawns during testing.
 
 ## References
 

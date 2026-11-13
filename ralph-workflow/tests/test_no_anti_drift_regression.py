@@ -723,8 +723,6 @@ class TestNoInlineConsoleConstructor:
             if rel in excluded_files:
                 continue
             for lineno, line in enumerate(_read(path).splitlines(), start=1):
-                if "noqa" in line and "di-allow" in line:
-                    continue
                 if (
                     "Console(" in line
                     and "Console(console" not in line

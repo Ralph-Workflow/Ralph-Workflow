@@ -31,12 +31,13 @@ _POST_EXIT_WATCHDOG_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
     }
 )
 
+_FIRE_REASON_BY_VALUE: dict[str, WatchdogFireReason] = {
+    member.value: member for member in WatchdogFireReason
+}
+
 
 def fire_reason_from_value(value: str) -> WatchdogFireReason | None:
-    try:
-        return WatchdogFireReason(value)
-    except ValueError:
-        return None
+    return _FIRE_REASON_BY_VALUE.get(value)
 
 
 def termination_issuer_for_fire_reason(

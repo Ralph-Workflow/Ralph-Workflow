@@ -10,7 +10,7 @@ import threading
 import traceback
 from collections import deque
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, TextIO, cast
+from typing import IO, TYPE_CHECKING, Protocol, TextIO, cast, runtime_checkable
 
 import psutil
 from loguru import logger
@@ -32,6 +32,7 @@ from ralph.agents.execution_state import (
 from ralph.agents.idle_watchdog import (
     ChannelName,
     CorroborationSnapshot,
+    EvidenceSummary,
     IdleWatchdog,
     PostExitVerdict,
     PostExitWatchdog,
@@ -79,6 +80,7 @@ from ralph.agents.invoke.opencode_subagent_sessions import (
     default_opencode_db_path,
 )
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.checked_accessors import optional_float
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
 from ralph.display.raw_overflow import (
@@ -146,7 +148,15 @@ _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
 )
 
 
-def _subagent_activity_observed(watchdog: IdleWatchdog) -> bool | None:
+@runtime_checkable
+class _EvidenceSummaryWatchdog(Protocol):
+    @property
+    def clock(self) -> Clock: ...
+
+    def last_evidence_summary(self, now: float | None = None) -> EvidenceSummary: ...
+
+
+def _subagent_activity_observed(watchdog: _EvidenceSummaryWatchdog) -> bool | None:
     try:
         channel = watchdog.last_evidence_summary(watchdog.clock.monotonic()).by_name(
             ChannelName.SUBAGENT_LIVENESS
@@ -162,19 +172,18 @@ def _subagent_activity_observed(watchdog: IdleWatchdog) -> bool | None:
 
 
 def _record_watchdog_evidence(recorder: _TerminationRecorder, watchdog: object) -> None:
-    elapsed = cast("float | None", getattr(watchdog, "invocation_elapsed_seconds", None))
+    elapsed_source: object = getattr(watchdog, "invocation_elapsed_seconds", None)
+    elapsed = optional_float(elapsed_source)
     recorder.record_elapsed_to_terminal(int(elapsed * 1000) if elapsed is not None else None)
-    if hasattr(watchdog, "last_evidence_summary"):
-        recorder.record_subagent_activity(
-            _subagent_activity_observed(cast("IdleWatchdog", watchdog))
-        )
+    if isinstance(watchdog, _EvidenceSummaryWatchdog):
+        recorder.record_subagent_activity(_subagent_activity_observed(watchdog))
 
 
 def _record_fire_termination(
     reader: object, watchdog: object, fire_reason: WatchdogFireReason
 ) -> None:
-    recorder = cast("_TerminationRecorder | None", getattr(reader, "_termination", None))
-    if recorder is None:
+    recorder: object = getattr(reader, "_termination", None)
+    if not isinstance(recorder, _TerminationRecorder):
         return
     recorder.record_issuer(termination_issuer_for_fire_reason(fire_reason))
     recorder.record_liveness(True)
@@ -182,8 +191,8 @@ def _record_fire_termination(
 
 
 def _observe_attempt_event(reader: object, activity_signal: AgentActivitySignal) -> None:
-    recorder = cast("_TerminationRecorder | None", getattr(reader, "_termination", None))
-    if recorder is None:
+    recorder: object = getattr(reader, "_termination", None)
+    if not isinstance(recorder, _TerminationRecorder):
         return
     tool_name: str | None = None
     if activity_signal.kind == AgentActivityKind.TOOL_USE:

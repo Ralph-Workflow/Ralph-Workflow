@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
@@ -214,11 +214,15 @@ def test_inconclusive_maps_to_the_unknown_verdict_hint(tmp_path: Path) -> None:
     assert PROBE_INCONCLUSIVE_VERDICT == "unknown"
 
 
+def _uninitialized_agent_config() -> AgentConfig:
+    return object.__new__(AgentConfig)
+
+
 def test_probe_never_raises_for_unusable_input(tmp_path: Path) -> None:
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     result = run_canary_probe(
-        cast("AgentConfig", None),
+        _uninitialized_agent_config(),
         invoke_fn=_make_invoke("no_marker", []),
         workspace_factory=lambda: scratch,
     )

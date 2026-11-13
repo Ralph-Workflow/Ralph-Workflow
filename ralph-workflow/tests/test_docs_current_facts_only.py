@@ -27,14 +27,6 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("Required review note",),
     ),
     (
-        "docs/superpowers/specs/2026-07-14-telemetry-identity-lifecycle-design.md",
-        (
-            "Documentation review note:",
-            "identity-file comment",
-            "comment to name the canonical location",
-        ),
-    ),
-    (
         "docs/ralph-workflow-policy/verification-policy.md",
         ("exists because its rules previously lived only in",),
     ),
@@ -215,13 +207,6 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("method's docstring notes",),
     ),
     (
-        "ralph-workflow/docs/plans/2026-07-03-fs-churn-reduction.md",
-        (
-            "completion_receipts.py` docstring",
-            "keep module docstring",
-        ),
-    ),
-    (
         "ralph-workflow/docs/sphinx/mcp-restart-decisions.md",
         ("its own docstring defers",),
     ),
@@ -314,39 +299,6 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "ralph-workflow/docs/superpowers/specs/2026-08-12-developer-plan-reconciliation-design.md",
-        (
-            "originally defined here",
-            "**SUPERSEDED**",
-            "This design introduced a closed `Disposition:` vocabulary",
-            "the disposition iteration and no longer reflects current",
-            "The original disposition field and required proof structure",
-            "It returns terminal `failed`",
-            "That terminal choice ends the current planning/development cycle",
-            "selects its cycle outcome from fresh evidence",
-            "routes through the same cleanup and",
-            "carrying a failed cycle outcome into",
-            "`request_changes` alone remains inside the current cycle",
-            "selects a disposition",
-            "This supports following an explicit route with less",
-            "The evidence supports the execution shape",
-            "The design uses primary research only for the narrow behavior each source",
-            "Every normative prompting behavior introduced by this design has an explicit",
-            "| Prompt behavior | Evidence basis | Supported inference |",
-            "Long-context retrieval is position-sensitive, so critical instructions "
-            "should be concise and salient.",
-        ),
-    ),
-    (
-        "ralph-workflow/docs/superpowers/plans/2026-08-12-developer-plan-reconciliation.md",
-        (
-            "historical implementation record",
-            "Outcome (historical)",
-            "**SUPERSEDED**",
-            "originally implemented in S-1 and S-2",
-        ),
-    ),
-    (
         "ralph-workflow/docs/sphinx/concepts.md",
         (
             "### Tradeoffs the simple core accepts",
@@ -360,19 +312,6 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
             "The tradeoff buys verification, recovery, and reviewability",
             "The tradeoff buys not having to babysit",
             "two-file minimum",
-        ),
-    ),
-    (
-        "ralph-workflow/docs/superpowers/plans/2026-05-21-parallel-worker-bootstrap-isolation.md",
-        (
-            "**Superseded**: worker orchestration is deprecated",
-            "## Root cause this plan addresses",
-            "The codebase already contains a unit-specific prompt renderer",
-            "This plan directly addresses the real cause found in the codebase",
-            "Plan complete and saved to",
-            "Which approach?",
-            "render_worker_prompt",
-            "Parallel Worker Bootstrap Isolation Implementation Plan",
         ),
     ),
 )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
@@ -14,8 +14,6 @@ from ralph.process.liveness import FakeLivenessProbe
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
-
 _PARENT_LINES = (
     '{"type":"step_start","sessionID":"ses_parent","part":{"type":"step-start"}}\n',
     '{"type":"tool_use","sessionID":"ses_parent","part":{"type":"tool","tool":"read",'
@@ -24,9 +22,7 @@ _PARENT_LINES = (
 )
 
 
-class _LateChildSource:
-    """Reports child-session activity only once the clock passes ``active_from``."""
-
+class _ClockGatedChildSource:
     def __init__(self, clock: FakeClock, active_from: float) -> None:
         self._clock = clock
         self._active_from = active_from
@@ -74,7 +70,7 @@ class _ExitedHandle:
 def _reader(tmp_path: Path, *, child_active_from: float) -> ProcessLineReader:
     clock = FakeClock(start=0.0)
     return ProcessLineReader(
-        cast("ManagedProcess", _ExitedHandle()),
+        _ExitedHandle(),
         ProcessReaderCtx(
             config=AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE),
             policy=TimeoutPolicy(
@@ -85,7 +81,7 @@ def _reader(tmp_path: Path, *, child_active_from: float) -> ProcessLineReader:
             ),
             execution_strategy=OpenCodeExecutionStrategy(label_scope=None, registry=None),
             liveness_probe=FakeLivenessProbe(active=False),
-            opencode_child_part_source=_LateChildSource(clock, child_active_from),
+            opencode_child_part_source=_ClockGatedChildSource(clock, child_active_from),
             workspace_path=tmp_path,
         ),
         clock,

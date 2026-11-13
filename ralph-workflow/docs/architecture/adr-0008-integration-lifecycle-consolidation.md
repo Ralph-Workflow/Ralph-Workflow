@@ -1,29 +1,6 @@
 # ADR-0008: Integration lifecycle consolidation: typed IntegrationAction, RebaseOutcomeKind, and the operation-scoped object-reachability check
 
-* Status: Accepted
 * Related: [ADR-0004](adr-0004-conflict-resolution-liveness.md), [ADR-0005](adr-0005-conflict-resolution-pipeline-parity.md), [ADR-0006](adr-0006-owned-landing-recovery.md), [ADR-0007](adr-0007-integration-source-of-truth.md)
-* Extended by: [ADR-0009](adr-0009-pipeline-source-of-truth-ownership.md)
-
-## Context
-
-Ralph Workflow coordinates automated Git integration, crash recovery, and diagnostic
-repair across linked worktrees. The integration lifecycle is driven by several
-independent owners — the durable integration record, the operation-scoped evidence
-collector, the typed operator display taxonomy, and the diagnostic repair path — and
-each of them can disagree with the others unless one typed authority owns the whole
-lifecycle.
-
-Prose comparisons such as `record.phase == "integrating"` / `"integrated"` or
-`rebase.last_action == "conflict"`, and untyped outcome strings such as
-`"remote_failed"`, give two sites the power to disagree about the same lifecycle fact.
-When marker SHAs are invalid or unreachable, diagnostic routines can enter repeated
-agent rotation loops or risk destructive metadata mutations.
-
-[ADR-0007](adr-0007-integration-source-of-truth.md) scopes operation-scoped evidence
-collection via `OperationEvidenceCollector`, explicit state transitions on
-`IntegrationRecord`, and the `OperationDisplayState` taxonomy. The lifecycle contract
-below adds the typed `IntegrationAction` vocabulary, the typed `RebaseOutcomeKind`
-outcome model, and the positive operation-completion proof.
 
 ## Architecture
 
@@ -73,7 +50,7 @@ verbs representing the lossless union of all integration outcome categories acro
 - Terminal outcomes: `TERMINAL`, `COMPLETED`
 
 `RebaseState.last_outcome: RebaseOutcomeKind | None` is the single authoritative writer field on `RebaseState`.
-To guarantee backward compatibility with existing checkpoints and external callers:
+Checkpoint and caller compatibility use these surfaces:
 - `RebaseState.last_action` is a read-only `@property` projection returning `self.last_outcome.value` (or `None`).
 - `RebaseState.from_legacy_payload(payload: dict) -> RebaseState` provides a one-way migration constructor:
   it parses `last_action`, maps it via `RebaseOutcomeKind.from_legacy(action)`, logs a structured
@@ -85,10 +62,9 @@ To guarantee backward compatibility with existing checkpoints and external calle
 
 ### 3. Operation-scoped object reachability and the four-condition completion proof
 
-To keep unnecessary diagnostic agent invocations out of the picture and to keep marker
-files that point at unreachable objects from being mutated,
+Before any diagnostic agent is invoked,
 `ralph.pipeline.operation_evidence` and `_integration_diagnostic` enforce
-a fail-closed pre-pass before any diagnostic agent is invoked:
+a fail-closed pre-pass:
 
 #### Object reachability check
 The evidence collector captures worktree-scoped reachability facts:
@@ -135,21 +111,6 @@ The conflict-resolution driver and the fault classification are typed:
 - `ralph.pipeline.conflict_resolution.attempt_fault.AttemptFault`: enum with values
   `AGENT_HEALTHY`, `AGENT_EXITED`, `AGENT_INFRASTRUCTURE_FAILURE`, `AGENT_TOOL_DEAD`, `UNKNOWN`.
 - `classify_attempt_fault(evidence) -> AttemptFault`: typed classifier; the unstructured `if evidence` checks are absent.
-
-## Consequences
-
-- **Single authority for progression**: the integration owner seam
-  (`ralph.pipeline.integration_owner`, reached from the pipeline boundaries through
-  `decide_seam_action`) prevents divergent lifecycle decisions across the six public entry points
-  (`inspect_integration_resolution`, `_run_inner_loop`, commit handler, cooldown handler,
-  parallel-join handler, terminal handler). The `next_integration_action` projection is not
-  consulted by those entry points.
-- **Lossless outcome projection**: `RebaseState.last_outcome` provides full typed fidelity across 19 verbs
-  while maintaining 100% backward compatibility for legacy checkpoints.
-- **Fail-closed diagnostic safety**: Broken or unreachable Git marker objects do not trigger infinite
-  agent loops or unsafe marker deletions.
-- **Fast-path evidence release**: Completed Git operations with positive proof skip agent invocation,
-  reducing latency and agent spend while maintaining strict cryptographic and structural guarantees.
 
 ## Verification
 

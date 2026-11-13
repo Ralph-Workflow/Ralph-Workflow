@@ -5,22 +5,23 @@ maintained Python package at `ralph-workflow/`.
 
 ## Who this is for
 
-Contributors and reviewers who want the design history and the agreed
-shape of a Python-era package change before they read the code that
-landed.
+Contributors and reviewers who want the agreed shape of a package change
+before they read the code that implements it.
 
 ## Read this first
 
-Plans are kept recent-first in their filename. The most recent plan is
-the one to read first if you want the current shape of the Python
-package.
+Each plan describes a single change with: scope, file targets, acceptance
+criteria, work units (when parallelizable), and the expected verification
+command.
 
-- The full Python-era plan index is the directory listing below.
-- Each plan describes a single change with: scope, file targets,
-  acceptance criteria, work units (when parallelizable), and the
-  expected verification command.
+## Plans
+
+- [Policy v5 Paired Replay Plan](policy-v5-paired-replay-plan.md) — the
+  byte-identical mirror of the canonical copy at
+  [`../agents/policy-v5-paired-replay-plan.md`](../agents/policy-v5-paired-replay-plan.md).
+  Edit the canonical copy, then copy it over the mirror.
 
 ## Next click
 
 - [Architecture overview](../architecture/README.md)
-- [Maintained operator manual](../../docs/sphinx/index.rst)
+- [Maintained operator manual](../sphinx/index.rst)

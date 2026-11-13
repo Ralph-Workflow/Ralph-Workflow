@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -23,47 +23,19 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
+from tests.recovery._fake_managed_handle import FakeManagedHandle
 
 if TYPE_CHECKING:
     from ralph.pipeline.events import AgentFailureEvent
-    from ralph.process.manager import ManagedProcess
 
 
-class _Handle:
-    stdin = None
-    stdout = iter(())
-    stderr = None
-
-    def __init__(
-        self,
-        *,
-        reported_returncode: int | None = 0,
-        observed_returncode: int | None = 0,
-        issuer: str | None = None,
-    ) -> None:
-        self.pid: int | None = None
-        self.returncode = reported_returncode
-        self._observed_returncode = observed_returncode
-        self._issuer = issuer
-        self.terminate_calls: list[float | None] = []
-
-    def poll(self) -> int | None:
-        return self._observed_returncode
-
-    def terminate(self, grace_period_s: float | None = None) -> None:
-        self.terminate_calls.append(grace_period_s)
-
-    def termination_issuer(self) -> str | None:
-        return self._issuer
-
-
-def _reader(tmp_path: Path, handle: _Handle | None = None) -> ProcessLineReader:
+def _reader(tmp_path: Path, handle: FakeManagedHandle | None = None) -> ProcessLineReader:
     ctx = ProcessReaderCtx(
         config=AgentConfig(cmd="fake-agent", transport=AgentTransport.GENERIC),
         policy=TimeoutPolicy(idle_timeout_seconds=60.0, process_monitor_enabled=False),
         workspace_path=tmp_path,
     )
-    return ProcessLineReader(cast("ManagedProcess", handle or _Handle()), ctx, FakeClock())
+    return ProcessLineReader(handle or FakeManagedHandle(), ctx, FakeClock())
 
 
 def test_failure_observation_sink_carries_attempt_facts(
@@ -130,7 +102,7 @@ def test_normal_exit_records_agent_exit_and_matching_codes() -> None:
     recorder = TerminationRecorder()
 
     check_process_result(
-        cast("ManagedProcess", _Handle(reported_returncode=0, observed_returncode=0)),
+        FakeManagedHandle(reported_returncode=0, observed_returncode=0),
         "fake-agent",
         termination_recorder=recorder,
     )
@@ -158,7 +130,10 @@ def test_observed_and_reported_return_codes_are_reconciled(
     recorder = TerminationRecorder()
 
     check_process_result(
-        cast("ManagedProcess", _Handle(reported_returncode=reported, observed_returncode=observed)),
+        FakeManagedHandle(
+            reported_returncode=reported,
+            observed_returncode=observed,
+        ),
         "fake-agent",
         termination_recorder=recorder,
     )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,8 +19,6 @@ from ralph.config.models import AgentConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from ralph.process.manager import ManagedProcess
 
 _QUOTA_WORDS = "Your account has credits exhausted for this period."
 
@@ -118,7 +116,7 @@ class _Handle:
 
 def _reader(tmp_path: Path, handle: _Handle) -> ProcessLineReader:
     return ProcessLineReader(
-        cast("ManagedProcess", handle),
+        handle,
         ProcessReaderCtx(
             config=AgentConfig(cmd="codex", transport=AgentTransport.CODEX),
             policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
