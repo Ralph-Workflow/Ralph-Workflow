@@ -181,7 +181,11 @@ def run_pty_and_read_lines(
                 post_exit = PostExitWatchdog(ctx.policy, clock)
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
                 if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
-                    supervisor.act(PostExitHangObserved(verdict), teardown=teardown_subtree)
+                    outcome = supervisor.act(
+                        PostExitHangObserved(verdict), teardown=teardown_subtree
+                    )
+                    if outcome is None:
+                        return
                     raise _IdleStreamTimeoutError(
                         ctx.policy.process_exit_wait_seconds,
                         WatchdogFireReason.PROCESS_EXIT_HANG,

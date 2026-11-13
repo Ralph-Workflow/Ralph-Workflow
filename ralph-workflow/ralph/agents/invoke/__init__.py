@@ -29,13 +29,15 @@ from ralph.agents.invoke._commands import (
 )
 from ralph.agents.invoke._completion import (
     CompletionCheckOptions,
-    _wait_for_descendants_then_recheck,
     attempt_facts_for_failure,
     attempt_facts_from_exception,
     check_process_result,
     termination_issuer_for_exception,
     termination_issuer_for_fire_reason,
     termination_issuer_for_teardown_issuer,
+)
+from ralph.agents.invoke._completion_supervision import (
+    _wait_for_descendants_then_recheck,
 )
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
@@ -114,6 +116,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
     WorkspaceChangeClassifier,
     _normalize_workspace_change_weights,
 )
+from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.invoke.termination_recorder import TerminationRecorder
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.spec import AgentSpec
@@ -175,9 +178,12 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
+    from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
     from ralph.mcp.upstream.config import UpstreamMcpServer
+    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+    from ralph.process.teardown import ProcessTeardown
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
 
@@ -692,9 +698,29 @@ discover_http_mcp_tool_names = _discover_http_mcp_tool_names
 IdleStreamTimeoutError = _IdleStreamTimeoutError
 read_lines_from_process = _read_lines_from_process
 raise_on_relay_health_error = _raise_on_relay_health_error
-wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options
 merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
+
+
+def wait_for_descendants_then_recheck(
+    handle: ManagedProcess | ManagedPtyProcess,
+    agent_name_or_opts: str | CompletionCheckOptions,
+    opts_or_parsed_output: CompletionCheckOptions | list[str],
+    parsed_output: list[str] | None = None,
+    *,
+    clock: Clock | None = None,
+    teardown: ProcessTeardown | None = None,
+) -> AgentExecutionState:
+    return _wait_for_descendants_then_recheck(
+        handle,
+        agent_name_or_opts,
+        opts_or_parsed_output,
+        parsed_output,
+        clock=clock,
+        teardown=teardown,
+        supervisor=AttemptSupervisor.for_recorder(None, handle),
+    )
+
 
 __all__ = [
     "TURN_BOUNDARY_MARKER",

@@ -7,7 +7,6 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.invoke._completion_options import CompletionCheckOptions, _completion_run_id
 from ralph.agents.invoke._session import _bounded_output_lines
-from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.invoke.attempt_supervision._issuer_mapping import _teardown_issuer_for_verdict
 from ralph.agents.invoke.attempt_supervision.teardown_fn import TeardownFn, resolve_teardown
 from ralph.agents.timeout_clock import Clock, SystemClock
@@ -15,6 +14,7 @@ from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
+    from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
     from ralph.process.teardown import ProcessTeardown
 
@@ -48,7 +48,7 @@ def _wait_for_completion_grace(
     *,
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
-    supervisor: AttemptSupervisor | None = None,
+    supervisor: AttemptSupervisor,
 ) -> AgentExecutionState:
     workspace_path = _required_option(opts.workspace_path, "workspace_path")
     execution_strategy = _required_option(opts.execution_strategy, "execution_strategy")
@@ -76,11 +76,10 @@ def _wait_for_completion_grace(
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
-    effective_supervisor = supervisor or AttemptSupervisor.for_recorder(None, handle)
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_parent_exit_grace(classify_exit_state)
-    _record_post_exit_watchdog_fire(effective_supervisor, verdict)
-    effective_supervisor.cleanup(
+    _record_post_exit_watchdog_fire(supervisor, verdict)
+    supervisor.cleanup(
         _teardown_issuer_for_verdict(verdict),
         teardown=completion_teardown(teardown),
     )
@@ -99,7 +98,7 @@ def _wait_for_descendants_then_recheck(
     *,
     clock: Clock | None = None,
     teardown: ProcessTeardown | None = None,
-    supervisor: AttemptSupervisor | None = None,
+    supervisor: AttemptSupervisor,
 ) -> AgentExecutionState:
     if isinstance(agent_name_or_opts, CompletionCheckOptions):
         opts = agent_name_or_opts
@@ -137,11 +136,10 @@ def _wait_for_descendants_then_recheck(
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
-    effective_supervisor = supervisor or AttemptSupervisor.for_recorder(None, handle)
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_descendant_quiesce(classify_exit_state)
-    _record_post_exit_watchdog_fire(effective_supervisor, verdict)
-    effective_supervisor.cleanup(
+    _record_post_exit_watchdog_fire(supervisor, verdict)
+    supervisor.cleanup(
         _teardown_issuer_for_verdict(verdict),
         teardown=completion_teardown(teardown),
     )

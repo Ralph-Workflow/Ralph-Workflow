@@ -125,6 +125,7 @@ from ralph.agents.invoke._session_resume import (
     resolve_resume_session_id,
 )
 from ralph.agents.invoke._tool_call_extraction import extract_tool_call_from_activity_signal
+from ralph.agents.invoke.attempt_supervision import TerminationOutcome
 from ralph.agents.parsers import (
     AgyParser,
     ClaudeInteractiveParser,
@@ -10862,6 +10863,12 @@ class _FakeManagedProcess:
         self.terminate_calls.append(grace_period_s)
 
 
+class _FakeCheckFireSupervisor:
+    def act(self, _observation: object, *, teardown: object) -> TerminationOutcome:
+        del teardown
+        return TerminationOutcome(issuer=None, returncode=0)
+
+
 @dataclass
 class _FakeCheckFireSelf:
     stdin = None
@@ -10874,8 +10881,12 @@ class _FakeCheckFireSelf:
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
     _captured_session_id: str | None = None
-    _termination: TerminationRecorder = field(default_factory=TerminationRecorder)
+    termination_recorder: TerminationRecorder = field(default_factory=TerminationRecorder)
+    _process_teardown: None = None
     _completion_is_terminal: Callable[[], bool] | None = None
+
+    def _attempt_supervisor(self) -> _FakeCheckFireSupervisor:
+        return _FakeCheckFireSupervisor()
 
 
 @dataclass
@@ -10937,8 +10948,12 @@ class _FakeCheckFireSelfResumeAfterKillContract:
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
     _captured_session_id: str | None = None
-    _termination: TerminationRecorder = field(default_factory=TerminationRecorder)
+    termination_recorder: TerminationRecorder = field(default_factory=TerminationRecorder)
+    _process_teardown: None = None
     _completion_is_terminal: Callable[[], bool] | None = None
+
+    def _attempt_supervisor(self) -> _FakeCheckFireSupervisor:
+        return _FakeCheckFireSupervisor()
 
 
 class _NoOpStrategy:

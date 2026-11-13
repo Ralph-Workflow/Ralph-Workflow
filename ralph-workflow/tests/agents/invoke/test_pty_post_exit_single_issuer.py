@@ -9,6 +9,10 @@ from ralph.agents.idle_watchdog import PostExitVerdict
 from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.agents.invoke import AgentInactivityTimeoutError, attempt_facts_from_exception
 from ralph.agents.invoke._pty_runner import run_pty_and_read_lines
+from ralph.agents.invoke.attempt_supervision import (
+    AttemptSupervisor,
+    CompletionObserved,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -115,3 +119,64 @@ def test_pty_post_exit_hang_records_watchdog_issuer_exactly_once(
     assert facts.termination.liveness_observed is True
     assert handle.terminate_issuers == [ProcessTerminationIssuer.POST_EXIT_WATCHDOG]
     assert teardown_calls == [(4242, ProcessTerminationIssuer.POST_EXIT_WATCHDOG)]
+
+
+def test_pty_post_exit_hang_after_prior_winner_publishes_nothing(
+    monkeypatch: pytest_mod.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    handle = _PostExitHangHandle()
+    teardown_calls: list[tuple[int, ProcessTerminationIssuer]] = []
+    supervisors: list[AttemptSupervisor] = []
+
+    def _record_teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
+        teardown_calls.append((pid, issuer))
+
+    def _supervisor_with_prior_winner(handle_obj: object) -> AttemptSupervisor:
+        supervisor = AttemptSupervisor(handle_obj)
+        supervisors.append(supervisor)
+        outcome = supervisor.act(CompletionObserved(), teardown=_record_teardown)
+        assert outcome is not None
+        return supervisor
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner.get_process_manager",
+        lambda: SimpleNamespace(spawn_pty=lambda *args, **kwargs: handle),
+    )
+    monkeypatch.setattr("ralph.agents.invoke._pty_runner.PtyLineReader", _fake_pty_line_reader)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner.PostExitWatchdog", _fake_post_exit_watchdog
+    )
+    monkeypatch.setattr("ralph.agents.invoke._pty_runner.teardown_subtree", _record_teardown)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner.AttemptSupervisor", _supervisor_with_prior_winner
+    )
+
+    ctx = SimpleNamespace(
+        clock=FakeClock(),
+        workspace_path=tmp_path,
+        extra_env={},
+        config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
+        show_progress=False,
+        policy=SimpleNamespace(
+            process_exit_wait_seconds=0.1,
+            profile=TimeoutProfile.STANDARD,
+        ),
+        execution_strategy=None,
+        liveness_probe=None,
+        waiting_listener=None,
+        monitor=None,
+        required_artifact=None,
+        requires_completion_evidence=True,
+        evaluate_completion_fn=lambda *args, **kwargs: None,
+    )
+
+    assert list(run_pty_and_read_lines(["claude", "--print"], ctx)) == []
+
+    (supervisor,) = supervisors
+    facts = supervisor.recorder.termination()
+    assert facts.issuer is TerminationIssuer.AGENT_EXIT
+    assert [entry.issuer for entry in facts.log] == [TerminationIssuer.AGENT_EXIT]
+    assert [record.acted for record in supervisor.observations] == [True, False]
+    assert handle.terminate_issuers == [ProcessTerminationIssuer.INVOKE_TEARDOWN]
+    assert teardown_calls == [(4242, ProcessTerminationIssuer.INVOKE_TEARDOWN)]

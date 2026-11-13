@@ -1218,10 +1218,12 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
-        self._attempt_supervisor().act(
+        outcome = self._attempt_supervisor().act(
             TerminalStartupErrorObserved(terminal_startup_error),
             teardown=teardown_subtree,
         )
+        if outcome is None:
+            return
         _teardown_subtree_if_pid_available(
             self._handle,
             issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,

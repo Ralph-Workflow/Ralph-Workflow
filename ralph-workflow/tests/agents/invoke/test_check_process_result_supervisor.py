@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 import os
 import signal
 import subprocess
@@ -16,6 +17,10 @@ from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     CompletionCheckOptions,
     OpenCodeResumableExitError,
+    _completion,
+    _completion_failures,
+    _completion_supervision,
+    _completion_verdicts,
     attempt_facts_from_exception,
     check_process_result,
 )
@@ -110,7 +115,54 @@ def _session_continuation_options(tmp_path: Path) -> CompletionCheckOptions:
     )
 
 
+_INTERNAL_HELPERS_REQUIRING_SUPERVISOR = (
+    _completion_supervision._wait_for_completion_grace,
+    _completion_supervision._wait_for_descendants_then_recheck,
+    _completion_failures._raise_if_broken_agent_exit,
+    _completion_failures._handle_non_zero_returncode,
+    _completion_verdicts._raise_if_pi_reported_failed_exit,
+    _completion_verdicts._accepts_implicit_development_exit,
+    _completion._check_process_result,
+)
+
+
 class TestCheckProcessResultSupervisor:
+    def test_internal_helpers_require_supervisor_keyword(self) -> None:
+        for helper in _INTERNAL_HELPERS_REQUIRING_SUPERVISOR:
+            params = inspect.signature(helper).parameters
+            assert "supervisor" in params, f"{helper.__qualname__} must accept supervisor"
+            assert params["supervisor"].default is inspect.Parameter.empty, (
+                f"{helper.__qualname__} must not default-construct a supervisor"
+            )
+
+    def test_internal_helpers_raise_type_error_without_supervisor(self) -> None:
+        with pytest.raises(TypeError):
+            _completion_supervision._wait_for_completion_grace(
+                object(), "agent", object(), [], clock=None, teardown=None
+            )
+        with pytest.raises(TypeError):
+            _completion_supervision._wait_for_descendants_then_recheck(
+                object(), "agent", object(), [], clock=None, teardown=None
+            )
+        with pytest.raises(TypeError):
+            _completion_failures._raise_if_broken_agent_exit(
+                object(), "agent", [], object(), stderr_text="", teardown=None
+            )
+        with pytest.raises(TypeError):
+            _completion_failures._handle_non_zero_returncode(
+                object(), "agent", [], None, 1, "", True, None
+            )
+        with pytest.raises(TypeError):
+            _completion_verdicts._raise_if_pi_reported_failed_exit(object(), "agent", [], None)
+        with pytest.raises(TypeError):
+            _completion_verdicts._accepts_implicit_development_exit(
+                object(), "agent", [], object(), object(), None
+            )
+        with pytest.raises(TypeError):
+            _completion._check_process_result(
+                object(), "agent", [], None, _clock=None, process_teardown=None
+            )
+
     def test_explicit_supervisor_reaps_descendant_and_records_fire(self, tmp_path: Path) -> None:
         _manager, child, grandchild_pid = _spawn_exited_child_with_lingering_descendant(tmp_path)
         try:
