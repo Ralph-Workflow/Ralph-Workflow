@@ -620,7 +620,8 @@ Ralph Workflow installs two kinds of skills, and they have different owners.
   scope, and are derived from the pipeline's artifact types: the set follows
   the artifact contract automatically, so there is no separate hand-maintained
   skill list to keep in parity. Adding an artifact type adds its skill, and
-  each artifact type carries at most one skill.
+  each artifact type carries at most one skill, so adding a skill means
+  adding an artifact type.
 - **Universal skills** are exactly three — `test-driven-development`,
   `systematic-debugging`, and `verification-before-completion` — and are
   **not vendored in this repository**. They are fetched at runtime from the

@@ -21,6 +21,8 @@ _FORMAT_DOC_DIR = Path(__file__).resolve().parents[1] / "mcp" / "artifacts" / "f
 
 _FORMAT_DOC_REFERENCE_RE = re.compile(r"\.agent/artifact-formats/([A-Za-z0-9_-]+)\.md")
 
+_SKILL_REFERENCE_RE = re.compile(r"`(submit-[A-Za-z0-9_-]+)`")
+
 _ARTIFACT_TYPE_RE = re.compile(r"artifact_type\"?\s*:\s*\"?([A-Za-z0-9_]+)")
 
 _SUBMIT_HEADING_RE = re.compile(r"^##\s+Submit\b", re.MULTILINE)
@@ -160,16 +162,12 @@ def _audit_skill_text(skill_name: str, artifact_type: str, text: str) -> list[st
             )
 
     referenced_docs: set[str] = set(_regex_groups(_FORMAT_DOC_REFERENCE_RE, text))
-    for referenced in sorted(referenced_docs):
-        if not _format_doc_path(referenced).is_file():
-            violations.append(
-                f"skill {skill_name}.md references a missing format doc: {referenced}"
-            )
-        elif referenced != artifact_type:
-            violations.append(
-                f"skill {skill_name}.md references another type's format doc: {referenced} "
-                f"(expected {artifact_type})"
-            )
+    violations.extend(
+        f"skill {skill_name}.md references another type's format doc: {referenced} "
+        f"(expected {artifact_type})"
+        for referenced in sorted(referenced_docs)
+        if referenced != artifact_type
+    )
     return violations
 
 
@@ -182,10 +180,30 @@ def _audit_skill_files(content_root: Path, artifact_types: tuple[str, ...]) -> l
             continue
         try:
             text = skill_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            violations.append(f"skill {skill_name}.md is not readable: {exc}")
+        except (OSError, UnicodeDecodeError):
             continue
         violations.extend(_audit_skill_text(skill_name, artifact_type, text))
+    return violations
+
+
+def _audit_references(content_root: Path) -> list[str]:
+    violations: list[str] = []
+    for path in sorted(content_root.glob(SKILL_FILE_GLOB)):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            violations.append(f"skill {path.name} is not readable: {exc}")
+            continue
+        violations.extend(
+            f"skill {path.name} references a missing format doc: {referenced}"
+            for referenced in sorted(set(_regex_groups(_FORMAT_DOC_REFERENCE_RE, text)))
+            if not _format_doc_path(referenced).is_file()
+        )
+        violations.extend(
+            f"skill {path.name} references a skill that is not installed: {referenced}"
+            for referenced in sorted(set(_regex_groups(_SKILL_REFERENCE_RE, text)))
+            if not (content_root / f"{referenced}.md").is_file()
+        )
     return violations
 
 
@@ -227,6 +245,7 @@ def audit_artifact_skill_types(root: Path | None = None) -> list[str]:
     )
 
     violations.extend(_audit_skill_files(content_root, artifact_types))
+    violations.extend(_audit_references(content_root))
     return violations
 
 

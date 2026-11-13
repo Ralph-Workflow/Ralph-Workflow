@@ -232,6 +232,63 @@ def test_skill_referencing_a_missing_format_doc_is_reported(tmp_path: Path) -> N
     )
 
 
+def test_a_skill_referencing_a_missing_companion_skill_is_reported(tmp_path: Path) -> None:
+    content_root = _correct_tree(tmp_path)
+    skill_name = _skill_name(_submission_types()[0])
+    text = _skill_text(content_root, skill_name)
+    _rewrite_skill(
+        content_root,
+        skill_name,
+        f"{text}\nRead `submit-missing-type-artifact` for the details.\n",
+    )
+
+    violations = audit_artifact_skill_types(content_root)
+
+    assert any(
+        f"skill {skill_name}.md references a skill that is not installed: "
+        "submit-missing-type-artifact" in violation
+        for violation in violations
+    )
+
+
+def test_the_umbrella_skill_companion_references_are_checked(tmp_path: Path) -> None:
+    content_root = _correct_tree(tmp_path)
+    text = _skill_text(content_root, "submit-artifact")
+    _rewrite_skill(
+        content_root,
+        "submit-artifact",
+        text.replace("`submit-plan-artifact`", "`submit-absent-companion`"),
+    )
+
+    violations = audit_artifact_skill_types(content_root)
+
+    assert any(
+        "skill submit-artifact.md references a skill that is not installed: "
+        "submit-absent-companion" in violation
+        for violation in violations
+    )
+
+
+def test_the_umbrella_skill_missing_format_doc_reference_is_reported(tmp_path: Path) -> None:
+    content_root = _correct_tree(tmp_path)
+    text = _skill_text(content_root, "submit-artifact")
+    _rewrite_skill(
+        content_root,
+        "submit-artifact",
+        text.replace(
+            ".agent/artifact-formats/<artifact_type>.md",
+            ".agent/artifact-formats/absent-type.md",
+        ),
+    )
+
+    violations = audit_artifact_skill_types(content_root)
+
+    assert any(
+        "skill submit-artifact.md references a missing format doc: absent-type" in violation
+        for violation in violations
+    )
+
+
 def test_main_returns_zero_for_a_correct_tree_and_one_for_drift(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

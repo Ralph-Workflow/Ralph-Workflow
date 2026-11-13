@@ -13,7 +13,7 @@ import pytest
 from ralph.cli.commands import run as run_module
 from ralph.git.operations import get_head_sha, has_uncommitted_changes
 from ralph.skills import get_skill_content, upstream
-from ralph.skills.upstream import HttpClient, UpdateOutcome
+from ralph.skills.upstream import HttpClient, HttpResponse, UpdateOutcome
 from tests.test_skills_upstream_update import _SKILL_FILES, _client_for
 
 if TYPE_CHECKING:
@@ -478,3 +478,82 @@ def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tre
     assert has_uncommitted_changes(tmp_git_repo) is False, (
         "the run that installs the newer release must leave the user's git tree clean"
     )
+
+
+def _recording_client(event: threading.Event) -> tuple[HttpClient, list[str]]:
+    client, calls = _client_for("v-test-1", _SKILL_FILES)
+
+    def _get(url: str, timeout: float) -> HttpResponse:
+        event.set()
+        return client(url, timeout)
+
+    return _get, calls
+
+
+def test_the_env_switch_alone_leaves_the_injected_http_client_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
+    reached = threading.Event()
+    client, calls = _recording_client(reached)
+    monkeypatch.setattr("ralph.skills.upstream.default_http_client", lambda: client)
+    warnings: list[str] = []
+
+    _run_seam(tmp_path, _build_dependencies(warnings))
+
+    assert not reached.wait(timeout=0.25), (
+        "the env switch alone must leave the injected HTTP client untouched"
+    )
+    assert calls == [], f"the env switch alone must stop every request; got {calls!r}"
+
+
+def test_the_config_switch_alone_leaves_the_injected_http_client_untouched(
+    tmp_path: Path,
+    sandbox: _Sandbox,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (sandbox.config / "ralph-workflow.toml").write_text(
+        "[skills]\nuniversal_updates_enabled = false\n",
+        encoding="utf-8",
+    )
+    reached = threading.Event()
+    client, calls = _recording_client(reached)
+    monkeypatch.setattr("ralph.skills.upstream.default_http_client", lambda: client)
+    warnings: list[str] = []
+
+    _run_seam(tmp_path, _build_dependencies(warnings))
+
+    assert not reached.wait(timeout=0.25), (
+        "the config switch alone must leave the injected HTTP client untouched"
+    )
+    assert calls == [], f"the config switch alone must stop every request; got {calls!r}"
+
+
+def test_the_injected_http_client_is_reached_when_no_switch_is_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reached = threading.Event()
+    finished = threading.Event()
+    client, calls = _recording_client(reached)
+    monkeypatch.setattr("ralph.skills.upstream.default_http_client", lambda: client)
+    real_update = upstream.maybe_update_universal_skills
+
+    def _tracked_update(*, enabled: bool, now: datetime, http: HttpClient) -> UpdateOutcome:
+        try:
+            return real_update(enabled=enabled, now=now, http=http)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr("ralph.skills.upstream.maybe_update_universal_skills", _tracked_update)
+    warnings: list[str] = []
+
+    _run_seam(tmp_path, _build_dependencies(warnings))
+
+    assert reached.wait(timeout=5), "the injected HTTP client must be reached when no switch is set"
+    assert finished.wait(timeout=5), "the universal-skill update never finished"
+    assert calls == [
+        upstream.RELEASES_API_URL,
+        upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
+    ]

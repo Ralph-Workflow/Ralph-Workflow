@@ -119,6 +119,14 @@ def _commit_worktree(repo_root: Path, message: str) -> str:
     return str(repo.index.commit(message, author=actor, committer=actor).hexsha)
 
 
+def _init_repo(repo_root: Path) -> None:
+    Repo.init(repo_root)
+
+
+def _open_repo(repo_root: Path) -> Repo:
+    return _repo(repo_root)
+
+
 def test_install_replaces_tracked_sibling_dir_with_symlink_commits_deletions_and_link(
     tmp_path: Path,
 ) -> None:

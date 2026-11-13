@@ -635,3 +635,199 @@ def test_an_archive_beyond_the_extracted_size_cap_never_materialises_its_content
     assert peak < 8 * 1024 * 1024, (
         f"the extracted-size cap must bound the materialised content; peak was {peak} bytes"
     )
+
+
+def test_only_the_release_api_and_the_tag_archive_are_fetched(sandbox: Path) -> None:
+    client, calls = _client_for("v-test-1", _SKILL_FILES)
+
+    maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert calls == [RELEASES_API_URL, _archive_url("v-test-1")]
+    assert calls[0] == "https://api.github.com/repos/obra/superpowers/releases/latest"
+    assert calls[1].startswith("https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/")
+    for url in calls:
+        assert "refs/heads" not in url, url
+        assert "main" not in url, url
+
+
+def test_every_user_global_root_receives_the_installed_skills(
+    sandbox: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "keep.txt").write_text("keep\n", encoding="utf-8")
+    monkeypatch.chdir(project)
+    before = _tree_snapshot(project)
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+
+    outcome = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    roots = {
+        agent: Path.home().joinpath(*segments).resolve()
+        for agent, segments in (
+            ("claude", (".claude", "skills")),
+            ("codex", (".codex", "skills")),
+            ("opencode", (".config", "opencode", "skills")),
+            ("agy", (".gemini", "antigravity-cli", "skills")),
+            ("codex-agents", (".agents", "skills")),
+            ("agy-config", (".gemini", "config", "skills")),
+        )
+    }
+    assert roots["codex-agents"] == (sandbox / ".agents" / "skills").resolve()
+    for agent, root in roots.items():
+        for skill in UNIVERSAL_SKILL_NAMES:
+            assert (root / skill / "SKILL.md").is_file(), f"{agent}: {skill} is missing"
+        for skill, files in _SKILL_FILES.items():
+            for relative, data in files.items():
+                assert (root / skill / relative).read_bytes() == data, (
+                    f"{agent}: the companion {relative} of {skill} must be readable"
+                )
+    assert _tree_snapshot(project) == before, "the update must not write into the project"
+
+
+def test_a_skill_missing_from_the_archive_is_left_unchanged_and_reported(
+    sandbox: Path,
+) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    root = _canonical_root()
+    missing = "verification-before-completion"
+    installed = (root / missing / "SKILL.md").read_bytes()
+    partial = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    partial.pop(missing)
+    upgrade_client, _calls = _client_for("v-test-2", partial)
+
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=upgrade_client
+    )
+
+    assert outcome.status == "updated"
+    assert missing in outcome.preserved
+    assert missing not in outcome.installed
+    assert any(missing in message for message in outcome.messages)
+    assert (root / missing / "SKILL.md").read_bytes() == installed
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_a_refused_release_api_keeps_the_installed_skills(sandbox: Path, status: int) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    root = _canonical_root()
+    before = _tree_snapshot(root)
+    calls: list[str] = []
+    refused = _fake_client({RELEASES_API_URL: (status, b"upstream refused")}, calls)
+
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=refused
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error == f"release-api-status-{status}"
+    assert calls == [RELEASES_API_URL]
+    assert _tree_snapshot(root) == before
+
+
+def test_a_truncated_archive_keeps_the_installed_skills(sandbox: Path) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    root = _canonical_root()
+    before = _tree_snapshot(root)
+    archive = _release_archive("v-test-2", _SKILL_FILES)
+    truncated = archive[: len(archive) // 2]
+    failing = _fake_client(
+        {
+            RELEASES_API_URL: (200, _release_body("v-test-2")),
+            _archive_url("v-test-2"): (200, truncated),
+        },
+        [],
+    )
+
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=failing
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error is not None
+    assert _tree_snapshot(root) == before
+
+
+def test_an_oversize_archive_is_refused(sandbox: Path) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    root = _canonical_root()
+    before = _tree_snapshot(root)
+    failing = _fake_client(
+        {
+            RELEASES_API_URL: (200, _release_body("v-test-2")),
+            _archive_url("v-test-2"): (200, b"\0" * (MAX_ARCHIVE_BYTES + 1)),
+        },
+        [],
+    )
+
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=failing
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error == "archive-too-large"
+    assert _tree_snapshot(root) == before
+
+
+def test_a_member_with_a_refused_extension_is_not_installed(sandbox: Path) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    root = _canonical_root()
+    before = _tree_snapshot(root)
+    members = _skill_members("v-test-2", _SKILL_FILES)
+    members.append(
+        (_member("superpowers-test-2/skills/test-driven-development/diagram.png", b"x"), b"x")
+    )
+    failing = _fake_client(
+        {
+            RELEASES_API_URL: (200, _release_body("v-test-2")),
+            _archive_url("v-test-2"): (200, _archive_bytes(members)),
+        },
+        [],
+    )
+
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=failing
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error is not None
+    assert _tree_snapshot(root) == before
+
+
+def test_a_member_path_that_escapes_the_skill_directory_is_refused(sandbox: Path) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    root = _canonical_root()
+    before = _tree_snapshot(root)
+    members = _skill_members("v-test-2", _SKILL_FILES)
+    members.append(
+        (
+            _member(
+                "superpowers-test-2/skills/test-driven-development/../../../escape.md",
+                b"x",
+            ),
+            b"x",
+        )
+    )
+    failing = _fake_client(
+        {
+            RELEASES_API_URL: (200, _release_body("v-test-2")),
+            _archive_url("v-test-2"): (200, _archive_bytes(members)),
+        },
+        [],
+    )
+
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=failing
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error is not None
+    assert _tree_snapshot(root) == before
+    assert not (sandbox / "escape.md").exists()
