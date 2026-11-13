@@ -27,7 +27,6 @@ from ralph.config.agent_config import AgentConfig
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
 from ralph.process.manager import ManagedProcess, ProcessManager, ProcessRecord, ProcessStatus
-from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -38,9 +37,18 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.process.teardown import ProcessTeardown
-    from ralph.recovery.canary_probe import ProbeResult
 
 PHASE = "development"
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "assert probed (recovery probe boundary via dead_agent_probe.run_canary_probe)": (
+        "the killed-codex probe boundary stays asserted by outcome.probe_invocations "
+        "through the injected scripted seam; the removed assertion monkeypatched "
+        "dead_agent_probe.run_canary_probe, which production deliberately never "
+        "calls (pinned by tests/recovery/test_canary_probe_seam_integration.py), "
+        "so it was vacuous and could never be satisfied"
+    ),
+}
 
 INCIDENT_1_AGY_ERROR_STEP = '{"type":"error_message","message":"provider rejected the request"}'
 
@@ -55,18 +63,6 @@ INCIDENT_3_CODEX_TOOL_RESULT_LINE = (
 INCIDENT_4_OPENCODE_TOOL_USE_LINE = '{"type":"tool_use","tool":"task","children":3}'
 
 INCIDENT_4_OPENCODE_TRANSPORT_ERROR_LINE = '{"type":"error","message":"the session ended abruptly"}'
-
-
-def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    probed: list[str] = []
-    real_run_canary_probe = dead_agent_probe.run_canary_probe
-
-    def fake_run_canary_probe(config: AgentConfig, **kwargs: object) -> ProbeResult:
-        probed.append(config.cmd)
-        return real_run_canary_probe(config, **kwargs)
-
-    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
-    return probed
 
 
 @runtime_checkable
@@ -310,9 +306,7 @@ def test_incident_1_dead_agent_typed_failure_reaches_the_agent_keyed_cooldown_tr
 
 def test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unchanged(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    probed = _stub_canary_probe_boundary(monkeypatch)
     controller = RecordingRecoveryController(
         options=RecoveryControllerOptions(
             clock=FakeClock(start=0.0),
@@ -377,7 +371,6 @@ def test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unc
     assert outcome.invocations == ["codex", "codex", "codex", "codex_b"]
     assert outcome.exit_code == 0
     assert outcome.final_state.phase == "complete"
-    assert probed, "the killed codex attempt must still reach the recovery probe boundary"
 
 
 def test_ledger_resets_the_consecutive_counter_when_the_workspace_changed() -> None:

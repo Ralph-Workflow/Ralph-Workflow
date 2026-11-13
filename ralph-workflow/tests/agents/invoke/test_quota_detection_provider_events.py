@@ -230,6 +230,25 @@ def test_malformed_provider_stderr_still_raises(line: str) -> None:
         raise_if_quota_exhausted("codex", line, None, include_output=False)
 
 
+_USER_MESSAGE_EVENT_LINES = (
+    json.dumps(
+        {"type": "message_start", "message": {"role": "user", "content": "credits exhausted"}}
+    ),
+    json.dumps(
+        {"type": "message_end", "message": {"role": "user", "content": "credits exhausted"}}
+    ),
+)
+
+
+@pytest.mark.parametrize("line", _USER_MESSAGE_EVENT_LINES)
+@pytest.mark.parametrize("include_output", [True, False])
+def test_user_message_event_never_raises_on_stderr_or_parsed_output(
+    line: str, include_output: bool
+) -> None:
+    raise_if_quota_exhausted("codex", line, None, include_output=include_output)
+    raise_if_quota_exhausted("codex", "", [line], include_output=include_output)
+
+
 def test_include_output_gates_bare_phrase_but_not_explicit_provider_failure() -> None:
     raise_if_quota_exhausted("codex", "", ["quota exceeded in agent echo"], include_output=False)
     with pytest.raises(QuotaExhaustedError):

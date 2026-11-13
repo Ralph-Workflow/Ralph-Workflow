@@ -125,6 +125,8 @@ def provider_text(line: str) -> ProviderText | None:
 
 
 def provider_evidence_text(detail: str) -> ProviderText | None:
+    if is_user_prompt_event_line(detail):
+        return None
     event = _parse_json_event(detail)
     if event is None:
         return ProviderText(text=detail)

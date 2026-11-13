@@ -186,6 +186,25 @@ def test_user_prompt_line_maps_to_user_channel() -> None:
     assert not is_provider_quota_output_line(_USER_PROMPT_LINE)
 
 
+_USER_MESSAGE_EVENT_LINES = (
+    json.dumps(
+        {"type": "message_start", "message": {"role": "user", "content": "credits exhausted"}}
+    ),
+    json.dumps(
+        {"type": "message_end", "message": {"role": "user", "content": "credits exhausted"}}
+    ),
+)
+
+
+@pytest.mark.parametrize("line", _USER_MESSAGE_EVENT_LINES)
+def test_user_message_envelope_events_are_never_provider_evidence(line: str) -> None:
+    assert channel_of(line) is ContentChannel.USER
+    assert provider_text(line) is None
+    assert provider_evidence_text(line) is None
+    assert not is_provider_quota_output_line(line)
+    assert not is_quota_kill_evidence(line)
+
+
 def test_non_json_plain_text_maps_to_user_channel_not_provider() -> None:
     assert channel_of("just a status update") is ContentChannel.USER
     assert provider_text("just a status update") is None
