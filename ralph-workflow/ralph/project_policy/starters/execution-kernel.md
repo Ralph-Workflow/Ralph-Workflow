@@ -103,9 +103,10 @@ those.
    editing the expectation. (evidence: strong)
 4. **Regression tests from the spec.** A bug-fix test's expected value
    is written down from the spec rather than computed by calling the
-   code under test. When the behaviour belongs to a third-party library,
-   that library's own documentation is the spec: check it before relying
-   on the behaviour. (evidence: moderate)
+   code under test, and the test fails on the pre-fix revision. When
+   the behaviour belongs to a third-party library, that library's own
+   documentation is the spec: check it before relying on the behaviour.
+   (evidence: moderate)
 5. **Independent review.** Review belongs to the analysis phases
    (`planning_analysis`, `development_analysis`), which are already
    separate cold invocations. The reviewer judges the work against
@@ -115,7 +116,11 @@ those.
    An AI verdict is never the sole evidence of correctness — the
    deterministic gate decides. Findings reuse the project's existing
    `Expected` / `Observed` / `Evidence` / `Location` shape; no second
-   finding shape is introduced. (evidence: moderate)
+   finding shape is introduced. As an agent-chain configuration
+   recommendation (evidence: moderate, advisory): run the analysis
+   phases in a different model family from the phase whose work they
+   review, and re-check the recommendation when the harness records
+   per-phase model families. (evidence: moderate)
 6. **Handoff by artifact.** The verification command, its exit code,
    and the output that matters go into the `development_result` body,
    and every item that could not be verified is listed there as
@@ -283,6 +288,7 @@ Then delete this comment. -->
 | Policy follows reality | Policy owner | the policy facts and commands match the tool they describe | the policy file names the command the repository actually runs | the command named in the policy file | deterministic: PROJECT-FACT-UNRESOLVED | when a gate checks the policy files against the repository |
 | Report failures honestly | Verification owner | a red gate is reported as a red gate | the result body reports the gate outcome instead of hiding it behind narration | the gate outcome reported in the result body | deterministic: PROJECT-FACT-UNRESOLVED | when the result body gains a validated field |
 | Real-artifact evidence | Verification owner | the claim cites the command, its exit code, and the output that matters | the result body records the command and its exit code | the exit code and output recorded for the claim | deterministic: PROJECT-FACT-UNRESOLVED | when the recorded evidence is produced by the gate without an agent step |
+| Independent review model-family diversification | Analysis owner | the analysis phases run in a different model family from the phase whose work they review | the agent-chain configuration records the model family of the analysis phase and it differs from the authoring phase's model family | the model-family assignment recorded in the agent-chain configuration | advisory: no gate reads the agent chain's model family assignment, so a different-model-family review stays a configuration recommendation; review: when the harness records the per-phase model family in the run ledger | when a gate verifies the analysis phase runs in a different model family from the phase under review |
 | Non-inferable instruction surface | Policy owner | the instruction surfaces carry no line a reader can infer from the code | the recorded instruction-surface review names the lines of the managed AGENTS.md block and the project AGENTS.md a reader can infer | the instruction-surface lines named in the recorded review | advisory: only line-count and path-existence checks run, and neither detects an inferable line; review: on every policy remediation pass that edits AGENTS.md content, and whenever a managed-block or AGENTS.md line-budget warning fires | when a gate decides the content of the instruction surfaces |
 
 The agent rules in `## Agent rules` are enforced through the

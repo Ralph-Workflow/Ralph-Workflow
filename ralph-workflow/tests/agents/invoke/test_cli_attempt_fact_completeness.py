@@ -13,7 +13,7 @@ import pytest
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import ProcessLineReader, ProcessReaderCtx, check_process_result
-from ralph.agents.parsers import _PARSER_REGISTRY
+from ralph.agents.parsers import AgentParser, get_parser
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -264,8 +264,8 @@ def _param_id(parser_key: str) -> str:
 
 @pytest.mark.parametrize(
     "parser_key",
-    sorted(_PARSER_REGISTRY),
-    ids=[_param_id(key) for key in sorted(_PARSER_REGISTRY)],
+    sorted(_COMMANDS),
+    ids=[_param_id(key) for key in sorted(_COMMANDS)],
 )
 def test_recorded_capture_populates_attempt_facts(parser_key: str) -> None:
     capture = _CAPTURES[parser_key]
@@ -290,8 +290,10 @@ def test_recorded_capture_populates_attempt_facts(parser_key: str) -> None:
 
 
 def test_gap_tables_equal_replayed_gaps() -> None:
-    registry_keys = sorted(_PARSER_REGISTRY)
+    registry_keys = sorted(_COMMANDS)
     assert set(_CAPTURES) == set(registry_keys)
+    for parser_key in registry_keys:
+        assert isinstance(get_parser(parser_key), AgentParser)
     computed: set[tuple[str, str]] = set()
     for parser_key in registry_keys:
         capture = _CAPTURES[parser_key]

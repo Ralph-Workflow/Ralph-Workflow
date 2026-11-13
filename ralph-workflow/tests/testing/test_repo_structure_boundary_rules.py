@@ -444,6 +444,12 @@ def test_b8_missing_detector_file_is_no_violation() -> None:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "RALPH_TEST_CHANGE_REASONS b8 assertion lines reflowed without semantic change": (
+        "ruff format reflowed the assert generator expressions in "
+        "test_b8_rejects_process_imports_and_managed_process_references; "
+        "the checked conditions, violation strings, and expected outcomes "
+        "are unchanged"
+    ),
     "real controller source read replaced with an inline snapshot": (
         "the test policy audit bans repository .read_text() in tests; the real "
         "recovery controller's _spent_agents source is inlined as a snapshot so "

@@ -17,15 +17,16 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the ladder cell that repeats it"
     ),
     "test_kernels_state_the_pre_fix_failure_obligation": (
-        "the generic red-green obligation is taught by the test-driven-development "
-        "skill, so the kernel no longer states it and the check that required the "
-        "two red-green clauses is replaced by the check that the rule states the "
-        "spec-derived expected value and the library-documentation clause"
+        "the v6 brief requires a bug-fix regression test to fail on the pre-fix "
+        "revision; the retirement contradicted the brief, so the check that "
+        "required the pre-fix failure is restored as its own contract test"
     ),
     "test_kernels_state_the_spec_derived_expected_value_obligation": (
-        "the generic red-green obligation is taught by the test-driven-development "
-        "skill, so the kernel states the spec-derived expected value and the "
-        "library-documentation clause instead of the red-green clauses"
+        "the v6 brief requires a bug-fix regression test to fail on the pre-fix "
+        "revision, so the pre-fix-failure clause is an obligation of the "
+        "regression-tests rule while the failing-run-record clause stays retired; "
+        "the kernel states the spec-derived expected value and the "
+        "library-documentation clause"
     ),
     "test_kernels_drop_the_rule_history_sentence": (
         "the kernel carried a sentence narrating where the rules used to live, "
@@ -48,12 +49,10 @@ INSTRUCTION_SURFACE_OBLIGATIONS: tuple[str, ...] = (
 SPEC_VALUE_OBLIGATIONS: tuple[str, ...] = (
     "expected value is written down from the spec",
     "that library's own documentation is the spec",
+    "fails on the pre-fix revision",
 )
 
-RETIRED_RED_GREEN_CLAUSES: tuple[str, ...] = (
-    "fails on the pre-fix revision",
-    "the failing run is recorded with the change",
-)
+RETIRED_RED_GREEN_CLAUSES: tuple[str, ...] = ("the failing run is recorded with the change",)
 
 RULE_HISTORY_SENTENCE_FRAGMENTS: tuple[str, ...] = (
     "previously appeared verbatim",
@@ -249,6 +248,20 @@ def test_kernels_state_the_spec_derived_expected_value_obligation() -> None:
                 f"the retired generic red-green obligation {clause!r}; the technique is "
                 f"taught by the test-driven-development skill"
             )
+
+
+def test_kernels_state_the_pre_fix_failure_obligation() -> None:
+    for source_name, content in (("root", _root_kernel()), ("starter", _starter_kernel())):
+        statements = _agent_rule_statements(content)
+        statement = statements.get("regression tests from the spec")
+        assert statement is not None, (
+            f"{source_name} kernel does not state the regression-tests-from-the-spec rule"
+        )
+        normalized = " ".join(statement.lower().split())
+        assert "fails on the pre-fix revision" in normalized, (
+            f"{source_name} kernel rule 'Regression tests from the spec' does not "
+            "state that the bug-fix test fails on the pre-fix revision"
+        )
 
 
 def test_kernels_drop_the_rule_history_sentence() -> None:

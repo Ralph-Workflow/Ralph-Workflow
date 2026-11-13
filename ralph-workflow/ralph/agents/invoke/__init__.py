@@ -78,6 +78,9 @@ from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
 from ralph.agents.invoke._quota_detection import (
     is_provider_quota_output_line,
+    is_quota_kill_evidence,
+    provider_quota_kill_evidence,
+    provider_quota_line_matches,
     raise_if_quota_exhausted,
 )
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
@@ -749,6 +752,7 @@ __all__ = [
     "is_canonical_session_text_line",
     "is_permission_prompt_line",
     "is_provider_quota_output_line",
+    "is_quota_kill_evidence",
     "is_whole_canonical_session_line",
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",
@@ -761,6 +765,8 @@ __all__ = [
     "policy_from_options",
     "prepare_codex_home_with_upstreams",
     "provider_allowed_mcp_tool_names",
+    "provider_quota_kill_evidence",
+    "provider_quota_line_matches",
     "raise_if_quota_exhausted",
     "raise_on_relay_health_error",
     "read_lines_from_process",

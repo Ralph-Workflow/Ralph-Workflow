@@ -2383,7 +2383,7 @@ ralph.agents.parsers.codex
    :show-inheritance:
 
 ralph.agents.parsers.content_channel
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.parsers.content_channel
    :members:

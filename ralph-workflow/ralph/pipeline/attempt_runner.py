@@ -17,10 +17,10 @@ from ralph.pipeline.agent_entry_point import (
 from ralph.pipeline.attempt_finalizer import AttemptFinalization
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.canary_probe import run_canary_probe
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.dead_agent_probe import (
     build_dead_agent_probe_runner,
@@ -102,7 +102,7 @@ def seamed_dead_agent_probe_runner(
         return AgentRegistry.from_config(config).get(name)
 
     def probe(agent_config: AgentConfig) -> ProbeResult:
-        return dead_agent_probe.run_canary_probe(
+        return run_canary_probe(
             agent_config,
             invoke_fn=_as_raw_agent_invoke(injected_invoke),
             general_config=config.general,

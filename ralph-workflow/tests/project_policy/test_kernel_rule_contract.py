@@ -13,6 +13,7 @@ from tests.project_policy.kernel_contract import (
     SMALLEST_CHANGE_RULE_TITLE,
     SPEC_VALUE_GUARD_NAME,
     STARTER_COMMENT_BAN_ENFORCEMENT,
+    advisory_reason_and_trigger,
     agent_rule_body,
     agent_rule_statements,
     assert_spec_value_guard_contract,
@@ -102,7 +103,18 @@ RALPH_TEST_CHANGE_REASONS = {
         "the premise-check agent rule is retired, so the smallest-change "
         "rule is rule 7 and the check names its new number"
     ),
+    "test_kernels_carry_the_model_family_review_advisory": (
+        "the v6 brief adds a different-model-family recommendation to the "
+        "independent-review rule as an agent-chain configuration recommendation "
+        "tagged moderate and advisory, so the contract pins the guard-inventory "
+        "row, its advisory enforcement with a review trigger, and the rule "
+        "statement in both kernels"
+    ),
 }
+
+MODEL_FAMILY_GUARD_NAME: str = "Independent review model-family diversification"
+
+MODEL_FAMILY_EVIDENCE_TAG: str = "(evidence: moderate, advisory)"
 
 
 def test_kernels_declare_exactly_the_thirteen_agent_rules() -> None:
@@ -196,6 +208,33 @@ def test_kernel_rule_four_enforcement_points_at_the_spec_derived_expected_value(
                 f"{source_name} rule 4 enforcement still names the retired pre-fix "
                 f"failure obligation {retired!r}"
             )
+
+
+def test_kernels_carry_the_model_family_review_advisory() -> None:
+    for source_name, content in (("root", root_kernel()), ("starter", kernel())):
+        row = guard_row(content, MODEL_FAMILY_GUARD_NAME, source_name)
+        enforcement = enforcement_cell(row)
+        reason, trigger = advisory_reason_and_trigger(
+            enforcement, MODEL_FAMILY_GUARD_NAME, source_name
+        )
+        assert "model family" in reason.lower(), (
+            f"{source_name} guard-inventory row for {MODEL_FAMILY_GUARD_NAME!r} does not "
+            f"name the model-family reason; observed reason: {reason!r}"
+        )
+        assert "model family" in trigger.lower(), (
+            f"{source_name} guard-inventory row for {MODEL_FAMILY_GUARD_NAME!r} names no "
+            f"review trigger about the model-family assignment; observed trigger: {trigger!r}"
+        )
+        statement = agent_rule_statements(content)["independent review"]
+        normalized = " ".join(statement.lower().split())
+        assert "model family" in normalized, (
+            f"{source_name} kernel rule 5 (Independent review) does not carry the "
+            "different-model-family agent-chain recommendation"
+        )
+        assert MODEL_FAMILY_EVIDENCE_TAG in " ".join(statement.split()), (
+            f"{source_name} kernel rule 5 (Independent review) does not tag the "
+            f"model-family recommendation {MODEL_FAMILY_EVIDENCE_TAG!r}"
+        )
 
 
 def test_advisory_guard_inventory_check_is_fault_sensitive_to_a_dropped_row_and_reason() -> None:

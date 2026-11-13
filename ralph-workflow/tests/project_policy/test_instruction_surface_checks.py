@@ -197,6 +197,59 @@ def test_instruction_integrity_audit_finds_hidden_unicode(tmp_path: Path) -> Non
     assert "U+200B" in unicode_findings[0].detail
 
 
+def test_research_freshness_boundary_is_silent_at_365_days_fires_at_366() -> None:
+    content = (
+        "## Research basis\n\n"
+        "- publisher: Boundary Org\n"
+        "  title: Boundary Policy\n"
+        "  http: https://example.org/boundary\n"
+        "  review date: 2026-01-01\n"
+    )
+    try:
+        set_research_freshness_clock(lambda: date(2027, 1, 1))
+        findings_at_boundary = check_policy_citations(content, "docs/policy.md")
+        assert not any(
+            f.requirement_id.startswith(markers.RESEARCH_FRESHNESS_FINDING_ID)
+            for f in findings_at_boundary
+        )
+
+        set_research_freshness_clock(lambda: date(2027, 1, 2))
+        findings_past_boundary = check_policy_citations(content, "docs/policy.md")
+        freshness = [
+            f
+            for f in findings_past_boundary
+            if f.requirement_id.startswith(markers.RESEARCH_FRESHNESS_FINDING_ID)
+        ]
+        assert len(freshness) == 1
+        assert freshness[0].blocking is False
+    finally:
+        set_research_freshness_clock(None)
+
+
+def test_instruction_integrity_audit_hidden_unicode_covers_all_file_classes(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "AGENTS.md").write_text("managed block with \u200b hidden char\n", encoding="utf-8")
+    policy_dir = tmp_path / "docs" / "ralph-workflow-policy"
+    policy_dir.mkdir(parents=True)
+    (policy_dir / "testing-policy.md").write_text("policy with \u202e bidi\n", encoding="utf-8")
+    (tmp_path / ".mcp.json").write_text(
+        '{"mcpServers": {"srv": {"command": "srv@1.2.3\u00ad"}}}\n',
+        encoding="utf-8",
+    )
+    prompts_dir = tmp_path / "ralph" / "prompts" / "templates"
+    prompts_dir.mkdir(parents=True)
+    (prompts_dir / "task.jinja").write_text("prompt with \ufeff bom\n", encoding="utf-8")
+
+    findings = audit_instruction_integrity(tmp_path)
+    unicode_findings = [f for f in findings if f.rule == RULE_HIDDEN_UNICODE]
+    flagged_files = {f.file_path for f in unicode_findings}
+    assert "AGENTS.md" in flagged_files
+    assert "docs/ralph-workflow-policy/testing-policy.md" in flagged_files
+    assert ".mcp.json" in flagged_files
+    assert "ralph/prompts/templates/task.jinja" in flagged_files
+
+
 def test_validate_readiness_nonexistent_cited_path_is_blocking_silent_for_existing_path() -> None:
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)

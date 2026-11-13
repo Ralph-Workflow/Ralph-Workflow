@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ralph.agents.invoke._quota_detection import (
+from ralph.agents.invoke import (
     is_provider_quota_output_line,
     is_quota_kill_evidence,
     provider_quota_kill_evidence,

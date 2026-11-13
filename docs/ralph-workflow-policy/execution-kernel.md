@@ -134,9 +134,10 @@ those.
    editing the expectation. (evidence: strong)
 4. **Regression tests from the spec.** A bug-fix test's expected value
    is written down from the spec rather than computed by calling the
-   code under test. When the behaviour belongs to a third-party library,
-   that library's own documentation is the spec: check it before relying
-   on the behaviour. (evidence: moderate)
+   code under test, and the test fails on the pre-fix revision. When
+   the behaviour belongs to a third-party library, that library's own
+   documentation is the spec: check it before relying on the behaviour.
+   (evidence: moderate)
 5. **Independent review.** Review belongs to the analysis phases
    (`planning_analysis`, `development_analysis`), which are already
    separate cold invocations. The reviewer judges the work against the
@@ -146,7 +147,11 @@ those.
    verdict is never the sole evidence of correctness — the deterministic
    gate decides. Findings reuse the existing `Expected` / `Observed` /
    `Evidence` / `Location` shape; no second finding shape is
-   introduced. (evidence: moderate)
+   introduced. As an agent-chain configuration recommendation
+   (evidence: moderate, advisory): run the analysis phases in a
+   different model family from the phase whose work they review, and
+   re-check the recommendation when the harness records per-phase model
+   families. (evidence: moderate)
 6. **Handoff by artifact.** The verification command, its exit code,
    and the output that matters go into the `development_result` body,
    and every item that could not be verified is listed there as
@@ -281,6 +286,7 @@ names who decides it.
 | Test integrity | Test owner | no existing assertion, fixture, or expected value is removed or weakened beside the production code it covers, and shipped code does not read the test runner's environment | the change diff removes or weakens a test expectation beside a production edit without a recorded reason, or shipped code reads the test runner's environment | the weakened expectation or the test-runner read the test-integrity audit reports | deterministic: test integrity audit (audit_test_integrity) | when the test-integrity gate is retired |
 | Regression tests from the spec | Test owner | the bug-fix test states the spec's expected value instead of the implementation's output | the test's expected value matches the value the code under test returns | the expected value written in the bug-fix test | advisory: the gate proves the test passes now, not that its expected value came from the spec; review: when a bug-fix change ships with an expected value copied from the implementation | when the spec-derived expected value is recorded and checked mechanically |
 | Independent review | Analysis owner | the review reproduces each finding it treats as actionable | the choice body cites a reproduced command or a re-read location | the reproduced finding cited in the choice body | advisory: an analysis verdict is a review, not a gate; review: on every analysis phase that returns a verdict | when the analysis phase's findings are checked mechanically |
+| Independent review model-family diversification | Analysis owner | the analysis phases run in a different model family from the phase whose work they review | the agent-chain configuration records the model family of the analysis phase and it differs from the authoring phase's model family | the model-family assignment recorded in the agent-chain configuration | advisory: no gate reads the agent chain's model family assignment, so a different-model-family review stays a configuration recommendation; review: when the harness records the per-phase model family in the run ledger | when a gate verifies the analysis phase runs in a different model family from the phase under review |
 | Handoff by artifact | Artifact owner | the result body carries the command, the exit code, the output, and the unverified items | the result body contains a verification command and an unverified list | the verification command and the unverified list in the result body | advisory: the body is prose and only the frontmatter is validated; review: when the artifact contract changes | when the artifact body gains a validated field |
 | Smallest change | Architecture owner | the change deletes or narrows before it adds, and the replaced API leaves with its callers | the change diff still carries the replaced API after its callers moved | the replaced API still present in the change diff | advisory: no gate measures a diff against intent; review: when a change introduces machinery that replaces existing code | when an audit detects a replaced API that survives its callers |
 | Context hygiene | Session owner | the session keeps conclusions instead of raw payloads | the session context carries a bulk payload instead of a conclusion | the conclusion returned by the delegated read | advisory: context volume is not observable from outside the session; review: when a session's context crowds out the work unit | when the runtime measures session context volume |
