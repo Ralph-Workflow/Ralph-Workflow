@@ -1,48 +1,63 @@
 # ralph-workflow — the AI agent orchestrator and software factory
 
-Coding agents write code quickly; the human coordination around them does not scale — babysitting,
-conflicts, re-running checks, and review queues cap throughput at the handoffs.
-
 **The operating system for autonomous coding.**
 
-**Ralph Workflow — a free, open-source AI agent orchestrator and software factory — lets developers
-and teams with a coding agent CLI supply the spec and checks, then runs plan → build → verify → fix
-as a configurable workflow graph across Git worktrees, returning integrated software to judge.**
-By hand you are the scheduler, reviewer, and merger; a plain loop repeats one prompt. Ralph Workflow
-runs that graph with review, retries, recovery, and fallback chains, landing checked work on one
-mainline.
+Coding agents write code fast. The handoffs around them cap throughput:
+babysitting sessions, resolving conflicts, re-running checks, waiting in
+review queues.
 
-It runs locally under AGPL-3.0-or-later: no account, no hosted service, nothing to sign up for — your
-specifications, configuration, and Git history stay yours.
+Ralph Workflow is a free, open-source AI agent orchestrator and software
+factory for developers and teams who already have a coding agent: you
+supply the specification and the checks you trust, and it runs plan, build,
+verify, and fix as a configurable workflow graph across Git worktrees,
+returning integrated, checked software on one mainline. At the core is the
+simple Ralph loop: plan → build → verify → fix. Around it: agent review,
+retries, fallback agent chains, durable handoffs, interruption recovery,
+and Git integration.
 
-Every default ships with the package — workflow graph, agent chains, MCP tools, artifact contracts,
-retries, recovery, Git sync — so there is no setup project before the first useful run: productive on
-day 1, preconfigured and yours to tweak. See the
-[bundled defaults](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)
-for the exact set.
+**Ralph Workflow manages the harness, not the models.** A harness of
+harnesses: coding agents such as Claude Code, Codex, and Cursor are
+harnesses around models, and Ralph Workflow is the workflow, review,
+recovery, and Git layer around those agents. There is no vendor lock-in:
+nine built-in agent backends ship with it, and agent chains can mix them
+and fall back to the next when an attempt fails. Ralph Workflow needs no
+API key of its own and sells no model access; it launches the agent CLI you
+installed and authenticated, so whatever login or subscription that agent
+supports is what runs. Each agent defines its own authentication (a login,
+an API key, or either), and the agent's vendor determines model access,
+rate limits, and cost.
 
-Ralph Workflow manages the harness, not the models: the coding agents — Claude Code, Codex, Cursor,
-and the rest — are harnesses around models; Ralph Workflow is the harness around those. There is no
-vendor lock-in — agent chains mix backends and fall back when one fails, so switching vendors is a
-configuration change. It launches the agent CLI you installed and authenticated, so whatever login or
-subscription that agent supports is what runs; it needs no API key of its own, each agent defines its
-own authentication (a login, an API key, or either), and its vendor determines model access, rate
-limits, and cost.
+Every default ships with the package (workflow, agent chains, tools,
+artifact contracts, retries, recovery, Git sync), and `ralph --init` seeds
+your setup, so there is no setup project before the first useful run:
+productive on day 1, preconfigured, and yours to tweak. See the
+[bundled defaults](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#bundled-defaults).
 
-It fits work with a clear finish line and checks you trust; it is not (yet) for open-ended
-exploration or repositories with no reliable tests or checks.
+It runs on your machine: local, free, AGPL-3.0-or-later, no account, no
+hosted service. Your specifications, configuration, and Git history stay
+yours. Run one agent by hand and you are the scheduler, reviewer, and
+merger; run a plain loop and it repeats one prompt; Ralph Workflow runs
+the graph for you and lands checked work on one mainline. Move beyond
+pull requests: review and integration happen inside the execution graph.
+You define the outcome and the checks; Ralph Workflow runs the workflow;
+you judge the software.
+
+It fits work with a clear finish line and checks you trust; it is not
+(yet) for open-ended exploration or repositories with no reliable tests
+or checks.
 
 ## Install
 
-**Requirements:** Python 3.12 or newer, Git, `pipx`, and one coding agent CLI you have already
-installed and authenticated.
+**Requirements:** Python 3.12 or newer, Git, `pipx`, and one coding agent
+CLI you have already installed and authenticated.
 
 ```bash
 pipx install ralph-workflow
 ralph --version
 ```
 
-`pip install ralph-workflow` works in a virtual environment of your own.
+`pip install ralph-workflow` in a Python 3.12+ virtual environment also
+works.
 
 From a source checkout instead? See [CONTRIBUTING.md](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/CONTRIBUTING.md#dev-build-vs-stable-build).
 
@@ -56,12 +71,13 @@ In the git repository you want Ralph Workflow to work on:
 ```bash
 ralph --init          # user-global config, starter PROMPT.md, detected agents
 ralph --list-agents   # the agent CLIs Ralph Workflow can see
-ralph --diagnose      # pre-flight checks — every line should be green
+ralph --diagnose      # pre-flight checks, every line should be green
 ```
 
-Then edit `PROMPT.md`: state the outcome and the checks you expect, and remove the
-`<!-- ralph:starter-prompt ... -->` marker at the top — Ralph Workflow refuses to run while it remains.
-A small first task looks like this:
+Then edit `PROMPT.md`: state the outcome and the checks you expect, and
+remove the `<!-- ralph:starter-prompt ... -->` marker at the top.
+Ralph Workflow refuses to run while that sentinel remains. A small first
+task looks like this:
 
 ```markdown
 # Goal
@@ -75,14 +91,15 @@ Reject an empty email address in the signup validator with a clear error.
 - Run python -m pytest and fix any failures.
 ```
 
-Start the run with `ralph`. A successful first run completes with the changes committed in a
-worktree and either integrated onto the mainline or reported with the evidence it produced. Then read
-the summary of what changed and which checks passed.
+Start the run with `ralph`. A successful first run completes with the
+changes committed in a worktree and either integrated onto the mainline or
+reported with the evidence it produced. Then read the summary of what
+changed and which checks passed.
 
 ## Built-in agent backends
 
-Nine backends ship with Ralph Workflow. Authenticate the CLI yourself; Ralph Workflow uses each
-agent's own login or key.
+Nine backends ship with Ralph Workflow. Authenticate the CLI yourself;
+Ralph Workflow uses each agent's own login or key.
 
 | Backend | CLI | Authentication | Transport and caveats |
 |---|---|---|---|
@@ -94,24 +111,27 @@ agent's own login or key.
 | **AGY (Google Anti Gravity)** | `agy` | `agy login` with a Google account | PTY transport; published model IDs change between releases. |
 | **Pi** | `pi` | Provider configuration | Headless `pi --mode json <prompt>`. |
 | **Cursor** | `agent` | `CURSOR_API_KEY` or a file-backed login | Headless `--print`; credentials come from file, not the Keychain, unless `AGENT_CLI_CREDENTIAL_STORE=memory` is set explicitly. If no valid Cursor auth file exists, Ralph Workflow copies your existing Cursor IDE login into Cursor's file-backed auth paths. |
-| **Kimi Code** | `kimi` | OAuth login wiring the `managed:kimi-code` subscription provider | Headless; `-m` needs a fully configured model ID from `~/.kimi-code/config.toml`. |
+| **Kimi Code** | `kimi` | an interactive `kimi` login wires the `managed:kimi-code` subscription provider | Headless; `-m` needs a fully configured model ID from `~/.kimi-code/config.toml`. |
 
-Model strings differ per agent — see [agent compatibility](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/agent-compatibility.md).
+Model strings differ per agent: see [agent compatibility](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/agent-compatibility.md).
 
 ## Independent work, shared mainline
 
-Each run works in its own Git worktree and syncs with the configured mainline at startup, after
-commits, and at phase boundaries. Integration rebases the feature onto the mainline, routes conflicts
-to a resolution agent chain, falls back to an endpoint merge when resolution fails, and fast-forwards
-the mainline to the landed tip once Git proves the integration finished. Local integration is on by
-default with `main` as the default target;
-remote sync publishes to the configured remote when one exists and can be turned off for local-only
-operation; recovery state is durable, so an interrupted run resumes where it stopped.
+Each run works in its own Git worktree and syncs with the configured
+mainline at startup, after commits, and at phase boundaries. Integration
+rebases the feature onto the mainline, routes conflicts to a resolution
+agent chain, falls back to an endpoint merge when resolution fails, and
+fast-forwards the mainline to the landed tip once Git proves the
+integration finished. Local integration is on by default with `main` as
+the default target; remote sync publishes to the configured remote when
+one exists and can be turned off for local-only operation; recovery state
+is durable, so an interrupted run resumes where it stopped.
 
-Two limits: branch protections and required checks still apply — Ralph Workflow does not bypass them.
-And the worktree holding `main` is integration infrastructure: Ralph Workflow may snapshot its
-uncommitted content to a recoverable ref and reset the worktree. Keep active edits in feature
-worktrees. Details: [auto-integration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#auto-integration).
+Two limits: branch protections and required checks still apply, and
+Ralph Workflow does not bypass them. And the worktree holding `main` is
+integration infrastructure: Ralph Workflow may snapshot its uncommitted
+content to a recoverable ref and reset the worktree. Keep active edits in
+feature worktrees. Details: [auto-integration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#auto-integration).
 
 ## Make it yours
 
@@ -122,46 +142,28 @@ worktrees. Details: [auto-integration](https://github.com/Ralph-Workflow/Ralph-W
 | `mcp.toml` | MCP tool servers and web access | [MCP configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/advanced-mcp-configuration.md) |
 | `artifacts.toml` | artifact contracts and output types | [Artifact configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/advanced-artifact-configuration.md) |
 
-User-global (`~/.config/`) and project-local (`.agent/`) are separate scopes: `ralph-workflow.toml`
-keeps one name in both, while `pipeline.toml`, `mcp.toml`, and `artifacts.toml` are the project-local
-names for the user-global `ralph-workflow-pipeline.toml`, `ralph-workflow-mcp.toml`, and
+User-global (`~/.config/`) and project-local (`.agent/`) are separate
+scopes: `ralph-workflow.toml` keeps one name in both, while `pipeline.toml`,
+`mcp.toml`, and `artifacts.toml` are the project-local names for the
+user-global `ralph-workflow-pipeline.toml`, `ralph-workflow-mcp.toml`, and
 `ralph-workflow-artifacts.toml`.
 
 ## Skills
 
-Ralph Workflow installs two kinds of skills.
-
-**Artifact skills** ship with Ralph Workflow and are installed into the project scope. The set
-follows the pipeline's artifact types automatically, so adding a skill now means adding an artifact
-type.
-
-**Universal skills** are exactly three — `test-driven-development`, `systematic-debugging`, and
-`verification-before-completion` — fetched from the single upstream `obra/superpowers` at release
-versions and installed user-global, never committed into your project, so upstream changes never
-dirty your git tree. The release check runs at the start of a run, at most once per day, and fails
-soft: an offline, rate-limited, slow, or malformed upstream leaves the installed skills as they are.
-No upstream copy is bundled, so nothing can go stale — a machine that is never online has no
-universal skills, while the artifact skills still work.
-
-Two switches turn every skill-update network request off: `universal_updates_enabled = false` under
-`[skills]` in `~/.config/ralph-workflow.toml`, and the `RALPH_DISABLE_SKILL_UPDATES` environment
-variable. The [configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#skills)
-covers both, the update safety rules, the trust statement, and the removal of the retired default
-skills after upgrading.
+Artifact skills ship with Ralph Workflow and install into the project
+scope; the set follows the pipeline's artifact types, so adding a skill
+now means adding an artifact type. Three universal skills
+(`test-driven-development`, `systematic-debugging`,
+`verification-before-completion`) install user-global and can be turned
+off. See the [configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#skills)
+for the update cadence, the trust statement, and the off switches.
 
 ## Protections
 
-Two mechanisms guard the tree you work in.
-
-- **Two-stage commit review.** Before any commit the pending diff passes deterministic tripwires and
-  then a review agent. It is a **damage gate, not a code review**: it decides whether the diff looks
-  like accidental damage (mass deletion, protected paths, staged secrets, oversized binaries), not
-  whether the code is good. A rejection rolls the tree back and keeps the sealed proposal ref for
-  inspection. [Per-setting details](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration).
-- **Engine-owned writes are auto-committed.** Ralph Workflow's own background writers — the
-  project-scope artifact skills, the `.gitignore` seed, the project-policy surfaces — commit their
-  own byte-exact diff immediately, so those writes never leak into an agent's commit. Agent and user
-  edits to those paths are never swept in. [Contract](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/deterministic-auto-commit.md).
+A two-stage commit review acts as a damage gate before any commit, and
+Ralph Workflow's own engine writes are auto-committed so they never leak
+into an agent's commit. See [commit review configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration)
+and the [auto-commit contract](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/deterministic-auto-commit.md).
 
 ## Documentation
 
@@ -175,10 +177,11 @@ The maintained operator manual is the Sphinx build at [`docs/sphinx/index.rst`](
 
 ## License
 
-AGPL-3.0-or-later: use it, read it, change it, and publish your changes under the same license if you
-offer a modified version over a network. The Ralph loop pattern is credited to Geoffrey Huntley;
-Ralph Workflow is an independent implementation built on that core. No agent vendor named above
-endorses this project.
+AGPL-3.0-or-later: you may run, read, and modify it; if you offer a
+modified version over a network, you publish your changes.
+The Ralph loop pattern is credited to Geoffrey Huntley; Ralph Workflow is
+an independent implementation built on that core. No agent vendor named
+above endorses this project.
 
 ## Project home
 

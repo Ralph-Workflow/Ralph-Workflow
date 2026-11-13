@@ -1,16 +1,16 @@
 # Start Here
 
 This path is for evaluators who have one real coding task and want one
-unattended run they can judge by what the software does and which checks
-ran — "unattended" means you start it from your own shell and leave it
-alone until it finishes or stops with a clear error. Ralph Workflow is the harness
-around the coding agent CLI you already installed and authenticated — never the
-models — so there is no vendor lock-in: it runs the workflow, review, recovery, and
-Git process around that agent, it needs no API key of its own, and each agent keeps
-its own auth (see
+unattended run they can judge by what the software does and which
+checks ran. "Unattended" means you start it from your own shell and
+leave it alone until it finishes or stops with a clear error. Ralph
+Workflow manages the harness, not the models: it is the workflow,
+review, recovery, and Git layer around the coding agent CLI you already
+installed and authenticated, it needs no API key of its own, and each
+agent keeps its own auth (see
 [`agents`](ralph-workflow/docs/sphinx/agents.md)). Every default ships
-with the package and `ralph --init` seeds it, so you are productive from
-your first run (see
+with the package and `ralph --init` seeds it, so you are productive on
+day 1, preconfigured and yours to tweak (see
 [`bundled defaults`](ralph-workflow/docs/sphinx/configuration.md#bundled-defaults)).
 
 ## Goal
@@ -40,7 +40,8 @@ agent that Ralph Workflow is already driving.
    pipx install ralph-workflow
    ```
 
-   If you do not use pipx, `pip install ralph-workflow` also works.
+   If you do not use pipx, `pip install ralph-workflow` in a Python 3.12+
+   virtual environment also works.
 
 2. **Confirm the install.**
 
@@ -90,9 +91,9 @@ agent that Ralph Workflow is already driving.
    the top — Ralph Workflow refuses to run while that sentinel remains.
 
    If `PROMPT.md` does not exist yet, seed a task-shaped starter
-   instead: `ralph --init feature-spec`, `guardrail`, `refactor`,
-   `test-coverage`, or `docs` (init will not overwrite an existing
-   `PROMPT.md`).
+   instead: `ralph --init feature-spec`, `guardrail` (or `bug-fix`),
+   `refactor`, `test-coverage`, or `docs` (init will not overwrite an
+   existing `PROMPT.md`).
 
 8. **Run Ralph Workflow.**
 

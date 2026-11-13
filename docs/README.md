@@ -33,8 +33,9 @@ reader job; pick the first link that matches, then stop.
 
 ## I want to understand how it works (explanation, reference)
 
-- [Concepts](../ralph-workflow/docs/sphinx/concepts.md) — glossary and the
-  plan → build → verify → fix loop inside the configurable workflow graph
+- [Concepts](../ralph-workflow/docs/sphinx/concepts.md) — glossary and how
+  the plan → build → verify → fix loop, review, recovery, and Git
+  integration fit into the workflow graph
 - [MCP architecture](../ralph-workflow/docs/sphinx/mcp-architecture.md) —
   the tool surface each agent session runs against
 - [Artifacts reference](../ralph-workflow/docs/sphinx/artifacts.md) —
@@ -48,8 +49,6 @@ reader job; pick the first link that matches, then stop.
   what to do when a run fails or stalls
 - [Agent compatibility](../ralph-workflow/docs/sphinx/agent-compatibility.md) —
   per-agent model strings and transport notes
-- [Agent CLI lifecycle](../ralph-workflow/docs/sphinx/agents.md) —
-  install, authenticate, and confirm the agent Ralph Workflow will use
 - [MCP tools](../ralph-workflow/docs/sphinx/mcp-tools.md) —
   the tools an agent session can call
 - [MCP tool restriction](../ralph-workflow/docs/sphinx/mcp-tool-restriction.md) —
