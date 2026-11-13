@@ -509,7 +509,7 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
     super_repo: Path,
 ) -> None:
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline import resolve_rebase_with_config
+    from ralph.pipeline import resolve_conflicted_rebase
     from ralph.pipeline.auto_integrate_resolve import handle_unsuccessful_resolution
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
     from ralph.policy import load_policy
@@ -593,16 +593,18 @@ def test_diverged_gitlink_production_driver_and_rebase_seam(
         )
 
     _git(super_repo, "update-index", "--index-info", input_text=index_info)
-    rebase_resolution_result = resolve_rebase_with_config(
+    rebase_resolution_result = resolve_conflicted_rebase(
         super_repo,
         "main",
         stop_resolver,
         None,
+        None,
     )
 
-    assert rebase_resolution_result.succeeded is False
-    assert rebase_resolution_result.reason is not None
-    assert "git add -- sub" in rebase_resolution_result.reason
+    assert rebase_resolution_result is not None
+    assert rebase_resolution_result.short_circuit is not None
+    assert rebase_resolution_result.short_circuit.last_reason is not None
+    assert "git add -- sub" in rebase_resolution_result.short_circuit.last_reason
     assert agent_invocations == [], "agent invoker must not be called during rebase seam either"
 
 

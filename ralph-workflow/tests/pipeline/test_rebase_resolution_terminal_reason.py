@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline import resolve_rebase_with_config
+from ralph.pipeline import resolve_conflicted_rebase
 from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
@@ -53,40 +53,54 @@ class _ResolvedRunner:
 def test_resolve_rebase_with_config_exposes_candidate_exhausted_terminal_reason(
     tmp_path: Path,
 ) -> None:
-    result = resolve_rebase_with_config(
+    result = resolve_conflicted_rebase(
         tmp_path,
         "main",
         lambda *_args: False,
-        config=None,
+        None,
+        None,
         agent_runner=_CandidateExhaustedRunner(),
     )
 
-    assert result.succeeded is False
-    assert result.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert result is not None
+    assert result.short_circuit is not None
+    assert result.short_circuit.resolution_exhaustion_reason is not None
+    assert result.short_circuit.resolution_exhaustion_reason.startswith(
+        ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value
+    )
 
 
 def test_resolve_rebase_with_config_exposes_no_terminal_reason_when_resolved(
     tmp_path: Path,
 ) -> None:
-    result = resolve_rebase_with_config(
+    result = resolve_conflicted_rebase(
         tmp_path,
         "main",
         lambda *_args: False,
-        config=None,
+        None,
+        None,
         agent_runner=_ResolvedRunner(),
     )
 
-    assert result.succeeded is True
-    assert result.terminal_reason is None
+    assert result is not None
+    assert result.short_circuit is None
 
 
 def test_resolve_rebase_with_config_result_unpacks_into_three_values(tmp_path: Path) -> None:
-    result = resolve_rebase_with_config(
+    public_result = resolve_conflicted_rebase(
         tmp_path,
         "main",
         lambda *_args: False,
-        config=None,
+        None,
+        None,
         agent_runner=_CandidateExhaustedRunner(),
+    )
+    assert public_result is not None
+    assert public_result.short_circuit is not None
+    result = RebaseResolutionResult(
+        False,
+        public_result.short_circuit.last_reason,
+        public_result.short_circuit.last_failure_cause,
     )
 
     resolved, reason, failure_cause = result

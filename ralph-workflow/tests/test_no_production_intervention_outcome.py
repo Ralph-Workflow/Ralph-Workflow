@@ -76,7 +76,7 @@ _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "import of the retired transition name for re-export via __all__ (legacy parsing surface)",
     ),
-    ("pipeline/auto_integrate_record.py", 601): (
+    ("pipeline/auto_integrate_record.py", 613): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ re-export of the retired transition name (parsing surface)",
     ),
@@ -93,7 +93,7 @@ _ALLOW_PHASE_DECISION_PRODUCERS: Final = {
 }
 
 _ALLOW_DISPLAY_MAPPINGS: Final = {
-    ("display/status_bar.py", 138): (
+    ("display/status_bar.py", 139): (
         '"intervention_required": ("INTERVENTION_REQUIRED", "error", "theme.status.error")',
         "ATTENTION_PRESENTATION retains the retired attention key for legacy "
         "checkpoint rendering; live ladder escalation renders as evidence_diagnosis",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-from contextlib import suppress
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
@@ -25,9 +24,14 @@ from ralph.policy.models import PhaseRetryPolicy
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
+    AgentStatus,
     AttemptFact,
     Cooldown,
+    EligibilityWait,
     Spent,
+    Unavailable,
+    WaitKind,
+    eligibility_wait_from_statuses,
 )
 from ralph.recovery.agent_selection import (
     AgentSelection,
@@ -77,6 +81,10 @@ __all__ = [
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
     {"_mark_agent_unavailable", "_apply_chain_retry"}
 )
+
+_SPENT_RETRY_EXHAUSTED_REASON = "retry_exhausted"
+
+_STORE_BENCHED_REASON = "unavailable"
 
 
 _CONTROLLER_SOURCE_TREE_CACHE: dict[str, tuple[str, ast.Module]] = {}
@@ -538,6 +546,9 @@ class RecoveryController:
         }
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
+            existing_ledger: object = getattr(self._unavailability_tracker, "_failure_ledger", None)
+            if existing_ledger is None:
+                object.__setattr__(self._unavailability_tracker, "_failure_ledger", self._ledger)
         else:
             self._unavailability_tracker = AgentUnavailabilityTracker(
                 clock=self._clock,
@@ -545,9 +556,8 @@ class RecoveryController:
                 initial_timeouts=opts.unavailable_timeouts,
                 initial_entries=opts.unavailability_entries,
                 initial_backoff_attempts=opts.backoff_attempts,
+                ledger=self._ledger,
             )
-        with suppress(Exception):
-            object.__setattr__(self._unavailability_tracker, "_failure_ledger", self._ledger)
 
     @property
     def event_bus(self) -> FailureEventBus:
@@ -1284,17 +1294,87 @@ class RecoveryController:
         computed = entry.base_backoff_ms * multiplier
         return min(computed, entry.max_backoff_ms)
 
+    def _now_ms(self) -> int:
+        return int(self._clock.monotonic() * 1000)
+
+    def _tracker_windows(self, *, now_ms: int) -> dict[str, tuple[int, str]]:
+        snap = self._unavailability_tracker.snapshot()
+        timeouts = snap.get("unavailable_timeouts", {})
+        reasons = snap.get("unavailability_reasons", {})
+        windows: dict[str, tuple[int, str]] = {}
+        for agent, until in timeouts.items():
+            if not isinstance(agent, str) or isinstance(until, bool) or not isinstance(until, int):
+                continue
+            if until <= now_ms:
+                continue
+            raw_reason = reasons.get(agent)
+            reason = raw_reason if isinstance(raw_reason, str) else "unavailable"
+            windows[agent] = (until, reason)
+        return windows
+
+    def _resolve_eligibility(
+        self,
+        phase: str,
+        agent: str,
+        windows: dict[str, tuple[int, str]],
+        spent: set[str],
+        *,
+        now_ms: int,
+    ) -> AgentStatus:
+        if agent in spent:
+            return self._ledger.spent_status(_SPENT_RETRY_EXHAUSTED_REASON)
+        ledger_status = self._ledger.status(phase, agent)
+        if ledger_status.is_spent or ledger_status.is_unavailable:
+            return ledger_status
+        window = windows.get(agent)
+        if isinstance(ledger_status, Cooldown):
+            earlier = window is not None and window[0] < ledger_status.until_ms
+            until_ms = window[0] if earlier and window is not None else ledger_status.until_ms
+            reason = window[1] if earlier and window is not None else ledger_status.reason
+            return Cooldown(until_ms=until_ms, reason=reason)
+        if window is not None:
+            return Cooldown(until_ms=window[0], reason=window[1])
+        if self._unavailability_tracker.is_available(phase, agent):
+            return ledger_status
+        return Unavailable(reason=_STORE_BENCHED_REASON)
+
+    def chain_eligibility(
+        self,
+        phase: str,
+        agents: Sequence[str],
+    ) -> tuple[tuple[str, AgentStatus], ...]:
+        now_ms = self._now_ms()
+        windows = self._tracker_windows(now_ms=now_ms)
+        spent = self._spent_agents.get(phase, set())
+        return tuple(
+            (
+                agent,
+                self._resolve_eligibility(phase, agent, windows, spent, now_ms=now_ms),
+            )
+            for agent in agents
+        )
+
+    def agent_eligibility(self, phase: str, agent: str) -> AgentStatus:
+        return self.chain_eligibility(phase, [agent])[0][1]
+
+    def eligibility_wait(self, phase: str, agents: Sequence[str]) -> EligibilityWait:
+        now_ms = self._now_ms()
+        windows = self._tracker_windows(now_ms=now_ms)
+        spent = self._spent_agents.get(phase, set())
+        statuses = [
+            self._resolve_eligibility(phase, agent, windows, spent, now_ms=now_ms)
+            for agent in agents
+        ]
+        return eligibility_wait_from_statuses(statuses, now_ms=now_ms)
+
+    def mark_agent_unavailable(self, phase: str, agent: str, *, reason: str) -> None:
+        self._ledger.mark_unavailable(phase, agent, reason=reason)
+
     def _is_agent_spent(self, phase: str, agent: str) -> bool:
-        if agent in self._spent_agents.get(phase, ()):
-            return True
-        return isinstance(self._ledger.status(phase, agent), Spent)
+        return self.agent_eligibility(phase, agent).is_spent
 
     def _is_agent_available(self, phase: str, agent: str) -> bool:
-        if self._is_agent_spent(phase, agent):
-            return False
-        if not self._ledger.is_available(phase, agent):
-            return False
-        return self._unavailability_tracker.is_available(phase, agent)
+        return self.agent_eligibility(phase, agent).is_eligible
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
         chain = state.chain_for_phase(phase)
@@ -1442,7 +1522,12 @@ class RecoveryController:
         self._phase_launch_gates[phase] = available
 
     def phase_launch_available(self, phase: str) -> bool:
-        return self._phase_launch_gates.get(phase, True)
+        if not self._phase_launch_gates.get(phase, True):
+            return False
+        chain = self._phase_chains.get(phase)
+        if not chain:
+            return True
+        return any(status.is_eligible for _agent, status in self.chain_eligibility(phase, chain))
 
     def preferred_agent_index(
         self,
@@ -1452,32 +1537,22 @@ class RecoveryController:
         current_index: int | None = None,
         exclude_current: bool = False,
     ) -> AgentSelection:
-        snap = self._unavailability_tracker.snapshot()
         self._phase_chains[phase] = tuple(agents)
-        cooldowns_dict = snap.get("unavailable_timeouts", {})
-        reasons_dict = snap.get("unavailability_reasons", {})
-        now_ms = int(self._clock.monotonic() * 1000)
+        now_ms = self._now_ms()
+        windows = self._tracker_windows(now_ms=now_ms)
         spent_set = self._spent_agents.get(phase, set())
 
         rows: list[tuple[str, bool, int, bool, str | None]] = []
         for idx, agent in enumerate(agents):
-            ledger_status = self._ledger.status(phase, agent)
-            is_ledger_spent = isinstance(ledger_status, Spent)
-            timeout_ms = cooldowns_dict.get(agent)
-            reason = reasons_dict.get(agent)
-            cooldown_reason = reason if isinstance(reason, str) else None
+            status = self._resolve_eligibility(phase, agent, windows, spent_set, now_ms=now_ms)
             cooldown_ms = 0
-            if isinstance(timeout_ms, int):
-                cooldown_ms = max(0, timeout_ms - now_ms)
+            cooldown_reason: str | None = None
+            if isinstance(status, Cooldown):
+                cooldown_ms = max(0, status.until_ms - now_ms)
+                cooldown_reason = status.reason
 
-            if isinstance(ledger_status, Cooldown):
-                cooldown_ms = max(cooldown_ms, 0, ledger_status.until_ms - now_ms)
-                cooldown_reason = ledger_status.reason
-
-            avail = self._is_agent_available(phase, agent) and not (
-                exclude_current and idx == current_index
-            )
-            is_spent = agent in spent_set or is_ledger_spent
+            avail = status.is_eligible and not (exclude_current and idx == current_index)
+            is_spent = status.is_spent
 
             rows.append(
                 agent_availability(
@@ -1503,7 +1578,7 @@ class RecoveryController:
                 for agent, avail, cooldown_ms, is_spent, cooldown_reason in rows
             ),
         )
-        if not self.phase_launch_available(phase):
+        if not self._phase_launch_gates.get(phase, True):
             self._last_selection_state.pop(phase, None)
             return selection
         if self._last_selection_state.get(phase) != candidate_state:
@@ -1617,8 +1692,9 @@ class RecoveryController:
             return new_state, [], failure_evt
 
         if all(not self._is_agent_available(phase, agent) for agent in chain.agents):
-            wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
-            if wait_ms > 0:
+            chain_wait = self.eligibility_wait(phase, chain.agents)
+            if chain_wait.kind is WaitKind.COOLING_DOWN:
+                wait_ms = chain_wait.wait_ms or 0
                 unavail_reason = (
                     failure.unavailability_reason.value
                     if failure.unavailability_reason
@@ -1648,9 +1724,11 @@ class RecoveryController:
 
         if len(chain.agents) == 1 and not self._is_agent_available(phase, chain.agents[0]):
             sole_agent = chain.agents[0]
-            st = self._ledger.status(phase, sole_agent)
+            st = self.agent_eligibility(phase, sole_agent)
             demote_reason = (
-                st.reason if isinstance(st, (Cooldown, Spent)) and st.reason else failure.reason
+                st.reason
+                if isinstance(st, (Cooldown, Spent, Unavailable)) and st.reason
+                else failure.reason
             )
             exhaustion_reason = (
                 f"Sole agent '{sole_agent}' demoted in phase '{phase}': "
@@ -1682,23 +1760,11 @@ class RecoveryController:
     def earliest_eligible_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
         if not agents:
             return None
-        if any(self._is_agent_available(phase, agent) for agent in agents):
+        wait = self.eligibility_wait(phase, agents)
+        if wait.kind is WaitKind.AVAILABLE_NOW:
             return 0
-        waits: list[int] = []
-        for agent in agents:
-            if self._is_agent_spent(phase, agent):
-                continue
-            if not self._unavailability_tracker.is_available(phase, agent):
-                tracker_wait = self._unavailability_tracker.earliest_unavailable_wait_ms(
-                    phase, [agent]
-                )
-                if tracker_wait > 0:
-                    waits.append(tracker_wait)
-            ledger_wait = self._ledger.earliest_wait_ms(phase, [agent])
-            if ledger_wait is not None and ledger_wait > 0:
-                waits.append(ledger_wait)
-        if waits:
-            return min(waits)
+        if wait.kind is WaitKind.COOLING_DOWN:
+            return wait.wait_ms
         return None
 
     def earliest_available_wait_ms(self, phase: str, agents: Sequence[str]) -> int:
@@ -1708,18 +1774,7 @@ class RecoveryController:
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
         if not agents:
             return False
-        if any(self._is_agent_available(phase, agent) for agent in agents):
-            return False
-        if self.earliest_available_wait_ms(phase, list(agents)) > 0:
-            return False
-        return all(self._is_agent_spent(phase, agent) for agent in agents)
-
-    def _earliest_unavailable_wait_ms(
-        self,
-        phase: str,
-        chain: AgentChainState,
-    ) -> int:
-        return self.earliest_available_wait_ms(phase, chain.agents)
+        return all(status.is_spent for _agent, status in self.chain_eligibility(phase, agents))
 
     def snapshot(self) -> dict[str, object]:
         tracker_snapshot = self._unavailability_tracker.snapshot()
@@ -1759,26 +1814,25 @@ class RecoveryController:
     def waiting_state_payload(self, phase: str, agents: list[str]) -> list[tuple[str, int, int]]:
         snap = self._unavailability_tracker.snapshot()
         self._phase_chains[phase] = tuple(agents)
-        cooldowns_dict = snap.get("unavailable_timeouts", {})
         attempts_dict = snap.get("backoff_attempts", {})
-        now_ms = int(self._clock.monotonic() * 1000)
+        now_ms = self._now_ms()
+        windows = self._tracker_windows(now_ms=now_ms)
+        spent_set = self._spent_agents.get(phase, set())
         result: list[tuple[str, int, int]] = []
         for agent in agents:
-            timeout_ms = cooldowns_dict.get(agent)
             attempt = attempts_dict.get(agent, 0)
             attempt_int = int(attempt) if isinstance(attempt, int) else 0
+            status = self._resolve_eligibility(phase, agent, windows, spent_set, now_ms=now_ms)
             cooldown_ms = 0
-            if isinstance(timeout_ms, int):
-                cooldown_ms = max(0, timeout_ms - now_ms)
-            ledger_status = self._ledger.status(phase, agent)
-            if isinstance(ledger_status, Cooldown):
-                ledger_cooldown_ms = max(0, ledger_status.until_ms - now_ms)
-                cooldown_ms = max(cooldown_ms, ledger_cooldown_ms)
+            if isinstance(status, Cooldown):
+                cooldown_ms = max(0, status.until_ms - now_ms)
             result.append((agent, attempt_int, cooldown_ms))
         return result
 
     def agents_now_available(self, phase: str, agents: list[str]) -> list[str]:
-        return [a for a in agents if self._is_agent_available(phase, a)]
+        return [
+            agent for agent, status in self.chain_eligibility(phase, agents) if status.is_eligible
+        ]
 
     def _enter_phase_failed(
         self,

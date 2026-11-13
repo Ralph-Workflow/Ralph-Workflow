@@ -275,6 +275,12 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "integration invariants audit (audit_integration_invariants)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_integration_invariants"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "make test-verification-smoke",
         "make",
         ("test-verification-smoke",),

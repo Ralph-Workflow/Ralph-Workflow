@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
+    from ralph.pipeline._integration_status import IntegrationStatus
+
 
 PHASE_LABEL = "Rebase Conflict Resolution"
 DIAGNOSIS_PHASE_LABEL = "Evidence Diagnosis"
@@ -126,6 +128,7 @@ def push_conflict_status_bar(
     action: object = None,
     operation_display_state: str | None = None,
     is_diagnosis: bool = False,
+    integration_status: IntegrationStatus | None = None,
 ) -> None:
     try:
         diag = (
@@ -155,6 +158,7 @@ def push_conflict_status_bar(
             agent_name=agent_name,
             run_started_monotonic=run_started_monotonic,
             operation_display_state=display_state,
+            integration_status=integration_status,
         )
         _update_status_bar(display, model)
     except Exception as exc:

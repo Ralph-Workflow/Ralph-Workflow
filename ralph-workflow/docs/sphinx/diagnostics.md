@@ -182,7 +182,9 @@ ralph --retry
 | "Pre-flight policy validation: chain `dev → review` unsatisfiable" | An agent name in the chain is unknown | Run `ralph --list-agents`, fix the chain or install the missing CLI |
 | "PROMPT.md is the starter template"             | You haven't replaced the starter text         | Edit `PROMPT.md` and remove the `<!-- ralph:starter-prompt ... -->` marker |
 
-For a child process that exits unsuccessfully, the warning or error line identifies it with `label=` and shows only its executable plus the number of withheld arguments in `command=`.
+For a child process that exits unsuccessfully, the warning or error line identifies it with `label=` and shows only its executable plus the number of withheld arguments in `command=`. A label whose non-zero exit is an answer rather than a failure — for example a detached-HEAD observation, an ancestry answer, or an absent `MERGE_HEAD` — is logged at DEBUG instead of WARNING. The set of such labels is declared once, in the process manager's exit-code table, and the audit `audit_integration_invariants` fails the build if a second module decides that severity.
+
+Every integration terminal line, and the run header, carries the build that produced it as ` [build=<package version>+<commit SHA>]`. A log line without that suffix, or with a different build, was produced by a different installation.
 
 ## Related pages
 

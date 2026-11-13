@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.pipeline import resolve_rebase_with_config
+from ralph.pipeline import resolve_conflicted_rebase
 from ralph.pipeline.conflict_resolution.round_verdict import resolution_exhaustion_reason
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
@@ -58,13 +58,11 @@ def test_rebase_all_spent_resolution_retains_actionable_operator_message(
 
     monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", _fake_resolve_rebase)
 
-    result = resolve_rebase_with_config(
-        tmp_path,
-        "main",
-        lambda *args: False,
-        config=None,
-    )
-    assert result.succeeded is False
-    assert result.reason is not None
-    assert "needs operator action: git add -- app.py" in result.reason
-    assert "all 2 resolver agents are spent/unavailable" in result.reason
+    result = resolve_conflicted_rebase(tmp_path, "main", lambda *args: False, None, None)
+    assert result is not None
+    short_circuit = result.short_circuit
+    assert short_circuit is not None
+    assert short_circuit.resolution_exhausted is True
+    assert short_circuit.last_reason is not None
+    assert "needs operator action: git add -- app.py" in short_circuit.last_reason
+    assert "all 2 resolver agents are spent/unavailable" in short_circuit.last_reason

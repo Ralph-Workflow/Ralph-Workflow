@@ -102,6 +102,9 @@ class IntegrationRecord(RalphBaseModel):
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     resolution_gate_key: tuple[str | None, tuple[str, ...], str | None] | None = None
     waiting_notification_key: tuple[str | None, tuple[str, ...], str | None] | None = None
+    resolution_terminal_marker: (
+        tuple[tuple[str | None, tuple[str, ...], str | None] | None, str, str] | None
+    ) = None
 
     @property
     def is_integrated(self) -> bool:
@@ -124,7 +127,16 @@ class IntegrationRecord(RalphBaseModel):
         self,
         gate_key: tuple[str | None, tuple[str, ...], str | None] | None,
     ) -> IntegrationRecord:
-        return self.model_copy(update={"resolution_gate_key": gate_key})
+        update: dict[str, object] = {"resolution_gate_key": gate_key}
+        if gate_key != self.resolution_gate_key:
+            update["resolution_terminal_marker"] = None
+        return self.model_copy(update=update)
+
+    def with_resolution_terminal_marker(
+        self,
+        marker: tuple[tuple[str | None, tuple[str, ...], str | None] | None, str, str] | None,
+    ) -> IntegrationRecord:
+        return self.model_copy(update={"resolution_terminal_marker": marker})
 
     def with_waiting_notification_key(
         self,

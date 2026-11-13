@@ -16,6 +16,7 @@ from ralph.recovery.unavailability_reason import (
 
 if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 
 @runtime_checkable
@@ -61,10 +62,12 @@ class AgentUnavailabilityTracker:
         initial_timeouts: dict[str, int] | None = None,
         scope: Literal["session", "persistent"] = "session",
         initial_backoff_attempts: dict[str, int] | None = None,
+        ledger: AgentFailureLedger | None = None,
     ) -> None:
         self._scope = scope
         self._lock = threading.RLock()
         self._clock = clock or SystemClock()
+        self._failure_ledger: AgentFailureLedger | None = ledger
         self._backoff_policy: dict[UnavailabilityReason, ReasonBackoffPolicy] = (
             backoff_policy if backoff_policy is not None else DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
         )

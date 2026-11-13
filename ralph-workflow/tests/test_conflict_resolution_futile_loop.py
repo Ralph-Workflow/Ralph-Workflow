@@ -8,10 +8,9 @@ import pytest
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import resolve_conflicted_rebase
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     classify_ralph_origin_fault,
     ralph_origin_counts_as_liveness,
@@ -426,11 +425,15 @@ def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
         return False
 
     monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", _fake_resolve)
-    resolved, reason = rebase_merge._resolve_rebase_with_config(
-        tmp_path, "main", lambda *_a: False, None
+    result = resolve_conflicted_rebase(tmp_path, "main", lambda *_a: False, None, None)
+    assert result is not None
+    short_circuit = result.short_circuit
+    assert short_circuit is not None
+    assert short_circuit.resolution_exhausted is False
+    assert short_circuit.resolution_exhaustion_reason is None
+    assert "TOOL_SURFACE_DEAD" not in (short_circuit.last_reason or ""), (
+        "an infrastructure fault must not become exhaustion evidence"
     )
-    assert resolved is False
-    assert reason is None, "an infrastructure fault must not become exhaustion evidence"
 
 
 def test_a_real_resolver_exhaustion_is_still_recorded(
@@ -443,11 +446,11 @@ def test_a_real_resolver_exhaustion_is_still_recorded(
         return False
 
     monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", _fake_resolve)
-    resolved, reason = rebase_merge._resolve_rebase_with_config(
-        tmp_path, "main", lambda *_a: False, None
-    )
-    assert resolved is False
-    assert reason == "ATTEMPT_FAILED: conflict markers survive in: a.py"
+    result = resolve_conflicted_rebase(tmp_path, "main", lambda *_a: False, None, None)
+    assert result is not None
+    short_circuit = result.short_circuit
+    assert short_circuit is not None
+    assert short_circuit.last_reason == "ATTEMPT_FAILED: conflict markers survive in: a.py"
 
 
 def test_a_new_stop_starts_with_a_chargeable_budget(tmp_path: Path) -> None:

@@ -13,7 +13,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.merge import conflict_stage_entries
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.pipeline import resolve_rebase_with_config
+from ralph.pipeline import resolve_conflicted_rebase
 from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.conflict_resolution.session import (
@@ -846,15 +846,17 @@ def test_diverged_gitlink_with_unfetchable_objects_escalates_on_sight_without_ag
             invoke=mock_invoker,
         )
 
-    rebase_result = resolve_rebase_with_config(repo, "main", stop_resolver, None)
+    rebase_result = resolve_conflicted_rebase(repo, "main", stop_resolver, None, None)
 
-    assert rebase_result.succeeded is False
+    assert rebase_result is not None
+    short_circuit = rebase_result.short_circuit
+    assert short_circuit is not None
     assert agent_invocations == [], "no resolver agent may be launched for a diverged gitlink"
-    assert rebase_result.reason is not None
-    assert "gitlink conflict on sub" in rebase_result.reason, (
+    assert short_circuit.last_reason is not None
+    assert "gitlink conflict on sub" in short_circuit.last_reason, (
         "the escalation must name the conflicted path"
     )
-    assert "git add -- sub" in rebase_result.reason, (
+    assert "git add -- sub" in short_circuit.last_reason, (
         "the escalation must name the exact manual command"
     )
 

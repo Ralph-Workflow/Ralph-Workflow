@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -32,6 +31,13 @@ from ralph.pipeline.integration_decision import (
     CleanupLadderRung,
 )
 from ralph.pipeline.integration_observation import InProgressKind
+from ralph.pipeline.ladder_effect import LadderEffect
+from ralph.pipeline.ladder_effect_kind import LadderEffectKind
+from ralph.pipeline.ladder_facts import LadderFacts
+from ralph.pipeline.ladder_state import LadderState
+from ralph.pipeline.ladder_step_result import LadderStepResult
+from ralph.pipeline.ladder_transition import LadderTransition
+from ralph.pipeline.landed_verdict import LandedVerdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -54,14 +60,22 @@ __all__ = [
     "EnvironmentProbe",
     "FileQuarantine",
     "GitPlumbing",
+    "LadderEffect",
+    "LadderEffectKind",
+    "LadderFacts",
     "LadderOutcome",
+    "LadderState",
     "LadderStepResult",
+    "LadderTransition",
     "LandResult",
+    "LandedVerdict",
     "RepointResult",
     "adapt_environment_and_retry",
+    "decide_ladder_transition",
     "ensure_preserved_copy",
     "evaluate_last_resort_preconditions",
     "ladder_charge_count",
+    "ladder_facts_fingerprint",
     "last_resort_recovery",
     "preserve_via_temp_index",
     "preserved_copy_identity",
@@ -92,6 +106,10 @@ LAST_RESORT_DISABLED_NO_SIGNATURE: Final[str] = "failed:disabled:no-blocking-sig
 
 LAST_RESORT_REFUSED_NO_PRESERVED_COPY: Final[str] = "terminal:refused:no-preserved-copy"
 
+NO_ENABLED_NEXT_RUNG: Final[str] = "terminal:no-enabled-next-rung"
+
+type ResolutionAttemptKey = tuple[str | None, tuple[str, ...], str | None]
+
 PRESERVED_COPY_LEDGER_KEY: Final[str] = "preserved:alternate_preservation"
 
 QUARANTINE_COPY_LEDGER_KEY: Final[str] = "preserved:quarantine"
@@ -111,16 +129,104 @@ _RESET_CAPABLE_RUNGS: Final[frozenset[CleanupLadderRung]] = frozenset(
 )
 
 
-@dataclass(frozen=True)
-class LadderStepResult:
-    rung: CleanupLadderRung
-    outcome: LadderOutcome
-    reason: str
-    preserved_ref: str | None = None
-    preserved_sidecar: str | None = None
-    quarantined_paths: tuple[str, ...] = ()
-    next_rung: CleanupLadderRung | None = None
-    evidence: dict[str, str] = field(default_factory=dict)
+_RUNG_STATES: Final[dict[CleanupLadderRung, LadderState]] = {
+    CleanupLadderRung.NORMAL_CLEANUP: LadderState.NORMAL_CLEANUP,
+    CleanupLadderRung.ALTERNATE_PRESERVATION: LadderState.ALTERNATE_PRESERVATION,
+    CleanupLadderRung.QUARANTINE: LadderState.QUARANTINE,
+    CleanupLadderRung.FRESH_WORKTREE: LadderState.FRESH_WORKTREE,
+    CleanupLadderRung.ENVIRONMENT_DEGRADE: LadderState.ENVIRONMENT_DEGRADE,
+    CleanupLadderRung.LAST_RESORT: LadderState.LAST_RESORT,
+}
+
+
+def _next_enabled_rung(
+    current: CleanupLadderRung,
+    enabled_rungs: frozenset[CleanupLadderRung],
+) -> CleanupLadderRung | None:
+    index = CLEANUP_LADDER_ORDER.index(current)
+    return next((rung for rung in CLEANUP_LADDER_ORDER[index + 1 :] if rung in enabled_rungs), None)
+
+
+def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
+    _ = facts.clock_now
+    if facts.landed is LandedVerdict.LANDED:
+        transition = LadderTransition(LadderState.LANDED, False, "landed", None, ())
+    elif facts.terminal_for_attempt:
+        transition = LadderTransition(LadderState.NEEDS_OPERATOR, True, facts.reason, None, ())
+    elif facts.rung is None:
+        transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
+    elif facts.outcome is None:
+        transition = LadderTransition(
+            _RUNG_STATES[facts.rung],
+            False,
+            facts.reason,
+            facts.rung,
+            (LadderEffect(LadderEffectKind.RUN_RUNG, facts.rung),),
+        )
+    else:
+        next_rung = _next_enabled_rung(facts.rung, facts.enabled_rungs)
+        terminal = facts.outcome == "terminal" or (
+            facts.reason.startswith("failed:disabled:") and next_rung is None
+        )
+        if terminal:
+            transition = _needs_operator_transition(facts.reason)
+        elif facts.outcome == "waiting":
+            transition = LadderTransition(
+                _RUNG_STATES[facts.rung], False, facts.reason, facts.rung, ()
+            )
+        elif next_rung is None:
+            transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
+        else:
+            transition = LadderTransition(
+                _RUNG_STATES[next_rung],
+                False,
+                facts.reason,
+                next_rung,
+                (LadderEffect(LadderEffectKind.EMIT_ESCALATION, next_rung),),
+            )
+    return transition
+
+
+def _needs_operator_transition(reason: str) -> LadderTransition:
+    effects = (
+        LadderEffect(LadderEffectKind.EMIT_TERMINAL),
+        LadderEffect(LadderEffectKind.RECORD_TERMINAL_MARKER),
+    )
+    return LadderTransition(LadderState.NEEDS_OPERATOR, True, reason, None, effects)
+
+
+def ladder_facts_fingerprint(
+    record: IntegrationRecord,
+    *,
+    observed_head: str | None,
+    target_tip: str | None,
+) -> str:
+    attempt_key = record.resolution_gate_key
+    attempt = (
+        "unset"
+        if attempt_key is None
+        else ",".join(
+            (
+                attempt_key[0] or "unset",
+                ";".join(attempt_key[1]) or "no-agents",
+                attempt_key[2] or "unset",
+            )
+        )
+    )
+    return "|".join(
+        (
+            observed_head or "unreadable",
+            target_tip or "unreadable",
+            record.integrated_feature_sha or "unset",
+            record.pre_target_sha or "unset",
+            record.pre_feature_sha or "unset",
+            record.rebase_continue_stop or "unset",
+            record.rebase_continue_head or "unset",
+            record.rebase_continue_tree or "unset",
+            record.merge_commit_parent or "unset",
+            attempt,
+        )
+    )
 
 
 def ladder_charge_count(state: AttemptLedgerState) -> int:
@@ -497,6 +603,7 @@ def terminal_operator_message(
     reason: str,
     observed_head: str | None,
     preserved_copy: str,
+    proof_failures: tuple[str, ...] = (),
 ) -> str:
     expected = [
         f"integrated_feature_sha={record.integrated_feature_sha or 'unset'}",
@@ -511,10 +618,12 @@ def terminal_operator_message(
         expected.append(f"rebase_continue_tree={record.rebase_continue_tree}")
     if record.merge_commit_parent:
         expected.append(f"merge_commit_parent={record.merge_commit_parent}")
+    failures = "; ".join(proof_failures) or reason
     return (
-        f"Integration ladder terminal state: {reason}; "
+        f"Integration ladder terminal state: NeedsOperator ({reason}); "
         f"observed HEAD {observed_head or 'unreadable'}; "
         f"expected {'; '.join(expected)}; "
+        f"proof failures: {failures}; "
         f"preserved copy: {preserved_copy}; "
         "operator action required: land the expected commit and run 'ralph --resume'"
     )

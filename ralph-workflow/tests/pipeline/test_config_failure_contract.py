@@ -7,12 +7,7 @@ from unittest.mock import MagicMock
 from loguru import logger
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline import (
-    RebaseOutcomeKind,
-    RebaseResolutionResult,
-    resolve_conflicted_rebase,
-    resolve_rebase_with_config,
-)
+from ralph.pipeline import RebaseOutcomeKind, RebaseResolutionResult, resolve_conflicted_rebase
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
 from ralph.pipeline.conflict_resolution import (
     RebaseStop,
@@ -186,14 +181,17 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
             failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
         )
 
-    res = resolve_rebase_with_config(
+    public_result = resolve_conflicted_rebase(
         tmp_path,
         "main",
         _failing_resolver,
         None,
+        None,
         agent_runner=mock_runner,
     )
-    assert res.succeeded is False
+    assert public_result is not None
+    assert public_result.short_circuit is not None
+    assert public_result.short_circuit.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
 
     from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
 

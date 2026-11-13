@@ -17,6 +17,7 @@ from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, mer
 from ralph.git.operations import _read_ref_from_disk, _resolve_gitdir_paths
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline import _terminal_emitter as terminal_emitter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -355,7 +356,7 @@ def commit_merge_in_progress(
     if not committed:
         output = f"{result.stdout}\n{result.stderr}".strip()
         reason = f"git commit --no-edit failed (exit {result.returncode}): {output[:2000] or 'merge completion unproven'}"
-        logger.critical("{}", reason)
+        terminal_emitter.critical("{}", reason)
         if on_failure is not None:
             on_failure(reason)
     return committed

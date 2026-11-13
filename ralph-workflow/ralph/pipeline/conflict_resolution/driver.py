@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import (
+    conflict_stage_entries,
     paths_with_conflict_markers,
     unmerged_paths,
 )
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions as _announce_declared_decisions,
@@ -29,6 +31,7 @@ from ralph.pipeline.conflict_resolution._driver_rounds import (
     _reset_conflict_success,
     _run_one_round,
 )
+from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -275,7 +278,7 @@ def _prepare_conflicted_paths(
     session: ResolutionSession,
     display: ParallelDisplay | None,
     observer: WorktreeConflictObserver,
-) -> tuple[tuple[str, ...], bool | None, tuple[str, ...]]:
+) -> tuple[tuple[str, ...], bool | None, tuple[str, ...], IntegrationStatus | None]:
     conflicted = (
         stop.conflicted_files
         if stop is not None
@@ -289,10 +292,10 @@ def _prepare_conflicted_paths(
         emit_conflict_phase_line(
             display, "conflicted paths unreadable; nothing a resolver can repair"
         )
-        return (), False, ()
+        return (), False, (), None
     if not conflicted:
         emit_conflict_phase_line(display, "no conflicted paths; nothing for a resolver to repair")
-        return (), False, ()
+        return (), False, (), None
     session.out_of_reach_paths = ()
     kinds = observer.classify_unmerged_conflicts(root, conflicted)
     unreachable = out_of_reach_paths(kinds)
@@ -323,12 +326,21 @@ def _prepare_conflicted_paths(
             display,
             "OUT_OF_REACH: escalating on sight without spending the chain; " + msg,
         )
-        return (), False, ()
+        return (), False, (), None
+    integration_status: IntegrationStatus | None = None
     if unreachable:
         session.out_of_reach_paths = unreachable
         msg = out_of_reach_escalation_message(unreachable, reasons)
         session.operator_action_message = msg
         session.exhaustion_reason = msg
+        integration_status = build_integration_status(
+            cause=ResolutionTerminationReason.OUT_OF_REACH.value,
+            paths_with_reasons=tuple(
+                (path, reasons.get(path, "gitlink conflict")) for path in unreachable
+            ),
+            command=operator_command_for_paths(unreachable),
+            agents_can_finish=False,
+        )
         emit_conflict_phase_line(
             display,
             "OUT_OF_REACH: no resolver can repair "
@@ -342,14 +354,66 @@ def _prepare_conflicted_paths(
     staged = observer.stage_mechanical_conflicts(root, kinds)
     remaining = tuple(path for path in conflicted if path not in set(staged))
     if remaining:
-        return remaining, None, decisions
+        return remaining, None, decisions, integration_status
     if session.out_of_reach_paths:
         _escalate_unreachable_remainder(session, display)
-        return (), False, ()
+        return (), False, (), integration_status
     emit_conflict_phase_line(
         display, "mechanical conflicts staged without spending the resolution chain"
     )
-    return (), True, ()
+    return (), True, (), integration_status
+
+
+def _declared_decision_status(root: Path, paths: tuple[str, ...]) -> IntegrationStatus | None:
+    if not paths:
+        return None
+    try:
+        entries = conflict_stage_entries(root, paths)
+    except Exception:
+        facts = tuple((path, "marker-less declaration") for path in paths)
+    else:
+        facts = tuple(
+            (
+                path,
+                _declared_decision_reason(root, path, entries[path])
+                if path in entries
+                else "marker-less declaration",
+            )
+            for path in paths
+        )
+    return build_integration_status(
+        cause="DECLARED_DECISION",
+        paths_with_reasons=facts,
+        command="",
+        agents_can_finish=True,
+    )
+
+
+def _declared_decision_reason(
+    root: Path,
+    path: str,
+    stages: dict[int, tuple[str, str]],
+) -> str:
+    base = stages.get(1)
+    ours = stages.get(2)
+    theirs = stages.get(3)
+    if ours is None or theirs is None:
+        return "delete/modify declaration"
+    ours_mode, ours_blob = ours
+    theirs_mode, theirs_blob = theirs
+    if ours_mode != theirs_mode:
+        return "mode change declaration"
+    try:
+        binary = b"\0" in (root / path).read_bytes()
+    except OSError:
+        binary = False
+    if binary:
+        return "binary declaration"
+    if base is None:
+        return "rename declaration"
+    if ours_blob != theirs_blob:
+        return "marker-less declaration"
+    return "marker-less declaration"
 
 
 def _run_rounds(
@@ -403,13 +467,13 @@ def _run_rounds(
             from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 
             session.workspace_probe = DefaultWorkspaceChangeProbe()
-    prepared, early, decision_paths = _prepare_conflicted_paths(
+    prepared, early, decision_paths, integration_status = _prepare_conflicted_paths(
         root, stop, session, display, active_observer
     )
     if early is not None:
         return early
     conflicted = prepared
-    _announce_declared_decisions(display, decision_paths)
+    _announce_declared_decisions(display, _declared_decision_status(root, decision_paths))
     candidates = resolution_chain_agents(policy_bundle)
     if not candidates:
         _record_unconfigured_resolver(session, conflicted, display)
@@ -434,9 +498,14 @@ def _run_rounds(
         target=target,
         require_completion_evidence=bool(decision_paths),
     )
+    entry_scope = (
+        f"{len(conflicted)} resolvable; {integration_status.summary}"
+        if integration_status is not None
+        else f"{len(conflicted)} conflicted file(s)"
+    )
     emit_conflict_phase_line(
         display,
-        f"entering rebase conflict resolution for '{target}' ({len(conflicted)} conflicted file(s))"
+        f"entering rebase conflict resolution for '{target}' ({entry_scope})"
         + (f" replaying {stop.sha[:8]} {stop.subject}" if stop is not None else ""),
     )
     present_at_entry = frozenset(

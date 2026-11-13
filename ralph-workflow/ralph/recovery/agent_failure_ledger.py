@@ -5,6 +5,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from ralph.recovery.eligibility_wait import EligibilityWait
+from ralph.recovery.wait_kind import WaitKind
+
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
 
@@ -45,6 +48,10 @@ class _AgentStatus:
     def is_spent(self) -> bool:
         return isinstance(self, _Spent)
 
+    @property
+    def is_unavailable(self) -> bool:
+        return isinstance(self, _Unavailable)
+
 
 @dataclass(frozen=True)
 class _Eligible(_AgentStatus):
@@ -59,6 +66,11 @@ class _Cooldown(_AgentStatus):
 
 @dataclass(frozen=True)
 class _Spent(_AgentStatus):
+    reason: str
+
+
+@dataclass(frozen=True)
+class _Unavailable(_AgentStatus):
     reason: str
 
 
@@ -84,6 +96,7 @@ AgentStatus = _AgentStatus
 Eligible = _Eligible
 Cooldown = _Cooldown
 Spent = _Spent
+Unavailable = _Unavailable
 AttemptOutcome = _AttemptOutcome
 
 
@@ -96,10 +109,119 @@ class _LedgerEntry:
     cooldown_count: int = 0
     is_spent: bool = False
     spent_reason: str | None = None
+    unavailable_reason: str | None = None
 
 
 _COOLDOWN_REASON_CONSECUTIVE = "consecutive_unproductive_limit_reached"
 _SPENT_REASON_TOTAL = "total_unproductive_limit_reached"
+
+
+def _optional_str(raw: object) -> str | None:
+    return raw if isinstance(raw, str) else None
+
+
+def _optional_int(raw: object) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw)
+    return None
+
+
+def _projected_status(
+    *,
+    is_spent: bool,
+    spent_reason: str | None,
+    cooldown_until_ms: int | None,
+    cooldown_reason: str | None,
+    unavailable_reason: str | None,
+    now_ms: int,
+) -> AgentStatus:
+    if is_spent:
+        return Spent(reason=spent_reason or _SPENT_REASON_TOTAL)
+    if cooldown_until_ms is not None and now_ms < cooldown_until_ms:
+        return Cooldown(
+            until_ms=cooldown_until_ms,
+            reason=cooldown_reason or _COOLDOWN_REASON_CONSECUTIVE,
+        )
+    if unavailable_reason is not None:
+        return Unavailable(reason=unavailable_reason)
+    return Eligible()
+
+
+def _project_eligibility(
+    snapshot: Mapping[str, object],
+    *,
+    phase: str,
+    agent: str,
+    now_ms: int,
+) -> AgentStatus:
+    entries = snapshot.get("entries")
+    raw = entries.get(f"{phase}:{agent}") if isinstance(entries, Mapping) else None
+    if not isinstance(raw, Mapping):
+        return Eligible()
+    return _projected_status(
+        is_spent=bool(raw.get("is_spent")),
+        spent_reason=_optional_str(raw.get("spent_reason")),
+        cooldown_until_ms=_optional_int(raw.get("cooldown_until_ms")),
+        cooldown_reason=_optional_str(raw.get("cooldown_reason")),
+        unavailable_reason=_optional_str(raw.get("unavailable_reason")),
+        now_ms=now_ms,
+    )
+
+
+def project_eligibility(
+    snapshot: Mapping[str, object],
+    *,
+    phase: str,
+    agent: str,
+    clock: Clock,
+) -> AgentStatus:
+    now_ms = int(clock.monotonic() * 1000)
+    return _project_eligibility(snapshot, phase=phase, agent=agent, now_ms=now_ms)
+
+
+def project_chain_eligibility(
+    snapshot: Mapping[str, object],
+    *,
+    phase: str,
+    agents: Sequence[str],
+    clock: Clock,
+) -> tuple[tuple[str, AgentStatus], ...]:
+    now_ms = int(clock.monotonic() * 1000)
+    return tuple(
+        (agent, _project_eligibility(snapshot, phase=phase, agent=agent, now_ms=now_ms))
+        for agent in agents
+    )
+
+
+def eligibility_wait_from_statuses(
+    statuses: Sequence[AgentStatus],
+    *,
+    now_ms: int,
+) -> EligibilityWait:
+    if any(status.is_eligible for status in statuses):
+        return EligibilityWait(kind=WaitKind.AVAILABLE_NOW, wait_ms=0)
+    cooldowns = [status for status in statuses if isinstance(status, Cooldown)]
+    if cooldowns:
+        earliest = cooldowns[0]
+        for candidate in cooldowns[1:]:
+            if candidate.until_ms < earliest.until_ms:
+                earliest = candidate
+        return EligibilityWait(
+            kind=WaitKind.COOLING_DOWN,
+            wait_ms=max(1, earliest.until_ms - now_ms),
+            until_ms=earliest.until_ms,
+            reason=earliest.reason,
+        )
+    reasons = [status.reason for status in statuses if isinstance(status, (Spent, Unavailable))]
+    return EligibilityWait(
+        kind=WaitKind.NEVER_ELIGIBLE,
+        wait_ms=None,
+        reason="; ".join(reasons) if reasons else None,
+    )
 
 
 @dataclass(frozen=True)
@@ -188,52 +310,82 @@ class AgentFailureLedger:
 
         self._sync_cooldown_expiry(entry, now_ms)
 
-        if entry.cooldown_until_ms is not None:
-            return Cooldown(
-                until_ms=entry.cooldown_until_ms,
-                reason=entry.cooldown_reason or _COOLDOWN_REASON_CONSECUTIVE,
-            )
-        return Eligible()
+        return _projected_status(
+            is_spent=False,
+            spent_reason=None,
+            cooldown_until_ms=entry.cooldown_until_ms,
+            cooldown_reason=entry.cooldown_reason,
+            unavailable_reason=entry.unavailable_reason,
+            now_ms=now_ms,
+        )
 
     def status(self, phase: str, agent: str) -> AgentStatus:
         with self._lock:
             now_ms = int(self._clock.monotonic() * 1000)
-            return self._status_locked(phase, agent, now_ms)
+            return _project_eligibility(
+                self._snapshot_locked(now_ms=now_ms),
+                phase=phase,
+                agent=agent,
+                now_ms=now_ms,
+            )
+
+    def spent_status(self, reason: str) -> AgentStatus:
+        return Spent(reason=reason)
 
     def is_available(self, phase: str, agent: str) -> bool:
-        return isinstance(self.status(phase, agent), Eligible)
+        return self.status(phase, agent).is_eligible
+
+    def eligibility(
+        self,
+        phase: str,
+        agents: Sequence[str],
+    ) -> tuple[tuple[str, AgentStatus], ...]:
+        with self._lock:
+            now_ms = int(self._clock.monotonic() * 1000)
+            snapshot = self._snapshot_locked(now_ms=now_ms)
+        return tuple(
+            (agent, _project_eligibility(snapshot, phase=phase, agent=agent, now_ms=now_ms))
+            for agent in agents
+        )
+
+    def eligibility_wait(self, phase: str, agents: Sequence[str]) -> EligibilityWait:
+        with self._lock:
+            now_ms = int(self._clock.monotonic() * 1000)
+            snapshot = self._snapshot_locked(now_ms=now_ms)
+        statuses = [
+            _project_eligibility(snapshot, phase=phase, agent=agent, now_ms=now_ms)
+            for agent in agents
+        ]
+        return eligibility_wait_from_statuses(statuses, now_ms=now_ms)
+
+    def mark_unavailable(self, phase: str, agent: str, *, reason: str) -> None:
+        with self._lock:
+            entry = self._entries.get((phase, agent))
+            if entry is None:
+                entry = _LedgerEntry()
+                self._entries[(phase, agent)] = entry
+            entry.unavailable_reason = reason
+            entry.cooldown_until_ms = None
+            entry.cooldown_reason = None
 
     def earliest_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
         if not agents:
             return 0
-        with self._lock:
-            now_ms = int(self._clock.monotonic() * 1000)
-            remaining_times: list[int] = []
-            for agent in agents:
-                st = self._status_locked(phase, agent, now_ms)
-                if isinstance(st, Eligible):
-                    return 0
-                if isinstance(st, Cooldown):
-                    remaining = max(1, st.until_ms - now_ms)
-                    remaining_times.append(remaining)
-            if remaining_times:
-                return min(remaining_times)
-            return None
+        wait = self.eligibility_wait(phase, agents)
+        if wait.kind is WaitKind.AVAILABLE_NOW:
+            return 0
+        if wait.kind is WaitKind.COOLING_DOWN:
+            return wait.wait_ms
+        return None
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
         if not agents:
             return False
-        with self._lock:
-            now_ms = int(self._clock.monotonic() * 1000)
-            for agent in agents:
-                st = self._status_locked(phase, agent, now_ms)
-                if not isinstance(st, Spent):
-                    return False
-            return True
+        return all(status.is_spent for _agent, status in self.eligibility(phase, agents))
 
     def failure_reason(self, phase: str, agent: str) -> str | None:
         st = self.status(phase, agent)
-        if isinstance(st, (Cooldown, Spent)):
+        if isinstance(st, (Cooldown, Spent, Unavailable)):
             return st.reason
         return None
 
@@ -257,6 +409,7 @@ class AgentFailureLedger:
                 entry.cooldown_count = 0
                 entry.is_spent = False
                 entry.spent_reason = None
+                entry.unavailable_reason = None
                 return AttemptOutcome(
                     status=Eligible(),
                     consecutive_unproductive=0,
@@ -307,35 +460,39 @@ class AgentFailureLedger:
                 total_unproductive=entry.total_unproductive,
             )
 
+    def _snapshot_locked(self, *, now_ms: int) -> dict[str, object]:
+        now_epoch_ms = int(self._clock.epoch() * 1000)
+        entries_dict: dict[str, object] = {
+            f"{phase}:{agent}": {
+                "phase": phase,
+                "agent": agent,
+                "consecutive_unproductive": entry.consecutive_unproductive,
+                "total_unproductive": entry.total_unproductive,
+                "cooldown_until_ms": entry.cooldown_until_ms,
+                "cooldown_until_epoch_ms": None
+                if entry.cooldown_until_ms is None
+                else now_epoch_ms + max(0, entry.cooldown_until_ms - now_ms),
+                "cooldown_reason": entry.cooldown_reason,
+                "cooldown_count": entry.cooldown_count,
+                "is_spent": entry.is_spent,
+                "spent_reason": entry.spent_reason,
+                "unavailable_reason": entry.unavailable_reason,
+            }
+            for (phase, agent), entry in self._entries.items()
+        }
+        return {
+            "consecutive_limit": self._consecutive_limit,
+            "total_limit": self._total_limit,
+            "base_cooldown_seconds": self._base_cooldown_seconds,
+            "max_cooldown_seconds": self._max_cooldown_seconds,
+            "backoff_factor": self._backoff_factor,
+            "entries": entries_dict,
+        }
+
     def snapshot(self) -> dict[str, object]:
         with self._lock:
             now_ms = int(self._clock.monotonic() * 1000)
-            now_epoch_ms = int(self._clock.epoch() * 1000)
-            entries_dict: dict[str, object] = {
-                f"{phase}:{agent}": {
-                    "phase": phase,
-                    "agent": agent,
-                    "consecutive_unproductive": entry.consecutive_unproductive,
-                    "total_unproductive": entry.total_unproductive,
-                    "cooldown_until_ms": entry.cooldown_until_ms,
-                    "cooldown_until_epoch_ms": None
-                    if entry.cooldown_until_ms is None
-                    else now_epoch_ms + max(0, entry.cooldown_until_ms - now_ms),
-                    "cooldown_reason": entry.cooldown_reason,
-                    "cooldown_count": entry.cooldown_count,
-                    "is_spent": entry.is_spent,
-                    "spent_reason": entry.spent_reason,
-                }
-                for (phase, agent), entry in self._entries.items()
-            }
-            return {
-                "consecutive_limit": self._consecutive_limit,
-                "total_limit": self._total_limit,
-                "base_cooldown_seconds": self._base_cooldown_seconds,
-                "max_cooldown_seconds": self._max_cooldown_seconds,
-                "backoff_factor": self._backoff_factor,
-                "entries": entries_dict,
-            }
+            return self._snapshot_locked(now_ms=now_ms)
 
     @classmethod
     def translate_legacy_entry(
@@ -368,6 +525,7 @@ class AgentFailureLedger:
             "cooldown_count": 0,
             "is_spent": is_spent,
             "spent_reason": "legacy_exhausted" if is_spent else None,
+            "unavailable_reason": None,
         }
 
     @classmethod
@@ -483,6 +641,7 @@ class AgentFailureLedger:
                     cooldown_count_val = item.get("cooldown_count")
                     is_spent_val = item.get("is_spent")
                     spent_reason_val = item.get("spent_reason")
+                    unavailable_reason_val = item.get("unavailable_reason")
 
                     entry = _LedgerEntry(
                         consecutive_unproductive=int(consecutive_val)
@@ -499,6 +658,9 @@ class AgentFailureLedger:
                         is_spent=bool(is_spent_val) if is_spent_val is not None else False,
                         spent_reason=str(spent_reason_val)
                         if isinstance(spent_reason_val, str)
+                        else None,
+                        unavailable_reason=str(unavailable_reason_val)
+                        if isinstance(unavailable_reason_val, str)
                         else None,
                     )
                     ledger._entries[(phase_val, agent_val)] = entry
@@ -616,6 +778,7 @@ def _failed_closed_entry(
         "cooldown_count": 0,
         "is_spent": True,
         "spent_reason": reason,
+        "unavailable_reason": None,
     }
 
 
@@ -747,8 +910,14 @@ __all__ = [
     "AttemptFact",
     "AttemptOutcome",
     "Cooldown",
+    "EligibilityWait",
     "Eligible",
     "Spent",
+    "Unavailable",
+    "WaitKind",
     "_LegacyGuardSource",
+    "eligibility_wait_from_statuses",
     "migrate_legacy_guard_history",
+    "project_chain_eligibility",
+    "project_eligibility",
 ]

@@ -68,7 +68,10 @@ def test_announce_declared_decisions_emits_paths(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(driver_module, "emit_conflict_phase_line", _hook)
     announce_declared_decisions(None, ("a.txt", "b.txt"))
     assert len(lines) == 1
-    assert "a.txt, b.txt" in lines[0]
+    assert "a.txt" in lines[0]
+    assert "b.txt" in lines[0]
+    assert "a.txt: marker-less declaration" in lines[0]
+    assert "b.txt: marker-less declaration" in lines[0]
 
 
 def test_emit_expired_operator_cap(monkeypatch: pytest.MonkeyPatch) -> None:

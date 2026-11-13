@@ -7,6 +7,11 @@ from ralph.git.rebase.rebase_continuation import continue_rebase_at, rebase_in_p
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
+from ralph.pipeline._landed_predicate import (
+    LANDING_WITHHELD_REASON,
+    LandedDecision,
+    operation_landed,
+)
 from ralph.pipeline._pending_merge_commit import _git_value
 from ralph.pipeline.auto_integrate_record import (
     MARK_PENDING_REBASE_CONTINUE,
@@ -82,12 +87,10 @@ def pending_rebase_identity_matches(root: Path, record: IntegrationRecord) -> bo
 def finish_pending_rebase(root: Path) -> None:
     record = read_record(root)
     if record is not None:
-        if classify_git_operation(
-            record
-        ) is GitOperationKind.AWAITING_CONTINUE and not _resolved_stop_landed(root, record):
-            raise ValueError(
-                "continued rebase does not match the verified stop tree; landing withheld"
-            )
+        if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE:
+            decision = operation_landed(root, record)
+            if not decision.landed:
+                raise ValueError(_landing_failure(decision))
         if classify_git_operation(
             record
         ) is GitOperationKind.AWAITING_CONTINUE and not rebase_in_progress_at(root):
@@ -175,15 +178,12 @@ def _promote_completed_rebase(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> CommitCompletion | str:
-    if not _resolved_stop_landed(root, record):
-        observed_head = _git_value(root, "rev-parse", "--verify", "HEAD")
-        return (
-            "completed rebase does not prove the verified stop landed; landing withheld "
-            f"(observed HEAD {observed_head}, "
-            f"expected stop anchor {record.rebase_continue_head}, "
-            f"expected stop tree {record.rebase_continue_tree})"
-        )
-    head = _git_value(root, "rev-parse", "--verify", "HEAD")
+    decision = operation_landed(root, record)
+    if not decision.landed:
+        return _landing_failure(decision)
+    head = decision.observed_head
+    if head is None:
+        return "completed rebase HEAD is unreadable; landing withheld"
     completion = complete_commit(
         record,
         integrated_feature_sha=head,
@@ -219,7 +219,7 @@ def promote_completed_pending_rebase(
 def _advanced_saved_stop(root: Path, record: IntegrationRecord) -> bool:
     stop = _git_value(root, "rev-parse", "--verify", "REBASE_HEAD")
     return bool(
-        stop and stop != record.rebase_continue_stop and _resolved_stop_landed(root, record)
+        stop and stop != record.rebase_continue_stop and operation_landed(root, record).landed
     )
 
 
@@ -262,31 +262,8 @@ def _complete_pending_rebase_snapshot(
     return read_record(root)
 
 
-def _resolved_stop_landed(root: Path, record: IntegrationRecord) -> bool:
-    if not record.rebase_continue_head or not record.rebase_continue_tree:
-        return False
-    head = _git_value(root, "rev-parse", "--verify", "HEAD")
-    if head is None:
-        return False
-    if head == record.rebase_continue_head:
-        return _git_value(root, "rev-parse", "HEAD^{tree}") == record.rebase_continue_tree
-    if (
-        _git_value(root, "rev-parse", f"{record.rebase_continue_head}^{{tree}}")
-        == record.rebase_continue_tree
-    ):
-        from ralph.git.merge import is_ancestor
-
-        return is_ancestor(root, record.rebase_continue_head, head)
-    commits = _git_value(
-        root, "rev-list", "--reverse", "--ancestry-path", f"{record.rebase_continue_head}..HEAD"
-    )
-    first = commits.splitlines()[0] if commits else None
-    if first is None:
-        return False
-    return (
-        _git_value(root, "rev-parse", f"{first}^{{tree}}") == record.rebase_continue_tree
-        and _git_value(root, "show", "-s", "--format=%P", first) == record.rebase_continue_head
-    )
+def _landing_failure(decision: LandedDecision) -> str:
+    return f"{LANDING_WITHHELD_REASON}; {decision.operator_status('all recorded Git state')}"
 
 
 def _sequencer_snapshot(root: Path) -> tuple[tuple[str, str], ...]:

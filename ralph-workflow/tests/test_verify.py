@@ -16,6 +16,7 @@ from ralph.verify_timeout import (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "verify module docstring": "the verification marker expression is now read from the module source because module docstrings are banned",
+    "RALPH_TEST_CHANGE_REASONS verify step count and call index assertions": "the expected verify calls and their timeouts now derive from ralph.verify._VERIFY_STEPS and ralph.verify._BUDGET_TRACKED_STEPS instead of a frozen step count and call indices, so the assertions keep proving that every registered step runs exactly once with its declared timeout while a newly registered step no longer rewrites the expected call list",
 }
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -83,310 +84,22 @@ def test_verification_marker_expression_covers_required_real_git_e2e() -> None:
 
 
 def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessResult]:
-    return {
-        ("uv", ("run", "ruff", "format", "--check", "ralph/", "tests/")): _result(
-            command="uv",
-            args=("run", "ruff", "format", "--check", "ralph/", "tests/"),
+    responses: dict[tuple[str, tuple[str, ...]], ProcessResult] = {}
+    for _label, command, args, _timeout in verify_module._VERIFY_STEPS:
+        key = (command, args)
+        responses[key] = _result(
+            command=command,
+            args=args,
             returncode=0,
-        ),
-        ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
-            command="uv",
-            args=("run", "ruff", "check", "ralph/", "tests/"),
-            returncode=0,
-            stdout="lint ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "mypy", "ralph/")): _result(
-            command="uv",
-            args=("run", "python", "-m", "mypy", "ralph/"),
-            returncode=0,
-            stdout="typecheck ok\n",
-        ),
-        ("make", ("test",)): _result(
-            command="make",
-            args=("test",),
-            returncode=0,
-            stdout="tests ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_lint_bypass")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_lint_bypass"),
-            returncode=0,
-            stdout="lint bypass audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_typecheck_bypass")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_typecheck_bypass"),
-            returncode=0,
-            stdout="typecheck bypass audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_test_policy"),
-            returncode=0,
-            stdout="audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_mcp_timeout")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_mcp_timeout"),
-            returncode=0,
-            stdout="mcp timeout audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_di_seam")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_di_seam"),
-            returncode=0,
-            stdout="di seam audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog"),
-            returncode=0,
-            stdout="activity-aware watchdog audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_watchdog_drift")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_watchdog_drift"),
-            returncode=0,
-            stdout="watchdog drift audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
-            returncode=0,
-            stdout="parallelization dormant audit ok\n",
-        ),
-        ("uv", _ARTIFACT_SUBMISSION_AUDIT_ARGS): _result(
-            command="uv",
-            args=_ARTIFACT_SUBMISSION_AUDIT_ARGS,
-            returncode=0,
-            stdout="artifact submission canonical-path audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_registry_sync")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_agent_registry_sync"),
-            returncode=0,
-            stdout="agent registry sync audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_module_state")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_agent_module_state"),
-            returncode=0,
-            stdout="agent module state audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_internal_paths")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_agent_internal_paths"),
-            returncode=0,
-            stdout="agent internal paths audit ok\n",
-        ),
-        ("python3", _SOCIAL_PROOF_ARGS): _result(
-            command="python3",
-            args=_SOCIAL_PROOF_ARGS,
-            returncode=0,
-            stdout="social-proof gate ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_resource_lifecycle"),
-            returncode=0,
-            stdout="resource lifecycle audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),
-            returncode=0,
-            stdout="skill auto-commit audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_artifact_skill_types")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_artifact_skill_types"),
-            returncode=0,
-            stdout="artifact skill types audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
-            returncode=0,
-            stdout="terminal escape containment audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_repo_structure"),
-            returncode=0,
-            stdout="repo structure audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_project_policy")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_project_policy"),
-            returncode=0,
-            stdout="project policy readiness audit ok\n",
-        ),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
-        ): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
-            returncode=0,
-            stdout="fsevents watch consolidation audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_log_sink_buffering"),
-            returncode=0,
-            stdout="log sink buffering audit ok\n",
-        ),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation"),
-        ): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation"),
-            returncode=0,
-            stdout="filesystem write consolidation audit ok\n",
-        ),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_filesystem_read_consolidation"),
-        ): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_filesystem_read_consolidation"),
-            returncode=0,
-            stdout="filesystem read consolidation audit ok\n",
-        ),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_filesystem_polling_invocation"),
-        ): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_filesystem_polling_invocation"),
-            returncode=0,
-            stdout="filesystem polling/invocation ownership audit ok\n",
-        ),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_regression_test_elimination"),
-        ): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_regression_test_elimination"),
-            returncode=0,
-            stdout="regression-test elimination audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_template_render_integrity"),
-            returncode=0,
-            stdout="template render-integrity audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
-            returncode=0,
-            stdout="fenced artifact example audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing"),
-            returncode=0,
-            stdout="prompt single-sourcing audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_cast_policy"),
-            returncode=0,
-            stdout="cast policy audit ok\n",
-        ),
-        ("uv", _MCP_AGENT_BOUNDARY_AUDIT_ARGS): _result(
-            command="uv",
-            args=_MCP_AGENT_BOUNDARY_AUDIT_ARGS,
-            returncode=0,
-            stdout="MCP-agent boundary audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding"),
-            returncode=0,
-            stdout="kwargs forwarding audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_opts_key_drift"),
-            returncode=0,
-            stdout="opts key drift audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner"),
-            returncode=0,
-            stdout="agent failure single owner audit ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_sast")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_sast"),
-            returncode=0,
-            stdout="No new static-analysis findings (0 pre-existing finding(s)).\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_import_order")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_import_order"),
-            returncode=0,
-            stdout="All modules import cleanly when imported first.\n",
-        ),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
-        ): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
-            returncode=0,
-            stdout="workspace resource inventory audit: OK\n",
-        ),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_canonical_session_text"),
-        ): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_canonical_session_text"),
-            returncode=0,
-            stdout="canonical session text audit: OK\n",
-        ),
-        ("make", ("test-verification-smoke",)): _result(
-            command="make",
-            args=("test-verification-smoke",),
-            returncode=0,
-            stdout="installer, multimodal, and visual smoke ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_instruction_integrity")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_instruction_integrity"),
-            returncode=0,
-            stdout="audit_instruction_integrity ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_dependency_integrity")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_dependency_integrity"),
-            returncode=0,
-            stdout="audit_dependency_integrity ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_secret_scan")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_secret_scan"),
-            returncode=0,
-            stdout="audit_secret_scan ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_comments")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_comments"),
-            returncode=0,
-            stdout="audit_comments ok\n",
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_test_integrity")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_test_integrity"),
-            returncode=0,
-            stdout="audit_test_integrity ok\n",
-        ),
-    }
+            stdout="ok\n",
+        )
+    return responses
+
+
+def _step_index(label: str) -> int:
+    labels = [step[0] for step in verify_module._VERIFY_STEPS]
+    assert labels.count(label) == 1, f"verify step label {label!r} must be registered exactly once"
+    return labels.index(label)
 
 
 def test_main_runs_all_verify_steps_when_successful(
@@ -400,96 +113,34 @@ def test_main_runs_all_verify_steps_when_successful(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert [call[:2] for call in runner.calls] == [
-        ("uv", ("run", "ruff", "check", "ralph/", "tests/")),
-        ("uv", ("run", "python", "-m", "mypy", "ralph/")),
-        ("make", ("test",)),
-        ("uv", ("run", "ruff", "format", "--check", "ralph/", "tests/")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_lint_bypass")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_typecheck_bypass")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_mcp_timeout")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_di_seam")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_watchdog_drift")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")),
-        ("uv", _ARTIFACT_SUBMISSION_AUDIT_ARGS),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_registry_sync")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_module_state")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_internal_paths")),
-        ("python3", _SOCIAL_PROOF_ARGS),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_artifact_skill_types")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_project_policy")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_read_consolidation")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_polling_invocation")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_regression_test_elimination")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")),
-        (
-            "uv",
-            ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
-        ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_canonical_session_text")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_import_order")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_instruction_integrity")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_dependency_integrity")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_secret_scan")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_sast")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_comments")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_test_integrity")),
-        ("make", ("test-verification-smoke",)),
-        ("uv", _MCP_AGENT_BOUNDARY_AUDIT_ARGS),
+        (command, args) for _label, command, args, _timeout in verify_module._VERIFY_STEPS
     ]
     assert all(args != ("test-auto-integrate-e2e",) for _command, args, *_rest in runner.calls)
-    assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[2][3] == verify_module._TOTAL_TEST_HANG_CAP_SECONDS, (
+    assert [call[3] for call in runner.calls] == [
+        timeout if timeout is not None else verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+        for _label, _command, _args, timeout in verify_module._VERIFY_STEPS
+    ]
+    assert all(
+        call[3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+        for index, call in enumerate(runner.calls)
+        if index not in verify_module._BUDGET_TRACKED_STEPS
+    )
+    assert {
+        verify_module._VERIFY_STEPS[index][0] for index in verify_module._BUDGET_TRACKED_STEPS
+    } == set(verify_module._KNOWN_TEST_STEP_LABELS)
+    executed_calls = [call[:2] for call in runner.calls]
+    assert ("python3", _SOCIAL_PROOF_ARGS) in executed_calls
+    assert ("uv", _ARTIFACT_SUBMISSION_AUDIT_ARGS) in executed_calls
+    assert ("uv", _MCP_AGENT_BOUNDARY_AUDIT_ARGS) in executed_calls
+    make_test_timeout = runner.calls[_step_index("make test")][3]
+    assert make_test_timeout == verify_module._TOTAL_TEST_HANG_CAP_SECONDS, (
         "make test step timeout is the cumulative hang cap: the budget verdict is "
         "decided after the tracked steps finish, net of host contention (wt-056)"
     )
-    assert runner.calls[3][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[4][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[5][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[6][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[7][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[8][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[9][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[10][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[11][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[12][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[13][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[14][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[15][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[16][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[17][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[18][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[19][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[20][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[21][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[22][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[23][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[24][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[25][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[26][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[27][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[33][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[34][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    last_timeout = runner.calls[-2][3]
-    assert last_timeout is not None
-    assert abs(last_timeout - verify_module._TOTAL_TEST_HANG_CAP_SECONDS) < 0.001, (
-        f"last step timeout {last_timeout!r} does not match the hang cap "
+    smoke_timeout = runner.calls[_step_index("make test-verification-smoke")][3]
+    assert smoke_timeout is not None
+    assert abs(smoke_timeout - verify_module._TOTAL_TEST_HANG_CAP_SECONDS) < 0.001, (
+        f"test-verification-smoke step timeout {smoke_timeout!r} does not match the hang cap "
         f"{verify_module._TOTAL_TEST_HANG_CAP_SECONDS!r}"
     )
     assert all(call[4] is False for call in runner.calls)

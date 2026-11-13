@@ -10,6 +10,7 @@ from loguru import logger
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._auto_integrate_record_restamp import (
     current_boot_id,
 )
@@ -220,7 +221,7 @@ def _handle_diagnostic_generic_failure(
     env: EnvironmentProbe | None,
     clock: Clock | None,
 ) -> None:
-    logger.critical("Integration diagnostic retained ownership after failure: {}", exc)
+    terminal_emitter.critical("Integration diagnostic retained ownership after failure: {}", exc)
     current = read_record(root) or record
     target = _bump_attempt(current, f"diagnostic failure: {exc}")
     write_record(root, target)
@@ -238,7 +239,7 @@ def _handle_diagnostic_generic_failure(
                 target=target.target,
             )
         except Exception:
-            logger.critical(
+            terminal_emitter.critical(
                 "Integration diagnostic budget spent but ladder escalation raised; "
                 "the durable ledger keeps the climb and the next seam resumes it",
             )
@@ -268,7 +269,9 @@ def diagnose_retained_integration(
 
     pipeline_deps = ctx.pipeline_deps
     if pipeline_deps is None:
-        logger.critical("Integration evidence inspection requires agent dependencies: {}", failure)
+        terminal_emitter.critical(
+            "Integration evidence inspection requires agent dependencies: {}", failure
+        )
         return False
     with ExitStack() as leases:
         root_lease = leases.enter_context(integration_transaction(ctx.workspace_scope.root))
@@ -415,7 +418,7 @@ def _pre_pass_failure(
                 target=record.target,
             )
         except Exception:
-            logger.critical(
+            terminal_emitter.critical(
                 "Integration diagnostic budget spent but ladder escalation raised; "
                 "the durable ledger keeps the climb and the next seam resumes it",
             )
@@ -454,7 +457,7 @@ def _run_completion_pre_pass(
                 target=record.target,
             )
         except Exception:
-            logger.critical(
+            terminal_emitter.critical(
                 "Typed record-fact outcome {} could not escalate to the ladder; "
                 "the durable ledger keeps the climb and the next seam resumes it",
                 next_action.value,
@@ -574,7 +577,7 @@ def _complete_or_intervene(
         logger.warning("Release busy; record bytes preserved for the bounded-retry authority")
         return False
     except RecordUnreadableError:
-        logger.critical(
+        terminal_emitter.critical(
             "Release refused: durable record unreadable; intervention required; "
             "unreadable bytes preserved"
         )
@@ -629,7 +632,7 @@ def _settle_exhausted_cap(
             target=record.target,
         )
     except Exception:
-        logger.critical(
+        terminal_emitter.critical(
             "Integration diagnostic budget spent but ladder escalation raised; "
             "the durable ledger keeps the climb and the next seam resumes it",
         )
@@ -655,25 +658,31 @@ def handoff_integration_diagnostic(
     clock: Clock | None = None,
 ) -> bool:
     inspection_root = _operation_root_for(record, root)
+    terminal = ladder_terminal_state(root, record, ledger=ledger, git=git)
+    if terminal is not None:
+        pre_pass_result: bool | None = False
+    else:
+        pre_pass_result = None
     col = collector if collector is not None else operation_evidence_collector()
-    snapshot = col.snapshot(inspection_root, record)
-    next_action = decide_seam_action(root, record=record)
 
-    pre_pass_result = _run_completion_pre_pass(
-        root=root,
-        inspection_root=inspection_root,
-        record=record,
-        snapshot=snapshot,
-        next_action=next_action,
-        backend=backend,
-        collector=col,
-        repair_attempt_cap=repair_attempt_cap,
-        ledger=ledger,
-        git=git,
-        fs=fs,
-        env=env,
-        clock=clock,
-    )
+    if pre_pass_result is None:
+        snapshot = col.snapshot(inspection_root, record)
+        next_action = decide_seam_action(root, record=record)
+        pre_pass_result = _run_completion_pre_pass(
+            root=root,
+            inspection_root=inspection_root,
+            record=record,
+            snapshot=snapshot,
+            next_action=next_action,
+            backend=backend,
+            collector=col,
+            repair_attempt_cap=repair_attempt_cap,
+            ledger=ledger,
+            git=git,
+            fs=fs,
+            env=env,
+            clock=clock,
+        )
     if pre_pass_result is not None:
         return pre_pass_result
 
@@ -711,7 +720,7 @@ def handoff_integration_diagnostic(
                     target=record.target,
                 )
             except Exception:
-                logger.critical(
+                terminal_emitter.critical(
                     "Integration diagnostic budget spent but ladder escalation raised; "
                     "the durable ledger keeps the climb and the next seam resumes it",
                 )
