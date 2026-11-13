@@ -214,6 +214,11 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
 _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = frozenset(
     {
         (
+            "tests/agents/invoke/test_cli_attempt_fact_completeness.py",
+            "ralph.agents.parsers",
+            ("_PARSER_REGISTRY",),
+        ),
+        (
             "tests/mcp/test_respawn_no_discovery.py",
             "ralph.mcp.server._http_tools_list",
             ("_http_tools_list_names",),

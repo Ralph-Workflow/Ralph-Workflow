@@ -30,6 +30,19 @@ def provider_quota_kill_evidence(text: ProviderText) -> bool:
     return event is None or _is_provider_error_event(event)
 
 
+def provider_quota_stderr_line_matches(text: ProviderText) -> bool:
+    return _is_subscription_limit_message([text.text])
+
+
+def provider_quota_output_line_matches(text: ProviderText, *, include_output: bool) -> bool:
+    line = text.text
+    return (
+        _is_provider_failure_output(line)
+        and (include_output or _is_explicit_provider_failure_output(line))
+        and _is_subscription_limit_message([line])
+    )
+
+
 def is_quota_kill_evidence(detail: str) -> bool:
     text = provider_evidence_text(detail)
     return text is not None and provider_quota_kill_evidence(text)
@@ -49,16 +62,14 @@ def raise_if_quota_exhausted(
 ) -> None:
     output = parsed_output or []
     for line in stderr_text.splitlines() or [stderr_text]:
-        if _is_subscription_limit_message([line]):
+        text = provider_evidence_text(line)
+        if text is not None and provider_quota_stderr_line_matches(text):
             raise QuotaExhaustedError(agent_name, line)
     for source in output:
         for line in source.splitlines() or [source]:
             text = provider_text(line)
-            if (
-                text is not None
-                and _is_provider_failure_output(line)
-                and (include_output or _is_explicit_provider_failure_output(line))
-                and _is_subscription_limit_message([line])
+            if text is not None and provider_quota_output_line_matches(
+                text, include_output=include_output
             ):
                 raise QuotaExhaustedError(agent_name, line)
 
@@ -68,5 +79,7 @@ __all__ = [
     "is_quota_kill_evidence",
     "provider_quota_kill_evidence",
     "provider_quota_line_matches",
+    "provider_quota_output_line_matches",
+    "provider_quota_stderr_line_matches",
     "raise_if_quota_exhausted",
 ]

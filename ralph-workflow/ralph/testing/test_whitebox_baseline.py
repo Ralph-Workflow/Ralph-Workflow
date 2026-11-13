@@ -3,8 +3,8 @@ from __future__ import annotations
 INIT_COMPLETE = True
 
 _RAW = """
-tests/_support/mock_multimodal_agent.py|0,2,0
 tests/_fake_git_ops.py|0,1,0
+tests/_support/mock_multimodal_agent.py|0,2,0
 tests/agents/execution_state/test_generic_child_signal.py|0,5,0
 tests/agents/execution_state/test_opencode_sink_registry_parity.py|0,1,0
 tests/agents/execution_state/test_opencode_subagent_visibility.py|0,2,0
@@ -46,6 +46,7 @@ tests/agents/invoke/test_pty_subagent_pid_source_wiring.py|0,1,4
 tests/agents/invoke/test_pty_terminal_reason_before_signal.py|0,1,3
 tests/agents/invoke/test_pty_transcript_tailer_wiring.py|1,3,4
 tests/agents/invoke/test_pty_visible_tui_session_id_promotion.py|0,2,0
+tests/agents/invoke/test_quota_detection_provider_events.py|0,1,0
 tests/agents/invoke/test_reader_stall_lifetime.py|0,1,0
 tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py|0,6,0
 tests/agents/invoke/test_runtime_resolver_endpoint_delivery.py|0,3,0
@@ -779,9 +780,9 @@ tests/test_skills_installer_project.py|0,15,0
 tests/test_skills_installer_sibling_symlinks.py|0,3,0
 tests/test_skills_installer_update.py|6,2,0
 tests/test_skills_manager.py|0,3,0
-tests/test_skills_prune_ownership.py|0,2,0
 tests/test_skills_process_view.py|0,2,0
 tests/test_skills_project_paths_research.py|0,2,0
+tests/test_skills_prune_ownership.py|0,2,0
 tests/test_skills_recheck_policy.py|0,3,0
 tests/test_skills_recheck_policy_config.py|0,1,0
 tests/test_skills_skill_resolver.py|0,1,0

@@ -18,6 +18,17 @@ from ralph.agents.parsers.content_channel import (
     provider_text,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "provider_evidence_text none-check replaced with kill-evidence verdict": (
+        "provider-originated malformed or unknown JSON on the stderr and agy-log "
+        "paths must still reach phrase code, so provider_evidence_text now yields "
+        "ProviderText for any envelope whose declared kind is not a recognized "
+        "non-provider channel; the not-kill-evidence guarantee is pinned "
+        "behaviourally by the provider_quota_kill_evidence and "
+        "is_quota_kill_evidence assertions"
+    ),
+}
+
 _QUOTA_WORDS = "Your account has credits exhausted for this period."
 
 _USER_PROMPT_LINE = json.dumps(
@@ -38,6 +49,31 @@ _USER_ROLE_TOOL_RESULT_LINE = json.dumps(
             "content": [{"type": "tool_result", "content": "RESOURCE_EXHAUSTED (code 429)"}]
         },
     }
+)
+
+_QUOTA_ERROR_TEXT = "RESOURCE_EXHAUSTED (code 429)"
+
+_TOOL_CALL_QUOTA_ERROR_LINES = (
+    json.dumps({"type": "function_call", "name": "bash", "error": _QUOTA_ERROR_TEXT}),
+    json.dumps(
+        {"type": "mcp_tool_call", "tool": "read_multiple_files", "error": _QUOTA_ERROR_TEXT}
+    ),
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {"type": "function_call", "name": "bash", "error": _QUOTA_ERROR_TEXT},
+        }
+    ),
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "mcp_tool_call",
+                "tool": "read_multiple_files",
+                "error": _QUOTA_ERROR_TEXT,
+            },
+        }
+    ),
 )
 
 _TOOL_CALL_LINES = (
@@ -89,6 +125,14 @@ def test_tool_and_reasoning_content_is_never_provider_channel(line: str) -> None
 @pytest.mark.parametrize("line", _TOOL_CALL_LINES)
 def test_tool_call_events_map_to_tool_call_channel(line: str) -> None:
     assert channel_of(line) is ContentChannel.TOOL_CALL
+
+
+@pytest.mark.parametrize("line", _TOOL_CALL_QUOTA_ERROR_LINES)
+def test_tool_call_quota_error_property_is_never_provider_output(line: str) -> None:
+    assert channel_of(line) is ContentChannel.TOOL_CALL
+    assert provider_text(line) is None
+    assert not is_provider_quota_output_line(line)
+    assert not is_quota_kill_evidence(line)
 
 
 @pytest.mark.parametrize("line", _TOOL_RESULT_LINES)
@@ -147,6 +191,23 @@ def test_non_json_plain_text_maps_to_user_channel_not_provider() -> None:
     assert provider_text("just a status update") is None
 
 
+_QUOTA_PROVIDER_ERROR_LINES = (
+    "RESOURCE_EXHAUSTED (code 429)",
+    json.dumps({"type": "error", "message": "RESOURCE_EXHAUSTED (code 429)"}),
+    json.dumps({"type": "result", "error": "RESOURCE_EXHAUSTED (code 429)"}),
+)
+
+
+@pytest.mark.parametrize("line", _QUOTA_PROVIDER_ERROR_LINES)
+def test_provider_quota_errors_still_match_quota_detection(line: str) -> None:
+    text = provider_text(line)
+    assert isinstance(text, ProviderText)
+    assert provider_quota_line_matches(text)
+    assert is_provider_quota_output_line(line)
+    assert provider_quota_kill_evidence(text)
+    assert is_quota_kill_evidence(line)
+
+
 @pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
 def test_cores_agree_with_str_boundaries_on_provider_lines(line: str) -> None:
     text = provider_text(line)
@@ -161,6 +222,7 @@ def test_cores_agree_with_str_boundaries_on_provider_lines(line: str) -> None:
         *_TOOL_RESULT_LINES,
         _USER_ROLE_TOOL_RESULT_LINE,
         *_TOOL_CALL_LINES,
+        *_TOOL_CALL_QUOTA_ERROR_LINES,
         *_REASONING_LINES,
         *_NON_PROVIDER_LINES,
     ],
@@ -185,10 +247,17 @@ def test_non_json_detail_counts_as_kill_evidence(detail: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "line", [*_TOOL_RESULT_LINES, _USER_ROLE_TOOL_RESULT_LINE, *_NON_PROVIDER_LINES]
+    "line",
+    [
+        *_TOOL_RESULT_LINES,
+        _USER_ROLE_TOOL_RESULT_LINE,
+        *_TOOL_CALL_QUOTA_ERROR_LINES,
+        *_NON_PROVIDER_LINES,
+    ],
 )
 def test_json_non_provider_detail_is_not_kill_evidence(line: str) -> None:
-    assert provider_evidence_text(line) is None
+    text = provider_evidence_text(line)
+    assert text is None or not provider_quota_kill_evidence(text)
     assert not is_quota_kill_evidence(line)
 
 

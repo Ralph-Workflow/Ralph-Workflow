@@ -15,21 +15,16 @@ _PROVIDER_FAILURE_OUTPUT_MARKERS = (
     '"type": "error"',
 )
 
-_NON_PROVIDER_EVENT_TYPES = frozenset(
-    {
-        "reasoning",
-        "subagent",
-        "thinking",
-        "tool",
-        "tool_result",
-        "tool_use",
-        "user",
-    }
-)
-
 _TOOL_CALL_EVENT_TYPES = frozenset({"tool", "tool_use", "mcp_tool_call", "function_call"})
 _TOOL_RESULT_EVENT_TYPES = frozenset({"tool_result"})
 _REASONING_EVENT_TYPES = frozenset({"reasoning", "thinking"})
+
+_NON_PROVIDER_EVENT_KINDS = frozenset(
+    _TOOL_CALL_EVENT_TYPES
+    | _TOOL_RESULT_EVENT_TYPES
+    | _REASONING_EVENT_TYPES
+    | {"subagent", "user"}
+)
 
 
 class ContentChannel(StrEnum):
@@ -53,16 +48,16 @@ def _parse_json_event(line: str) -> dict[str, object] | None:
 
 
 def _is_provider_error_event(event: dict[str, object]) -> bool:
-    event_type = event.get("type")
-    kind = event_type.casefold() if isinstance(event_type, str) else ""
-    if kind in _NON_PROVIDER_EVENT_TYPES:
+    if _event_kind(event) in _NON_PROVIDER_EVENT_KINDS:
         return False
-    if kind.startswith("item."):
+    event_type = event.get("type")
+    declared = event_type.casefold() if isinstance(event_type, str) else ""
+    if declared == "error":
+        return True
+    if declared.startswith("item."):
         item = event.get("item")
         item_type = cast("dict[str, object]", item).get("type") if isinstance(item, dict) else None
         return isinstance(item_type, str) and item_type.casefold() == "error"
-    if kind == "error":
-        return True
     return event.get("error") not in (None, "", {}, [])
 
 
@@ -131,9 +126,11 @@ def provider_text(line: str) -> ProviderText | None:
 
 def provider_evidence_text(detail: str) -> ProviderText | None:
     event = _parse_json_event(detail)
-    if event is None or _is_provider_error_event(event):
+    if event is None:
         return ProviderText(text=detail)
-    return None
+    if _event_kind(event) in _NON_PROVIDER_EVENT_KINDS:
+        return None
+    return ProviderText(text=detail)
 
 
 __all__ = [

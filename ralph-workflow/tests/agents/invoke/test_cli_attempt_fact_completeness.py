@@ -257,9 +257,7 @@ def _populated_fields(facts: AttemptFacts) -> set[str]:
 
 
 def _param_id(parser_key: str) -> str:
-    if parser_key == "agy":
-        return "antigravity"
-    return parser_key
+    return "antigravity" if parser_key == "agy" else parser_key
 
 
 @pytest.mark.parametrize(

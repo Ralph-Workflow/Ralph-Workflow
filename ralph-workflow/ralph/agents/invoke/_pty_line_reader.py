@@ -91,6 +91,7 @@ from ralph.agents.invoke._session import (
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
+from ralph.agents.parsers.content_channel import provider_evidence_text
 from ralph.config.enums import AgentTransport
 from ralph.display.raw_overflow import (
     RawOverflowLog,
@@ -119,11 +120,14 @@ from ralph.process.manager import (
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
 from ralph.process.teardown import teardown_subtree
 from ralph.recovery.attempt_facts import TerminationIssuer
-from ralph.recovery.failure_classifier import _is_subscription_limit_message
 from ralph.runtime_events import current_runtime_event
 
 from ._monitor_factory import _make_process_monitor
-from ._quota_detection import is_provider_quota_output_line, is_quota_kill_evidence
+from ._quota_detection import (
+    is_provider_quota_output_line,
+    is_quota_kill_evidence,
+    provider_quota_stderr_line_matches,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1217,7 +1221,8 @@ class PtyLineReader:
             return
         cli_log_path, start_offset = self._agy_cli_log
         tail = agy_fresh_cli_log_tail(cli_log_path, start_offset)
-        if _is_subscription_limit_message([tail]):
+        text = provider_evidence_text(tail)
+        if text is not None and provider_quota_stderr_line_matches(text):
             self._terminate_for_quota(tail)
 
     def _raise_if_quota_exhausted(self) -> None:

@@ -13,6 +13,7 @@ from ralph.agents.invoke import (
     is_provider_quota_output_line,
     raise_if_quota_exhausted,
 )
+from ralph.agents.invoke._quota_detection import is_quota_kill_evidence
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -153,3 +154,103 @@ def test_non_json_stderr_quota_text_still_terminates_the_session(tmp_path: Path)
 
     with pytest.raises(QuotaExhaustedError):
         list(reader.read_lines())
+
+
+_TOOL_QUOTA_ERROR_LINES = (
+    json.dumps({"type": "function_call", "name": "bash", "error": "RESOURCE_EXHAUSTED (code 429)"}),
+    json.dumps(
+        {
+            "type": "mcp_tool_call",
+            "tool": "read_multiple_files",
+            "error": "RESOURCE_EXHAUSTED (code 429)",
+        }
+    ),
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "function_call",
+                "name": "bash",
+                "error": "RESOURCE_EXHAUSTED (code 429)",
+            },
+        }
+    ),
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "mcp_tool_call",
+                "tool": "read_multiple_files",
+                "error": "RESOURCE_EXHAUSTED (code 429)",
+            },
+        }
+    ),
+)
+
+_PROVIDER_SUBSCRIPTION_STDERR_LINES = (
+    "RESOURCE_EXHAUSTED (code 429)",
+    "You've hit your session limit",
+    "RetriableError: [resource_exhausted] Error; quota or rate limit is exhausted",
+)
+
+
+@pytest.mark.parametrize("line", _TOOL_QUOTA_ERROR_LINES)
+def test_tool_call_quota_error_line_is_never_kill_evidence(line: str) -> None:
+    assert not is_quota_kill_evidence(line)
+
+
+@pytest.mark.parametrize("line", _TOOL_QUOTA_ERROR_LINES)
+@pytest.mark.parametrize("include_output", [True, False])
+def test_stderr_tool_call_quota_text_never_raises(line: str, include_output: bool) -> None:
+    raise_if_quota_exhausted("codex", line, None, include_output=include_output)
+
+
+@pytest.mark.parametrize("line", _TOOL_QUOTA_ERROR_LINES)
+@pytest.mark.parametrize("include_output", [True, False])
+def test_parsed_output_tool_call_quota_text_never_raises(line: str, include_output: bool) -> None:
+    raise_if_quota_exhausted("codex", "", [line], include_output=include_output)
+
+
+@pytest.mark.parametrize("line", _PROVIDER_SUBSCRIPTION_STDERR_LINES)
+def test_provider_subscription_stderr_still_raises(line: str) -> None:
+    with pytest.raises(QuotaExhaustedError):
+        raise_if_quota_exhausted("codex", line, None, include_output=False)
+
+
+_MALFORMED_PROVIDER_STDERR_LINES = (
+    '{"type": "error_message", "message": "quota exceeded: resource exhausted"}',
+    '{"error": "RESOURCE_EXHAUSTED (code 429)',
+    '["RESOURCE_EXHAUSTED (code 429)"]',
+)
+
+
+@pytest.mark.parametrize("line", _MALFORMED_PROVIDER_STDERR_LINES)
+def test_malformed_provider_stderr_still_raises(line: str) -> None:
+    with pytest.raises(QuotaExhaustedError):
+        raise_if_quota_exhausted("codex", line, None, include_output=False)
+
+
+def test_include_output_gates_bare_phrase_but_not_explicit_provider_failure() -> None:
+    raise_if_quota_exhausted("codex", "", ["quota exceeded in agent echo"], include_output=False)
+    with pytest.raises(QuotaExhaustedError):
+        raise_if_quota_exhausted("codex", "", ["quota exceeded in agent echo"], include_output=True)
+    with pytest.raises(QuotaExhaustedError):
+        raise_if_quota_exhausted(
+            "codex",
+            "",
+            ["RetriableError: [resource_exhausted] Error; quota or rate limit is exhausted"],
+            include_output=False,
+        )
+
+
+def test_tool_call_line_on_stderr_never_terminates_the_session(tmp_path: Path) -> None:
+    handle = _Handle(
+        _FiniteStdout(()),
+        stderr=iter(line + "\n" for line in _TOOL_QUOTA_ERROR_LINES),
+    )
+    reader = _reader(tmp_path, handle)
+
+    emitted = list(reader.read_lines())
+
+    assert emitted == []
+    assert handle.terminate_calls == []

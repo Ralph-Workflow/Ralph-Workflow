@@ -81,6 +81,7 @@ from ralph.agents.invoke.opencode_subagent_sessions import (
     default_opencode_db_path,
 )
 from ralph.agents.invoke.termination_recorder import return_code_may_be_a_signal
+from ralph.agents.parsers.content_channel import provider_evidence_text
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.checked_accessors import optional_float
 from ralph.config.agent_config import AgentConfig
@@ -115,7 +116,6 @@ from ralph.process.manager import (
 )
 from ralph.process.teardown import teardown_subtree
 from ralph.recovery.attempt_facts import TerminationIssuer
-from ralph.recovery.failure_classifier import _is_subscription_limit_message
 from ralph.runtime_events import current_runtime_event
 from ralph.timeout_defaults import (
     BROKEN_AGENT_EXIT_SETTLE_SECONDS,
@@ -123,7 +123,11 @@ from ralph.timeout_defaults import (
 )
 
 from ._monitor_factory import _make_process_monitor
-from ._quota_detection import is_provider_quota_output_line, is_quota_kill_evidence
+from ._quota_detection import (
+    is_provider_quota_output_line,
+    is_quota_kill_evidence,
+    provider_quota_stderr_line_matches,
+)
 
 _CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
@@ -983,7 +987,8 @@ class ProcessLineReader:
             return
         cli_log_path, start_offset = self._agy_cli_log
         tail = agy_fresh_cli_log_tail(cli_log_path, start_offset)
-        if _is_subscription_limit_message([tail]):
+        text = provider_evidence_text(tail)
+        if text is not None and provider_quota_stderr_line_matches(text):
             self._terminate_for_quota(tail)
 
     def _raise_if_quota_exhausted(self, watchdog: IdleWatchdog | None = None) -> None:
