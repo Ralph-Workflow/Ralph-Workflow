@@ -746,15 +746,19 @@ def _iter_references(text: str, relative: str) -> Iterator[_CompanionReference]:
 def _code_reference(
     text: str, match: re.Match[str], raw: str, relative: str
 ) -> _CompanionReference | None:
+    directed = _is_directed_code_span(text, match)
     candidate = _code_candidate(raw)
     if candidate is None:
-        return None
+        if not directed:
+            return None
+        candidate = unquote(raw.strip())
+        if not candidate:
+            return None
     if _is_external_reference(candidate):
         return None
     directory = candidate.endswith("/")
     file_shaped = _is_file_reference(candidate)
     resolved, escapes = _resolve_companion(relative, candidate)
-    directed = _is_directed_code_span(text, match)
     escaping = candidate.startswith("../") and escapes and directory
     if not (directed or file_shaped or escaping):
         return None

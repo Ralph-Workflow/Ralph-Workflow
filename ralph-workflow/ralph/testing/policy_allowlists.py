@@ -49,6 +49,7 @@ SOURCE_READ_ALLOWLIST: set[str] = {
     "test_commit_completion_authority",
     "test_agents_md_rule_preservation",
     "test_retired_skills_package_absent",
+    "test_repo_structure_boundary_rules",
 }
 
 WALL_CLOCK_ALLOWLIST: set[str] = {

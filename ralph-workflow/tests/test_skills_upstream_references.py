@@ -32,6 +32,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_an_escaping_link_destination_is_refused": (
         "the escaping link moved out of the permitted test"
     ),
+    "test_a_directed_code_span_with_a_literal_space_is_refused_when_absent": (
+        "a directed code span with a literal space names a companion file, so the "
+        "moved module refuses it when the archive does not carry it"
+    ),
 }
 
 _NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
@@ -841,21 +845,23 @@ def test_a_code_span_with_a_percent_encoded_space_that_is_carried_is_accepted(
     )
 
 
-def test_a_code_span_with_a_literal_space_stays_a_snippet_and_is_permitted(
+def test_a_directed_code_span_with_a_literal_space_is_refused_when_absent(
     sandbox: Path,
 ) -> None:
-    snippet = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    snippet["systematic-debugging"] = {
+    missing = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    missing["systematic-debugging"] = {
         "SKILL.md": b"# Systematic debugging\n",
         "docs/guide.md": b"# Guide\n\nSee `missing file.md`.\n",
     }
-    client, _calls = _client_for("v-test-1", snippet)
+    client, _calls = _client_for("v-test-1", missing)
 
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
-    assert outcome.status == "updated"
+    assert "systematic-debugging" in outcome.preserved
+    assert "test-driven-development" in outcome.installed
+    assert any("docs/missing file.md" in message for message in outcome.messages)
     root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
 
 
 def test_a_code_span_that_names_a_reader_project_path_is_permitted(sandbox: Path) -> None:

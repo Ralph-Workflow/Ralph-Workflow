@@ -304,7 +304,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 self._gate.set()
                 self.stdout = self._stdout_iter()
                 self.stderr = self._stderr()
-                self.returncode: int | None = 0
+                self.returncode: int | None = None
                 self.terminated = False
 
             def _stdout_iter(self) -> Iterator[str]:
@@ -346,7 +346,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
 
             def wait(self, timeout: float | None = None) -> int:
                 del timeout
-                return self.returncode
+                return self.returncode if self.returncode is not None else 0
 
             def terminate(self, **_kwargs: object) -> None:
                 self.terminated = True

@@ -47,27 +47,28 @@ RETIRED_COMMENT_BAN_STATEMENT: str = (
 )
 
 RALPH_TEST_CHANGE_REASONS = {
-    "test_kernels_declare_exactly_the_fourteen_agent_rules": (
-        "the policy-v6 product requirement restores the premise-check agent rule, so "
-        "the kernel declares fourteen numbered agent rules"
+    "test_kernels_declare_exactly_the_thirteen_agent_rules": (
+        "the shipped skills teach the premise-check technique, so the "
+        "premise-check agent rule is retired and the kernel declares "
+        "thirteen numbered agent rules"
     ),
     "test_kernels_number_the_enforcer_ladder_rows_to_match_the_contract": (
-        "the policy-v6 product requirement restores the premise-check agent rule, so "
-        "the enforcer ladder carries one numbered row per shipped rule and the row "
-        "numbers below the restored rule move down one number"
+        "the premise-check agent rule is retired, so the enforcer ladder "
+        "carries one numbered row per shipped rule and the rows below the "
+        "retired rule move up one number"
     ),
     "test_root_kernel_guard_inventory_covers_every_agent_rule": (
-        "the policy-v6 product requirement restores the premise-check agent rule, so the "
-        "root guard inventory covers the fourteen shipped agent rules"
+        "the premise-check agent rule is retired, so the root guard "
+        "inventory covers the thirteen shipped agent rules"
     ),
     "test_kernel_root_and_starter_agent_rules_carry_the_same_titles_and_evidence_tags": (
-        "the policy-v6 product requirement restores the premise-check agent rule, so both "
-        "kernels carry the same fourteen rule titles with the same evidence tags"
+        "the premise-check agent rule is retired, so both kernels carry "
+        "the same thirteen rule titles with the same evidence tags"
     ),
     "test_every_advisory_enforcer_status_names_its_review_trigger": (
-        "the policy-v6 product requirement restores the premise-check agent rule, so the "
-        "advisory status of every shipped rule carries the review trigger the "
-        "kernel contract requires"
+        "the premise-check agent rule is retired, so the advisory status "
+        "of every shipped rule carries the review trigger the kernel "
+        "contract requires"
     ),
     "test_kernel_rule_four_enforcement_points_at_the_spec_derived_expected_value": (
         "the rule 4 enforcement cells name the spec-derived expected value instead "
@@ -95,16 +96,16 @@ RALPH_TEST_CHANGE_REASONS = {
     "test_the_shared_and_project_specific_agent_rule_titles_cover_every_agent_rule": (
         "the shared and the project-specific agent-rule sets are named explicitly, so "
         "the parity check cannot silently skip a rule when the rule list changes; the "
-        "restored premise-check rule joins the project-specific set"
+        "retired premise-check rule leaves the project-specific set"
     ),
     "test_smallest_change_requires_deleting_the_replaced_api_in_both_kernels": (
-        "the policy-v6 product requirement restores the premise-check agent rule, so "
-        "the smallest-change rule is rule 8 and the check names its new number"
+        "the premise-check agent rule is retired, so the smallest-change "
+        "rule is rule 7 and the check names its new number"
     ),
 }
 
 
-def test_kernels_declare_exactly_the_fourteen_agent_rules() -> None:
+def test_kernels_declare_exactly_the_thirteen_agent_rules() -> None:
     for source_name, content in (("root", root_kernel()), ("starter", kernel())):
         statements = agent_rule_statements(content)
         assert len(statements) == len(AGENT_RULES), (
@@ -289,12 +290,12 @@ def test_smallest_change_requires_deleting_the_replaced_api_in_both_kernels() ->
     for source_name, content in (("root", root_kernel()), ("starter", kernel())):
         body = agent_rule_body(content, SMALLEST_CHANGE_RULE_TITLE)
         assert SMALLEST_CHANGE_OBLIGATION in body, (
-            f"{source_name} kernel rule 8 does not require deleting the replaced API "
+            f"{source_name} kernel rule 7 does not require deleting the replaced API "
             f"in the same change; expected: {SMALLEST_CHANGE_OBLIGATION!r}; observed: "
             f"{body!r}"
         )
         assert INVERTED_SMALLEST_CHANGE_OBLIGATION not in body, (
-            f"{source_name} kernel rule 8 inverts the requirement: it deletes the "
+            f"{source_name} kernel rule 7 inverts the requirement: it deletes the "
             "replacement instead of the replaced API; observed: "
             f"{body!r}"
         )

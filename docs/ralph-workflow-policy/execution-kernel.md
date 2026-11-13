@@ -100,9 +100,9 @@ enforcement status resolved in the rule-to-enforcer ladder below. The
 evidence tag and the enforcement status are separate properties: the
 tag names the kind of source behind the rule, the enforcement status
 names who decides it. The `strong` and `moderate` tags name a primary
-engineering source of the kind this pack already cites, or secondary
-data; a rule tagged `anecdotal` or `none` rests on judgment or on
-practitioner experience rather than on a recorded source. A rule whose
+or secondary engineering source; a rule tagged `anecdotal` or `none`
+rests on judgment or practitioner experience rather than a recorded
+source. A rule whose
 enforcer does not exist yet stays advisory with a review trigger and is
 never marked `deterministic`. A rule a deterministic gate decides
 carries `deterministic` whatever its evidence tag: the absolute comment
@@ -132,13 +132,11 @@ those.
    and the environment-branch ban, and does not restate that rule. When
    a test looks wrong, the agent reports it and stops instead of
    editing the expectation. (evidence: strong)
-4. **Regression tests from the spec.** A bug-fix test is written from
-   the issue or the spec, not from the implementation: it states the
-   behaviour the spec requires, and its expected value is written down
-   from the spec rather than computed by calling the code under test.
-   When the behaviour belongs to a third-party library, that library's
-   own documentation is the spec: check it before relying on the
-   behaviour. (evidence: moderate)
+4. **Regression tests from the spec.** A bug-fix test's expected value
+   is written down from the spec rather than computed by calling the
+   code under test. When the behaviour belongs to a third-party library,
+   that library's own documentation is the spec: check it before relying
+   on the behaviour. (evidence: moderate)
 5. **Independent review.** Review belongs to the analysis phases
    (`planning_analysis`, `development_analysis`), which are already
    separate cold invocations. The reviewer judges the work against the
@@ -155,39 +153,33 @@ those.
    unverified, so the next cold agent can see it. The handoff carries
    prose and adds no new mechanically validated field: a field nobody
    validates is a promise, not a contract. (evidence: moderate)
-7. **Premise check.** The runtime owns the retry signal: when the
-   runtime retries the same failure, the retry formatter
-   (`ralph/recovery/retry_prompt.py`) adds the instruction to "test the
-   premise shared by the failed fixes before another patch". The agent
-   acts on the signal it receives; it does not count retries and it
-   does not remember earlier attempts. (evidence: anecdotal)
-8. **Smallest change.** Subtract before adding: prefer deleting,
+7. **Smallest change.** Subtract before adding: prefer deleting,
    narrowing, or simplifying over introducing new machinery. A change
    that replaces an API migrates its callers and deletes the replaced
    API in the same change; a legacy path that survives its replacement
    is dead weight, not a migration. (evidence: anecdotal)
-9. **Context hygiene.** Bulk reads, broad searches, and log analysis
+8. **Context hygiene.** Bulk reads, broad searches, and log analysis
    are delegated to sub-agents, and what comes back is the conclusion
    — the answer, the citation, the count — not the raw payload. Native
    sub-agent tools are never disabled: a missing orchestration facility
    is setup to repair, not a reason to work in the parent session.
    (evidence: strong)
-10. **Plan scaling.** A trivial, single-file change goes straight to
-    implementation. Multi-file or ambiguous work requires a written
-    plan with acceptance criteria before the first edit, so that "done"
-    is a stated criterion rather than a judgement call at the end.
-    (evidence: none)
-11. **Commit-level hygiene.** One logical change per commit, and the
+9. **Plan scaling.** A trivial, single-file change goes straight to
+   implementation. Multi-file or ambiguous work requires a written
+   plan with acceptance criteria before the first edit, so that "done"
+   is a stated criterion rather than a judgement call at the end.
+   (evidence: none)
+10. **Commit-level hygiene.** One logical change per commit, and the
      commit message lists the verification evidence and anything left
      unverified. Commit-level rules stop at the commit: this kernel
      states no pull-request rules. (evidence: none)
-12. **Human checkpoints.** An agent asks for confirmation only for an
+11. **Human checkpoints.** An agent asks for confirmation only for an
      irreversible or outward-facing action — publishing, deleting,
      sending, spending, granting access, or anything a human cannot
      undo. For every other blocked step the agent records the question
      and proceeds with the safest reversible assumption, so a missing
      answer does not stall the run. (evidence: none)
-13. **Rule-to-enforcer ladder.** A rule that keeps being broken is
+12. **Rule-to-enforcer ladder.** A rule that keeps being broken is
      fixed at the highest level that can hold it: architecture first,
      then types and lint, then tests, and documentation last. The
      enforcer is recorded in the guard inventory so the rule survives a
@@ -195,7 +187,7 @@ those.
      in the rule-to-enforcer ladder instead. A rule that has become
      impossible to break is deleted instead of being left as prose.
      (evidence: none)
-14. **Non-inferable instruction surface.** The managed `AGENTS.md`
+13. **Non-inferable instruction surface.** The managed `AGENTS.md`
      block and the project `AGENTS.md` carry only content an agent
      cannot infer from the repository: the verify commands, the
      run-one-test command, warnings about misleading code, constraints
@@ -212,26 +204,21 @@ slice is not that role's obligation.
 
 | Role | Phase | Rule slice | What the role hands on |
 |---|---|---|---|
-| Planner | `planning` | Plan scaling (10), acceptance criteria, Check first (1) | a plan whose items name the check that decides each one |
-| Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Regression tests from the spec (4), Handoff by artifact (6), Premise check (7), Smallest change (8), Context hygiene (9), Human checkpoints (12), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
+| Planner | `planning` | Plan scaling (9), acceptance criteria, Check first (1) | a plan whose items name the check that decides each one |
+| Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Regression tests from the spec (4), Handoff by artifact (6), Smallest change (7), Context hygiene (8), Human checkpoints (11), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
 | Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a choice artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
-| Commit agent | `development_commit` | Commit-level hygiene (11) | one commit per logical change, its message listing the verification evidence and the unverified items |
-| Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (13), Non-inferable instruction surface (14) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
+| Commit agent | `development_commit` | Commit-level hygiene (10) | one commit per logical change, its message listing the verification evidence and the unverified items |
+| Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (12), Non-inferable instruction surface (13) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
 
 ## Rule-to-enforcer ladder
 
-Each rule is enforced at one level. The order is fixed: architecture
-first, then types and lint, then tests, and documentation last. The
-level names where a fix for a repeated mistake belongs, not where the
-rule is read.
+Each rule is enforced at one level; the level names where a fix for a
+repeated mistake belongs, not where the rule is read.
 
 The enforcer is the guard that decides the rule. The guard inventory
 below records the same choice in its `Enforcement` column, so the
-inventory resolves one `Enforcement` id per rule. A rule whose
-enforcer does not exist yet stays advisory with a review trigger; it is
-never marked `deterministic` on the strength of an enforcer that is
-planned but not wired. The status column below repeats the inventory
-cell verbatim.
+inventory resolves one `Enforcement` id per rule; the status column
+below repeats the inventory cell verbatim.
 
 | Rule | Enforcement level | Enforcer | Enforcement status |
 |---|---|---|---|
@@ -241,14 +228,13 @@ cell verbatim.
 | 4 Regression tests from the spec | tests | the regression test inside the test gate | advisory: the gate proves the test passes now, not that its expected value came from the spec; review: when a bug-fix change ships with an expected value copied from the implementation |
 | 5 Independent review | architecture | the analysis phase, with the deterministic gate deciding the outcome | advisory: an analysis verdict is a review, not a gate; review: on every analysis phase that returns a verdict |
 | 6 Handoff by artifact | docs-last | the artifact contract | advisory: the body is prose and only the frontmatter is validated; review: when the artifact contract changes |
-| 7 Premise check | architecture | the retry formatter (`ralph/recovery/retry_prompt.py`) | advisory: no gate decides whether a cold agent received the premise instruction; review: when a retry reaches an agent without the premise instruction |
-| 8 Smallest change | architecture | the architecture review | advisory: no gate measures a diff against intent; review: when a change introduces machinery that replaces existing code |
-| 9 Context hygiene | docs-last | the shared sub-agent guidance | advisory: context volume is not observable from outside the session; review: when a session's context crowds out the work unit |
-| 10 Plan scaling | docs-last | the plan artifact | advisory: plan presence is judged in the planning phase, not gated; review: when a multi-file change reaches development without a written plan |
-| 11 Commit-level hygiene | docs-last | the commit phase | advisory: commit contents are not gated; review: at every commit boundary |
-| 12 Human checkpoints | architecture | the runtime's confirmation boundary | advisory: the runtime cannot classify every irreversible action; review: when an agent blocks on a reversible step |
-| 13 Rule-to-enforcer ladder | docs-last | the guard-inventory review | advisory: the inventory review is a recurring human review; review: at the guard-inventory review cadence |
-| 14 Non-inferable instruction surface | docs-last | the guard-inventory review | advisory: only line-count and path-existence checks run, and neither detects an inferable line; review: on every policy remediation pass that edits AGENTS.md content, and whenever a managed-block or AGENTS.md line-budget warning fires |
+| 7 Smallest change | architecture | the architecture review | advisory: no gate measures a diff against intent; review: when a change introduces machinery that replaces existing code |
+| 8 Context hygiene | docs-last | the shared sub-agent guidance | advisory: context volume is not observable from outside the session; review: when a session's context crowds out the work unit |
+| 9 Plan scaling | docs-last | the plan artifact | advisory: plan presence is judged in the planning phase, not gated; review: when a multi-file change reaches development without a written plan |
+| 10 Commit-level hygiene | docs-last | the commit phase | advisory: commit contents are not gated; review: at every commit boundary |
+| 11 Human checkpoints | architecture | the runtime's confirmation boundary | advisory: the runtime cannot classify every irreversible action; review: when an agent blocks on a reversible step |
+| 12 Rule-to-enforcer ladder | docs-last | the guard-inventory review | advisory: the inventory review is a recurring human review; review: at the guard-inventory review cadence |
+| 13 Non-inferable instruction surface | docs-last | the guard-inventory review | advisory: only line-count and path-existence checks run, and neither detects an inferable line; review: on every policy remediation pass that edits AGENTS.md content, and whenever a managed-block or AGENTS.md line-budget warning fires |
 
 ## Claim-scope rule
 
@@ -296,7 +282,6 @@ names who decides it.
 | Regression tests from the spec | Test owner | the bug-fix test states the spec's expected value instead of the implementation's output | the test's expected value matches the value the code under test returns | the expected value written in the bug-fix test | advisory: the gate proves the test passes now, not that its expected value came from the spec; review: when a bug-fix change ships with an expected value copied from the implementation | when the spec-derived expected value is recorded and checked mechanically |
 | Independent review | Analysis owner | the review reproduces each finding it treats as actionable | the choice body cites a reproduced command or a re-read location | the reproduced finding cited in the choice body | advisory: an analysis verdict is a review, not a gate; review: on every analysis phase that returns a verdict | when the analysis phase's findings are checked mechanically |
 | Handoff by artifact | Artifact owner | the result body carries the command, the exit code, the output, and the unverified items | the result body contains a verification command and an unverified list | the verification command and the unverified list in the result body | advisory: the body is prose and only the frontmatter is validated; review: when the artifact contract changes | when the artifact body gains a validated field |
-| Premise check | Runtime owner | the retry formatter adds the premise instruction when the runtime retries the same failure | the retry formatter output carries the premise instruction on a repeated failure | the premise instruction in the retry formatter output | advisory: no gate decides whether a cold agent received the premise instruction; review: when a retry reaches an agent without the premise instruction | when every retry signal a cold agent can receive carries the premise instruction |
 | Smallest change | Architecture owner | the change deletes or narrows before it adds, and the replaced API leaves with its callers | the change diff still carries the replaced API after its callers moved | the replaced API still present in the change diff | advisory: no gate measures a diff against intent; review: when a change introduces machinery that replaces existing code | when an audit detects a replaced API that survives its callers |
 | Context hygiene | Session owner | the session keeps conclusions instead of raw payloads | the session context carries a bulk payload instead of a conclusion | the conclusion returned by the delegated read | advisory: context volume is not observable from outside the session; review: when a session's context crowds out the work unit | when the runtime measures session context volume |
 | Plan scaling | Planning owner | multi-file or ambiguous work starts from a written plan with acceptance criteria | the plan artifact names the acceptance criteria for the work item | the acceptance criteria recorded in the plan artifact | advisory: plan presence is judged in the planning phase, not gated; review: when a multi-file change reaches development without a written plan | when the runtime rejects a development phase without a plan |
@@ -389,7 +374,7 @@ Review this kernel in the same workflow as any of:
   http: https://code.claude.com/docs/en/best-practices
   review date: 2026-11-09
   supports: Check first (1), Real-artifact evidence (2) and Context
-  hygiene (9) — the guidance hands the agent a runnable pass/fail
+  hygiene (8) — the guidance hands the agent a runnable pass/fail
   check, asks for the evidence behind a completion claim, and delegates
   bulk reads to sub-agents that return conclusions rather than raw
   payloads. A primary engineering source, so the rules it supports stay
@@ -400,7 +385,7 @@ Review this kernel in the same workflow as any of:
   http: https://arxiv.org/pdf/2602.11988
   review date: 2026-11-09
   supports: Independent review (5), Handoff by artifact (6) and
-  Non-inferable instruction surface (14) — a written agent instruction
+  Non-inferable instruction surface (13) — a written agent instruction
   helps the next reader only when it states what was actually checked
   and carries content the reader cannot infer, so the review is judged
   against the spec, the handoff carries the record behind the claim, and
@@ -457,19 +442,19 @@ Review this kernel in the same workflow as any of:
   title: "pstack"
   http: https://github.com/cursor/plugins/tree/main/pstack
   review date: 2026-11-09
-  supports: Premise check (7), Smallest change (8) and
-  Rule-to-enforcer ladder (13) — the practitioner notes propose
-  attacking the premise before another attempt, subtracting before
-  adding, and a rule-to-enforcer table that fixes a repeated mistake at
-  the highest level that can hold it. Practitioner experience is not a
-  measurement, so the rules it supports stay advisory.
+  supports: Smallest change (7) and
+  Rule-to-enforcer ladder (12) — the practitioner notes propose
+  subtracting before adding, and a rule-to-enforcer table that fixes a
+  repeated mistake at the highest level that can hold it. Practitioner
+  experience is not a measurement, so the rules it supports stay
+  advisory.
 
 * publisher: Ralph Workflow project
   title: "Project policy: outcome-oriented execution kernel"
   http: https://github.com/Ralph-Workflow/Ralph-Workflow
   review date: 2026-11-09
-  supports: Plan scaling (10), Commit-level hygiene (11) and Human
-  checkpoints (12) — this project has a planning phase, a commit phase,
+  supports: Plan scaling (9), Commit-level hygiene (10) and Human
+  checkpoints (11) — this project has a planning phase, a commit phase,
   and human checkpoints for irreversible actions; the thresholds that
   separate a trivial change from a planned one, and an irreversible
   action from a reversible one, are project judgment rather than a

@@ -23,15 +23,14 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
 RALPH_TEST_CHANGE_REASONS = {
-    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the policy-v6 product requirement restores the advisory runtime premise check, so the execution-kernel starter ships both advisory guard rows with review triggers",
-    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the policy-v6 product requirement restores the advisory runtime premise check, so the starter schema check accepts both advisory guard rows",
-    "test_fresh_cli_init_seeds_v6_policy_pack": "the policy-v6 product requirement restores the advisory runtime premise check, so fresh CLI initialization preserves its review trigger",
-    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the policy-v6 product requirement restores the advisory runtime premise check, so fresh filesystem initialization preserves its review trigger",
+    "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the premise-check guard row is retired from the execution-kernel starter, so the starter ships its one advisory guard row with a review trigger",
+    "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the premise-check guard row is retired from the execution-kernel starter, so the starter schema check accepts the remaining advisory guard row",
+    "test_fresh_cli_init_seeds_v6_policy_pack": "the premise-check guard row is retired from the execution-kernel starter, so fresh CLI initialization preserves the remaining review trigger",
+    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the premise-check guard row is retired from the execution-kernel starter, so fresh filesystem initialization preserves the remaining review trigger",
 }
 
 ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
     {
-        "Premise check",
         "Non-inferable instruction surface",
     }
 )

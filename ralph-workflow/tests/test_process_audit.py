@@ -11,6 +11,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "test_retired_skills_package_absent module, so its obsolete process-audit "
         "allowlist entry was removed"
     ),
+    "test_no_direct_subprocess_calls_in_tests": (
+        "test_repo_structure_boundary_rules.py carries os.killpg fixture strings "
+        "for the repo-structure boundary-rule audit, so it joins the allowlist "
+        "without a subprocess_e2e marker"
+    ),
 }
 
 RALPH_ROOT = Path(__file__).parent.parent / "ralph"
@@ -177,8 +182,6 @@ TESTS_ALLOWLIST: set[str] = {
     "test_explore_concurrency.py",
     "test_explore_resource_lifecycle.py",
     "test_commit_review_real_diff_proofs.py",
-    # Boundary-rule fixtures feed source strings such as "os.killpg(pgid, signal.SIGKILL)"
-    # to collect_boundary_violations; the calls are data, never executed.
     "test_repo_structure_boundary_rules.py",
 }
 

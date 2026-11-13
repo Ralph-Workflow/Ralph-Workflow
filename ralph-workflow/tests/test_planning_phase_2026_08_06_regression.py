@@ -152,17 +152,18 @@ def test_2026_08_06_planning_run_phases_as_failure() -> None:
     assert "absent" in format_phase_verdict(signals).lower()
 
 
+class _SmokePipelineDepsStub:
+    recovery_clock = None
+    policy_bundle = None
+    ledger = None
+    unavailability_store = None
+
+
 def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from collections import deque
-
-    class _StubSmokePipelineDeps:
-        recovery_clock = None
-        policy_bundle = None
-        ledger = None
-        unavailability_store = None
 
     params = SmokeRunParams(
         agent_name="agy/gemini-3.6-flash-low",
@@ -174,7 +175,7 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=_StubSmokePipelineDeps(),
+        pipeline_deps=_SmokePipelineDepsStub(),
     )
     run_id = "interactive-agy-smoke-test-model"
 

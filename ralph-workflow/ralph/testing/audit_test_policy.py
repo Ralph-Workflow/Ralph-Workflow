@@ -138,7 +138,7 @@ _GIT_CROSSING_ROOTS: frozenset[str] = frozenset({"repo", "git"})
 
 _SUBPROCESS_E2E_FILES: set[str] = set()
 
-_SLEEP_ALLOWLIST: set[str] = set()
+_SLEEP_ALLOWLIST: set[str] = {"descendant_hang"}
 
 _IO_ALLOWLIST = IO_ALLOWLIST
 

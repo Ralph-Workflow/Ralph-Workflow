@@ -99,8 +99,10 @@ def test_remediation_effect_opts_out_of_completion_evidence(
 
     def fake_execute_agent_effect(
         effect: InvokeAgentEffect,
-        *_args: object,
-        **_kwargs: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **_opts: object,
     ) -> object:
         observed.append(effect)
         return PipelineEvent.AGENT_SUCCESS

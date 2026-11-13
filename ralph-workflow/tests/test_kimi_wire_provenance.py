@@ -27,17 +27,10 @@ from ralph.pipeline.plumbing.smoke_evidence import (
 from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunParams, _run_smoke_agent
 from ralph.workspace.fs import FsWorkspace
 from tests._support.mock_agy import degraded_baseline_artifact_markdown
-from tests.test_evidence_provenance_lattice import _all_capabilities
+from tests.test_evidence_provenance_lattice import _all_capabilities, _SmokePipelineDepsStub
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
-
-
-class _StubSmokePipelineDeps:
-    recovery_clock = None
-    policy_bundle = None
-    ledger = None
-    unavailability_store = None
 
 
 @pytest.mark.timeout_seconds(5)
@@ -64,7 +57,7 @@ def test_kimi_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=_StubSmokePipelineDeps(),
+        pipeline_deps=_SmokePipelineDepsStub(),
     )
     run_id = "kimi-wire-dispatch-run"
 

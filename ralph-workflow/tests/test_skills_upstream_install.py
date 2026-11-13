@@ -143,8 +143,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_code_span_with_a_percent_encoded_space_that_is_carried_is_accepted": (
         "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
     ),
-    "test_a_code_span_with_a_literal_space_stays_a_snippet_and_is_permitted": (
-        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
+    "test_a_directed_code_span_with_a_literal_space_is_refused_when_absent": (
+        "the reference-completeness checks moved into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; the moved module refuses a directed code span with a literal space when the archive does not carry it"
+    ),
+    "test_a_directed_code_span_with_a_literal_space_that_is_carried_is_accepted": (
+        "the reference-completeness checks moved back into this module so tests/test_skills_upstream_references.py stays under the repository's 1000-line file limit; this module installs a directed code span with a literal space when the archive carries it"
     ),
     "test_a_code_span_that_names_a_reader_project_path_is_permitted": (
         "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior",
@@ -880,3 +883,23 @@ def test_an_unrecognized_suffix_reference_is_refused(sandbox: Path) -> None:
     )
     root = upstream.canonical_skills_root()
     assert not (root / "systematic-debugging" / "SKILL.md").exists()
+
+
+def test_a_directed_code_span_with_a_literal_space_that_is_carried_is_accepted(
+    sandbox: Path,
+) -> None:
+    carried = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    carried["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b"# Guide\n\nSee `missing file.md`.\n",
+        "docs/missing file.md": b"# Companion\n",
+    }
+    client, _calls = _client_for("v-test-1", carried)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    root = upstream.canonical_skills_root()
+    assert (root / "systematic-debugging" / "docs" / "missing file.md").read_bytes() == (
+        b"# Companion\n"
+    )
