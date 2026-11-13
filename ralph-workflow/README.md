@@ -81,7 +81,7 @@ In the git repository you want Ralph Workflow to work on:
 
 ```bash
 ralph --init          # user-global config, starter PROMPT.md, detected agents
-ralph --list-agents   # the agent CLIs Ralph Workflow can see
+ralph --list-agents   # the configured agents
 ralph --diagnose      # pre-flight checks, every line should be green
 ```
 
@@ -205,4 +205,3 @@ above endorses this project.
 - **Repository:** <https://github.com/Ralph-Workflow/Ralph-Workflow> — **PyPI:** <https://pypi.org/project/ralph-workflow/>
 - **Issue tracker:** <https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new>
 - **License:** [LICENSE](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/LICENSE) — **Code of conduct:** [CODE_OF_CONDUCT.md](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/CODE_OF_CONDUCT.md)
-- **Contributing:** [CONTRIBUTING.md](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/CONTRIBUTING.md) — every pull request must agree to the [Contributor License Agreement](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/CLA.md)

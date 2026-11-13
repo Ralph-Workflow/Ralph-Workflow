@@ -65,6 +65,24 @@ def _iter_py_files(root: Path) -> list[Path]:
     return result
 
 
+_TEARDOWN_WIRED_NAMES: frozenset[str] = frozenset(
+    {"teardown_subtree", "_teardown_subtree_if_pid_available"}
+)
+
+
+def _function_wires_teardown(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for node in ast.walk(func):
+        if isinstance(node, ast.Call):
+            name = _func_call_name(node)
+            if name is not None and name in _TEARDOWN_WIRED_NAMES:
+                return True
+        if isinstance(node, ast.Name) and node.id in _TEARDOWN_WIRED_NAMES:
+            return True
+        if isinstance(node, ast.Attribute) and node.attr in _TEARDOWN_WIRED_NAMES:
+            return True
+    return False
+
+
 _IDLE_WATCHDOG_MARKER: str = "IdleWatchdog("
 _DEFAULT_MONITOR_MARKER: str = "DefaultProcessMonitor("
 _INVOKE_ONLY_MARKERS: tuple[str, ...] = (
@@ -281,11 +299,7 @@ class _ModuleVisitor(ast.NodeVisitor):
             ]
             if not terminate_calls:
                 continue
-            has_teardown = any(
-                isinstance(node, ast.Call) and _func_call_name(node) == "teardown_subtree"
-                for node in ast.walk(func)
-            )
-            if not has_teardown:
+            if not _function_wires_teardown(func):
                 first_line = terminate_calls[0].lineno
                 self._add("teardown_subtree", first_line)
 
@@ -301,11 +315,7 @@ class _ModuleVisitor(ast.NodeVisitor):
             ]
             if not raise_nodes:
                 continue
-            has_teardown = any(
-                isinstance(node, ast.Call) and self._is_teardown_call(node)
-                for node in ast.walk(func)
-            )
-            if not has_teardown:
+            if not _function_wires_teardown(func):
                 first_line = raise_nodes[0].lineno
                 self._add("error_path_teardown", first_line)
 
@@ -322,10 +332,6 @@ class _ModuleVisitor(ast.NodeVisitor):
         if name is None:
             return False
         return name == "AgentInvocationError" or name.endswith(".AgentInvocationError")
-
-    def _is_teardown_call(self, node: ast.Call) -> bool:
-        name = _func_call_name(node)
-        return name in {"teardown_subtree", "_teardown_subtree_if_pid_available"}
 
     def _constructs_idle_watchdog(self) -> bool:
         tree = self._tree if self._tree is not None else ast.parse(self.source)

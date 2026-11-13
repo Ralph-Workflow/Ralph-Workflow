@@ -5,9 +5,9 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 from typing import TYPE_CHECKING
 
-import psutil
 import pytest
 
 from ralph.agents.completion_signals import CompletionSignals
@@ -21,7 +21,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
-from ralph.agents.timeout_clock import FakeClock
+from ralph.agents.timeout_clock import FakeClock, SystemClock
 from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.process.liveness import FakeLivenessProbe
 from ralph.process.manager import ManagedProcess, ProcessManager, SpawnOptions
@@ -62,7 +62,7 @@ def _spawn_exited_child_with_lingering_descendant(
     )
     try:
         try:
-            child.wait(timeout=10)
+            child.wait(timeout=10.0)
         except subprocess.TimeoutExpired:
             pytest.fail("child did not exit")
         grandchild_pid = int(pid_file.read_text().strip())
@@ -75,12 +75,17 @@ def _spawn_exited_child_with_lingering_descendant(
 
 
 def _assert_reaped(pid: int) -> None:
-    try:
-        psutil.Process(pid).wait(timeout=10)
-    except psutil.NoSuchProcess:
+    clock = SystemClock()
+    deadline = clock.monotonic() + 10.0
+    backoff = threading.Event()
+    while True:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, 0)
+            if clock.monotonic() >= deadline:
+                pytest.fail(f"descendant {pid} was not reaped")
+            clock.wait_for_event(backoff, 0.05)
+            continue
         return
-    except psutil.TimeoutExpired:
-        pytest.fail(f"descendant {pid} was not reaped")
 
 
 def _session_continuation_options(tmp_path: Path) -> CompletionCheckOptions:
@@ -142,7 +147,10 @@ class TestCheckProcessResultSupervisor:
             SpawnOptions(label="invoke:completion-supervisor"),
         )
         try:
-            child.wait(timeout=10)
+            try:
+                child.wait(timeout=10.0)
+            except subprocess.TimeoutExpired:
+                pytest.fail("child did not exit")
 
             with pytest.raises(AgentInvocationError) as caught:
                 check_process_result(child, "test-agent", [], None, termination_recorder=None)

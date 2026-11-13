@@ -9,7 +9,8 @@ same way: babysitting a session, re-explaining context, resolving conflicts,
 waiting in a review queue.
 
 Ralph Workflow is a free, open-source AI agent orchestrator and software
-factory for developers and teams who already have a coding agent: you
+factory — the operating system for autonomous coding — for developers and
+teams who already have a coding agent: you
 supply the specification and the checks you trust, and it returns
 integrated, checked software on one mainline.
 
@@ -34,8 +35,8 @@ preconfigured, and yours to tweak. See the
 [bundled defaults](ralph-workflow/docs/sphinx/configuration.md#bundled-defaults).
 
 It runs on your machine: local, free, AGPL-3.0-or-later, no account, no
-hosted service. Your specifications, configuration, and Git history stay
-yours.
+hosted service, and no metering from Ralph Workflow. Your specifications,
+configuration, and Git history stay yours.
 
 Run one agent by hand and you are the scheduler, reviewer, and merger. Run
 a plain agent loop and it repeats one prompt. Ralph Workflow runs a

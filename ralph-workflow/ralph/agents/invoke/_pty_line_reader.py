@@ -353,12 +353,11 @@ class PtyLineReader:
         return self._completion_exit_sent
 
     def _attempt_supervisor(self) -> AttemptSupervisor:
-        attributes = cast("dict[str, object]", self.__dict__)
-        candidate = attributes.get("_supervisor")
-        if not isinstance(candidate, AttemptSupervisor):
-            candidate = AttemptSupervisor(self._handle)
-            self._supervisor = candidate
-        return candidate
+        supervisor = cast("object", getattr(self, "_supervisor", None))
+        if not isinstance(supervisor, AttemptSupervisor):
+            supervisor = AttemptSupervisor(self._handle)
+            self._supervisor = supervisor
+        return supervisor
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
         thread = threading.Thread(target=target, daemon=True)

@@ -98,7 +98,7 @@ Optional adjudication by a model from elsewhere in the chain is not built. The c
 | `OperatorInterruptObserved` | — | `operator` | `operator_cancellation` |
 | `PostExitHangObserved` | `post_exit_watchdog` | `post_exit_watchdog` | — |
 
-`cleanup` is the supervisor's other operation: generic teardown of a tree whose end is already recorded, or unwinding after an exception. It takes a process issuer and a teardown function, optionally terminates the handle first (`terminate=True`), never writes the issuer log, never counts as an acting observation, and is never blocked by an earlier `act`. Completion-verdict reaps, the PTY terminal-completion reap and runner unwinding all go through `cleanup`.
+`cleanup` is the supervisor's other operation: generic teardown of a tree that already ended, or unwinding after an exception. It takes a process issuer and a teardown function, optionally terminates the handle first (`terminate=True`), never writes the issuer log, never counts as an acting observation, and is never blocked by an earlier `act`. Completion-verdict reaps, the PTY terminal-completion reap and runner unwinding all go through `cleanup`.
 
 **Attempt outcome kinds.** `AttemptOutcome` is a closed sum of six kinds, and each kind has fixed accounting effects.
 

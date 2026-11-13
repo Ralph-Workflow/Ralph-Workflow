@@ -59,10 +59,11 @@ input across phases — see [Configuration](configuration.md).
 
 Ralph Workflow discovers each agent CLI via `shutil.which(agent_binary)`.
 Detection runs during `ralph --init`, which enables detected agents in
-the configuration and points the default chains at a detected agent;
-chains you have customized are left untouched. A CLI you install after
-`ralph --init` is picked up by re-running `ralph --init`, which is
-idempotent and only enables newly detected agents.
+the configuration and — when the default chains are unchanged and their
+default agent is not installed — points those chains at a detected
+agent; customized chains are preserved. Re-running `ralph --init` is
+safe: it may enable newly detected agents, rewire eligible default
+chains, and ensure baseline capabilities.
 
 To view the configured agents before a run:
 
