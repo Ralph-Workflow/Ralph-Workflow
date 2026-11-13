@@ -4,7 +4,11 @@ from pathlib import Path
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline import attempt_stop_resolution
+from ralph.pipeline import (
+    attempt_stop_resolution,
+    reset_stop_resolution_presentation,
+    retained_round_is_new,
+)
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.key_unavailable import KeyUnavailable
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
@@ -108,3 +112,41 @@ def test_key_change_reopens_attempt_once(tmp_path: Path) -> None:
     second = attempt_stop_resolution("stop", _trigger(tmp_path, persisted, new_key, launches))
     assert isinstance(second, StopResolutionBlocked)
     assert launches == ["launched"]
+
+
+def test_retained_round_is_new_and_reset_presentation() -> None:
+    reset_stop_resolution_presentation()
+    try:
+        r1 = Path("/virtual/workspace_a")
+        r2 = Path("/virtual/workspace_b")
+
+        assert retained_round_is_new(r1, "sha-1") is True
+        assert retained_round_is_new(r1, "sha-1") is False
+        assert retained_round_is_new(r1, "sha-2") is True
+        assert retained_round_is_new(r1, "sha-2") is False
+
+        assert retained_round_is_new(r2, "sha-2") is True
+        assert retained_round_is_new(r2, "sha-2") is False
+
+        reset_stop_resolution_presentation()
+        assert retained_round_is_new(r1, "sha-2") is True
+    finally:
+        reset_stop_resolution_presentation()
+
+
+def test_retained_round_eviction_at_module_cap() -> None:
+    reset_stop_resolution_presentation()
+    try:
+        paths = [Path(f"/virtual/workspace_{i}") for i in range(256)]
+        for i, path in enumerate(paths):
+            assert retained_round_is_new(path, f"fp-{i}") is True
+
+        assert retained_round_is_new(paths[0], "fp-0") is False
+
+        overflow_path = Path("/virtual/workspace_overflow")
+        assert retained_round_is_new(overflow_path, "fp-overflow") is True
+
+        assert retained_round_is_new(paths[1], "fp-1") is False
+        assert retained_round_is_new(paths[0], "fp-0") is True
+    finally:
+        reset_stop_resolution_presentation()

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from collections import OrderedDict
+from pathlib import Path
+from typing import TYPE_CHECKING, TypeGuard
 
 from loguru import logger
 
@@ -28,8 +30,6 @@ from ralph.pipeline.resolution_gate_facts import ResolutionGateFacts
 from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ralph.agents.clock import Clock
     from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.config.models import UnifiedConfig
@@ -50,7 +50,35 @@ _GATE_ACTIVE_REASON = (
 _KEY_UNAVAILABLE_PREFIX = "WAITING: continuation retry key unavailable"
 
 
-_presented_rounds: dict[Path, str] = {}
+_PRESENTED_ROUNDS_CAP: int = 256
+
+
+class _BoundedPresentedRounds(OrderedDict[Path, str]):
+    def __init__(
+        self,
+        *args: object,
+        cap: int = _PRESENTED_ROUNDS_CAP,
+        **kwargs: object,
+    ) -> None:
+        if cap <= 0:
+            raise ValueError(f"cap must be positive, got {cap}")
+        super().__init__(*args, **kwargs)
+        self._cap = cap
+        while len(self) > self._cap:
+            self.popitem(last=False)
+
+    @property
+    def cap(self) -> int:
+        return self._cap
+
+    def __setitem__(self, key: Path, value: str) -> None:
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self._cap:
+            self.popitem(last=False)
+
+
+_presented_rounds: _BoundedPresentedRounds = _BoundedPresentedRounds()
 
 
 def retained_round_is_new(root: Path, fingerprint: str) -> bool:
@@ -237,6 +265,41 @@ def _post_attempt_key(
     return computed if isinstance(computed, ResolutionAttemptKey) else fallback
 
 
+def _is_rebase_stop_resolver(resolver: object) -> TypeGuard[RebaseStopResolver]:
+    return callable(resolver)
+
+
+def _is_conflict_resolver(resolver: object) -> TypeGuard[ConflictResolver]:
+    return callable(resolver)
+
+
+def _execute_trigger(trigger: StopResolutionTrigger) -> object:
+    if trigger.launcher is not None:
+        return trigger.launcher()
+    if trigger.name == "rebase_stop":
+        resolver = trigger.resolver
+        if _is_rebase_stop_resolver(resolver):
+            return _resolve_rebase_with_config(
+                trigger.root,
+                trigger.target,
+                resolver,
+                trigger.conflict_config,
+                trigger.agent_runner,
+            )
+        raise TypeError(f"expected callable RebaseStopResolver, got {resolver!r}")
+
+    from ralph.pipeline.auto_integrate_resolve import resolve_and_commit_with_reason
+
+    resolver = trigger.resolver
+    if _is_conflict_resolver(resolver):
+        return resolve_and_commit_with_reason(
+            trigger.root,
+            trigger.target,
+            resolver,
+        )
+    raise TypeError(f"expected callable ConflictResolver, got {resolver!r}")
+
+
 def attempt_stop_resolution(
     stop_identity: str | None,
     trigger: StopResolutionTrigger,
@@ -279,24 +342,7 @@ def attempt_stop_resolution(
             _present_block(trigger.root, trigger.record, decision.key)
             return StopResolutionBlocked(decision.reason or _GATE_ACTIVE_REASON, decision.key)
 
-    if trigger.launcher is not None:
-        result = trigger.launcher()
-    elif trigger.name == "rebase_stop":
-        result = _resolve_rebase_with_config(
-            trigger.root,
-            trigger.target,
-            cast("RebaseStopResolver", trigger.resolver),
-            trigger.conflict_config,
-            trigger.agent_runner,
-        )
-    else:
-        from ralph.pipeline.auto_integrate_resolve import resolve_and_commit_with_reason
-
-        result = resolve_and_commit_with_reason(
-            trigger.root,
-            trigger.target,
-            cast("ConflictResolver", trigger.resolver),
-        )
+    result = _execute_trigger(trigger)
     if key is not None:
         post_key = _post_attempt_key(stop_identity, trigger, key)
         if isinstance(result, RebaseResolutionResult) and not result.succeeded:
