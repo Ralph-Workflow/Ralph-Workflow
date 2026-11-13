@@ -5364,4 +5364,3 @@ ralph.testing.repo_structure_boundary_rules
 .. automodule:: ralph.testing.repo_structure_boundary_rules
    :members:
    :show-inheritance:
-

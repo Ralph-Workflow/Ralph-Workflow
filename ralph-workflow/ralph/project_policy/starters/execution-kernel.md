@@ -509,5 +509,3 @@ be weakened to obtain a passing result.
   separate a trivial change from a planned one, and an irreversible
   action from a reversible one, are project judgment rather than a
   measurement, so these rules stay `none` and advisory.
-
-
