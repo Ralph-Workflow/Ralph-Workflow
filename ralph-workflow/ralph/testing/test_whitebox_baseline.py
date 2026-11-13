@@ -56,7 +56,6 @@ tests/agents/invoke/test_transcript_thread_single_feed.py|0,1,0
 tests/agents/parsers/test_claude_headless_wire_capture.py|0,1,0
 tests/agents/parsers/test_claude_interactive_transcript_parser.py|0,1,0
 tests/agents/parsers/test_codex_uses_ndjson_base.py|0,1,0
-tests/agents/parsers/test_content_channel.py|0,1,0
 tests/agents/parsers/test_ndjson_base.py|0,2,0
 tests/agents/parsers/test_pi_dev_wire_format_spec.py|0,2,0
 tests/agents/parsers/test_template_base.py|0,1,2
