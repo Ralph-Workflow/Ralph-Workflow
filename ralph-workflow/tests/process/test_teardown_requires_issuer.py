@@ -3,13 +3,16 @@ from __future__ import annotations
 import os
 import signal
 from datetime import UTC, datetime
-from typing import Any, NoReturn
+from typing import NoReturn
 
 import psutil
 import pytest
 
 from ralph.process.manager import ProcessRecord, ProcessStatus
-from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
+from ralph.process.manager.process_termination_issuer import (
+    ProcessTerminationIssuer,
+    unverified_issuer,
+)
 from ralph.process.teardown import DefaultProcessTeardown, teardown_subtree
 
 
@@ -52,10 +55,6 @@ def _raise_no_such(pid: int) -> NoReturn:
     raise psutil.NoSuchProcess(pid)
 
 
-def _unverified_issuer(raw: str) -> Any:
-    return raw
-
-
 def _record(label: str) -> ProcessRecord:
     return ProcessRecord(
         pid=4242,
@@ -70,19 +69,19 @@ def _record(label: str) -> ProcessRecord:
 
 def test_module_teardown_subtree_rejects_plain_str_issuer() -> None:
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown_subtree(4242, issuer=_unverified_issuer("invoke:process"))
+        teardown_subtree(4242, issuer=unverified_issuer("invoke:process"))
 
 
 def test_default_teardown_rejects_plain_str_issuer() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=0.0)
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown.teardown_subtree(4242, issuer=_unverified_issuer("invoke:pty"))
+        teardown.teardown_subtree(4242, issuer=unverified_issuer("invoke:pty"))
 
 
 def test_default_teardown_rejects_arbitrary_str_subclass_issuer() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=0.0)
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown.teardown_subtree(4242, issuer=_unverified_issuer("operator"))
+        teardown.teardown_subtree(4242, issuer=unverified_issuer("operator"))
 
 
 def test_owner_label_family_mismatch_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,7 +126,11 @@ def test_owner_label_match_signals_stale_session_group(monkeypatch: pytest.Monke
         group_signals.append((pgid, sig))
 
     monkeypatch.setattr(os, "killpg", fake_killpg)
-    monkeypatch.setattr(psutil, "Process", _raise_no_such)
+
+    def fake_process(pid: int) -> NoReturn:
+        _raise_no_such(pid)
+
+    monkeypatch.setattr(psutil, "Process", fake_process)
     DefaultProcessTeardown(
         kill_escalation_ms=0.0,
         record_lookup=lambda _pid: _record("executor:run-process"),

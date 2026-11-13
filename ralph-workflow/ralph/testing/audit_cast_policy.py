@@ -37,6 +37,7 @@ _BOUNDARY_HELPERS: frozenset[tuple[str, str]] = frozenset(
         ("_tool_call_extraction", "parse_event"),
         ("_completion", "parse_event"),
         ("edit_preview", "_lexer_for_path"),
+        ("process_termination_issuer", "unverified_issuer"),
     }
 )
 
