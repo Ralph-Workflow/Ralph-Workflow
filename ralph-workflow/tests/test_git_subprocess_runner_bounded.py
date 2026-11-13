@@ -6,6 +6,7 @@ import pytest
 
 from ralph.git import subprocess_runner
 from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.process.manager import ProcessTerminationIssuer
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS, GIT_TERMINATE_GRACE_SECONDS
 
 if TYPE_CHECKING:
@@ -56,7 +57,14 @@ class _FakeProc:
         del timeout
         return 0
 
-    def terminate(self, grace_period_s: float = 0.0) -> None:
+    def terminate(
+        self,
+        grace_period_s: float = 0.0,
+        *,
+        issuer: ProcessTerminationIssuer = ProcessTerminationIssuer.OPERATOR,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        del issuer, reason
         self.terminate_calls.append(grace_period_s)
 
 
@@ -122,8 +130,14 @@ def test_run_git_propagates_original_fault_even_when_terminate_itself_fails(
 ) -> None:
 
     class _UnkillableProc(_FakeProc):
-        def terminate(self, grace_period_s: float = 0.0) -> None:
-            del grace_period_s
+        def terminate(
+            self,
+            grace_period_s: float = 0.0,
+            *,
+            issuer: ProcessTerminationIssuer = ProcessTerminationIssuer.OPERATOR,
+            reason: str = "operator_cancellation",
+        ) -> None:
+            del grace_period_s, issuer, reason
             raise OSError("process group already reaped")
 
     fault = _SyntheticSignalFault("original caller fault")

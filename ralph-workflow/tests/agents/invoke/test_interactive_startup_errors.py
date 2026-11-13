@@ -42,7 +42,7 @@ def _build_nanocoder_reader() -> PtyLineReader:
     handle = SimpleNamespace(
         master_fd=master_fd,
         pid=None,
-        terminate=lambda grace_period_s=None: None,
+        terminate=lambda grace_period_s=None, **_kwargs: None,
         poll=lambda: None,
     )
     ctx = SimpleNamespace(

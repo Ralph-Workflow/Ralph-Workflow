@@ -20,6 +20,7 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
+from ralph.process.manager import ProcessTerminationIssuer
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -32,7 +33,14 @@ class _FakeHandle:
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        issuer: ProcessTerminationIssuer = ProcessTerminationIssuer.OPERATOR,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        del issuer, reason
         self.terminate_calls.append(grace_period_s)
 
     def __enter__(self) -> _FakeHandle:

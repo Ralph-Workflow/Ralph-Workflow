@@ -15,6 +15,7 @@ from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
 from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessStatus
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.timeout_defaults import PROCESS_EXIT_WAIT_SECONDS
 
 if TYPE_CHECKING:
@@ -194,9 +195,14 @@ class ManagedProcess:
                     on_output_chunk=on_output_chunk,
                     hard_timeout=hard_timeout,
                 )
-        except (subprocess.TimeoutExpired, ManagedProcessOutputLimitExceededError):
+        except (subprocess.TimeoutExpired, ManagedProcessOutputLimitExceededError) as exc:
+            issuer = (
+                ProcessTerminationIssuer.OUTPUT_LIMIT
+                if isinstance(exc, ManagedProcessOutputLimitExceededError)
+                else ProcessTerminationIssuer.CALL_TIMEOUT
+            )
             with contextlib.suppress(Exception):
-                self.terminate(grace_period_s=kill_grace_period_s)
+                self.terminate(grace_period_s=kill_grace_period_s, issuer=issuer)
             if psutil_mod is not None:
                 live_descendants = self._collect_live_descendants(
                     psutil_mod,
@@ -337,7 +343,10 @@ class ManagedProcess:
             while stdout_thread.is_alive() or stderr_thread.is_alive():
                 if limit_exceeded.is_set():
                     with contextlib.suppress(Exception):
-                        self.terminate(grace_period_s=cleanup_grace_period_s)
+                        self.terminate(
+                            grace_period_s=cleanup_grace_period_s,
+                            issuer=ProcessTerminationIssuer.OUTPUT_LIMIT,
+                        )
                     break
                 now = _time.monotonic()
                 with output_lock:
@@ -357,7 +366,10 @@ class ManagedProcess:
                 if timeout_cause is not None:
                     if timeout_value is None:
                         raise RuntimeError("timeout deadline requires a timeout value")
-                    self.terminate(grace_period_s=cleanup_grace_period_s)
+                    self.terminate(
+                        grace_period_s=cleanup_grace_period_s,
+                        issuer=ProcessTerminationIssuer.CALL_TIMEOUT,
+                    )
                     raise DeadlineTimeoutExpired(
                         [],
                         timeout_value,
@@ -547,16 +559,21 @@ class ManagedProcess:
         if second_late_spawns:
             self._kill_late_spawns(psutil_mod, second_late_spawns)
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        self._manager._require_permitted_terminal_reason(reason)
         if self._record.status in _TERMINAL_STATUSES:
             logger.debug(
                 f"Process {self._record.pid} already terminal ({self._record.status.name}), "
                 f"skipping terminate"
             )
             return
-        self._manager.record_terminal_reason(
-            self._record.pid, "operator_cancellation", "managed_process.terminate"
-        )
+        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -564,10 +581,14 @@ class ManagedProcess:
         )
         self._manager._escalate_termination_sync(self._record, self._proc, gp)
 
-    def kill(self) -> None:
-        self._manager.record_terminal_reason(
-            self._record.pid, "operator_cancellation", "managed_process.terminate"
-        )
+    def kill(
+        self,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        self._manager._require_permitted_terminal_reason(reason)
+        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
 
     def cleanup_orphans(self) -> None:
@@ -625,7 +646,10 @@ class ManagedProcess:
 
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         if self._record.status not in _TERMINAL_STATUSES:
-            self.terminate(grace_period_s=2.0)
+            self.terminate(
+                grace_period_s=2.0,
+                issuer=ProcessTerminationIssuer.CONTEXT_EXIT,
+            )
         for attr in ("stdout", "stderr", "stdin"):
             pipe: IO[bytes] | IO[str] | None = getattr(self._proc, attr, None)
             if pipe is not None:

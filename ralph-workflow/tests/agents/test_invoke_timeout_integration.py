@@ -76,7 +76,7 @@ class _FakeManagedHandle:
     def poll(self) -> int | None:
         return self._returncode
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
         self._terminated = True
         if self._on_terminate is not None:
@@ -133,7 +133,7 @@ def test_opencode_regression_verified_completion_stops_live_stdout_stream() -> N
         assert blocked.wait(timeout=2.0)
 
     class _CompletionHandle(_FakeManagedHandle):
-        def terminate(self, grace_period_s: float | None = None) -> None:
+        def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
             super().terminate(grace_period_s)
             blocked.set()
 

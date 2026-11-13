@@ -79,7 +79,7 @@ class _FakeManagedProcess:
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         pass
 
 
@@ -130,7 +130,7 @@ class _FakePtyHandle:
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         pass
 
     def descendant_snapshot(self) -> tuple[int, float | None]:

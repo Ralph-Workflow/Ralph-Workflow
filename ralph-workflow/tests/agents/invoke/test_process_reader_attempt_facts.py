@@ -56,7 +56,7 @@ class _ExitedHandle:
         self.pid = None
         self.returncode: int | None = 0
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
 
     def wait(self, timeout: float | None = None) -> int | None:

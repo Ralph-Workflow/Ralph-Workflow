@@ -8,6 +8,7 @@ from ralph.agents.timeout_clock import SystemClock
 from ralph.checked_accessors import as_int, as_mapping, as_str_list
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
@@ -90,6 +91,7 @@ class RecoveryControllerOptions:
     spent_agents: dict[str, set[str]] | None = None
     dead_agent_probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
     dead_agent_verdict_runner: _DeadAgentVerdictRunner | None = None
+    false_bench_feedback: FalseBenchFeedback | None = None
 
     @classmethod
     def from_snapshot(
@@ -131,6 +133,11 @@ class RecoveryControllerOptions:
         if isinstance(ledger_snap, Mapping):
             ledger = AgentFailureLedger.from_snapshot(ledger_snap, clock=effective_clock)
 
+        feedback_snap = snapshot.get("false_bench_feedback")
+        false_bench_feedback = FalseBenchFeedback.from_snapshot(
+            feedback_snap if isinstance(feedback_snap, Mapping) else None
+        )
+
         return cls(
             cycle_cap=cycle_cap,
             backoff_attempts=backoff_attempts,
@@ -142,4 +149,5 @@ class RecoveryControllerOptions:
             classifier=classifier,
             event_bus=event_bus,
             ledger=ledger,
+            false_bench_feedback=false_bench_feedback,
         )

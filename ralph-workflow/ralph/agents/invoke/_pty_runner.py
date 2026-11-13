@@ -43,7 +43,11 @@ from ralph.agents.invoke._session import (
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
-from ralph.process.manager import PtySpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessTerminationIssuer,
+    PtySpawnOptions,
+    get_process_manager,
+)
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
@@ -66,7 +70,13 @@ class _ClosableIterator(Protocol):
 
 @runtime_checkable
 class _TerminablePtyHandle(Protocol):
-    def terminate(self, grace_period_s: float) -> None: ...
+    def terminate(
+        self,
+        grace_period_s: float,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = ...,
+    ) -> None: ...
 
 
 @runtime_checkable
@@ -96,7 +106,10 @@ def _close_iterator(iterator: object) -> None:
 def _terminate_pty_tree(handle: object) -> None:
     if isinstance(handle, _TerminablePtyHandle):
         with contextlib.suppress(Exception):
-            handle.terminate(grace_period_s=0.5)
+            handle.terminate(
+                grace_period_s=0.5,
+                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            )
     pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
     if pid is not None:
         with contextlib.suppress(Exception):
@@ -185,7 +198,10 @@ def run_pty_and_read_lines(
                 post_exit = PostExitWatchdog(ctx.policy, clock)
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
                 if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
-                    handle.terminate(grace_period_s=0.5)
+                    handle.terminate(
+                        grace_period_s=0.5,
+                        issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG,
+                    )
                     exit_pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
                     if exit_pid is not None:
                         teardown_subtree(exit_pid, issuer="invoke:pty")

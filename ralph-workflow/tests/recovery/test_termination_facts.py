@@ -29,13 +29,18 @@ if TYPE_CHECKING:
     from ralph.pipeline.events import AgentFailureEvent
 
 
+class _Handle(FakeManagedHandle):
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
+        super().terminate(grace_period_s)
+
+
 def _reader(tmp_path: Path, handle: FakeManagedHandle | None = None) -> ProcessLineReader:
     ctx = ProcessReaderCtx(
         config=AgentConfig(cmd="fake-agent", transport=AgentTransport.GENERIC),
         policy=TimeoutPolicy(idle_timeout_seconds=60.0, process_monitor_enabled=False),
         workspace_path=tmp_path,
     )
-    return ProcessLineReader(handle or FakeManagedHandle(), ctx, FakeClock())
+    return ProcessLineReader(handle or _Handle(), ctx, FakeClock())
 
 
 def test_failure_observation_sink_carries_attempt_facts(

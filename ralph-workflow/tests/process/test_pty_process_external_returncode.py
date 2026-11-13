@@ -43,10 +43,10 @@ class _StubPtyProc:
     def wait(self, timeout: float | None = None) -> int:
         return self._rc if self._rc is not None else 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
     def close(self) -> None:

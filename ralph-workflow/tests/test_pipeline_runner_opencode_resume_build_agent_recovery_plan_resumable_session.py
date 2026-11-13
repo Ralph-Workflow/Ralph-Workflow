@@ -348,11 +348,11 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 del timeout
                 return self.returncode
 
-            def terminate(self) -> None:
+            def terminate(self, **_kwargs: object) -> None:
                 self.terminated = True
                 self.returncode = -15
 
-            def kill(self) -> None:
+            def kill(self, **_kwargs: object) -> None:
                 self.terminated = True
                 self.returncode = -9
 

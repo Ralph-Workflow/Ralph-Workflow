@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING, Final
 
 from ralph.executor.process import TIMEOUT_EXIT_CODE
 from ralph.process._spawn_env import sanitize_process_environment
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+)
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,
@@ -37,7 +42,13 @@ if TYPE_CHECKING:
             timeout: float | None = None,
         ) -> tuple[bytes | None, bytes | None]: ...
 
-        def terminate(self, grace_period_s: float | None = None) -> None: ...
+        def terminate(
+            self,
+            grace_period_s: float | None = None,
+            *,
+            issuer: ProcessTerminationIssuer,
+            reason: str = "operator_cancellation",
+        ) -> None: ...
 
         def cleanup_orphans(self) -> None: ...
 
@@ -164,6 +175,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_exec_smoke_subprocess_e2e.py",
     "tests/test_exec_job_shutdown_subprocess_e2e.py",
     "tests/test_skills_upstream_transport.py",
+    "tests/agents/invoke/test_kill_attribution_subprocess_e2e.py",
 )
 
 SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
@@ -1032,7 +1044,10 @@ def _terminate_and_reap(
     for process in processes:
         if process.poll() is None:
             try:
-                process.terminate(grace_period_s=0.0)
+                process.terminate(
+                    grace_period_s=0.0,
+                    issuer=ProcessTerminationIssuer.TEST_RUNNER,
+                )
             except Exception as exc:
                 print(
                     f"warning: shard terminate raised {type(exc).__name__}: {exc}",

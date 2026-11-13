@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import sys
 
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationIssuer
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
     FakePsutil,
@@ -34,7 +34,7 @@ def test_termination_outcomes_bounded_after_many_terminations() -> None:
     handles = []
     for _ in range(5):
         handle = pm.spawn([sys.executable, "-c", "pass"])
-        handle.terminate(grace_period_s=0.05)
+        handle.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
         handles.append(handle)
 
     outcomes = pm.list_termination_outcomes()
@@ -59,7 +59,7 @@ def test_termination_outcomes_does_not_evict_active_pid() -> None:
     handles = []
     for _ in range(3):
         h = pm.spawn([sys.executable, "-c", "pass"])
-        h.terminate(grace_period_s=0.05)
+        h.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
         handles.append(h)
 
     outcomes = pm.list_termination_outcomes()
@@ -77,7 +77,7 @@ def test_termination_outcomes_cleared_when_limit_is_zero() -> None:
 
     for _ in range(3):
         h = pm.spawn([sys.executable, "-c", "pass"])
-        h.terminate(grace_period_s=0.05)
+        h.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     outcomes = pm.list_termination_outcomes()
     assert outcomes == {}, (
@@ -93,7 +93,7 @@ def test_termination_outcomes_limit_zero_preserves_in_flight_active_pid() -> Non
     handle_a = pm.spawn([sys.executable, "-c", "pass"])
     handle_b = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle_b.terminate(grace_period_s=0.05)
+    handle_b.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     outcomes_after_b = pm.list_termination_outcomes()
     assert handle_b.pid not in outcomes_after_b, (
@@ -104,7 +104,7 @@ def test_termination_outcomes_limit_zero_preserves_in_flight_active_pid() -> Non
     pm._record_termination_outcome(handle_a.pid, "force_kill", "sent")
 
     handle_c = pm.spawn([sys.executable, "-c", "pass"])
-    handle_c.terminate(grace_period_s=0.05)
+    handle_c.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     outcomes = pm.list_termination_outcomes()
     assert handle_a.pid in outcomes, (
@@ -127,7 +127,7 @@ def test_termination_outcomes_default_limit_keeps_existing_tests_green() -> None
     handles = []
     for _ in range(5):
         h = pm.spawn([sys.executable, "-c", "pass"])
-        h.terminate(grace_period_s=0.05)
+        h.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
         handles.append(h)
 
     outcomes = pm.list_termination_outcomes()
@@ -140,7 +140,7 @@ def test_termination_outcomes_does_not_break_list_termination_outcomes_shape() -
     pm = _make_pm(terminal_history_limit=256)
 
     h = pm.spawn([sys.executable, "-c", "pass"])
-    h.terminate(grace_period_s=0.05)
+    h.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     outcomes = pm.list_termination_outcomes()
     assert isinstance(outcomes, dict)
@@ -173,7 +173,7 @@ def test_termination_outcomes_cleared_on_purge_on_init() -> None:
         psutil=FakePsutil(),
     )
     h = pm1.spawn([sys.executable, "-c", "pass"])
-    h.terminate(grace_period_s=0.05)
+    h.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
     assert pm1.list_termination_outcomes(), (
         "pm1 should have at least one outcome after spawning+terminating"
     )

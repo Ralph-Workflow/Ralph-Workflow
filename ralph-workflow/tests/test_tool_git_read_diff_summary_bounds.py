@@ -14,6 +14,8 @@ from tests.mock_workspace_root import MockWorkspaceRoot
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.process.manager import ProcessTerminationIssuer
+
 _FAKE_WAIT_SECONDS = 2.0
 
 
@@ -73,7 +75,12 @@ class _FakeProcess:
     def communicate_and_cleanup(self, *args: object, **kwargs: object) -> tuple[bytes, bytes]:
         return (b"", b"")
 
-    def kill(self) -> None:
+    def kill(
+        self,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+    ) -> None:
         self.killed.set()
 
 

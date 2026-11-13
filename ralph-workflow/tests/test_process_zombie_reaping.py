@@ -53,10 +53,10 @@ class _RecordingPopen:
         del self, input, timeout
         return None, None
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminated = True
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
         self._returncode = 0
 
@@ -96,11 +96,11 @@ class _RecordingAsyncProcess:
         del self, input
         return None, None
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminated = True
         self._returncode = 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
         self._returncode = 0
 
@@ -133,11 +133,11 @@ class _RecordingPsutilProcess:
     def create_time(self) -> float:
         return 0.0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_called = True
         self._terminated = True
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.kill_called = True
         self._killed = True
 
@@ -377,10 +377,10 @@ def test_reap_sync_helper_swallows_oserror_but_still_marks() -> None:
             del self, input, timeout
             return None, None
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             del self
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             del self
 
     pm = _make_pm()
@@ -418,10 +418,10 @@ def test_reap_sync_helper_swallows_timeout_expired() -> None:
             del self, input, timeout
             return None, None
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             del self
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             del self
 
     pm = _make_pm()

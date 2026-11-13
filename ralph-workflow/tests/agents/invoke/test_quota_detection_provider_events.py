@@ -110,7 +110,7 @@ class _Handle:
     def poll(self) -> int | None:
         return 0
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
 
 

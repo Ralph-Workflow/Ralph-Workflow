@@ -3,21 +3,35 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
+from typing import Protocol as TypingProtocol
 
 from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
+from ralph.agents.timeout_clock import SystemClock
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
-from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
     set_last_captured_session_id,
 )
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_retry_intent import (
+    pop_last_captured_retry_intent,
+    set_last_captured_retry_intent,
+)
+from ralph.pipeline.attempt_runner import (
+    EntryPointRunner,
+    build_entry_point_recovery_controller,
+    register_entry_point,
+    registered_entry_points,
+    run_agent_attempt,
+)
+from ralph.pipeline.attempt_runner_deps import AttemptInvoke, AttemptRunnerDeps
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
@@ -44,19 +58,27 @@ from ralph.project_policy.status_bar import (
     push_remediation_status_bar,
     remediation_status_bar_session,
 )
+from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.cli.commands._load_result import _LoadResult
+    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
+    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.factory import PipelineDeps
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.models import ReadinessResult
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
+
+
+class _EffectExecutorModule(TypingProtocol):
+    def execute_agent_effect(self, target: object, **kwargs: object) -> object: ...
 
 
 _EXIT_SUCCESS: int = 0
@@ -256,6 +278,20 @@ def _make_production_invoke_agent(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
 ) -> InvokePolicyAgent:
+    invoke_effect = _production_effect_invoke()
+    attempt_deps = AttemptRunnerDeps(
+        clock=SystemClock(),
+        invoke=invoke_effect,
+        probe_runner=None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+    controller = build_entry_point_recovery_controller(
+        AgentEntryPoint.PROJECT_POLICY,
+        config=load_result.config,
+        policy_bundle=load_result.policy_bundle,
+        deps=attempt_deps,
+    )
 
     def invoke_agent(*, phase: str, prompt_path: str) -> bool:
         if pipeline_deps is None or load_result.policy_bundle is None:
@@ -280,16 +316,19 @@ def _make_production_invoke_agent(
                             )
                         }
                     )
-                    event = _effect_executor_module.execute_agent_effect(
-                        effect,
-                        policy_config,
-                        pipeline_deps,
-                        workspace_scope,
-                        run_id=load_result.run_id,
-                        policy_bundle=load_result.policy_bundle,
+                    result = run_agent_attempt(
+                        AgentEntryPoint.PROJECT_POLICY,
+                        effect=effect,
+                        config=policy_config,
+                        controller=controller,
+                        deps=attempt_deps,
+                        state=PipelineState(phase=phase, rebase=RebaseState()),
+                        pipeline_deps=pipeline_deps,
+                        workspace_scope=workspace_scope,
                         display=display,
                         display_context=display_context,
-                        state=PipelineState(phase=phase, rebase=RebaseState()),
+                        run_id=load_result.run_id,
+                        policy_bundle=load_result.policy_bundle,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -297,7 +336,7 @@ def _make_production_invoke_agent(
                     )
                     last_error = exc
                     continue
-            if event == PipelineEvent.AGENT_SUCCESS:
+            if result.outcome.kind is AttemptOutcomeKind.COMPLETED:
                 return True
         if last_error is not None:
             raise policy_remediation.RemediationInvocationError(str(last_error)) from last_error
@@ -307,16 +346,52 @@ def _make_production_invoke_agent(
     return typed
 
 
+def _production_effect_invoke() -> AttemptInvoke:
+    module = cast(
+        "_EffectExecutorModule",
+        import_module("ralph.pipeline.effect_executor"),
+    )
+    return cast("AttemptInvoke", module.execute_agent_effect)
+
+
+def _run_project_policy_attempt(
+    *args: object,
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    del args
+    return run_agent_attempt(
+        AgentEntryPoint.PROJECT_POLICY,
+        effect=effect,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.PROJECT_POLICY not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.PROJECT_POLICY,
+        cast("EntryPointRunner", _run_project_policy_attempt),
+    )
+
+
 def _snapshot_pipeline_capture() -> tuple[str | None, AgentRetryIntent]:
     return (
         pop_last_captured_session_id(),
-        _effect_executor_module.pop_last_captured_retry_intent(),
+        pop_last_captured_retry_intent(),
     )
 
 
 def _restore_pipeline_capture(snapshot: tuple[str | None, AgentRetryIntent]) -> None:
     session_id, retry_intent = snapshot
-    _effect_executor_module._set_last_captured_retry_intent(retry_intent)
+    set_last_captured_retry_intent(retry_intent)
     set_last_captured_session_id(session_id)
 
 

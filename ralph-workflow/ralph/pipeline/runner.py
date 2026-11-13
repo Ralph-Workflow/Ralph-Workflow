@@ -12,6 +12,7 @@ from loguru import logger
 
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
+from ralph.agents.system_clock import SystemClock
 from ralph.config.enums import Verbosity
 from ralph.display.auto_integrate_message import (
     OperationDisplayState,
@@ -86,7 +87,16 @@ from ralph.pipeline.activity_stream import (
     truncate,
 )
 from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
+from ralph.pipeline.attempt_runner import (
+    EntryPointRunner,
+    build_entry_point_recovery_controller,
+    register_entry_point,
+    registered_entry_points,
+    run_agent_attempt,
+)
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
     auto_integrate_on_phase_transition,
@@ -119,7 +129,6 @@ from ralph.pipeline.cycle_timing import (
     conclude_cycle_on_route_out_of_cycle,
     conclude_development_timebox_on_route_out_of_development,
 )
-from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import (
     determine_effect_from_policy,
 )
@@ -143,7 +152,7 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
-from ralph.pipeline.factory import DefaultPipelineFactory
+from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.integration_dispatch_blocked_error import (
@@ -206,7 +215,10 @@ from ralph.telemetry._sentry import record_phase_execution
 from ralph.visual.capture_lifecycle import CaptureLifecycle
 from ralph.visual.capture_set import CaptureSet
 from ralph.workspace import FsWorkspace
+from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
+
+execute_agent_effect = PRODUCTION_INVOKE
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -217,10 +229,10 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.websearch.secrets import EnvGetter
+    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.commit_executor import _CreateCommitFn
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
@@ -377,6 +389,55 @@ def _execute_commit_effect_from_deps(
 execute_commit_effect_from_deps = _execute_commit_effect_from_deps
 
 
+def _main_phase_loop_controller(
+    *,
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle | None,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None,
+    pipeline_deps: PipelineDeps | None,
+) -> RecoveryController:
+    if isinstance(pipeline_deps, PipelineDeps):
+        existing = pipeline_deps.recovery_controller
+        if existing is not None:
+            return existing
+    return build_entry_point_recovery_controller(
+        AgentEntryPoint.MAIN_PHASE_LOOP,
+        config=config,
+        policy_bundle=policy_bundle,
+        deps=deps,
+        ledger_snapshot=state.ledger_snapshot if state is not None else None,
+        false_bench_snapshot=state.false_bench_feedback if state is not None else None,
+    )
+
+
+def _run_main_phase_loop_attempt(
+    *_args: object,
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return run_agent_attempt(
+        AgentEntryPoint.MAIN_PHASE_LOOP,
+        effect=effect,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.MAIN_PHASE_LOOP not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.MAIN_PHASE_LOOP,
+        cast("EntryPointRunner", _run_main_phase_loop_attempt),
+    )
+
+
 def _execute_effect(
     effect: Effect,
     config: UnifiedConfig,
@@ -397,18 +458,34 @@ def _execute_effect(
         pipeline_deps = DefaultPipelineFactory().build(config, resolved_display_context)
     if isinstance(effect, InvokeAgentEffect):
         with process_agent_phases().agent_phase(workspace_scope.root):
-            return execute_agent_effect(
-                effect,
-                config,
-                pipeline_deps,
-                workspace_scope,
+            deps = AttemptRunnerDeps(
+                clock=SystemClock(),
+                invoke=execute_agent_effect,
+                probe_runner=None,
+                workspace_probe=DefaultWorkspaceChangeProbe(),
+                connectivity=None,
+            )
+            result = _run_main_phase_loop_attempt(
+                effect=effect,
+                config=config,
+                controller=_main_phase_loop_controller(
+                    config=config,
+                    policy_bundle=policy_bundle,
+                    deps=deps,
+                    state=state,
+                    pipeline_deps=pipeline_deps,
+                ),
+                deps=deps,
+                state=state,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
                 display=display,
                 display_context=resolved_display_context,
                 verbosity=verbosity,
-                state=state,
                 policy_bundle=policy_bundle,
                 run_id=run_id,
             )
+            return cast("Event", result.event)
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect_from_deps(
             effect, pipeline_deps, workspace_scope, display, verbosity, config=config

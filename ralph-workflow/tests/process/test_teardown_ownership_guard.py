@@ -33,10 +33,10 @@ class _FakeProcess:
         del recursive
         return list(self._children)
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self._kills.append(self.pid)
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._kills.append(self.pid)
 
     def is_running(self) -> bool:

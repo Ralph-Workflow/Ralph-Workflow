@@ -15,6 +15,7 @@ from ralph.process.manager import (
     ProcessManager,
     ProcessManagerPolicy,
     ProcessStatus,
+    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
     reset_process_manager,
@@ -87,7 +88,7 @@ def test_phase_scope_does_not_kill_other_labels() -> None:
     assert target.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
     assert bystander.record.status == ProcessStatus.RUNNING
 
-    bystander.terminate(grace_period_s=0)
+    bystander.terminate(grace_period_s=0, issuer=ProcessTerminationIssuer.OPERATOR)
 
 
 def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Path) -> None:

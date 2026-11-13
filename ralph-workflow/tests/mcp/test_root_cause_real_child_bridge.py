@@ -37,7 +37,12 @@ from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._snapshots import snapshot_dir
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._start_stage_tracker import read_last_stage
-from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.workspace.fs import FsWorkspace
 
 pytestmark = [
@@ -85,7 +90,7 @@ def managed_spawner(tmp_path: Path) -> Iterator[Callable[..., ManagedProcess]]:
         for p in spawned:
             if p.poll() is None:
                 with contextlib.suppress(Exception):
-                    p.kill()
+                    p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)
 
@@ -689,7 +694,7 @@ def test_c3_deferral_ceiling_and_dead_child_never_deferred(
     bridge.check_health_and_restart_if_needed()
     assert restart_count == 1
 
-    proc.kill()
+    proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
     proc.wait(timeout=2.0)
     assert proc.poll() is not None
 
@@ -736,7 +741,7 @@ def test_c3_e53_sigstopped_child_detected_and_reaped(
     finally:
         with contextlib.suppress(Exception):
             os.kill(proc.pid, signal.SIGCONT)
-        proc.kill()
+        proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         proc.wait(timeout=2.0)
 
 
@@ -850,7 +855,7 @@ while True:
     p = psutil.Process(proc.pid)
     assert p.status() in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING)
 
-    proc.kill()
+    proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
     proc.wait(timeout=2.0)
 
     last_stage = read_last_stage(tmp_path, spawn_id=spawn_id)

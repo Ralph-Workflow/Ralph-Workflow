@@ -36,7 +36,7 @@ class _LiveHandle:
     def poll(self) -> int | None:
         return self.returncode
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
         self.terminated = True
         self.returncode = 0

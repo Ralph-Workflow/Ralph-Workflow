@@ -33,7 +33,7 @@ class _Handle:
         self.calls.append("poll")
         return 0 if self._exited else None
 
-    def terminate(self, *, grace_period_s: float | None = None) -> None:
+    def terminate(self, *, grace_period_s: float | None = None, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
         self.calls.append(f"terminate:{grace_period_s}")
 

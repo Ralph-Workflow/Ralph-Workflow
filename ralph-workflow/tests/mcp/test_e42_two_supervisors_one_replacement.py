@@ -14,7 +14,12 @@ from ralph.mcp.server._mcp_attempt_result import RestartAttemptResult
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
-from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.process.mcp_supervisor import McpSupervisor
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(15)]
@@ -67,7 +72,7 @@ def _reap_procs(procs: list[ManagedProcess]) -> None:
     for p in procs:
         if p.poll() is None:
             with contextlib.suppress(Exception):
-                p.kill()
+                p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 p.wait(timeout=1.0)
 
 
@@ -270,7 +275,7 @@ def test_e27_single_candidate_during_startup_serialization(
             sleep_fn=lambda _s: None,
         )
 
-        initial_inner.process.terminate()
+        initial_inner.process.terminate(issuer=ProcessTerminationIssuer.OPERATOR)
 
         errors: list[Exception] = []
 

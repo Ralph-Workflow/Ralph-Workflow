@@ -6,6 +6,7 @@ import json
 import typing
 import uuid
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -23,7 +24,6 @@ from ralph.agents.invoke import (
     _clear_session_completion_sentinel,
     build_invoke_options_from_config,
     extract_transport_session_id,
-    invoke_agent,
 )
 from ralph.agents.invoke._direct_mcp_recovery import (
     default_direct_mcp_retry_limit,
@@ -33,7 +33,7 @@ from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resol
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
-from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider, provider_for_transport
 from ralph.display.agent_event_renderer import (
@@ -55,11 +55,20 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.server._process_secrecy import mint_and_protect_broker_secret
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import (
+    build_entry_point_recovery_controller,
+    run_agent_attempt,
+)
+from ralph.pipeline.attempt_runner_deps import (
+    PRODUCTION_INVOKE,
+    AttemptRunnerDeps,
+)
 from ralph.pipeline.chain_identity import chain_disagrees_on_model
-from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import (
     DefaultPipelineFactory,
+    InvokeAgentFn,
     MaterializeMasterPromptFn,
     PipelineCore,
     PipelineDeps,
@@ -94,18 +103,23 @@ from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     import types
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterator
 
     from ralph.cli.commands._commit_chain_config import CommitChainConfig
-    from ralph.config.models import AgentConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.recovery.controller import RecoveryController
 
 
 def _commit_cli_module() -> types.ModuleType:
     return importlib.import_module("ralph.cli.commands.commit")
+
+
+def _commit_invoke_agent(module: types.ModuleType) -> InvokeAgentFn:
+    invoke: InvokeAgentFn = module.invoke_agent
+    return invoke
 
 
 __all__ = [
@@ -124,6 +138,57 @@ _NO_COMMIT_MESSAGE_REASON = "commit-message agent chain produced no message and 
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
 _COMMIT_RUN_ID = "commit-plumbing"
+
+execute_agent_effect = PRODUCTION_INVOKE
+
+
+class _AttemptInvoke(typing.Protocol):
+    def __call__(self, target: object, *args: object, **kwargs: object) -> object: ...
+
+
+def _attempt_deps(
+    pipeline_deps: PipelineDeps,
+    invoke: _AttemptInvoke,
+) -> AttemptRunnerDeps:
+    from ralph.agents.timeout_clock import SystemClock
+
+    def invoke_attempt(target: object, *args: object, **kwargs: object) -> object:
+        if invoke is execute_agent_effect:
+            config = kwargs.pop("config")
+            effective_pipeline_deps = kwargs.pop("pipeline_deps")
+            workspace_scope = kwargs.pop("workspace_scope")
+            return invoke(
+                target,
+                config,
+                effective_pipeline_deps,
+                workspace_scope,
+                *args,
+                **kwargs,
+            )
+        return invoke(target, *args, **kwargs)
+
+    return AttemptRunnerDeps(
+        clock=pipeline_deps.recovery_clock or SystemClock(),
+        invoke=invoke_attempt,
+        probe_runner=None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+
+
+def _attempt_controller(
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps,
+    deps: AttemptRunnerDeps,
+) -> RecoveryController:
+    return build_entry_point_recovery_controller(
+        AgentEntryPoint.COMMIT_GENERATION,
+        config=config,
+        policy_bundle=pipeline_deps.policy_bundle,
+        deps=deps,
+        ledger_snapshot=(pipeline_deps.ledger.snapshot() if pipeline_deps.ledger else None),
+        unavailability_store=pipeline_deps.unavailability_store,
+    )
 
 
 class CommitAgentOutcome(Enum):
@@ -606,11 +671,20 @@ def _run_commit_agent_attempt_with_recovery(
             materializer,
             pro_hooks=None,
         )
-        event = execute_agent_effect(
-            effect,
-            effective_general_config,
-            effective_pipeline_deps,
-            workspace_scope,
+        invoke = _commit_invoke_agent(commit_module)
+        attempt_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
+        attempt = run_agent_attempt(
+            AgentEntryPoint.COMMIT_GENERATION,
+            effect=effect,
+            config=effective_general_config,
+            controller=_attempt_controller(
+                effective_general_config,
+                effective_pipeline_deps,
+                attempt_deps,
+            ),
+            deps=attempt_deps,
+            pipeline_deps=effective_pipeline_deps,
+            workspace_scope=workspace_scope,
             bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
             display_context=display_context,
             run_id=_COMMIT_RUN_ID,
@@ -619,7 +693,7 @@ def _run_commit_agent_attempt_with_recovery(
             raw_output_sink=raw_output,
             rendered_output_sink=rendered_output,
             set_session_id_cb=_capture_session_id,
-            invoke_agent=_get_patched(commit_module, "invoke_agent", invoke_agent),
+            invoke_agent=invoke,
             on_retry_failure=on_retry_failure,
             agent_invocation_error_sink=_capture_error,
         )
@@ -637,7 +711,7 @@ def _run_commit_agent_attempt_with_recovery(
         )
         if output_collector is not None:
             output_collector.extend(raw_lines)
-        if event.value == "agent_success":
+        if getattr(attempt.event, "value", attempt.event) == "agent_success":
             read_artifact = _get_patched(
                 commit_module, "read_commit_message_artifact", read_commit_message_artifact
             )
@@ -745,7 +819,7 @@ def invoke_commit_agent_attempt(
         "materialize_master_prompt",
         materializer if materializer is not None else materialize_master_prompt,
     )
-    invoke = _get_patched(commit_module, "invoke_agent", invoke_agent)
+    invoke = _commit_invoke_agent(commit_module)
     delete_artifacts = _get_patched(
         commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
     )
@@ -759,8 +833,9 @@ def invoke_commit_agent_attempt(
         name="commit",
         default_product_criteria="Commit message generation task.",
     )
-    if attempt_context.general_config is not None:
-        general_cfg = attempt_context.general_config
+    configured = attempt_context.general_config
+    if configured is not None:
+        general_cfg = configured
         if isinstance(general_cfg, UnifiedConfig):
             general_cfg = general_cfg.general
         options = build_invoke_options_from_config(
@@ -783,12 +858,43 @@ def invoke_commit_agent_attempt(
             master_prompt_file=master_prompt,
             required_artifact=_commit_required_artifact(),
         )
+    effective_config = (
+        configured
+        if isinstance(configured, UnifiedConfig)
+        else UnifiedConfig(
+            general=configured if isinstance(configured, GeneralConfig) else GeneralConfig(),
+            agents={agent.cmd: agent},
+        )
+    )
+    pipeline_deps = _commit_pipeline_deps(
+        effective_config,
+        display_context,
+        materializer,
+    )
+
+    def invoke_from_commit_module(target: object, *args: object, **kwargs: object) -> object:
+        del target, args
+        final_options = kwargs.get("options")
+        if not isinstance(final_options, InvokeOptions):
+            raise TypeError("commit invocation options are required")
+        return invoke(agent, prompt_file, options=final_options)
+
+    attempt_deps = _attempt_deps(pipeline_deps, invoke_from_commit_module)
     try:
-        lines = invoke(
-            agent,
-            prompt_file,
+        attempt = run_agent_attempt(
+            AgentEntryPoint.COMMIT_GENERATION,
+            invocation=agent,
+            config=effective_config,
+            controller=_attempt_controller(effective_config, pipeline_deps, attempt_deps),
+            deps=attempt_deps,
+            phase="commit",
+            agent_name=agent.cmd,
+            prompt_file=prompt_file,
             options=options,
         )
+        if not isinstance(attempt.event, Iterable):
+            raise TypeError("commit invocation must return iterable output")
+        lines = attempt.event
     except AgentInvocationError as exc:
         parsed_output = _parsed_output_from_invocation_error(exc)
         if exc.parsed_output:

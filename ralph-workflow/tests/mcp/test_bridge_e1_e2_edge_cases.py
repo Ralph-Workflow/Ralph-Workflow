@@ -33,7 +33,7 @@ from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._snapshots import read_snapshot, snapshot_dir, write_snapshot
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import append_wire_record, verify_chain
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e]
 
@@ -52,14 +52,14 @@ class _FakeProcess:
     def poll(self) -> int | None:
         return self._poll_result
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self.terminated = True
         self._poll_result = 0
 
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
         self._poll_result = -9
 
@@ -340,7 +340,7 @@ def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> 
         worker.join(timeout=2.0)
     finally:
         with contextlib.suppress(Exception):
-            child.kill()
+            child.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         with contextlib.suppress(Exception):
             child.wait(timeout=2.0)
 

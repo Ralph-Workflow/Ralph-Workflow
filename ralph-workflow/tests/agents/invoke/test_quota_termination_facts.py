@@ -40,7 +40,7 @@ class _FakeSigtermOnTerminateProcess:
     def poll(self) -> int | None:
         return -15 if self._terminated else None
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         self._terminated = True
 
     def record_terminal_reason(self, reason: str) -> None:

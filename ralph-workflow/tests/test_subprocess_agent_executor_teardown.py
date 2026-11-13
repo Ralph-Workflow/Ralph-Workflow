@@ -53,11 +53,11 @@ class _RecordingControllableAsyncProcess(FakeControllableAsyncProcess):
         self.terminate_calls: int = 0
         self.kill_calls: int = 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         super().terminate()
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.kill_calls += 1
         super().kill()
 
@@ -67,7 +67,7 @@ class _RecordingPsutilProcess(FakePsutilProcess):
         super().__init__(pid=pid)
         self.terminate_calls: int = 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         super().terminate()
 

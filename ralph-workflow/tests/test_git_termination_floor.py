@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 from ralph.process.manager._git_termination import git_aware_grace, is_git_pid
 from ralph.timeout_defaults import GIT_TERMINATE_GRACE_SECONDS
 
@@ -60,7 +60,7 @@ def test_terminate_with_a_tiny_grace_still_lets_git_remove_its_lock(
     assert is_git_pid(proc.pid)
 
     started = time.monotonic()
-    proc.terminate(grace_period_s=grace_period_s)
+    proc.terminate(grace_period_s=grace_period_s, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert not lock.exists(), "git was SIGKILLed before it could release its lock"
     assert time.monotonic() - started < GIT_TERMINATE_GRACE_SECONDS
@@ -90,7 +90,7 @@ def test_git_in_the_tree_raises_a_short_grace_to_the_cleanup_window(tmp_path: Pa
             GIT_TERMINATE_GRACE_SECONDS + 1
         )
     finally:
-        proc.terminate(grace_period_s=2.0)
+        proc.terminate(grace_period_s=2.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
 
 _STUBBORN_GIT = textwrap.dedent(

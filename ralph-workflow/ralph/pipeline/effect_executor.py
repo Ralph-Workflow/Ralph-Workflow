@@ -78,6 +78,7 @@ from ralph.pipeline.agent_retry_intent import (
 from ralph.pipeline.agent_retry_intent import (
     set_last_captured_retry_intent as _set_last_captured_retry_intent_state,
 )
+from ralph.pipeline.attempt_finalizer import AttemptFinalization, AttemptFinalizer
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
 from ralph.pipeline.events import (
     AgentFailureEvent,
@@ -95,6 +96,8 @@ from ralph.pipeline.session_bridge import build_session_bridge, scoped_reset_too
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.pipeline.watchdog_fire_record import record_watchdog_fire, watchdog_fire_detail
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
+from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.attempt_failure_log_line import render_attempt_failure_log_line
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
@@ -122,7 +125,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import MaterializeMasterPromptFn, PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.attempt_outcome import AttemptOutcome
     from ralph.recovery.controller import RecoveryController
+    from ralph.recovery.dead_agent_verdict import TypedSignal
     from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
 
@@ -131,6 +137,7 @@ if TYPE_CHECKING:
 
 
 _VERBOSE_LOG_LEVEL = 2
+_FALLBACK_FINALIZER_ENTRY_POINT = "main_phase_loop"
 _AGENT_RAW_OUTPUT_TAIL_LINES = 256
 _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _RECOVERY_CONTEXT_LINES = 12
@@ -196,6 +203,7 @@ def execute_agent_effect(
     extra_env: dict[str, str] | None = None,
     raise_resumable_exit: bool = False,
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
+    attempt_finalizer: AttemptFinalizer | None = None,
     **opts: object,
 ) -> PipelineEvent | AgentFailureEvent:
     verdict = inspect_integration_resolution(
@@ -223,6 +231,11 @@ def execute_agent_effect(
     )
     if active_rec is None:
         active_rec = pipeline_deps.recovery_controller
+    resolved_attempt_finalizer = attempt_finalizer or _fallback_attempt_finalizer(
+        active_rec,
+        phase=str(effect.phase),
+        agent=effect.agent_name,
+    )
     active_ledger = active_rec.ledger if active_rec is not None else pipeline_deps.ledger
     active_clock: Clock = active_rec.clock if active_rec is not None else SystemClock()
     if active_ledger is None and state is not None and state.ledger_snapshot:
@@ -325,6 +338,8 @@ def execute_agent_effect(
             ),
             raise_resumable_exit=raise_resumable_exit,
             agent_invocation_error_sink=agent_invocation_error_sink,
+            attempt_finalizer=resolved_attempt_finalizer,
+            recovery_controller=active_rec,
         )
         invocation_outcome = "success" if result == PipelineEvent.AGENT_SUCCESS else "failure"
         return result
@@ -567,7 +582,29 @@ def _handle_recovery_attempt_failure(
     raw_output: deque[str],
     rendered_output: deque[str],
     observation: AgentFailureEvent | None = None,
+    *,
+    attempt_finalizer: AttemptFinalizer | None = None,
+    recovery_controller: RecoveryController | None = None,
 ) -> _AttemptResult:
+    phase = str(ctx.effect.phase)
+    agent = ctx.effect.agent_name
+    workspace_changed: bool | None = (
+        observation.resolved_workspace_changed() if observation else None
+    )
+    outcome = (
+        attempt_finalizer(
+            AttemptFinalization(
+                attempt_ordinal=state.attempts_started,
+                attempt_failed=True,
+                exc=exc,
+                workspace_changed=workspace_changed,
+                typed_signal=_typed_signal_for_exception(exc),
+                retryable_reason=retryable_agent_failure_reason(exc, AgentInactivityTimeoutError),
+            )
+        )
+        if attempt_finalizer is not None
+        else None
+    )
     recovery_plan = build_agent_recovery_plan(
         _build_recovery_input_for_attempt(
             ctx=ctx,
@@ -577,42 +614,153 @@ def _handle_recovery_attempt_failure(
             raw_output=raw_output,
             rendered_output=rendered_output,
             run_id=effective_run_id,
-        )
+        ),
+        outcome,
     )
+    controller = recovery_controller
+    ledger = ctx.deps.pipeline_deps.ledger
+    demoted, demotion_reason = _demotion_after_finalization(
+        controller,
+        ledger,
+        phase=phase,
+        agent=agent,
+        workspace_changed=workspace_changed,
+    )
+    charged_observation = _charged_observation(
+        observation,
+        charged=ledger is not None or controller is not None,
+        phase=phase,
+        agent=agent,
+        exc=exc,
+    )
+    if charged_observation is not None:
+        state.last_observation = charged_observation
+    if demoted and charged_observation is not None:
+        logger.error(
+            "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
+            "Refusing to spin; failing fast.",
+            agent,
+            demotion_reason,
+        )
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                action=None,
+                session_id=None,
+                failure_reason=recovery_plan.reason if recovery_plan is not None else "",
+            )
+        )
+        return _AttemptResult(charged_observation, state.prompt_file, session_id)
+
     if recovery_plan is None:
         retry_intent = resolve_retry_intent(
-            exc,
-            phase=str(ctx.effect.phase),
-            agent=ctx.effect.agent_name,
+            outcome if outcome is not None else exc,
+            phase=phase,
+            agent=agent,
             session_id=session_id,
             inactivity_error_type=AgentInactivityTimeoutError,
+            exc=exc,
         )
         if retry_intent is not None:
             _set_last_captured_retry_intent(retry_intent)
         else:
             _set_last_captured_retry_intent(AgentRetryIntent())
-        raise exc
+        if outcome is None:
+            raise exc
+        return _AttemptResult(
+            charged_observation
+            if charged_observation is not None
+            else (observation if observation is not None else PipelineEvent.AGENT_FAILURE),
+            state.prompt_file,
+            session_id,
+        )
 
-    workspace_changed: bool | None = (
-        observation.resolved_workspace_changed() if observation else None
+    state.prompt_file = recovery_plan.prompt_file
+    state.resume_session_id = recovery_plan.session_id
+    state.completion_reprompt_used = state.completion_reprompt_used or isinstance(
+        exc, AgyIncompleteExitError
     )
-    phase = str(ctx.effect.phase)
-    agent = ctx.effect.agent_name
-    controller = ctx.deps.pipeline_deps.recovery_controller
-    ledger = ctx.deps.pipeline_deps.ledger
+    retry_intent = resolve_retry_intent(
+        outcome if outcome is not None else exc,
+        phase=phase,
+        agent=agent,
+        session_id=recovery_plan.session_id,
+        inactivity_error_type=AgentInactivityTimeoutError,
+        exc=exc,
+    )
+    if retry_intent is not None:
+        _set_last_captured_retry_intent(retry_intent)
+    else:
+        _set_last_captured_retry_intent(AgentRetryIntent())
+    raise exc
+
+
+def _fallback_attempt_finalizer(
+    controller: RecoveryController | None,
+    *,
+    phase: str,
+    agent: str,
+) -> AttemptFinalizer | None:
+    if controller is None:
+        return None
+
+    def finalize(finalization: AttemptFinalization) -> AttemptOutcome:
+        facts = (
+            attempt_facts_for_failure(finalization.exc)
+            if finalization.exc is not None
+            else AttemptFacts(artifact_valid=not finalization.attempt_failed)
+        )
+        if finalization.workspace_changed is not None:
+            facts = replace(facts, workspace_changed=finalization.workspace_changed)
+        return controller.finalize_attempt(
+            phase,
+            agent,
+            facts=facts,
+            attempt_failed=finalization.attempt_failed,
+            typed_signal=finalization.typed_signal,
+            exc=finalization.exc,
+            retryable_reason=finalization.retryable_reason,
+            attempt_key=(
+                f"{_FALLBACK_FINALIZER_ENTRY_POINT}:{phase}:{agent}:"
+                f"{controller.next_attempt_ordinal(phase, agent)}"
+            ),
+        )
+
+    return finalize
+
+
+def _typed_signal_for_exception(exc: BaseException) -> TypedSignal | None:
+    from ralph.recovery.controller import build_typed_agent_signal
+    from ralph.recovery.failure_classifier import (
+        typed_signal_name,
+        typed_signal_provider_originated,
+    )
+
+    signal_name = typed_signal_name(exc)
+    if signal_name is None:
+        return None
+    return build_typed_agent_signal(
+        signal_name,
+        typed_signal_provider_originated(exc),
+        None,
+    )
+
+
+def _demotion_after_finalization(
+    controller: RecoveryController | None,
+    ledger: AgentFailureLedger | None,
+    *,
+    phase: str,
+    agent: str,
+    workspace_changed: bool | None,
+) -> tuple[bool, str | None]:
     if controller is not None:
         from ralph.recovery.agent_failure_ledger import Cooldown, Spent
 
-        controller.record_attempt_fact(
-            phase,
-            agent,
-            artifact_valid=False,
-            workspace_changed=workspace_changed,
-        )
         status = controller.ledger.status(phase, agent)
         demoted = not status.is_eligible
         demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
-    elif ledger is not None:
+        return demoted, demotion_reason
+    if ledger is not None:
         from ralph.recovery.agent_failure_ledger import AttemptFact
 
         outcome = ledger.record(
@@ -623,8 +771,6 @@ def _handle_recovery_attempt_failure(
                 workspace_changed=workspace_changed,
             )
         )
-        demoted = outcome.demoted
-        demotion_reason = outcome.reason
         if outcome.demoted:
             logger.warning(
                 "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
@@ -634,56 +780,30 @@ def _handle_recovery_attempt_failure(
                 outcome.total_unproductive,
                 outcome.reason,
             )
-    else:
-        demoted = False
-        demotion_reason = None
-    if ledger is not None or controller is not None:
-        charged_observation = (
-            replace(observation, already_charged=True, reason=str(exc))
-            if observation is not None
-            else AgentFailureEvent(
-                phase=phase,
-                agent=agent,
-                artifact_valid=False,
-                workspace_changed=None,
-                reason=str(exc),
-                already_charged=True,
-            )
-        )
-        state.last_observation = charged_observation
-        if demoted:
-            logger.error(
-                "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
-                "Refusing to spin; failing fast.",
-                agent,
-                demotion_reason,
-            )
-            _set_last_captured_retry_intent(
-                AgentRetryIntent(
-                    action=None,
-                    session_id=None,
-                    failure_reason=recovery_plan.reason,
-                )
-            )
-            return _AttemptResult(charged_observation, state.prompt_file, session_id)
+        return outcome.demoted, outcome.reason
+    return False, None
 
-    state.prompt_file = recovery_plan.prompt_file
-    state.resume_session_id = recovery_plan.session_id
-    state.completion_reprompt_used = state.completion_reprompt_used or isinstance(
-        exc, AgyIncompleteExitError
+
+def _charged_observation(
+    observation: AgentFailureEvent | None,
+    *,
+    charged: bool,
+    phase: str,
+    agent: str,
+    exc: Exception,
+) -> AgentFailureEvent | None:
+    if not charged:
+        return None
+    if observation is not None:
+        return replace(observation, already_charged=True, reason=str(exc))
+    return AgentFailureEvent(
+        phase=phase,
+        agent=agent,
+        artifact_valid=False,
+        workspace_changed=None,
+        reason=str(exc),
+        already_charged=True,
     )
-    retry_intent = resolve_retry_intent(
-        exc,
-        phase=str(ctx.effect.phase),
-        agent=ctx.effect.agent_name,
-        session_id=recovery_plan.session_id,
-        inactivity_error_type=AgentInactivityTimeoutError,
-    )
-    if retry_intent is not None:
-        _set_last_captured_retry_intent(retry_intent)
-    else:
-        _set_last_captured_retry_intent(AgentRetryIntent())
-    raise exc
 
 
 def has_valid_terminal_artifact(
@@ -741,6 +861,8 @@ def _invoke_agent_with_recovery(
     on_retry_failure: Callable[[list[str]], object] | None = None,
     raise_resumable_exit: bool = False,
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
+    attempt_finalizer: AttemptFinalizer | None = None,
+    recovery_controller: RecoveryController | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> PipelineEvent | AgentFailureEvent:
     raw_fresh_bridge: object = fresh_bridge_requested()
@@ -854,6 +976,8 @@ def _invoke_agent_with_recovery(
                     observation=_attempt_failure_observation(
                         ctx, state, workspace_probe, attempt_workspace, exc
                     ),
+                    attempt_finalizer=attempt_finalizer,
+                    recovery_controller=recovery_controller,
                 )
 
         try:
@@ -1375,7 +1499,10 @@ def _enrich_invocation_error(
     return exc
 
 
-def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecoveryPlan | None:
+def build_agent_recovery_plan(
+    recovery_input: AgentRecoveryInput,
+    outcome: AttemptOutcome | None = None,
+) -> AgentRecoveryPlan | None:
     recorded_at = recovery_input.clock.epoch()
     record_watchdog_fire(
         recovery_input.workspace_root,
@@ -1386,11 +1513,17 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     )
     if recovery_input.attempt_index >= recovery_input.max_recovery_attempts:
         return None
-    reason = retryable_agent_failure_reason(
-        recovery_input.exc, recovery_input.inactivity_error_type
-    )
-    if reason is None:
-        return None
+    if outcome is not None:
+        if not outcome.retries_same_agent:
+            return None
+        reason: str = outcome.reason
+    else:
+        retryable_reason = retryable_agent_failure_reason(
+            recovery_input.exc, recovery_input.inactivity_error_type
+        )
+        if retryable_reason is None:
+            return None
+        reason = retryable_reason
     completion_recovery = isinstance(recovery_input.exc, AgyIncompleteExitError)
     if completion_recovery and recovery_input.completion_reprompt_used:
         return None
@@ -1407,11 +1540,12 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         recovery_input.inactivity_error_type,
     )
     retry_intent = resolve_retry_intent(
-        recovery_input.exc,
+        outcome if outcome is not None else recovery_input.exc,
         phase=str(recovery_input.effect.phase),
         agent=recovery_input.effect.agent_name,
         session_id=session_id,
         inactivity_error_type=recovery_input.inactivity_error_type,
+        exc=recovery_input.exc,
     )
     reset_tool_registry = retry_intent.reset_tool_registry if retry_intent is not None else False
     recovery_action = recovery_action_for_failure_reason(
@@ -1956,16 +2090,12 @@ def _handle_terminal_agent_invocation_error(
                 chain_cap_decision="reset",
             )
         )
-    origin = exc.failure_origin if isinstance(exc, AgentInvocationError) else "agent"
-    issuer = exc.issuer if isinstance(exc, AgentInvocationError) else None
-    if issuer is None and observation is not None and observation.facts is not None:
-        termination = observation.facts.termination
-        issuer = str(termination.issuer) if termination is not None else None
+    facts = observation.facts if observation is not None and observation.facts is not None else None
+    if facts is None:
+        facts = attempt_facts_for_failure(exc)
     logger.error(
-        "Agent invocation failed: origin={} issuer={} error={}",
-        origin,
-        issuer,
-        condense_failure_text(str(exc)),
+        "Agent invocation failed: {}",
+        render_attempt_failure_log_line(facts, condense_failure_text(str(exc))),
     )
     agent_invocation_error_sink and agent_invocation_error_sink(exc)
     if observation is not None:

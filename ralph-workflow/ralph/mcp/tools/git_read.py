@@ -30,7 +30,11 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 
 GIT_STATUS_READ_CAPABILITY = "GitStatusRead"
 GIT_DIFF_READ_CAPABILITY = "GitDiffRead"
@@ -53,7 +57,12 @@ class _SpawnedProcessLike(Protocol):
     @property
     def stderr(self) -> object: ...
 
-    def kill(self) -> None: ...
+    def kill(
+        self,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+    ) -> None: ...
 
     def communicate_and_cleanup(self, *args: object, **kwargs: object) -> object: ...
 
@@ -708,17 +717,17 @@ def _collect_git_diff_capped(
     reader.start()
     reader.join(timeout=timeout_seconds)
     if reader.is_alive():
-        _kill_git_diff_proc(proc)
+        _kill_git_diff_proc(proc, issuer=ProcessTerminationIssuer.GIT_TIMEOUT)
         raise ExecutionError(
             f"git command timed out after {timeout_seconds:g}s: diff {' '.join(git_args)}".rstrip(),
             timed_out=True,
         )
     if failure:
-        _kill_git_diff_proc(proc)
+        _kill_git_diff_proc(proc, issuer=ProcessTerminationIssuer.GIT_TIMEOUT)
         raise ExecutionError(f"Failed to read git diff output: {failure[0]}") from failure[0]
     chunks, truncated = outcome[0]
     if truncated:
-        _kill_git_diff_proc(proc)
+        _kill_git_diff_proc(proc, issuer=ProcessTerminationIssuer.OUTPUT_LIMIT)
     if stderr_drain is not None:
         stderr_drain.join(timeout=max(deadline - time.monotonic(), 0.0))
     _terminate_git_diff_proc(proc, timeout=max(deadline - time.monotonic(), 0.1))
@@ -764,9 +773,13 @@ def _read_git_diff_until_cap(
     return chunks, False
 
 
-def _kill_git_diff_proc(proc: _SpawnedProcessLike) -> None:
+def _kill_git_diff_proc(
+    proc: _SpawnedProcessLike,
+    *,
+    issuer: ProcessTerminationIssuer,
+) -> None:
     with contextlib.suppress(Exception):
-        proc.kill()
+        proc.kill(issuer=issuer)
 
 
 def _terminate_git_diff_proc(proc: _SpawnedProcessLike, *, timeout: float) -> None:

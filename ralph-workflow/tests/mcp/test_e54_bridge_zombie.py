@@ -69,10 +69,10 @@ class _ZombieChild:
     def wait(self, timeout: float | None = None) -> int:
         return self._exit_status
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self.terminate_calls += 1
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.kill_calls += 1
 
     def cleanup_orphans(self) -> None:
@@ -98,11 +98,11 @@ class _LiveChild:
     def wait(self, timeout: float | None = None) -> int | None:
         return self._exit_status
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self.terminate_calls += 1
         self._exit_status = 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.kill_calls += 1
         self._exit_status = -9
 

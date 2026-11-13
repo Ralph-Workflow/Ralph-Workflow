@@ -86,7 +86,7 @@ class FakeProcess:
     def poll(self) -> int | None:
         return self._poll_result
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self.terminated = True
         self.terminated_grace_period = grace_period_s
         self._poll_result = 0
@@ -94,7 +94,7 @@ class FakeProcess:
     def wait(self, timeout: float | None = None) -> int | None:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         return None
 
 
@@ -460,7 +460,7 @@ def test_restart_aware_bridge_closes_relay_before_terminating_the_server(tmp_pat
             return True
 
     class _OrderedProcess(FakeProcess):
-        def terminate(self, grace_period_s: float = 5.0) -> None:
+        def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
             assert events == ["relay"]
             events.append("terminate")
             super().terminate(grace_period_s)

@@ -25,7 +25,12 @@ from ralph.mcp.tools._exec_job_output import (
     _merge_stream_buffers,
     serialize_liveness_verdict,
 )
-from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.process.manager._liveness_assessor import (
     LivenessConfig,
     LivenessVerdict,
@@ -62,6 +67,14 @@ _runtime_hook_cache: dict[str, _HookRegistrar] = {}
 
 def _is_hook_registrar(value: object) -> TypeGuard[_HookRegistrar]:
     return callable(value)
+
+
+def _kill_issuer_for_cause(cause: KillCause | None) -> ProcessTerminationIssuer:
+    if cause is None:
+        return ProcessTerminationIssuer.OPERATOR
+    if cause in {"session_end", "restart_lost"}:
+        return ProcessTerminationIssuer.MCP_SHUTDOWN
+    return ProcessTerminationIssuer.TOOL_TIMEOUT
 
 
 def _hook_registrar(module: object, attribute: str) -> _HookRegistrar:
@@ -412,7 +425,10 @@ class ExecJobRegistry:
 
         if job.handle is not None:
             with contextlib.suppress(Exception):
-                job.handle.terminate(grace_period_s=0.0)
+                job.handle.terminate(
+                    grace_period_s=0.0,
+                    issuer=_kill_issuer_for_cause(cause),
+                )
         self._settle_job(job, job.returncode, cause)
 
     def _mark_finished(self, job: _ActiveJob, returncode: int) -> None:

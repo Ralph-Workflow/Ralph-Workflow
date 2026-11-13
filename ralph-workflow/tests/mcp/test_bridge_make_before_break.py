@@ -18,7 +18,12 @@ from ralph.mcp.server._http_tools_list import _http_tools_list_names
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
-from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -284,7 +289,7 @@ def test_live_server_survives_failed_candidate(tmp_path: Path) -> None:
         for p in tracked_procs:
             if p.poll() is None:
                 with contextlib.suppress(Exception):
-                    p.kill()
+                    p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)
 
@@ -351,7 +356,7 @@ def test_make_before_break_promotion_with_old_drain(tmp_path: Path) -> None:
         for p in tracked_procs:
             if p.poll() is None:
                 with contextlib.suppress(Exception):
-                    p.kill()
+                    p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)
 
@@ -435,7 +440,7 @@ def test_preflight_over_shared_endpoint_does_not_promote_unverified_candidate(
         for p in tracked_procs:
             if p.poll() is None:
                 with contextlib.suppress(Exception):
-                    p.kill()
+                    p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)
 
@@ -476,7 +481,7 @@ def test_single_failed_attempt_does_not_set_inner_to_drained_inner(
         for p in tracked_procs:
             if p.poll() is None:
                 with contextlib.suppress(Exception):
-                    p.kill()
+                    p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)
 
@@ -523,6 +528,6 @@ def test_budget_still_exhausts_after_n_failed_attempts_only(
         for p in tracked_procs:
             if p.poll() is None:
                 with contextlib.suppress(Exception):
-                    p.kill()
+                    p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)

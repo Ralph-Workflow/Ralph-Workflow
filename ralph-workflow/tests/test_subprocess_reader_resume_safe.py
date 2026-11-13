@@ -77,12 +77,12 @@ class _FakeProcess:
         del timeout
         return self.returncode if self.returncode is not None else 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminated = True
         self.returncode = -15
         self._gate.set()
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.terminated = True
         self.returncode = -9
         self._gate.set()

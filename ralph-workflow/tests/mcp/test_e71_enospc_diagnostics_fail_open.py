@@ -28,10 +28,10 @@ class _FakeManagedProcess:
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         del grace_period_s
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         return None
 
     def wait(self, timeout: float | None = None) -> int:

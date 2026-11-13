@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import psutil
 
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.timeout_defaults import KILL_ESCALATION_CEILING_MS
 
 if TYPE_CHECKING:
@@ -155,8 +156,14 @@ class DefaultProcessTeardown:
     def teardown_subtree(self, host_pid: int, *, issuer: str, pgid: int | None = None) -> None:
         host, group = _resolve_target(host_pid, pgid)
         record = self._record_for(host_pid)
+        termination_issuer = self._termination_issuer(issuer)
         label = record.label if record is not None else None
         if label is not None and _label_family(label) != _label_family(issuer):
+            self._record_teardown(
+                host_pid,
+                issuer=termination_issuer,
+                outcome="refused_label_mismatch",
+            )
             _LOG.warning(
                 "refusing process teardown pid=%s issuer=%s label=%s", host_pid, issuer, label
             )
@@ -164,10 +171,16 @@ class DefaultProcessTeardown:
         _forget_child_session(host_pid)
 
         if host is None:
+            self._record_teardown(
+                host_pid,
+                issuer=termination_issuer,
+                outcome="already_exited",
+            )
             if group is not None:
                 self._signal_process_group(group)
             return
 
+        self._record_teardown(host_pid, issuer=termination_issuer, outcome="signalled")
         procs: list[psutil.Process] = []
         try:
             procs.append(host)
@@ -208,6 +221,26 @@ class DefaultProcessTeardown:
         if not isinstance(manager_module, _ProcessManagerModule):
             raise RuntimeError("process manager module does not expose get_process_manager")
         return manager_module.get_process_manager().get_record(host_pid)
+
+    def _termination_issuer(self, owner_label: str) -> ProcessTerminationIssuer:
+        if _label_family(owner_label) == "invoke":
+            return ProcessTerminationIssuer.INVOKE_TEARDOWN
+        return ProcessTerminationIssuer.OPERATOR
+
+    def _record_teardown(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        outcome: str,
+    ) -> None:
+        manager_module: object = import_module("ralph.process.manager")
+        if not isinstance(manager_module, _ProcessManagerModule):
+            raise RuntimeError("process manager module does not expose get_process_manager")
+        manager = manager_module.get_process_manager()
+        if manager.get_record(host_pid) is None:
+            return
+        manager.record_teardown(host_pid, issuer=issuer, outcome=outcome)
 
     def _await_exit(self, procs: list[psutil.Process]) -> set[int]:
         deadline = time.monotonic() + (self._kill_escalation_ms / 1000.0)

@@ -17,6 +17,7 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.upstream.models import UpstreamTool
 from ralph.mcp.upstream.tool_catalog_cache import cache_tool_catalog, reset_tool_catalog_cache
+from ralph.process.manager import ProcessTerminationIssuer
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -335,7 +336,7 @@ def test_respawn_with_cached_catalog_makes_zero_discovery_calls(tmp_path: Path) 
             count_after_first = fake_server.tools_list_count
 
             stale_inner = bridge._inner
-            stale_inner.process.kill()
+            stale_inner.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             assert bridge.check_health_and_restart_if_needed() is True
 
             deadline = time.monotonic() + 10.0
@@ -389,11 +390,11 @@ def test_respawn_increments_restart_count(tmp_path: Path) -> None:
         try:
             assert bridge.restart_count == 0
 
-            bridge._inner.process.kill()
+            bridge._inner.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             assert bridge.check_health_and_restart_if_needed() is True
             assert bridge.restart_count == 1, "restart_count must be 1 after one respawn"
 
-            bridge._inner.process.kill()
+            bridge._inner.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             assert bridge.check_health_and_restart_if_needed() is True
             assert bridge.restart_count == 2, "restart_count must be 2 after two respawns"
         finally:
@@ -446,7 +447,7 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
                 f"got {fake_server.tools_list_count} tools/list call(s)"
             )
 
-            bridge._inner.process.kill()
+            bridge._inner.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             assert bridge.check_health_and_restart_if_needed() is True
 
             deadline = time.monotonic() + 15.0
@@ -499,7 +500,7 @@ def test_absent_or_corrupt_snapshot_fails_closed(
 
             catalog_path.write_text("{not valid json", encoding="utf-8")
 
-            bridge._inner.process.kill()
+            bridge._inner.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             assert bridge.check_health_and_restart_if_needed() is False
             assert bridge.restart_count == 1
         finally:

@@ -80,7 +80,7 @@ def test_store_updates_keep_a_silent_opencode_parent_alive() -> None:
         pid: int = 999_998
         terminate_count = 0
 
-        def terminate(self, grace_period_s: float | None = None) -> None:
+        def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
             del grace_period_s
             self.terminate_count += 1
             stop_event.set()

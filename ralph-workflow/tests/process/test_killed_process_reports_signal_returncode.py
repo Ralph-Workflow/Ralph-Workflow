@@ -5,7 +5,12 @@ import time
 
 import pytest
 
-from ralph.process.manager import ProcessStatus, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessStatus,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
@@ -23,7 +28,7 @@ def test_terminated_child_reports_sigterm_returncode() -> None:
     handle = pm.spawn(["/bin/sleep", "30"], SpawnOptions(label="invoke:test"))
     _wait_until_running()
 
-    handle.terminate(grace_period_s=0.5)
+    handle.terminate(grace_period_s=0.5, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status is ProcessStatus.KILLED
     assert handle.returncode == _SIGTERM_RC
@@ -40,7 +45,7 @@ def test_force_killed_child_reports_sigkill_returncode() -> None:
     )
     _wait_until_running(0.15)
 
-    handle.terminate(grace_period_s=0.2)
+    handle.terminate(grace_period_s=0.2, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status is ProcessStatus.KILLED
     assert handle.returncode == _SIGKILL_RC

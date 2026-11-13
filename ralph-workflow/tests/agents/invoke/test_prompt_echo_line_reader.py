@@ -40,7 +40,7 @@ class _ProcessHandle(ManagedProcess):
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
 
 
@@ -59,7 +59,7 @@ class _PtyHandle(ManagedPtyProcess):
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
 
     def descendant_snapshot(self) -> tuple[int, float | None]:

@@ -109,10 +109,10 @@ def test_terminal_supervisor_interrupt_logs_status_and_command(
         def cmdline(self) -> list[str]:
             return ["opencode", "run", "--json-stream"]
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             pass
 
     pid = 9001

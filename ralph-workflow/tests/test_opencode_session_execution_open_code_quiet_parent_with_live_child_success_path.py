@@ -40,7 +40,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
             pid: int | None = None
             _poll_count: int = 0
 
-            def terminate(self, grace_period_s: float | None = None) -> None:
+            def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
                 del grace_period_s
                 self.terminate_count += 1
 

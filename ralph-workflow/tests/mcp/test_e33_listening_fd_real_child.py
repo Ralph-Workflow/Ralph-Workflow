@@ -11,7 +11,7 @@ import pytest
 from ralph import workspace as _workspace
 from ralph.mcp.protocol.env import MCP_INHERITED_FD_ENV
 from ralph.mcp.server import lifecycle
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 _ = _workspace
@@ -65,7 +65,7 @@ def test_non_mcp_real_child_does_not_inherit_listening_fd(tmp_path: Path) -> Non
             assert child_fd_link.stat().st_ino != sock_ino
     finally:
         with contextlib.suppress(Exception):
-            child.kill()
+            child.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             child.wait(timeout=2)
         sock.close()
 
@@ -105,7 +105,7 @@ def test_pass_fds_explicitly_passes_socket_to_child(tmp_path: Path) -> None:
         )
     finally:
         with contextlib.suppress(Exception):
-            child.kill()
+            child.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             child.wait(timeout=2)
         sock.close()
 

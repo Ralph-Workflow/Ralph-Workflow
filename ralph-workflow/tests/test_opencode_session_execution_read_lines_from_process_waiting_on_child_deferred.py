@@ -45,7 +45,7 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
             terminate_count: int = 0
             pid: int = 999_999
 
-            def terminate(self, grace_period_s: float | None = None) -> None:
+            def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
                 del grace_period_s
                 self.terminate_count += 1
                 stop_event.set()

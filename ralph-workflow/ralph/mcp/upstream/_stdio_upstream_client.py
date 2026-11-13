@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.protocol._startup_timeouts import upstream_call_timeout_seconds
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.process._spawn_env import scrub_activity_relay_controls
-from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
@@ -142,14 +147,17 @@ def _make_stdio_caller(
                 input=payload.encode(), timeout=probe_timeout_s
             )
         except subprocess.TimeoutExpired:
-            handle.terminate(grace_period_s=0)
+            handle.terminate(grace_period_s=0, issuer=ProcessTerminationIssuer.TOOL_TIMEOUT)
             raise UpstreamCallError(
                 f"upstream server '{server.name}' timed out after {probe_timeout_s:g}s"
             ) from None
         except BaseException:
             if handle.record.status not in _TERMINAL_STATUSES:
                 with contextlib.suppress(Exception):
-                    handle.terminate(grace_period_s=0)
+                    handle.terminate(
+                        grace_period_s=0,
+                        issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
+                    )
                 with contextlib.suppress(Exception):
                     handle.wait(timeout=0)
             raise

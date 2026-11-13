@@ -59,6 +59,7 @@ from ralph.agents.invoke._process_reader import (
     _is_resumable_fire_reason,
     _raise_on_relay_health_error,
     check_broken_agent_timer,
+    process_issuer_for_fire_reason,
 )
 from ralph.agents.invoke._pty_extras import PtyExtras
 from ralph.agents.invoke._pty_helpers import (
@@ -112,6 +113,7 @@ from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedPtyProcess,
     ProcessEvent,
+    ProcessTerminationIssuer,
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
@@ -833,7 +835,11 @@ class PtyLineReader:
             self._handle.wait(timeout=grace)
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
             if self._handle.poll() is None:
-                self._handle.terminate(grace_period_s=0.5)
+                self._handle.terminate(
+                    grace_period_s=0.5,
+                    issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
+                    reason="interactive_completion",
+                )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
@@ -944,7 +950,11 @@ class PtyLineReader:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
         self._record_terminal_reason("conflict_inactivity")
-        self._handle.terminate(grace_period_s=0.5)
+        self._handle.terminate(
+            grace_period_s=0.5,
+            issuer=process_issuer_for_fire_reason(fire_reason),
+            reason="conflict_inactivity",
+        )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
@@ -1131,7 +1141,11 @@ class PtyLineReader:
         with contextlib.suppress(Exception):
             self._handle.close()
         with contextlib.suppress(Exception):
-            self._handle.terminate(grace_period_s=0.5)
+            self._handle.terminate(
+                grace_period_s=0.5,
+                issuer=ProcessTerminationIssuer.OPERATOR,
+                reason="operator_cancellation",
+            )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             with contextlib.suppress(Exception):
@@ -1167,7 +1181,11 @@ class PtyLineReader:
         if self._quota_error is not None:
             return
         self._record_terminal_reason("quota_exhausted")
-        self._handle.terminate(grace_period_s=0.5)
+        self._handle.terminate(
+            grace_period_s=0.5,
+            issuer=ProcessTerminationIssuer.QUOTA_DETECTOR,
+            reason="quota_exhausted",
+        )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
@@ -1216,7 +1234,11 @@ class PtyLineReader:
             return
         self._record_terminal_reason("terminal_startup_error")
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
-            self._handle.terminate(grace_period_s=0.5)
+            self._handle.terminate(
+                grace_period_s=0.5,
+                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
+                reason="terminal_startup_error",
+            )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")

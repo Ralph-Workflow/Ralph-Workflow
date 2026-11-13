@@ -34,9 +34,9 @@ ORDINARY_DISPATCH_ROUTES = (
     (runner._integrate_inline_effect, "_integrate_on_phase_transition"),
     (effect_executor.execute_agent_effect, "assert_non_resolution_dispatch_allowed"),
     (worker_runtime.run_parallel_worker_from_manifest, "assert_non_resolution_dispatch_allowed"),
-    (commit_plumbing._run_commit_agent_attempt_with_recovery, "execute_agent_effect"),
-    (smoke_plumbing._execute_smoke_turns, "execute_agent_effect"),
-    (cli_integration._make_production_invoke_agent, "execute_agent_effect"),
+    (commit_plumbing._run_commit_agent_attempt_with_recovery, "run_agent_attempt"),
+    (smoke_plumbing._execute_smoke_turns, "run_agent_attempt"),
+    (cli_integration._make_production_invoke_agent, "run_agent_attempt"),
 )
 
 RESOLUTION_ROUTES = (
@@ -46,6 +46,12 @@ RESOLUTION_ROUTES = (
 )
 
 EXPECTED_EFFECT_EXECUTOR_CALLER_MODULES = {
+    "ralph.pipeline.conflict_resolution.session",
+    "ralph.pipeline.plumbing.smoke_plumbing",
+    "ralph.project_policy.cli_integration",
+}
+
+EXPECTED_ATTEMPT_RUNNER_CALLER_MODULES = {
     "ralph.pipeline.runner",
     "ralph.pipeline.conflict_resolution.session",
     "ralph.pipeline.parallel.worker_runtime",
@@ -90,6 +96,19 @@ def test_every_live_effect_executor_caller_is_inventoried() -> None:
         if "execute_agent_effect(" in inspect.getsource(module)
     }
     assert callers == EXPECTED_EFFECT_EXECUTOR_CALLER_MODULES
+    runner_callers = {
+        module.__name__
+        for module in (
+            runner,
+            session,
+            worker_runtime,
+            commit_plumbing,
+            smoke_plumbing,
+            cli_integration,
+        )
+        if "run_agent_attempt" in inspect.getsource(module)
+    }
+    assert runner_callers == EXPECTED_ATTEMPT_RUNNER_CALLER_MODULES
 
 
 def test_resolution_routes_are_explicitly_out_of_graph_recovery() -> None:

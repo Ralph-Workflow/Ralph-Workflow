@@ -30,10 +30,10 @@ from ralph.agents.invoke import (
     OpenCodeResumableExitError,
     _clear_session_completion_sentinel,
     extract_transport_session_id,
-    invoke_agent,
 )
 from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
+from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.display.capability_observation_recorder import infer_surface_for_preview
 from ralph.display.parallel_display import ParallelDisplay
@@ -54,7 +54,15 @@ from ralph.mcp.artifacts.smoke_test_result import (
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.pipeline.effect_executor import execute_agent_effect
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import (
+    build_entry_point_recovery_controller,
+    run_agent_attempt,
+)
+from ralph.pipeline.attempt_runner_deps import (
+    PRODUCTION_INVOKE,
+    AttemptRunnerDeps,
+)
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineCore, PipelineDeps
@@ -94,6 +102,25 @@ _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
 _SMOKE_OUTPUT_FILE = _SMOKE_RELATIVE_DIR / "todo-list.js"
 _LEGACY_INTERACTIVE_CLAUDE_MODEL = "haiku"
 _SMOKE_RUN_ID = "interactive-claude-smoke"
+
+execute_agent_effect = PRODUCTION_INVOKE
+
+
+def _invoke_smoke_effect(target: object, *args: object, **kwargs: object) -> object:
+    config = kwargs.pop("config")
+    pipeline_deps = kwargs.pop("pipeline_deps")
+    workspace_scope = kwargs.pop("workspace_scope")
+    result: object = execute_agent_effect(
+        target,
+        config,
+        pipeline_deps,
+        workspace_scope,
+        *args,
+        **kwargs,
+    )
+    return result
+
+
 _HEADLESS_CLAUDE_SMOKE_RELATIVE_DIR = Path("tmp/headless-claude-smoke")
 _HEADLESS_CLAUDE_SMOKE_OUTPUT_FILE = _HEADLESS_CLAUDE_SMOKE_RELATIVE_DIR / "todo-list.js"
 _HEADLESS_CLAUDE_SMOKE_RUN_ID = "headless-claude-smoke"
@@ -1023,12 +1050,30 @@ def _execute_smoke_turns(
         pipeline_deps = params.pipeline_deps
         if pipeline_deps is None:
             raise RuntimeError("SmokeRunParams.pipeline_deps is required")
+        attempt_deps = AttemptRunnerDeps(
+            clock=pipeline_deps.recovery_clock or SystemClock(),
+            invoke=_invoke_smoke_effect,
+            probe_runner=None,
+            workspace_probe=None,
+            connectivity=None,
+        )
+        controller = build_entry_point_recovery_controller(
+            AgentEntryPoint.SMOKE,
+            config=params.unified_config,
+            policy_bundle=pipeline_deps.policy_bundle,
+            deps=attempt_deps,
+            ledger_snapshot=(pipeline_deps.ledger.snapshot() if pipeline_deps.ledger else None),
+            unavailability_store=pipeline_deps.unavailability_store,
+        )
         try:
-            event = execute_agent_effect(
-                effect,
-                params.unified_config,
-                pipeline_deps,
-                workspace_scope,
+            attempt = run_agent_attempt(
+                AgentEntryPoint.SMOKE,
+                effect=effect,
+                config=params.unified_config,
+                controller=controller,
+                deps=attempt_deps,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
                 bridge=cast("RestartAwareMcpBridge", params.bridge),
                 display_context=params.display_context,
                 display=params.display,
@@ -1037,7 +1082,6 @@ def _execute_smoke_turns(
                 rendered_output_sink=rendered_lines,
                 raw_line_sink=_observe_raw_line,
                 set_session_id_cb=_capture_session_id,
-                invoke_agent=invoke_agent,
                 invocation_options=params.options,
                 raise_resumable_exit=True,
                 agent_invocation_error_sink=_capture_invocation_error,
@@ -1055,7 +1099,7 @@ def _execute_smoke_turns(
             current_session_id = observed_session_id or extract_transport_session_id(
                 tuple(raw_lines)
             )
-            if event == PipelineEvent.AGENT_SUCCESS:
+            if attempt.event == PipelineEvent.AGENT_SUCCESS:
                 final_exception = None
             break
         except OpenCodeResumableExitError as exc:

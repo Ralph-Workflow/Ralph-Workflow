@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
 
-__all__ = [
+__all__ = (
     "Attribution",
     "AttributionVerdict",
     "RuntimeCause",
@@ -18,7 +22,7 @@ __all__ = [
     "runtime_or_unattributed_kill_of_live_session_clears_agent",
     "satisfied_outcome_clears_agent",
     "workspace_writes_clear_agent",
-]
+)
 
 _REQUIRED_ATTRIBUTION_VALUES: Final[tuple[str, ...]] = (
     "agent",
@@ -103,14 +107,16 @@ class _AttributionVerdict:
             raise ValueError("runtime and task attributions never count toward agent state")
 
 
-_RUNTIME_ISSUER_CAUSES: Final[dict[TerminationIssuer, _RuntimeCause]] = {
-    TerminationIssuer.QUOTA_DETECTOR: _RuntimeCause.KILL_QUOTA_MISREAD,
-    TerminationIssuer.SUPERVISOR_IDLE: _RuntimeCause.KILL_SUPERVISOR_IDLE,
-    TerminationIssuer.RECOVERY_TIMEOUT: _RuntimeCause.KILL_RECOVERY_TIMEOUT,
-    TerminationIssuer.OPERATOR: _RuntimeCause.KILL_OPERATOR,
-    TerminationIssuer.POST_EXIT_WATCHDOG: _RuntimeCause.KILL_POST_EXIT_WATCHDOG,
-    TerminationIssuer.UNKNOWN: _RuntimeCause.KILL_UNATTRIBUTED,
-}
+_RUNTIME_ISSUER_CAUSES: Final[Mapping[TerminationIssuer, _RuntimeCause]] = MappingProxyType(
+    {
+        TerminationIssuer.QUOTA_DETECTOR: _RuntimeCause.KILL_QUOTA_MISREAD,
+        TerminationIssuer.SUPERVISOR_IDLE: _RuntimeCause.KILL_SUPERVISOR_IDLE,
+        TerminationIssuer.RECOVERY_TIMEOUT: _RuntimeCause.KILL_RECOVERY_TIMEOUT,
+        TerminationIssuer.OPERATOR: _RuntimeCause.KILL_OPERATOR,
+        TerminationIssuer.POST_EXIT_WATCHDOG: _RuntimeCause.KILL_POST_EXIT_WATCHDOG,
+        TerminationIssuer.UNKNOWN: _RuntimeCause.KILL_UNATTRIBUTED,
+    }
+)
 
 
 def liveness_observed(facts: AttemptFacts) -> bool:

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from ralph.agents.invoke import invoke_agent
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import SessionMcpPlan, build_session_mcp_plan
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE
 from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.workspace.fs import FsWorkspace
 
@@ -76,7 +76,9 @@ def _invoke_agent(
     prompt_file: str,
     options: InvokeOptions | None,
 ) -> Iterable[str]:
-    return invoke_agent(config, prompt_file, options=options)
+    return cast(
+        "Iterable[str]", PRODUCTION_INVOKE(config, prompt_file=prompt_file, options=options)
+    )
 
 
 def _materialize_master_prompt(

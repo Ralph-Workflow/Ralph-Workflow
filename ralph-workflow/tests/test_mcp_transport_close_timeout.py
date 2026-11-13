@@ -17,7 +17,7 @@ class _SlowToDieProcess:
         self.killed = False
         self.wait_calls = 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         return None
 
     def wait(self, timeout: float | None = None) -> int:
@@ -26,7 +26,7 @@ class _SlowToDieProcess:
             raise subprocess.TimeoutExpired(cmd="proc", timeout=timeout or 0.0)
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
 
 

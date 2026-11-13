@@ -4,12 +4,16 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.system_clock import SystemClock
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, is_ancestor, merge_state
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._pending_merge_commit import _git_value
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate_record import (
     MARK_REINTEGRATE_PENDING,
     MARK_RESOLVING_REBASE,
@@ -109,25 +113,24 @@ def compute_continuation_retry_gate_key(
 
     eligible_agents: tuple[str, ...] = ()
     effective_controller = recovery_controller
-    if effective_controller is None:
+    if effective_controller is None and config is not None:
         try:
             from ralph.pipeline.runner import load_policy_bundle_for_run
-            from ralph.recovery.controller import (
-                RecoveryController,
-                RecoveryControllerOptions,
-            )
-            from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
             from ralph.workspace.scope import WorkspaceScope
 
             scope = WorkspaceScope(root=root)
-            policy_bundle = (
-                load_policy_bundle_for_run(scope, config) if config is not None else None
-            )
-            effective_controller = RecoveryController(
-                options=RecoveryControllerOptions(
-                    policy_bundle=policy_bundle,
-                    dead_agent_probe_runner=production_dead_agent_probe_runner(config),
-                )
+            policy_bundle = load_policy_bundle_for_run(scope, config)
+            effective_controller = build_entry_point_recovery_controller(
+                AgentEntryPoint.INTEGRATION_CONTINUATION,
+                config=config,
+                policy_bundle=policy_bundle,
+                deps=AttemptRunnerDeps(
+                    clock=SystemClock(),
+                    invoke=PRODUCTION_INVOKE,
+                    probe_runner=None,
+                    workspace_probe=None,
+                    connectivity=None,
+                ),
             )
         except Exception as exc:
             logger.debug("compute_continuation_retry_gate_key: fallback controller init: {}", exc)

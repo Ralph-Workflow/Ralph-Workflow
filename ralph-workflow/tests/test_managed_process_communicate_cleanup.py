@@ -16,6 +16,7 @@ from ralph.process.manager import (
     ProcessManager,
     ProcessManagerPolicy,
     ProcessStatus,
+    ProcessTerminationIssuer,
     SpawnOptions,
 )
 from ralph.testing.fake_process import (
@@ -114,12 +115,12 @@ class TreeProcess(FakePsutilProcess):
     def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
         return list(self._recursive_children if recursive else self._direct_children)
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         super().terminate()
         if self._terminated:
             self.terminations += 1
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         super().kill()
         self.kills += 1
 
@@ -645,9 +646,18 @@ def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[float | None] = []
     real_terminate = handle.terminate
 
-    def _spy_terminate(grace_period_s: float | None = None) -> None:
+    def _spy_terminate(
+        grace_period_s: float | None = None,
+        *,
+        issuer: ProcessTerminationIssuer = ProcessTerminationIssuer.OPERATOR,
+        reason: str = "operator_cancellation",
+    ) -> None:
         seen.append(grace_period_s)
-        real_terminate(grace_period_s=grace_period_s)
+        real_terminate(
+            grace_period_s=grace_period_s,
+            issuer=issuer,
+            reason=reason,
+        )
 
     monkeypatch.setattr(handle, "terminate", _spy_terminate)
 

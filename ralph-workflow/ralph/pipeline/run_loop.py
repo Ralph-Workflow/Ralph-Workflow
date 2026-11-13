@@ -52,7 +52,10 @@ from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_t
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
+from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate import recovery_retained_record
 from ralph.pipeline.auto_integrate_agent import (
     build_agent_conflict_resolver,
@@ -94,10 +97,8 @@ from ralph.pipeline.rebase_state import (
 from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
 from ralph.process.manager import get_process_manager
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
+from ralph.recovery.controller import RecoveryController
 from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
 from ralph.timeout_defaults import (
@@ -135,6 +136,7 @@ if TYPE_CHECKING:
     from ralph.pro_support.hooks import ProPipelineHooks
     from ralph.pro_support.state_query import SnapshotRegistry
     from ralph.pro_support.watcher import ProMarkerWatcher
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.workspace.scope import WorkspaceScope
 
     class _PipelineSubscriberProtocol(Protocol):
@@ -3534,27 +3536,25 @@ def _build_recovery_controller(
         else AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
     )
     effective_clock = clock or SystemClock()
-    ledger: AgentFailureLedger | None = None
-    ledger_snap: object = state.ledger_snapshot
-    if isinstance(ledger_snap, Mapping) and ledger_snap:
-        ledger = AgentFailureLedger.from_snapshot(
-            cast("Mapping[str, object]", ledger_snap),
-            clock=effective_clock,
-        )
     effective_probe = (
         workspace_probe if workspace_probe is not None else DefaultWorkspaceChangeProbe()
     )
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=_cycle_cap,
-            policy_bundle=policy_bundle,
-            agent_max_consecutive_unproductive=consecutive_limit,
-            agent_max_total_unproductive=total_limit,
+    controller = build_entry_point_recovery_controller(
+        AgentEntryPoint.MAIN_PHASE_LOOP,
+        config=config,
+        policy_bundle=policy_bundle,
+        deps=AttemptRunnerDeps(
             clock=effective_clock,
-            ledger=ledger,
+            invoke=PRODUCTION_INVOKE,
+            probe_runner=None,
             workspace_probe=effective_probe,
-            dead_agent_probe_runner=production_dead_agent_probe_runner(config),
-        )
+            connectivity=None,
+        ),
+        ledger_snapshot=state.ledger_snapshot,
+        false_bench_snapshot=state.false_bench_feedback,
+        cycle_cap=_cycle_cap,
+        agent_max_consecutive_unproductive=consecutive_limit,
+        agent_max_total_unproductive=total_limit,
     )
     return controller, _cycle_cap
 

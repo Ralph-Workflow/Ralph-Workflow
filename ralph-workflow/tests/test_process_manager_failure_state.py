@@ -8,7 +8,12 @@ from unittest.mock import patch
 import pytest
 
 from ralph.process import get_process_manager, process_phase_scope
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationError
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationError,
+    ProcessTerminationIssuer,
+)
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
     FakeImmortalPopen,
@@ -68,7 +73,7 @@ def test_root_only_force_kill_failure_marks_record_failed() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"
@@ -83,10 +88,10 @@ def test_psutil_force_kill_failure_marks_record_failed() -> None:
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
             return []
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             pass
 
     parent_pid = 1
@@ -103,7 +108,7 @@ def test_psutil_force_kill_failure_marks_record_failed() -> None:
     handle._record.pid = parent_pid
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.0)
+        handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"
@@ -170,7 +175,7 @@ def test_escalate_termination_sync_access_denied_marks_record_failed() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"
@@ -188,7 +193,7 @@ def test_process_termination_regression_permission_error_marks_record_failed() -
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"
@@ -228,7 +233,7 @@ async def test_escalate_termination_async_access_denied_marks_record_failed() ->
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError):
-        await handle.terminate(grace_period_s=0.01)
+        await handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"

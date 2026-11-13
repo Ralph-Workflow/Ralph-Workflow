@@ -62,7 +62,7 @@ class _ProcessHandle:
     def poll(self) -> int:
         return 0
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
 
 
@@ -75,7 +75,7 @@ class _PtyHandle:
     def poll(self) -> int:
         return 0
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
 
     def descendant_snapshot(self) -> tuple[int, float | None]:

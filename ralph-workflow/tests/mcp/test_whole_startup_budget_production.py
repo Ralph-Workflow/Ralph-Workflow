@@ -35,7 +35,7 @@ from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._start_stage_tracker import read_last_stage
 from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.server.runtime import McpServerExtras, run_standalone_server
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 pytestmark = pytest.mark.required_auto_integrate_e2e
 
@@ -210,7 +210,7 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
         with contextlib.suppress(OSError):
             parent_sock.close()
         with contextlib.suppress(Exception):
-            proc.kill()
+            proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
 
 
 def _drain_pipe(stream: IO[bytes], deadline_s: float) -> bytes:

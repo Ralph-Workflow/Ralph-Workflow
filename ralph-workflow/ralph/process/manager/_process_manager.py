@@ -47,6 +47,7 @@ from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessSta
 from ralph.process.manager._process_termination_error import ProcessTerminationError
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._spawn_options import SpawnOptions
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import register_child_session
 from ralph.runtime_events import record_runtime_event
 from ralph.timeout_defaults import GIT_TERMINATE_GRACE_SECONDS
@@ -603,6 +604,21 @@ class ProcessManager:
                 record["issuer"] = issuer
             outcomes.append(record)
 
+    def _require_permitted_terminal_reason(self, reason: str) -> None:
+        if reason not in _PERMITTED_TERMINAL_REASONS:
+            raise ValueError(f"unknown terminal reason: {reason}")
+
+    def record_teardown(
+        self,
+        pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        outcome: str,
+    ) -> None:
+        if outcome not in {"signalled", "refused_label_mismatch", "already_exited"}:
+            raise ValueError(f"unknown teardown outcome: {outcome}")
+        self._record_termination_outcome(pid, "teardown_subtree", outcome, issuer.value)
+
     def original_terminal_reason(self, pid: int) -> str | None:
         for outcome in self._termination_outcomes.get(pid, []):
             if outcome.get("stage") == "terminal_reason":
@@ -898,11 +914,12 @@ class ProcessManager:
         self,
         handle: ManagedProcess | ManagedPtyProcess | ManagedAsyncProcess,
         *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
         grace_period_s: float | None = None,
     ) -> None:
-        self.record_terminal_reason(
-            handle.record.pid, "operator_cancellation", "process_manager.terminate"
-        )
+        self._require_permitted_terminal_reason(reason)
+        self.record_terminal_reason(handle.record.pid, reason, issuer.value)
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
         if isinstance(handle, ManagedProcess):
             self._escalate_termination_sync(handle.record, handle._proc, gp)
@@ -1110,7 +1127,11 @@ class ProcessManager:
         self._stop_zombie_reaper()
 
     def shutdown_all_for_label(
-        self, label_prefix: str, *, grace_period_s: float | None = None
+        self,
+        label_prefix: str,
+        *,
+        grace_period_s: float | None = None,
+        issuer: ProcessTerminationIssuer = ProcessTerminationIssuer.OPERATOR,
     ) -> None:
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
 
@@ -1126,9 +1147,7 @@ class ProcessManager:
                 ):
                     continue
                 try:
-                    self.record_terminal_reason(
-                        pid, "operator_cancellation", "process_manager.shutdown_all_for_label"
-                    )
+                    self.record_terminal_reason(pid, "operator_cancellation", issuer.value)
                     proc = self._sync_procs.get(pid)
                     if proc is not None:
                         self._escalate_termination_sync(record, proc, gp)

@@ -11,6 +11,7 @@ import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
+from ralph.process.manager import ProcessTerminationIssuer
 from ralph.workspace.fs import FsWorkspace
 from tests.mcp._listen_state import socket_is_listening
 
@@ -158,7 +159,7 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
     try:
         assert bridge.process.poll() is None, "child must be alive immediately after start"
 
-        bridge.process.kill()
+        bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         exit_code = _wait_until_child_exits(bridge.process, deadline=time.monotonic() + 5.0)
         assert exit_code is not None, "kill() should make poll() return an exit code"
 
@@ -187,7 +188,7 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
         connect_deadline = time.monotonic() + 8.0
         _repeated_connects_during_respawn(bridge, endpoint, deadline=connect_deadline)
 
-        bridge._inner.process.kill()
+        bridge._inner.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         _wait_until_child_exits(bridge._inner.process, deadline=time.monotonic() + 3.0)
         _queued_connection_served_after_respawn(bridge, endpoint)
 
@@ -221,7 +222,7 @@ def test_inherited_socket_stays_listening_across_kill(tmp_path: Path) -> None:
     try:
         assert bridge.process.poll() is None
 
-        bridge.process.kill()
+        bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         _wait_until_child_exits(bridge.process, deadline=time.monotonic() + 3.0)
 
         listening_socket = bridge._listening_socket

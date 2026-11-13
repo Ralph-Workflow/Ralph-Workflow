@@ -17,6 +17,7 @@ from ralph.mcp.server import lifecycle
 from ralph.mcp.server._http_tools_list import http_tools_list_names
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
+from ralph.process.manager import ProcessTerminationIssuer
 from tests.mcp.e72_descendant_helper import (
     read_recorded_upstream_pid,
     spawn_serving_child_with_upstream,
@@ -222,7 +223,7 @@ def _read_published_upstream_pid(pid_file: Path, *, timeout_s: float) -> int:
 def _reap(proc: ManagedProcess) -> None:
     if proc.poll() is None:
         with contextlib.suppress(Exception):
-            proc.kill()
+            proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         with contextlib.suppress(Exception):
             proc.wait(timeout=1.0)
 

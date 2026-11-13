@@ -4,6 +4,8 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.process.manager import ProcessTerminationIssuer
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
@@ -99,6 +101,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_exec_smoke_subprocess_e2e.py",
     "tests/test_exec_job_shutdown_subprocess_e2e.py",
     "tests/test_skills_upstream_transport.py",
+    "tests/agents/invoke/test_kill_attribution_subprocess_e2e.py",
 )
 
 EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
@@ -169,8 +172,14 @@ class _FakeShardProcess:
         self.reaped = True
         return self._stdout, self._stderr
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
-        del grace_period_s
+    def terminate(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        issuer: ProcessTerminationIssuer = ProcessTerminationIssuer.OPERATOR,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        del grace_period_s, issuer, reason
         if self._terminate_raises is not None:
             raise self._terminate_raises
         self.terminated = True
@@ -204,7 +213,7 @@ class _BackpressuredShardProcess:
         self.reaped = True
         return self._stdout, self._stderr
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
         self.terminated = True
 

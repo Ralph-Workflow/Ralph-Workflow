@@ -76,10 +76,10 @@ class _RecordingUpstreamPopen:
         self._returncode = 0
         return b'{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}\n', b""
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self._returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._returncode = -9
 
 

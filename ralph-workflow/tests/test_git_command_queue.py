@@ -89,7 +89,7 @@ class _FakeProcess:
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def terminate(self, grace_period_s: float = 0.0) -> None:
+    def terminate(self, grace_period_s: float = 0.0, **_kwargs: object) -> None:
         return None
 
 

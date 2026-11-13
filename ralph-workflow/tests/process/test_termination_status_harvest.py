@@ -153,10 +153,10 @@ class _StubPtyProcForManaged:
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
     def close(self) -> None:
@@ -215,10 +215,10 @@ class _FakeSyncProc:
     ) -> tuple[bytes | None, bytes | None]:
         return None, None
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
     def note_external_returncode(self, rc: int) -> None:
@@ -351,10 +351,10 @@ class _FakePtyProc:
     def wait(self, timeout: float | None = None) -> int:
         return self._rc if self._rc is not None else 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
     def close(self) -> None:
@@ -404,10 +404,10 @@ class _FakeAsyncProcWithNote:
     async def communicate(self, input: bytes | None = None) -> tuple[bytes | None, bytes | None]:
         return None, None
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
     def note_external_returncode(self, rc: int) -> None:

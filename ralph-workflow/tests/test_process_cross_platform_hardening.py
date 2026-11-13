@@ -7,7 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationError
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationError,
+    ProcessTerminationIssuer,
+)
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
     FakeImmortalPopen,
@@ -45,7 +50,7 @@ def test_psutil_none_fallback_terminate_escalates() -> None:
     pm = _make_pm(psutil_mod=None)
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
@@ -71,7 +76,7 @@ def test_psutil_none_fallback_force_kill_failure() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"
@@ -141,7 +146,7 @@ def test_descendant_registry_cleanup_on_psutil_none() -> None:
     pm.register_descendant(handle.pid, 99999)
     assert 99999 in pm._descendants.get(handle.pid, [])
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
     assert handle.pid not in pm._descendants
 
 
@@ -175,7 +180,7 @@ def test_termination_outcomes_logged_across_platforms() -> None:
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     outcomes = pm.list_termination_outcomes()
     assert handle.pid in outcomes

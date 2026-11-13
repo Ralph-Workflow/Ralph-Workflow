@@ -82,7 +82,7 @@ class _FakePtyHandle(SimpleNamespace):
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         pass
 
     def descendant_snapshot(self) -> tuple[int, float | None]:
@@ -123,7 +123,7 @@ def _make_process_reader() -> ProcessLineReader:
         def poll(self) -> int | None:
             return None
 
-        def terminate(self, *, grace_period_s: float = 0.5) -> None:
+        def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
             pass
 
     handle = _Handle()

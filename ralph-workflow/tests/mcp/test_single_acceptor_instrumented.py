@@ -48,18 +48,18 @@ class _ProcessAdapter:
     def poll(self) -> int | None:
         return self._proc.poll()
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self._proc.terminate()
 
     def wait(self, timeout: float | None = None) -> int | None:
         return self._proc.wait(timeout=timeout)
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._proc.kill()
 
 
 class _ImmortalProcessAdapter(_ProcessAdapter):
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationIssuer
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
     FakePsutil,
@@ -61,7 +61,7 @@ def test_escalate_termination_sync_survives_wait_procs_einval() -> None:
     pm, fake_psutil = _make_manager()
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle.terminate(grace_period_s=0.0)
+    handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert pm.list_active() == []
@@ -117,7 +117,7 @@ def test_process_manager_regression_registered_descendant_einval_uses_safe_wait(
 
     monkeypatch.setattr(pm, "_safe_wait_procs", counting_safe_wait)
 
-    handle.terminate(grace_period_s=0.0)
+    handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert pm.list_active() == []
@@ -133,7 +133,7 @@ def test_escalate_termination_sync_parametrized_einval(grace: float) -> None:
     pm, fake_psutil = _make_manager()
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle.terminate(grace_period_s=grace)
+    handle.terminate(grace_period_s=grace, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert fake_psutil.wait_procs_calls >= 1

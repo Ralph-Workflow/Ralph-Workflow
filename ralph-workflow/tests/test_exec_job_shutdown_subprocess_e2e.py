@@ -13,7 +13,12 @@ import pytest
 
 from ralph.executor import ProcessExecutionError, ProcessResult, run_process
 from ralph.executor.process import ProcessRunOptions
-from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -509,7 +514,7 @@ def test_terminating_a_supervised_job_keeps_the_worker_grace_period(tmp_path: Pa
     assert isinstance(handle, ManagedProcess)
     _wait_for_sentinel_text(ready)
 
-    handle.terminate(grace_period_s=5.0)
+    handle.terminate(grace_period_s=5.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert graceful.read_text(encoding="utf-8") == "graceful"
 

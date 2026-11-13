@@ -12,7 +12,7 @@ from ralph.mcp.server._host_contention_signal import record_psi_pressure
 from ralph.mcp.server._mcp_attempt_result import RestartAttemptResult
 from ralph.mcp.server._mcp_health_event import record_host_contention_signal
 from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,7 +30,9 @@ def _agent_process_label_prefix(agent_label_scope: str) -> str:
 
 def _terminate_agent_processes(label_prefix: str) -> None:
     get_process_manager().shutdown_all_for_label(
-        label_prefix, grace_period_s=_INTERRUPT_GRACE_PERIOD_S
+        label_prefix,
+        grace_period_s=_INTERRUPT_GRACE_PERIOD_S,
+        issuer=ProcessTerminationIssuer.OPERATOR,
     )
 
 

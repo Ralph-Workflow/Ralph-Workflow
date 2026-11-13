@@ -40,6 +40,7 @@ from ralph.recovery.agent_unavailability_tracker import (
     UnavailabilityStore,
 )
 from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.attribution import attribute_attempt
 from ralph.recovery.classifier import (
     ClassifiedFailure,
@@ -50,11 +51,13 @@ from ralph.recovery.classifier import (
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.dead_agent_verdict import TypedSignal
+from ralph.recovery.end_attempt import end_attempt
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.failure_classifier import (
     typed_signal_name,
     typed_signal_provider_originated,
 )
+from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.timeout_defaults import (
@@ -283,6 +286,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
+    from ralph.recovery.attempt_outcome import AttemptOutcome
     from ralph.recovery.attribution import AttributionVerdict
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.dead_agent_verdict import DeadAgentVerdict, PersistedVerdict
@@ -405,6 +409,8 @@ def build_dead_agent_verdict(
 
 _HEALTHY_VERDICT_VALUE = "healthy"
 
+_MIN_PEER_CHAIN_AGENTS = 2
+
 
 def _verdict_benches_agent(verdict: PersistedVerdict) -> bool:
     namespace = _dead_agent_verdict_namespace()
@@ -424,6 +430,24 @@ def _verdict_counts_toward_agent_state(verdict: PersistedVerdict) -> bool:
     return predicate(verdict.verdict)
 
 
+def _attempt_observation_present(facts: AttemptFacts) -> bool:
+    return (
+        facts.termination is not None
+        or facts.exit_status is not None
+        or facts.elapsed_to_terminal_ms is not None
+        or bool(facts.event_kinds)
+        or bool(facts.tool_calls)
+    )
+
+
+def _charges_agent_ledger(outcome: AttemptOutcome, *, peer_failures_identical: bool) -> bool:
+    if outcome.counts_toward_agent_state:
+        return True
+    if outcome.kind is not AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE:
+        return False
+    return not peer_failures_identical
+
+
 def _without_broken_agent_reason(failure: ClassifiedFailure) -> ClassifiedFailure:
     if failure.unavailability_reason is not UnavailabilityReason.BROKEN_AGENT:
         return failure
@@ -434,6 +458,17 @@ def _without_unavailability_reason(failure: ClassifiedFailure) -> ClassifiedFail
     if not failure.is_unavailable and failure.unavailability_reason is None:
         return failure
     return replace(failure, is_unavailable=False, unavailability_reason=None)
+
+
+def _failure_for_attempt_outcome(
+    failure: ClassifiedFailure,
+    verdict: PersistedVerdict,
+) -> ClassifiedFailure:
+    if str(verdict.verdict) == _HEALTHY_VERDICT_VALUE:
+        return _without_unavailability_reason(failure)
+    if _verdict_counts_toward_agent_state(verdict):
+        return _without_broken_agent_reason(failure)
+    return _without_unavailability_reason(failure)
 
 
 class RecoveryController:
@@ -482,7 +517,22 @@ class RecoveryController:
         self._workspace_probe: WorkspaceChangeProbe | None = opts.workspace_probe
         self._dead_agent_probe_runner = opts.dead_agent_probe_runner
         self._last_verdict_record: dict[str, object] | None = None
+        self._last_resolved_verdict: PersistedVerdict | None = None
+        self._last_attempt_outcome: AttemptOutcome | None = None
+        self._last_demoted_reason: str | None = None
         self._dead_agent_verdict_runner = opts.dead_agent_verdict_runner
+        self._false_bench_feedback: FalseBenchFeedback = (
+            opts.false_bench_feedback
+            if opts.false_bench_feedback is not None
+            else FalseBenchFeedback()
+        )
+        self._attempt_outcome_memo: dict[
+            str, tuple[AttemptOutcome, str | None, PersistedVerdict | None]
+        ] = {}
+        self._attempt_outcome_keys: dict[tuple[str, str], list[str]] = {}
+        self._claimed_attempt_outcome_keys: set[str] = set()
+        self._peer_failure_signatures: dict[str, dict[str, tuple[object, ...]]] = {}
+        self._attempt_ordinals: dict[tuple[str, str], int] = {}
         self._spent_agents: dict[str, set[str]] = {
             k: set(v) for k, v in (opts.spent_agents or {}).items()
         }
@@ -523,6 +573,18 @@ class RecoveryController:
     def cycle_cap(self) -> int:
         return self._cap.cap
 
+    @property
+    def false_bench_feedback(self) -> FalseBenchFeedback:
+        return self._false_bench_feedback
+
+    @property
+    def last_attempt_outcome(self) -> AttemptOutcome | None:
+        return self._last_attempt_outcome
+
+    @property
+    def last_resolved_verdict(self) -> PersistedVerdict | None:
+        return self._last_resolved_verdict
+
     def handle(
         self,
         state: PipelineState,
@@ -547,38 +609,35 @@ class RecoveryController:
         )
         if effective_facts is None:
             effective_facts = failure.facts
-        verdict = self._resolve_dead_agent_verdict(
+        chain = state.chain_for_phase(phase)
+        if chain is not None and chain.agents:
+            self._phase_chains[phase] = tuple(chain.agents)
+        current_agent = agent or (
+            chain.agents[chain.current_index]
+            if chain is not None and chain.agents and chain.current_index < len(chain.agents)
+            else None
+        )
+        attempt_facts = replace(
+            effective_facts if effective_facts is not None else AttemptFacts(),
+            artifact_valid=artifact_valid,
+            workspace_changed=workspace_changed,
+        )
+        outcome = self.finalize_attempt(
             phase,
-            agent,
-            failure=failure,
-            facts=effective_facts,
+            current_agent,
+            facts=attempt_facts,
+            attempt_failed=True,
             exc=raw_failure if isinstance(raw_failure, BaseException) else None,
         )
-        bench_applied = False
-        counts_toward_agent_state = True
-        if verdict is not None:
-            self._remember_verdict(phase, agent, verdict)
-            if _verdict_benches_agent(verdict) and agent is not None:
-                self.record_confirmed_unavailability(
-                    phase,
-                    agent,
-                    UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
-                    verdict,
-                )
-                bench_applied = True
-                failure = replace(
-                    failure,
-                    is_unavailable=True,
-                    unavailability_reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
-                )
-            else:
-                counts_toward_agent_state = _verdict_counts_toward_agent_state(verdict)
-                if str(verdict.verdict) == _HEALTHY_VERDICT_VALUE:
-                    failure = _without_unavailability_reason(failure)
-                elif counts_toward_agent_state:
-                    failure = _without_broken_agent_reason(failure)
-                else:
-                    failure = _without_unavailability_reason(failure)
+        bench_applied = outcome.benches_agent
+        if bench_applied:
+            failure = replace(
+                failure,
+                is_unavailable=True,
+                unavailability_reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+            )
+        elif self._last_resolved_verdict is not None:
+            failure = _failure_for_attempt_outcome(failure, self._last_resolved_verdict)
 
         if failure.category == FailureCategory.INTEGRATION:
             return self._handle_integration_continuation(state, failure, phase)
@@ -586,11 +645,214 @@ class RecoveryController:
             state,
             failure,
             context,
-            workspace_changed=workspace_changed,
-            artifact_valid=artifact_valid,
             bench_applied=bench_applied,
-            counts_toward_agent_state=counts_toward_agent_state,
+            sole_demoted_reason=self._last_demoted_reason,
         )
+
+    def next_attempt_ordinal(self, phase: str, agent: str | None) -> int:
+        key = (phase, agent or "")
+        ordinal = self._attempt_ordinals.get(key, 0) + 1
+        self._attempt_ordinals[key] = ordinal
+        return ordinal
+
+    def finalize_attempt(
+        self,
+        phase: str,
+        agent: str | None,
+        *,
+        facts: AttemptFacts,
+        attempt_failed: bool,
+        typed_signal: TypedSignal | None = None,
+        exc: BaseException | None = None,
+        retryable_reason: str | None = None,
+        probe_mode: bool = False,
+        attempt_key: str | None = None,
+        config_fingerprint: str | None = None,
+        session_ref: Mapping[str, str] | None = None,
+    ) -> AttemptOutcome:
+        if attempt_key is not None:
+            memoized = self._attempt_outcome_memo.get(attempt_key)
+            if memoized is not None:
+                return self._restore_memoized_attempt(memoized)
+        else:
+            claimed = self._claim_memoized_attempt(phase, agent)
+            if claimed is not None:
+                return self._restore_memoized_attempt(claimed)
+
+        outcome, demoted_reason, resolved_verdict = self._finalize_attempt_now(
+            phase,
+            agent,
+            facts=facts,
+            attempt_failed=attempt_failed,
+            typed_signal=typed_signal,
+            exc=exc,
+            retryable_reason=retryable_reason,
+            probe_mode=probe_mode,
+            config_fingerprint=config_fingerprint,
+            session_ref=session_ref,
+            charge_ledger=True,
+        )
+        self._last_attempt_outcome = outcome
+        self._last_demoted_reason = demoted_reason
+        self._last_resolved_verdict = resolved_verdict
+        if attempt_key is not None:
+            self._attempt_outcome_memo[attempt_key] = (outcome, demoted_reason, resolved_verdict)
+            self._attempt_outcome_keys.setdefault((phase, agent or ""), []).append(attempt_key)
+        return outcome
+
+    def _restore_memoized_attempt(
+        self,
+        memoized: tuple[AttemptOutcome, str | None, PersistedVerdict | None],
+    ) -> AttemptOutcome:
+        outcome, demoted_reason, resolved_verdict = memoized
+        self._last_attempt_outcome = outcome
+        self._last_demoted_reason = demoted_reason
+        self._last_resolved_verdict = resolved_verdict
+        return outcome
+
+    def _claim_memoized_attempt(
+        self,
+        phase: str,
+        agent: str | None,
+    ) -> tuple[AttemptOutcome, str | None, PersistedVerdict | None] | None:
+        keys = self._attempt_outcome_keys.get((phase, agent or ""))
+        if not keys:
+            return None
+        for key in reversed(keys):
+            if key in self._claimed_attempt_outcome_keys:
+                continue
+            memoized = self._attempt_outcome_memo.get(key)
+            if memoized is None:
+                continue
+            self._claimed_attempt_outcome_keys.add(key)
+            return memoized
+        return None
+
+    def _finalize_attempt_now(
+        self,
+        phase: str,
+        agent: str | None,
+        *,
+        facts: AttemptFacts | None,
+        attempt_failed: bool,
+        typed_signal: TypedSignal | None,
+        exc: BaseException | None,
+        retryable_reason: str | None,
+        probe_mode: bool,
+        config_fingerprint: str | None,
+        session_ref: Mapping[str, str] | None,
+        charge_ledger: bool,
+    ) -> tuple[AttemptOutcome, str | None, PersistedVerdict | None]:
+        attempt_facts = facts if facts is not None else AttemptFacts()
+        peer_failures_identical = self._peer_failures_identical(phase, agent, attempt_facts)
+        signal_name: str | None = None
+        signal_provider_originated = False
+        if exc is not None:
+            signal_name = typed_signal_name(exc)
+            signal_provider_originated = typed_signal_provider_originated(exc)
+        effective_signal = typed_signal
+        if effective_signal is None and signal_name is not None:
+            effective_signal = build_typed_agent_signal(
+                signal_name,
+                signal_provider_originated,
+                attempt_facts,
+            )
+        probe_outcome: ProbeOutcome | None = None
+        resolved_verdict: PersistedVerdict | None = None
+        if not probe_mode:
+            resolved_verdict = self._resolve_dead_agent_verdict(
+                phase,
+                agent,
+                facts=facts,
+                exc=exc,
+                signal_name=signal_name,
+                signal_provider_originated=signal_provider_originated,
+            )
+            if resolved_verdict is not None:
+                probe_outcome = resolved_verdict.probe_outcome
+                if resolved_verdict.typed_signal is not None:
+                    effective_signal = resolved_verdict.typed_signal
+        outcome = end_attempt(
+            attempt_facts,
+            attempt_failed=attempt_failed,
+            typed_signal=effective_signal,
+            probe_outcome=probe_outcome,
+            peer_failures_identical=peer_failures_identical,
+            retryable_reason=retryable_reason,
+        )
+        remembered_verdict = outcome.verdict if outcome.verdict is not None else resolved_verdict
+        if remembered_verdict is not None:
+            self._remember_verdict(phase, agent, remembered_verdict)
+        fingerprint = config_fingerprint
+        if fingerprint is None and agent is not None:
+            fingerprint = f"agent:{agent}"
+        demoted_reason: str | None = None
+        if outcome.benches_agent and not probe_mode and agent is not None:
+            self.record_confirmed_unavailability(
+                phase,
+                agent,
+                UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+                outcome.verdict,
+            )
+            self._false_bench_feedback.note_bench(
+                phase,
+                agent,
+                str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
+                config_fingerprint=fingerprint or "",
+                verdict_ref=self._last_verdict_record or {},
+                session_ref=session_ref or {},
+            )
+        if (
+            _charges_agent_ledger(outcome, peer_failures_identical=peer_failures_identical)
+            and not probe_mode
+            and charge_ledger
+            and agent is not None
+        ):
+            demoted_reason = self.record_attempt_fact(
+                phase,
+                agent,
+                artifact_valid=attempt_facts.artifact_valid,
+                workspace_changed=attempt_facts.workspace_changed,
+            )
+        if outcome.kind is AttemptOutcomeKind.COMPLETED:
+            self.reset_backoff(phase, agent)
+            if agent is not None:
+                self._false_bench_feedback.note_success(
+                    phase,
+                    agent,
+                    config_fingerprint=fingerprint or "",
+                )
+            self._peer_failure_signatures.pop(phase, None)
+        elif agent is not None and _attempt_observation_present(attempt_facts):
+            self._peer_failure_signatures.setdefault(phase, {})[agent] = self._failure_signature(
+                attempt_facts
+            )
+        return outcome, demoted_reason, resolved_verdict
+
+    def _failure_signature(self, facts: AttemptFacts) -> tuple[object, ...]:
+        termination = facts.termination
+        return (
+            facts.artifact_valid,
+            str(termination.issuer) if termination is not None else None,
+            facts.exit_status,
+            facts.workspace_changed,
+            tuple(facts.event_kinds),
+        )
+
+    def _peer_failures_identical(
+        self,
+        phase: str,
+        agent: str | None,
+        facts: AttemptFacts,
+    ) -> bool:
+        if not _attempt_observation_present(facts):
+            return False
+        chain = self._get_chain_agents(phase)
+        if chain is None or len(chain) < _MIN_PEER_CHAIN_AGENTS:
+            return False
+        signature = self._failure_signature(facts)
+        remembered = self._peer_failure_signatures.get(phase, {})
+        return all(remembered.get(other) == signature for other in chain if other != agent)
 
     def _remember_verdict(self, phase: str, agent: str | None, verdict: PersistedVerdict) -> None:
         namespace = _dead_agent_verdict_namespace()
@@ -607,10 +869,14 @@ class RecoveryController:
         self,
         signal_name: str | None,
         facts: AttemptFacts | None,
+        *,
+        attempt_ended: bool,
     ) -> bool:
         if signal_name is not None:
             return True
-        return facts is not None and not facts.artifact_valid
+        if facts is None or facts.artifact_valid:
+            return False
+        return attempt_ended
 
     def _resolve_dead_agent_verdict(
         self,
@@ -634,7 +900,14 @@ class RecoveryController:
         effective_facts = facts
         if effective_facts is None and failure is not None:
             effective_facts = failure.facts
-        if not self._is_dead_agent_candidate(signal_name, effective_facts):
+        attempt_ended = exc is not None or (
+            effective_facts is not None and effective_facts.termination is not None
+        )
+        if not self._is_dead_agent_candidate(
+            signal_name,
+            effective_facts,
+            attempt_ended=attempt_ended,
+        ):
             return None
         if effective_facts is None and self._dead_agent_verdict_runner is None:
             effective_facts = AttemptFacts()
@@ -725,25 +998,34 @@ class RecoveryController:
         signal_name: str | None = None,
         signal_provider_originated: bool = False,
     ) -> PersistedVerdict | None:
-        verdict = self._resolve_dead_agent_verdict(
+        typed_signal = (
+            build_typed_agent_signal(
+                signal_name,
+                signal_provider_originated,
+                facts if facts is not None else AttemptFacts(),
+            )
+            if signal_name is not None
+            else None
+        )
+        outcome, _demoted_reason, resolved_verdict = self._finalize_attempt_now(
             phase,
             agent,
             facts=facts,
+            attempt_failed=True,
+            typed_signal=typed_signal,
             exc=exc,
-            signal_name=signal_name,
-            signal_provider_originated=signal_provider_originated,
+            retryable_reason=None,
+            probe_mode=False,
+            config_fingerprint=None,
+            session_ref=None,
+            charge_ledger=False,
         )
-        if verdict is None:
-            return None
-        self._remember_verdict(phase, agent, verdict)
-        if _verdict_benches_agent(verdict):
-            self.record_confirmed_unavailability(
-                phase,
-                agent,
-                UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
-                verdict,
-            )
-        return verdict
+        self._last_attempt_outcome = outcome
+        self._last_demoted_reason = None
+        self._last_resolved_verdict = resolved_verdict
+        if outcome.verdict is not None:
+            return outcome.verdict
+        return resolved_verdict
 
     def _get_chain_agents(self, phase: str) -> tuple[str, ...] | None:
         chain_config = self._chain_config_for_phase(phase)
@@ -791,44 +1073,14 @@ class RecoveryController:
                 self.note_retry_exhaustion(phase, agent)
         return None
 
-    def _record_attempt_fact(
-        self,
-        state: PipelineState,
-        phase: str,
-        current_agent: str | None,
-        failure: ClassifiedFailure,
-        chain: AgentChainState | None,
-        *,
-        workspace_changed: bool,
-        artifact_valid: bool,
-    ) -> str | None:
-        if current_agent is None:
-            return None
-        if chain is not None:
-            self._phase_chains[phase] = tuple(chain.agents)
-        is_free_retry = failure.category in (
-            FailureCategory.ENVIRONMENTAL,
-            FailureCategory.ARTIFACT_VALIDATION,
-            FailureCategory.AMBIGUOUS,
-        )
-        return self.record_attempt_fact(
-            phase,
-            current_agent,
-            artifact_valid=artifact_valid,
-            workspace_changed=workspace_changed,
-            free_retry_category=is_free_retry,
-        )
-
     def _handle_classified_failure(
         self,
         state: PipelineState,
         failure: ClassifiedFailure,
         context: FailureContext,
         *,
-        workspace_changed: bool = False,
-        artifact_valid: bool = False,
         bench_applied: bool = False,
-        counts_toward_agent_state: bool = True,
+        sole_demoted_reason: str | None = None,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         phase, agent = context.phase, context.agent
         retry_in_session = context.retry_in_session
@@ -839,6 +1091,7 @@ class RecoveryController:
 
         if chain is not None:
             chain_capacity = max(0, len(chain.agents) - chain.current_index - 1)
+            self._phase_chains[phase] = tuple(chain.agents)
 
             if agent is not None and failure.counts_against_budget and not is_agent_unavailable:
                 retry_delay_ms = self._compute_retry_delay(phase, agent)
@@ -865,22 +1118,6 @@ class RecoveryController:
             last_retry_delay_ms=retry_delay_ms,
         ).clear_waiting()
 
-        current_agent = agent or (
-            chain.agents[chain.current_index]
-            if chain is not None and chain.agents and chain.current_index < len(chain.agents)
-            else None
-        )
-        sole_demoted_reason: str | None = None
-        if counts_toward_agent_state:
-            sole_demoted_reason = self._record_attempt_fact(
-                state,
-                phase,
-                current_agent,
-                failure,
-                chain,
-                workspace_changed=workspace_changed,
-                artifact_valid=artifact_valid,
-            )
         if sole_demoted_reason is not None:
             logger.warning(sole_demoted_reason)
             new_state = new_state.copy_with(recovery_cycle_count=new_state.recovery_cycle_count + 1)
@@ -1500,6 +1737,7 @@ class RecoveryController:
             "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
             "unavailability_reasons": tracker_snapshot.get("unavailability_reasons", {}),
             "spent_agents": {k: sorted(v) for k, v in self._spent_agents.items()},
+            "false_bench_feedback": self._false_bench_feedback.snapshot(),
         }
 
     @classmethod

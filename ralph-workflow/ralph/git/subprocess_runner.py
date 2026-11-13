@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.git.git_call_policy import GitCallClass, effective_terminate_grace_seconds
 from ralph.git.git_run_result import GitRunResult
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
@@ -174,14 +178,23 @@ def _spawn_git(
         with contextlib.suppress(Exception):
             get_process_manager().drain_completed()
     except subprocess.TimeoutExpired:
-        proc.terminate(grace_period_s=terminate_grace_seconds)
+        proc.terminate(
+            grace_period_s=terminate_grace_seconds,
+            issuer=ProcessTerminationIssuer.GIT_TIMEOUT,
+        )
         raise
     except ManagedProcessOutputLimitExceededError:
-        proc.terminate(grace_period_s=terminate_grace_seconds)
+        proc.terminate(
+            grace_period_s=terminate_grace_seconds,
+            issuer=ProcessTerminationIssuer.OUTPUT_LIMIT,
+        )
         raise
     except BaseException:
         with contextlib.suppress(Exception):
-            proc.terminate(grace_period_s=terminate_grace_seconds)
+            proc.terminate(
+                grace_period_s=terminate_grace_seconds,
+                issuer=ProcessTerminationIssuer.OPERATOR,
+            )
         raise
     finally:
         raw_proc_obj: object = proc._proc

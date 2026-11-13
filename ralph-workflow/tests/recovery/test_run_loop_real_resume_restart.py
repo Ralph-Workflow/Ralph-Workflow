@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
+
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
 
+@pytest.mark.timeout_seconds(3)
 
 def test_run_loop_real_resume_restores_ledger_without_injected_controller(
     tmp_path: Path,

@@ -14,7 +14,7 @@ from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import CompletionCheckOptions, check_process_result
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.config.enums import AgentTransport
-from ralph.process.manager import ProcessStatus
+from ralph.process.manager import ProcessStatus, ProcessTerminationIssuer
 from ralph.process.manager._process_manager import ProcessManager
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
@@ -105,6 +105,6 @@ def test_request_interactive_exit_does_not_lose_returncode(tmp_path: Path) -> No
         )
     finally:
         with contextlib.suppress(Exception):
-            handle.terminate(grace_period_s=0.01)
+            handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
         with contextlib.suppress(Exception):
             handle.close()

@@ -26,7 +26,7 @@ class _FakeExitedHandle:
     def poll(self) -> int:
         return 0
 
-    def terminate(self, *, grace_period_s: float | None = None) -> None:
+    def terminate(self, *, grace_period_s: float | None = None, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
 
 
@@ -43,7 +43,7 @@ class _FakeLiveHandle:
     def poll(self) -> None:
         return None
 
-    def terminate(self, *, grace_period_s: float | None = None) -> None:
+    def terminate(self, *, grace_period_s: float | None = None, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
 
 

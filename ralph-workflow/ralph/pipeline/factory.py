@@ -5,7 +5,6 @@ import time
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import ralph.pipeline.session_bridge as _session_bridge
-from ralph.agents.invoke import invoke_agent as _default_invoke_agent
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.lifecycle import check_mcp_bridge_health
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
@@ -245,7 +244,7 @@ class PipelineDeps:
     ) = None
     commit_effect_executor: Callable[[object, Path], object] | None = None
     has_uncommitted_changes: Callable[[Path], bool] | None = None
-    invoke_agent: InvokeAgentFn = _default_invoke_agent
+    invoke_agent: InvokeAgentFn | None = None
     monotonic: Callable[[], float] = time.monotonic
     wall_time: Callable[[], float] = time.time
     resolve_workspace_scope_fn: Callable[[Path | str | None], WorkspaceScope] | None = None
@@ -292,7 +291,7 @@ class PipelineDeps:
         ) = None,
         commit_effect_executor: Callable[[object, Path], object] | None = None,
         has_uncommitted_changes: Callable[[Path], bool] | None = None,
-        invoke_agent: InvokeAgentFn = _default_invoke_agent,
+        invoke_agent: InvokeAgentFn | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         wall_time: Callable[[], float] = time.time,
         resolve_workspace_scope_fn: Callable[[Path | str | None], WorkspaceScope] | None = None,

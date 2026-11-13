@@ -68,11 +68,11 @@ class _FakeRaisingPopen:
         del input, timeout
         raise OSError("broken pipe")
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         self._returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._returncode = -9
 
 
@@ -99,11 +99,11 @@ class _FakeRaisingAsyncProcess:
         del input
         raise OSError("broken pipe")
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         self._returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._returncode = -9
 
 
@@ -192,11 +192,11 @@ class _RecordingPostTerminatePopen:
             )
         return b"", b""
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         self._returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._returncode = -9
 
 

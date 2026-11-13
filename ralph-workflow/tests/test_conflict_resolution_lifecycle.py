@@ -18,7 +18,7 @@ class _TrackedProcess:
     def poll(self) -> int | None:
         return 0 if self.terminal else None
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         del grace_period_s
         self.terminated += 1
         self.terminal = True
@@ -28,7 +28,7 @@ class _TrackedProcess:
         self.terminal = True
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.terminal = True
 
 
@@ -57,7 +57,7 @@ class _UnreapedProcess:
     def poll(self) -> int | None:
         return None
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         del grace_period_s
         self.terminated += 1
 
@@ -65,7 +65,7 @@ class _UnreapedProcess:
         del timeout
         return self.returncode
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         return None
 
 

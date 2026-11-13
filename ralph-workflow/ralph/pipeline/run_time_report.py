@@ -124,6 +124,27 @@ def _redirect_line(state: PipelineState) -> str:
     return f"- [CT-2] Redirected cycles: {count}; {detail}.\n"
 
 
+def _false_bench_line(state: PipelineState) -> str:
+    snapshot = state.false_bench_feedback
+    if snapshot is None:
+        return ""
+    count = snapshot.get("count", 0)
+    events = snapshot.get("events", ())
+    if not isinstance(count, int) or not isinstance(events, (list, tuple)):
+        return "- [SG-4] False benches: 0.\n"
+    labels: list[str] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        agent = event.get("agent")
+        phase = event.get("phase")
+        fingerprint = event.get("config_fingerprint")
+        if isinstance(agent, str) and isinstance(phase, str) and isinstance(fingerprint, str):
+            labels.append(f"{_safe_text(agent)}@{_safe_text(phase)} [{_safe_text(fingerprint)}]")
+    detail = f" ({', '.join(labels)})" if labels else ""
+    return f"- [SG-4] False benches: {_format_count(count)}{detail}.\n"
+
+
 def render_run_time_report(
     *,
     state: PipelineState,
@@ -222,6 +243,7 @@ def render_run_time_report(
                 if state.rebase.integration_unresolved
                 else ""
             )
+            + _false_bench_line(state)
             + (
                 (
                     "\n## Development Timebox\n"

@@ -9,7 +9,7 @@ import textwrap
 import pytest
 
 from ralph.display.line_sanitizer import sanitize_display_line
-from ralph.process.manager import SpawnOptions
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions
 from ralph.process.manager._process_manager import ProcessManager
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
@@ -105,7 +105,7 @@ def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
         )
     finally:
         try:
-            pty_handle.terminate()
+            pty_handle.terminate(issuer=ProcessTerminationIssuer.OPERATOR)
         finally:
             pty_handle.close()
 
@@ -153,7 +153,7 @@ def test_child_without_explicit_stdin_sees_eof_not_the_terminal(
         )
     finally:
         try:
-            handle.terminate()
+            handle.terminate(issuer=ProcessTerminationIssuer.OPERATOR)
         finally:
             with contextlib.suppress(Exception):
                 handle.__exit__(None, None, None)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Final, cast
 
 from ralph.recovery.attempt_facts import (
     AttemptFacts,
@@ -13,19 +13,22 @@ from ralph.recovery.attempt_facts import (
 from ralph.recovery.attribution import Attribution, AttributionVerdict, liveness_observed
 from ralph.recovery.canary_probe import ProbeOutcome
 
-__all__ = [
+__all__ = (
     "DeadAgentVerdict",
     "PersistedVerdict",
     "TypedSignal",
     "authoritative_typed_signal_convicts_agent",
     "decide_dead_agent_verdict",
+    "migrate_verdict_record",
     "probe_outcome_verdict",
     "runtime_issued_termination_is_not_agent_fault",
     "task_or_environment_attribution_is_not_agent_fault",
     "verdict_benches_agent",
     "verdict_counts_toward_agent_state",
     "verdict_record",
-]
+)
+
+_VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 2
 
 _REQUIRED_DEAD_AGENT_VERDICT_VALUES: Final[tuple[str, ...]] = (
     "agent_dead",
@@ -188,6 +191,9 @@ def _termination_record(termination: TerminationRecord | None) -> dict[str, obje
         "reported_returncode": termination.reported_returncode,
         "liveness_observed": termination.liveness_observed,
         "return_code_discrepancy": termination.return_code_discrepancy,
+        "log": [
+            {"issuer": entry.issuer.value, "source": entry.source} for entry in termination.log
+        ],
     }
 
 
@@ -203,6 +209,7 @@ def _typed_signal_record(signal: TypedSignal | None) -> dict[str, object] | None
 
 def verdict_record(phase: str, agent: str, verdict: PersistedVerdict) -> dict[str, object]:
     return {
+        "schema_version": _VERDICT_RECORD_SCHEMA_VERSION,
         "phase": phase,
         "agent": agent,
         "verdict": str(verdict.verdict),
@@ -213,3 +220,19 @@ def verdict_record(phase: str, agent: str, verdict: PersistedVerdict) -> dict[st
         "typed_signal": _typed_signal_record(verdict.typed_signal),
         "return_code_discrepancy": verdict.return_code_discrepancy,
     }
+
+
+def migrate_verdict_record(record: dict[str, object]) -> dict[str, object]:
+    migrated = dict(record)
+    if migrated.get("schema_version") == _VERDICT_RECORD_SCHEMA_VERSION:
+        return migrated
+    termination = migrated.get("termination")
+    if isinstance(termination, dict):
+        migrated_termination = dict(cast("dict[str, object]", termination))
+        issuer = migrated_termination.get("issuer")
+        migrated_termination["log"] = (
+            [{"issuer": issuer, "source": "v1"}] if isinstance(issuer, str) else []
+        )
+        migrated["termination"] = migrated_termination
+    migrated["schema_version"] = _VERDICT_RECORD_SCHEMA_VERSION
+    return migrated

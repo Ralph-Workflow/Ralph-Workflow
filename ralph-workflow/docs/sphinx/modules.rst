@@ -5197,3 +5197,116 @@ ralph.mcp.tools.commit_normalization
 .. automodule:: ralph.mcp.tools.commit_normalization
    :members:
    :show-inheritance:
+
+ralph.agents.invoke.termination_recorder
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.termination_recorder
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.agent_entry_point
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.agent_entry_point
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.attempt_finalizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.attempt_finalizer
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.attempt_result
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.attempt_result
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.attempt_runner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.attempt_runner
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.attempt_runner_deps
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.attempt_runner_deps
+   :members:
+   :show-inheritance:
+
+ralph.process.manager.process_termination_issuer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.manager.process_termination_issuer
+   :members:
+   :show-inheritance:
+
+ralph.recovery.agent_config_fingerprint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.agent_config_fingerprint
+   :members:
+   :show-inheritance:
+
+ralph.recovery.attempt_failure_log_line
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.attempt_failure_log_line
+   :members:
+   :show-inheritance:
+
+ralph.recovery.attempt_outcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.attempt_outcome
+   :members:
+   :show-inheritance:
+
+ralph.recovery.attempt_outcome_kind
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.attempt_outcome_kind
+   :members:
+   :show-inheritance:
+
+ralph.recovery.end_attempt
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.end_attempt
+   :members:
+   :show-inheritance:
+
+ralph.recovery.false_bench_feedback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.false_bench_feedback
+   :members:
+   :show-inheritance:
+
+ralph.recovery.false_bench_fixture
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.false_bench_fixture
+   :members:
+   :show-inheritance:
+
+ralph.recovery.termination_log_entry
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.termination_log_entry
+   :members:
+   :show-inheritance:
+
+ralph.testing.repo_structure_boundary_rules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.repo_structure_boundary_rules
+   :members:
+   :show-inheritance:
+

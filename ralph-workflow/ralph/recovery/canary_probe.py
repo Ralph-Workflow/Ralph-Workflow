@@ -7,17 +7,23 @@ from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, cast
+
+from loguru import logger
 
 from ralph.agents.invoke import (
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
-    invoke_agent,
 )
+from ralph.agents.timeout_clock import SystemClock
 from ralph.config.general_config import GeneralConfig
+from ralph.config.models import UnifiedConfig
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -25,6 +31,28 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
+    from ralph.pipeline.attempt_result import AttemptResult
+    from ralph.pipeline.attempt_runner import AttemptInvoke
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+    from ralph.recovery.controller import RecoveryController
+
+    class _AttemptRunnerModule(Protocol):
+        def build_entry_point_recovery_controller(
+            self,
+            entry_point: AgentEntryPoint,
+            **kwargs: object,
+        ) -> RecoveryController: ...
+
+        def run_agent_attempt(
+            self,
+            entry_point: AgentEntryPoint,
+            **kwargs: object,
+        ) -> AttemptResult: ...
+
+    class _AttemptRunnerDepsModule(Protocol):
+        PRODUCTION_INVOKE: AttemptInvoke
+        AttemptRunnerDeps: type[AttemptRunnerDeps]
+
 
 CANARY_MARKER_FILENAME: Final[str] = "ralph_canary_marker.txt"
 CANARY_MARKER_CONTENT: Final[str] = "RALPH_CANARY_OK"
@@ -146,22 +174,23 @@ def _run_canary_probe(
         if isinstance(workspace, _ProbeResult):
             return workspace
         workspace_path = workspace
+        general = general_config if general_config is not None else GeneralConfig()
         prepared = _prepare_probe(
             config,
             workspace_path,
-            general_config,
+            general,
             extra_env,
             timeout_s,
             started,
         )
         if isinstance(prepared, _ProbeResult):
             return prepared
-        invoke = invoke_agent if invoke_fn is None else invoke_fn
+        invoke = invoke_fn if invoke_fn is not None else _production_invoke()
         error, timed_out = _invoke_with_timeout(
             invoke,
             config,
-            prepared.prompt_file,
-            prepared.options,
+            prepared,
+            general,
             timeout_s,
         )
         if timed_out:
@@ -212,7 +241,7 @@ def _scratch_workspace(
 def _prepare_probe(
     config: AgentConfig,
     workspace_path: Path,
-    general_config: GeneralConfig | None,
+    general: GeneralConfig,
     extra_env: dict[str, str] | None,
     timeout_s: float,
     started: float,
@@ -221,7 +250,7 @@ def _prepare_probe(
         options = _build_probe_options(
             config,
             workspace_path,
-            general_config,
+            general,
             extra_env,
             timeout_s,
         )
@@ -265,7 +294,7 @@ def _agent_name(config: AgentConfig) -> str | None:
 def _build_probe_options(
     config: AgentConfig,
     workspace_path: Path,
-    general_config: GeneralConfig | None,
+    general: GeneralConfig,
     extra_env: dict[str, str] | None,
     timeout_s: float,
 ) -> InvokeOptions:
@@ -278,7 +307,6 @@ def _build_probe_options(
         agent_name=_agent_name(config),
         requires_completion_evidence=False,
     )
-    general = general_config if general_config is not None else GeneralConfig()
     options = build_invoke_options_from_config(general, runtime)
     return replace(options, idle_timeout_seconds=timeout_s, max_session_seconds=timeout_s)
 
@@ -292,17 +320,15 @@ def _write_prompt(workspace_path: Path) -> str:
 def _invoke_with_timeout(
     invoke: _InvokeAgentFn,
     config: AgentConfig,
-    prompt_file: str,
-    options: InvokeOptions,
+    prepared: _PreparedProbe,
+    general: GeneralConfig,
     timeout_s: float,
 ) -> tuple[BaseException | None, bool]:
     captured: list[BaseException] = []
 
     def _run() -> None:
         try:
-            result = invoke(config, prompt_file, options=options)
-            if result is not None:
-                deque(result, maxlen=0)
+            _run_probe_attempt(invoke, config, prepared, general)
         except BaseException as exc:
             captured.append(exc)
 
@@ -312,6 +338,75 @@ def _invoke_with_timeout(
     if thread.is_alive():
         return (None, True)
     return (captured[0] if captured else None, False)
+
+
+def _production_invoke() -> _InvokeAgentFn:
+    module = cast(
+        "_AttemptRunnerDepsModule",
+        import_module("ralph.pipeline.attempt_runner_deps"),
+    )
+    return cast("_InvokeAgentFn", module.PRODUCTION_INVOKE)
+
+
+def _probe_invoke(invoke: _InvokeAgentFn) -> AttemptInvoke:
+    def _invoke(target: object, *args: object, **kwargs: object) -> object:
+        del args
+        result = invoke(
+            cast("AgentConfig", target),
+            prompt_file=str(kwargs["prompt_file"]),
+            options=cast("InvokeOptions | None", kwargs.get("options")),
+        )
+        if result is not None:
+            deque(result, maxlen=0)
+        return PipelineEvent.AGENT_SUCCESS
+
+    return _invoke
+
+
+def _run_probe_attempt(
+    invoke: _InvokeAgentFn,
+    config: AgentConfig,
+    prepared: _PreparedProbe,
+    general: GeneralConfig,
+) -> None:
+    runner = cast(
+        "_AttemptRunnerModule",
+        import_module("ralph.pipeline.attempt_runner"),
+    )
+    runner_deps = cast(
+        "_AttemptRunnerDepsModule",
+        import_module("ralph.pipeline.attempt_runner_deps"),
+    )
+    agent_name = _agent_name(config)
+    unified = UnifiedConfig(
+        general=general,
+        agents={agent_name: config} if agent_name is not None else {},
+    )
+    deps = runner_deps.AttemptRunnerDeps(
+        clock=SystemClock(),
+        invoke=_probe_invoke(invoke),
+        probe_runner=None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+    controller = runner.build_entry_point_recovery_controller(
+        AgentEntryPoint.CANARY_PROBE,
+        config=unified,
+        policy_bundle=None,
+        deps=deps,
+    )
+    result = runner.run_agent_attempt(
+        AgentEntryPoint.CANARY_PROBE,
+        invocation=config,
+        config=unified,
+        controller=controller,
+        deps=deps,
+        phase=CANARY_PROBE_PHASE,
+        agent=agent_name,
+        prompt_file=prepared.prompt_file,
+        options=prepared.options,
+    )
+    logger.info("canary probe attempt outcome: {}", result.outcome.kind)
 
 
 def _judge_marker(workspace_path: Path, started: float) -> _ProbeResult:

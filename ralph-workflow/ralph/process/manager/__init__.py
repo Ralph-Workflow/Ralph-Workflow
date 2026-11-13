@@ -81,6 +81,7 @@ from ralph.process.manager._singleton import (
 )
 from ralph.process.manager._spawn_options import SpawnOptions
 from ralph.process.manager.liveness_verifier import LivenessVerifier
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.pty import spawn_pty_process
 
 if TYPE_CHECKING:
@@ -279,6 +280,7 @@ __all__ = [
     "ProcessRecord",
     "ProcessStatus",
     "ProcessTerminationError",
+    "ProcessTerminationIssuer",
     "PsutilModuleLike",
     "PtySpawnOptions",
     "SpawnOptions",

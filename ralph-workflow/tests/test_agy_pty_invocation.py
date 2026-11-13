@@ -178,7 +178,7 @@ def test_agy_invoke_completes_when_completion_signal_present(
             del timeout
             return 0
 
-        def terminate(self, grace_period_s: float = 0.5) -> None:
+        def terminate(self, grace_period_s: float = 0.5, **_kwargs: object) -> None:
             del grace_period_s
 
     class _FakeProcessManager:
@@ -386,7 +386,7 @@ def test_ansi_wrapped_completion_marker_detected(
             del timeout
             return 0
 
-        def terminate(self, grace_period_s: float = 0.5) -> None:
+        def terminate(self, grace_period_s: float = 0.5, **_kwargs: object) -> None:
             del grace_period_s
 
     class _FakeProcessManager:
@@ -481,7 +481,7 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
         def poll(self) -> None:
             return None
 
-        def terminate(self, grace_period_s: float = 0.5) -> None:
+        def terminate(self, grace_period_s: float = 0.5, **_kwargs: object) -> None:
             self.terminate_calls.append(grace_period_s)
 
     handle = _FakeHandle()

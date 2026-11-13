@@ -33,7 +33,7 @@ from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import verify_chain
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps as _ArtifactHandlerDeps
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -47,7 +47,7 @@ assert _markdown_specs is not None
 def _reap_process(proc: ManagedProcess) -> None:
     if proc.poll() is None:
         with contextlib.suppress(Exception):
-            proc.kill()
+            proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             proc.wait(timeout=2.0)
 
 
@@ -268,7 +268,7 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
         t.start()
         _wait_for_marker(handler_entered_file, "non-idempotent request never entered the handler")
 
-        proc.kill()
+        proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         proc.wait(timeout=2.0)
 
         t.join(timeout=3.0)
@@ -669,14 +669,14 @@ def _spawn_and_wait_for_port(
 
 
 def _force_kill(proc: ManagedProcess, *, drain_grace_s: float = 3.0) -> None:
-    proc.terminate()
+    proc.terminate(issuer=ProcessTerminationIssuer.OPERATOR)
     deadline = time.monotonic() + drain_grace_s
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return
         time.sleep(0.02)
     if proc.poll() is None:
-        proc.kill()
+        proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         proc.wait(timeout=2.0)
 
 

@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 
 _JOURNAL_WARN_BYTES = 50 * 1024 * 1024
 _VOLUME_PATH_PARTS_FOR_EXTERNAL = 3
@@ -95,7 +100,7 @@ def _run_subprocess_mdutil(
     try:
         stdout, stderr = handle.communicate_and_cleanup(timeout=timeout)
     except subprocess.TimeoutExpired:
-        handle.terminate(grace_period_s=0)
+        handle.terminate(grace_period_s=0, issuer=ProcessTerminationIssuer.DIAGNOSTICS)
         raise
     finally:
         manager.cleanup_orphans(handle)

@@ -139,10 +139,10 @@ class _LiveProcess:
     def poll(self) -> int | None:
         return None
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         raise AssertionError("old child must never be terminated on a refusal")
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         raise AssertionError("old child must never be killed on a refusal")
 
 
@@ -218,10 +218,10 @@ class _DeadProcess:
     def poll(self) -> int | None:
         return 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         return None
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         return None
 
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph import timeout_defaults
 from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessStatus
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.timeout_defaults import PROCESS_EXIT_WAIT_SECONDS
 
 __all__ = ["PROCESS_EXIT_WAIT_SECONDS", "ManagedAsyncProcess"]
@@ -96,12 +97,17 @@ class ManagedAsyncProcess:
         stdout, stderr = comm_result
         return stdout or b"", stderr or b""
 
-    async def terminate(self, grace_period_s: float | None = None) -> None:
+    async def terminate(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        self._manager._require_permitted_terminal_reason(reason)
         if self._record.status in _TERMINAL_STATUSES:
             return
-        self._manager.record_terminal_reason(
-            self._record.pid, "operator_cancellation", "managed_process.terminate"
-        )
+        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -121,7 +127,10 @@ class ManagedAsyncProcess:
         del exc_type, exc_val, exc_tb
         if self._record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
-                await self.terminate(grace_period_s=2.0)
+                await self.terminate(
+                    grace_period_s=2.0,
+                    issuer=ProcessTerminationIssuer.CONTEXT_EXIT,
+                )
         for pipe in (self._proc.stdout, self._proc.stderr, self._proc.stdin):
             if pipe is not None and not isinstance(pipe, asyncio.StreamReader):
                 with contextlib.suppress(Exception):

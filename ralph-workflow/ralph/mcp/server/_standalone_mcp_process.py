@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.process.manager import ManagedProcess, ProcessTerminationIssuer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -14,6 +15,17 @@ if TYPE_CHECKING:
 SHUTDOWN_TERMINATE_GRACE_S: Final[float] = 5.0
 
 SHUTDOWN_REAP_WAIT_S: Final[float] = 5.0
+
+
+def _terminate_server_process(process: ProcessLike, *, grace_period_s: float) -> None:
+    if isinstance(process, ManagedProcess):
+        process.terminate(
+            grace_period_s=grace_period_s,
+            issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
+        )
+        return
+    if hasattr(process, "terminate"):
+        process.terminate(grace_period_s=grace_period_s)
 
 
 @dataclass
@@ -34,11 +46,12 @@ class StandaloneMcpProcess:
         return self.endpoint
 
     def shutdown(self) -> None:
-        if self.process.poll() is None:
-            self.process.terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)
+        process = self.process
+        if process.poll() is None:
+            _terminate_server_process(process, grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)
         try:
-            returncode = self.process.wait(timeout=SHUTDOWN_REAP_WAIT_S)
-            terminal = returncode is not None or self.process.poll() is not None
+            returncode = process.wait(timeout=SHUTDOWN_REAP_WAIT_S)
+            terminal = returncode is not None or process.poll() is not None
         except Exception as exc:
             raise McpServerError(
                 "standalone MCP server could not be reaped before session cleanup",

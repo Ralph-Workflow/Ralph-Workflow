@@ -338,7 +338,7 @@ def _fake_process_with_poll(pid: int) -> object:
         def poll(self) -> int:
             return 0
 
-        def terminate(self, grace_period_s: float = 5.0) -> None:
+        def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
             return None
 
         def wait(self, timeout: float | None = None) -> int:

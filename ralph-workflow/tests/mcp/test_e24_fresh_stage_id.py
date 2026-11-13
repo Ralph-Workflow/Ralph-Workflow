@@ -17,7 +17,7 @@ from ralph.mcp.server import lifecycle
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 from ralph.mcp.server._process_like import ProcessLike
 from ralph.mcp.server._start_stage_tracker import read_last_stage
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 _ = _workspace
@@ -35,13 +35,13 @@ class _DummyProcess(ProcessLike):
     def poll(self) -> int | None:
         return self._poll
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self._poll = 0
 
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._poll = -9
 
 
@@ -168,7 +168,7 @@ def test_real_children_write_distinct_stage_files_without_collision(tmp_path: Pa
     finally:
         for p in (proc1, proc2):
             if p.poll() is None:
-                p.kill()
+                p.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 p.wait(timeout=2)
 
     assert rc1 == 0

@@ -41,7 +41,7 @@ class _FakeProcess:
     def poll(self) -> int | None:
         return self._poll_result
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self.terminated = True
         if not self._unkillable:
             self._poll_result = 0
@@ -49,7 +49,7 @@ class _FakeProcess:
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
         if not self._unkillable:
             self._poll_result = -9

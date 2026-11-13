@@ -45,13 +45,13 @@ class _FakeProcess:
         self.stdout: IO[bytes] | None = BytesIO()
         self.stderr: IO[bytes] | None = BytesIO()
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
     def wait(self, timeout: float | None = None) -> int | None:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
 
@@ -356,11 +356,11 @@ class _FakeRaisingUpstreamPopen:
         del input, timeout
         raise OSError("broken pipe")
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         self._returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._returncode = -9
 
 

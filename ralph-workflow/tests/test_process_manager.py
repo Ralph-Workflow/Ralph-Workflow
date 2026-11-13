@@ -30,6 +30,7 @@ from ralph.process.manager import (
     LivenessResult,
     ProcessRecord,
     ProcessTerminationError,
+    ProcessTerminationIssuer,
     loguru_event_listener,
 )
 from ralph.testing.fake_process import (
@@ -56,11 +57,11 @@ class _RecordingAsyncProc(FakeAsyncProcess):
         self.terminate_calls = 0
         self.kill_calls = 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         super().terminate()
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.kill_calls += 1
         super().kill()
 
@@ -143,7 +144,7 @@ def test_terminate_escalates_to_sigkill() -> None:
     pm = _make_pm(sync_factory=never_die_factory)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
@@ -159,8 +160,8 @@ def test_list_active_returns_labeled_running_records() -> None:
     labels = {r.label for r in active}
     assert "phase:development:mcp-server" in labels
     assert "invoke:dev-agent" in labels
-    h1.terminate(grace_period_s=0.1)
-    h2.terminate(grace_period_s=0.1)
+    h1.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
+    h2.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
 
 def test_list_active_excludes_terminated_processes() -> None:
@@ -178,7 +179,7 @@ def test_list_active_unlabeled_processes_not_included_when_filtering_labels() ->
     active = pm.list_active()
     unlabeled = [r for r in active if r.label is None]
     assert any(r.pid == handle.pid for r in unlabeled)
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
 
 @pytest.mark.asyncio
@@ -658,7 +659,7 @@ def test_terminate_with_live_descendants() -> None:
     handle._record.pid = parent_pid
     assert handle.has_live_descendants() is True
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
@@ -756,7 +757,7 @@ def test_ec3_stubborn_process_sigkill_escalation() -> None:
     never_die_factory = make_sync_process_factory(itertools.count(1), returncode=-9)
     pm = _make_pm(sync_factory=never_die_factory)
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
 
@@ -782,7 +783,7 @@ def test_ec4_sigterm_timeout_escalates_to_sigkill() -> None:
         )
         handle = pm.spawn([sys.executable, "-c", "pass"])
 
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
         assert handle.record.status == ProcessStatus.KILLED
         assert handle.record.returncode == -9
@@ -806,7 +807,7 @@ def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
     assert handle.record.cause == "termination_failed"
@@ -821,7 +822,7 @@ async def test_ec5_spawn_async_appears_in_list_active() -> None:
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
     active_pids = [r.pid for r in pm.list_active()]
     assert handle.record.pid in active_pids
-    await handle.terminate(grace_period_s=0.1)
+    await handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
 
 def test_ec6_sigterm_sent_before_psutil_timeout() -> None:
@@ -850,7 +851,7 @@ def test_ec6_sigterm_sent_before_psutil_timeout() -> None:
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
     handle = pm.spawn([sys.executable, "-c", "pass"])
     handle._record.pid = parent_pid
-    handle.terminate(grace_period_s=0.5)
+    handle.terminate(grace_period_s=0.5, issuer=ProcessTerminationIssuer.OPERATOR)
     assert handle.record.status == ProcessStatus.KILLED
 
 
@@ -931,10 +932,10 @@ def test_ec10_process_termination_error_when_kill_fails() -> None:
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
             return []
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             pass
 
     root = _RootStubborn(pid=parent_pid)
@@ -946,7 +947,7 @@ def test_ec10_process_termination_error_when_kill_fails() -> None:
     handle._record.pid = parent_pid
     handle.record_terminal_reason("operator_cancellation")
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.0)
+        handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     outcomes = pm.list_termination_outcomes()[handle.pid]
     stages = [outcome["stage"] for outcome in outcomes]
@@ -1076,7 +1077,7 @@ def test_cat_exec_spawn_with_exec_label() -> None:
     active_pids = [r.pid for r in pm.list_active()]
     assert spawned_pid in active_pids
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
 
@@ -1263,7 +1264,7 @@ async def test_pm_terminate_routes_async_handle_to_escalation() -> None:
     first_seen[0] = False
 
     handle.record_terminal_reason("operator_cancellation")
-    pm.terminate(handle, grace_period_s=0.0)
+    pm.terminate(handle, grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     fake_proc = created[0]
     assert fake_proc.termination_calls >= 1, (
@@ -1306,13 +1307,13 @@ async def test_pm_terminate_async_handle_is_idempotent() -> None:
     target_pid_ref[0] = handle.pid
     first_seen[0] = False
 
-    pm.terminate(handle, grace_period_s=0.0)
+    pm.terminate(handle, grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
     terminated_count_after_first = fake_proc.termination_calls
     first_cause = handle.record.cause
     first_status = handle.record.status
     assert first_status == ProcessStatus.KILLED
 
-    pm.terminate(handle, grace_period_s=0.0)
+    pm.terminate(handle, grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     terminated_count_after_second = fake_proc.termination_calls
     assert handle.record.status == first_status

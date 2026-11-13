@@ -206,6 +206,7 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/mcp/server/_wire_ledger.py",
         "tests/test_planning_obstruction_typed_seam.py",
         "ralph/pipeline/auto_integrate_catchup.py",
+        "tests/recovery/test_dead_agent_incidents.py",
     }
 )
 

@@ -18,7 +18,7 @@ class _OrderHandle:
     def record_terminal_reason(self, reason: str) -> None:
         self.events.append(("reason", reason))
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         self.events.append(("signal", "terminate"))
 
     def close(self) -> None:

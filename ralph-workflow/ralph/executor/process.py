@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, Final
 from ralph.executor._process_error_details import ProcessErrorDetails
 from ralph.executor._process_result import ProcessResult
 from ralph.executor._process_run_options import ProcessRunOptions
-from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 from ralph.process.teardown import teardown_subtree, verified_child_session_pgid
 
@@ -126,7 +131,10 @@ async def run_process_async(
     try:
         done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
         if communicate_task not in done:
-            await handle.terminate(grace_period_s=0)
+            await handle.terminate(
+                grace_period_s=0,
+                issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+            )
             _reap_subtree(child_pid, child_pgid, label=effective_label)
             drained, _ = await asyncio.wait(
                 {communicate_task}, timeout=_POST_TERMINATE_DRAIN_SECONDS
@@ -149,7 +157,10 @@ async def run_process_async(
             communicate_task.cancel()
         if handle.record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
-                await handle.terminate(grace_period_s=0)
+                await handle.terminate(
+                    grace_period_s=0,
+                    issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+                )
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(handle.wait(), timeout=0)
         raise
@@ -202,7 +213,10 @@ def run_process(
     try:
         stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired as timeout_exc:
-        handle.terminate(grace_period_s=0)
+        handle.terminate(
+            grace_period_s=0,
+            issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+        )
         _reap_subtree(child_pid, child_pgid, label=effective_label)
         try:
             stdout_bytes, stderr_bytes = handle.communicate(timeout=_POST_TERMINATE_DRAIN_SECONDS)
@@ -218,7 +232,10 @@ def run_process(
     except BaseException:
         if handle.record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
-                handle.terminate(grace_period_s=0)
+                handle.terminate(
+                    grace_period_s=0,
+                    issuer=ProcessTerminationIssuer.EXECUTOR_CANCEL,
+                )
             with contextlib.suppress(Exception):
                 handle.wait(timeout=0)
         raise

@@ -20,7 +20,7 @@ class _LiveHandle(ManagedProcess):
     def __init__(self) -> None:
         self.terminated = False
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
         self.terminated = True
 

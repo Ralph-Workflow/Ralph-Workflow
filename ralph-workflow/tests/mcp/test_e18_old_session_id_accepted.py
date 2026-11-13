@@ -33,7 +33,7 @@ from ralph.mcp.server.runtime import ServerState
 from ralph.mcp.server.runtime_session import (
     FileBackedSession,
 )
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess
@@ -44,7 +44,7 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 def _reap_process(proc: ManagedProcess) -> None:
     if proc.poll() is None:
         with contextlib.suppress(Exception):
-            proc.kill()
+            proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             proc.wait(timeout=2.0)
 
 

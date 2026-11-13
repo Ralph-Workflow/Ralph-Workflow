@@ -26,7 +26,7 @@ class _ReapingHandle:
     def record_terminal_reason(self, reason: str) -> None:
         self.reasons.append(reason)
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
         self.returncode = _SIGTERM_RC
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from ralph.agents.executor import WorkerResult
 from ralph.agents.subprocess_executor import agent_process_label
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,7 +40,9 @@ class SleeperExecutor:
             raise RuntimeError("Process wait timed out unexpectedly") from exc
         except asyncio.CancelledError:
             on_status(WorkerStatus.CANCELLED)
-            await asyncio.shield(handle.terminate(grace_period_s=0))
+            await asyncio.shield(
+                handle.terminate(grace_period_s=0, issuer=ProcessTerminationIssuer.OPERATOR)
+            )
             raise
 
         on_status(WorkerStatus.SUCCEEDED)

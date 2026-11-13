@@ -28,7 +28,12 @@ from ralph.mcp.server._snapshots import (
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server.lifecycle import MCP_SESSION_ID_ENV
 from ralph.mcp.server.runtime_session import FileBackedSession
-from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
@@ -45,13 +50,13 @@ class _DummyProcess(ProcessLike):
     def poll(self) -> int | None:
         return self._poll
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self._poll = 0
 
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._poll = -9
 
 
@@ -89,7 +94,7 @@ def managed_spawner(tmp_path: Path) -> Iterator[Callable[..., ManagedProcess]]:
         for p in spawned:
             if p.poll() is None:
                 with contextlib.suppress(Exception):
-                    p.terminate(grace_period_s=1.0)
+                    p.terminate(grace_period_s=1.0, issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)
 
@@ -261,7 +266,7 @@ def test_candidate_survives_agent_tmp_and_workspace_cleanup(
         for proc in real_procs:
             if proc.poll() is None:
                 with contextlib.suppress(Exception):
-                    proc.terminate(grace_period_s=1.0)
+                    proc.terminate(grace_period_s=1.0, issuer=ProcessTerminationIssuer.OPERATOR)
                 with contextlib.suppress(Exception):
                     proc.wait(timeout=2.0)
         shutil.rmtree(snap_dir, ignore_errors=True)

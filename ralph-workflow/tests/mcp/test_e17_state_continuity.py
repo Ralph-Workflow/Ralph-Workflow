@@ -27,7 +27,7 @@ from ralph.mcp.server._wire_ledger import (
     verify_chain,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
@@ -61,14 +61,14 @@ class _FakeProcess:
     def mark_exited(self, code: int = 0) -> None:
         self._poll_result = code
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self.terminated = True
         self._poll_result = 0
 
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
         self._poll_result = -9
 
@@ -805,9 +805,9 @@ def test_e17_repetition_tracker_carried_across_real_subprocess_swap(
     finally:
         if old_proc.poll() is None:
             with contextlib.suppress(Exception):
-                old_proc.kill()
+                old_proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 old_proc.wait(timeout=2.0)
         if new_proc.poll() is None:
             with contextlib.suppress(Exception):
-                new_proc.kill()
+                new_proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
                 new_proc.wait(timeout=2.0)

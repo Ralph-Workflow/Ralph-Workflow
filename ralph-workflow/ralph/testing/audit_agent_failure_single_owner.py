@@ -13,6 +13,7 @@ from ralph.testing._single_owner_rules import (
     _FORBIDDEN_TRACKER_SYMBOLS,
     TEMPORARY_PRODUCTION_ALLOWLIST,
     TEMPORARY_TEST_ALLOWLIST,
+    TEMPORARY_TEST_COUNTER_READS,
     TEMPORARY_TRANSITIONAL_RULES,
     SingleOwnerViolation,
     _check_production_assignment,
@@ -26,6 +27,7 @@ from ralph.testing._single_owner_rules import (
     _check_ralph_authored_classifier_inputs,
     _is_forbidden_target_name,
     _is_ledger_receiver,
+    is_test_counter_read_allowed,
     is_transitional_allowed,
 )
 from ralph.testing._single_owner_test_rules import (
@@ -44,10 +46,12 @@ __all__ = [
     "PRODUCTION_SCAN_SUBTREES",
     "TEMPORARY_PRODUCTION_ALLOWLIST",
     "TEMPORARY_TEST_ALLOWLIST",
+    "TEMPORARY_TEST_COUNTER_READS",
     "TEMPORARY_TRANSITIONAL_RULES",
     "SingleOwnerViolation",
     "audit_production_source",
     "audit_test_source",
+    "is_test_counter_read_allowed",
     "is_transitional_allowed",
     "main",
 ]
@@ -160,7 +164,9 @@ def _check_test_import(
 
 def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
     attr = node.attr
-    if attr in ("consecutive_unproductive", "total_unproductive"):
+    if attr in ("consecutive_unproductive", "total_unproductive") and not (
+        is_test_counter_read_allowed(rel_path, attr)
+    ):
         return [
             SingleOwnerViolation(
                 path=rel_path,
@@ -212,7 +218,9 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
     violations: list[SingleOwnerViolation] = []
     for kw in node.keywords:
         if kw.arg and not is_transitional_allowed(rel_path, kw.arg):
-            if kw.arg in ("consecutive_unproductive", "total_unproductive"):
+            if kw.arg in ("consecutive_unproductive", "total_unproductive") and not (
+                is_test_counter_read_allowed(rel_path, kw.arg)
+            ):
                 violations.append(
                     SingleOwnerViolation(
                         path=rel_path,
@@ -239,7 +247,9 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
         and isinstance(node.args[0].value, str)
     ):
         counter = node.args[0].value
-        if counter in ("consecutive_unproductive", "total_unproductive"):
+        if counter in ("consecutive_unproductive", "total_unproductive") and not (
+            is_test_counter_read_allowed(rel_path, counter)
+        ):
             violations.append(
                 SingleOwnerViolation(
                     path=rel_path,
@@ -274,7 +284,9 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
         return violations
 
     arg_val = node.args[1].value
-    if arg_val in ("consecutive_unproductive", "total_unproductive"):
+    if arg_val in ("consecutive_unproductive", "total_unproductive") and not (
+        is_test_counter_read_allowed(rel_path, arg_val)
+    ):
         violations.append(
             SingleOwnerViolation(
                 path=rel_path,

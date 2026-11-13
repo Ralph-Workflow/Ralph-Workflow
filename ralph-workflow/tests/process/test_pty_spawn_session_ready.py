@@ -7,7 +7,12 @@ import time
 import psutil
 import pytest
 
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, PtySpawnOptions
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationIssuer,
+    PtySpawnOptions,
+)
 from ralph.process.pty import spawn_pty_process
 from ralph.process.teardown import teardown_subtree
 
@@ -49,7 +54,7 @@ def test_spawn_pty_records_the_childs_own_group_not_ralphs() -> None:
         try:
             recorded = handle.record.pgid
         finally:
-            handle.terminate(grace_period_s=0.1)
+            handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
         assert recorded == handle.pid != own_pgid
 
 

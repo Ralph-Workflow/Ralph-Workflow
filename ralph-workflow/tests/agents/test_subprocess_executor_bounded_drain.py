@@ -28,10 +28,10 @@ class _ExitedButStdoutHeldOpen:
         del input
         return b"", b""
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         return None
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         return None
 
 
@@ -103,10 +103,10 @@ class _LongRunningAgent:
         del input
         return b"", b""
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         return None
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         return None
 
 

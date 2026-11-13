@@ -19,7 +19,7 @@ from ralph.mcp.server._start_stage_tracker import (
     read_last_stage,
     stage_file_path,
 )
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
@@ -58,7 +58,7 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
         returncode = proc.wait(timeout=30)
         stderr = b""
     except Exception:
-        proc.kill()
+        proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         returncode = -1
         stderr = b"timeout"
 
@@ -143,7 +143,7 @@ def test_mcp_server_error_last_stage_carries_child_stage(tmp_path: Path) -> None
         assert spawned_procs, "no process was spawned"
 
         child_proc = spawned_procs[0]
-        child_proc.kill()
+        child_proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
 
         assert done_event.wait(timeout=5.0), "start_mcp_server did not raise after child kill"
         assert error_box, "no McpServerError captured"

@@ -72,13 +72,13 @@ def _make_fake_restart_aware_bridge() -> RestartAwareMcpBridge:
         def poll(self) -> int | None:
             return None
 
-        def terminate(self, grace_period_s: float = 5.0) -> None:
+        def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
             return
 
         def wait(self, timeout: object = None) -> int:
             return 0
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             return
 
         @property

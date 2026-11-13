@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke._agent_launch_error import AgentLaunchError
 from ralph.recovery.failure_classifier import (
@@ -12,10 +12,14 @@ from ralph.recovery.failure_classifier import (
 from ralph.recovery.failure_details import (
     contains_casefolded_marker,
     failure_detail_parts,
+    failure_message_parts,
     provider_message_parts,
 )
 
-_TRANSIENT_CONNECTIVITY_MARKERS = (
+if TYPE_CHECKING:
+    from ralph.recovery.attempt_outcome import AttemptOutcome
+
+_TRANSIENT_CONNECTIVITY_MARKERS: tuple[str, ...] = (
     "connection refused",
     "network is unreachable",
     "temporary failure in name resolution",
@@ -29,9 +33,9 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
     "fetch failed",
 )
 
-_TURN_LIMIT_MARKERS = ("conversation exceeded 50 turns",)
+_TURN_LIMIT_MARKERS: tuple[str, ...] = ("conversation exceeded 50 turns",)
 
-_MCP_TOOL_CALL_TIMEOUT_MARKERS = ("timed out awaiting tools/call",)
+_MCP_TOOL_CALL_TIMEOUT_MARKERS: tuple[str, ...] = ("timed out awaiting tools/call",)
 
 
 def retryable_agent_failure_reason(
@@ -87,16 +91,20 @@ def retryable_agent_failure_reason(
     return None
 
 
+def retryable_from_outcome(outcome: AttemptOutcome) -> bool:
+    return outcome.retries_same_agent
+
+
 def _primary_recovery_error_text(exc: Exception) -> str:
     stderr = cast("object", getattr(exc, "stderr", ""))
     if isinstance(stderr, str) and stderr.strip():
         return stderr
-    return str(exc)
+    parts = failure_message_parts(exc)
+    return parts[0] if parts else ""
 
 
 def _has_transient_connectivity_signal(text: str) -> bool:
-    lowered = text.lower()
-    return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_MARKERS)
+    return contains_casefolded_marker((text,), _TRANSIENT_CONNECTIVITY_MARKERS)
 
 
-__all__ = ["retryable_agent_failure_reason"]
+__all__ = ("retryable_agent_failure_reason", "retryable_from_outcome")

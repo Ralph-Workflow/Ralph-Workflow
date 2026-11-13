@@ -190,11 +190,11 @@ class _E2EFakeProcess(FakePopen):
         )
         self._stdout_pipe = stdout_pipe
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         super().terminate()
         self._stdout_pipe.close()
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         super().kill()
         self._stdout_pipe.close()
 

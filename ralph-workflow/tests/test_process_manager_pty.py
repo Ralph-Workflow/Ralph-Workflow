@@ -7,6 +7,7 @@ import pytest
 
 from ralph.process import ProcessManager, ProcessManagerPolicy, ProcessStatus, PtySpawnOptions
 from ralph.process import pty as pty_module
+from ralph.process.manager import ProcessTerminationIssuer
 from ralph.testing.fake_process import FakePsutil, FakePsutilProcess
 from tests._process_manager_pty_helper__fakeprocess import _FakePtyProcess
 
@@ -89,7 +90,7 @@ def test_terminate_pty_process_kills_process_group(tmp_path: Path) -> None:
     child = psutil_mod.process_from_pid(handle.pid + 1)
     psutil_proc._children = [child]
 
-    handle.terminate(grace_period_s=0.0)
+    handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     outcomes = pm.list_termination_outcomes()[handle.pid]
@@ -107,7 +108,7 @@ def test_terminate_pty_process_root_only_handles_builtin_timeout(tmp_path: Path)
     proc = handle._proc
 
     with patch("os.kill", return_value=None):
-        handle.terminate(grace_period_s=0.0)
+        handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert proc.terminated is True
@@ -225,7 +226,7 @@ def test_managed_pty_terminate_calls_escalate_with_default_grace(tmp_path: Path)
     proc = psutil_mod.process_from_pid(handle.pid)
     proc._children = []
 
-    handle.terminate()
+    handle.terminate(issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
@@ -244,7 +245,7 @@ def test_managed_pty_terminate_uses_overridden_grace_period(tmp_path: Path) -> N
     proc = psutil_mod.process_from_pid(handle.pid)
     proc._children = []
 
-    handle.terminate(grace_period_s=0.5)
+    handle.terminate(grace_period_s=0.5, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
 
@@ -261,7 +262,7 @@ def test_managed_pty_terminate_is_noop_when_already_terminal(tmp_path: Path) -> 
     proc = handle._proc
     proc.returncode = 0
     handle.wait(timeout=0.1)
-    handle.terminate(grace_period_s=0.0)
+    handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
     assert handle.record.status == ProcessStatus.EXITED
     assert handle.record.cause == "exited"
 
@@ -279,7 +280,7 @@ def test_managed_pty_kill_uses_zero_grace_period(tmp_path: Path) -> None:
     proc = psutil_mod.process_from_pid(handle.pid)
     proc._children = []
 
-    handle.kill()
+    handle.kill(issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
 

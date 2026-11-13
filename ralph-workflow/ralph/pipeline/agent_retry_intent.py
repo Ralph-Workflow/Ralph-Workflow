@@ -132,7 +132,7 @@ def pop_last_captured_retry_intent() -> AgentRetryIntent:
     return intent
 
 
-__all__ = [
+__all__ = (
     "AgentRetryAction",
     "AgentRetryIntent",
     "agent_retry_intent_for_failure",
@@ -143,4 +143,4 @@ __all__ = [
     "pop_last_captured_retry_intent",
     "resume_agent_retry_intent",
     "set_last_captured_retry_intent",
-]
+)

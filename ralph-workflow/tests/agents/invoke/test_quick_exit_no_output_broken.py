@@ -24,7 +24,7 @@ class _ManagedHandle:
     def poll(self) -> int | None:
         return self._returncode
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         del grace_period_s
         self.terminated = True
 

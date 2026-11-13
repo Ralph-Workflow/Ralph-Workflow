@@ -107,6 +107,7 @@ from ralph.process.manager import (
     ManagedProcess,
     ProcessEvent,
     ProcessStatus,
+    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
 )
@@ -146,6 +147,23 @@ _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
 _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
     {ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED}
 )
+
+_FIRE_REASON_PROCESS_ISSUERS: dict[TerminationIssuer, ProcessTerminationIssuer] = {
+    TerminationIssuer.SUPERVISOR_IDLE: ProcessTerminationIssuer.SUPERVISOR_IDLE,
+    TerminationIssuer.QUOTA_DETECTOR: ProcessTerminationIssuer.QUOTA_DETECTOR,
+    TerminationIssuer.RECOVERY_TIMEOUT: ProcessTerminationIssuer.RECOVERY_TIMEOUT,
+    TerminationIssuer.POST_EXIT_WATCHDOG: ProcessTerminationIssuer.POST_EXIT_WATCHDOG,
+    TerminationIssuer.OPERATOR: ProcessTerminationIssuer.OPERATOR,
+}
+
+
+def process_issuer_for_fire_reason(
+    reason: WatchdogFireReason | str | None,
+) -> ProcessTerminationIssuer:
+    if reason == WatchdogFireReason.OPERATOR_CAP_REACHED:
+        return ProcessTerminationIssuer.OPERATOR
+    issuer = termination_issuer_for_fire_reason(reason)
+    return _FIRE_REASON_PROCESS_ISSUERS.get(issuer, ProcessTerminationIssuer.SUPERVISOR_IDLE)
 
 
 @runtime_checkable
@@ -344,7 +362,7 @@ def check_broken_agent_timer(
     if not watchdog.observed_output_is_structurally_small():
         return
     _record_broken_agent_termination(termination_recorder, watchdog, None)
-    handle.terminate(grace_period_s=0.5)
+    handle.terminate(grace_period_s=0.5, issuer=ProcessTerminationIssuer.BROKEN_AGENT_TIMER)
     pid = cast("int | None", getattr(handle, "pid", None))
     if pid is not None:
         if process_teardown is None:
@@ -856,7 +874,11 @@ class ProcessLineReader:
         )
         if reason_recorder is not None:
             reason_recorder("quota_exhausted")
-        self._handle.terminate(grace_period_s=0.5)
+        self._handle.terminate(
+            grace_period_s=0.5,
+            issuer=ProcessTerminationIssuer.QUOTA_DETECTOR,
+            reason="quota_exhausted",
+        )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
@@ -894,7 +916,10 @@ class ProcessLineReader:
             return
         self._termination.record_issuer(TerminationIssuer.AGENT_EXIT)
         self._termination.record_liveness(True)
-        self._handle.terminate(grace_period_s=0.5)
+        self._handle.terminate(
+            grace_period_s=0.5,
+            issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
+        )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
@@ -954,7 +979,10 @@ class ProcessLineReader:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
         _record_fire_termination(self, watchdog, fire_reason)
-        self._handle.terminate(grace_period_s=0.5)
+        self._handle.terminate(
+            grace_period_s=0.5,
+            issuer=process_issuer_for_fire_reason(fire_reason),
+        )
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             if self._process_teardown is None:
@@ -1331,7 +1359,10 @@ def _terminate_hung_process_exit(
         return
     recorder.record_issuer(termination_issuer_for_fire_reason(WatchdogFireReason.PROCESS_EXIT_HANG))
     recorder.record_liveness(True)
-    handle.terminate(grace_period_s=0.5)
+    handle.terminate(
+        grace_period_s=0.5,
+        issuer=ProcessTerminationIssuer.POST_EXIT_WATCHDOG,
+    )
     exit_pid = cast("int | None", getattr(handle, "pid", None))
     if exit_pid is not None:
         if ctx.process_teardown is None:
@@ -1380,7 +1411,10 @@ def _run_subprocess_and_read_lines(
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
-            handle.terminate(grace_period_s=0.5)
+            handle.terminate(
+                grace_period_s=0.5,
+                issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
+            )
             capture_pid = cast("int | None", getattr(handle, "pid", None))
             if capture_pid is not None:
                 if ctx.process_teardown is None:

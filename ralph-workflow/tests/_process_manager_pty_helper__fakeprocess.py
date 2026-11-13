@@ -20,12 +20,12 @@ class _FakePtyProcess:
         del timeout
         return self.returncode if self.returncode is not None else 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminated = True
         if self.returncode is None:
             self.returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
         self.returncode = -9
 

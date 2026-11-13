@@ -26,6 +26,7 @@ from ralph.mcp.server._http_tools_list import http_tools_list_names
 from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
+from ralph.process.manager import ProcessTerminationIssuer
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -48,14 +49,14 @@ class _FakeProcess:
     def poll(self) -> int | None:
         return self._poll_result
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self.terminated = True
         self._poll_result = 0
 
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.killed = True
         self._poll_result = -9
 
@@ -126,7 +127,7 @@ def test_e31_backlog_burst_during_production_bridge_handover_gap(
     try:
         port = _port_from_endpoint(bridge.endpoint_uri())
 
-        bridge.process.kill()
+        bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         _wait_child_dead(bridge.process, timeout_s=3.0)
 
         burst_done = threading.Event()
@@ -226,7 +227,7 @@ def test_e31_repeat_burst_during_handover_gap_with_zero_refusals(
         port = _port_from_endpoint(bridge.endpoint_uri())
 
         for cycle in range(2):
-            bridge.process.kill()
+            bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             _wait_child_dead(bridge.process, timeout_s=3.0)
 
             burst_done = threading.Event()
@@ -289,7 +290,7 @@ def test_e32_production_bridge_retry_through_real_handover_gap(
         )
         client_timeout_s = _HTTP_JSONRPC_POST_TIMEOUT_S
 
-        bridge.process.kill()
+        bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         _wait_child_dead(bridge.process, timeout_s=3.0)
 
         restart_done = threading.Event()
@@ -393,7 +394,7 @@ def test_e32_production_bridge_client_timeout_surfaces_typed_network_error(
     try:
         endpoint = bridge.endpoint_uri()
 
-        bridge.process.kill()
+        bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         _wait_child_dead(bridge.process, timeout_s=3.0)
 
         host_port = endpoint.split("://", 1)[1].rsplit("/", 1)[0]
@@ -538,7 +539,7 @@ def test_e34_stale_keepalive_after_real_handover(
 
             old_pid = bridge.process.pid
 
-            bridge.process.kill()
+            bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             _wait_child_dead(bridge.process, timeout_s=3.0)
             bridge.check_health_and_restart_if_needed()
 
@@ -570,7 +571,7 @@ def test_e34_stale_keepalive_after_real_handover(
             assert resp_pre is not None
             assert unsafe_transport.attempts == 1
 
-            bridge.process.kill()
+            bridge.process.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             _wait_child_dead(bridge.process, timeout_s=3.0)
 
             with pytest.raises(McpOutcomeUnknownError) as exc_info:

@@ -44,7 +44,7 @@ class _ParentExitedHandle:
     def poll(self) -> int:
         return 0
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         del grace_period_s
 
 
@@ -104,7 +104,7 @@ class _PtyParentExitedHandle:
     def poll(self) -> int:
         return 0
 
-    def terminate(self, grace_period_s: float = 0.5) -> None:
+    def terminate(self, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         del grace_period_s
 
     def close(self) -> None:

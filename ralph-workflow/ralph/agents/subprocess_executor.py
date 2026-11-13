@@ -33,6 +33,7 @@ from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import (
     AGENT_STREAM_BUFFER_BYTES,
     ProcessManager,
+    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
 )
@@ -147,12 +148,18 @@ class SubprocessAgentExecutor:
                 await self._await_exit_and_drain(handle, drain_task, unit_id, session_pgid)
             except BaseException:
                 await _cancel_task(drain_task)
-                await handle.terminate(grace_period_s=0)
+                await handle.terminate(
+                    grace_period_s=0,
+                    issuer=ProcessTerminationIssuer.OPERATOR,
+                )
                 raise
         finally:
             if handle.record.status not in _TERMINAL_STATUSES:
                 with contextlib.suppress(Exception):
-                    await handle.terminate(grace_period_s=0)
+                    await handle.terminate(
+                        grace_period_s=0,
+                        issuer=ProcessTerminationIssuer.OPERATOR,
+                    )
                 with contextlib.suppress(Exception):
                     await asyncio.wait_for(handle.wait(), timeout=0.5)
             await _reap_session(handle, session_pgid)
@@ -195,7 +202,11 @@ class SubprocessAgentExecutor:
     ) -> str:
         line = sanitize_display_line(raw_line.rstrip(b"\n"))
         if is_provider_quota_output_line(line):
-            await handle.terminate(grace_period_s=0)
+            await handle.terminate(
+                grace_period_s=0,
+                issuer=ProcessTerminationIssuer.QUOTA_DETECTOR,
+                reason="quota_exhausted",
+            )
             raise QuotaExhaustedError(_binary_basename(self._command), line)
         return line
 

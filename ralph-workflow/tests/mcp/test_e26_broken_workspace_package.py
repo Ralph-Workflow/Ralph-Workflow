@@ -12,7 +12,7 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 from ralph.mcp.server._process_like import ProcessLike
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 _ = _workspace
@@ -30,13 +30,13 @@ class _DummyProcess(ProcessLike):
     def poll(self) -> int | None:
         return self._poll
 
-    def terminate(self, grace_period_s: float = 5.0) -> None:
+    def terminate(self, grace_period_s: float = 5.0, **_kwargs: object) -> None:
         self._poll = 0
 
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._poll = -9
 
 
@@ -176,7 +176,7 @@ def test_real_child_imports_package_root_despite_broken_ralph_in_workspace(
         rc = proc.wait(timeout=10)
     finally:
         if proc.poll() is None:
-            proc.kill()
+            proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             proc.wait(timeout=2)
 
     assert rc == 0

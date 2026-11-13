@@ -246,6 +246,7 @@ class PipelineState(_FrozenPipelineStateModel):
     wait_until_monotonic_ms: int | None = None
     ledger_snapshot: dict[str, object] | None = None
     dead_agent_verdict_record: dict[str, object] | None = None
+    false_bench_feedback: dict[str, object] | None = None
 
     @model_validator(mode="after")
     def _validate_phase_set(self) -> PipelineState:
@@ -402,6 +403,15 @@ class PipelineState(_FrozenPipelineStateModel):
         if isinstance(v, dict):
             return {str(k): int(val) for k, val in v.items()}
         raise TypeError(f"Expected dict for outer_progress, got {type(v).__name__!r}")
+
+    @field_validator("dead_agent_verdict_record", mode="before")
+    @classmethod
+    def _migrate_dead_agent_verdict_record(cls, v: object) -> object:
+        if not isinstance(v, dict):
+            return v
+        from ralph.recovery.dead_agent_verdict import migrate_verdict_record
+
+        return migrate_verdict_record(cast("dict[str, object]", dict(v)))
 
     def is_complete(self, policy: PipelinePolicy) -> bool:
         return self.phase == policy.terminal_phase

@@ -14,6 +14,7 @@ from ralph.testing._repo_structure_allowlists import (
     _LEGACY_PRIVATE_IMPORT_ALLOWLIST,
     _MAX_FILE_LINES,
 )
+from ralph.testing.repo_structure_boundary_rules import collect_boundary_violations
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RALPH_DIR = REPO_ROOT / "ralph"
@@ -289,10 +290,18 @@ def _collect_packaging_config_violations() -> list[str]:
 
 
 def collect_violations() -> list[str]:
+    boundary_violations = [
+        violation
+        for path in _all_py_files(RALPH_DIR)
+        for violation in collect_boundary_violations(
+            str(path.relative_to(REPO_ROOT)), _read_path(path)
+        )
+    ]
     return (
         _collect_source_violations()
         + _collect_repo_root_violations()
         + _collect_packaging_config_violations()
+        + boundary_violations
     )
 
 

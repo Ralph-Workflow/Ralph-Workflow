@@ -17,7 +17,7 @@ import pytest
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 from ralph.process.mcp_supervisor import McpSupervisor
 
 if TYPE_CHECKING:
@@ -75,7 +75,7 @@ def _pid_alive(pid: int) -> bool:
 def _reap_managed(proc: ManagedProcess, *, timeout: float = 1.0) -> None:
     if proc.poll() is None:
         with contextlib.suppress(Exception):
-            proc.kill()
+            proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
             proc.wait(timeout=timeout)
 
 
@@ -141,7 +141,7 @@ def test_e45_real_child_signal_order_sigterm_then_sigkill(tmp_path: Path) -> Non
             time.sleep(0.02)
         assert ready_file.exists(), "Child did not become ready in time"
 
-        managed_proc.terminate(grace_period_s=0.2)
+        managed_proc.terminate(grace_period_s=0.2, issuer=ProcessTerminationIssuer.OPERATOR)
 
         wait_deadline = time.monotonic() + 2.0
         while time.monotonic() < wait_deadline:

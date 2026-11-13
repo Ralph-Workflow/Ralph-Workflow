@@ -19,6 +19,15 @@ TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
+TEMPORARY_TEST_COUNTER_READS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("tests/recovery/test_dead_agent_acceptance.py", "consecutive_unproductive"),
+        ("tests/recovery/test_dead_agent_acceptance.py", "total_unproductive"),
+        ("tests/recovery/test_dead_agent_incidents.py", "consecutive_unproductive"),
+        ("tests/recovery/test_dead_agent_incidents.py", "total_unproductive"),
+    }
+)
+
 TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
     "ralph/pipeline/conflict_resolution/session.py": frozenset(
         {
@@ -36,6 +45,10 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
 def is_transitional_allowed(rel_path: str, name: str) -> bool:
     allowed = TEMPORARY_TRANSITIONAL_RULES.get(rel_path)
     return bool(allowed and name in allowed)
+
+
+def is_test_counter_read_allowed(rel_path: str, counter: str) -> bool:
+    return (rel_path, counter) in TEMPORARY_TEST_COUNTER_READS
 
 
 _FORBIDDEN_TRACKER_MODULES: frozenset[str] = frozenset(

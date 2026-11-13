@@ -174,11 +174,11 @@ class _ExCAsyncProcess:
         await asyncio.wait_for(self._completion_event.wait(), timeout=0.5)
         return b"", b""
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self._returncode = 0
         self._completion_event.set()
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._returncode = 0
         self._completion_event.set()
 
@@ -209,13 +209,13 @@ async def test_subprocess_executor_cleans_up_on_non_cancellation_exception() -> 
         return proc
 
     class _LinkedPsutilProcess(FakePsutilProcess):
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             super().kill()
             linked = spawned_procs.get(self.pid)
             if linked is not None:
                 linked.set_completion()
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             super().terminate()
             linked = spawned_procs.get(self.pid)
             if linked is not None:

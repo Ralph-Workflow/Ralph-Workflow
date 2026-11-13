@@ -40,7 +40,7 @@ class _FakeProc:
     def wait(self, timeout: float | None = None) -> int:
         return self._returncode
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         self.terminated = True
 
 

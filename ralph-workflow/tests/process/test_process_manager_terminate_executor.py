@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationIssuer
 from ralph.testing.fake_process import (
     FakePsutil,
     make_async_process_factory,
@@ -70,7 +70,7 @@ async def test_async_termination_uses_bounded_executor(
 
     monkeypatch.setattr(loop, "run_in_executor", _spy_run_in_executor)
 
-    await handle.terminate(grace_period_s=0.01)
+    await handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert captured["call_count"] >= 1, (
         "_escalate_termination_async must call loop.run_in_executor at least once"
@@ -112,7 +112,7 @@ async def test_shutdown_all_releases_terminate_executor(
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
     assert handle.record.status.name == "RUNNING"
 
-    await handle.terminate(grace_period_s=0.01)
+    await handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert pm.terminate_executor is recording
 

@@ -15,6 +15,7 @@ from ralph.mcp.protocol._transport_error import TransportError
 from ralph.process.manager import (
     ManagedProcess,
     ProcessTerminationError,
+    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
 )
@@ -58,14 +59,16 @@ class StdioTransport:
         command: list[str],
         cwd: str | None = None,
         *,
-        process_factory: Callable[[list[str], str | None], ProcessLike] | None = None,
+        process_factory: (
+            Callable[[list[str], str | None], ProcessLike | ManagedProcess] | None
+        ) = None,
         thread_factory: Callable[[Callable[[], None], bool], ThreadLike] | None = None,
     ) -> None:
         self._command = command
         self._cwd = cwd
         self._process_factory = process_factory or _default_process_factory
         self._thread_factory = thread_factory or _default_thread_factory
-        self._process: ProcessLike | None = None
+        self._process: ProcessLike | ManagedProcess | None = None
         self._send_queue: Queue[str | dict[str, object]] = Queue()
         self._recv_queue: Queue[MCPMessage] = Queue()
         self._closed = False
@@ -161,7 +164,10 @@ class StdioTransport:
             self._process = None
             if isinstance(proc, ManagedProcess):
                 try:
-                    proc.terminate(grace_period_s=5.0)
+                    proc.terminate(
+                        grace_period_s=5.0,
+                        issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
+                    )
                 except ProcessTerminationError:
                     logger.exception("Failed to close stdio transport")
                     raise
@@ -210,7 +216,10 @@ class StdioTransport:
 MCPTransport = StdioTransport
 
 
-def _default_process_factory(command: list[str], cwd: str | None) -> ManagedProcess:
+def _default_process_factory(
+    command: list[str],
+    cwd: str | None,
+) -> ProcessLike | ManagedProcess:
     label = f"mcp-stdio:{command[0]}"
     return get_process_manager().spawn(
         command,

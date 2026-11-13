@@ -472,10 +472,10 @@ class _IdleTimeoutProcess:
     def wait(self, timeout: float | None = None) -> int:
         return self.returncode
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
 
@@ -1257,10 +1257,10 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             pass
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1324,10 +1324,10 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1483,10 +1483,10 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             del timeout
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
         def poll(self) -> int | None:
@@ -1556,11 +1556,11 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             del timeout
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.terminate_calls += 1
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
         def poll(self) -> int | None:
@@ -1639,10 +1639,10 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1717,10 +1717,10 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2048,10 +2048,10 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2160,10 +2160,10 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2276,10 +2276,10 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2368,10 +2368,10 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     monkeypatch.setattr(
@@ -2520,10 +2520,10 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2591,10 +2591,10 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2705,10 +2705,10 @@ def test_invoke_agent_merges_existing_opencode_config_content(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2778,10 +2778,10 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2885,10 +2885,10 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3023,10 +3023,10 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3088,10 +3088,10 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3163,10 +3163,10 @@ def test_invoke_agent_injects_codex_master_prompt_file_via_config(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3250,10 +3250,10 @@ def test_invoke_agent_prepends_master_prompt_for_opencode(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3317,10 +3317,10 @@ def test_invoke_agent_preserves_existing_codex_home_state(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3451,10 +3451,10 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3725,10 +3725,10 @@ def test_claude_strict_mode_only_exposes_ralph_server(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3808,10 +3808,10 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3907,10 +3907,10 @@ def test_codex_strict_mode_only_exposes_ralph_server(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -3986,10 +3986,10 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             self.returncode = -15
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self.returncode = -9
 
     fake_home = tmp_path / "fake-home"

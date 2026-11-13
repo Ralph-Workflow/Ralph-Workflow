@@ -17,6 +17,7 @@ from ralph.process.manager import (
     ProcessManagerPolicy,
     ProcessStatus,
     ProcessTerminationError,
+    ProcessTerminationIssuer,
     PtySpawnOptions,
     SpawnOptions,
     SyncProcessLike,
@@ -70,7 +71,7 @@ def test_process_exits_before_graceful_terminate() -> None:
         handle = pm.spawn([sys.executable, "-c", "pass"])
         handle._proc._returncode = 0
 
-        handle.terminate(grace_period_s=0.1)
+        handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "already_gone"
@@ -92,7 +93,7 @@ def test_process_exits_between_liveness_check_and_kill() -> None:
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
 
@@ -107,7 +108,7 @@ def test_process_already_gone_before_kill() -> None:
         pm = _make_pm(psutil_mod=None)
         handle = pm.spawn([sys.executable, "-c", "pass"])
 
-        handle.terminate(grace_period_s=0.1)
+        handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "already_gone"
@@ -117,10 +118,10 @@ def test_zombie_detected_after_force_kill() -> None:
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     class _ZombieAfterKill(FakePsutilProcess):
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             self._status = "zombie"
 
     parent_pid = 1
@@ -136,7 +137,7 @@ def test_zombie_detected_after_force_kill() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
     handle._record.pid = parent_pid
 
-    handle.terminate(grace_period_s=0.01)
+    handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "zombie_after_kill"
@@ -147,7 +148,7 @@ def test_process_truly_reaped_after_force_kill() -> None:
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
@@ -167,7 +168,7 @@ def test_graceful_terminate_times_out_escalates_to_kill() -> None:
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
-    handle.terminate(grace_period_s=0.01)
+    handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.returncode == -9
@@ -189,7 +190,7 @@ def test_force_kill_fails_raises_termination_error() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError) as excinfo:
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert excinfo.value.stage == "force_kill"
     assert "still alive" in excinfo.value.reason
@@ -216,7 +217,7 @@ def test_permission_error_during_terminate() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     with pytest.raises(ProcessTerminationError) as excinfo:
-        handle.terminate(grace_period_s=0.01)
+        handle.terminate(grace_period_s=0.01, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert excinfo.value.stage == "access_denied"
     assert "Access denied" in excinfo.value.reason
@@ -229,10 +230,10 @@ def test_parent_terminates_but_descendant_survives() -> None:
     parent_pid = 1
 
     class _ImmortalChild(FakePsutilProcess):
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             pass
 
     stubborn_child = _ImmortalChild(pid=1001)
@@ -255,7 +256,7 @@ def test_parent_terminates_but_descendant_survives() -> None:
     handle._record.pid = parent_pid
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.0)
+        handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
 
@@ -283,7 +284,7 @@ def test_late_spawning_descendant_during_shutdown() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
     handle._record.pid = parent_pid
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
 
@@ -295,10 +296,10 @@ def test_multiple_descendants_partial_termination() -> None:
     obedient = FakePsutilProcess(pid=1001)
 
     class _ImmortalDescendant(FakePsutilProcess):
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             pass
 
     stubborn = _ImmortalDescendant(pid=1002)
@@ -321,7 +322,7 @@ def test_multiple_descendants_partial_termination() -> None:
     handle._record.pid = parent_pid
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.0)
+        handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
 
@@ -332,10 +333,10 @@ def test_descendant_outlives_parent_and_is_detected() -> None:
     parent_pid = 1
 
     class _ImmortalOrphan(FakePsutilProcess):
-        def terminate(self) -> None:
+        def terminate(self, **_kwargs: object) -> None:
             pass
 
-        def kill(self) -> None:
+        def kill(self, **_kwargs: object) -> None:
             pass
 
     orphan = _ImmortalOrphan(pid=3001)
@@ -358,7 +359,7 @@ def test_descendant_outlives_parent_and_is_detected() -> None:
     handle._record.pid = parent_pid
 
     with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.0)
+        handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.FAILED
 
@@ -370,10 +371,10 @@ def test_double_terminate_is_idempotent() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
     handle.wait(timeout=5.0)
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
     assert handle.record.status == ProcessStatus.EXITED
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
     assert handle.record.status == ProcessStatus.EXITED
 
 
@@ -459,7 +460,7 @@ def test_process_group_termination_vs_single_process() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
     handle._record.pid = parent_pid
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
 
@@ -607,7 +608,7 @@ def test_register_descendant_registry_tracks_pid_until_teardown() -> None:
     pm.register_descendant(handle.pid, 99999)
     assert 99999 in pm._registered_descendants(handle.pid)
 
-    handle.terminate(grace_period_s=0.1)
+    handle.terminate(grace_period_s=0.1, issuer=ProcessTerminationIssuer.OPERATOR)
     assert pm._registered_descendants(handle.pid) == ()
 
 
@@ -617,11 +618,11 @@ class _TrackedDescendant(FakePsutilProcess):
         self.terminate_calls = 0
         self.kill_calls = 0
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminate_calls += 1
         self._terminated = True
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.kill_calls += 1
         self._killed = True
 
@@ -651,7 +652,7 @@ def test_register_descendant_adds_to_registry() -> None:
     assert descendant_proc.terminate_calls == 0
     assert descendant_proc.kill_calls == 0
 
-    handle.terminate(grace_period_s=0.05)
+    handle.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert descendant_proc.terminate_calls >= 1
     assert descendant_proc.kill_calls >= 1
@@ -681,7 +682,7 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
 
     assert parent_proc.children(recursive=True) == []
 
-    handle.terminate(grace_period_s=0.05)
+    handle.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert descendant_proc.terminate_calls >= 1, (
         f"registered descendant should receive graceful terminate(),"
@@ -714,12 +715,12 @@ def test_register_descendant_registry_consumed_once_on_terminate() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     pm.register_descendant(parent_pid, descendant_pid)
-    handle.terminate(grace_period_s=0.05)
+    handle.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     first_terminate = descendant_proc.terminate_calls
     first_kill = descendant_proc.kill_calls
 
-    handle.terminate(grace_period_s=0.05)
+    handle.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert descendant_proc.terminate_calls == first_terminate
     assert descendant_proc.kill_calls == first_kill
@@ -743,7 +744,7 @@ def test_register_descendant_multiple_descendants_all_terminated() -> None:
     for descendant_pid in descendant_pids:
         pm.register_descendant(parent_pid, descendant_pid)
 
-    handle.terminate(grace_period_s=0.05)
+    handle.terminate(grace_period_s=0.05, issuer=ProcessTerminationIssuer.OPERATOR)
 
     for descendant in descendants:
         assert descendant.terminate_calls >= 1, (

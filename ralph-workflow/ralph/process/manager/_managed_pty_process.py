@@ -5,6 +5,7 @@ import time as _time
 from typing import TYPE_CHECKING
 
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
 if TYPE_CHECKING:
     from ralph.process.manager._process_manager import ProcessManager
@@ -78,12 +79,17 @@ class ManagedPtyProcess:
     def record_terminal_reason(self, reason: str) -> None:
         self._manager.record_terminal_reason(self._record.pid, reason)
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    def terminate(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        self._manager._require_permitted_terminal_reason(reason)
         if self._record.status in _TERMINAL_STATUSES:
             return
-        self._manager.record_terminal_reason(
-            self._record.pid, "operator_cancellation", "managed_process.terminate"
-        )
+        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
         gp = (
             grace_period_s
             if grace_period_s is not None
@@ -91,10 +97,14 @@ class ManagedPtyProcess:
         )
         self._manager._escalate_termination_pty(self._record, self._proc, gp)
 
-    def kill(self) -> None:
-        self._manager.record_terminal_reason(
-            self._record.pid, "operator_cancellation", "managed_process.terminate"
-        )
+    def kill(
+        self,
+        *,
+        issuer: ProcessTerminationIssuer,
+        reason: str = "operator_cancellation",
+    ) -> None:
+        self._manager._require_permitted_terminal_reason(reason)
+        self._manager.record_terminal_reason(self._record.pid, reason, issuer.value)
         self._manager._escalate_termination_pty(self._record, self._proc, 0.0)
 
     def has_live_descendants(self) -> bool:
@@ -156,7 +166,10 @@ class ManagedPtyProcess:
             self.close()
             return
         if self._record.status not in _TERMINAL_STATUSES:
-            self.terminate(grace_period_s=2.0)
+            self.terminate(
+                grace_period_s=2.0,
+                issuer=ProcessTerminationIssuer.CONTEXT_EXIT,
+            )
         self.close()
         if self._record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):

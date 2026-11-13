@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline import effect_executor as _effect_executor_module
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import (
+    build_entry_point_recovery_controller,
+    run_agent_attempt,
+)
+from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -17,6 +23,10 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.effect_executor import (
+    AGENT_NOT_FOUND_REASON,
+    pop_last_captured_retry_intent,
+)
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
@@ -25,6 +35,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from ralph.agents.clock import Clock
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -52,6 +63,23 @@ __all__ = [
 _MIN_FALLBACK_CHAIN_LENGTH = 2
 
 ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
+
+_effect_executor_module = importlib.import_module("ralph.pipeline.effect_executor")
+
+
+def _invoke_effect(target: object, *args: object, **kwargs: object) -> object:
+    config = kwargs.pop("config")
+    pipeline_deps = kwargs.pop("pipeline_deps")
+    workspace_scope = kwargs.pop("workspace_scope")
+    result: object = _effect_executor_module.execute_agent_effect(
+        target,
+        config,
+        pipeline_deps,
+        workspace_scope,
+        *args,
+        **kwargs,
+    )
+    return result
 
 
 @dataclass
@@ -153,6 +181,43 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
     return agents
 
 
+def _resolution_ledger(
+    session: ResolutionSession | None,
+    pipeline_deps: PipelineDeps | None,
+) -> AgentFailureLedger | None:
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+    if session is not None and isinstance(session.ledger, AgentFailureLedger):
+        return session.ledger
+    if pipeline_deps is not None and isinstance(pipeline_deps.ledger, AgentFailureLedger):
+        return pipeline_deps.ledger
+    store = session.unavailability_store if session is not None else None
+    store_ledger: object = getattr(store, "_failure_ledger", None)
+    if isinstance(store_ledger, AgentFailureLedger):
+        return store_ledger
+    return None
+
+
+def _resolution_clock(
+    session: ResolutionSession | None,
+    ledger: AgentFailureLedger | None,
+    pipeline_deps: PipelineDeps | None,
+) -> Clock:
+    from ralph.agents.clock import Clock
+    from ralph.agents.timeout_clock import SystemClock
+
+    ledger_clock: object = getattr(ledger, "_clock", None)
+    if isinstance(ledger_clock, Clock):
+        return ledger_clock
+    store = session.unavailability_store if session is not None else None
+    store_clock: object = getattr(store, "_clock", None)
+    if isinstance(store_clock, Clock):
+        return store_clock
+    if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
+        return pipeline_deps.recovery_clock
+    return SystemClock()
+
+
 def ensure_session_controller(
     session: ResolutionSession | None,
     policy_bundle: PolicyBundle | None,
@@ -160,45 +225,34 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
-    from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         return session.recovery_controller
-    if session is not None and session.ledger is None:
-        if pipeline_deps is not None and pipeline_deps.ledger is not None:
-            session.ledger = pipeline_deps.ledger
-        if session.ledger is None and session.unavailability_store is not None:
-            store_ledger: object = getattr(session.unavailability_store, "_failure_ledger", None)
-            if isinstance(store_ledger, AgentFailureLedger):
-                session.ledger = store_ledger
-            else:
-                clock_inst: object = getattr(session.unavailability_store, "_clock", None)
-                from ralph.agents.clock import Clock
-
-                if isinstance(clock_inst, Clock):
-                    new_ledger = AgentFailureLedger(clock=clock_inst)
-                    session.ledger = new_ledger
-                    object.__setattr__(session.unavailability_store, "_failure_ledger", new_ledger)
-    ledger_instance = (
-        session.ledger
-        if session is not None and isinstance(session.ledger, AgentFailureLedger)
-        else None
+    store = session.unavailability_store if session is not None else None
+    ledger = _resolution_ledger(session, pipeline_deps)
+    controller = build_entry_point_recovery_controller(
+        AgentEntryPoint.CONFLICT_RESOLUTION,
+        config=cast("UnifiedConfig", config),
+        policy_bundle=policy_bundle,
+        deps=AttemptRunnerDeps(
+            clock=_resolution_clock(session, ledger, pipeline_deps),
+            invoke=_invoke_effect,
+            probe_runner=production_dead_agent_probe_runner(config),
+            workspace_probe=None,
+            connectivity=None,
+        ),
+        ledger_snapshot=ledger.snapshot() if ledger is not None else None,
+        unavailability_store=store,
     )
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            policy_bundle=policy_bundle,
-            unavailability_store=session.unavailability_store if session is not None else None,
-            ledger=ledger_instance,
-            dead_agent_probe_runner=production_dead_agent_probe_runner(config),
-        )
-    )
+    if ledger is not None:
+        object.__setattr__(controller, "_ledger", ledger)
+        if store is not None:
+            object.__setattr__(store, "_failure_ledger", ledger)
     if session is not None:
         session.recovery_controller = controller
-        if session.ledger is None:
-            session.ledger = controller.ledger
+        session.ledger = controller.ledger
     return controller
 
 
@@ -334,7 +388,7 @@ def invoke_resolution_agent(
         session.last_attempt_failure = None
         session.last_attempt_outcome = None
         session.last_attempt_saw_activity = False
-    _effect_executor_module.pop_last_captured_retry_intent()
+    pop_last_captured_retry_intent()
     if _candidate_cannot_be_launched(agent_name, session):
         return False
     observed_fault: ResolutionTerminationReason | None = None
@@ -379,12 +433,27 @@ def invoke_resolution_agent(
             "conflict_resolution": conflict_limits,
         }
     )
+    controller = ensure_session_controller(
+        session,
+        policy_bundle,
+        pipeline_deps=pipeline_deps,
+        config=conflict_config,
+    )
     try:
-        event = _effect_executor_module.execute_agent_effect(
-            effect,
-            conflict_config,
-            pipeline_deps,
-            workspace_scope,
+        attempt = run_agent_attempt(
+            AgentEntryPoint.CONFLICT_RESOLUTION,
+            effect=effect,
+            config=conflict_config,
+            controller=controller,
+            deps=AttemptRunnerDeps(
+                clock=controller.clock,
+                invoke=_invoke_effect,
+                probe_runner=None,
+                workspace_probe=None,
+                connectivity=None,
+            ),
+            pipeline_deps=pipeline_deps,
+            workspace_scope=workspace_scope,
             display=display,
             display_context=display_context,
             policy_bundle=policy_bundle,
@@ -405,7 +474,7 @@ def invoke_resolution_agent(
         _record_resolution_exception(session)
         logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
         return False
-    if event != PipelineEvent.AGENT_SUCCESS:
+    if attempt.event != PipelineEvent.AGENT_SUCCESS:
         _record_attempt_failure(session, _failed_attempt_evidence(session, agent_name))
         _record_attempt_without_agent_work(session)
         return False
@@ -456,7 +525,7 @@ def _record_attempt_failure(
 
 
 def _failed_attempt_evidence(session: ResolutionSession | None, agent_name: str) -> str:
-    intent = _effect_executor_module.pop_last_captured_retry_intent()
+    intent = pop_last_captured_retry_intent()
     if session is not None and intent.skip_same_agent_retries:
         session.skip_same_agent_retries = True
     if session is not None:
@@ -465,7 +534,7 @@ def _failed_attempt_evidence(session: ResolutionSession | None, agent_name: str)
         return ATTEMPT_FAILED_EVIDENCE
     if session is not None:
         session.last_attempt_evidence = intent.failure_reason
-        if intent.failure_reason == _effect_executor_module.AGENT_NOT_FOUND_REASON:
+        if intent.failure_reason == AGENT_NOT_FOUND_REASON:
             session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
             logger.warning(
                 "conflict_resolution: candidate '{}' is not installed in this "

@@ -14,6 +14,7 @@ from ralph.process.manager import (
     ProcessManagerPolicy,
     ProcessStatus,
     ProcessTerminationError,
+    ProcessTerminationIssuer,
 )
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.testing.fake_process import (
@@ -48,10 +49,10 @@ class _StubbornDStateProcess(FakePsutilProcess):
     def name(self) -> str:
         return "git"
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         pass
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         pass
 
 
@@ -125,7 +126,7 @@ def test_termination_diagnostics_include_psutil_status_and_command_on_alive_afte
     try:
         handle = pm.spawn(["git", "status"])
         with pytest.raises(ProcessTerminationError):
-            handle.terminate(grace_period_s=0.0)
+            handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
         still_alive_logs = [log for log in logs if "still alive after kill" in log]
         assert len(still_alive_logs) >= 1
@@ -232,7 +233,7 @@ def test_d_state_retirement_failure_recorded_as_contention_and_non_blocking() ->
         ),
         pytest.raises(ProcessTerminationError),
     ):
-        handle.terminate(grace_period_s=0.0)
+        handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert "d_state:disk-sleep" in signals
 

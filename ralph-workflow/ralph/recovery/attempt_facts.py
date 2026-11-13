@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from ralph.recovery.termination_log_entry import TerminationLogEntry
+
 __all__ = [
     "AttemptFacts",
     "TerminationIssuer",
@@ -67,6 +69,7 @@ class _TerminationRecord:
     observed_returncode: int | None = None
     reported_returncode: int | None = None
     liveness_observed: bool | None = None
+    log: tuple[TerminationLogEntry, ...] = field(default_factory=tuple)
     return_code_discrepancy: bool = field(init=False, default=False)
 
     def __post_init__(self) -> None:
@@ -84,12 +87,20 @@ class _TerminationRecord:
         observed_returncode: int | None = None,
         reported_returncode: int | None = None,
         liveness_observed: bool | None = None,
+        source: str | None = None,
+        log: tuple[TerminationLogEntry, ...] | None = None,
     ) -> _TerminationRecord:
+        resolved_log = (
+            log
+            if log is not None
+            else (TerminationLogEntry(issuer=issuer, source=source or issuer.value),)
+        )
         return cls(
             issuer=issuer,
             observed_returncode=observed_returncode,
             reported_returncode=reported_returncode,
             liveness_observed=liveness_observed,
+            log=resolved_log,
         )
 
 

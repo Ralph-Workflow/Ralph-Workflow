@@ -1603,7 +1603,7 @@ def _build_pty_reader_with_strategy(strategy: object) -> PtyLineReader:
     handle = SimpleNamespace(
         master_fd=master_fd,
         poll=lambda: None,
-        terminate=lambda grace_period_s=None: None,
+        terminate=lambda grace_period_s=None, **_kwargs: None,
     )
     ctx = SimpleNamespace(
         config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
@@ -10326,6 +10326,12 @@ def test_no_sys_exit_in_idle_watchdog_or_process_reader() -> None:
 def test_teardown_subtree_calls_are_verdict_guarded() -> None:
     tree = _parse(PROCESS_READER)
 
+    def _raises_startup_failure(node: ast.Raise) -> bool:
+        exc = node.exc
+        if isinstance(exc, ast.Call):
+            exc = exc.func
+        return isinstance(exc, ast.Name) and exc.id == "AgentInvocationError"
+
     def _has_verdict_check(func: ast.FunctionDef) -> bool:
         for node in ast.walk(func):
             if isinstance(node, ast.Compare):
@@ -10341,11 +10347,14 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
                         "FIRE_"
                     ):
                         return True
-            if isinstance(node, ast.Attribute) and node.attr == "_completion_is_terminal":
-                return True
-            if isinstance(node, ast.Attribute) and node.attr == "BROKEN_AGENT_OUTPUT_GRACE_SECONDS":
+            if isinstance(node, ast.Attribute) and node.attr in {
+                "_completion_is_terminal",
+                "BROKEN_AGENT_OUTPUT_GRACE_SECONDS",
+            }:
                 return True
             if isinstance(node, ast.Name) and node.id == "BROKEN_AGENT_OUTPUT_GRACE_SECONDS":
+                return True
+            if isinstance(node, ast.Raise) and _raises_startup_failure(node):
                 return True
         return False
 
@@ -10848,7 +10857,7 @@ class _FakeManagedProcess:
         self.pid: int | None = None
         self.terminate_calls: list[float] = []
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
 
 
@@ -10909,7 +10918,7 @@ class _FakeManagedProcessResumeAfterKillContract:
         self.pid: int | None = None
         self.terminate_calls: list[float] = []
 
-    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+    def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         self.terminate_calls.append(grace_period_s)
 
 
@@ -11021,11 +11030,11 @@ class _FakeProcess:
         del timeout
         return self.returncode
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self.terminated = True
         self.returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self.terminated = True
         self.returncode = -9
 

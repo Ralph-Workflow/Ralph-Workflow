@@ -49,7 +49,12 @@ from ralph.mcp.tools.coordination import (
     require_capability,
 )
 from ralph.process._spawn_env import scrub_activity_relay_controls
-from ralph.process.manager import DeadlineTimeoutExpired, SpawnOptions, get_process_manager
+from ralph.process.manager import (
+    DeadlineTimeoutExpired,
+    ProcessTerminationIssuer,
+    SpawnOptions,
+    get_process_manager,
+)
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
@@ -477,7 +482,7 @@ def _run_subprocess(
             hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000,
         )
     except subprocess.TimeoutExpired:
-        handle.terminate(grace_period_s=0)
+        handle.terminate(grace_period_s=0, issuer=ProcessTerminationIssuer.TOOL_TIMEOUT)
         raise
     except ManagedProcessOutputLimitExceededError as exc:
         return _CompletedProcessAdapter(

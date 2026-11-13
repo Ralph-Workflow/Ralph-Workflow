@@ -47,9 +47,9 @@ class _AsyncProc(Protocol):
 
     async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]: ...
 
-    def terminate(self) -> None: ...
+    def terminate(self, **_kwargs: object) -> None: ...
 
-    def kill(self) -> None: ...
+    def kill(self, **_kwargs: object) -> None: ...
 
 
 def _psutil() -> PsutilModuleLike:
@@ -165,10 +165,10 @@ class _RecordingFakeAsyncProc:
         del input
         return (b"", b"")
 
-    def terminate(self) -> None:
+    def terminate(self, **_kwargs: object) -> None:
         self._returncode = -15
 
-    def kill(self) -> None:
+    def kill(self, **_kwargs: object) -> None:
         self._returncode = -9
 
 

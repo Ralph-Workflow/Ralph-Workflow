@@ -5,17 +5,27 @@ from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph.agents.registry import AgentRegistry
+from ralph.agents.system_clock import SystemClock
 from ralph.config.enums import Verbosity
 from ralph.config.loader import load_config
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.phases.execution import handle_execution_phase
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import (
+    EntryPointRunner,
+    build_entry_point_recovery_controller,
+    register_entry_point,
+    registered_entry_points,
+    run_agent_attempt,
+)
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition,
     recover_incomplete_integration,
@@ -29,7 +39,6 @@ from ralph.pipeline.auto_integrate_agent import (
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.checkpoint import worker_checkpoint_path
-from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
@@ -64,11 +73,15 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.mcp.artifacts.file_backend import FileBackend
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.recovery.controller import RecoveryController
+
+execute_agent_effect = PRODUCTION_INVOKE
 
 
 @dataclass(frozen=True)
@@ -279,6 +292,70 @@ def run_worker_auto_integration(
     return outcome
 
 
+def _invoke_worker_effect(target: object, *args: object, **kwargs: object) -> object:
+    config = kwargs.pop("config")
+    pipeline_deps = kwargs.pop("pipeline_deps")
+    workspace_scope = kwargs.pop("workspace_scope")
+    result: object = execute_agent_effect(
+        target,
+        config,
+        pipeline_deps,
+        workspace_scope,
+        *args,
+        **kwargs,
+    )
+    return result
+
+
+def _parallel_worker_controller(
+    *,
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle | None,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None,
+    pipeline_deps: PipelineDeps | None,
+) -> RecoveryController:
+    if isinstance(pipeline_deps, PipelineDeps):
+        existing = pipeline_deps.recovery_controller
+        if existing is not None:
+            return existing
+    return build_entry_point_recovery_controller(
+        AgentEntryPoint.PARALLEL_WORKER,
+        config=config,
+        policy_bundle=policy_bundle,
+        deps=deps,
+        ledger_snapshot=state.ledger_snapshot if state is not None else None,
+        false_bench_snapshot=state.false_bench_feedback if state is not None else None,
+    )
+
+
+def _run_parallel_worker_attempt(
+    *_args: object,
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: PipelineState | None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return run_agent_attempt(
+        AgentEntryPoint.PARALLEL_WORKER,
+        effect=effect,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        **execute_kwargs,
+    )
+
+
+if AgentEntryPoint.PARALLEL_WORKER not in registered_entry_points():
+    register_entry_point(
+        AgentEntryPoint.PARALLEL_WORKER,
+        cast("EntryPointRunner", _run_parallel_worker_attempt),
+    )
+
+
 def run_parallel_worker_from_manifest(
     *,
     manifest_path: Path,
@@ -379,19 +456,35 @@ def run_parallel_worker_from_manifest(
         chain_name=effect.chain_name,
     )
     run_id = str(uuid.uuid4())
-    event: Event = execute_agent_effect(
-        worker_effect,
-        config,
-        effective_pipeline_deps,
-        workspace_scope,
-        display_context=display_context,
+    attempt_deps = AttemptRunnerDeps(
+        clock=effective_pipeline_deps.recovery_clock or SystemClock(),
+        invoke=_invoke_worker_effect,
+        probe_runner=None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+    attempt = _run_parallel_worker_attempt(
+        effect=worker_effect,
+        config=config,
+        controller=_parallel_worker_controller(
+            config=config,
+            policy_bundle=policy_bundle,
+            deps=attempt_deps,
+            state=state,
+            pipeline_deps=effective_pipeline_deps,
+        ),
+        deps=attempt_deps,
         state=state,
+        pipeline_deps=effective_pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
         policy_bundle=policy_bundle,
         worker_namespace=worker_namespace,
         worker_artifact_dir=Path(manifest.worker_artifact_dir),
         parallel_worker=True,
         run_id=run_id,
     )
+    event: Event = cast("Event", attempt.event)
     if event == PipelineEvent.AGENT_SUCCESS:
         worker_artifact_path = Path(manifest.worker_artifact_dir) / "development_result.md"
         event = phase_event_after_agent_run(

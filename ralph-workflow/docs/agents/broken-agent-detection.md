@@ -78,17 +78,50 @@ An attempt that ends without a valid artifact is judged in four recorded layers.
 
 **Cooldown.** A confirmed dead agent is marked unavailable with `UnavailabilityReason.DEAD_AGENT_NO_PROGRESS` through the same tracker as every other reason: 10 seconds on the first failure, doubling on each repeat, capped at the five-hour universal ceiling. A bench is a cooldown, never `Spent`; ledger thresholds (3 consecutive, 9 total unproductive attempts) are unchanged and are the only route to `Spent`. Selection never picks an agent inside its cooldown and lists agent, reason and remaining time when it waits. The cooldown survives checkpoint save and restore with its reason and attempt count and expires when the clock passes its deadline. A success calls `reset_backoff` and clears it; the first attempt after expiry is a production probe and a failure re-benches with escalation.
 
-**Persisted verdict.** Every verdict is stored in the checkpoint with the facts, attribution, probe outcome, termination record and return-code discrepancy flag it used, so a bench followed by a later success can be counted as a false positive.
+Optional adjudication by a model from elsewhere in the chain is not built. The canary probe alone decides every verdict.
+
+**Termination issuer.** Every managed termination requires a typed issuer. `ProcessTerminationIssuer` names the actor that ended the session: `supervisor_idle`, `quota_detector`, `post_exit_watchdog`, `recovery_timeout`, `broken_agent_timer`, `operator`, `context_exit`, `call_timeout`, `output_limit`, `invoke_teardown`, `tool_timeout`, `mcp_shutdown`, `git_timeout`, `executor_cancel`, `test_runner`, `diagnostics`. `ManagedProcess.terminate` and `kill`, their PTY and async variants and `ProcessManager.terminate` refuse a call with no issuer, and a reason outside the permitted set raises `ValueError` before any signal is sent. A teardown records its outcome (`signalled`, `refused_label_mismatch`, `already_exited`) separately from the terminal reason, so teardown never masks the issuer that caused the attempt to end.
+
+**Termination log.** Each attempt keeps an append-only termination log of `(issuer, source)` entries. One rule resolves it: the first runtime entry wins (`supervisor_idle`, `quota_detector`, `post_exit_watchdog`, `recovery_timeout`, `operator`); otherwise `agent_exit` wins; an empty log resolves to `unknown`.
+
+**Attempt outcome kinds.** `AttemptOutcome` is a closed sum of six kinds, and each kind has fixed accounting effects.
+
+- `completed` — the attempt produced its artifact. It resets the agent's backoff and does not count toward agent state.
+- `retryable_failure` — an ordinary failure. It counts toward the ledger and is the only kind that retries the same agent.
+- `runtime_ended` — a runtime, detector or operator ended the session. It never benches and never counts toward the ledger, and it carries the issuer.
+- `task_or_environment_failure` — the outcome already exists, or the chain's agents failed identically. It never benches and never counts toward the ledger.
+- `agent_dead` — the agent is benched, with the persisted verdict attached.
+- `unknown` — the evidence does not support a verdict. It keeps ordinary ledger accounting and never benches.
+
+**One finalization per attempt.** `RecoveryController.finalize_attempt` is the only place that judges, probes, benches, charges the ledger, resets a success, records peer facts and writes the verdict record. Every route calls it: the classifier path, the confirmed-dead-agent path, both reducer routes and the attempt runner. The in-session retry finalizes each failed attempt before the next same-agent attempt starts, and the finalization is memoised by an attempt key, so one attempt is judged exactly once even when several routes observe it.
+
+**Peer failures.** The peer-failure fact compares a signature of `(artifact_valid, termination issuer, exit status, workspace changed, event kinds)` against the last failure each agent in the same phase recorded since that phase last completed. Peers failing identically is a task-or-environment failure, never a bench.
+
+**Persisted verdict.** Every verdict is stored in the checkpoint with the facts, attribution, probe outcome, termination record and return-code discrepancy flag it used, so a bench followed by a later success can be counted as a false positive. The record carries `schema_version: 2` and the full termination log; a version-1 record still loads.
 
 **Corpus.** `tests/recovery/dead_agent_corpus/` holds labelled real sessions (one positive, the agy session; negatives for the codex quote kill, the opencode subagent kill, the claude live-session end, the opencode post-exit watchdog kill, transient reconnects, slow productive sessions, sessions that wrote files, outcomes that already exist, and peers failing identically). `tests/recovery/test_dead_agent_corpus_replay.py` replays every fixture through the recovery controller and reducer, requires zero false benches and prints `false_benches=X/N`.
 
 **Adding an incident fixture.** Copy the closest JSON file in `tests/recovery/dead_agent_corpus/`, set a new `id`, `label` (`positive` only for a confirmed dead agent), `agent`, `transport`, `incident`, the captured raw lines, tri-state `workspace_changed` and `workspace_changed_by_tool`, `termination` (issuer and both return codes), `liveness_observed`, `subagent_activity_observed`, and the `expected_attribution`, `expected_verdict` and `expected_bench` values. Add its id to the expected sets in `tests/recovery/dead_agent_corpus/test_corpus_fixtures.py`. The replay test picks the file up without further changes.
+
+**False-bench feedback.** A bench is a bet, so it is measured. Each bench opens a candidate keyed by the agent and a stable, non-secret fingerprint of the agent's configuration: the agent name, the executable name, the model, the model flag, the parser and the transport. The fingerprint never reads credentials or the rest of the command line. Only a later success under the same fingerprint closes the candidate and increments the count, so a configuration change cannot silently absorb a false bench. The run-time report prints `False benches: N (agent@phase [fingerprint], …)`. Each counted event keeps the verdict record and the session reference it came from. `false_bench_fixture_draft` renders a counted event as a corpus-fixture draft; a reviewer fills in the captured raw lines from the referenced session and commits the fixture. This record is a metric: selection never reads it, and it is not a second availability store.
+
+**Runner and entry points.** `ralph.pipeline.attempt_runner.run_agent_attempt` is the single entry point for invoking an agent. It owns the recovery construction seam, so a pipeline receives a configured controller instead of assembling one, and it returns the attempt outcome, the facts and the ordered per-attempt outcomes. The nine registered entry points are `main_phase_loop`, `parallel_worker`, `integration_continuation`, `conflict_resolution`, `commit_generation`, `smoke`, `project_policy`, `session_runtime` and `canary_probe`. The canary probe runs in probe mode: it records facts and the issuer and reports the outcome, but it runs no nested probe, benches nothing and charges no ledger.
 
 ## Boundaries
 
 The detector uses only observable evidence from a single invocation. It does not diagnose a provider outage or infer that a model request was accepted.
 
 The grace timer applies while the process remains live and silent. A completed process with unambiguous no-output, harness-only, prompt-echo, or credential-failure evidence falls over immediately instead of entering a resumable same-agent retry. The live-process timer is intentionally independent of normal idle-watchdog thresholds so retry policy can respond quickly when an agent cannot begin useful work.
+
+The readers still hold the process handle and call `terminate` themselves. Every kill names its issuer, so the cause is recorded, but the readers are not yet separated from the supervisor that acts.
+
+Parsers do not yet tag every event with a content channel. The quota detector reads provider-originated output only and the retry path reads no message text, but phrase matching is not yet unreachable by type.
+
+Facts are assembled in one place and the log line renders from facts only. The recorded real CLI sessions that would assert per-CLI fact completeness and guard harness changes do not exist in the tree.
+
+A counted false bench reaches the corpus through the reviewed fixture-draft step, not automatically.
+
+The spent-agent set stays inside `recovery/controller.py`; no other module may write it.
 
 A prompt echo is not a generic similarity check. The entire trimmed prompt must be present in the emitted line, which preserves short genuine responses that happen to share words with the prompt.
 
