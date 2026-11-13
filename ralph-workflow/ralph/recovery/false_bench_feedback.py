@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import cast
 
 _MAX_EVENTS = 32
 
+_CandidateKey = tuple[str, str]
+_CandidateRecord = dict[str, object]
+_CandidateEntry = tuple[_CandidateKey, _CandidateRecord]
+
 
 class FalseBenchFeedback:
     def __init__(self) -> None:
         self._count = 0
         self._events: tuple[dict[str, object], ...] = ()
-        self._candidates: dict[tuple[str, str], dict[str, object]] = {}
+        self._candidates: deque[_CandidateEntry] = deque(maxlen=32)
 
     @property
     def count(self) -> int:
@@ -31,29 +36,43 @@ class FalseBenchFeedback:
         verdict_ref: Mapping[str, object],
         session_ref: Mapping[str, str],
     ) -> None:
-        self._candidates[(agent, config_fingerprint)] = {
-            "agent": agent,
-            "phase": phase,
-            "reason": reason,
-            "config_fingerprint": config_fingerprint,
-            "verdict_ref": deepcopy(dict(verdict_ref)),
-            "session_ref": dict(session_ref),
-        }
+        key = (agent, config_fingerprint)
+        for index, (existing_key, _) in enumerate(self._candidates):
+            if existing_key == key:
+                del self._candidates[index]
+                break
+        self._candidates.append(
+            (
+                key,
+                {
+                    "agent": agent,
+                    "phase": phase,
+                    "reason": reason,
+                    "config_fingerprint": config_fingerprint,
+                    "verdict_ref": deepcopy(dict(verdict_ref)),
+                    "session_ref": dict(session_ref),
+                },
+            )
+        )
 
     def note_success(self, phase: str, agent: str, *, config_fingerprint: str) -> bool:
         del phase
-        candidate = self._candidates.pop((agent, config_fingerprint), None)
-        if candidate is None:
+        key = (agent, config_fingerprint)
+        for index, (existing_key, _candidate) in enumerate(self._candidates):
+            if existing_key == key:
+                del self._candidates[index]
+                break
+        else:
             return False
         self._count += 1
-        self._events = (*self._events, candidate)[-_MAX_EVENTS:]
+        self._events = (*self._events, _candidate)[-_MAX_EVENTS:]
         return True
 
     def snapshot(self) -> dict[str, object]:
         return {
             "count": self._count,
             "events": deepcopy(list(self._events)),
-            "candidates": deepcopy(list(self._candidates.values())),
+            "candidates": deepcopy([record for _, record in self._candidates]),
         }
 
     @classmethod
@@ -78,11 +97,11 @@ class FalseBenchFeedback:
         feedback._events = tuple(
             value for value in parsed_events[-_MAX_EVENTS:] if value is not None
         )
-        feedback._candidates = {
-            (str(value["agent"]), str(value["config_fingerprint"])): value
-            for value in parsed_candidates
-            if value is not None
-        }
+        for value in parsed_candidates:
+            if value is None:
+                continue
+            key = (str(value["agent"]), str(value["config_fingerprint"]))
+            feedback._candidates.append((key, value))
         return feedback
 
     @staticmethod

@@ -90,7 +90,6 @@ from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.attempt_runner import (
-    EntryPointRunner,
     build_entry_point_recovery_controller,
     register_entry_point,
     registered_entry_points,
@@ -413,16 +412,18 @@ def _main_phase_loop_controller(
 
 def _run_main_phase_loop_attempt(
     *_args: object,
-    effect: InvokeAgentEffect,
+    effect: object | None = None,
+    invocation: object | None = None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     return run_agent_attempt(
         AgentEntryPoint.MAIN_PHASE_LOOP,
         effect=effect,
+        invocation=invocation,
         config=config,
         controller=controller,
         deps=deps,
@@ -434,7 +435,7 @@ def _run_main_phase_loop_attempt(
 if AgentEntryPoint.MAIN_PHASE_LOOP not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.MAIN_PHASE_LOOP,
-        cast("EntryPointRunner", _run_main_phase_loop_attempt),
+        _run_main_phase_loop_attempt,
     )
 
 

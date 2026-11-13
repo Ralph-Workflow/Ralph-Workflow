@@ -66,12 +66,14 @@ Banned without exception:
 * Commented-out code.
 * Section banners.
 * Notes addressed to the reviewer instead of to the next maintainer.
-* A deferred-work marker (a `todo`, `fixme`, or `hack` prefix) that
-  carries neither an owner nor a removal trigger.
+* A deferred-work marker: a `todo`, `fixme`, or `hack` prefix.
 * Encoding declarations, `# type: ignore`, `# noqa`, `# pragma`,
-  `# pylint:` and `# fmt:` suppressions. The underlying warning is fixed
-  in code, or suppressed in tool configuration (`pyproject.toml`
-  per-file settings), never inline.
+  `# pylint:` and `# fmt:` suppressions. The underlying warning is
+  fixed in code. Inline suppression is always rejected. A
+  `[tool.ruff.lint.per-file-ignores]` entry is accepted only when its
+  code and pattern match `_PYPROJECT_IGNORE_ALLOWLIST`
+  (`ralph/testing/audit_lint_bypass.py`); `audit_lint_bypass` rejects
+  any other addition.
 
 Editing code means deleting any comment found in the touched region.
 Docstrings are banned the same way as comments: no module, class,

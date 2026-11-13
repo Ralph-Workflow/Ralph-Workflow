@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline.agent_entry_point import AgentEntryPoint, registered_runners
-from ralph.pipeline.attempt_finalizer import AttemptFinalization, AttemptFinalizer
+from ralph.pipeline.attempt_finalizer import AttemptFinalization
 from ralph.pipeline.attempt_runner import (
     AttemptInvoke,
     build_entry_point_recovery_controller,
@@ -27,7 +27,14 @@ from tests.recovery._corpus_derive import CorpusCase, load_corpus, load_fixtures
 
 if TYPE_CHECKING:
     from ralph.pipeline.attempt_result import AttemptResult
+    from ralph.recovery.attempt_outcome import AttemptOutcome
     from ralph.recovery.controller import RecoveryController
+
+
+@runtime_checkable
+class _AttemptFinalizer(Protocol):
+    def __call__(self, finalization: AttemptFinalization) -> AttemptOutcome: ...
+
 
 PHASE = "development"
 RUN_ID = "matrix-run"
@@ -355,12 +362,16 @@ def run_matrix_scenario(
         return scenario.probe_outcome
 
     def invoke(target: object, *_args: object, **kwargs: object) -> object:
-        effect = cast("InvokeAgentEffect", target)
+        if not isinstance(target, InvokeAgentEffect):
+            raise AssertionError("matrix invocation requires an InvokeAgentEffect")
+        effect = target
         script = scripts.pop(0)
         if script.agent != effect.agent_name:
             raise AssertionError(f"expected {script.agent}, got {effect.agent_name}")
         invocations.append(effect.agent_name)
-        finalizer = cast("AttemptFinalizer", kwargs["attempt_finalizer"])
+        finalizer = kwargs["attempt_finalizer"]
+        if not isinstance(finalizer, _AttemptFinalizer):
+            raise AssertionError("matrix invocation requires an attempt finalizer")
         exc = _script_exception(script) if script.failed else None
         finalizer(
             AttemptFinalization(
@@ -452,14 +463,14 @@ def _script_exception(script: MatrixScenario.Script) -> AgentInvocationError:
 
 def _deps(
     clock: FakeClock,
-    invoke: Callable[[object, object, object], object],
+    invoke: AttemptInvoke,
     probe_runner: Callable[[str, str], ProbeOutcome | None],
     scenario: MatrixScenario,
 ) -> AttemptRunnerDeps:
     connectivity = (lambda: scenario.connectivity) if scenario.connectivity is not None else None
     return AttemptRunnerDeps(
         clock,
-        cast("AttemptInvoke", invoke),
+        invoke,
         probe_runner,
         None,
         connectivity,
@@ -506,6 +517,9 @@ def _observe(
 ) -> MatrixScenario.Observation:
     agent = scenario.attempts[-1].agent
     ledger_snapshot = controller.ledger.snapshot()
+    raw_entries = ledger_snapshot["entries"]
+    if not isinstance(raw_entries, dict):
+        raise AssertionError("ledger snapshot entries must be a dictionary")
     status = controller.ledger.status(PHASE, agent)
     return MatrixScenario.Observation(
         outcome_kind=outcome_kind,
@@ -514,7 +528,7 @@ def _observe(
         ledger_status=(
             "spent" if status.is_spent else "cooldown" if status.is_cooldown else "eligible"
         ),
-        ledger_entries=dict(cast("dict[str, object]", ledger_snapshot["entries"])),
+        ledger_entries=dict(raw_entries),
         verdict_record=_stable(controller.last_verdict_record),
         false_bench_count=controller.false_bench_feedback.count,
         invocations=invocations,

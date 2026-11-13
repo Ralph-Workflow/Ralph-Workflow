@@ -3,9 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
-from importlib import import_module
-from typing import TYPE_CHECKING, cast
-from typing import Protocol as TypingProtocol
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -24,13 +22,17 @@ from ralph.pipeline.agent_retry_intent import (
     set_last_captured_retry_intent,
 )
 from ralph.pipeline.attempt_runner import (
-    EntryPointRunner,
     build_entry_point_recovery_controller,
     register_entry_point,
     registered_entry_points,
     run_agent_attempt,
 )
-from ralph.pipeline.attempt_runner_deps import AttemptInvoke, AttemptRunnerDeps
+from ralph.pipeline.attempt_runner_deps import (
+    AttemptInvoke,
+    AttemptRunnerDeps,
+    effect_attempt_invoke,
+)
+from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.rebase_state import RebaseState
@@ -75,10 +77,6 @@ if TYPE_CHECKING:
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
-
-
-class _EffectExecutorModule(TypingProtocol):
-    def execute_agent_effect(self, target: object, **kwargs: object) -> object: ...
 
 
 _EXIT_SUCCESS: int = 0
@@ -347,26 +345,24 @@ def _make_production_invoke_agent(
 
 
 def _production_effect_invoke() -> AttemptInvoke:
-    module = cast(
-        "_EffectExecutorModule",
-        import_module("ralph.pipeline.effect_executor"),
-    )
-    return cast("AttemptInvoke", module.execute_agent_effect)
+    return effect_attempt_invoke(execute_agent_effect)
 
 
 def _run_project_policy_attempt(
     *args: object,
-    effect: InvokeAgentEffect,
+    effect: object | None = None,
+    invocation: object | None = None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     del args
     return run_agent_attempt(
         AgentEntryPoint.PROJECT_POLICY,
         effect=effect,
+        invocation=invocation,
         config=config,
         controller=controller,
         deps=deps,
@@ -378,7 +374,7 @@ def _run_project_policy_attempt(
 if AgentEntryPoint.PROJECT_POLICY not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.PROJECT_POLICY,
-        cast("EntryPointRunner", _run_project_policy_attempt),
+        _run_project_policy_attempt,
     )
 
 

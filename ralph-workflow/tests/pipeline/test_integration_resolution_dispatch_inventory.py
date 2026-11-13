@@ -22,6 +22,14 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "run_rebase_conflict_resolution_pipeline moved to pipeline_entrypoints.py."
         " The _run_rounds runner it delegates to now lives in the driver."
     ),
+    "test_every_live_effect_executor_caller_is_inventoried": (
+        "The attempt-invoke seam now routes every entry point through the typed "
+        "PRODUCTION_INVOKE adapter. cli_integration reaches the effect runner "
+        "exclusively through the adapter and no longer names "
+        "execute_agent_effect( in its source; the parallel-worker seam forwards "
+        "through worker_runtime's module-level effect seam, which the inventory "
+        "now lists as a live caller."
+    ),
 }
 
 ORDINARY_DISPATCH_ROUTES = (
@@ -47,8 +55,8 @@ RESOLUTION_ROUTES = (
 
 EXPECTED_EFFECT_EXECUTOR_CALLER_MODULES = {
     "ralph.pipeline.conflict_resolution.session",
+    "ralph.pipeline.parallel.worker_runtime",
     "ralph.pipeline.plumbing.smoke_plumbing",
-    "ralph.project_policy.cli_integration",
 }
 
 EXPECTED_ATTEMPT_RUNNER_CALLER_MODULES = {

@@ -151,29 +151,22 @@ the action is the control.
 
 ### Audit log of agent actions
 
-Ralph's audit sink is `RalphAuditSinkAdapter`
-(`ralph/mcp/artifacts/audit_adapter.py:125`). It buffers records in
-memory and writes nothing to disk: `emit` appends to a bounded
-`collections.deque` (`ralph/mcp/artifacts/audit_adapter.py:157`,
-`ralph/mcp/artifacts/audit_adapter.py:152`) whose default cap is 4096
-records, so the oldest record is evicted FIFO
-(`ralph/mcp/artifacts/audit_adapter.py:122`); `drain_records` returns the
-buffered records and clears it
-(`ralph/mcp/artifacts/audit_adapter.py:163`); `flush` clears the buffer
-and returns nothing (`ralph/mcp/artifacts/audit_adapter.py:171`).
+The runtime's audit sink buffers access records in memory and writes
+nothing to disk: `emit` appends to a bounded `collections.deque` whose
+default cap is 4096 records, so the oldest record is evicted FIFO;
+`drain_records` returns the buffered records and clears it; `flush`
+clears the buffer and returns nothing.
 
 Each buffered record carries the session id, a whole-second timestamp,
-the mapped capability (workspace read when the MCP capability is absent
-or unmapped), the access outcome (approved, or denied with its reason),
-a description taken from the record metadata or a default naming the
+the mapped capability (workspace read when the capability is absent or
+unmapped), the access outcome (approved, or denied with its reason), a
+description taken from the record metadata or a default naming the
 tool, the lowercased event type, and the correlation fields run id,
-generation, drain, and policy mode when at least one of them is set
-(`ralph/mcp/artifacts/audit_adapter.py:101`). It does NOT carry the tool
-arguments, the tool name as its own field, the path, the file contents,
-the diff, or the prompt text, and `duration_ms` and `result_status` keep
-their `None` defaults (`ralph/mcp/artifacts/_ralph_audit_record.py:24`).
-A record that is flushed or evicted is gone: the adapter persists
-nothing.
+generation, drain, and policy mode when at least one of them is set. It
+does NOT carry the tool arguments, the tool name as its own field, the
+path, the file contents, the diff, or the prompt text, and `duration_ms`
+and `result_status` keep their `None` defaults. A record that is
+flushed or evicted is gone: the adapter persists nothing.
 
 ## Project facts to resolve
 

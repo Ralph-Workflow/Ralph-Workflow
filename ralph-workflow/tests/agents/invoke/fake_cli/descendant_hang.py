@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-import time
+import signal
+import threading
 
 if os.fork() == 0:
     os.close(0)
-    time.sleep(30)
+    signal.pause()
     os._exit(0)
 
 print("agent parent completed", flush=True)
-time.sleep(0.1)
+threading.Event().wait(0.1)

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from loguru import logger
@@ -17,6 +18,7 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     summarize_retry_failure_evidence,
 )
 from ralph.agents.timeout_clock import SystemClock
+from ralph.config.models import AgentConfig
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -28,7 +30,6 @@ from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, resolve_model_identity
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
-    EntryPointRunner,
     register_entry_point,
     registered_entry_points,
 )
@@ -42,15 +43,14 @@ from ralph.pipeline.session_bridge import scoped_reset_tool_registry_callback
 from ._session_runtime_deps import ManagedAgentSessionDeps
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.agents.idle_watchdog import WaitingStatusListener
     from ralph.config.enums import AgentTransport
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.attempt_result import AttemptResult
-    from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.controller import RecoveryController
@@ -65,7 +65,7 @@ def _run_session_runtime_attempt(
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None = None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     return run_agent_attempt(
@@ -81,10 +81,7 @@ def _run_session_runtime_attempt(
 
 
 if AgentEntryPoint.SESSION_RUNTIME not in registered_entry_points():
-    register_entry_point(
-        AgentEntryPoint.SESSION_RUNTIME,
-        cast("EntryPointRunner", _run_session_runtime_attempt),
-    )
+    register_entry_point(AgentEntryPoint.SESSION_RUNTIME, _run_session_runtime_attempt)
 
 
 class ManagedAgentSessionRuntime:
@@ -255,7 +252,10 @@ class ManagedAgentSessionRuntime:
                 prompt_file=str(prompt_file),
                 options=_with_session_id(options, retry_session_id or base_session_id),
             )
-            return cast("Iterable[str]", result.event)
+            event = result.event
+            if not isinstance(event, Iterable):
+                raise TypeError(f"expected iterable session event, got {type(event).__name__}")
+            return event
 
         return iter_with_direct_mcp_recovery(
             _invoke_with_retry_session,
@@ -288,10 +288,15 @@ def _skip_probe(phase: str, agent: str) -> ProbeOutcome | None:
 def _session_invoke(deps: ManagedAgentSessionDeps) -> AttemptInvoke:
     def _invoke(target: object, *args: object, **kwargs: object) -> object:
         del args
+        if not isinstance(target, AgentConfig):
+            raise TypeError(f"expected AgentConfig, got {type(target).__name__}")
+        options = kwargs.get("options")
+        if options is not None and not isinstance(options, InvokeOptions):
+            raise TypeError(f"expected InvokeOptions, got {type(options).__name__}")
         return deps.invoke_agent(
-            cast("AgentConfig", target),
+            target,
             str(kwargs["prompt_file"]),
-            cast("InvokeOptions | None", kwargs.get("options")),
+            options,
         )
 
     return _invoke

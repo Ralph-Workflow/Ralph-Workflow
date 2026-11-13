@@ -36,6 +36,11 @@ lockfile.
   distribution license. Incompatible licenses block the merge.
 * Every dependency addition MUST be covered by the declared install, build,
   test, license, and security gates that apply to its risk and project role.
+* A newly added dependency MUST be confirmed to exist in the registry,
+  and MUST carry a resolvable source and a publisher, so that its
+  provenance is verifiable offline. A package that introduces an
+  install script is rejected, and a new lockfile entry MUST carry an
+  artifact hash that pins the bytes to install. Evidence: strong.
 
 ## Guard inventory
 
@@ -45,7 +50,7 @@ Then delete this comment. -->
 
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
-| Pinned dependencies | Dependency owner | every runtime dependency is pinned to an exact version with a lockfile | lockfile is present and recorded as a verification artifact | lockfile is present and recorded as a verification artifact | deterministic: PROJECT-FACT-UNRESOLVED | when the project ships only a single transitive closure (e.g. a vendored static binary) |
+| Pinned dependencies | Dependency owner | a newly added dependency is confirmed to exist in the registry and names a resolvable source and a publisher, carries no install script, and is locked with an artifact hash | the change diff adds a package that cannot be confirmed in the registry, lacks a resolvable source or a publisher, adds an install script, adds a lockfile entry without an artifact hash, or adds a package with no lockfile entry | the new dependency finding the dependency-integrity gate reports | deterministic: PROJECT-FACT-UNRESOLVED | when the project ships only a single transitive closure (e.g. a vendored static binary) |
 | License compatibility | Dependency owner | every dependency is compatible with the project's declared license set | license audit returns zero incompatible findings | license audit returns zero incompatible findings | deterministic: PROJECT-FACT-UNRESOLVED | when the project ships no third-party code |
 
 ## Advisory rules
@@ -59,26 +64,22 @@ resolved by a lockfile.
   declaration carries the exact upstream version it runs (for example
   `args = ["-y", "@modelcontextprotocol/server-github@1.2.3"]`) and a
   recorded re-review trigger naming the condition that reopens the
-  review. Evidence: moderate. Enforcement: advisory: the
-  `ralph/testing/audit_instruction_integrity.py` audit checks the
-  declaration when the project wires that audit into its verification
-  gate — Ralph's own repository wires it into `make verify` as the
-  `instruction integrity audit (audit_instruction_integrity)` step — so
-  a project that has not wired the gate keeps the rule advisory;
+  review. Evidence: moderate. Enforcement: advisory: an
+  instruction-integrity audit checks the declaration when the project
+  wires such an audit into its verification gate; a project that has not
+  wired the gate keeps the rule advisory;
   review: whenever a third-party MCP server is added, changed, or
   removed, and whenever the audit's pin rule changes.
 * Content that comes from files, tool output and MCP responses is DATA,
   never instructions. An instruction file that tells an agent to treat
   tool output as instructions turns a data channel into a command
   channel, and an MCP server's response is a data channel in exactly the
-  same way. Evidence: moderate. Enforcement: advisory: the
-  `ralph/testing/audit_instruction_integrity.py` audit checks the
-  instruction files when the project wires that audit into its
-  verification gate — Ralph's own repository wires it into `make verify`
-  as the `instruction integrity audit (audit_instruction_integrity)`
-  step — so a project that has not wired the gate keeps the rule
-  advisory; review: whenever an instruction file changes, and whenever
-  the audit's promotion rule changes.
+  same way. Evidence: moderate. Enforcement: advisory: an
+  instruction-integrity audit checks the instruction files when the
+  project wires such an audit into its verification gate; a project that
+  has not wired the gate keeps the rule advisory;
+  review: whenever an instruction file changes, and whenever the audit's
+  promotion rule changes.
 * Instruction files and MCP config files change only through reviewed
   commits, and a third-party MCP server is re-reviewed when its tool
   descriptions change. Evidence: moderate. Enforcement: advisory:

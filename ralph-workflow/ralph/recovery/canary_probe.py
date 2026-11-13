@@ -3,7 +3,6 @@ from __future__ import annotations
 import tempfile
 import threading
 import time
-from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -13,6 +12,7 @@ from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from loguru import logger
 
+import ralph.agents.invoke as agents_invoke
 from ralph.agents.invoke import (
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
@@ -24,21 +24,19 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
-    EntryPointRunner,
     register_entry_point,
     registered_entry_points,
 )
-from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.attempt_runner import AttemptInvoke
-    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, RawAgentInvoke
     from ralph.recovery.controller import RecoveryController
 
     class _AttemptRunnerModule(Protocol):
@@ -55,8 +53,9 @@ if TYPE_CHECKING:
         ) -> AttemptResult: ...
 
     class _AttemptRunnerDepsModule(Protocol):
-        PRODUCTION_INVOKE: AttemptInvoke
         AttemptRunnerDeps: type[AttemptRunnerDeps]
+
+        def raw_attempt_invoke(self, invoke: RawAgentInvoke) -> AttemptInvoke: ...
 
 
 def _run_canary_probe_attempt(
@@ -135,16 +134,6 @@ class _PreparedProbe:
     prompt_file: str
 
 
-class _InvokeAgentFn(Protocol):
-    def __call__(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> Iterator[str] | None: ...
-
-
 ProbeOutcome = _ProbeOutcome
 ProbeResult = _ProbeResult
 
@@ -152,7 +141,7 @@ ProbeResult = _ProbeResult
 def run_canary_probe(
     config: AgentConfig,
     *,
-    invoke_fn: _InvokeAgentFn | None = None,
+    invoke_fn: RawAgentInvoke | None = None,
     workspace_factory: Callable[[], Path] | None = None,
     timeout_s: float = DEFAULT_PROBE_TIMEOUT_S,
     general_config: GeneralConfig | None = None,
@@ -180,7 +169,7 @@ def run_canary_probe(
 def _run_canary_probe(
     config: AgentConfig,
     *,
-    invoke_fn: _InvokeAgentFn | None,
+    invoke_fn: RawAgentInvoke | None,
     workspace_factory: Callable[[], Path] | None,
     timeout_s: float,
     general_config: GeneralConfig | None,
@@ -354,7 +343,7 @@ def _write_prompt(workspace_path: Path) -> str:
 
 
 def _invoke_with_timeout(
-    invoke: _InvokeAgentFn,
+    invoke: RawAgentInvoke,
     config: AgentConfig,
     prepared: _PreparedProbe,
     general: GeneralConfig,
@@ -376,31 +365,12 @@ def _invoke_with_timeout(
     return (captured[0] if captured else None, False)
 
 
-def _production_invoke() -> _InvokeAgentFn:
-    module = cast(
-        "_AttemptRunnerDepsModule",
-        import_module("ralph.pipeline.attempt_runner_deps"),
-    )
-    return cast("_InvokeAgentFn", module.PRODUCTION_INVOKE)
-
-
-def _probe_invoke(invoke: _InvokeAgentFn) -> AttemptInvoke:
-    def _invoke(target: object, *args: object, **kwargs: object) -> object:
-        del args
-        result = invoke(
-            cast("AgentConfig", target),
-            prompt_file=str(kwargs["prompt_file"]),
-            options=cast("InvokeOptions | None", kwargs.get("options")),
-        )
-        if result is not None:
-            deque(result, maxlen=0)
-        return PipelineEvent.AGENT_SUCCESS
-
-    return _invoke
+def _production_invoke() -> RawAgentInvoke:
+    return agents_invoke.invoke_agent
 
 
 def _run_probe_attempt(
-    invoke: _InvokeAgentFn,
+    invoke: RawAgentInvoke,
     config: AgentConfig,
     prepared: _PreparedProbe,
     general: GeneralConfig,
@@ -420,7 +390,7 @@ def _run_probe_attempt(
     )
     deps = runner_deps.AttemptRunnerDeps(
         clock=SystemClock(),
-        invoke=_probe_invoke(invoke),
+        invoke=runner_deps.raw_attempt_invoke(invoke),
         probe_runner=None,
         workspace_probe=None,
         connectivity=None,
@@ -448,7 +418,7 @@ def _run_probe_attempt(
 if AgentEntryPoint.CANARY_PROBE not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.CANARY_PROBE,
-        cast("EntryPointRunner", _run_canary_probe_attempt),
+        _run_canary_probe_attempt,
     )
 
 

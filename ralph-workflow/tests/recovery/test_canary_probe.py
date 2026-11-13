@@ -243,6 +243,47 @@ def test_probe_reports_inconclusive_when_the_workspace_cannot_be_created(tmp_pat
     assert result.error is not None
 
 
+def test_default_invocation_uses_the_raw_agent_invoke_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _agent_config()
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    def _fake_invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        assert options is not None
+        workspace_path = options.workspace_path
+        assert workspace_path is not None
+        (workspace_path / CANARY_MARKER_FILENAME).write_text(
+            CANARY_MARKER_CONTENT, encoding="utf-8"
+        )
+        return None
+
+    monkeypatch.setattr("ralph.agents.invoke.invoke_agent", _fake_invoke)
+    result = run_canary_probe(
+        config,
+        workspace_factory=lambda: scratch,
+    )
+    assert result.outcome is ProbeOutcome.PASSED
+    assert result.detail == "marker_written"
+    assert result.marker_written is True
+    assert len(calls) == 1
+    received = calls[0]
+    assert received.config is config
+    assert received.prompt_file.endswith(CANARY_PROMPT_FILENAME)
+    received_options = received.options
+    assert received_options is not None
+    assert received_options.workspace_path == scratch
+
+
 def test_probe_outcome_exposes_exactly_the_three_contract_members() -> None:
     assert [member.value for member in ProbeOutcome] == [
         "passed",

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from enum import StrEnum
-from types import MappingProxyType, SimpleNamespace
-from typing import TYPE_CHECKING, Final, cast
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.attempt_result import AttemptResult
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+    from ralph.recovery.controller import RecoveryController
 
 
 class AgentEntryPoint(StrEnum):
@@ -23,33 +25,35 @@ class AgentEntryPoint(StrEnum):
     CANARY_PROBE = "canary_probe"
 
 
-EntryPointRunner = Callable[[object], "AttemptResult"]
+class EntryPointRunner(Protocol):
+    def __call__(
+        self,
+        *,
+        effect: object | None = ...,
+        invocation: object | None = ...,
+        config: UnifiedConfig,
+        controller: RecoveryController,
+        deps: AttemptRunnerDeps,
+        state: object | None = ...,
+        **execute_kwargs: object,
+    ) -> AttemptResult: ...
 
-_ENTRY_POINT_REGISTRY: Final = SimpleNamespace(
-    runners=cast("dict[AgentEntryPoint, EntryPointRunner]", {})
-)
 
-
-def _mutable_entry_point_runners() -> dict[AgentEntryPoint, EntryPointRunner]:
-    return cast(
-        "dict[AgentEntryPoint, EntryPointRunner]",
-        _ENTRY_POINT_REGISTRY.runners,
-    )
+_ENTRY_POINT_RUNNERS: Final[dict[AgentEntryPoint, EntryPointRunner]] = {}
 
 
 def register_entry_point(entry_point: AgentEntryPoint, runner_fn: EntryPointRunner) -> None:
-    runners = _mutable_entry_point_runners()
-    if entry_point in runners:
+    if entry_point in _ENTRY_POINT_RUNNERS:
         raise ValueError(f"entry point already registered: {entry_point.value}")
-    runners[entry_point] = runner_fn
+    _ENTRY_POINT_RUNNERS[entry_point] = runner_fn
 
 
 def registered_entry_points() -> tuple[AgentEntryPoint, ...]:
-    return tuple(_mutable_entry_point_runners())
+    return tuple(_ENTRY_POINT_RUNNERS)
 
 
 def registered_runners() -> Mapping[AgentEntryPoint, EntryPointRunner]:
-    return MappingProxyType(_mutable_entry_point_runners())
+    return MappingProxyType(_ENTRY_POINT_RUNNERS)
 
 
 __all__ = (

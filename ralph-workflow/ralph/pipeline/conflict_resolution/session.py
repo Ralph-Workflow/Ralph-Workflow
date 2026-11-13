@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -11,7 +11,6 @@ from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastr
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
-    EntryPointRunner,
     register_entry_point,
     registered_entry_points,
 )
@@ -70,12 +69,12 @@ __all__ = [
 
 def _run_conflict_resolution_attempt(
     *_args: object,
-    effect: InvokeAgentEffect | None = None,
+    effect: object | None = None,
     invocation: object | None = None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None = None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     return run_agent_attempt(
@@ -93,7 +92,7 @@ def _run_conflict_resolution_attempt(
 if AgentEntryPoint.CONFLICT_RESOLUTION not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.CONFLICT_RESOLUTION,
-        cast("EntryPointRunner", _run_conflict_resolution_attempt),
+        _run_conflict_resolution_attempt,
     )
 
 _MIN_FALLBACK_CHAIN_LENGTH = 2
@@ -270,7 +269,7 @@ def ensure_session_controller(
     ledger = _resolution_ledger(session, pipeline_deps)
     controller = build_entry_point_recovery_controller(
         AgentEntryPoint.CONFLICT_RESOLUTION,
-        config=cast("UnifiedConfig", config),
+        config=config,
         policy_bundle=policy_bundle,
         deps=AttemptRunnerDeps(
             clock=_resolution_clock(session, ledger, pipeline_deps),

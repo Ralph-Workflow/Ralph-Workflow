@@ -106,7 +106,7 @@ The following do **NOT** circumvent the combined test budget or the lint/typeche
 | Modifying `_BUDGET_TRACKED_STEPS` / raising `_TOTAL_TEST_BUDGET_SECONDS`, `_TOTAL_TEST_CPU_BUDGET_SECONDS` or `_TOTAL_TEST_HANG_CAP_SECONDS` | Blocked by import-time `if`/`raise RuntimeError` checks — immune to `python -O` |
 | Emptying `_KNOWN_TEST_STEP_LABELS` / `_BUDGET_TRACKED_STEPS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
 | Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time containment RuntimeError check — immune to `python -O` |
-| Adding `per-file-ignores` / `extend-per-file-ignores` / blanket `# noqa` | Detected by `ralph/testing/audit_lint_bypass.py` |
+| Adding `per-file-ignores` / `extend-per-file-ignores` / blanket `# noqa` | Detected by `ralph/testing/audit_lint_bypass.py`; a `per-file-ignores` entry is accepted only when its code and pattern match the documented per-file allowlist inventory |
 | Using any `# noqa` — bare, or `# noqa: CODE` | Detected by `ralph/testing/audit_lint_bypass.py` — inline lint suppression is not permitted; remove the comment and fix the underlying lint error |
 | Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, `ignore_errors`, `disable_error_code`, `warn_unused_ignores = false`, or `disallow_untyped_defs = false` to mypy config | Detected by `ralph/testing/audit_typecheck_bypass.py` |
 | Using `# type: ignore` to silence a mypy error, bare or with an error code | Detected by `ralph/testing/audit_comments.py` — every source comment is a finding, so no suppression comment survives the gate; the remedy is a fix in the code (see `docs/agents/type-ignore-policy.md`, mandatory reading) |

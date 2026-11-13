@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -13,7 +13,6 @@ from ralph.pipeline._commit_completion_authority import CommitCompletion, comple
 from ralph.pipeline._pending_merge_commit import _git_value
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
-    EntryPointRunner,
     register_entry_point,
     registered_entry_points,
 )
@@ -41,9 +40,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.rebase_state import RebaseState
-    from ralph.pipeline.state import PipelineState
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
@@ -577,12 +574,12 @@ def config_for_owned_integration(config: UnifiedConfig) -> UnifiedConfig:
 
 def _run_integration_continuation_attempt(
     *_args: object,
-    effect: InvokeAgentEffect | None = None,
+    effect: object | None = None,
     invocation: object | None = None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None = None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     return run_agent_attempt(
@@ -600,5 +597,5 @@ def _run_integration_continuation_attempt(
 if AgentEntryPoint.INTEGRATION_CONTINUATION not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.INTEGRATION_CONTINUATION,
-        cast("EntryPointRunner", _run_integration_continuation_attempt),
+        _run_integration_continuation_attempt,
     )

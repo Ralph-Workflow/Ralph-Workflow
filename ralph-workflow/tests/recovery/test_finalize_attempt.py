@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
-
 from ralph.agents.timeout_clock import FakeClock
 from ralph.recovery.agent_failure_ledger import Cooldown, Eligible
+from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-if TYPE_CHECKING:
-    from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 
 PHASE = "development"
 AGENT_A = "agent_a"
@@ -69,7 +65,9 @@ def _controller(
 
 
 def _tracker(controller: RecoveryController) -> AgentUnavailabilityTracker:
-    return cast("AgentUnavailabilityTracker", controller.unavailability_store)
+    store = controller.unavailability_store
+    assert isinstance(store, AgentUnavailabilityTracker)
+    return store
 
 
 def _cooldown_until_ms(controller: RecoveryController, agent: str) -> int | None:

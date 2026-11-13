@@ -57,11 +57,11 @@ from ralph.mcp.server._process_secrecy import mint_and_protect_broker_secret
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
-    EntryPointRunner,
     register_entry_point,
     registered_entry_points,
 )
 from ralph.pipeline.attempt_runner import (
+    AttemptInvoke,
     build_entry_point_recovery_controller,
     run_agent_attempt,
 )
@@ -115,7 +115,6 @@ if TYPE_CHECKING:
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.pipeline.attempt_result import AttemptResult
-    from ralph.pipeline.state import PipelineState
     from ralph.pro_support.hooks import ProPipelineHooks
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.controller import RecoveryController
@@ -152,12 +151,12 @@ execute_agent_effect = PRODUCTION_INVOKE
 
 def _run_commit_generation_attempt(
     *_args: object,
-    effect: InvokeAgentEffect | None = None,
+    effect: object | None = None,
     invocation: object | None = None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None = None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     return run_agent_attempt(
@@ -175,22 +174,22 @@ def _run_commit_generation_attempt(
 if AgentEntryPoint.COMMIT_GENERATION not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.COMMIT_GENERATION,
-        cast("EntryPointRunner", _run_commit_generation_attempt),
+        _run_commit_generation_attempt,
     )
-
-
-class _AttemptInvoke(typing.Protocol):
-    def __call__(self, target: object, *args: object, **kwargs: object) -> object: ...
 
 
 def _attempt_deps(
     pipeline_deps: PipelineDeps,
-    invoke: _AttemptInvoke,
+    invoke: AttemptInvoke,
 ) -> AttemptRunnerDeps:
     from ralph.agents.clock import Clock
     from ralph.agents.timeout_clock import SystemClock
 
-    def invoke_attempt(target: object, *args: object, **kwargs: object) -> object:
+    def invoke_attempt(
+        target: InvokeAgentEffect | AgentConfig,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
         if invoke is execute_agent_effect:
             config = kwargs.pop("config")
             effective_pipeline_deps = kwargs.pop("pipeline_deps")

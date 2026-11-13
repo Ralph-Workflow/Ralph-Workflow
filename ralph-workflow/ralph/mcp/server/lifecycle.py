@@ -378,6 +378,27 @@ def is_alive_process(proc: object) -> bool:
         return False
 
 
+def _terminate_process_for_handover(proc: object, *, grace_period_s: float | None) -> None:
+    if isinstance(proc, ManagedProcess):
+        proc.terminate(
+            grace_period_s=grace_period_s,
+            issuer=ProcessTerminationIssuer.MCP_SHUTDOWN,
+        )
+        return
+    terminate_fn: object = getattr(proc, "terminate", None)
+    if callable(terminate_fn):
+        terminate_fn(grace_period_s=grace_period_s)
+
+
+def _kill_process_for_handover(proc: object) -> None:
+    if isinstance(proc, ManagedProcess):
+        proc.kill(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
+        return
+    kill_fn: object = getattr(proc, "kill", None)
+    if callable(kill_fn):
+        kill_fn()
+
+
 def _has_stage(exc: BaseException) -> bool:
     return hasattr(exc, "last_stage") and hasattr(exc, "elapsed_s")
 
@@ -649,10 +670,8 @@ class RestartAwareMcpBridge:
                     t.join(timeout=1.0)
         for entry in unkillable_reapers:
             proc, _ = entry
-            kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
-            if callable(kill_fn):
-                with contextlib.suppress(Exception):
-                    kill_fn()
+            with contextlib.suppress(Exception):
+                _kill_process_for_handover(proc)
             wait_fn = cast("Callable[[float], object] | None", getattr(proc, "wait", None))
             if callable(wait_fn):
                 with contextlib.suppress(Exception):
@@ -1140,13 +1159,8 @@ class RestartAwareMcpBridge:
                         "Old child failed to acknowledge pause within {}s; escalating termination",
                         self._handover_ack_timeout_s,
                     )
-                    kill_fn: object = getattr(proc, "kill", None)
-                    if callable(kill_fn):
-                        with contextlib.suppress(Exception):
-                            if isinstance(proc, ManagedProcess):
-                                kill_fn(issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
-                            else:
-                                kill_fn()
+                    with contextlib.suppress(Exception):
+                        _kill_process_for_handover(proc)
                     poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
                     old_exited = False
                     if poll_fn is not None and callable(poll_fn):
@@ -1248,10 +1262,8 @@ class RestartAwareMcpBridge:
             try:
                 sleep_fn = self._sleep_fn or time.sleep
                 sleep_fn(self._unkillable_reap_backoff_s)
-                terminate_fn = cast("Callable[[], object] | None", getattr(proc, "terminate", None))
-                if callable(terminate_fn):
-                    with contextlib.suppress(Exception):
-                        terminate_fn()
+                with contextlib.suppress(Exception):
+                    _terminate_process_for_handover(proc, grace_period_s=None)
                 deadline = time.monotonic() + self._unkillable_reap_retry_s
                 poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
                 while time.monotonic() < deadline:
@@ -1260,10 +1272,8 @@ class RestartAwareMcpBridge:
                             if poll_fn() is not None:
                                 return
                     sleep_fn(0.05)
-                kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
-                if callable(kill_fn):
-                    with contextlib.suppress(Exception):
-                        kill_fn()
+                with contextlib.suppress(Exception):
+                    _kill_process_for_handover(proc)
                 wait_fn = cast("Callable[[float], object] | None", getattr(proc, "wait", None))
                 if callable(wait_fn):
                     with contextlib.suppress(Exception):

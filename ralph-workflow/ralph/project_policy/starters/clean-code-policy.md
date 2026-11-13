@@ -59,8 +59,7 @@ Banned without exception:
 * Commented-out code.
 * Section banners.
 * Notes addressed to the reviewer instead of to the next maintainer.
-* A deferred-work marker (a `todo`, `fixme`, or `hack` prefix) that
-  carries neither an owner nor a removal trigger.
+* A deferred-work marker (a `todo`, `fixme`, or `hack` prefix).
 * Encoding declarations, `# type: ignore`, `# noqa`, `# pragma`,
   `# pylint:` and `# fmt:` suppressions. The underlying warning is fixed
   in code, or suppressed in tool configuration, never inline.

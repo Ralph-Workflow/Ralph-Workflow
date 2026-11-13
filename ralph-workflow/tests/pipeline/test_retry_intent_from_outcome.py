@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    InactivityTimeoutOpts,
     TerminationRecorder,
 )
-from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
@@ -40,6 +40,10 @@ AGENT = "claude"
 _LIMIT_PHRASE = "You've hit your session limit"
 
 
+class _FactsError(AgentInvocationError):
+    attempt_facts: AttemptFacts
+
+
 class _InvokeFn(Protocol):
     def __call__(
         self,
@@ -48,10 +52,6 @@ class _InvokeFn(Protocol):
         *,
         options: object | None = None,
     ) -> Iterable[object]: ...
-
-
-class _AttemptFactsCarrier(Protocol):
-    attempt_facts: AttemptFacts
 
 
 def _outcome(
@@ -275,13 +275,13 @@ def test_quota_like_words_without_a_typed_signal_never_skip_bench_or_terminate(
 def test_failure_log_line_shows_the_issuer_and_both_return_codes(tmp_path: Path) -> None:
     messages: list[str] = []
     sink_id = logger.add(_capture_message(messages), level="ERROR")
-    failure = AgentInvocationError(AGENT, 9, "fatal: unrelated failure")
+    failure = _FactsError(AGENT, 9, "fatal: unrelated failure")
     recorder = TerminationRecorder()
     recorder.record_issuer(TerminationIssuer.AGENT_EXIT)
     recorder.record_observed_returncode(7)
     recorder.record_reported_returncode(9)
     recorder.record_exit_status("agent")
-    cast("_AttemptFactsCarrier", failure).attempt_facts = recorder.facts()
+    failure.attempt_facts = recorder.facts()
     try:
         _run_effect(tmp_path, _failing_then_succeeding_invoke([], failure))
     finally:

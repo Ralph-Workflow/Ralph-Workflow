@@ -5,7 +5,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -19,7 +19,6 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.attempt_runner import (
-    EntryPointRunner,
     build_entry_point_recovery_controller,
     register_entry_point,
     registered_entry_points,
@@ -41,7 +40,7 @@ from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unres
 from ralph.pipeline.checkpoint import worker_checkpoint_path
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
+from ralph.pipeline.events import ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.integration_resolution import (
     assert_non_resolution_dispatch_allowed,
@@ -68,7 +67,7 @@ from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.mcp.artifacts.file_backend import FileBackend
@@ -292,7 +291,11 @@ def run_worker_auto_integration(
     return outcome
 
 
-def _invoke_worker_effect(target: object, *args: object, **kwargs: object) -> object:
+def _invoke_worker_effect(
+    target: InvokeAgentEffect | AgentConfig,
+    *args: object,
+    **kwargs: object,
+) -> object:
     config = kwargs.pop("config")
     pipeline_deps = kwargs.pop("pipeline_deps")
     workspace_scope = kwargs.pop("workspace_scope")
@@ -331,16 +334,18 @@ def _parallel_worker_controller(
 
 def _run_parallel_worker_attempt(
     *_args: object,
-    effect: InvokeAgentEffect,
+    effect: object | None = None,
+    invocation: object | None = None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     return run_agent_attempt(
         AgentEntryPoint.PARALLEL_WORKER,
         effect=effect,
+        invocation=invocation,
         config=config,
         controller=controller,
         deps=deps,
@@ -352,7 +357,7 @@ def _run_parallel_worker_attempt(
 if AgentEntryPoint.PARALLEL_WORKER not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.PARALLEL_WORKER,
-        cast("EntryPointRunner", _run_parallel_worker_attempt),
+        _run_parallel_worker_attempt,
     )
 
 
@@ -484,7 +489,7 @@ def run_parallel_worker_from_manifest(
         parallel_worker=True,
         run_id=run_id,
     )
-    event: Event = cast("Event", attempt.event)
+    event: object = attempt.event
     if event == PipelineEvent.AGENT_SUCCESS:
         worker_artifact_path = Path(manifest.worker_artifact_dir) / "development_result.md"
         event = phase_event_after_agent_run(

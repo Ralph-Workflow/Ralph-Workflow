@@ -56,7 +56,6 @@ from ralph.mcp.server._wire_ledger import wire_evidence_for
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
-    EntryPointRunner,
     register_entry_point,
     registered_entry_points,
 )
@@ -102,7 +101,6 @@ if TYPE_CHECKING:
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.session_bridge import BridgeFactory
-    from ralph.pipeline.state import PipelineState
     from ralph.pro_support.hooks import ProPipelineHooks
     from ralph.recovery.controller import RecoveryController
 
@@ -114,12 +112,12 @@ _SMOKE_RUN_ID = "interactive-claude-smoke"
 
 def _run_smoke_attempt(
     *_args: object,
-    effect: InvokeAgentEffect | None = None,
+    effect: object | None = None,
     invocation: object | None = None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: PipelineState | None = None,
+    state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
     return run_agent_attempt(
@@ -137,13 +135,17 @@ def _run_smoke_attempt(
 if AgentEntryPoint.SMOKE not in registered_entry_points():
     register_entry_point(
         AgentEntryPoint.SMOKE,
-        cast("EntryPointRunner", _run_smoke_attempt),
+        _run_smoke_attempt,
     )
 
 execute_agent_effect = PRODUCTION_INVOKE
 
 
-def _invoke_smoke_effect(target: object, *args: object, **kwargs: object) -> object:
+def _invoke_smoke_effect(
+    target: InvokeAgentEffect | AgentConfig,
+    *args: object,
+    **kwargs: object,
+) -> object:
     config = kwargs.pop("config")
     pipeline_deps = kwargs.pop("pipeline_deps")
     workspace_scope = kwargs.pop("workspace_scope")

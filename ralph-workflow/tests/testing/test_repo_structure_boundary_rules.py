@@ -168,7 +168,7 @@ def test_b2_rejects_spent_agents_reference_outside_the_controller() -> None:
     )
 
 
-def test_real_recovery_controller_has_no_b2_violations() -> None:
+def test_real_recovery_controller_has_no_b2_violations(tmp_path: Path) -> None:
     source = (_REPO_ROOT / "ralph" / "recovery" / "controller.py").read_text(encoding="utf-8")
     assert not any(" B2 " in item for item in collect_boundary_violations(_CONTROLLER_PATH, source))
 

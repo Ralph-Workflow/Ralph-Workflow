@@ -5,6 +5,14 @@ from tests.doc_roots import (
     REPOSITORY_ROOT,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "code-style docstring assertion inverted to the ban": (
+        "the code-style documentation now bans docstrings outright under the "
+        "no-comment policy; the assertion is inverted from the old permissive "
+        "expectation to the ban the policy states"
+    ),
+}
+
 
 def test_repo_root_readme_points_to_maintained_workflow() -> None:
     content = REPO_ROOT_README.read_text()
@@ -31,8 +39,8 @@ def test_code_style_encodes_documentation_contract() -> None:
         f"Neither CODE_STYLE.md nor docs/code-style/index.md exists; checked: {candidates}"
     )
     content = primary.read_text()
-    assert "docstring" in content.lower() or "pydoc" in content.lower(), (
-        f"{primary} should address public docstring expectations"
+    assert "carries no docstrings" in content.lower(), (
+        f"{primary} must ban docstrings outright"
     )
     assert "pydoc" in content.lower() or "api" in content.lower(), (
         f"{primary} should address documentation/self-sufficiency expectations"

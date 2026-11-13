@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from ralph.agents.invoke import attempt_facts_for_failure
 from ralph.agents.registry import AgentRegistry
@@ -39,7 +39,17 @@ _AGENT_REGISTRY_CACHE_SIZE: Final[int] = 8
 
 
 class _AttemptInvoke(Protocol):
-    def __call__(self, target: object, *args: object, **kwargs: object) -> object: ...
+    def __call__(
+        self,
+        target: InvokeAgentEffect | AgentConfig,
+        *args: object,
+        **kwargs: object,
+    ) -> object: ...
+
+
+@runtime_checkable
+class _RegistryReader(Protocol):
+    def get(self, name: str) -> object | None: ...
 
 
 @runtime_checkable
@@ -53,7 +63,7 @@ AttemptInvoke = _AttemptInvoke
 def build_entry_point_recovery_controller(
     entry_point: AgentEntryPoint,
     *,
-    config: UnifiedConfig,
+    config: UnifiedConfig | None,
     policy_bundle: PolicyBundle | None,
     deps: AttemptRunnerDeps,
     ledger_snapshot: Mapping[str, object] | None = None,
@@ -144,6 +154,8 @@ def run_agent_attempt(
         return outcome
 
     target = effect if effect is not None else invocation
+    if not isinstance(target, InvokeAgentEffect | AgentConfig):
+        raise TypeError("attempt target must be an InvokeAgentEffect or AgentConfig")
     invoke_kwargs: dict[str, object] = dict(execute_kwargs)
     invoke_kwargs["attempt_finalizer"] = finalize
     if effect is not None:
@@ -282,15 +294,15 @@ def _resolve_agent_config(
 def _agent_registry(
     config: object,
     execute_kwargs: Mapping[str, object],
-) -> AgentRegistry | None:
+) -> _RegistryReader | None:
     factory = _registry_factory(execute_kwargs)
     if factory is not None:
         try:
             registry = factory(config)
         except Exception:
             registry = None
-        if registry is not None:
-            return cast("AgentRegistry", registry)
+        if isinstance(registry, _RegistryReader):
+            return registry
     if not isinstance(config, UnifiedConfig):
         return None
     return _agent_registry_for(_AgentConfigKey(config))
