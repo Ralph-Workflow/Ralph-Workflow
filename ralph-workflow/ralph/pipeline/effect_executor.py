@@ -1833,6 +1833,58 @@ def _retry_fingerprint_file(
     return Path(retry_fingerprint_path_for_hint(hint_file.as_posix()))
 
 
+def _retry_reason_file(
+    *,
+    workspace_root: Path,
+    drain: str | None,
+    worker_namespace: Path | None,
+    reason: str | None = None,
+) -> Path | None:
+    scope = drain or reason
+    if scope is None:
+        return None
+    hint_file = (
+        worker_namespace / "tmp" / f"last_retry_error_{scope}.txt"
+        if worker_namespace is not None
+        else workspace_root / retry_hint_path(scope)
+    )
+    companion = hint_file.name.replace("last_retry_error_", "last_retry_reason_")
+    return hint_file.with_name(companion)
+
+
+def _prior_retry_reason(reason_file: Path | None) -> str | None:
+    if reason_file is None or not DEFAULT_FILE_BACKEND.exists(reason_file):
+        return None
+    try:
+        return DEFAULT_FILE_BACKEND.read_text(reason_file, encoding="utf-8").strip() or None
+    except (OSError, ValueError):
+        return None
+
+
+def _retry_premise_line(
+    *,
+    current_fingerprint: str,
+    fingerprint_file: Path | None,
+    reason_file: Path | None,
+    reason: str,
+    validation_hint: str,
+) -> str:
+    prior_fingerprint = ""
+    if fingerprint_file is not None and DEFAULT_FILE_BACKEND.exists(fingerprint_file):
+        try:
+            prior_fingerprint = DEFAULT_FILE_BACKEND.read_text(
+                fingerprint_file, encoding="utf-8"
+            ).strip()
+        except (OSError, ValueError):
+            prior_fingerprint = ""
+    premise = premise_check_line(current_fingerprint, prior_fingerprint)
+    if premise and _prior_retry_reason(reason_file) != reason:
+        premise = ""
+    if premise and PREMISE_CHECK_LINE in validation_hint:
+        premise = ""
+    return premise
+
+
 def _retry_prompt_file_for_context(
     *,
     workspace_root: Path,
@@ -1970,18 +2022,20 @@ def _write_agent_retry_prompt(
         worker_namespace=worker_namespace,
         reason=reason,
     )
+    reason_file = _retry_reason_file(
+        workspace_root=workspace_root,
+        drain=drain,
+        worker_namespace=worker_namespace,
+        reason=reason,
+    )
     current_fingerprint = retry_hint_fingerprint(str(drain or reason), detail or reason)
-    prior_fingerprint = ""
-    if fingerprint_file is not None and DEFAULT_FILE_BACKEND.exists(fingerprint_file):
-        try:
-            prior_fingerprint = DEFAULT_FILE_BACKEND.read_text(
-                fingerprint_file, encoding="utf-8"
-            ).strip()
-        except (OSError, ValueError):
-            prior_fingerprint = ""
-    premise = premise_check_line(current_fingerprint, prior_fingerprint)
-    if premise and PREMISE_CHECK_LINE in validation_hint:
-        premise = ""
+    premise = _retry_premise_line(
+        current_fingerprint=current_fingerprint,
+        fingerprint_file=fingerprint_file,
+        reason_file=reason_file,
+        reason=reason,
+        validation_hint=validation_hint,
+    )
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         detail=detail,
@@ -1997,6 +2051,13 @@ def _write_agent_retry_prompt(
             current_fingerprint,
             encoding="utf-8",
         )
+        if reason_file is not None:
+            write_text_if_changed(
+                DEFAULT_FILE_BACKEND,
+                reason_file,
+                reason,
+                encoding="utf-8",
+            )
     validation_block = (
         "VALIDATION ERRORS (ACCUMULATED)\n"
         f"{validation_hint}\n\n"

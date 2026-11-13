@@ -24,8 +24,8 @@ RALPH_TEST_CHANGE_REASONS = {
     "test_kernels_state_the_spec_derived_expected_value_obligation": (
         "the generic red-green obligation is taught by the shipped "
         "test-driven-development skill, so the kernel states the spec-derived "
-        "expected value and the library-documentation clause instead of the "
-        "pre-fix-failure clause"
+        "expected value and the library-documentation clause while the "
+        "retired red-green clause stays out of the rule"
     ),
     "test_kernels_drop_the_rule_history_sentence": (
         "the kernel carried a sentence narrating where the rules used to live, "

@@ -448,7 +448,7 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
 | root | 464 | 394 | 860 | 855 | 2109 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | follow-up: mcp public-seam unit |
-| agents | 101 | 34 | 286 | 114 | 434 | follow-up: agent public-seam unit |
+| agents | 100 | 34 | 282 | 100 | 416 | follow-up: agent public-seam unit |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | follow-up: auto-integrate public-seam unit |
 | project-policy | 28 | 4 | 53 | 158 | 215 | follow-up: policy public-seam unit |
 | run-loop | 17 | 103 | 29 | 89 | 221 | follow-up: run-loop public-seam unit |
@@ -506,7 +506,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/agents/execution_state/test_opencode_subagent_visibility.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/execution_state/test_strategy_classes_consolidated.py` | 0 | 2 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py` | 0 | 6 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
-| `tests/agents/invoke/test_check_process_result_supervisor.py` | 0 | 4 | 14 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_claude_interactive_real_capture_replay.py` | 0 | 2 | 1 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_codex_completion_liveness.py` | 0 | 2 | 4 | agents | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: agent public-seam unit |
 | `tests/agents/invoke/test_codex_session_id_extraction.py` | 0 | 1 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |

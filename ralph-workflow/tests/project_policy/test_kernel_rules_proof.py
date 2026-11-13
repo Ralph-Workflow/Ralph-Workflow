@@ -24,29 +24,18 @@ from tests.project_policy.kernel_contract import (
 )
 
 RALPH_TEST_CHANGE_REASONS = {
-    "test_kernels_drop_the_retired_premise_check_rule": (
-        "PRODUCT_CRITERIA unit 3 requires the runtime to own the repeated-failure "
-        "retry and the policy-v5 paired replay plan carries the Premise-check retry "
-        "line guard row, so both kernels again name the premise-check line, the "
-        "retry formatter, and the guard-inventory row, and the retired-absence "
-        "assertion is removed"
-    ),
     "test_kernels_number_the_agent_rules_to_match_the_contract": (
-        "the shipped skills teach the repeated-failure technique, so the "
-        "repeated-failure retry rule is retired and the numbered contract is "
-        "thirteen rules with every following rule moved up one number"
+        "the kernel declares thirteen numbered agent rules, so the check pins "
+        "the numbering contract"
     ),
     "test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules": (
-        "the repeated-failure retry rule is retired, so the rule-to-phase "
-        "table covers the thirteen numbered rules"
+        "the rule-to-phase table covers the thirteen numbered rules"
     ),
     "test_every_agent_rule_has_a_research_basis_supports_line": (
-        "the repeated-failure retry rule is retired, so each of the thirteen "
-        "rules names its number in a research-basis supports line"
+        "each of the thirteen rules names its number in a research-basis supports line"
     ),
     "test_kernel_evidence_tags_match_the_brief": (
-        "the repeated-failure retry rule is retired, so the check pins the "
-        "evidence tags of the thirteen shipped rules"
+        "the check pins the evidence tags of the thirteen shipped rules"
     ),
     "test_kernel_anchors_the_deterministic_evidence_rule": (
         "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "

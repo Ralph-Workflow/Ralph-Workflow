@@ -47,6 +47,18 @@ RALPH_TEST_CHANGE_REASONS = {
         "PRODUCT_CRITERIA unit 3 renders the premise instruction exactly once per prompt, "
         "so a validation hint that already carries it is not doubled"
     ),
+    "test_generic_retry_prompt_omits_the_premise_line_when_only_the_reason_changes": (
+        "PRODUCT_CRITERIA unit 3 emits the premise instruction only for an identical "
+        "repeat failure, so a changed reason with identical detail leaves it off"
+    ),
+    "test_generic_retry_prompt_resume_tail_omits_the_premise_line_when_only_the_reason_changes": (
+        "PRODUCT_CRITERIA unit 3 emits the premise instruction only for an identical "
+        "repeat failure, so the resume tail leaves it off when only the reason changes"
+    ),
+    "test_generic_retry_prompt_new_session_tail_omits_the_premise_line_when_only_the_reason_changes": (
+        "PRODUCT_CRITERIA unit 3 emits the premise instruction only for an identical "
+        "repeat failure, so the new-session tail leaves it off when only the reason changes"
+    ),
 }
 
 
@@ -66,11 +78,12 @@ def _render(
     detail: str,
     *,
     recovery_action: str | None = None,
+    reason: str = "AgentTimeout",
 ) -> str:
     retry_prompt = write_agent_retry_prompt(
         workspace_root=tmp_path,
         prompt_file=str(prompt_file),
-        reason="AgentTimeout",
+        reason=reason,
         detail=detail,
         context_lines=["the agent produced no output"],
         drain="development",
@@ -170,6 +183,62 @@ def test_generic_retry_prompt_new_session_tail_renders_the_premise_line_once(
     )
 
     assert repeat.count(PREMISE_CHECK_LINE) == 1
+
+
+def test_generic_retry_prompt_omits_the_premise_line_when_only_the_reason_changes(
+    tmp_path: Path,
+) -> None:
+    prompt_file = _write_prompt(tmp_path)
+
+    first = _render(tmp_path, prompt_file, "the agent produced no output")
+    changed_reason = _render(
+        tmp_path,
+        prompt_file,
+        "the agent produced no output",
+        reason="AgentCrash",
+    )
+
+    assert first.count(PREMISE_CHECK_LINE) == 0
+    assert changed_reason.count(PREMISE_CHECK_LINE) == 0
+
+
+def test_generic_retry_prompt_resume_tail_omits_the_premise_line_when_only_the_reason_changes(
+    tmp_path: Path,
+) -> None:
+    prompt_file = _write_prompt(tmp_path)
+
+    _render(tmp_path, prompt_file, "the agent produced no output", recovery_action="resume")
+    changed_reason = _render(
+        tmp_path,
+        prompt_file,
+        "the agent produced no output",
+        recovery_action="resume",
+        reason="AgentCrash",
+    )
+
+    assert changed_reason.count(PREMISE_CHECK_LINE) == 0
+
+
+def test_generic_retry_prompt_new_session_tail_omits_the_premise_line_when_only_the_reason_changes(
+    tmp_path: Path,
+) -> None:
+    prompt_file = _write_prompt(tmp_path)
+
+    _render(
+        tmp_path,
+        prompt_file,
+        "the agent produced no output",
+        recovery_action="new_session_with_id",
+    )
+    changed_reason = _render(
+        tmp_path,
+        prompt_file,
+        "the agent produced no output",
+        recovery_action="new_session_with_id",
+        reason="AgentCrash",
+    )
+
+    assert changed_reason.count(PREMISE_CHECK_LINE) == 0
 
 
 def test_generic_retry_prompt_keeps_a_validation_hint_premise_line_undoubled(
