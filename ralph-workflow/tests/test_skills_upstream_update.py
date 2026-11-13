@@ -17,6 +17,7 @@ from ralph.skills import upstream
 from ralph.skills.upstream import (
     ARCHIVE_URL_TEMPLATE,
     MAX_ARCHIVE_BYTES,
+    MAX_FILE_BYTES,
     RELEASES_API_URL,
     UNIVERSAL_SKILL_NAMES,
     HttpClient,
@@ -934,3 +935,52 @@ def test_a_user_owned_sibling_entry_is_preserved_by_the_repair(
         "test-driven-development" in message and "preserved" in message
         for message in repaired.messages
     ), repaired.messages
+
+
+def _attempt_with_hostile_member(
+    member: tuple[tarfile.TarInfo, bytes],
+) -> tuple[UpdateOutcome, dict[str, str]]:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    before = _tree_snapshot(_canonical_root())
+    members = _skill_members("v-test-2", _SKILL_FILES)
+    members.append(member)
+    failing = _fake_client(
+        {
+            RELEASES_API_URL: (200, _release_body("v-test-2")),
+            _archive_url("v-test-2"): (200, _archive_bytes(members)),
+        },
+        [],
+    )
+
+    outcome = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=failing
+    )
+
+    return outcome, before
+
+
+def test_a_member_with_an_absolute_path_is_refused(sandbox: Path) -> None:
+    outcome, before = _attempt_with_hostile_member(
+        (_member(str(sandbox / "absolute.md"), b"x"), b"x")
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error == "the archive carries an absolute member path"
+    assert _tree_snapshot(_canonical_root()) == before
+    assert not (sandbox / "absolute.md").exists()
+
+
+def test_a_file_above_the_size_cap_is_refused(sandbox: Path) -> None:
+    oversize = b"a" * (MAX_FILE_BYTES + 1)
+    outcome, before = _attempt_with_hostile_member(
+        (
+            _member("superpowers-test-2/skills/test-driven-development/oversize.md", oversize),
+            oversize,
+        )
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error == "the archive carries a file above the size cap"
+    assert _tree_snapshot(_canonical_root()) == before
+    assert not (_canonical_root() / "test-driven-development" / "oversize.md").exists()
