@@ -60,23 +60,21 @@ The delegation fixtures pin these call sites:
 * `ralph/pipeline/runner.py:913` and `:2382` delegate to
   `is_terminal_success_eligible`; `runner.py:1679` and `:1734` delegate to
   `decide_seam_action` (the integration owner seam); `runner.py:1686` and
-  `:1741` delegate to `decide_phase_transition`. Regression
-  coverage extended in
+  `:1741` delegate to `decide_phase_transition`. Regression coverage is in
   `tests/test_runner_decision_delegation.py`.
 * `ralph/pipeline/run_loop.py:1518` and `:2489` delegate to
   `classify_git_operation`; `run_loop.py:2648` delegates to
   `decide_seam_action` (the integration owner seam); `run_loop.py:3873`
   delegates to `decide_phase_transition`; `run_loop.py:3377`, `:3397`, and
-  `:3883` delegate to `is_terminal_success_eligible`. Regression coverage
-  extended in
+  `:3883` delegate to `is_terminal_success_eligible`. Regression coverage is in
   `tests/test_run_loop_decision_delegation.py`,
   `tests/test_run_loop_setters_only.py`,
   `tests/test_run_loop_pro_integration.py`.
 * `ralph/pipeline/auto_integrate_recovery.py:92-97` delegates to
   `busy_refusal_outcome`; `auto_integrate_recovery.py:112` delegates to
   `classify_git_operation`; `auto_integrate_recovery.py:303` delegates to
-  `decide_seam_action` (the integration owner seam). Regression
-  coverage extended in `tests/test_auto_integrate_recovery.py`,
+  `decide_seam_action` (the integration owner seam). Regression coverage is in
+  `tests/test_auto_integrate_recovery.py`,
   `tests/test_recovery_release_uses_record_store.py`.
 
 ### 5. Public-boundary matrix test
