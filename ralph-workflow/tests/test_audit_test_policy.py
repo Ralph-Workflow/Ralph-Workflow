@@ -24,6 +24,19 @@ _TESTS_ROOT = Path(__file__).parent
 _WHITEBOX_BASELINE_MODULE = (
     Path(__file__).parent.parent / "ralph" / "testing" / "test_whitebox_baseline.py"
 )
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_PROJECT_TEST_PATHS = frozenset(
+    path.relative_to(_PROJECT_ROOT).as_posix()
+    for path in (_PROJECT_ROOT / "tests").rglob("*.py")
+    if "__pycache__" not in path.parts
+)
+_PROJECT_POLICY_ROOT = _PROJECT_ROOT / "tests" / "project_policy"
+_PROJECT_POLICY_INVENTORY = collect_whitebox_inventory(_PROJECT_POLICY_ROOT)
+_PROJECT_POLICY_PATHS = frozenset(
+    (Path("tests") / "project_policy" / path.relative_to(_PROJECT_POLICY_ROOT)).as_posix()
+    for path in _PROJECT_POLICY_ROOT.rglob("*.py")
+    if "__pycache__" not in path.parts
+)
 
 
 def test_sleep_with_positive_arg_is_violation(tmp_path: Path) -> None:
@@ -569,13 +582,7 @@ def test_reconciliation_reports_no_drift_for_an_exact_match(tmp_path: Path) -> N
 
 
 def test_frozen_baseline_paths_all_exist_in_the_test_tree() -> None:
-    project_root = Path(__file__).resolve().parents[1]
-    existing = {
-        path.relative_to(project_root).as_posix()
-        for path in (project_root / "tests").rglob("*.py")
-        if "__pycache__" not in path.parts
-    }
-    missing = sorted(path for path in WHITEBOX_BASELINE if path not in existing)
+    missing = sorted(path for path in WHITEBOX_BASELINE if path not in _PROJECT_TEST_PATHS)
     assert missing == []
 
 
@@ -588,20 +595,14 @@ def test_frozen_baseline_holds_no_all_zero_row() -> None:
 
 @pytest.mark.timeout_seconds(5)
 def test_frozen_baseline_matches_a_fresh_scan_of_the_project_policy_cluster() -> None:
-    project_root = Path(__file__).resolve().parents[1]
-    cluster_root = project_root / "tests" / "project_policy"
-    inventory = collect_whitebox_inventory(cluster_root)
     baseline = {
         path: counts
         for path, counts in WHITEBOX_BASELINE.items()
         if path.startswith("tests/project_policy/")
     }
-    existing = {
-        (Path("tests") / "project_policy" / path.relative_to(cluster_root)).as_posix()
-        for path in cluster_root.rglob("*.py")
-        if "__pycache__" not in path.parts
-    }
-    drifts = reconcile_whitebox_baseline(inventory, baseline, existing_paths=existing)
+    drifts = reconcile_whitebox_baseline(
+        _PROJECT_POLICY_INVENTORY, baseline, existing_paths=_PROJECT_POLICY_PATHS
+    )
     assert drifts == []
 
 

@@ -401,10 +401,8 @@ def test_ac11_a_benched_agent_is_not_reselected_while_the_peer_is_on_cooldown(
 def test_ac15_repeated_live_session_ends_below_the_thresholds_never_reach_spent() -> None:
     ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
 
-    for _ in range(2):
-        outcome = ledger.record(
-            AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None)
-        )
+    ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None))
+    outcome = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None))
 
     assert isinstance(outcome.status, Spent) is False
 
@@ -424,6 +422,12 @@ def test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak()
     ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
 
     ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=False))
-    outcome = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=True))
+    reset = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=True))
+    second = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=False))
+    third = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=False))
 
-    assert outcome.consecutive_unproductive == 0
+    assert reset.demoted is False
+    assert second.demoted is False
+    assert third.demoted is False
+    assert ledger.status(PHASE, AGENT).is_eligible is True
+    assert ledger.is_available(PHASE, AGENT) is True

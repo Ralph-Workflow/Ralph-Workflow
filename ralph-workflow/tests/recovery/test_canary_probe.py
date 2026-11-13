@@ -120,7 +120,7 @@ def _is_within(candidate: Path, parent: Path) -> bool:
     return True
 
 
-@pytest.mark.parametrize("case", _CASES, ids=lambda case: case.name)
+@pytest.mark.parametrize("case", _CASES, ids=[case.name for case in _CASES])
 def test_probe_reports_the_expected_outcome(case: _Case, tmp_path: Path) -> None:
     calls: list[_Call] = []
     scratch = tmp_path / "scratch"

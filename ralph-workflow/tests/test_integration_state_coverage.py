@@ -4,7 +4,6 @@ from collections import deque
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cache
-from itertools import product
 
 import pytest
 
@@ -26,6 +25,7 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
 )
+from tests.test_integration_state_space import integration_observation_matrix
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
@@ -121,36 +121,11 @@ _ENUMERATED_MEMBERS: dict[str, frozenset[Enum]] = {
 
 @cache
 def _observations() -> tuple[Observation, ...]:
+    included = frozenset(_TARGET_VS_FEATURE)
     return tuple(
-        Observation(
-            target_vs_feature=target_vs_feature,
-            target_vs_remote=target_vs_remote,
-            worktree=worktree,
-            head=head,
-            in_progress_kind=in_progress_kind,
-            in_progress_ownership=in_progress_ownership,
-            record=record,
-            agent_active=agent_active,
-        )
-        for (
-            target_vs_feature,
-            target_vs_remote,
-            worktree,
-            head,
-            in_progress_kind,
-            in_progress_ownership,
-            record,
-            agent_active,
-        ) in product(
-            _TARGET_VS_FEATURE,
-            _TARGET_VS_REMOTE,
-            _WORKTREE,
-            _HEAD,
-            _IN_PROGRESS_KIND,
-            _IN_PROGRESS_OWNERSHIP,
-            _RECORD,
-            _AGENT_ACTIVE,
-        )
+        observation
+        for observation in integration_observation_matrix()
+        if observation.target_vs_feature in included
     )
 
 

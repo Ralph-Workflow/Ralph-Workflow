@@ -164,7 +164,7 @@ _UNKNOWN_BUDGET_SPENT_ATTEMPT_STATE: tuple[str, AttemptState] = (
 
 
 @cache
-def _observations() -> tuple[Observation, ...]:
+def integration_observation_matrix() -> tuple[Observation, ...]:
     return tuple(
         Observation(
             target_vs_feature=target_vs_feature,
@@ -196,6 +196,10 @@ def _observations() -> tuple[Observation, ...]:
             _AGENT_ACTIVE,
         )
     )
+
+
+def _observations() -> tuple[Observation, ...]:
+    return integration_observation_matrix()
 
 
 @cache

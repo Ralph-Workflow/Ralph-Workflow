@@ -5,12 +5,14 @@ import io
 import json
 import tarfile
 import threading
+import tracemalloc
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.skills import upstream
 from ralph.skills.upstream import (
     ARCHIVE_URL_TEMPLATE,
     MAX_ARCHIVE_BYTES,
@@ -104,6 +106,20 @@ def _archive_bytes(members: Sequence[tuple[tarfile.TarInfo, bytes | None]]) -> b
 
 def _release_archive(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes:
     return _archive_bytes(_skill_members(tag, skills))
+
+
+def _bulk_members(tag: str, count: int, size: int) -> list[tuple[tarfile.TarInfo, bytes | None]]:
+    root = f"superpowers-{tag.lstrip('v')}"
+    members: list[tuple[tarfile.TarInfo, bytes | None]] = []
+    for index in range(count):
+        data = b"a" * size
+        members.append(
+            (
+                _member(f"{root}/skills/test-driven-development/bulk-{index:04d}.md", data),
+                data,
+            )
+        )
+    return members
 
 
 def _fake_client(
@@ -550,3 +566,30 @@ def test_no_write_lands_outside_the_allowed_set(sandbox: Path, tmp_path: Path) -
         if cache.parent in path.parents:
             continue
         assert any(root in path.parents for root in skill_roots), path
+
+
+def test_an_archive_beyond_the_extracted_size_cap_never_materialises_its_content(
+    sandbox: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(upstream, "MAX_EXTRACTED_BYTES", 1024 * 1024)
+    members = _skill_members("v-test-1", _SKILL_FILES)
+    members.extend(_bulk_members("v-test-1", 20, 1024 * 1024))
+    client = _fake_client(
+        {
+            RELEASES_API_URL: (200, _release_body("v-test-1")),
+            _archive_url("v-test-1"): (200, _archive_bytes(members)),
+        },
+        [],
+    )
+
+    tracemalloc.start()
+    try:
+        outcome = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert outcome.status == "failed"
+    assert peak < 8 * 1024 * 1024, (
+        f"the extracted-size cap must bound the materialised content; peak was {peak} bytes"
+    )

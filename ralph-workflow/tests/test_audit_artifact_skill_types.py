@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.checked_accessors import as_mapping, as_str_list
 from ralph.mcp.artifacts.format_docs import FORMAT_DOC_ARTIFACT_TYPES
 from ralph.mcp.artifacts.markdown.registry import registered_specs
 from ralph.testing.audit_artifact_skill_types import audit_artifact_skill_types, main
@@ -60,7 +61,8 @@ def _copy_content_tree(tmp_path: Path) -> Path:
 
 def _write_metadata(content_root: Path, names: list[str]) -> None:
     path = content_root / "metadata.json"
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    raw: object = json.loads(path.read_text(encoding="utf-8"))
+    payload = dict(as_mapping(raw))
     payload["skills"] = names
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -95,7 +97,8 @@ def test_derived_skill_set_matches_the_shipped_filenames_and_metadata(tmp_path: 
     assert on_disk == expected
     assert len(expected) == len(_artifact_types()) + 1
 
-    manifest = json.loads((content_root / "metadata.json").read_text(encoding="utf-8"))
+    raw: object = json.loads((_CONTENT_DIR / "metadata.json").read_text(encoding="utf-8"))
+    manifest = {"skills": as_str_list(as_mapping(raw)["skills"], field="manifest skills")}
     assert set(manifest["skills"]) == expected
     assert len(manifest["skills"]) == len(expected)
 
@@ -135,6 +138,20 @@ def test_skill_for_a_removed_type_is_reported(tmp_path: Path) -> None:
     assert any("submit-obsolete-type-artifact" in violation for violation in violations)
 
 
+def test_a_stray_markdown_file_in_the_skill_bundle_is_reported(tmp_path: Path) -> None:
+    content_root = _correct_tree(tmp_path)
+    (content_root / "submit-obsolete-skill.md").write_text(
+        "---\nname: submit-obsolete-skill\n---\n\n# submit-obsolete-skill\n",
+        encoding="utf-8",
+    )
+
+    violations = audit_artifact_skill_types(content_root)
+
+    assert any(
+        "unexpected skill file: submit-obsolete-skill.md" in violation for violation in violations
+    )
+
+
 def test_declared_artifact_type_must_match_the_derived_type(tmp_path: Path) -> None:
     content_root = _correct_tree(tmp_path)
     artifact_type = _submission_types()[0]
@@ -144,7 +161,7 @@ def test_declared_artifact_type_must_match_the_derived_type(tmp_path: Path) -> N
     _rewrite_skill(
         content_root,
         skill_name,
-        _ARTIFACT_TYPE_RE.sub(lambda match: f'{match.group(1)}"{other_type}"', text),
+        _ARTIFACT_TYPE_RE.sub(rf'\1"{other_type}"', text),
     )
 
     violations = audit_artifact_skill_types(content_root)

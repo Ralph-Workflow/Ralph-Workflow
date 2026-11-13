@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import AgentsPolicy, ArtifactsPolicy, PipelinePolicy
     from ralph.workspace.memory import MemoryWorkspace
+    from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 import pytest
 from _pytest.unraisableexception import gc_collect_iterations_key
@@ -48,30 +50,15 @@ __all__ = [
     "_set_current_test_node",
 ]
 
-from ralph.config.enums import AgentTransport
 from ralph.mcp.explore import recovery as _explore_recovery
 from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
-from ralph.mcp.transport import claude as claude_transport
 from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     set_last_captured_retry_intent,
 )
-from ralph.policy.models import (
-    AgentChainConfig,
-    AgentDrainConfig,
-    AgentsPolicy,
-    ArtifactsPolicy,
-    PhaseDefinition,
-    PhaseTransition,
-    PipelinePolicy,
-    RecoveryPolicy,
-)
 from ralph.process import reset_process_manager
-from ralph.test_suites import (
-    REQUIRED_AUTO_INTEGRATE_E2E_FILES,
-)
-from tests.integration._mock_agent_invoker import MockAgentInvoker
+from ralph.test_suite_registry import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin", "tests._per_test_budget")
 _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES) | {
@@ -235,6 +222,8 @@ def _apply_reset_default_process_manager() -> None:
 
 
 def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ralph.mcp.transport import claude as claude_transport
+
     claude_transport.reset_claude_mcp_proxy_report()
     monkeypatch.setattr(claude_transport, "claude_cli_mcp_server_lister", lambda: None)
 
@@ -461,6 +450,8 @@ def workspace(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def minimal_agents_policy() -> AgentsPolicy:
+    from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
+
     return AgentsPolicy(
         agent_chains={
             "planning": AgentChainConfig(agents=["claude"], max_retries=2),
@@ -487,6 +478,13 @@ def minimal_agents_policy() -> AgentsPolicy:
 
 @pytest.fixture
 def minimal_pipeline_policy() -> PipelinePolicy:
+    from ralph.policy.models import (
+        PhaseDefinition,
+        PhaseTransition,
+        PipelinePolicy,
+        RecoveryPolicy,
+    )
+
     return PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -562,6 +560,8 @@ def memory_workspace() -> MemoryWorkspace:
 def mock_agent_invoker(
     memory_workspace: MemoryWorkspace,
 ) -> MockAgentInvoker:
+    from tests.integration._mock_agent_invoker import MockAgentInvoker
+
     return MockAgentInvoker(memory_workspace)
 
 
@@ -583,6 +583,17 @@ def initial_state() -> PipelineState:
 
 @pytest.fixture
 def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
+    from ralph.policy.models import (
+        AgentChainConfig,
+        AgentDrainConfig,
+        AgentsPolicy,
+        ArtifactsPolicy,
+        PhaseDefinition,
+        PhaseTransition,
+        PipelinePolicy,
+        RecoveryPolicy,
+    )
+
     agents_policy = AgentsPolicy(
         agent_chains={
             "planning": AgentChainConfig(agents=["claude"], max_retries=2),
@@ -658,6 +669,7 @@ def workspace_root(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def config_with_test_agent() -> UnifiedConfig:
+    from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig, UnifiedConfig
 
     return UnifiedConfig(

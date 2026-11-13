@@ -50,6 +50,8 @@ class _ClockGatedChildSource:
 
 
 class _ExitedHandle:
+    stdin = None
+
     def __init__(self) -> None:
         self.stdout = iter(_PARENT_LINES)
         self.stderr = iter(())

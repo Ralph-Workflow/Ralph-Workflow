@@ -10,7 +10,7 @@ import threading
 import traceback
 from collections import deque
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Protocol, TextIO, cast, runtime_checkable
+from typing import IO, TYPE_CHECKING, Protocol, TextIO, TypeGuard, cast, runtime_checkable
 
 import psutil
 from loguru import logger
@@ -190,19 +190,43 @@ def _subagent_activity_observed(watchdog: _EvidenceSummaryWatchdog) -> bool | No
     return counter > 0
 
 
+def _is_idle_watchdog(value: object) -> TypeGuard[IdleWatchdog]:
+    summary: object = getattr(value, "last_evidence_summary", None)
+    clock: object = getattr(value, "clock", None)
+    return callable(summary) and clock is not None
+
+
+def _watchdog_elapsed_seconds(watchdog: object) -> float | None:
+    raw: object = getattr(watchdog, "invocation_elapsed_seconds", None)
+    if raw is None:
+        return None
+    elapsed = optional_float(raw)
+    if elapsed is None:
+        raise TypeError(f"expected numeric watchdog elapsed seconds, got {type(raw).__name__}")
+    return elapsed
+
+
+def _termination_recorder_of(reader: object) -> _TerminationRecorder | None:
+    raw: object = getattr(reader, "_termination", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, _TerminationRecorder):
+        raise TypeError(f"expected a termination recorder, got {type(raw).__name__}")
+    return raw
+
+
 def _record_watchdog_evidence(recorder: _TerminationRecorder, watchdog: object) -> None:
-    elapsed_source: object = getattr(watchdog, "invocation_elapsed_seconds", None)
-    elapsed = optional_float(elapsed_source)
+    elapsed = _watchdog_elapsed_seconds(watchdog)
     recorder.record_elapsed_to_terminal(int(elapsed * 1000) if elapsed is not None else None)
-    if isinstance(watchdog, _EvidenceSummaryWatchdog):
+    if _is_idle_watchdog(watchdog):
         recorder.record_subagent_activity(_subagent_activity_observed(watchdog))
 
 
 def _record_fire_termination(
     reader: object, watchdog: object, fire_reason: WatchdogFireReason
 ) -> None:
-    recorder: object = getattr(reader, "_termination", None)
-    if not isinstance(recorder, _TerminationRecorder):
+    recorder = _termination_recorder_of(reader)
+    if recorder is None:
         return
     recorder.record_issuer(termination_issuer_for_fire_reason(fire_reason))
     recorder.record_liveness(True)
@@ -263,8 +287,8 @@ def _attach_fire_attempt_facts(
 
 
 def _observe_attempt_event(reader: object, activity_signal: AgentActivitySignal) -> None:
-    recorder: object = getattr(reader, "_termination", None)
-    if not isinstance(recorder, _TerminationRecorder):
+    recorder = _termination_recorder_of(reader)
+    if recorder is None:
         return
     tool_name: str | None = None
     if activity_signal.kind == AgentActivityKind.TOOL_USE:
@@ -1471,6 +1495,16 @@ def _terminate_hung_process_exit(
     )
 
 
+def _teardown_subtree_if_pid_available(handle: ManagedProcess, ctx: AgentRunCtx) -> None:
+    capture_pid = cast("int | None", getattr(handle, "pid", None))
+    if capture_pid is None:
+        return
+    if ctx.process_teardown is None:
+        teardown_subtree(capture_pid, issuer="invoke:process")
+    else:
+        ctx.process_teardown.teardown_subtree(capture_pid, issuer="invoke:process")
+
+
 def _run_subprocess_and_read_lines(
     cmd: list[str],
     ctx: AgentRunCtx,
@@ -1511,12 +1545,7 @@ def _run_subprocess_and_read_lines(
                 grace_period_s=0.5,
                 issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN,
             )
-            capture_pid = cast("int | None", getattr(handle, "pid", None))
-            if capture_pid is not None:
-                if ctx.process_teardown is None:
-                    teardown_subtree(capture_pid, issuer="invoke:process")
-                else:
-                    ctx.process_teardown.teardown_subtree(capture_pid, issuer="invoke:process")
+            _teardown_subtree_if_pid_available(handle, ctx)
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)

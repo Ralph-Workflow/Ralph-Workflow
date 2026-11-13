@@ -137,6 +137,28 @@ keeps one name in both, while `pipeline.toml`, `mcp.toml`, and `artifacts.toml` 
 names for the user-global `ralph-workflow-pipeline.toml`, `ralph-workflow-mcp.toml`, and
 `ralph-workflow-artifacts.toml`.
 
+## Skills
+
+Ralph Workflow installs two kinds of skills.
+
+**Artifact skills** ship with Ralph Workflow and are installed into the project scope. The set
+follows the pipeline's artifact types automatically, so adding a skill now means adding an artifact
+type.
+
+**Universal skills** are exactly three — `test-driven-development`, `systematic-debugging`, and
+`verification-before-completion` — fetched from the single upstream `obra/superpowers` at release
+versions and installed user-global, never committed into your project, so upstream changes never
+dirty your git tree. The release check runs at the start of a run, at most once per day, and fails
+soft: an offline, rate-limited, slow, or malformed upstream leaves the installed skills as they are.
+No upstream copy is bundled, so nothing can go stale — a machine that is never online has no
+universal skills, while the artifact skills still work.
+
+Two switches turn every skill-update network request off: `universal_updates_enabled = false` under
+`[skills]` in `~/.config/ralph-workflow.toml`, and the `RALPH_DISABLE_SKILL_UPDATES` environment
+variable. The [configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#skills)
+covers both, the update safety rules, the trust statement, and the removal of the retired default
+skills after upgrading.
+
 ## Protections
 
 Two mechanisms guard the tree you work in.
@@ -146,10 +168,10 @@ Two mechanisms guard the tree you work in.
   like accidental damage (mass deletion, protected paths, staged secrets, oversized binaries), not
   whether the code is good. A rejection rolls the tree back and keeps the sealed proposal ref for
   inspection. [Per-setting details](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration).
-- **Engine-owned writes are auto-committed.** Ralph Workflow's own background writers — the project
-  skill bundle, the `.gitignore` seed, the project-policy surfaces — commit their own byte-exact diff
-  immediately, so those writes never leak into an agent's commit. Agent and user edits to those paths
-  are never swept in. [Contract](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/deterministic-auto-commit.md).
+- **Engine-owned writes are auto-committed.** Ralph Workflow's own background writers — the
+  project-scope artifact skills, the `.gitignore` seed, the project-policy surfaces — commit their
+  own byte-exact diff immediately, so those writes never leak into an agent's commit. Agent and user
+  edits to those paths are never swept in. [Contract](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/deterministic-auto-commit.md).
 
 ## Documentation
 

@@ -365,6 +365,12 @@ ralph.test_suites
 .. automodule:: ralph.test_suites
    :no-members:
 
+ralph.test_suite_registry
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.test_suite_registry
+   :members:
+
 ----
 
 CLI
@@ -2278,6 +2284,48 @@ ralph.agents.invoke
    :members:
    :show-inheritance:
    :noindex:
+
+ralph.agents.invoke._completion_exit_logging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke._completion_exit_logging
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke._completion_failures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke._completion_failures
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke._completion_options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke._completion_options
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke._completion_supervision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke._completion_supervision
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke._completion_termination
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke._completion_termination
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke._completion_verdicts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke._completion_verdicts
+   :members:
+   :show-inheritance:
 
 ralph.agents.invoke.opencode_subagent_sessions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

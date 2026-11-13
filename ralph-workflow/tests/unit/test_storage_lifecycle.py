@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import os
 import time
@@ -175,12 +176,8 @@ def _inventory_covers(literal: str, inventory_paths: tuple[Path, ...]) -> bool:
     return False
 
 
-_LITERAL_CACHE: list[tuple[str, str]] = []
-
-
-def _iter_accumulating_literals() -> list[tuple[str, str]]:
-    if _LITERAL_CACHE:
-        return list(_LITERAL_CACHE)
+@functools.cache
+def _accumulating_literals() -> tuple[tuple[str, str], ...]:
     import ast
 
     discovered: list[tuple[str, str]] = []
@@ -196,8 +193,11 @@ def _iter_accumulating_literals() -> list[tuple[str, str]]:
                     continue
                 if any(marker in value for marker in _ACCUMULATING_MARKERS):
                     discovered.append((value, relative))
-    _LITERAL_CACHE.extend(discovered)
-    return discovered
+    return tuple(discovered)
+
+
+def _iter_accumulating_literals() -> tuple[tuple[str, str], ...]:
+    return _accumulating_literals()
 
 
 @_AST_WALK_TIMEOUT

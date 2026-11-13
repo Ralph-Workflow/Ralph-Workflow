@@ -1,86 +1,61 @@
 from __future__ import annotations
 
-import contextlib
-import json
-import re
-from dataclasses import KW_ONLY, dataclass, field
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING
 
-from loguru import logger
-
-from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
-from ralph.agents.execution_state import (
-    AgentExecutionState,
-    BaseExecutionStrategy,
-    is_prompt_echo_line,
-)
-from ralph.agents.idle_watchdog import (
-    PostExitVerdict,
-    PostExitWatchdog,
-    TimeoutPolicy,
-)
-from ralph.agents.idle_watchdog._circumstantial_evidence import (
-    is_structurally_small_bounded_output,
-)
-from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
+from ralph.agents.completion_signals import evaluate_completion
+from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.invoke._agy_incomplete_exit_error import raise_missing_completion_evidence
-from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
 from ralph.agents.invoke._completion_evidence import (
     apply_sentinel_signal,
     completion_run_id_from_extra_env,
 )
+from ralph.agents.invoke._completion_exit_logging import (
+    _extract_rejected_session_id_from_failure,
+    log_invocation_exit,
+)
 from ralph.agents.invoke._completion_exit_status import (
     _MAX_STDERR_CAPTURE_BYTES,
     _truncation_marker,
-    credentials_failure_needs_broken_exit,
-    looks_like_credentials_failure,
     read_bounded_stderr,
     terminal_returncode,
 )
-from ralph.agents.invoke._direct_mcp_recovery import (
-    condense_failure_text,
-    summarize_retry_failure_evidence,
+from ralph.agents.invoke._completion_failures import (
+    _handle_non_zero_returncode,
+    _has_interactive_completion_bypass,
+    _raise_if_broken_agent_exit,
+    _record_exit_termination,
 )
-from ralph.agents.invoke._errors import (
-    AgentInvocationError,
-    OpenCodeResumableExitError,
+from ralph.agents.invoke._completion_options import CompletionCheckOptions, _completion_run_id
+from ralph.agents.invoke._completion_supervision import (
+    _teardown_subtree_if_pid_available,
+    _wait_for_completion_grace,
+    _wait_for_descendants_then_recheck,
 )
-from ralph.agents.invoke._fire_reason_issuer import termination_issuer_for_fire_reason
-from ralph.agents.invoke._implicit_completion import is_implicit_development_exit
-from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
-from ralph.agents.invoke._pi_exit_signals import (
-    has_pi_context_exhaustion_signal,
-    pi_provider_failure_reason,
-)
-from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
-from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
-from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
-from ralph.agents.invoke._session import (
-    _bounded_output_lines,
-    extract_transport_session_id,
-    extract_transport_session_id_with_visible_tui,
-)
-from ralph.agents.invoke.termination_recorder import (
+from ralph.agents.invoke._completion_termination import (
     TerminationRecorder,
-    exception_exit_status,
+    attach_attempt_facts,
+    attempt_facts_for_failure,
+    attempt_facts_from_exception,
     observed_returncode,
-    return_code_may_be_a_signal,
     termination_issuer_for_exception,
     termination_issuer_for_teardown_issuer,
 )
-from ralph.agents.registry import lookup_empty_output_diagnostic_factory
-from ralph.agents.timeout_clock import Clock, SystemClock
-from ralph.pipeline import retryable_failure as _retry
-from ralph.process._agent_launch_error import AgentLaunchError
-from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
-from ralph.process.teardown import ProcessTeardown, teardown_subtree
-from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
-from ralph.recovery.failure_classifier import (
-    SESSION_NOT_FOUND_SUBSTRINGS,
-    FailureClassifier,
+from ralph.agents.invoke._completion_verdicts import (
+    _accepts_implicit_development_exit,
+    _raise_if_pi_reported_failed_exit,
+    _raise_quota_unless_agy_completed,
+    _recorded_issuer_value,
+    _resolved_session_id,
 )
-from ralph.recovery.failure_details import contains_casefolded_marker
-from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
+from ralph.agents.invoke._errors import OpenCodeResumableExitError
+from ralph.agents.invoke._fire_reason_issuer import termination_issuer_for_fire_reason
+from ralph.agents.invoke._session import _bounded_output_lines
+from ralph.agents.registry import lookup_empty_output_diagnostic_factory
+
+if TYPE_CHECKING:
+    from ralph.agents.timeout_clock import Clock
+    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+    from ralph.process.teardown import ProcessTeardown
 
 _TerminationRecorder = TerminationRecorder
 
@@ -89,554 +64,21 @@ __all__ = (
     "CompletionCheckOptions",
     "TerminationRecorder",
     "_TerminationRecorder",
+    "_extract_rejected_session_id_from_failure",
     "_truncation_marker",
+    "_wait_for_descendants_then_recheck",
     "attach_attempt_facts",
     "attempt_facts_for_failure",
     "attempt_facts_from_exception",
     "check_process_result",
     "completion_run_id_from_extra_env",
+    "log_invocation_exit",
     "observed_returncode",
     "read_bounded_stderr",
     "termination_issuer_for_exception",
     "termination_issuer_for_fire_reason",
     "termination_issuer_for_teardown_issuer",
 )
-
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
-
-    from ralph.agents.invoke._agent_run_ctx import _EvalCompletionFn
-    from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
-
-
-_POST_EXIT_FIRE_VERDICTS: frozenset[PostExitVerdict] = frozenset(
-    {PostExitVerdict.FIRE_DESCENDANT_HANG, PostExitVerdict.FIRE_PROCESS_EXIT_HANG}
-)
-
-
-def _exception_returncode(exc: BaseException) -> int | None:
-    returncode = cast("object", getattr(exc, "returncode", None))
-    if isinstance(returncode, bool) or not isinstance(returncode, int):
-        return None
-    return returncode
-
-
-@runtime_checkable
-class _AttemptFactsCarrier(Protocol):
-    attempt_facts: AttemptFacts
-
-
-def attach_attempt_facts(exc: BaseException, recorder: TerminationRecorder) -> None:
-    recorder.record_reported_returncode(_exception_returncode(exc))
-    facts = recorder.facts()
-    carrier = cast("_AttemptFactsCarrier", exc)
-    carrier.attempt_facts = facts
-    if isinstance(exc, AgentInvocationError) and exc.issuer is None and facts.termination:
-        exc.issuer = facts.termination.issuer.value
-
-
-def attempt_facts_from_exception(exc: BaseException) -> AttemptFacts | None:
-    facts = cast("AttemptFacts | None", getattr(exc, "attempt_facts", None))
-    return facts if isinstance(facts, AttemptFacts) else None
-
-
-def attempt_facts_for_failure(exc: BaseException) -> AttemptFacts:
-    attached = attempt_facts_from_exception(exc)
-    if attached is not None:
-        return attached
-    return AttemptFacts(
-        exit_status=exception_exit_status(exc),
-        termination=TerminationRecord.create(
-            termination_issuer_for_exception(exc),
-            reported_returncode=_exception_returncode(exc),
-        ),
-    )
-
-
-def _completion_run_id(opts: CompletionCheckOptions) -> str | None:
-    return opts.completion_run_id or opts.captured_session_id
-
-
-def _teardown_subtree_if_pid_available(
-    handle: object,
-    *,
-    issuer: str,
-    teardown: ProcessTeardown | None = None,
-) -> None:
-    pid = cast("int | None", getattr(handle, "pid", None))
-    if pid is not None:
-        if teardown is None:
-            teardown_subtree(pid, issuer=issuer)
-        else:
-            teardown.teardown_subtree(pid, issuer=issuer)
-
-
-def _raise_if_pi_reported_failed_exit(
-    handle: ManagedProcess | ManagedPtyProcess,
-    agent_name: str,
-    output: list[str],
-    teardown: ProcessTeardown | None,
-) -> None:
-    if has_pi_context_exhaustion_signal(agent_name, output):
-        raise PiContextExhaustedExitError(agent_name)
-    provider_failure = pi_provider_failure_reason(agent_name, output)
-    if provider_failure is None:
-        return
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=f"invoke:completion:{agent_name}",
-        teardown=teardown,
-    )
-    raise PiProviderFailureExitError(agent_name, provider_failure)
-
-
-def _raise_if_transport_reported_error(
-    handle: ManagedProcess | ManagedPtyProcess,
-    agent_name: str,
-    output: list[str],
-) -> None:
-    for line in output:
-        try:
-            event = cast("object", json.loads(line))
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict) and cast("dict[str, object]", event).get("type") == "error":
-            raise AgentInvocationError(agent_name, int(handle.returncode or 0), "", output)
-
-
-def _accepts_implicit_development_exit(
-    handle: ManagedProcess | ManagedPtyProcess,
-    agent_name: str,
-    output: list[str],
-    opts: CompletionCheckOptions,
-    exit_state: AgentExecutionState,
-    teardown: ProcessTeardown | None,
-    *,
-    waited_on_child: bool = False,
-) -> bool:
-    if (
-        waited_on_child
-        or exit_state != AgentExecutionState.RESUMABLE_CONTINUE
-        or not is_implicit_development_exit(opts.required_artifact)
-    ):
-        return False
-    _raise_if_transport_reported_error(handle, agent_name, output)
-    _raise_if_pi_reported_failed_exit(handle, agent_name, output, teardown)
-    return True
-
-
-def _resolved_session_id(opts: CompletionCheckOptions, output: list[str]) -> str | None:
-    session_id = opts.captured_session_id or extract_transport_session_id(output)
-    if session_id is not None or not output:
-        return session_id
-    return next(
-        (
-            candidate
-            for line in output
-            if (candidate := extract_transport_session_id_with_visible_tui(line)) is not None
-        ),
-        None,
-    )
-
-
-@dataclass(frozen=True)
-class CompletionCheckOptions:
-    execution_strategy: BaseExecutionStrategy | None = None
-    workspace_path: Path | None = None
-    liveness_probe: LivenessProbe | None = None
-    policy: TimeoutPolicy = field(default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None))
-    required_artifact: RequiredArtifact | None = None
-    requires_completion_evidence: bool = True
-    explicit_completion_seen: bool = False
-    captured_session_id: str | None = None
-    completion_run_id: str | None = None
-    evaluate_completion_fn: _EvalCompletionFn | None = None
-    _: KW_ONLY
-    last_observed_tool_call: str | None = None
-    last_evidence_summary: str | None = None
-    elapsed_seconds: float | None = None
-    has_meaningful_output: bool | None = None
-    input_prompt: str | None = None
-    transcript_tail: tuple[str, ...] = ()
-    _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
-    sentinel_secret: str | None = None
-    receipt_secret: str | None = None
-    activity_only_supervision: bool = False
-    agy_cli_log_path: Path | None = None
-
-
-def _has_verified_completion(output: list[str], opts: CompletionCheckOptions | None) -> bool:
-    if opts is None or opts.workspace_path is None:
-        return False
-    evaluate = opts.evaluate_completion_fn or evaluate_completion
-    signals = evaluate(
-        opts.workspace_path,
-        output,
-        required_artifact=opts.required_artifact,
-        run_id=_completion_run_id(opts),
-        sentinel_secret=opts.sentinel_secret,
-        receipt_secret=opts.receipt_secret,
-    )
-    return completion_signals_terminal(
-        apply_sentinel_signal(signals, opts, sentinel_run_id=_completion_run_id(opts))
-    )
-
-
-def _agy_has_terminal_completion_evidence(
-    output: list[str], opts: CompletionCheckOptions | None
-) -> bool:
-    if (
-        opts is None
-        or opts.execution_strategy is None
-        or not opts.execution_strategy.supports_incomplete_exit_reprompt()
-    ):
-        return False
-    return _has_verified_completion(output, opts)
-
-
-def _raise_quota_unless_agy_completed(
-    agent_name: str,
-    stderr_text: str,
-    parsed_output: list[str] | None,
-    opts: CompletionCheckOptions | None,
-) -> None:
-    try:
-        raise_if_quota_exhausted(
-            agent_name,
-            stderr_text,
-            parsed_output,
-            include_output=False,
-        )
-    except QuotaExhaustedError:
-        bounded_output = _bounded_output_lines(
-            parsed_output or [],
-            explicit_completion_seen=bool(opts and opts.explicit_completion_seen),
-        )
-        if not _agy_has_terminal_completion_evidence(bounded_output, opts):
-            raise
-
-
-def _recorded_issuer_value(recorder: TerminationRecorder | None) -> str | None:
-    return recorder.termination().issuer.value if recorder is not None else None
-
-
-def _record_post_exit_watchdog_fire(
-    recorder: TerminationRecorder | None, verdict: PostExitVerdict
-) -> None:
-    if recorder is not None and verdict in _POST_EXIT_FIRE_VERDICTS:
-        recorder.record_post_exit_watchdog_fire()
-
-
-def _wait_for_completion_grace(
-    handle: ManagedProcess | ManagedPtyProcess,
-    agent_name: str,
-    opts: CompletionCheckOptions,
-    parsed_output: list[str],
-    *,
-    clock: Clock | None = None,
-    teardown: ProcessTeardown | None = None,
-    termination_recorder: TerminationRecorder | None = None,
-) -> AgentExecutionState:
-    assert opts.workspace_path is not None
-    workspace_path = opts.workspace_path
-    execution_strategy = opts.execution_strategy
-    assert execution_strategy is not None
-
-    effective_clock: Clock = clock or SystemClock()
-    probe = opts.liveness_probe or DefaultLivenessProbe()
-
-    _eval_fn = (
-        opts.evaluate_completion_fn
-        if opts.evaluate_completion_fn is not None
-        else evaluate_completion
-    )
-
-    def classify_exit_state() -> AgentExecutionState:
-        signals = _eval_fn(
-            workspace_path,
-            _bounded_output_lines(
-                parsed_output,
-                explicit_completion_seen=opts.explicit_completion_seen,
-            ),
-            required_artifact=opts.required_artifact,
-            run_id=_completion_run_id(opts),
-            sentinel_secret=opts.sentinel_secret,
-            receipt_secret=opts.receipt_secret,
-        )
-        return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
-
-    post_exit = PostExitWatchdog(opts.policy, effective_clock)
-    verdict = post_exit.wait_parent_exit_grace(classify_exit_state)
-    _record_post_exit_watchdog_fire(termination_recorder, verdict)
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=f"invoke:completion:{agent_name}",
-        teardown=teardown,
-    )
-    if verdict == PostExitVerdict.SIGNALS_PRESENT:
-        return AgentExecutionState.TERMINAL_COMPLETE
-    if verdict == PostExitVerdict.CHILDREN_ACTIVE:
-        return AgentExecutionState.WAITING_ON_CHILD
-    return AgentExecutionState.RESUMABLE_CONTINUE
-
-
-def _wait_for_descendants_then_recheck(
-    handle: ManagedProcess | ManagedPtyProcess,
-    agent_name_or_opts: str | CompletionCheckOptions,
-    opts_or_parsed_output: CompletionCheckOptions | list[str],
-    parsed_output: list[str] | None = None,
-    *,
-    clock: Clock | None = None,
-    teardown: ProcessTeardown | None = None,
-    termination_recorder: TerminationRecorder | None = None,
-) -> AgentExecutionState:
-    if isinstance(agent_name_or_opts, CompletionCheckOptions):
-        agent_name = "unknown"
-        opts = agent_name_or_opts
-        if not isinstance(opts_or_parsed_output, list):
-            raise TypeError("parsed_output must be a list")
-        parsed_output = opts_or_parsed_output
-    else:
-        agent_name = agent_name_or_opts
-        if not isinstance(opts_or_parsed_output, CompletionCheckOptions) or parsed_output is None:
-            raise TypeError("completion options and parsed_output are required")
-        opts = opts_or_parsed_output
-
-    assert opts.workspace_path is not None
-    workspace_path = opts.workspace_path
-    execution_strategy = opts.execution_strategy
-    assert execution_strategy is not None
-
-    effective_clock: Clock = clock or SystemClock()
-    probe = opts.liveness_probe or DefaultLivenessProbe()
-
-    _eval_fn = (
-        opts.evaluate_completion_fn
-        if opts.evaluate_completion_fn is not None
-        else evaluate_completion
-    )
-
-    def classify_exit_state() -> AgentExecutionState:
-        signals = _eval_fn(
-            workspace_path,
-            _bounded_output_lines(
-                parsed_output,
-                explicit_completion_seen=opts.explicit_completion_seen,
-            ),
-            required_artifact=opts.required_artifact,
-            run_id=_completion_run_id(opts),
-            sentinel_secret=opts.sentinel_secret,
-            receipt_secret=opts.receipt_secret,
-        )
-        return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
-
-    post_exit = PostExitWatchdog(opts.policy, effective_clock)
-    verdict = post_exit.wait_descendant_quiesce(classify_exit_state)
-    _record_post_exit_watchdog_fire(termination_recorder, verdict)
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=f"invoke:completion:{agent_name}",
-        teardown=teardown,
-    )
-    if verdict == PostExitVerdict.SIGNALS_PRESENT:
-        return AgentExecutionState.TERMINAL_COMPLETE
-    if verdict == PostExitVerdict.QUIESCED_NO_SIGNALS:
-        return AgentExecutionState.RESUMABLE_CONTINUE
-    return AgentExecutionState.RESUMABLE_CONTINUE
-
-
-def _raise_if_broken_agent_exit(
-    handle: ManagedProcess | ManagedPtyProcess,
-    agent_name: str,
-    bounded_output: list[str],
-    opts: CompletionCheckOptions,
-    *,
-    stderr_text: str = "",
-    teardown: ProcessTeardown | None = None,
-) -> None:
-    returncode = int(handle.returncode or 0)
-    credentials_marker_seen = looks_like_credentials_failure(stderr_text) or any(
-        looks_like_credentials_failure(line) for line in bounded_output
-    )
-    if credentials_marker_seen and (
-        not bounded_output or is_structurally_small_bounded_output(bounded_output)
-    ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=f"invoke:completion:{agent_name}",
-            teardown=teardown,
-        )
-        raise BrokenAgentExitError(
-            agent_name,
-            reason="no_output",
-            elapsed_seconds=opts.elapsed_seconds,
-            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
-            returncode=returncode,
-            stderr=stderr_text,
-        )
-    if (
-        bounded_output
-        and opts.has_meaningful_output is False
-        and is_structurally_small_bounded_output(bounded_output)
-    ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=f"invoke:completion:{agent_name}",
-            teardown=teardown,
-        )
-        raise BrokenAgentExitError(
-            agent_name,
-            reason="no_llm_activity",
-            elapsed_seconds=opts.elapsed_seconds,
-            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
-            returncode=returncode,
-            stderr=stderr_text,
-        )
-    if opts.elapsed_seconds is not None and not bounded_output:
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=f"invoke:completion:{agent_name}",
-            teardown=teardown,
-        )
-        raise BrokenAgentExitError(
-            agent_name,
-            reason="no_output",
-            elapsed_seconds=opts.elapsed_seconds,
-            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
-            returncode=returncode,
-            stderr=stderr_text,
-        )
-    nonblank_output = [line for line in bounded_output if line.strip()]
-    if nonblank_output and all(
-        is_prompt_echo_line(line, opts.input_prompt) for line in nonblank_output
-    ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=f"invoke:completion:{agent_name}",
-            teardown=teardown,
-        )
-        raise BrokenAgentExitError(
-            agent_name,
-            reason="prompt_echo",
-            returncode=returncode,
-            stderr=stderr_text,
-        )
-
-
-def _has_interactive_completion_bypass(
-    handle: ManagedProcess | ManagedPtyProcess,
-    parsed_output: list[str] | None,
-    check_options: CompletionCheckOptions | None,
-) -> bool:
-    if check_options is None:
-        return False
-    with contextlib.suppress(Exception):
-        handle_terminal_reason = cast(
-            "Callable[[], str | None] | None", getattr(handle, "original_terminal_reason", None)
-        )
-        if (
-            handle_terminal_reason is not None
-            and handle_terminal_reason() == "interactive_completion"
-        ):
-            bounded_output = _bounded_output_lines(
-                parsed_output or [],
-                explicit_completion_seen=bool(check_options.explicit_completion_seen),
-            )
-            return bool(_agy_has_terminal_completion_evidence(bounded_output, check_options))
-    return False
-
-
-def _handle_non_zero_returncode(
-    handle: ManagedProcess | ManagedPtyProcess,
-    agent_name: str,
-    parsed_output: list[str] | None,
-    check_options: CompletionCheckOptions | None,
-    returncode: int,
-    stderr_text: str,
-    stderr_available: bool,
-    process_teardown: ProcessTeardown | None,
-    *,
-    termination_recorder: TerminationRecorder | None = None,
-) -> None:
-    issuer_method = cast(
-        "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
-    )
-    issuer = issuer_method() if issuer_method is not None else None
-    intentional = returncode in {-15, 143} and isinstance(issuer, str)
-    if termination_recorder is not None:
-        termination_recorder.record_observed_returncode(observed_returncode(handle))
-        termination_recorder.record_reported_returncode(returncode)
-        termination_recorder.record_issuer(
-            termination_issuer_for_teardown_issuer(issuer)
-            if return_code_may_be_a_signal(returncode)
-            else TerminationIssuer.AGENT_EXIT
-        )
-    bounded_output = _bounded_output_lines(
-        parsed_output or [],
-        explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
-    )
-    if _has_verified_completion(bounded_output, check_options):
-        logger.info(
-            "Agent {} exited with code {} after verified completion; accepting as success",
-            agent_name,
-            returncode,
-        )
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=f"invoke:completion:{agent_name}",
-            teardown=process_teardown,
-        )
-        return
-    raise_if_quota_exhausted(
-        agent_name,
-        stderr_text,
-        parsed_output,
-        include_output=True,
-    )
-    if not intentional:
-        _raise_if_pi_reported_failed_exit(handle, agent_name, bounded_output, process_teardown)
-    if credentials_failure_needs_broken_exit(
-        stderr_text,
-        check_options.elapsed_seconds if check_options is not None else None,
-    ):
-        _teardown_subtree_if_pid_available(
-            handle,
-            issuer=f"invoke:completion:{agent_name}",
-            teardown=process_teardown,
-        )
-        raise BrokenAgentExitError(
-            agent_name,
-            reason="no_output",
-            elapsed_seconds=check_options.elapsed_seconds if check_options is not None else None,
-            grace_seconds=BROKEN_AGENT_OUTPUT_GRACE_SECONDS,
-            returncode=returncode,
-            stderr=stderr_text,
-        )
-    stderr = stderr_text if stderr_available else ""
-    exc = AgentInvocationError(
-        agent_name,
-        returncode,
-        stderr,
-        bounded_output,
-        failure_origin=(
-            "runtime_launch"
-            if isinstance(handle, AgentLaunchError)
-            else "intentional_termination"
-            if intentional
-            else "agent"
-        ),
-        issuer=issuer if intentional else None,
-    )
-    log_invocation_exit(exc)
-    _teardown_subtree_if_pid_available(
-        handle,
-        issuer=f"invoke:completion:{agent_name}",
-        teardown=process_teardown,
-    )
-    raise exc
 
 
 def check_process_result(
@@ -663,19 +105,6 @@ def check_process_result(
         if termination_recorder is not None:
             attach_attempt_facts(exc, termination_recorder)
         raise
-
-
-def _record_exit_termination(
-    recorder: TerminationRecorder | None,
-    handle: object,
-    returncode: int | None,
-) -> None:
-    if recorder is None:
-        return
-    recorder.record_observed_returncode(observed_returncode(handle))
-    recorder.record_reported_returncode(returncode)
-    recorder.record_issuer(TerminationIssuer.AGENT_EXIT)
-    recorder.record_liveness(False)
 
 
 def _check_process_result(
@@ -904,76 +333,3 @@ def _check_process_result(
                 opts.execution_strategy,
                 diagnostic,
             )
-
-
-_SESSION_ID_TOKEN_REGEX = r"[A-Za-z0-9._:\-]{4,}"
-
-
-def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str | None:
-    _marker_pattern = "|".join(re.escape(m) for m in SESSION_NOT_FOUND_SUBSTRINGS)
-    _pattern = re.compile(
-        rf"(?i)(?:{_marker_pattern})"
-        rf"(?:\s+(?:for\s+ID|for\s+id|ID|id))?"
-        rf"[\s:]+({_SESSION_ID_TOKEN_REGEX})",
-    )
-    haystack = [exc.stderr] if exc.stderr else []
-    haystack.extend(exc.parsed_output)
-    for line in haystack:
-        if not line:
-            continue
-        match = _pattern.search(line)
-        if match is not None:
-            return match.group(1)
-    return None
-
-
-def log_invocation_exit(exc: AgentInvocationError) -> None:
-    classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
-    retryable = _retry.retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
-    if classified.reset_session:
-        stderr_has_session_marker = contains_casefolded_marker(
-            [exc.stderr] if exc.stderr else [], SESSION_NOT_FOUND_SUBSTRINGS
-        )
-        evidence_field = (
-            "(suppressed -- stderr already names the failure)"
-            if stderr_has_session_marker
-            else summarize_retry_failure_evidence(exc.parsed_output)
-        )
-        stderr_field = condense_failure_text(exc.stderr) if exc.stderr.strip() else "(empty)"
-        rejected_session_id = _extract_rejected_session_id_from_failure(exc)
-        if rejected_session_id is not None:
-            logger.warning(
-                "Stale session detected for agent={} (phase=invoke): "
-                "resetting session id, retrying with a fresh session. "
-                "code={} stderr={} evidence=[{}] session_id={}",
-                exc.agent_name,
-                exc.returncode,
-                stderr_field,
-                evidence_field,
-                rejected_session_id,
-            )
-            return
-        logger.warning(
-            "Stale session detected for agent={} (phase=invoke): "
-            "resetting session id, retrying with a fresh session. "
-            "code={} stderr={} evidence=[{}]",
-            exc.agent_name,
-            exc.returncode,
-            stderr_field,
-            evidence_field,
-        )
-        return
-    if classified.reset_tool_registry or retryable:
-        logger.warning(
-            "Retryable agent exit with code {}: {} [{}]",
-            exc.returncode,
-            condense_failure_text(exc.stderr),
-            summarize_retry_failure_evidence(exc.parsed_output),
-        )
-        return
-    logger.error(
-        "Agent exited with code {}: {} [{}]",
-        exc.returncode,
-        condense_failure_text(exc.stderr),
-        summarize_retry_failure_evidence(exc.parsed_output),
-    )

@@ -329,6 +329,10 @@ def test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unc
     assert _counter(entry, "total_unproductive") >= 1, (
         f"the ordinary route must advance the ledger counter (observed ledger entry: {entry!r})"
     )
+    assert controller.ledger.is_available(PHASE, "codex") is False
+    assert outcome.invocations == ["codex", "codex", "codex", "codex_b"]
+    assert outcome.exit_code == 0
+    assert outcome.final_state.phase == "complete"
 
 
 def test_ledger_resets_the_consecutive_counter_when_the_workspace_changed() -> None:
@@ -536,7 +540,7 @@ def test_incident_4_the_process_manager_is_the_only_writer_of_a_termination_issu
 
     assert manager.termination_issuer(424242) == "managed_process.terminate", (
         "the issuer is recorded only by the manager-mediated termination call "
-        f"(observed: {manager.termination_issuer(424242)!r})"
+        f"(observed issuer: {manager.termination_issuer(424242)!r})"
     )
 
 

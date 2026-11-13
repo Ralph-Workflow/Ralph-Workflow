@@ -374,9 +374,12 @@ def is_unsubmitted_artifact_failure(detail_parts: tuple[str, ...] | list[str]) -
     ) or contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
 
 
+def classify_failure(exc: BaseException, *, phase: str, agent: str | None) -> ClassifiedFailure:
+    return FailureClassifier().classify(exc, phase=phase, agent=agent)
+
+
 def should_reset_tool_registry(exc: BaseException, *, phase: str, agent: str | None) -> bool:
-    classified = FailureClassifier().classify(exc, phase=phase, agent=agent)
-    return classified.reset_tool_registry
+    return classify_failure(exc, phase=phase, agent=agent).reset_tool_registry
 
 
 def _is_artifact_validation_message(raw_message: str) -> bool:

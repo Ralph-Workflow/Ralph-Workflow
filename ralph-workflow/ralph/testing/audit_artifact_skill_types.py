@@ -19,7 +19,7 @@ UMBRELLA_SKILL_NAME = "submit-artifact"
 
 METADATA_FILE_NAME = "metadata.json"
 
-SKILL_FILE_GLOB = "submit-*-artifact.md"
+SKILL_FILE_GLOB = "*.md"
 
 _FORMAT_DOC_DIR = Path(__file__).resolve().parents[1] / "mcp" / "artifacts" / "format_docs"
 
@@ -238,12 +238,12 @@ def _resolve_content_root(root: Path | None) -> Path:
 
 def audit_artifact_skill_types(root: Path | None = None) -> list[str]:
     content_root = _resolve_content_root(root)
-    artifact_types = _registered_artifact_types()
+    artifact_types = FORMAT_DOC_ARTIFACT_TYPES
     expected_names = _expected_skill_names(artifact_types)
     violations: list[str] = []
 
-    registry_names = set(artifact_types)
-    format_doc_names = set(FORMAT_DOC_ARTIFACT_TYPES)
+    registry_names = set(_registered_artifact_types())
+    format_doc_names = set(artifact_types)
     if registry_names != format_doc_names:
         violations.append(
             "the registered artifact types and the bundled format-doc types disagree: "
@@ -263,7 +263,7 @@ def audit_artifact_skill_types(root: Path | None = None) -> list[str]:
     )
     violations.extend(
         f"missing format doc for artifact type: {artifact_type}"
-        for artifact_type in artifact_types
+        for artifact_type in sorted(registry_names | format_doc_names)
         if not _format_doc_path(artifact_type).is_file()
     )
 

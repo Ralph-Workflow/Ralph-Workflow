@@ -50,6 +50,22 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the setup still stages the same path and the following write-tree assertion still "
         "checks the resulting index exactly"
     ),
+    'assert _git(d, "switch", "-c", "feature").returncode == 0': (
+        "the same feature creation and switches to main and back to feature remain asserted "
+        "once while constructing the immutable shared template instead of once per operation"
+    ),
+    'assert _git(d, "switch", "main").returncode == 0': (
+        "the same switch to main remains asserted once while constructing the immutable "
+        "shared diverged template instead of once per operation"
+    ),
+    'assert _git(d, "switch", "feature").returncode == 0': (
+        "the same switch back to feature remains asserted once while constructing the "
+        "immutable shared diverged template instead of once per operation"
+    ),
+    'assert _git(d, operation, "main").returncode != 0': (
+        "the merge or rebase is still asserted to fail against the same main branch; the "
+        "branch name now comes from the shared immutable template metadata"
+    ),
 }
 
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
@@ -432,25 +448,37 @@ def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_
 
 
 _INTERRUPTED_CACHE: dict[str, tuple[Path, str, str, str]] = {}
+_DIVERGED_CACHE: list[tuple[Path, str, str, str]] = []
+
+
+def _diverged(root: Path) -> tuple[Path, str, str, str]:
+    if not _DIVERGED_CACHE:
+        d = Path(tempfile.mkdtemp(prefix="it-diverged-"))
+        shutil.copytree(root, d, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+        _commit(d, "shared.txt", "base\n")
+        assert _git(d, "switch", "-c", "feature").returncode == 0
+        feature = _commit(d, "shared.txt", "feature\n")
+        assert _git(d, "switch", "main").returncode == 0
+        main = _commit(d, "shared.txt", "main\n")
+        assert _git(d, "switch", "feature").returncode == 0
+        _close_repo(d)
+        _DIVERGED_CACHE.append((d, "main", feature, main))
+    return _DIVERGED_CACHE[0]
 
 
 def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
     if operation not in _INTERRUPTED_CACHE:
+        diverged, target, feature, main = _diverged(root)
         d = Path(tempfile.mkdtemp(prefix=f"it-{operation}-"))
-        shutil.copytree(root, d, dirs_exist_ok=True)
-        _commit(d, "shared.txt", "base\n")
-        assert _git(d, "switch", "-c", "feature").returncode == 0
-        f = _commit(d, "shared.txt", "feature\n")
-        assert _git(d, "switch", "main").returncode == 0
-        m = _commit(d, "shared.txt", "main\n")
-        assert _git(d, "switch", "feature").returncode == 0
+        shutil.copytree(diverged, d, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+        assert target == "main"
         assert _git(d, operation, "main").returncode != 0
-        _INTERRUPTED_CACHE[operation] = (d, "main", f, m)
+        _INTERRUPTED_CACHE[operation] = (d, target, feature, main)
     template, target, feature, main = _INTERRUPTED_CACHE[operation]
     _close_repo(root)
     _close_repo(template)
     shutil.rmtree(root)
-    shutil.copytree(template, root)
+    shutil.copytree(template, root, ignore=_COPY_IGNORE)
     write_record(
         root,
         IntegrationRecord(

@@ -47,6 +47,7 @@ SOURCE_READ_ALLOWLIST: set[str] = {
     "test_diagnostic_transition_helpers",
     "test_commit_completion_authority",
     "test_agents_md_rule_preservation",
+    "test_retired_skills_package_absent",
 }
 
 WALL_CLOCK_ALLOWLIST: set[str] = {

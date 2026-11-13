@@ -136,6 +136,21 @@ def updater_probe(monkeypatch: pytest.MonkeyPatch) -> _UpdaterProbe:
     return probe
 
 
+@pytest.fixture
+def transport_probe(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    transports: list[str] = []
+
+    def _recorder() -> Callable[[str, float], object]:
+        def _get(url: str, timeout: float) -> object:
+            transports.append(url)
+            raise AssertionError("the updater must not reach the network")
+
+        return _get
+
+    monkeypatch.setattr("ralph.skills.upstream.default_http_client", _recorder)
+    return transports
+
+
 def _run_seam(tmp_path: Path, dependencies: run_module.SetupDependencies) -> None:
     run_module.sync_shipped_skills(
         workspace_root=tmp_path,
@@ -261,6 +276,7 @@ def test_run_start_makes_no_updater_call_when_the_env_kill_switch_is_set(
     tmp_path: Path,
     sandbox: _Sandbox,
     updater_probe: _UpdaterProbe,
+    transport_probe: list[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
@@ -268,8 +284,14 @@ def test_run_start_makes_no_updater_call_when_the_env_kill_switch_is_set(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
+    assert not updater_probe.event.wait(timeout=0.25), (
+        "the updater must not be called when the kill switch is set"
+    )
     assert updater_probe.calls == [], (
         f"the updater must not be called when the kill switch is set; got {updater_probe.calls!r}"
+    )
+    assert transport_probe == [], (
+        f"the kill switch must stop every transport call; got {transport_probe!r}"
     )
 
 
@@ -277,6 +299,7 @@ def test_run_start_makes_no_updater_call_when_the_config_kill_switch_is_set(
     tmp_path: Path,
     sandbox: _Sandbox,
     updater_probe: _UpdaterProbe,
+    transport_probe: list[str],
 ) -> None:
     (sandbox.config / "ralph-workflow.toml").write_text(
         "[skills]\nuniversal_updates_enabled = false\n",
@@ -286,9 +309,15 @@ def test_run_start_makes_no_updater_call_when_the_config_kill_switch_is_set(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
+    assert not updater_probe.event.wait(timeout=0.25), (
+        "the updater must not be called when the config disables updates"
+    )
     assert updater_probe.calls == [], (
         f"the updater must not be called when the config disables updates; "
         f"got {updater_probe.calls!r}"
+    )
+    assert transport_probe == [], (
+        f"the kill switch must stop every transport call; got {transport_probe!r}"
     )
 
 
@@ -296,6 +325,7 @@ def test_run_start_makes_no_updater_call_when_both_kill_switches_are_set(
     tmp_path: Path,
     sandbox: _Sandbox,
     updater_probe: _UpdaterProbe,
+    transport_probe: list[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
@@ -307,9 +337,15 @@ def test_run_start_makes_no_updater_call_when_both_kill_switches_are_set(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
+    assert not updater_probe.event.wait(timeout=0.25), (
+        "the updater must not be called when both kill switches are set"
+    )
     assert updater_probe.calls == [], (
         f"the updater must not be called when both kill switches are set; "
         f"got {updater_probe.calls!r}"
+    )
+    assert transport_probe == [], (
+        f"the kill switch must stop every transport call; got {transport_probe!r}"
     )
 
 

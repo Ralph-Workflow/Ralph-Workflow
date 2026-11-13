@@ -294,6 +294,11 @@ def _prepare_probe(
     return _PreparedProbe(options=options, prompt_file=prompt_file)
 
 
+def _discard_scratch_workspace(workspace_path: Path) -> None:
+    if workspace_path.exists():
+        FsWorkspace(workspace_path.parent).delete(workspace_path.name, recursive=True)
+
+
 def _create_scratch_workspace(factory: Callable[[], Path] | None) -> Path:
     if factory is None:
         return Path(tempfile.mkdtemp(prefix="ralph-canary-probe-"))

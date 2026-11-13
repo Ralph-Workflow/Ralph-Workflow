@@ -269,6 +269,62 @@ def _install_fixture_release() -> Path:
     return upstream.canonical_skills_root()
 
 
+def _unreachable_loopback_url() -> str:
+    server = _TestServer(_routes({}))
+    url = f"http://127.0.0.1:{server.server_address[1]}/releases/latest.json"
+    server.server_close()
+    return url
+
+
+def _failing_replies(failure: str) -> dict[str, _Reply]:
+    if failure == "rate-limited":
+        return {"/releases/latest.json": _Reply(status=403, body=b"rate limited")}
+    if failure == "missing-upstream":
+        return {"/releases/latest.json": _Reply(status=404, body=b"not found")}
+    if failure == "malformed-release":
+        return {"/releases/latest.json": _Reply(body=b"{not json")}
+    if failure == "malformed-archive":
+        return {
+            "/releases/latest.json": _Reply(body=_release_body("v-test-2")),
+            "/archive/v-test-2.tar.gz": _Reply(body=b"this is not a tarball"),
+        }
+    raise AssertionError(f"unknown failure {failure!r}")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["rate-limited", "missing-upstream", "malformed-release", "malformed-archive", "offline"],
+)
+def test_a_failing_upstream_keeps_the_installed_skills_byte_identical(
+    sandbox: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    root = _install_fixture_release()
+    before = _tree_snapshot(root)
+
+    if failure == "offline":
+        releases = _unreachable_loopback_url()
+        _assert_loopback_url(releases)
+        monkeypatch.setattr(upstream, "RELEASES_API_URL", releases)
+        monkeypatch.setattr(
+            upstream,
+            "ARCHIVE_URL_TEMPLATE",
+            releases.replace("/releases/latest.json", "/archive/{tag}.tar.gz"),
+        )
+        outcome = upstream.maybe_update_universal_skills(
+            enabled=True, now=_NOW + timedelta(hours=25), http=default_http_client()
+        )
+    else:
+        with _serving(_routes(_failing_replies(failure))) as server:
+            _point_at(server, monkeypatch)
+            outcome = upstream.maybe_update_universal_skills(
+                enabled=True, now=_NOW + timedelta(hours=25), http=default_http_client()
+            )
+
+    assert outcome.status == "failed"
+    assert outcome.error is not None
+    assert _tree_snapshot(root) == before
+
+
 def test_a_redirect_to_another_origin_is_refused_without_contacting_it(
     sandbox: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

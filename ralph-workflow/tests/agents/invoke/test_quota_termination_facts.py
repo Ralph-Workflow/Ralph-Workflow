@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import contextlib
 import os
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
+    AgentRunCtx,
     ProcessLineReader,
     ProcessReaderCtx,
     PtyLineReader,
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _QUOTA_LINE = "RESOURCE_EXHAUSTED (code 429)\n"
+_SIGTERM_RETURNCODE = -15
 
 
 class _FakeSigtermOnTerminateProcess:
@@ -37,8 +38,12 @@ class _FakeSigtermOnTerminateProcess:
         self._terminated = False
         self.terminal_reasons: list[str] = []
 
+    @property
+    def returncode(self) -> int | None:
+        return self.poll()
+
     def poll(self) -> int | None:
-        return -15 if self._terminated else None
+        return _SIGTERM_RETURNCODE if self._terminated else None
 
     def terminate(self, *, grace_period_s: float = 0.5, **_kwargs: object) -> None:
         self._terminated = True
@@ -102,14 +107,12 @@ def test_pty_quota_kill_attributes_the_detector_and_attaches_facts(tmp_path: Pat
     master_fd = os.open("/dev/null", os.O_RDONLY)
     handle = _FakeSigtermOnTerminateProcess()
     handle.master_fd = master_fd
-    ctx = SimpleNamespace(
+    ctx = AgentRunCtx(
         config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE),
-        policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
-        monitor=None,
-        execution_strategy=None,
-        liveness_probe=None,
-        waiting_listener=None,
+        show_progress=False,
+        extra_env=None,
         workspace_path=tmp_path,
+        policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
     )
     reader = PtyLineReader(handle, "claude", ctx, FakeClock(start=0.0), extras=None)
     try:

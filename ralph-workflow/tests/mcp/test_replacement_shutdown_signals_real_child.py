@@ -171,6 +171,7 @@ class _BlockingVerifyBridge(lifecycle.RestartAwareMcpBridge):
         run_id: str,
         verify_started: threading.Event,
         verify_release: threading.Event,
+        shutdown_started: threading.Event | None = None,
         sleep_fn: Callable[[float], object] | None = None,
         workspace_root: Path | None = None,
     ) -> None:
@@ -184,11 +185,17 @@ class _BlockingVerifyBridge(lifecycle.RestartAwareMcpBridge):
         )
         self._verify_started_ev = verify_started
         self._verify_release_ev = verify_release
+        self._shutdown_started_ev = shutdown_started
 
-    def _verify_candidate(self, candidate_inner: StandaloneMcpProcess) -> bool:
+    def _verify_candidate(self, candidate: StandaloneMcpProcess) -> bool:
         self._verify_started_ev.set()
         self._verify_release_ev.wait(timeout=2.0)
         return False
+
+    def shutdown(self) -> None:
+        if self._shutdown_started_ev is not None:
+            self._shutdown_started_ev.set()
+        super().shutdown()
 
 
 def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: Path) -> None:
@@ -206,6 +213,7 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
 
         verify_started = threading.Event()
         verify_release = threading.Event()
+        shutdown_started = threading.Event()
 
         bridge = _BlockingVerifyBridge(
             old_inner,
@@ -215,6 +223,7 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
             sleep_fn=lambda s: None,
             verify_started=verify_started,
             verify_release=verify_release,
+            shutdown_started=shutdown_started,
         )
         bridge._listening_socket = sock
 
@@ -237,6 +246,7 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
         exit_thread = threading.Thread(target=_do_supervisor_exit)
         exit_thread.start()
 
+        assert shutdown_started.wait(timeout=2.0), "Supervisor exit did not start bridge shutdown"
         verify_release.set()
 
         restart_thread.join(timeout=2.0)

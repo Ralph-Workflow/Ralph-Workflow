@@ -64,7 +64,7 @@ def extract_archive(body: bytes, limits: _ArchiveLimits) -> dict[str, _SkillPayl
     member_count = 0
     try:
         with tarfile.open(fileobj=io.BytesIO(body), mode="r:gz") as archive:
-            for member in archive.getmembers():
+            for member in archive:
                 member_count += 1
                 if member_count > limits.max_members:
                     raise _ArchiveRejectedError("the archive carries too many members")
@@ -72,18 +72,18 @@ def extract_archive(body: bytes, limits: _ArchiveLimits) -> dict[str, _SkillPayl
                 if located is None:
                     continue
                 skill, relative = located
+                if member.size > limits.max_file_bytes:
+                    raise _ArchiveRejectedError("the archive carries a file above the size cap")
                 buckets.setdefault(skill, []).append((relative, member))
             payloads: dict[str, _SkillPayload] = {}
             extracted = 0
             for skill, entries in buckets.items():
                 if len(entries) > limits.max_skill_files:
                     raise _ArchiveRejectedError(f"the {skill} skill carries too many files")
-                payload, size = _build_payload(archive, entries, limits)
+                payload, size = _build_payload(
+                    archive, entries, limits, limits.max_extracted_bytes - extracted
+                )
                 extracted += size
-                if extracted > limits.max_extracted_bytes:
-                    raise _ArchiveRejectedError(
-                        "the archive extracts more than the size cap allows"
-                    )
                 payloads[skill] = payload
     except tarfile.TarError as exc:
         raise _ArchiveRejectedError(f"the archive could not be read: {type(exc).__name__}") from exc
@@ -127,7 +127,10 @@ def _escapes_skill_dir(relative: str) -> bool:
 
 
 def _build_payload(
-    archive: tarfile.TarFile, entries: list[tuple[str, tarfile.TarInfo]], limits: _ArchiveLimits
+    archive: tarfile.TarFile,
+    entries: list[tuple[str, tarfile.TarInfo]],
+    limits: _ArchiveLimits,
+    remaining_bytes: int,
 ) -> tuple[_SkillPayload, int]:
     files: dict[str, tuple[bytes, int]] = {}
     total = 0
@@ -136,6 +139,8 @@ def _build_payload(
             raise _ArchiveRejectedError(f"the archive carries {relative} twice")
         data = _read_member(archive, member, limits)
         total += len(data)
+        if total > remaining_bytes:
+            raise _ArchiveRejectedError("the archive extracts more than the size cap allows")
         files[relative] = (data, member.mode & 0o777)
     return (_SkillPayload(files=files), total)
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from functools import cache
+from types import MappingProxyType
 
 import pytest
 
@@ -22,6 +24,7 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
 )
+from tests.test_integration_state_space import integration_observation_matrix
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
@@ -39,28 +42,8 @@ _ALL_OPERATION_KINDS: tuple[InProgressKind, ...] = tuple(
 )
 
 
-@cache
 def _build_observations() -> tuple[Observation, ...]:
-    return tuple(
-        Observation(
-            target_vs_feature=target_vs_feature,
-            target_vs_remote=target_vs_remote,
-            worktree=worktree,
-            head=head,
-            in_progress_kind=in_progress_kind,
-            in_progress_ownership=in_progress_ownership,
-            record=record,
-            agent_active=agent_active,
-        )
-        for target_vs_feature in _ALL_TARGET_VS_FEATURE
-        for target_vs_remote in _ALL_TARGET_VS_REMOTE
-        for worktree in _ALL_WORKTREE
-        for head in _ALL_HEAD
-        for in_progress_kind in _ALL_KIND
-        for in_progress_ownership in _ALL_OWNERSHIP
-        for record in _ALL_RECORD
-        for agent_active in (True, False)
-    )
+    return integration_observation_matrix()
 
 
 @cache
@@ -112,7 +95,7 @@ _DEFAULT_CONTEXT_MEMBERS: frozenset[NextAction] = frozenset(
 
 
 @cache
-def _observation_ladder_actions() -> dict[Observation, tuple[NextAction, ...]]:
+def _observation_ladder_actions() -> Mapping[Observation, tuple[NextAction, ...]]:
     table: dict[Observation, tuple[NextAction, ...]] = {}
     first_unknown = _build_unknown_observations()[0]
     unknown_actions = tuple(
@@ -141,7 +124,7 @@ def _observation_ladder_actions() -> dict[Observation, tuple[NextAction, ...]]:
             agent_active=True,
         )
         table[obs_active] = actions
-    return table
+    return MappingProxyType(table)
 
 
 def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> None:

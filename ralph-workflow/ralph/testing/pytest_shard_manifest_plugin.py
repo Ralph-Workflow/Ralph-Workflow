@@ -28,7 +28,8 @@ class ShardManifest:
         return self._path_order.get(path, len(self.paths))
 
     def should_ignore(self, path: str) -> bool:
-        if not _is_collectable_test_module(path):
+        candidate = PurePosixPath(path)
+        if not candidate.parts or candidate.parts[0] != "tests":
             return False
         return path not in self._path_set
 

@@ -6,6 +6,15 @@ import pytest
 
 from ralph.testing import pytest_shard_manifest_plugin as manifest_plugin
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_manifest_filters_only_collectable_test_modules": (
+        "should_ignore now skips every tests/ path absent from the shard manifest, "
+        "so helpers such as tests/_support/helper.py and tests/conftest.py are no "
+        "longer collected in every shard; the assertion flipped from False to True "
+        "to pin the new deduplicated collection contract"
+    ),
+}
+
 
 def test_load_shard_manifest_preserves_declared_file_order(tmp_path: Path) -> None:
     manifest_path = tmp_path / "shard.txt"
@@ -58,5 +67,6 @@ def test_manifest_filters_only_collectable_test_modules() -> None:
     assert manifest.should_ignore("tests/test_other.py") is True
     assert manifest.should_ignore("tests/unit/other_test.py") is True
     assert manifest.should_ignore("tests/test_selected.py") is False
-    assert manifest.should_ignore("tests/_support/helper.py") is False
+    assert manifest.should_ignore("tests/_support/helper.py") is True
+    assert manifest.should_ignore("tests/conftest.py") is True
     assert manifest.should_ignore("ralph/testing/test_helper.py") is False

@@ -29,6 +29,7 @@ IDLE_TIMEOUT = 0.1
 DRAIN_WINDOW = 0.0
 MAX_WAITING = 10.0
 ACTIVITY_TTL = 30.0
+_PEM_PRIVATE_KEY_HEADER = "-" * 5 + "BEGIN RSA PRIVATE KEY" + "-" * 5
 
 
 def _make_watchdog(
@@ -102,7 +103,7 @@ def testcheck_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path)
     handle = _FakeHandle(returncode=1, pid=1234)
 
     with (
-        patch("ralph.agents.invoke._completion.teardown_subtree") as mock_teardown,
+        patch("ralph.agents.invoke._completion_supervision.teardown_subtree") as mock_teardown,
         pytest.raises(AgentInvocationError),
     ):
         check_process_result(
@@ -127,7 +128,7 @@ def testcheck_process_result_missing_completion_evidence_calls_teardown_subtree(
     )
 
     with (
-        patch("ralph.agents.invoke._completion.teardown_subtree") as mock_teardown,
+        patch("ralph.agents.invoke._completion_supervision.teardown_subtree") as mock_teardown,
         pytest.raises(AgentInvocationError),
     ):
         check_process_result(
@@ -145,7 +146,7 @@ def testcheck_process_result_error_path_does_not_mutate_clock() -> None:
     handle = _FakeHandle(returncode=1, pid=9999)
 
     with (
-        patch("ralph.agents.invoke._completion.teardown_subtree"),
+        patch("ralph.agents.invoke._completion_supervision.teardown_subtree"),
         pytest.raises(AgentInvocationError),
     ):
         check_process_result(
@@ -283,7 +284,8 @@ def test_record_subagent_work_description_redacts_mixed_case_bearer_token() -> N
 
 def test_record_subagent_work_description_redacts_private_key_marker() -> None:
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(description="key fragment -----BEGIN RSA PRIVATE KEY----- data")
+    description = f"key fragment {_PEM_PRIVATE_KEY_HEADER} data"
+    wd.record_subagent_work(description=description)
     stored = wd.last_subagent_progress_description or ""
     assert "PRIVATE KEY" not in stored
     assert "<redacted>" in stored

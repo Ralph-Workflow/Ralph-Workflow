@@ -351,15 +351,27 @@ tags only:
 | Release check | `https://api.github.com/repos/obra/superpowers/releases/latest` |
 | Archive | `https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/<tag>` |
 
-Downloads are size-limited and restricted to an allowlist of file types, and
-the updater never writes outside the skill directory.
+The bounds on what those two requests may deliver are listed in
+[Trust](#trust).
 
 ### Trust
 
 The upstream's skill text enters the agent's context, so Ralph Workflow
 fetches from exactly one reputable, actively maintained, MIT-licensed
-upstream and never from arbitrary sources. A skill the user has edited is
-preserved and reported, never overwritten.
+upstream — `obra/superpowers` — and never from arbitrary sources. It reads
+that upstream inside fixed bounds:
+
+- Release versions only. The updater resolves a release tag and fetches
+  that tag's archive, never the moving `main` branch.
+- Size caps. The release check, the archive download, every single file,
+  and the total extracted payload each carry their own cap.
+- An allowlist of file types. A member with any other extension refuses
+  the whole release instead of installing part of it.
+- No writes outside the skill directories. The updater touches only the
+  user-global skill roots and its own updater state, and never writes into
+  your project.
+
+A skill the user has edited is preserved and reported, never overwritten.
 
 ### Policy versus skills
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import re
 import threading
@@ -8,13 +9,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
-
-from ralph.agents.watch_capacity import (
-    _read_inotify_watch_limit,
-    _read_inotify_watch_user_total,
-    call_within_budget,
-)
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -212,6 +207,30 @@ def clear_host_contention_signals() -> None:
 
 
 _clear_host_contention_signals = clear_host_contention_signals
+
+
+def _read_inotify_watch_limit() -> int | None:
+    reader = cast(
+        "Callable[[], int | None]",
+        importlib.import_module("ralph.agents.watch_capacity")._read_inotify_watch_limit,
+    )
+    return reader()
+
+
+def _read_inotify_watch_user_total() -> int | None:
+    reader = cast(
+        "Callable[[], int | None]",
+        importlib.import_module("ralph.agents.watch_capacity")._read_inotify_watch_user_total,
+    )
+    return reader()
+
+
+def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: float) -> T:
+    call = cast(
+        "Callable[[Callable[[], T], T, float], T]",
+        importlib.import_module("ralph.agents.watch_capacity").call_within_budget,
+    )
+    return call(probe, fallback, budget_seconds)
 
 
 def current_host_is_contended(

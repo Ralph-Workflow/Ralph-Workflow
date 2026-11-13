@@ -16,7 +16,39 @@ if TYPE_CHECKING:
 
     from ralph.skills.upstream import HttpClient, HttpResponse
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_an_escaping_reference_with_an_unrecognized_suffix_is_refused": (
+        "an escaping reference is refused because it leaves the skill directory"
+    ),
+    "test_a_reference_without_a_file_extension_is_refused": (
+        "a directed reference without an extension names a companion file"
+    ),
+    "test_a_directory_style_reference_is_refused": (
+        "a directed directory reference names the companion files under it"
+    ),
+    "test_pure_fragment_and_external_link_destinations_are_permitted": (
+        "the escaping link moved into its own refused test"
+    ),
+    "test_an_escaping_link_destination_is_refused": (
+        "the escaping link moved out of the permitted test"
+    ),
+}
+
 _NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+
+_CLAUSE_INITIAL_CUES: tuple[str, ...] = (
+    "Read `notes` for details.",
+    "- See `notes` first.",
+    "**Note:** see `notes`.",
+    "Done. Then check `notes`.",
+    "(Refer to the `notes`.)",
+)
+
+_DESCRIPTIVE_CUES: tuple[str, ...] = (
+    "The test read `notes` twice.",
+    "We open `notes` before parsing.",
+    "The hook will check `notes`.",
+)
 
 _SKILL_FILES: dict[str, dict[str, bytes]] = {
     "test-driven-development": {
@@ -98,7 +130,9 @@ def test_an_unrecognized_suffix_link_destination_is_refused(sandbox: Path) -> No
     assert not (root / "systematic-debugging" / "SKILL.md").exists()
 
 
-def test_an_escaping_reference_with_an_unrecognized_suffix_is_permitted(sandbox: Path) -> None:
+def test_an_escaping_reference_with_an_unrecognized_suffix_is_refused(
+    sandbox: Path,
+) -> None:
     escaping = {name: dict(files) for name, files in _SKILL_FILES.items()}
     escaping["systematic-debugging"] = {
         "SKILL.md": b"# Systematic debugging\n",
@@ -109,11 +143,14 @@ def test_an_escaping_reference_with_an_unrecognized_suffix_is_permitted(sandbox:
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
     assert outcome.status == "updated"
+    assert "systematic-debugging" in outcome.preserved
+    assert any("../../outside.raw" in message for message in outcome.messages)
+    assert any("outside the skill directory" in message for message in outcome.messages)
     root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
 
 
-def test_a_reference_without_a_file_extension_is_permitted(sandbox: Path) -> None:
+def test_a_reference_without_a_file_extension_is_refused(sandbox: Path) -> None:
     bare = {name: dict(files) for name, files in _SKILL_FILES.items()}
     bare["systematic-debugging"] = {
         "SKILL.md": b"# Systematic debugging\n",
@@ -124,17 +161,55 @@ def test_a_reference_without_a_file_extension_is_permitted(sandbox: Path) -> Non
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
     assert outcome.status == "updated"
+    assert "systematic-debugging" in outcome.preserved
+    assert any("docs/notes" in message for message in outcome.messages)
     root = upstream.canonical_skills_root()
-    assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
 
 
-def test_a_directory_style_reference_is_permitted(sandbox: Path) -> None:
+def test_a_directory_style_reference_is_refused(sandbox: Path) -> None:
     directory = {name: dict(files) for name, files in _SKILL_FILES.items()}
     directory["systematic-debugging"] = {
         "SKILL.md": b"# Systematic debugging\n",
         "docs/guide.md": b"# Guide\n\nSee `assets/` for the details.\n",
     }
     client, _calls = _client_for("v-test-1", directory)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    assert "systematic-debugging" in outcome.preserved
+    assert any("docs/assets" in message for message in outcome.messages)
+    root = upstream.canonical_skills_root()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
+
+
+@pytest.mark.parametrize("line", _CLAUSE_INITIAL_CUES)
+def test_a_clause_initial_cue_names_a_companion_file(sandbox: Path, line: str) -> None:
+    cued = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    cued["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": f"# Guide\n\n{line}\n".encode(),
+    }
+    client, _calls = _client_for("v-test-1", cued)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    assert "systematic-debugging" in outcome.preserved
+    assert any("docs/notes" in message for message in outcome.messages)
+    root = upstream.canonical_skills_root()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
+
+
+@pytest.mark.parametrize("line", _DESCRIPTIVE_CUES)
+def test_a_descriptive_cue_does_not_name_a_companion_file(sandbox: Path, line: str) -> None:
+    described = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    described["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": f"# Guide\n\n{line}\n".encode(),
+    }
+    client, _calls = _client_for("v-test-1", described)
 
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
@@ -414,25 +489,42 @@ def test_a_parent_relative_reference_with_title_is_refused_when_missing(
 def test_pure_fragment_and_external_link_destinations_are_permitted(
     sandbox: Path,
 ) -> None:
-    escaping = {name: dict(files) for name, files in _SKILL_FILES.items()}
-    escaping["systematic-debugging"] = {
+    external = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    external["systematic-debugging"] = {
         "SKILL.md": b"# Systematic debugging\n",
         "docs/guide.md": (
             b"# Guide\n\n"
             b"See [section](#section), "
             b"[empty fragment](#), "
             b'[external](https://example.com/doc.md#sec "Ext"), '
-            b'[escaping](../../outside.md#sec "Esc"), '
             b"and [absolute](/etc/x.md#sec 'Abs').\n"
         ),
     }
-    client, _calls = _client_for("v-test-1", escaping)
+    client, _calls = _client_for("v-test-1", external)
 
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
     assert outcome.status == "updated"
     root = upstream.canonical_skills_root()
     assert (root / "systematic-debugging" / "docs" / "guide.md").is_file()
+
+
+def test_an_escaping_link_destination_is_refused(sandbox: Path) -> None:
+    escaping = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    escaping["systematic-debugging"] = {
+        "SKILL.md": b"# Systematic debugging\n",
+        "docs/guide.md": b'# Guide\n\nSee [escaping](../../outside.md#sec "Esc").\n',
+    }
+    client, _calls = _client_for("v-test-1", escaping)
+
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+
+    assert outcome.status == "updated"
+    assert "systematic-debugging" in outcome.preserved
+    assert any("../../outside.md" in message for message in outcome.messages)
+    assert any("outside the skill directory" in message for message in outcome.messages)
+    root = upstream.canonical_skills_root()
+    assert not (root / "systematic-debugging" / "SKILL.md").exists()
 
 
 def test_a_link_destination_with_an_uppercase_extension_that_is_missing_is_refused(

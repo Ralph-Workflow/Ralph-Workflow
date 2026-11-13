@@ -101,6 +101,7 @@ class _FiniteStdout:
 class _Handle:
     stdin = None
     pid: int | None = None
+    returncode: int | None = None
 
     def __init__(self, stdout: object, stderr: object = None) -> None:
         self.stdout = stdout

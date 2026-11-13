@@ -170,13 +170,13 @@ def _code_lines(source: str) -> dict[int, str]:
 
 
 @functools.lru_cache(maxsize=1)
-def _production_sources() -> dict[str, str]:
+def _production_sources() -> tuple[tuple[str, str], ...]:
     sources: dict[str, str] = {}
     for path in sorted(_PRODUCTION_ROOT.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
         if any(needle in source for needle in (*_NEEDLES, _DISPLAY_NEEDLE)):
             sources[str(path.relative_to(_PRODUCTION_ROOT))] = source
-    return sources
+    return tuple(sources.items())
 
 
 def _check_allow_list(
@@ -251,13 +251,14 @@ def _scan_line(
         _check_allow_list(rel, lineno, text, _ALLOW_DISPLAY_MAPPINGS, display_hits, violations)
 
 
-def _scan_tree(sources: dict[str, str]) -> list[str]:
+def _scan_tree(sources: dict[str, str] | tuple[tuple[str, str], ...]) -> list[str]:
     violations: list[str] = []
     emitter_hits: set[tuple[str, int]] = set()
     decision_hits: set[tuple[str, int]] = set()
     display_hits: set[tuple[str, int]] = set()
 
-    for rel, source in sorted(sources.items()):
+    items = sources.items() if isinstance(sources, dict) else sources
+    for rel, source in sorted(items):
         for lineno, text in _code_lines(source).items():
             _scan_line(rel, lineno, text, emitter_hits, decision_hits, display_hits, violations)
 
