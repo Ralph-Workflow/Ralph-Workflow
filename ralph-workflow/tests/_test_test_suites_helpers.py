@@ -102,6 +102,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_exec_job_shutdown_subprocess_e2e.py",
     "tests/test_skills_upstream_transport.py",
     "tests/agents/invoke/test_kill_attribution_subprocess_e2e.py",
+    "tests/test_verify_invariants.py",
 )
 
 EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
