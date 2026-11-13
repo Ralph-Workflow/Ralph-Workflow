@@ -26,6 +26,8 @@ def _normalize_chain_value(value: object) -> AgentChainConfig:
 
 
 def _normalize_drain_value(value: object) -> AgentDrainConfig:
+    if isinstance(value, AgentDrainConfig):
+        return value
     if isinstance(value, str):
         return AgentDrainConfig(chain=value)
     if isinstance(value, dict):

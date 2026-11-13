@@ -507,7 +507,15 @@ def _is_docs_target(rel: Path) -> bool:
     return False
 
 
-def _git_output(args: list[str], cwd: Path) -> str | None:
+class _InputError(Exception):
+    pass
+
+
+class _GitError(Exception):
+    pass
+
+
+def _git_output(args: list[str], cwd: Path) -> str:
     try:
         completed = subprocess.run(
             args,
@@ -516,27 +524,34 @@ def _git_output(args: list[str], cwd: Path) -> str | None:
             check=False,
             cwd=str(cwd),
         )
-    except OSError:
-        return None
+    except OSError as error:
+        raise _GitError(f"cannot execute {args[0]}: {error}") from error
     if completed.returncode != 0:
-        return None
+        detail = _collapse(completed.stderr) or f"exit status {completed.returncode}"
+        raise _GitError(f"{args[0]} {' '.join(args[1:])}: {detail}")
     return completed.stdout
 
 
 def _repo_root() -> Path:
     module_path = Path(__file__).resolve()
-    output = _git_output(["git", "rev-parse", "--show-toplevel"], module_path.parent)
-    if output is not None:
-        candidate = output.strip()
-        if candidate:
-            return Path(candidate)
+    try:
+        output = _git_output(["git", "rev-parse", "--show-toplevel"], module_path.parent)
+    except _GitError:
+        return module_path.parents[3]
+    candidate = output.strip()
+    if candidate:
+        return Path(candidate)
     return module_path.parents[3]
 
 
 def _tracked_files(repo_root: Path) -> list[Path]:
-    output = _git_output(["git", "-C", str(repo_root), "ls-files", "-z"], repo_root)
-    if output is None:
-        return []
+    args = ["git", "-C", str(repo_root), "ls-files", "-z"]
+    try:
+        output = _git_output(args, repo_root)
+    except _GitError as error:
+        if "not a git repository" in str(error):
+            return []
+        raise _InputError(f"cannot enumerate tracked files in {repo_root}: {error}") from error
     return [repo_root / name for name in output.split("\0") if name]
 
 
@@ -546,7 +561,11 @@ def _script_files(repo_root: Path) -> list[Path]:
         base = repo_root / relative
         if not base.is_dir():
             continue
-        for path in sorted(base.rglob("*")):
+        try:
+            entries = sorted(base.rglob("*"))
+        except OSError as error:
+            raise _InputError(f"cannot enumerate script directory {relative}: {error}") from error
+        for path in entries:
             if not path.is_file():
                 continue
             if any(part in SKIP_DIRS for part in path.parts):
@@ -595,15 +614,17 @@ def _docs_targets(repo_root: Path, tracked: list[Path]) -> list[_Target]:
     return sorted(targets, key=_target_rel)
 
 
-def _read_text(path: Path) -> str | None:
+def _read_text(path: Path, display: str) -> str | None:
     try:
         return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    except FileNotFoundError:
         return None
+    except (OSError, UnicodeDecodeError) as error:
+        raise _InputError(f"cannot read required target {display}: {error}") from error
 
 
 def _scan_target(path: Path, display: str, mode: str) -> list[Finding]:
-    text = _read_text(path)
+    text = _read_text(path, display)
     if text is None:
         return []
     return scan_source(text, display, mode)
@@ -643,9 +664,14 @@ def _slice_files(paths: Sequence[str], base: Path) -> list[Path]:
         if not candidate.is_absolute():
             candidate = base / candidate
         if candidate.is_dir():
-            found.extend(sorted(path for path in candidate.rglob("*") if path.is_file()))
+            try:
+                found.extend(sorted(path for path in candidate.rglob("*") if path.is_file()))
+            except OSError as error:
+                raise _InputError(f"cannot enumerate --paths directory {raw}: {error}") from error
         elif candidate.is_file():
             found.append(candidate)
+        else:
+            raise _InputError(f"--paths entry is neither an existing file nor directory: {raw}")
     unique: dict[Path, Path] = {}
     for path in found:
         unique.setdefault(path, path)
@@ -718,7 +744,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     excludes: list[str] | None = getattr(parsed, "exclude", None)
     path_list = list(paths) if paths is not None else []
     exclude_list = list(excludes) if excludes is not None else []
-    findings = audit_paths(path_list, exclude_list) if path_list else audit_repository()
+    try:
+        findings = audit_paths(path_list, exclude_list) if path_list else audit_repository()
+    except _InputError as error:
+        print(f"COMMENT-AUDIT INPUT ERROR: {error}")
+        return 2
     if findings:
         print(f"COMMENT-POLICY FINDINGS: {len(findings)}")
         print("=" * 72)

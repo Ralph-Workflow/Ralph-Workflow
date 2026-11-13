@@ -24,6 +24,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _run_smoke_agent,
 )
 from ralph.workspace.fs import FsWorkspace
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -152,13 +153,6 @@ def test_2026_08_06_planning_run_phases_as_failure() -> None:
     assert "absent" in format_phase_verdict(signals).lower()
 
 
-class _SmokePipelineDepsStub:
-    recovery_clock = None
-    policy_bundle = None
-    ledger = None
-    unavailability_store = None
-
-
 def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -175,7 +169,7 @@ def test_2026_08_06_planning_run_through_smoke_agent_grades_degraded(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=_SmokePipelineDepsStub(),
+        pipeline_deps=make_test_pipeline_deps(make_display_context()),
     )
     run_id = "interactive-agy-smoke-test-model"
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from io import StringIO
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -78,8 +77,8 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
     return stream
 
 
-def _simple_config() -> SimpleNamespace:
-    return SimpleNamespace(
+def _simple_config() -> UnifiedConfig:
+    return UnifiedConfig(
         general=GeneralConfig(
             git_user_name="user",
             git_user_email="user@example.com",
@@ -189,7 +188,7 @@ def test_commit_plumbing_injects_workspace_scope_for_implicit_config(
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: Path("/tmp/worktree"))
     monkeypatch.setattr(commit_module, "resolve_workspace_scope", lambda _start: scope)
 
-    def fake_load_config(*args: object, **kwargs: object) -> SimpleNamespace:
+    def fake_load_config(*args: object, **kwargs: object) -> UnifiedConfig:
         captured["kwargs"] = kwargs
         return _simple_config()
 

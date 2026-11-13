@@ -46,6 +46,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 )
 from ralph.workspace.fs import FsWorkspace
 from tests._artifact_format_docs_mock_workspace import MockWorkspace
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._support.mock_agy import (
     DEGRADED_BASELINE_RUN_ID,
     degraded_baseline_artifact_markdown,
@@ -328,7 +329,7 @@ def test_evidence_ceiling_reported_while_still_streaming(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=_SmokePipelineDepsStub(),
+        pipeline_deps=make_test_pipeline_deps(make_display_context()),
     )
     run_id = "raw-line-sink-mid-stream-run"
 
@@ -398,7 +399,7 @@ def test_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=_SmokePipelineDepsStub(),
+        pipeline_deps=make_test_pipeline_deps(make_display_context()),
     )
     run_id = "wire-dispatch-run"
 
@@ -593,7 +594,7 @@ def test_2026_08_05_transcript_replay_grades_degraded_host_synthesized(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=_SmokePipelineDepsStub(),
+        pipeline_deps=make_test_pipeline_deps(make_display_context()),
     )
     run_id = DEGRADED_BASELINE_RUN_ID
     artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
@@ -733,7 +734,7 @@ def test_ceiling_latches_wire_even_when_init_frame_evicted_from_transcript_fifo(
         options=InvokeOptions(),
         display_context=make_display_context(),
         bridge=object(),
-        pipeline_deps=_SmokePipelineDepsStub(),
+        pipeline_deps=make_test_pipeline_deps(make_display_context()),
     )
     run_id = "test-latched-ceiling-evicted"
 

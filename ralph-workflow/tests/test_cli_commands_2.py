@@ -19,7 +19,7 @@ from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.cli.commands.check_policy import check_policy_command
 from ralph.config.enums import JsonParserType
-from ralph.config.models import AgentConfig, GeneralConfig
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.theme import RALPH_THEME
@@ -105,8 +105,8 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
     return stream
 
 
-def _simple_config() -> SimpleNamespace:
-    return SimpleNamespace(
+def _simple_config() -> UnifiedConfig:
+    return UnifiedConfig(
         general=GeneralConfig(
             git_user_name="user",
             git_user_email="user@example.com",

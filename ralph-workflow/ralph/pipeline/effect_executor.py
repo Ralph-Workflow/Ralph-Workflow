@@ -585,6 +585,7 @@ def _handle_recovery_attempt_failure(
     *,
     attempt_finalizer: AttemptFinalizer | None = None,
     recovery_controller: RecoveryController | None = None,
+    agent_invocation_error_sink: Callable[[Exception], object] | None = None,
 ) -> _AttemptResult:
     phase = str(ctx.effect.phase)
     agent = ctx.effect.agent_name
@@ -670,6 +671,8 @@ def _handle_recovery_attempt_failure(
             _set_last_captured_retry_intent(AgentRetryIntent())
         if outcome is None:
             raise exc
+        if agent_invocation_error_sink is not None:
+            agent_invocation_error_sink(exc)
         return _AttemptResult(
             charged_observation
             if charged_observation is not None
@@ -1027,6 +1030,7 @@ def _invoke_agent_with_recovery(
                     ),
                     attempt_finalizer=attempt_finalizer,
                     recovery_controller=recovery_controller,
+                    agent_invocation_error_sink=agent_invocation_error_sink,
                 )
 
         try:

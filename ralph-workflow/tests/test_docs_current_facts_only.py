@@ -127,6 +127,8 @@ _FORBIDDEN_TEXT_BY_DOCUMENT: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "shell-script `scripts/verify_social_proof.py`",
             "per its module docstring",
+            "documented consumer",
+            "removal trigger",
         ),
     ),
     (

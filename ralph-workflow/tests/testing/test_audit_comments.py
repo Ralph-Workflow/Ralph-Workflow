@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import runpy
 from pathlib import Path
 
@@ -651,3 +652,88 @@ def test_a_comment_free_githook_pre_commit_passes(tmp_path: Path) -> None:
     findings = audit_repository(tmp_path)
 
     assert findings == [], reason
+
+
+def test_a_missing_explicit_path_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: fail-closed comment audit rejects a missing --paths input"
+    missing = tmp_path / "missing-input.py"
+
+    code = main(["--paths", str(missing)])
+    output = capsys.readouterr().out
+
+    assert code == 2, reason
+    assert "COMMENT-AUDIT INPUT ERROR" in output, reason
+    assert str(missing) in output, reason
+
+
+def test_a_missing_explicit_path_fails_closed_without_path_env(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reason = (
+        "# RALPH-TEST-REASON: fail-closed comment audit rejects a missing input even without PATH"
+    )
+    monkeypatch.setenv("PATH", "/nonexistent")
+    missing = "/definitely-missing-ralph-review-input"
+
+    code = main(["--paths", missing])
+    output = capsys.readouterr().out
+
+    assert code == 2, reason
+    assert "COMMENT-AUDIT INPUT ERROR" in output, reason
+    assert missing in output, reason
+
+
+def test_a_mixed_valid_and_missing_explicit_path_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: fail-closed comment audit rejects any missing --paths input"
+    good = _write(tmp_path, "mod.py", "value = 1\n")
+    missing = tmp_path / "missing-input.py"
+
+    code = main(["--paths", str(good), str(missing)])
+    output = capsys.readouterr().out
+
+    assert code == 2, reason
+    assert "COMMENT-AUDIT INPUT ERROR" in output, reason
+    assert str(missing) in output, reason
+
+
+def test_repository_mode_fails_closed_when_git_is_unavailable(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reason = "# RALPH-TEST-REASON: fail-closed comment audit reports a git enumeration failure"
+    monkeypatch.setenv("PATH", "/nonexistent")
+
+    code = main([])
+    output = capsys.readouterr().out
+
+    assert code == 2, reason
+    assert "COMMENT-AUDIT INPUT ERROR" in output, reason
+    assert "git" in output, reason
+
+
+def test_an_unreadable_explicit_file_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reason = "# RALPH-TEST-REASON: fail-closed comment audit reports an unreadable required target"
+    if os.geteuid() == 0:
+        pytest.skip("root reads chmod 000 files")
+    target = _write(tmp_path, "mod.py", "value = 1\n")
+    target.chmod(0)
+    try:
+        code = main(["--paths", str(target)])
+    finally:
+        target.chmod(0o644)
+    output = capsys.readouterr().out
+
+    assert code == 2, reason
+    assert "COMMENT-AUDIT INPUT ERROR" in output, reason
+    assert "cannot read required target" in output, reason
+    assert str(target) in output, reason
