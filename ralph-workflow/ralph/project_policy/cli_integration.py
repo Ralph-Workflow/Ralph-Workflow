@@ -28,11 +28,10 @@ from ralph.pipeline.attempt_runner import (
     run_agent_attempt,
 )
 from ralph.pipeline.attempt_runner_deps import (
+    PRODUCTION_INVOKE,
     AttemptInvoke,
     AttemptRunnerDeps,
-    effect_attempt_invoke,
 )
-from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.rebase_state import RebaseState
@@ -345,7 +344,7 @@ def _make_production_invoke_agent(
 
 
 def _production_effect_invoke() -> AttemptInvoke:
-    return effect_attempt_invoke(execute_agent_effect)
+    return PRODUCTION_INVOKE
 
 
 def _run_project_policy_attempt(

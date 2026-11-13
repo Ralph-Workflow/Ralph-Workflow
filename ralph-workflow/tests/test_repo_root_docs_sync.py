@@ -39,9 +39,7 @@ def test_code_style_encodes_documentation_contract() -> None:
         f"Neither CODE_STYLE.md nor docs/code-style/index.md exists; checked: {candidates}"
     )
     content = primary.read_text()
-    assert "carries no docstrings" in content.lower(), (
-        f"{primary} must ban docstrings outright"
-    )
+    assert "carries no docstrings" in content.lower(), f"{primary} must ban docstrings outright"
     assert "pydoc" in content.lower() or "api" in content.lower(), (
         f"{primary} should address documentation/self-sufficiency expectations"
     )

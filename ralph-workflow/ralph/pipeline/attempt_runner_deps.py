@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from ralph.workspace.probe import WorkspaceChangeProbe
 
 
-class EffectRunner(Protocol):
+class _EffectRunner(Protocol):
     def __call__(
         self,
         effect: InvokeAgentEffect,
@@ -35,7 +35,10 @@ class EffectRunner(Protocol):
     ) -> PipelineEvent | AgentFailureEvent: ...
 
 
-class RawAgentInvoke(Protocol):
+EffectRunner = _EffectRunner
+
+
+class _RawAgentInvoke(Protocol):
     def __call__(
         self,
         config: AgentConfig,
@@ -45,7 +48,10 @@ class RawAgentInvoke(Protocol):
     ) -> Iterator[str] | None: ...
 
 
-def effect_attempt_invoke(runner: EffectRunner) -> AttemptInvoke:
+RawAgentInvoke = _RawAgentInvoke
+
+
+def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
     def _invoke(
         target: InvokeAgentEffect | AgentConfig,
         *_args: object,
@@ -85,7 +91,7 @@ def effect_attempt_invoke(runner: EffectRunner) -> AttemptInvoke:
     return _invoke
 
 
-def raw_attempt_invoke(invoke: RawAgentInvoke) -> AttemptInvoke:
+def raw_attempt_invoke(invoke: _RawAgentInvoke) -> AttemptInvoke:
     def _invoke(
         target: InvokeAgentEffect | AgentConfig,
         *_args: object,

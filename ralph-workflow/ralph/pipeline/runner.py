@@ -440,13 +440,17 @@ if AgentEntryPoint.MAIN_PHASE_LOOP not in registered_entry_points():
 
 
 def _keyword_effect_invoker(execute: AttemptInvoke) -> AttemptInvoke:
-    def invoke(target: object, **kwargs: object) -> object:
+    def invoke(
+        target: InvokeAgentEffect | AgentConfig,
+        *_args: object,
+        **kwargs: object,
+    ) -> object:
         config = kwargs.pop("config")
         pipeline_deps = kwargs.pop("pipeline_deps")
         workspace_scope = kwargs.pop("workspace_scope")
         return execute(target, config, pipeline_deps, workspace_scope, **kwargs)
 
-    return cast("AttemptInvoke", invoke)
+    return invoke
 
 
 def _execute_effect(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
@@ -334,7 +334,7 @@ def _registered_route(entry_point: AgentEntryPoint) -> Callable[..., AttemptResu
     runners = registered_runners()
     if entry_point not in runners:
         raise AssertionError(f"entry point has no registered route: {entry_point.value}")
-    return cast("Callable[..., AttemptResult]", runners[entry_point])
+    return runners[entry_point]
 
 
 def matrix_config() -> UnifiedConfig:

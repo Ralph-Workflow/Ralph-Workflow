@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import pytest
 
@@ -116,20 +116,35 @@ class FakeTeardown:
         self.calls.append((host_pid, issuer))
 
 
-class FakeManagedHandle:
+class FakeManagedHandle(ManagedProcess):
+    stdin = None
+
     def __init__(self, *, returncode: int | None, issuer: str | None) -> None:
-        self.pid = 424242
-        self.stdout = None
-        self.stderr = None
-        self.returncode = returncode
+        self._fake_returncode = returncode
         self._issuer = issuer
         self.terminated: list[float | None] = []
 
-    def terminate(self, grace_period_s: float | None = None) -> None:
+    @property
+    def pid(self) -> int:
+        return 424242
+
+    @property
+    def stdout(self) -> None:
+        return None
+
+    @property
+    def stderr(self) -> None:
+        return None
+
+    @property
+    def returncode(self) -> int | None:
+        return self._fake_returncode
+
+    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
         self.terminated.append(grace_period_s)
 
     def poll(self) -> int | None:
-        return self.returncode
+        return self._fake_returncode
 
     def termination_issuer(self) -> str | None:
         return self._issuer
@@ -401,15 +416,15 @@ def test_incident_3_codex_tool_result_with_a_null_error_is_not_a_quota_signal() 
 def test_incident_3_quota_detector_does_not_terminate_a_healthy_session_on_a_tool_result_line(
     tmp_path: Path,
 ) -> None:
-    teardown = FakeTeardown()
+    teardown: ProcessTeardown = FakeTeardown()
     handle = FakeManagedHandle(returncode=None, issuer=None)
     ctx = ProcessReaderCtx(
         config=AgentConfig(cmd="codex"),
         policy=TimeoutPolicy(idle_timeout_seconds=60.0),
-        process_teardown=cast("ProcessTeardown", teardown),
+        process_teardown=teardown,
         workspace_path=tmp_path,
     )
-    reader = ProcessLineReader(cast("ManagedProcess", handle), ctx, FakeClock())
+    reader = ProcessLineReader(handle, ctx, FakeClock())
     try:
         reader._terminate_for_quota(INCIDENT_3_CODEX_TOOL_RESULT_LINE)
         terminated = list(handle.terminated)
@@ -446,7 +461,7 @@ def test_incident_4_an_unattributed_signal_end_records_unknown_and_the_observed_
 
     with pytest.raises(AgentInvocationError) as excinfo:
         check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
             termination_recorder=recorder,
@@ -470,7 +485,7 @@ def test_incident_4_the_issuer_is_kept_for_signal_codes_and_recorded_for_plain_e
     killed = FakeManagedHandle(returncode=-15, issuer="invoke:process")
     with pytest.raises(AgentInvocationError) as killed_error:
         check_process_result(
-            cast("ManagedProcess", killed),
+            killed,
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
         )
@@ -487,7 +502,7 @@ def test_incident_4_the_issuer_is_kept_for_signal_codes_and_recorded_for_plain_e
     recorder = TerminationRecorder()
     with pytest.raises(AgentInvocationError) as plain_error:
         check_process_result(
-            cast("ManagedProcess", plain),
+            plain,
             "opencode",
             [INCIDENT_4_OPENCODE_TOOL_USE_LINE],
             termination_recorder=recorder,

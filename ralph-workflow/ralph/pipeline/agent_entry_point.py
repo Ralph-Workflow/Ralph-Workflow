@@ -25,7 +25,7 @@ class AgentEntryPoint(StrEnum):
     CANARY_PROBE = "canary_probe"
 
 
-class EntryPointRunner(Protocol):
+class _EntryPointRunner(Protocol):
     def __call__(
         self,
         *,
@@ -39,21 +39,33 @@ class EntryPointRunner(Protocol):
     ) -> AttemptResult: ...
 
 
-_ENTRY_POINT_RUNNERS: Final[dict[AgentEntryPoint, EntryPointRunner]] = {}
+EntryPointRunner = _EntryPointRunner
+
+_ENTRY_POINT_RUNNERS: Final[dict[AgentEntryPoint, EntryPointRunner | None]] = dict.fromkeys(
+    AgentEntryPoint
+)
 
 
 def register_entry_point(entry_point: AgentEntryPoint, runner_fn: EntryPointRunner) -> None:
-    if entry_point in _ENTRY_POINT_RUNNERS:
+    if _ENTRY_POINT_RUNNERS[entry_point] is not None:
         raise ValueError(f"entry point already registered: {entry_point.value}")
     _ENTRY_POINT_RUNNERS[entry_point] = runner_fn
 
 
 def registered_entry_points() -> tuple[AgentEntryPoint, ...]:
-    return tuple(_ENTRY_POINT_RUNNERS)
+    return tuple(
+        entry_point for entry_point, runner in _ENTRY_POINT_RUNNERS.items() if runner is not None
+    )
 
 
 def registered_runners() -> Mapping[AgentEntryPoint, EntryPointRunner]:
-    return MappingProxyType(_ENTRY_POINT_RUNNERS)
+    return MappingProxyType(
+        {
+            entry_point: runner
+            for entry_point, runner in _ENTRY_POINT_RUNNERS.items()
+            if runner is not None
+        }
+    )
 
 
 __all__ = (

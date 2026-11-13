@@ -98,11 +98,8 @@ cannot truthfully promise a result within the policy probe's 10-second cap.
 RALPH-PENDING: uv --directory ralph-workflow run python -m ralph --generate-commit (assumed 2026-08-11); review trigger: once commit generation has a local bounded preflight that emits an observable result and exits within 10 seconds before any remote agent is started
 
 The command above remains the only permitted commit-generation command per
-`AGENTS.md` Commit rule; hand-rolled `git commit` is forbidden. This dated
-deferral does not authorize an alternate commit path. The 2026-08-11 bounded
-probe launched Codex but received no agent output before it was terminated at
-12 seconds; this is diagnostic evidence of the current remote-agent contract,
-not a claim that the command is a fast verification gate.
+`AGENTS.md` Commit rule; hand-rolled `git commit` is forbidden; the
+RALPH-PENDING deferral does not authorize an alternate commit path.
 
 ## Exceptions
 
