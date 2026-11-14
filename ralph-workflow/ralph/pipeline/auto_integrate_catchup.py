@@ -649,6 +649,38 @@ def _advance_observed_target(
             remote_sha,
             reclaim_target_worktree=False,
         )
+        from ralph.pipeline.resolution_outcome import (
+            ConfigFailureOutcome,
+            NextStrategyOutcome,
+            ResolvedOutcome,
+            RetryLaterOutcome,
+            UnknownOutcome,
+            WaitingOutcome,
+            stop_resolution_outcome_reason,
+        )
+
+        if isinstance(outcome, tuple):
+            advanced = bool(outcome[0])
+            refusal_reason = str(outcome[1]) if len(outcome) > 1 and not advanced else ""
+        elif isinstance(outcome, bool):
+            advanced = outcome
+            refusal_reason = ""
+        elif isinstance(
+            outcome,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
+            advanced = isinstance(outcome, ResolvedOutcome)
+            refusal_reason = "" if advanced else stop_resolution_outcome_reason(outcome)
+        else:
+            advanced = False
+            refusal_reason = str(outcome)
     except Exception as exc:
         kind = _classify_git_exception(exc)
         if kind != GitOutcomeKind.FAILED:
@@ -656,11 +688,9 @@ def _advance_observed_target(
         return _failure_reason(kind, observation)
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-    if isinstance(outcome, ResolvedOutcome) or (
-        isinstance(outcome, tuple) and bool(outcome[0])
-    ):
+    if isinstance(outcome, ResolvedOutcome) or (isinstance(outcome, tuple) and bool(outcome[0])):
         return CATCHUP_FAST_FORWARDED
-    return f"{CATCHUP_DEFEDITELY_FAILED}; {outcome}"
+    return f"{CATCHUP_DEFEDITELY_FAILED}; {refusal_reason or outcome}"
 
 
 def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | None:

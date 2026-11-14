@@ -180,28 +180,69 @@ def record_rebase_outcome(
     )
 
 
+def _classify_rebase_conflict_outcome(
+    *,
+    merge_attempted: bool,
+    merge_outcome: MergeResult | None,
+) -> tuple[str, str | None] | None:
+    if not merge_attempted or merge_outcome is None:
+        return None
+    if merge_outcome.outcome == RESOLUTION_FAILED:
+        reason = merge_outcome.reason
+        return ACTION_CONFLICT, (
+            f"conflict resolution did not complete ({reason}); merge aborted"
+            if reason
+            else "conflict resolution failed; merge aborted"
+        )
+    if merge_outcome.outcome == "conflict" and merge_outcome.reason:
+        return ACTION_CONFLICT, f"endpoint {merge_outcome.reason}"
+    if merge_outcome.outcome == "conflict":
+        return ACTION_CONFLICT, "rebase and endpoint merge both conflicted"
+    if merge_outcome.outcome in {"success", "noop"}:
+        return ACTION_MERGED, None
+    return None
+
+
 def classify_rebase_outcome(
     *,
     rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed,
     merge_attempted: bool,
     merge_outcome: MergeResult | None,
-) -> tuple[str, str]:
+) -> tuple[str, str | None]:
     if isinstance(rebase_outcome, RebaseConflicts):
-        reason = (
-            merge_outcome.reason
-            if merge_attempted and merge_outcome is not None and merge_outcome.reason
-            else "rebase conflicts"
+        sub = _classify_rebase_conflict_outcome(
+            merge_attempted=merge_attempted,
+            merge_outcome=merge_outcome,
         )
-        return ACTION_CONFLICT, reason
+        if sub is not None:
+            return sub
+        return ACTION_CONFLICT, "rebase conflicts"
     if isinstance(rebase_outcome, RebaseNoOp):
-        return ACTION_SKIPPED, rebase_outcome.reason
+        return _classify_rebase_noop_outcome(
+            rebase_outcome=rebase_outcome,
+            merge_attempted=merge_attempted,
+            merge_outcome=merge_outcome,
+        )
     if isinstance(rebase_outcome, RebaseFailed):
-        return ACTION_CONFLICT, f"rebase failed: {rebase_outcome.kind.kind.value}"
+        return _classify_rebase_failed_outcome(
+            rebase_outcome=rebase_outcome,
+            merge_attempted=merge_attempted,
+            merge_outcome=merge_outcome,
+        )
+    if merge_attempted and merge_outcome is not None:
+        return ACTION_MERGED, None
+    return ACTION_REBASED, None
+
+
+def _classify_rebase_noop_outcome(
+    *,
+    rebase_outcome: RebaseNoOp,
+    merge_attempted: bool,
+    merge_outcome: MergeResult | None,
+) -> tuple[str, str | None]:
     if merge_attempted:
-        if merge_outcome is None:
-            return ACTION_CONFLICT, "branch is up to date"
-        return ACTION_MERGED, "branch merged cleanly"
-    return ACTION_REBASED, "branch rebased cleanly"
+        return classify_merge_only_outcome(merge_outcome)
+    return ACTION_REBASED, rebase_outcome.reason
 
 
 def classify_merge_only_outcome(
@@ -216,6 +257,23 @@ def classify_merge_only_outcome(
     if merge_outcome.reason:
         return ACTION_CONFLICT, f"endpoint {merge_outcome.reason}"
     return ACTION_CONFLICT, f"endpoint merge conflicted ({merge_outcome.outcome})"
+
+
+def _classify_rebase_failed_outcome(
+    *,
+    rebase_outcome: RebaseFailed,
+    merge_attempted: bool,
+    merge_outcome: MergeResult | None,
+) -> tuple[str, str | None]:
+    sub = _classify_rebase_conflict_outcome(
+        merge_attempted=merge_attempted,
+        merge_outcome=merge_outcome,
+    )
+    if sub is None:
+        return ACTION_SKIPPED, f"rebase failed: {rebase_outcome.kind}"
+    if sub == (ACTION_CONFLICT, "rebase and endpoint merge both conflicted"):
+        return ACTION_CONFLICT, "rebase failed and endpoint merge conflicted"
+    return sub
 
 
 __all__ = [

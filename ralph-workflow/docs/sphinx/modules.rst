@@ -1389,13 +1389,6 @@ ralph.pipeline.conflict_resolution.rebase_loop
    :members:
    :show-inheritance:
 
-ralph.pipeline.conflict_resolution.gitlink_policy
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.conflict_resolution.gitlink_policy
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.conflict_resolution.deterministic_resolution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -5609,6 +5602,27 @@ ralph.pipeline.landed_verdict
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.landed_verdict
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.last_resort_agent_pool
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.last_resort_agent_pool
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.last_resort_agent_proof
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.last_resort_agent_proof
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.last_resort_wait_proof
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.last_resort_wait_proof
    :members:
    :show-inheritance:
 

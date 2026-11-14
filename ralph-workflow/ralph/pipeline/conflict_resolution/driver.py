@@ -665,8 +665,6 @@ def _handle_repaired_or_fast_forward(
     if attempt.agent_name is not None:
         _reset_conflict_success(session, attempt.agent_name)
     return True
-
-
 def _execute_round_loop(
     root: Path,
     target: str,

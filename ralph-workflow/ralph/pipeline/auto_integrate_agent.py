@@ -3,6 +3,7 @@ from __future__ import annotations
 __doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -23,7 +24,6 @@ from ralph.workspace.context import WorkspaceContextError, workspace_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -94,6 +94,7 @@ def build_agent_conflict_resolver(
             )
             return False
         try:
+
             return run_conflict_resolution_pipeline(
                 root=root,
                 target=target,

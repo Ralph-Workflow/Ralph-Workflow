@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.auto_integrate_record import record_path
 from tests._scenario_harness import (
     AgentMode,
@@ -74,10 +75,11 @@ def test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget(tmp_git_
 def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
     tmp_git_repo: Path,
 ) -> None:
+    clock = FakeClock()
     feature_sha = _large_conflicted_range(tmp_git_repo)
     target_before = git(tmp_git_repo, "rev-parse", "main")
-    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, fail_at_launch=11)
-    run1 = drive_integration(tmp_git_repo, config=scenario_config(), resolver=runner)
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, fail_at_launch=11, clock=clock)
+    run1 = drive_integration(tmp_git_repo, config=scenario_config(), resolver=runner, clock=clock)
     assert run1.error is None, f"large finite work must survive one resolver failure: {run1.error}"
     assert runner.launches == 11
     assert len(runner.completed_stops) == 10

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -46,6 +46,9 @@ from ralph.pipeline.ladder_state import LadderState
 from ralph.pipeline.ladder_step_result import LadderStepResult
 from ralph.pipeline.ladder_transition import LadderTransition
 from ralph.pipeline.landed_verdict import LandedVerdict
+from ralph.pipeline.last_resort_agent_pool import LastResortAgentPool
+from ralph.pipeline.last_resort_agent_proof import LastResortAgentProof
+from ralph.pipeline.last_resort_wait_proof import LastResortWaitProof
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -107,37 +110,9 @@ LADDER_ATTEMPT_BUDGET: Final[int] = 16
 LAST_RESORT_WAIT_SECONDS: Final[float] = 600.0
 
 
-@dataclass(frozen=True, slots=True)
-class _LastResortAgentPool:
-    phase: str
-    agents: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _LastResortAgentProof:
-    phase: str
-    agent: str
-    tried: bool
-    outcome: str
-    cooldown_until_ms: int | None
-    reason: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class _LastResortWaitProof:
-    continuously_unavailable_since_epoch_ms: int | None
-    eligible_after_epoch_ms: int
-    next_eligible_agent: str | None
-    next_eligible_at_ms: int | None
-    agents: tuple[_LastResortAgentProof, ...]
-    blocking_signature: str
-    authorized: bool
-
-    @property
-    def waiting(self) -> bool:
-        return not self.authorized and all(agent.tried for agent in self.agents)
-
-
+_LastResortAgentPool = LastResortAgentPool
+_LastResortAgentProof = LastResortAgentProof
+_LastResortWaitProof = LastResortWaitProof
 LAST_RESORT_PRECONDITIONS: Final[tuple[str, ...]] = (
     "rungs_1_to_5_tried_or_shown_impossible",
     "salvage_resolver_agent_tried",
@@ -1102,6 +1077,22 @@ def _finish_rung(
     return final
 
 
+def _resolve_target_tip(
+    root: Path,
+    target: str,
+    rung: CleanupLadderRung,
+    decided_signature: str,
+    shared_target_tip: str | None,
+    expected_target_sha: str | None,
+    plumbing: GitPlumbing,
+) -> str | None:
+    if shared_target_tip or expected_target_sha:
+        return shared_target_tip or expected_target_sha
+    if rung is CleanupLadderRung.LAST_RESORT and not decided_signature:
+        return None
+    return plumbing.target_sha(root, target)
+
+
 def run_ladder_rung(
     rung: CleanupLadderRung,
     *,
@@ -1144,14 +1135,14 @@ def run_ladder_rung(
     probe = env if env is not None else default_environment_probe()
     ladder_clock = clock if clock is not None else current_clock()
     ralph_state = state_dir if state_dir is not None else Path(root) / ".agent"
-    target_tip = (
-        shared_target_tip
-        or expected_target_sha
-        or (
-            plumbing.target_sha(root, target)
-            if (shared_vendor_pointer is not None or shared_conflicting_paths is not None)
-            else None
-        )
+    target_tip = _resolve_target_tip(
+        root=root,
+        target=target,
+        rung=rung,
+        decided_signature=decided_signature,
+        shared_target_tip=shared_target_tip,
+        expected_target_sha=expected_target_sha,
+        plumbing=plumbing,
     )
     shared_key: str | None = None
     if target_tip is not None:

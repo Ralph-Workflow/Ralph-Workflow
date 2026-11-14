@@ -144,18 +144,19 @@ def _repair_owned_merge(
     from ralph.pipeline.conflict_resolution.session import invoke_resolution_agent
 
     def invoke(agent: str, prompt: Path) -> bool:
-        outcome = invoke_resolution_agent(
-            agent_name=agent,
-            prompt_path=prompt,
-            config=config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            display=display,
-            display_context=display_context,
-            require_completion_evidence=True,
+        return bool(
+            invoke_resolution_agent(
+                agent_name=agent,
+                prompt_path=prompt,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
+                policy_bundle=policy_bundle,
+                display=display,
+                display_context=display_context,
+                require_completion_evidence=True,
+            )
         )
-        return outcome.succeeded
 
     root = workspace_scope.root
     record = read_record(root)

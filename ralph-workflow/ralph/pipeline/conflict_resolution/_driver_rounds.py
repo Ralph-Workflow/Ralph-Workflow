@@ -235,9 +235,7 @@ def _execute_single_candidate(
     session.last_attempt_result = None
     session.last_attempt_outcome = None
     session.charge_conflict_budget = True
-    invoker_result: StopResolutionOutcome = RetryLaterOutcome(
-        on_change="resolution attempt failed"
-    )
+    invoker_result: StopResolutionOutcome = RetryLaterOutcome(on_change="resolution attempt failed")
     probe = session.workspace_probe
     workspace = session.workspace
     if probe is not None and workspace is not None:
@@ -246,23 +244,23 @@ def _execute_single_candidate(
     raised: BaseException | None = None
     succeeded = False
     try:
-        raw_result: object = runner(agent_name, prompt_path, round_index)
+        raw_result = runner(agent_name, prompt_path, round_index)
         if isinstance(raw_result, bool):
-            succeeded = raw_result
-            if succeeded:
-                session.chain_cursor = 0
-                session.last_failure_cause = ResolutionFailureCause.NONE
-                invoker_result = ResolvedOutcome()
-            else:
-                invoker_result = UnknownOutcome(RuntimeError("resolution attempt failed"))
+            invoker_result = (
+                ResolvedOutcome()
+                if raw_result
+                else RetryLaterOutcome(
+                    on_change="conflict resolution incomplete; progress retained for next agent"
+                )
+            )
         else:
             invoker_result = cast("StopResolutionOutcome", raw_result)
-            succeeded = isinstance(invoker_result, ResolvedOutcome)
-            if succeeded:
-                session.chain_cursor = 0
-                session.last_failure_cause = ResolutionFailureCause.NONE
-            else:
-                _record_invoker_outcome(session, invoker_result)
+        succeeded = isinstance(invoker_result, ResolvedOutcome)
+        if succeeded:
+            session.chain_cursor = 0
+            session.last_failure_cause = ResolutionFailureCause.NONE
+        else:
+            _record_invoker_outcome(session, invoker_result)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc

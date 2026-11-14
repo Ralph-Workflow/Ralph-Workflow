@@ -11,12 +11,18 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
+import ralph.pipeline._auto_integrate_rebase_resolve as _airr
+import ralph.pipeline.conflict_resolution.round_verdict as _rv
+import ralph.pipeline.resolution_outcome as _ro
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline import attempt_stop_resolution
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome as _FullRetryLaterOutcome
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from ralph.workspace.scope import WorkspaceScope
 from tests._scenario_agent_mode import AgentMode
@@ -24,6 +30,11 @@ from tests._scenario_display import ScenarioDisplay
 from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
 from tests._scenario_result import ScenarioResult
+
+_airr.RetryLater = RetryLater
+_airr.ConfigFailure = ConfigFailure
+_rv.RetryLaterOutcome = _FullRetryLaterOutcome
+_ro.RetryLaterOutcome = _FullRetryLaterOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -79,7 +90,10 @@ class FakeAgentRunner:
     ) -> bool:
         from ralph.pipeline.integration_actions import default_agent_runner
 
-        return default_agent_runner().resolve_rebase(root, target, self, session=session)
+        effective_resolver = resolver if callable(resolver) else self
+        return default_agent_runner().resolve_rebase(
+            root, target, effective_resolver, session=session
+        )
 
     def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
         self.launches += 1
@@ -313,6 +327,12 @@ def run_spent_gate(root: Path, clock: FakeClock, *, advance: float = 0.0) -> Sce
 
     class _IntegrationClock:
         def now(self) -> float:
+            return clock.monotonic()
+
+        def monotonic(self) -> float:
+            return clock.monotonic()
+
+        def epoch(self) -> float:
             return clock.monotonic()
 
         def sleep(self, seconds: float) -> None:

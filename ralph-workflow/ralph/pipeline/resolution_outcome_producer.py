@@ -113,7 +113,7 @@ def stop_resolution_outcome_from_legacy(
         case Exhausted(agents=agents):
             result = NextStrategyOutcome(strategy=f"resolver agents exhausted: {', '.join(agents)}")
         case ConfigFailure(file=file, parse_error=parse_error):
-            result = ConfigFailureOutcome(file=file, parse_error=str(parse_error))
+            return ConfigFailureOutcome(file=file, parse_error=parse_error)
         case _:
             result = UnknownOutcome(error=RuntimeError(f"unrecognized legacy outcome: {outcome!r}"))
     return result

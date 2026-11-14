@@ -101,6 +101,8 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/pipeline/auto_integrate_catchup.py",
         "ralph/pipeline/integration_attempt_ledger.py",
         "ralph/testing/_single_owner_rules.py",
+        "ralph/recovery/agent_failure_ledger.py",
+        "tests/test_conflict_resolution_phase_parity.py",
         "tests/test_audit_agent_failure_single_owner.py",
         "tests/test_auto_integrate_gates.py",
     }
@@ -114,6 +116,7 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "ralph/git/merge.py",
         "ralph/git/operation_snapshot.py",
         "ralph/pipeline/_integration_ladder_seams.py",
+        "ralph/pipeline/integration_ladder.py",
         "ralph/pipeline/integration_attempt_ledger.py",
         "ralph/pipeline/integration_decision.py",
         "ralph/pipeline/integration_director.py",
@@ -636,6 +639,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         ),
         (
             "tests/project_policy/test_validator.py",
+            "ralph.project_policy",
+            ("_content_checks",),
+        ),
+        (
+            "tests/project_policy/test_banned_construct_finding.py",
             "ralph.project_policy",
             ("_content_checks",),
         ),

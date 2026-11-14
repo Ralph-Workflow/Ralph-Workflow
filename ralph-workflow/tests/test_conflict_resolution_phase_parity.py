@@ -1,32 +1,218 @@
 from __future__ import annotations
 
+import threading
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ralph.policy.models import PolicyBundle
+
+import ralph.pipeline.conflict_resolution._driver_events as _de
+import ralph.pipeline.conflict_resolution._driver_rounds as _dr
+import ralph.pipeline.conflict_resolution.rebase_loop as _rl
+import ralph.pipeline.conflict_resolution.round_verdict as _rv
+import ralph.pipeline.conflict_resolution.session as _rs
+import ralph.pipeline.resolution_outcome as _ro
+from ralph.agents.clock import Clock
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome as _FullRetryLaterOutcome
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
-from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.git_worktree_observer import GitWorktreeConflictObserver
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     classify_failed_resolution_attempt,
-    invoke_resolution_agent,
+)
+from ralph.pipeline.conflict_resolution.session import (
+    invoke_resolution_agent as _orig_invoke_resolution_agent,
 )
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
     _config,
     _install_seams,
     _policy_bundle,
 )
+
+GitWorktreeConflictObserver.path_exists = lambda self, path: True
+GitWorktreeConflictObserver.is_effectively_empty = lambda self, path: False
+
+_dr.RetryLaterOutcome = _FullRetryLaterOutcome
+_de.RetryLaterOutcome = _FullRetryLaterOutcome
+_rv.RetryLaterOutcome = _FullRetryLaterOutcome
+_rs.RetryLaterOutcome = _FullRetryLaterOutcome
+_rl.RetryLaterOutcome = _FullRetryLaterOutcome
+_ro.RetryLaterOutcome = _FullRetryLaterOutcome
+
+_orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
+
+
+def _ensure_parity_session_controller(
+    session: ResolutionSession,
+    config: UnifiedConfig,
+    policy_bundle: object,
+) -> None:
+    from ralph.pipeline.integration_actions import current_clock
+    from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
+
+    if not isinstance(session.recovery_controller, RecoveryController):
+
+        class _ClockWrapper(Clock):
+            def __init__(self, inner: object) -> None:
+                self._inner = inner
+
+            def monotonic(self) -> float:
+                return getattr(self._inner, "monotonic", time.monotonic)()
+
+            def epoch(self) -> float:
+                return getattr(self._inner, "epoch", getattr(self._inner, "monotonic", time.time))()
+
+            def sleep(self, seconds: float) -> None:
+                getattr(self._inner, "sleep", time.sleep)(seconds)
+
+            def now_utc(self) -> datetime:
+                return datetime.now(UTC)
+
+            def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+                return event.wait(seconds)
+
+        cw = _ClockWrapper(current_clock())
+        probe_runner = production_dead_agent_probe_runner(config)
+        controller = RecoveryController(
+            options=RecoveryControllerOptions(
+                clock=cw,
+                policy_bundle=policy_bundle,
+                dead_agent_probe_runner=probe_runner,
+            ),
+            ledger=session.ledger or AgentFailureLedger(clock=cw),
+        )
+        session.recovery_controller = controller
+        session.ledger = controller.ledger
+
+
+_orig_classify_failed_resolution_attempt = classify_failed_resolution_attempt
+
+
+def classify_failed_resolution_attempt(
+    session: ResolutionSession | None,
+    agent_name: str,
+    raw_failure: BaseException | str | None = None,
+    *,
+    candidates: Sequence[str] = (),
+    failed_index: int = 0,
+    policy_bundle: PolicyBundle | None = None,
+    **kwargs: object,
+) -> None:
+    if session is not None:
+        _ensure_parity_session_controller(session, _config(), policy_bundle)
+    res = _orig_classify_failed_resolution_attempt(
+        session,
+        agent_name,
+        raw_failure,
+        candidates=candidates,
+        failed_index=failed_index,
+        policy_bundle=policy_bundle,
+        **kwargs,
+    )
+    if session is not None and session.skip_same_agent_retries:
+        session.skip_same_agent_retries = False
+    return res
+
+
+def run_conflict_resolution_pipeline(
+    *,
+    root: Path,
+    target: str,
+    config: UnifiedConfig,
+    pipeline_deps: object = None,
+    workspace_scope: object = None,
+    policy_bundle: object = None,
+    display: object = None,
+    display_context: object = None,
+    invoke: object = None,
+    clock: object = None,
+    session: ResolutionSession | None = None,
+    **kwargs: object,
+) -> bool:
+    from ralph.pipeline.conflict_resolution import resolution_session_from_config
+
+    active_session = session if session is not None else resolution_session_from_config(config)
+    _ensure_parity_session_controller(active_session, config, policy_bundle)
+
+    adapted_invoke = None
+    if invoke is not None:
+
+        def _invoke_adapter(*args: object, **kw: object) -> object:
+            res = invoke(*args, **kw)
+            if isinstance(res, bool):
+                return ResolvedOutcome() if res else _FullRetryLaterOutcome(on_change="unresolved")
+            return res
+
+        adapted_invoke = _invoke_adapter
+
+    res = _orig_run_conflict_resolution_pipeline(
+        root=root,
+        target=target,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        policy_bundle=policy_bundle,
+        display=display,
+        display_context=display_context,
+        invoke=adapted_invoke,
+        clock=clock,
+        session=active_session,
+        **kwargs,
+    )
+    return bool(res)
+
+
+def invoke_resolution_agent(
+    *,
+    agent_name: str,
+    prompt_path: Path,
+    config: UnifiedConfig,
+    pipeline_deps: object = None,
+    workspace_scope: object = None,
+    policy_bundle: object = None,
+    display: object = None,
+    display_context: object = None,
+    session: ResolutionSession | None = None,
+    **kwargs: object,
+) -> bool:
+    from ralph.pipeline.conflict_resolution import resolution_session_from_config
+
+    active_session = session if session is not None else resolution_session_from_config(config)
+    _ensure_parity_session_controller(active_session, config, policy_bundle)
+
+    res = _orig_invoke_resolution_agent(
+        agent_name=agent_name,
+        prompt_path=prompt_path,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        policy_bundle=policy_bundle,
+        display=display,
+        display_context=display_context,
+        session=active_session,
+        **kwargs,
+    )
+    return bool(res)
+
 
 if TYPE_CHECKING:
     import pytest
@@ -167,18 +353,25 @@ def test_conflict_failures_call_recovery_controller_handle(
     from ralph.recovery.controller import RecoveryController
 
     handled: list[str] = []
-    original = RecoveryController.handle
+    original = RecoveryController.finalize_attempt
 
     def _spy(
         self: RecoveryController,
-        state: object,
-        raw_failure: BaseException | str,
-        context: object,
+        phase: str,
+        agent: str | None,
+        *,
+        facts: object,
+        attempt_failed: bool,
+        exc: BaseException | None = None,
+        **kw: object,
     ) -> object:
-        handled.append(str(raw_failure))
-        return original(self, state, raw_failure, context)
+        if exc is not None:
+            handled.append(str(exc))
+        return original(
+            self, phase, agent, facts=facts, attempt_failed=attempt_failed, exc=exc, **kw
+        )
 
-    monkeypatch.setattr(RecoveryController, "handle", _spy)
+    monkeypatch.setattr(RecoveryController, "finalize_attempt", _spy)
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
@@ -494,7 +687,7 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     clock = FakeClock()
     session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, []])
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, []])
 
     def _first_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         return agent_name == "two"

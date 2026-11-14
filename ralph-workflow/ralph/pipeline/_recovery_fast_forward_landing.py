@@ -38,7 +38,12 @@ def _land_and_reconcile(
     try:
         from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
         from ralph.pipeline.resolution_outcome import (
+            ConfigFailureOutcome,
+            NextStrategyOutcome,
             ResolvedOutcome,
+            RetryLaterOutcome,
+            UnknownOutcome,
+            WaitingOutcome,
             stop_resolution_outcome_reason,
         )
 
@@ -54,12 +59,22 @@ def _land_and_reconcile(
         elif isinstance(raw_outcome, bool):
             ok = raw_outcome
             skip_reason = ""
-        else:
+        elif isinstance(
+            raw_outcome,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
             ok = isinstance(raw_outcome, ResolvedOutcome)
-            try:
-                skip_reason = "" if ok else stop_resolution_outcome_reason(raw_outcome)  # type: ignore[arg-type]
-            except Exception:
-                skip_reason = str(raw_outcome)
+            skip_reason = "" if ok else stop_resolution_outcome_reason(raw_outcome)
+        else:
+            ok = False
+            skip_reason = str(raw_outcome)
     except Exception as exc:
         ff_failed = True
         skip_reason = f"fast-forward raised: {exc}"

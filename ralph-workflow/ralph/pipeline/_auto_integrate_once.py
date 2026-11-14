@@ -217,20 +217,28 @@ def _integrate_once_owned(
             WaitingOutcome,
         )
 
-        ok = isinstance(ff_outcome, ResolvedOutcome)
-        skip_reason = (
-            ""
-            if ok
-            else (
-                ff_outcome.on_change
-                if isinstance(ff_outcome, RetryLaterOutcome)
+        raw_ff: object = ff_outcome
+        if isinstance(raw_ff, tuple):
+            ok = bool(raw_ff[0])
+            skip_reason = "" if ok else str(raw_ff[1] if len(raw_ff) > 1 else "")
+        elif isinstance(raw_ff, bool):
+            ok = raw_ff
+            skip_reason = "" if ok else "fast forward failed"
+        else:
+            ok = isinstance(ff_outcome, ResolvedOutcome)
+            skip_reason = (
+                ""
+                if ok
                 else (
-                    ff_outcome.external_condition
-                    if isinstance(ff_outcome, WaitingOutcome)
-                    else str(ff_outcome)
+                    ff_outcome.on_change
+                    if isinstance(ff_outcome, RetryLaterOutcome)
+                    else (
+                        ff_outcome.external_condition
+                        if isinstance(ff_outcome, WaitingOutcome)
+                        else str(ff_outcome)
+                    )
                 )
             )
-        )
 
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -116,10 +117,10 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_conflict_budget import (
         ConflictIdentity,
-        start_conflict_attempt,
     )
     from ralph.pipeline.auto_integrate_remote_sync import pull_and_reconcile_target
     from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
+    from ralph.pipeline.rebase_state import RebaseState
 
     identity = ConflictIdentity(
         feature_sha="feat",
@@ -129,7 +130,7 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
     )
     observed: list[ConflictIdentity] = []
     applied: list[ConflictIdentity] = []
-    started: list[bool] = []
+    suppressed: list[bool] = []
 
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_remote_sync.observe_conflict_identity",
@@ -156,30 +157,32 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
         ident = kwargs.get("identity")
         if isinstance(ident, ConflictIdentity):
             applied.append(ident)
+        suppressed.append(bool(kwargs.get("resolver_suppressed")))
         return record
 
     monkeypatch.setattr("ralph.pipeline.auto_integrate_remote_sync.apply_conflict_budget", _apply)
 
-    original_start = start_conflict_attempt
-
-    def _start(ident: ConflictIdentity) -> bool:
-        allowed = original_start(ident)
-        started.append(allowed)
-        return allowed
-
-    monkeypatch.setattr("ralph.pipeline.auto_integrate_remote_sync.start_conflict_attempt", _start)
-
     config = UnifiedConfig.model_validate({"general": {}})
-    assert start_conflict_attempt(identity) is True
+    prior = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=3,
+        last_conflict_feature_sha="feat",
+        last_conflict_target_sha="main",
+        last_conflict_paths=("a.py",),
+        last_conflict_stage_oids=("oid",),
+        resolution_exhausted=True,
+    )
     pull_and_reconcile_target(
         config,
         tmp_path,
         "main",
         rebase_stop_resolver=lambda **_kwargs: None,
+        prior=prior,
     )
     assert observed == [identity]
-    assert started == [False]
     assert applied == [identity]
+    assert suppressed == [True]
 
 
 def test_remote_refresh_failure_still_books_conflict_budget(
@@ -236,31 +239,22 @@ def test_endpoint_merge_fallback_keeps_resolver_when_rebase_ownership_cannot_be_
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseConflicts
     from ralph.pipeline import auto_integrate_rebase_merge as merge_module
-    from ralph.pipeline.auto_integrate_conflict_budget import (
-        ConflictIdentity,
-        finish_conflict_attempt,
-        start_conflict_attempt,
-    )
 
-    identity = ConflictIdentity(
-        feature_sha="feat",
-        target_sha="main",
-        conflicted_paths=("a.py",),
-        stage_oids=("oid",),
-    )
-    finish_conflict_attempt(identity)
-    assert start_conflict_attempt(identity) is True
     endpoint_calls: list[object] = []
     aborted: list[Path] = []
 
     def _abort(repo_root: Path | None = None, **_kwargs: object) -> None:
         aborted.append(repo_root or tmp_path)
 
+    @dataclass(frozen=True)
+    class _Conflicts(RebaseConflicts):
+        reason: str = "conflict"
+
     monkeypatch.setattr(merge_module, "_range_routing_reason", lambda _root, _target: None)
     monkeypatch.setattr(
         merge_module,
         "rebase_onto",
-        lambda _target, repo_root: RebaseConflicts(files=["a.py"]),
+        lambda _target, repo_root: _Conflicts(files=["a.py"]),
     )
 
     def _ownership_unavailable(*_args: object) -> bool:
@@ -285,18 +279,15 @@ def test_endpoint_merge_fallback_keeps_resolver_when_rebase_ownership_cannot_be_
     def _merge_resolver(*_args: object) -> bool:
         return True
 
-    try:
-        result = merge_module.run_rebase_or_merge(
-            tmp_path,
-            "main",
-            _merge_resolver,
-            rebase_stop_resolver=lambda *_args: False,
-        )
-        assert endpoint_calls == [_merge_resolver]
-        assert aborted == [tmp_path]
-        assert result.merge_attempted
-    finally:
-        finish_conflict_attempt(identity)
+    result = merge_module.run_rebase_or_merge(
+        tmp_path,
+        "main",
+        _merge_resolver,
+        rebase_stop_resolver=lambda *_args: False,
+    )
+    assert endpoint_calls == [_merge_resolver]
+    assert aborted == [tmp_path]
+    assert result.merge_attempted
 
 
 def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() -> None:
@@ -341,7 +332,7 @@ def test_resolver_eligibility_follows_the_ledger_not_the_stored_count() -> None:
     assert resolver_allowed(state, "main", identity, ledger=_ledger()) is True
 
 
-def test_a_benched_resolver_is_refused_whatever_the_stored_count_says() -> None:
+def test_a_benched_resolver_does_not_affect_conflict_identity_exhaustion() -> None:
     identity = ConflictIdentity(feature_sha="feat", target_sha="main")
     state = RebaseState(
         last_action="conflict",
@@ -359,7 +350,7 @@ def test_a_benched_resolver_is_refused_whatever_the_stored_count_says() -> None:
             ledger=_benched_ledger(),
             candidates=("resolver",),
         )
-        is False
+        is True
     )
 
 

@@ -135,6 +135,8 @@ def _install_seams(
 
 
 def _probe_reachable_deps(bundle: PolicyBundle) -> PipelineDeps:
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+
     def fake_invoke_agent(
         config: AgentConfig,
         prompt_file: str,
@@ -155,10 +157,16 @@ def _probe_reachable_deps(bundle: PolicyBundle) -> PipelineDeps:
         make_display_context(),
         policy_bundle=bundle,
     )
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            dead_agent_probe_runner=dead_agent_probe.production_dead_agent_probe_runner(_config()),
+        )
+    )
     return replace(
         deps,
         invoke_agent=fake_invoke_agent,
         recovery_sleep=lambda _: None,
+        recovery_controller=controller,
     )
 
 
@@ -170,17 +178,25 @@ def _run(
     session: ResolutionSession | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> bool:
-    return run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=_config(),
-        pipeline_deps=pipeline_deps,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=display,
-        display_context=None,
-        invoke=invoke,
-        session=session,
+    if pipeline_deps is None:
+        pipeline_deps = _probe_reachable_deps(_policy_bundle())
+    if session is None:
+        session = ResolutionSession()
+    if session.recovery_controller is None and pipeline_deps.recovery_controller is not None:
+        session.recovery_controller = pipeline_deps.recovery_controller
+    return bool(
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=pipeline_deps,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=display,
+            display_context=None,
+            invoke=invoke,
+            session=session,
+        )
     )
 
 
@@ -272,19 +288,23 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
             raise RuntimeError("agent exploded")
         return True
 
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller
+    )
     assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+        bool(
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=_probe_reachable_deps(_policy_bundle()),
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                session=session,
+            )
         )
         is True
     )
@@ -302,7 +322,11 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )
-    session = ResolutionSession(max_rounds_per_stop=1, skip_same_agent_retries=True)
+    session = ResolutionSession(
+        max_rounds_per_stop=1,
+        skip_same_agent_retries=True,
+        recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
+    )
     calls: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -314,7 +338,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
         root=tmp_path,
         target="main",
         config=_config(),
-        pipeline_deps=None,
+        pipeline_deps=_probe_reachable_deps(_policy_bundle()),
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
         display=None,
@@ -340,12 +364,15 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )
-    session = ResolutionSession(max_rounds_per_stop=1)
+    session = ResolutionSession(
+        max_rounds_per_stop=1,
+        recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
+    )
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=_config(),
-        pipeline_deps=None,
+        pipeline_deps=_probe_reachable_deps(_policy_bundle()),
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
         display=None,
@@ -530,7 +557,7 @@ def test_rebase_mode_success_reports_continuing_the_rebase(
             stop_cap=4,
         ),
         config=_config(),
-        pipeline_deps=None,
+        pipeline_deps=_probe_reachable_deps(_policy_bundle()),
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
         display=display,
@@ -570,7 +597,9 @@ def test_resolution_termination_keeps_typed_reason_activity_and_unresolved_paths
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
     display = _FakeDisplay()
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller
+    )
 
     def _decline(_name: str, _path: Path, _round: int) -> bool:
         session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
@@ -580,17 +609,19 @@ def test_resolution_termination_keeps_typed_reason_activity_and_unresolved_paths
         return False
 
     assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=display,
-            display_context=None,
-            invoke=_decline,
-            session=session,
+        bool(
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=_probe_reachable_deps(_policy_bundle()),
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=display,
+                display_context=None,
+                invoke=_decline,
+                session=session,
+            )
         )
         is False
     )

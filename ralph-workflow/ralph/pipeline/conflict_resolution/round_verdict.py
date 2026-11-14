@@ -14,6 +14,10 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    StopResolutionOutcome,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,25 +35,11 @@ __all__ = [
 
 
 def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
-    from dataclasses import replace
-
-    from ralph.pipeline.resolution_outcome import (
-        ConfigFailureOutcome,
-        NextStrategyOutcome,
-        ResolvedOutcome,
-        RetryLaterOutcome,
-        UnknownOutcome,
-        WaitingOutcome,
-    )
     from ralph.pipeline.resolution_outcome_producer import (
         classify_resolution_failure,
-        stop_resolution_outcome_from_legacy,
     )
 
-    unresolved = tuple(session.unresolved_paths or ())
     if succeeded:
-        from ralph.pipeline.resolution_outcome import ResolvedOutcome
-
         return ResolvedOutcome()
     cause = ResolutionFailureCause.NONE
     if not succeeded:
@@ -64,37 +54,12 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResol
         if session.operator_action_message
         else session.exhaustion_reason
     )
-
-    raw_outcome = classify_resolution_failure(
+    return classify_resolution_failure(
         terminal_reason=session.terminal_reason,
         failure_cause=cause,
         reason=ex_msg,
         paths=session.unresolved_paths,
     )
-    raw_res: object = raw_outcome
-    if isinstance(
-        raw_res,
-        (
-            ResolvedOutcome,
-            WaitingOutcome,
-            RetryLaterOutcome,
-            NextStrategyOutcome,
-            ConfigFailureOutcome,
-            UnknownOutcome,
-        ),
-    ):
-        outcome = raw_res
-    else:
-        outcome = stop_resolution_outcome_from_legacy(raw_res)
-    try:
-        return replace(  # type: ignore[call-arg]
-            outcome,
-            succeeded=False,
-            reason=session.terminal_reason,
-            unresolved_paths=unresolved,
-        )
-    except (TypeError, ValueError):
-        return outcome
 
 
 def reset_round_reporting(session: ResolutionSession) -> None:

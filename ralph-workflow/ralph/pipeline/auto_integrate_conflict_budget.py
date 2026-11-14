@@ -112,28 +112,6 @@ def _is_same_conflict(
     )
 
 
-def _ledger_candidates_available(
-    ledger: AgentFailureLedger,
-    phase: str,
-    candidates: Sequence[str],
-) -> bool:
-    if candidates:
-        return any(ledger.is_available(phase, a) for a in candidates)
-    snap = ledger.snapshot()
-    raw_entries = snap.get("entries")
-    if isinstance(raw_entries, dict):
-        phase_agents: list[str] = []
-        for val in raw_entries.values():
-            if isinstance(val, dict):
-                p = val.get("phase")
-                a = val.get("agent")
-                if isinstance(p, str) and p == phase and isinstance(a, str) and a:
-                    phase_agents.append(a)
-        if phase_agents:
-            return any(ledger.is_available(phase, a) for a in phase_agents)
-    return True
-
-
 def resolver_allowed(
     state: RebaseState,
     target: str,
@@ -144,14 +122,8 @@ def resolver_allowed(
     phase: str = "rebase_conflict_resolution",
     **kwargs: object,
 ) -> bool:
-    del kwargs
-    if _is_same_conflict(state, target, identity) and state.resolution_exhausted:
-        return False
-
-    if ledger is None:
-        return True
-
-    return _ledger_candidates_available(ledger, phase, candidates)
+    del ledger, candidates, phase, kwargs
+    return not (_is_same_conflict(state, target, identity) and state.resolution_exhausted)
 
 
 @runtime_checkable

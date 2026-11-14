@@ -10,6 +10,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 from tests._scenario_harness import (
@@ -303,10 +304,31 @@ def drive_integration(
     resolver: RebaseStopResolver | None = None,
     conflict_resolver: ConflictResolver | None = None,
     state: RebaseState | None = None,
+    clock: object | None = None,
 ) -> IntegrationRun:
     effective_config = config if config is not None else lifecycle_config()
     inner = resolver if resolver is not None else FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
     counting = CountingResolver(inner)
+
+    clock_adapter = None
+    if clock is not None:
+
+        class _ClockAdapter:
+            def monotonic(self) -> float:
+                return clock.monotonic()
+
+            def epoch(self) -> float:
+                return clock.monotonic()
+
+            def sleep(self, seconds: float) -> None:
+                clock.sleep(seconds)
+
+            def now(self) -> float:
+                return clock.monotonic()
+
+        clock_adapter = _ClockAdapter()
+
+    token = install_executors(agent_runner=counting, clock=clock_adapter)
     with capture_operator_lines() as lines:
         try:
             result = integrate_before_planning(
@@ -320,6 +342,8 @@ def drive_integration(
         except Exception as exc:
             result = None
             error = f"{type(exc).__name__}: {exc}"
+        finally:
+            reset_executors(token)
     return IntegrationRun(
         state=result,
         error=error,

@@ -534,18 +534,21 @@ def _resolve_rebase_with_config(
             "all resolver agents are spent/unavailable; conflict on "
             f"{', '.join(paths)} needs operator action: {operator_command_for_paths(paths)}"
         )
-    outcome = stop_resolution_outcome_from_legacy(
-        classify_resolution_failure(
-            terminal_reason=session.terminal_reason,
-            failure_cause=(
-                carried_cause
-                if carried_cause != ResolutionFailureCause.NONE
-                else ResolutionFailureCause.UNRESOLVED_CONFLICT
-            ),
-            reason=reason,
-            paths=session.unresolved_paths,
+    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+        outcome = NextStrategyOutcome(strategy=reason or "resolver agents exhausted")
+    else:
+        outcome = stop_resolution_outcome_from_legacy(
+            classify_resolution_failure(
+                terminal_reason=session.terminal_reason,
+                failure_cause=(
+                    carried_cause
+                    if carried_cause != ResolutionFailureCause.NONE
+                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
+                ),
+                reason=reason,
+                paths=session.unresolved_paths,
+            )
         )
-    )
     _persist_resolution_cause(
         root,
         carried_cause

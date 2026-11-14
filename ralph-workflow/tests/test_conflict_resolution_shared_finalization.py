@@ -196,3 +196,8 @@ def test_resolver_and_ordinary_phase_multi_candidate_selection_parity() -> None:
     sel_dev_after_2 = controller_dev.preferred_agent_index("development", candidates)
     assert sel_res_after_2.agent == "agent-3"
     assert sel_dev_after_2.agent == "agent-3"
+
+
+def test_controller_has_no_secondary_conflict_classifier() -> None:
+    assert not hasattr(RecoveryController, "classify_conflict_attempt")
+    assert not hasattr(RecoveryController, "_typed_conflict_attempt_reason")

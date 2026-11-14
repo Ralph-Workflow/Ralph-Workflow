@@ -78,6 +78,12 @@ def _run_outcome(
     session: ResolutionSession | None = None,
     strategy_history: Sequence[str] = (),
 ) -> StopResolutionOutcome:
+    from ralph.recovery.controller import RecoveryController
+
+    if session is None:
+        session = ResolutionSession()
+    if session.recovery_controller is None:
+        session.recovery_controller = RecoveryController()
     return driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",

@@ -262,21 +262,9 @@ def run_rebase_or_merge(
                 replay_total=1,
             )
             res = rebase_stop_resolver(r, t, stop)
-            if isinstance(
-                res,
-                (
-                    ResolvedOutcome,
-                    WaitingOutcome,
-                    RetryLaterOutcome,
-                    NextStrategyOutcome,
-                    ConfigFailureOutcome,
-                    UnknownOutcome,
-                ),
-            ):
-                return res
-            if res is True:
-                return ResolvedOutcome()
-            return RetryLaterOutcome(on_change="rebase stop resolution incomplete")
+            if isinstance(res, bool):
+                return ResolvedOutcome() if res else NextStrategyOutcome("merge refused")
+            return res
 
         effective_conflict_resolver = _adapted_resolver
 

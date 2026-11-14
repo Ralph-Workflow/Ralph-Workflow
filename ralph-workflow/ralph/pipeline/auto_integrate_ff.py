@@ -215,6 +215,9 @@ def _fast_forward_failure(reason: str) -> StopResolutionOutcome:
 def is_retryable_fast_forward_failure(outcome: object) -> bool:
     if isinstance(outcome, str):
         return outcome in _RETRYABLE_REASONS
+    if isinstance(outcome, tuple):
+        succeeded, reason = outcome[0], str(outcome[1])
+        return (not bool(succeeded)) and (reason in _RETRYABLE_REASONS)
     match outcome:
         case RetryLaterOutcome():
             return True
@@ -226,8 +229,8 @@ def is_retryable_fast_forward_failure(outcome: object) -> bool:
             | UnknownOutcome()
         ):
             return False
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            return False
 
 
 __all__ = [

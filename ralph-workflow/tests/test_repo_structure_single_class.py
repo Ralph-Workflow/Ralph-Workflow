@@ -16,6 +16,9 @@ _AUDITED_MODULES: tuple[tuple[str, str | None], ...] = (
     ("ralph.pipeline.ladder_step_result", "LadderStepResult"),
     ("ralph.pipeline.ladder_transition", "LadderTransition"),
     ("ralph.pipeline.landed_verdict", "LandedVerdict"),
+    ("ralph.pipeline.last_resort_agent_pool", "LastResortAgentPool"),
+    ("ralph.pipeline.last_resort_agent_proof", "LastResortAgentProof"),
+    ("ralph.pipeline.last_resort_wait_proof", "LastResortWaitProof"),
     ("ralph.pipeline.terminal_state_violation_error", "TerminalStateViolationError"),
     ("ralph.recovery.agent_failure_ledger", "AgentFailureLedger"),
     ("ralph.recovery.eligibility_wait", "EligibilityWait"),
@@ -35,6 +38,21 @@ _REEXPORTED_CLASSES: tuple[tuple[str, str, str], ...] = (
     ("ralph.pipeline.integration_ladder", "LadderStepResult", "ralph.pipeline.ladder_step_result"),
     ("ralph.pipeline.integration_ladder", "LadderTransition", "ralph.pipeline.ladder_transition"),
     ("ralph.pipeline.integration_ladder", "LandedVerdict", "ralph.pipeline.landed_verdict"),
+    (
+        "ralph.pipeline.integration_ladder",
+        "LastResortAgentPool",
+        "ralph.pipeline.last_resort_agent_pool",
+    ),
+    (
+        "ralph.pipeline.integration_ladder",
+        "LastResortAgentProof",
+        "ralph.pipeline.last_resort_agent_proof",
+    ),
+    (
+        "ralph.pipeline.integration_ladder",
+        "LastResortWaitProof",
+        "ralph.pipeline.last_resort_wait_proof",
+    ),
     ("ralph.recovery.agent_failure_ledger", "EligibilityWait", "ralph.recovery.eligibility_wait"),
     ("ralph.recovery.agent_failure_ledger", "WaitKind", "ralph.recovery.wait_kind"),
 )

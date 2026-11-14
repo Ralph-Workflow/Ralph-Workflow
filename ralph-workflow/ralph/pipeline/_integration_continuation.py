@@ -34,6 +34,7 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
 )
 
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -240,6 +241,12 @@ def _rebase_failure_outcome(
     chain_agents: tuple[str, ...] = (),
 ) -> StopResolutionOutcome:
     del chain_agents
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+
+    if isinstance(result, RebaseResolutionResult) and isinstance(result.outcome, ResolvedOutcome):
+        return ResolvedOutcome()
+    if isinstance(result, ResolvedOutcome):
+        return ResolvedOutcome()
     return result
 
 

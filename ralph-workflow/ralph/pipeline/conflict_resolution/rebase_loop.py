@@ -52,7 +52,6 @@ from ralph.pipeline.conflict_resolution.progress import (
     load_progress_for_rebase,
     save_progress,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
 from ralph.pipeline.conflict_resolution.stray_paths import (
@@ -62,6 +61,7 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
 )
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
+    NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
@@ -118,25 +118,19 @@ class RebaseStop:
     replay_total: int | None = None
 
 
-type RebaseStopResolver = Callable[
-    ["Path", str, RebaseStop], StopResolutionOutcome | ResolutionOutcome | bool
-]
+type RebaseStopResolver = Callable[["Path", str, RebaseStop], bool | StopResolutionOutcome]
 
 _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
     "active_gitlink_policy", default=None
 )
 
 
-def _resolution_succeeded(
-    result: StopResolutionOutcome | ResolutionOutcome | bool,
-) -> bool:
-    if isinstance(result, ResolutionOutcome):
-        return result.succeeded
-    if isinstance(result, ResolvedOutcome):
-        return True
+def _resolution_succeeded(result: bool | StopResolutionOutcome) -> bool:
     if isinstance(result, bool):
         return result
-    return False
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+    return isinstance(result, ResolvedOutcome)
 
 
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
@@ -311,9 +305,20 @@ def _resolve_one_stop(
             stop.stop_index,
         )
     outcome = resolver(root, target, stop)
-    active_session = active_rebase_resolution_session()
-    if active_session is not None:
-        _record_stop_failure(active_session, outcome)
+    if not isinstance(outcome, bool):
+        active_session = active_rebase_resolution_session()
+        if active_session is not None:
+            if isinstance(outcome, ConfigFailureOutcome):
+                active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+                active_session.exhaustion_reason = str(outcome.parse_error)
+            elif isinstance(outcome, UnknownOutcome):
+                active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+                active_session.exhaustion_reason = str(outcome.error)
+            elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
+                active_session.exhaustion_reason = outcome.on_change
+            elif isinstance(outcome, NextStrategyOutcome):
+                active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+                active_session.exhaustion_reason = outcome.strategy
     if not _resolution_succeeded(outcome):
         logger.info(
             "conflict_resolution: rebase stop {} ({}) was not resolved",

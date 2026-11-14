@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from ralph.pipeline import auto_integrate_agent as agent_module
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, RebaseStopResolver
+from ralph.pipeline.resolution_outcome import ConfigFailureOutcome, UnknownOutcome
 
 if TYPE_CHECKING:
     import pytest
@@ -47,7 +48,7 @@ def test_unreadable_target_config_declines_instead_of_raising(
 
     outcome = resolver(tmp_path, "main", _stop())
     assert outcome is False or (
-        isinstance(outcome, agent_module.ResolutionOutcome) and not outcome.succeeded
+        isinstance(outcome, (ConfigFailureOutcome, UnknownOutcome)) and not outcome.succeeded
     )
 
 
@@ -69,7 +70,7 @@ def test_unreadable_target_config_is_reported_to_the_operator(
 
     outcome = resolver(tmp_path, "main", _stop())
     assert outcome is False or (
-        isinstance(outcome, agent_module.ResolutionOutcome) and not outcome.succeeded
+        isinstance(outcome, (ConfigFailureOutcome, UnknownOutcome)) and not outcome.succeeded
     )
     assert len(emitted) == 1
     assert "Unclosed array (at line 75, column 1)" in emitted[0]
