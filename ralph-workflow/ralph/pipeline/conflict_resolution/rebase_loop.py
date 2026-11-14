@@ -56,15 +56,7 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
     revert_unrequested_paths,
     worktree_dirty_paths,
 )
-from ralph.pipeline.resolution_outcome import (
-    ConfigFailureOutcome,
-    NextStrategyOutcome,
-    ResolvedOutcome,
-    RetryLaterOutcome,
-    StopResolutionOutcome,
-    UnknownOutcome,
-    WaitingOutcome,
-)
+from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 if TYPE_CHECKING:
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
@@ -119,8 +111,7 @@ class RebaseStop:
 
 
 type RebaseStopResolver = Callable[
-    ["Path", str, RebaseStop],
-    StopResolutionOutcome | ResolutionOutcome | bool,
+    ["Path", str, RebaseStop], ResolutionOutcome | bool | StopResolutionOutcome
 ]
 
 _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
@@ -128,18 +119,14 @@ _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
 )
 
 
-def _resolution_succeeded(
-    result: StopResolutionOutcome | ResolutionOutcome | bool,
-) -> bool:
-    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
-
+def _resolution_succeeded(result: ResolutionOutcome | bool | StopResolutionOutcome) -> bool:
+    if isinstance(result, bool):
+        return result
     if isinstance(result, ResolutionOutcome):
         return result.succeeded
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-    if isinstance(result, ResolvedOutcome):
-        return True
-    return bool(result) if isinstance(result, bool) else False
+    return isinstance(result, ResolvedOutcome)
 
 
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:

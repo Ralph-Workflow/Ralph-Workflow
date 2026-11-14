@@ -11,6 +11,7 @@ from ralph.pipeline.agent_entry_point import (
     registered_runners,
 )
 from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.recovery.controller import RecoveryController
 from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
@@ -35,7 +36,6 @@ from tests.recovery.pipeline_matrix_scenarios import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from ralph.recovery.controller import RecoveryController
 
 _ENTRY_POINT_MODULES = (
     "ralph.pipeline.runner",
@@ -326,14 +326,20 @@ def test_ac9_corpus_replay_over_the_matrix_reports_zero_false_benches(
 
 
 @pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+@pytest.mark.parametrize(
     "scenario_name",
     ("ac1_chain_selects_b_after_bench", "ac2_post_event_kill_failed_canary"),
 )
 def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
+    entry_point: AgentEntryPoint,
     scenario_name: str,
 ) -> None:
     observation, controller, _clock, selected = run_matrix_scenario_with_selection(
-        MAIN_PHASE_LOOP,
+        entry_point,
         _scenario(scenario_name),
     )
 
@@ -368,9 +374,16 @@ def _case_for(scenario: MatrixScenario) -> CorpusCase:
     return next(item for item in corpus_cases() if item.id == scenario.corpus_id)
 
 
-def test_ac10_the_second_confirmed_failure_escalates_the_bench() -> None:
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac10_the_second_confirmed_failure_escalates_the_bench(
+    entry_point: AgentEntryPoint,
+) -> None:
     _observation, controller, _clock = run_matrix_scenario(
-        MAIN_PHASE_LOOP, _scenario("bench_escalation")
+        entry_point, _scenario("bench_escalation")
     )
 
     wait = controller.unavailability_store.earliest_unavailable_wait_ms(PHASE, [AGENT_A])
@@ -417,6 +430,32 @@ def test_ac12_an_expired_bench_leaves_no_tracker_trace_but_feeds_back() -> None:
     assert snapshot.get("unavailability_reasons", {}).get(AGENT_A) is None
     assert snapshot.get("unavailable_timeouts", {}).get(AGENT_A) is None
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
+
+
+def test_ac12_unavailability_store_snapshot_restore_round_trip() -> None:
+    _observation, controller, clock = run_matrix_scenario(
+        MAIN_PHASE_LOOP, _scenario("typed_signal_bench_online")
+    )
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, AGENT_A) is False
+    wait_before = store.earliest_unavailable_wait_ms(PHASE, [AGENT_A])
+    assert wait_before > 0
+
+    snap = controller.snapshot()
+    restored_controller = RecoveryController.from_snapshot(snap, clock=clock)
+    restored_store = restored_controller.unavailability_store
+    assert restored_store.is_available(PHASE, AGENT_A) is False
+    assert restored_store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) == wait_before
+    assert (
+        restored_store.snapshot()["unavailability_reasons"]
+        == store.snapshot()["unavailability_reasons"]
+    )
+
+    clock.advance((wait_before / 1000.0) + 1.0)
+    assert restored_store.is_available(PHASE, AGENT_A) is True
+    assert restored_store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) == 0
+    restored_store.prune_expired()
+    assert restored_store.snapshot()["unavailable_timeouts"] == {}
 
 
 def test_ac13_the_verdict_record_carries_the_full_evidence_set() -> None:

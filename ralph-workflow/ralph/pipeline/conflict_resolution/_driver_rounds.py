@@ -173,7 +173,7 @@ def _record_invoker_outcome(
 def _handle_candidate_failure(
     session: ResolutionSession,
     agent_name: str,
-    invoker_result: StopResolutionOutcome,
+    invoker_result: object,
     candidates: tuple[str, ...],
     offset: int,
     policy_bundle: PolicyBundle,
@@ -222,12 +222,12 @@ def _execute_single_candidate(
     offset: int,
     policy_bundle: PolicyBundle,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
-) -> tuple[bool, StopResolutionOutcome, RoundAttempt]:
+) -> tuple[bool, object, RoundAttempt]:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     session.terminal_reason = None
     session.charge_conflict_budget = True
-    invoker_result: StopResolutionOutcome = UnknownOutcome(RuntimeError("invoker did not return"))
+    invoker_result: object = False
     probe = session.workspace_probe
     workspace = session.workspace
     if probe is not None and workspace is not None:

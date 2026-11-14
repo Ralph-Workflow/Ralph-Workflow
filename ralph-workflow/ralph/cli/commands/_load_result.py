@@ -17,4 +17,6 @@ class _LoadResult(NamedTuple):
     run_id: str
 
 
-__all__ = ["_LoadResult"]
+LoadResult = _LoadResult
+
+__all__ = ["LoadResult", "_LoadResult"]

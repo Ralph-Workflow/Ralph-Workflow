@@ -118,7 +118,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/attempt_runner.py",
         "run_agent_attempt",
-        237,
+        242,
         "canonical attempt dispatch inside the registered attempt runner",
     ),
     (
@@ -136,19 +136,19 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/plumbing/commit_plumbing.py",
         "_attempt_deps",
-        197,
+        198,
         "commit attempt invoke seam reached only through the registered commit route",
     ),
     (
         "ralph/pipeline/plumbing/commit_plumbing.py",
         "_attempt_deps",
-        205,
+        206,
         "commit attempt invoke seam reached only through the registered commit route",
     ),
     (
         "ralph/pipeline/plumbing/commit_plumbing.py",
         "invoke_commit_agent_attempt",
-        943,
+        974,
         "commit module agent invocation owned by the registered commit route",
     ),
 )

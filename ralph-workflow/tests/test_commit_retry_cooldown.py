@@ -234,6 +234,7 @@ def _run_failing_commit_route(
     benched_reinvocations: list[int] = []
     real_run_agent_attempt = commit_plumbing.run_agent_attempt
 
+
     def observed_run_agent_attempt(
         entry_point: AgentEntryPoint,
         *,

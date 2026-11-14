@@ -933,6 +933,7 @@ class TestInjectionPrecedence:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         waits: list[float | None] = []
+
         def _record_wait(_event: object, timeout: float | None = None) -> bool:
             waits.append(timeout)
             return False

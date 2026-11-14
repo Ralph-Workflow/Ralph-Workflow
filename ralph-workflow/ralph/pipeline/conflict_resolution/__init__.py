@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from ralph.pipeline.conflict_resolution._driver_events import (
+    announce_declared_decisions,
+)
 from ralph.pipeline.conflict_resolution._operator_command import (
     operator_command_for_paths,
 )
@@ -34,6 +37,7 @@ __all__ = [
     "ResolutionAction",
     "ResolutionTerminationReason",
     "active_rebase_resolution_session",
+    "announce_declared_decisions",
     "attempt_fault_to_termination_reason",
     "bind_active_rebase_resolution_session",
     "classify_attempt_fault",

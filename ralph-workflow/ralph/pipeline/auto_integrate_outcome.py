@@ -11,6 +11,9 @@ from ralph.git.rebase.rebase import (
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -22,14 +25,16 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
     assert_never,
 )
+from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
+from ralph.pipeline.resolution_outcome_exhausted import Exhausted
+from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
 from ralph.pipeline.resolution_outcome_producer import RETRY_LATER_REASON
+from ralph.pipeline.resolution_outcome_resolved import Resolved
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
-    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-        ResolutionTerminationReason,
-    )
-
+    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 
 ACTION_SKIPPED = RebaseOutcomeKind.SKIPPED.value
 ACTION_REBASED = RebaseOutcomeKind.REBASED.value
@@ -93,14 +98,14 @@ def record_resolution_exhausted(
 
 
 def record_resolution_outcome(
-    outcome: StopResolutionOutcome,
+    outcome: object,
     *,
     target: str | None,
     retry_kind: RebaseOutcomeKind = RebaseOutcomeKind.CONFLICT,
 ) -> RebaseState:
     result: RebaseState
     match outcome:
-        case ResolvedOutcome():
+        case Resolved() | ResolvedOutcome():
             result = RebaseState(
                 last_outcome=RebaseOutcomeKind.CONFLICT_RESOLUTION,
                 last_reason="conflict resolution completed",
@@ -108,13 +113,26 @@ def record_resolution_outcome(
                 last_target=target,
                 fast_forwarded=False,
             )
-        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+        case NeedsOperator(cause=cause, command=command):
             result = record_conflict(
-                reason=f"waiting for {condition}; resumes when {resumes_when}",
+                reason=(
+                    f"operator action required: {command}"
+                    if command
+                    else "operator action required"
+                ),
+                target=target,
+                failure_cause=cause,
+            )
+        case WaitingOutcome(external_condition=cond):
+            result = record_conflict(
+                reason=cond,
                 target=target,
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-        case RetryLaterOutcome(until=until, on_change=on_change):
+        case (
+            RetryLater(until=until, on_change=on_change)
+            | RetryLaterOutcome(until=until, on_change=on_change)
+        ):
             message = on_change or (
                 f"retry after {until}" if until is not None else RETRY_LATER_REASON
             )
@@ -130,25 +148,32 @@ def record_resolution_outcome(
                     target=target,
                     failure_cause=ResolutionFailureCause.AGENT_FAILURE,
                 )
+        case Exhausted(agents=agents):
+            result = record_resolution_exhausted(
+                reason=f"resolver agents exhausted: {', '.join(agents)}",
+                target=target,
+                terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            )
         case NextStrategyOutcome(strategy=strategy):
             result = record_conflict(
                 reason=f"continuing with autonomous strategy: {strategy}",
                 target=target,
+                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
             )
-        case ConfigFailureOutcome(file=file):
+        case ConfigFailure(file=file) | ConfigFailureOutcome(file=file):
             result = record_conflict(
                 reason=f"fix {file} then run ralph --check-config",
                 target=target,
                 failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
             )
-        case UnknownOutcome(error=error):
+        case UnknownOutcome(error=err):
             result = record_conflict(
-                reason=f"unclassified resolution failure; advancing strategy: {error}",
+                reason=str(err),
                 target=target,
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            raise AssertionError(f"unexpected outcome: {outcome!r}")
     return result
 
 
@@ -180,113 +205,20 @@ def record_rebase_outcome(
     )
 
 
-def _classify_rebase_conflict_outcome(
-    *,
-    merge_attempted: bool,
-    merge_outcome: MergeResult | None,
-) -> tuple[str, str | None] | None:
-    if not merge_attempted or merge_outcome is None:
-        return None
-    if merge_outcome.outcome == RESOLUTION_FAILED:
-        reason = merge_outcome.reason
-        return ACTION_CONFLICT, (
-            f"conflict resolution did not complete ({reason}); merge aborted"
-            if reason
-            else "conflict resolution failed; merge aborted"
-        )
-    if merge_outcome.outcome == "conflict" and merge_outcome.reason:
-        return ACTION_CONFLICT, f"endpoint {merge_outcome.reason}"
-    if merge_outcome.outcome == "conflict":
-        return ACTION_CONFLICT, "rebase and endpoint merge both conflicted"
-    if merge_outcome.outcome in {"success", "noop"}:
-        return ACTION_MERGED, None
-    return None
-
-
 def classify_rebase_outcome(
     *,
     rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed,
     merge_attempted: bool,
     merge_outcome: MergeResult | None,
-) -> tuple[str, str | None]:
+) -> tuple[str, str]:
     if isinstance(rebase_outcome, RebaseConflicts):
-        sub = _classify_rebase_conflict_outcome(
-            merge_attempted=merge_attempted,
-            merge_outcome=merge_outcome,
-        )
-        if sub is not None:
-            return sub
-        return ACTION_CONFLICT, "rebase conflicts"
+        return ACTION_CONFLICT, rebase_outcome.reason
     if isinstance(rebase_outcome, RebaseNoOp):
-        return _classify_rebase_noop_outcome(
-            rebase_outcome=rebase_outcome,
-            merge_attempted=merge_attempted,
-            merge_outcome=merge_outcome,
-        )
+        return ACTION_SKIPPED, rebase_outcome.reason
     if isinstance(rebase_outcome, RebaseFailed):
-        return _classify_rebase_failed_outcome(
-            rebase_outcome=rebase_outcome,
-            merge_attempted=merge_attempted,
-            merge_outcome=merge_outcome,
-        )
-    if merge_attempted and merge_outcome is not None:
-        return ACTION_MERGED, None
-    return ACTION_REBASED, None
-
-
-def _classify_rebase_noop_outcome(
-    *,
-    rebase_outcome: RebaseNoOp,
-    merge_attempted: bool,
-    merge_outcome: MergeResult | None,
-) -> tuple[str, str | None]:
+        return ACTION_CONFLICT, rebase_outcome.reason
     if merge_attempted:
-        return classify_merge_only_outcome(merge_outcome)
-    return ACTION_REBASED, rebase_outcome.reason
-
-
-def classify_merge_only_outcome(
-    merge_outcome: MergeResult | None,
-) -> tuple[str, str | None]:
-    if merge_outcome is None:
-        return ACTION_CONFLICT, "endpoint merge attempt raised"
-    if merge_outcome.outcome == RESOLUTION_FAILED:
-        return ACTION_CONFLICT, "conflict resolution failed; merge aborted"
-    if merge_outcome.outcome in {"success", "noop"}:
-        return ACTION_MERGED, None
-    if merge_outcome.reason:
-        return ACTION_CONFLICT, f"endpoint {merge_outcome.reason}"
-    return ACTION_CONFLICT, f"endpoint merge conflicted ({merge_outcome.outcome})"
-
-
-def _classify_rebase_failed_outcome(
-    *,
-    rebase_outcome: RebaseFailed,
-    merge_attempted: bool,
-    merge_outcome: MergeResult | None,
-) -> tuple[str, str | None]:
-    sub = _classify_rebase_conflict_outcome(
-        merge_attempted=merge_attempted,
-        merge_outcome=merge_outcome,
-    )
-    if sub is None:
-        return ACTION_SKIPPED, f"rebase failed: {rebase_outcome.kind}"
-    if sub == (ACTION_CONFLICT, "rebase and endpoint merge both conflicted"):
-        return ACTION_CONFLICT, "rebase failed and endpoint merge conflicted"
-    return sub
-
-
-__all__ = [
-    "ACTION_CONFLICT",
-    "ACTION_MERGED",
-    "ACTION_REBASED",
-    "ACTION_RECOVERED",
-    "ACTION_SKIPPED",
-    "classify_merge_only_outcome",
-    "classify_rebase_outcome",
-    "record_conflict",
-    "record_rebase_outcome",
-    "record_resolution_exhausted",
-    "record_resolution_outcome",
-    "record_skip",
-]
+        if merge_outcome is None:
+            return ACTION_CONFLICT, "branch is up to date"
+        return ACTION_MERGED, "branch merged cleanly"
+    return ACTION_REBASED, "branch rebased cleanly"

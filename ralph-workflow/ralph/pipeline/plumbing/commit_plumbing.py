@@ -131,6 +131,7 @@ def _commit_invoke_agent(module: types.ModuleType) -> InvokeAgentFn:
 
 __all__ = [
     "CommitAgentResult",
+    "attempt_controller",
     "collect_commit_agent_output",
     "invoke_commit_agent_attempt",
     "run_commit_plumbing",
@@ -249,6 +250,9 @@ def _attempt_controller(
         ledger_snapshot=(ledger.snapshot() if isinstance(ledger, AgentFailureLedger) else None),
         unavailability_store=(store if isinstance(store, UnavailabilityStore) else None),
     )
+
+
+attempt_controller = _attempt_controller
 
 
 class CommitAgentOutcome(Enum):

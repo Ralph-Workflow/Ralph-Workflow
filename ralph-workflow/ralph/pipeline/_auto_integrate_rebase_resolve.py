@@ -159,7 +159,8 @@ def resolve_conflicted_rebase(
             res = outcome
         else:
             raise TypeError("rebase stop resolution returned an invalid result")
-    match res:
+    actual_outcome = res.outcome if hasattr(res, "outcome") else res
+    match actual_outcome:
         case ResolvedOutcome():
             resolution_completed = True
         case (
@@ -170,8 +171,8 @@ def resolve_conflicted_rebase(
             | UnknownOutcome()
         ):
             resolution_completed = False
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            raise AssertionError(f"unexpected outcome: {outcome!r}")
     if resolution_completed and not _merge_mod.set_resolving_rebase(root, False):
         logger.warning(
             "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
@@ -228,6 +229,7 @@ def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunRe
             failure_cause=pending_cause,
         ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
     )
+
 
 
 
@@ -299,18 +301,22 @@ def _rebase_run_result(
                 f"{condition}; resumes when {resumes_when}",
                 failure_cause,
             )
-        case RetryLaterOutcome():
+        case (
+            RetryLater()
+            | RetryLaterOutcome()
+            | WaitingOutcome()
+            | NextStrategyOutcome()
+            | UnknownOutcome()
+        ):
             return _conflict_run(target, failure_reason, failure_cause)
-        case ConfigFailureOutcome(file=file):
+        case ConfigFailure(file=file) | ConfigFailureOutcome(file=file):
             return _conflict_run(
                 target,
                 f"fix {file} then run ralph --check-config",
                 ResolutionFailureCause.CONFIG_FAILURE,
             )
-        case UnknownOutcome(error=error):
-            return _conflict_run(target, str(error), failure_cause)
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            raise AssertionError(f"unexpected outcome: {outcome!r}")
 
 
 def _outcome_reason(outcome: StopResolutionOutcome) -> str:

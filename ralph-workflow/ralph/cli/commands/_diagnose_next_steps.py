@@ -3,6 +3,7 @@ from __future__ import annotations
 from ralph.onboarding import (
     GETTING_STARTED_DOC,
     INIT_COMMAND,
+    PROMPT_FILE,
     RUN_COMMAND,
     starter_prompt_validation_hint,
 )
@@ -18,7 +19,7 @@ def build_next_steps(
     steps: list[str] = []
 
     if not prompt_exists:
-        steps.append(f"Run `{INIT_COMMAND}` to scaffold PROMPT.md and project config files.")
+        steps.append(f"Run `{INIT_COMMAND}` to scaffold {PROMPT_FILE} and project config files.")
     elif prompt_has_sentinel:
         steps.append(starter_prompt_validation_hint())
 

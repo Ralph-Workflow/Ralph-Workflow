@@ -37,6 +37,10 @@ def _land_and_reconcile(
     skip_reason = ""
     try:
         from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
+        from ralph.pipeline.resolution_outcome import (
+            ResolvedOutcome,
+            stop_resolution_outcome_reason,
+        )
 
         raw_outcome: object = fast_forward_target(
             workspace_root,
@@ -44,30 +48,18 @@ def _land_and_reconcile(
             feature_sha,
             reclaim_target_worktree=reclaim_target_worktree_enabled(config),
         )
-        from ralph.pipeline.resolution_outcome import (
-            ResolvedOutcome,
-            RetryLaterOutcome,
-            WaitingOutcome,
-        )
-
         if isinstance(raw_outcome, tuple) and raw_outcome:
             ok = bool(raw_outcome[0])
             skip_reason = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
         elif isinstance(raw_outcome, bool):
             ok = raw_outcome
             skip_reason = ""
-        elif isinstance(raw_outcome, ResolvedOutcome):
-            ok = True
-            skip_reason = ""
-        elif isinstance(raw_outcome, RetryLaterOutcome):
-            ok = False
-            skip_reason = raw_outcome.on_change or ""
-        elif isinstance(raw_outcome, WaitingOutcome):
-            ok = False
-            skip_reason = raw_outcome.external_condition or ""
         else:
-            ok = bool(raw_outcome)
-            skip_reason = "" if ok else str(raw_outcome)
+            ok = isinstance(raw_outcome, ResolvedOutcome)
+            try:
+                skip_reason = "" if ok else stop_resolution_outcome_reason(raw_outcome)  # type: ignore[arg-type]
+            except Exception:
+                skip_reason = str(raw_outcome)
     except Exception as exc:
         ff_failed = True
         skip_reason = f"fast-forward raised: {exc}"

@@ -78,6 +78,16 @@ DEAD_SIGNAL = TypedSignal(
     provider_originated=True,
     agent_initiated=True,
 )
+MISSING_CREDENTIALS_SIGNAL = TypedSignal(
+    name="MissingCredentialsError",
+    provider_originated=True,
+    agent_initiated=True,
+)
+BROKEN_AGENT_SIGNAL = TypedSignal(
+    name="BrokenAgentExitError",
+    provider_originated=True,
+    agent_initiated=True,
+)
 
 _BENCH_BACKOFF = 15.0
 
@@ -333,6 +343,46 @@ SCENARIOS = (
         ProbeOutcome.PASSED,
         expected_kind="runtime_ended",
         no_ledger_charge=True,
+    ),
+    MatrixScenario(
+        "silent_exit_passing_probe_never_benched",
+        ("AC5",),
+        (MatrixScenario.Script(facts=termination_facts(reported=0), returncode=0),),
+        ProbeOutcome.PASSED,
+        expected_kind="unknown",
+        no_ledger_charge=True,
+    ),
+    MatrixScenario(
+        "typed_signal_missing_credentials_online",
+        ("AC10", "AC16"),
+        (MatrixScenario.Script(typed_signal=MISSING_CREDENTIALS_SIGNAL),),
+        ProbeOutcome.PASSED,
+        connectivity=ConnectivityState.ONLINE,
+        expected_kind="agent_dead",
+    ),
+    MatrixScenario(
+        "typed_signal_missing_credentials_offline",
+        ("AC10", "AC16"),
+        (MatrixScenario.Script(typed_signal=MISSING_CREDENTIALS_SIGNAL),),
+        ProbeOutcome.PASSED,
+        connectivity=ConnectivityState.OFFLINE,
+        expected_kind="agent_dead",
+    ),
+    MatrixScenario(
+        "typed_signal_broken_agent_online",
+        ("AC10", "AC16"),
+        (MatrixScenario.Script(typed_signal=BROKEN_AGENT_SIGNAL),),
+        ProbeOutcome.PASSED,
+        connectivity=ConnectivityState.ONLINE,
+        expected_kind="agent_dead",
+    ),
+    MatrixScenario(
+        "typed_signal_broken_agent_offline",
+        ("AC10", "AC16"),
+        (MatrixScenario.Script(typed_signal=BROKEN_AGENT_SIGNAL),),
+        ProbeOutcome.PASSED,
+        connectivity=ConnectivityState.OFFLINE,
+        expected_kind="agent_dead",
     ),
     MatrixScenario(
         "typed_signal_bench_online",

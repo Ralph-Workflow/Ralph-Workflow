@@ -21,6 +21,7 @@ from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 
@@ -62,7 +63,9 @@ def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None
     monkeypatch.setattr(auto_integrate_ff, "compare_and_swap_branch", cas)
 
     assert target == "main"
-    assert auto_integrate_ff.fast_forward_target(root, target, "feature-head") == (True, "")
+    assert isinstance(
+        auto_integrate_ff.fast_forward_target(root, target, "feature-head"), ResolvedOutcome
+    )
     assert worktree_ff.call_args.args == (root, "feature-head")
     cas.assert_not_called()
 
@@ -76,15 +79,15 @@ def test_refused_ff_only_leaves_ref_untouched_and_records_loud_skip(
     cas = MagicMock(return_value=True)
     monkeypatch.setattr(auto_integrate_ff, "compare_and_swap_branch", cas)
 
-    landed, reason = auto_integrate_ff.fast_forward_target(root, "main", "feature-head")
-    assert landed is False, (
+    outcome = auto_integrate_ff.fast_forward_target(root, "main", "feature-head")
+    assert isinstance(outcome, RetryLaterOutcome), (
         "AC-10/E2: a refused merge --ff-only on a checked-out target "
         "MUST NOT advance the shared ref -- the previous CAS fallback "
         "silently desynced the worktree's index and working tree"
     )
-    assert reason == auto_integrate_ff._TARGET_CHECKED_OUT_REFUSED, (
+    assert outcome.on_change == auto_integrate_ff._TARGET_CHECKED_OUT_REFUSED, (
         f"AC-08/AC-10: the refusal reason must name merge --ff-only and "
-        f"the checked-out sibling worktree, got {reason!r}"
+        f"the checked-out sibling worktree, got {outcome.on_change!r}"
     )
     cas.assert_not_called()
 

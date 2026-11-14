@@ -188,6 +188,7 @@ class _ProductionGitOps:
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
     ) -> StopResolutionOutcome:
         from ralph.pipeline.auto_integrate_ff import fast_forward_target
+        from ralph.pipeline.resolution_outcome import stop_resolution_outcome_reason
 
         outcome = fast_forward_target(
             root,
@@ -196,8 +197,9 @@ class _ProductionGitOps:
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=on_reclaimed,
         )
-        ok, reason = outcome
-        return bool(ok), str(reason)
+        if hasattr(outcome, "succeeded") and bool(outcome.succeeded):
+            return True, ""
+        return False, stop_resolution_outcome_reason(outcome)
 
     def land_feature(
         self,

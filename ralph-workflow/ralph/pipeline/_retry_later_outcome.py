@@ -9,7 +9,9 @@ __all__ = ["RetryLaterOutcome"]
 class RetryLaterOutcome:
     until: float | None = None
     on_change: str | None = None
+    succeeded: bool = False
+    reason: object = None
+    unresolved_paths: tuple[str, ...] = ()
 
-    def __post_init__(self) -> None:
-        if (self.until is None) == (self.on_change is None):
-            raise ValueError("RetryLaterOutcome requires exactly one of until or on_change")
+    def __bool__(self) -> bool:
+        return False

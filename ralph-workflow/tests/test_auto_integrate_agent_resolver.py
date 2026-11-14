@@ -9,6 +9,12 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_agent as resolver_module
+from ralph.pipeline.resolution_outcome import (
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+)
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -56,13 +62,16 @@ def _build_resolver(
 
 
 def _install_pipeline_spy(
-    monkeypatch: pytest.MonkeyPatch, *, result: bool = True
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    result: StopResolutionOutcome | None = None,
 ) -> list[dict[str, object]]:
     calls: list[dict[str, object]] = []
+    effective_result = result if result is not None else ResolvedOutcome()
 
-    def _fake_pipeline(**kwargs: object) -> bool:
+    def _fake_pipeline(**kwargs: object) -> StopResolutionOutcome:
         calls.append(kwargs)
-        return result
+        return effective_result
 
     monkeypatch.setattr(resolver_module, "run_conflict_resolution_pipeline", _fake_pipeline)
     return calls
@@ -74,7 +83,7 @@ def test_resolver_delegates_to_the_conflict_resolution_pipeline(
     calls = _install_pipeline_spy(monkeypatch)
     resolver, registry, _display = _build_resolver(agent_config=object())
 
-    assert resolver(tmp_path, "main") is True
+    assert isinstance(resolver(tmp_path, "main"), ResolvedOutcome)
 
     assert len(calls) == 1
     kwargs = calls[0]
@@ -90,10 +99,10 @@ def test_resolver_delegates_to_the_conflict_resolution_pipeline(
 def test_resolver_reports_the_pipeline_verdict(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_pipeline_spy(monkeypatch, result=False)
+    _install_pipeline_spy(monkeypatch, result=NextStrategyOutcome("completion_in_place"))
     resolver, _registry, _display = _build_resolver(agent_config=object())
 
-    assert resolver(tmp_path, "main") is False
+    assert isinstance(resolver(tmp_path, "main"), NextStrategyOutcome)
 
 
 def test_resolver_declines_without_pipeline_deps(
@@ -102,7 +111,7 @@ def test_resolver_declines_without_pipeline_deps(
     calls = _install_pipeline_spy(monkeypatch)
     resolver, _registry, _display = _build_resolver(agent_config=object(), pipeline_deps=None)
 
-    assert resolver(tmp_path, "main") is False
+    assert isinstance(resolver(tmp_path, "main"), NextStrategyOutcome)
     assert calls == []
 
 
@@ -112,7 +121,7 @@ def test_resolver_declines_without_workspace_scope(
     calls = _install_pipeline_spy(monkeypatch)
     resolver, _registry, _display = _build_resolver(agent_config=object(), workspace_scope=None)
 
-    assert resolver(tmp_path, "main") is False
+    assert isinstance(resolver(tmp_path, "main"), NextStrategyOutcome)
     assert calls == []
 
 
@@ -123,7 +132,7 @@ def test_resolver_declines_when_no_chain_agent_is_installed(
     calls = _install_pipeline_spy(monkeypatch)
     resolver, _registry, _display = _build_resolver(agent_config=None)
 
-    assert resolver(tmp_path, "main") is False
+    assert isinstance(resolver(tmp_path, "main"), NextStrategyOutcome)
     assert calls == []
 
 
@@ -131,7 +140,7 @@ def test_resolver_contains_a_pipeline_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
 
-    def _boom(**_kwargs: object) -> bool:
+    def _boom(**_kwargs: object) -> StopResolutionOutcome:
         raise RuntimeError("pipeline exploded")
 
     monkeypatch.setattr(resolver_module, "run_conflict_resolution_pipeline", _boom)
@@ -141,16 +150,16 @@ def test_resolver_contains_a_pipeline_exception(
         resolved = resolver(tmp_path, "main")
     except Exception as exc:
         raise AssertionError(f"resolver must not raise: {exc}") from exc
-    assert resolved is False
+    assert isinstance(resolved, UnknownOutcome)
 
 
 def test_resolver_issues_no_git_command_itself(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_pipeline_spy(monkeypatch, result=False)
+    _install_pipeline_spy(monkeypatch, result=NextStrategyOutcome("completion_in_place"))
     run_git = MagicMock()
     monkeypatch.setattr("ralph.git.subprocess_runner.run_git", run_git, raising=True)
     resolver, _registry, _display = _build_resolver(agent_config=object())
 
-    assert resolver(tmp_path, "main") is False
+    assert isinstance(resolver(tmp_path, "main"), NextStrategyOutcome)
     run_git.assert_not_called()

@@ -24,6 +24,7 @@ __all__ = [
     "UnknownOutcome",
     "WaitingOutcome",
     "assert_never",
+    "stop_resolution_outcome_reason",
 ]
 
 
@@ -59,3 +60,21 @@ ResolutionOutcomeUnion = (
 )
 
 type StopResolutionOutcome = ResolutionOutcomeUnion
+
+
+def stop_resolution_outcome_reason(outcome: StopResolutionOutcome) -> str:
+    match outcome:
+        case ResolvedOutcome():
+            return ""
+        case WaitingOutcome(external_condition=cond):
+            return cond
+        case RetryLaterOutcome(on_change=change):
+            return change or ""
+        case NextStrategyOutcome(strategy=strat):
+            return strat
+        case ConfigFailureOutcome(parse_error=err):
+            return str(err)
+        case UnknownOutcome(error=err):
+            return str(err)
+        case _ as unreachable:
+            assert_never(unreachable)

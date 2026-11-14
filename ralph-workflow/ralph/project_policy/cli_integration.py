@@ -10,6 +10,7 @@ from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
 from ralph.agents.timeout_clock import SystemClock
+from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
@@ -340,11 +341,6 @@ def _make_production_invoke_agent(
                         policy_bundle=load_result.policy_bundle,
                     )
                 except Exception as exc:
-                    classified = controller.classify_conflict_attempt(
-                        exc,
-                        agent=agent_name,
-                        phase=phase,
-                    )
                     controller.handle(
                         PipelineState(
                             phase=phase,
@@ -361,7 +357,6 @@ def _make_production_invoke_agent(
                         FailureContext(
                             phase=phase,
                             agent=agent_name,
-                            classified_failure=classified,
                         ),
                     )
                     logger.warning(
@@ -794,10 +789,14 @@ def _run_policy_readiness(
     )
 
 
+make_production_invoke_agent = _make_production_invoke_agent
+
 __all__ = [
     "_EXIT_PREFLIGHT",
     "_EXIT_SUCCESS",
     "EmitFn",
+    "LoadResult",
     "PolicyMode",
+    "make_production_invoke_agent",
     "run_project_policy_readiness",
 ]

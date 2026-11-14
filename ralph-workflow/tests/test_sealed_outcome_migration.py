@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 
-from ralph.pipeline.conflict_resolution import _driver_events, attempt_fault
+from ralph.pipeline.conflict_resolution import announce_declared_decisions, attempt_fault
 
 
 def test_sealed_outcome_migration_regression_attempt_fault_rejects_text_evidence() -> None:
@@ -15,6 +15,6 @@ def test_sealed_outcome_migration_regression_attempt_fault_rejects_text_evidence
 
 
 def test_sealed_outcome_migration_regression_declared_decisions_requires_status() -> None:
-    signature = inspect.signature(_driver_events.announce_declared_decisions)
+    signature = inspect.signature(announce_declared_decisions)
 
     assert signature.parameters["status"].annotation == "IntegrationStatus | None"

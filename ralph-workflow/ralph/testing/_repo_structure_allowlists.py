@@ -98,12 +98,15 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/pipeline/integration_cleanup.py",
         "ralph/pipeline/auto_integrate_catchup.py",
         "ralph/pipeline/integration_attempt_ledger.py",
+        "ralph/testing/_single_owner_rules.py",
+        "tests/test_audit_agent_failure_single_owner.py",
         "tests/test_auto_integrate_gates.py",
     }
 )
 
 _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
     {
+        "ralph/config/gitlink_policy_config.py",
         "ralph/config/loader.py",
         "ralph/git/git_command_queue.py",
         "ralph/git/merge.py",

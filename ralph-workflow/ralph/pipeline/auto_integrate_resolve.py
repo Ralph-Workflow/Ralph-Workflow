@@ -269,8 +269,8 @@ def _resolver_exception_result(
                 reason=reason,
                 failure_cause=ResolutionFailureCause.AGENT_FAILURE,
             )
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            raise AssertionError(f"unexpected outcome: {outcome!r}")
 
 
 def _terminal_reason(
@@ -358,8 +358,8 @@ def _handle_sealed_outcome(
                 reason=f"unclassified resolution failure; advancing strategy: {error}",
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            raise AssertionError(f"unexpected outcome: {outcome!r}")
 
 
 def handle_unsuccessful_resolution(
@@ -427,8 +427,8 @@ def handle_unsuccessful_resolution(
                 reason=f"fix {file} then run ralph --check-config",
                 failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
             )
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            raise AssertionError(f"unexpected outcome: {outcome!r}")
 
 
 _handle_unsuccessful_resolution = handle_unsuccessful_resolution

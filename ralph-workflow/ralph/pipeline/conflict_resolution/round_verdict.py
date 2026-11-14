@@ -14,7 +14,15 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,7 +38,21 @@ __all__ = [
 ]
 
 
-def resolution_outcome(session: ResolutionSession, succeeded: bool) -> ResolutionOutcome:
+def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
+    from dataclasses import replace
+
+    from ralph.pipeline.resolution_outcome_producer import (
+        classify_resolution_failure,
+        stop_resolution_outcome_from_legacy,
+    )
+
+    unresolved = tuple(session.unresolved_paths or ())
+    if succeeded:
+        return ResolvedOutcome(
+            succeeded=True,
+            reason=None,
+            unresolved_paths=unresolved,
+        )
     cause = ResolutionFailureCause.NONE
     if not succeeded:
         if session.last_failure_cause != ResolutionFailureCause.NONE:
@@ -44,15 +66,31 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> Resolutio
         if not succeeded and session.operator_action_message
         else (session.exhaustion_reason if not succeeded else None)
     )
-    return ResolutionOutcome(
-        succeeded=succeeded,
-        reason=None if succeeded else session.terminal_reason,
-        duration_seconds=session.last_duration_seconds or 0.0,
-        last_activity_kind=session.last_activity_kind,
-        last_activity_at=session.last_activity_at,
-        unresolved_paths=session.unresolved_paths,
+    raw_outcome = classify_resolution_failure(
+        terminal_reason=session.terminal_reason,
         failure_cause=cause,
-        exhaustion_message=ex_msg,
+        reason=ex_msg,
+        paths=session.unresolved_paths,
+    )
+    if isinstance(
+        raw_outcome,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
+        outcome = raw_outcome
+    else:
+        outcome = stop_resolution_outcome_from_legacy(raw_outcome)
+    return replace(
+        outcome,
+        succeeded=False,
+        reason=session.terminal_reason,
+        unresolved_paths=unresolved,
     )
 
 

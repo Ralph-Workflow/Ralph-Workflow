@@ -36,7 +36,6 @@ def run_conflict_resolution_pipeline(
     strategy_history: tuple[str, ...] = (),
 ) -> bool:
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
-    from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
     outcome = run_conflict_resolution_outcome(
         root=root,
@@ -52,7 +51,7 @@ def run_conflict_resolution_pipeline(
         session=session,
         strategy_history=strategy_history,
     )
-    return isinstance(outcome, ResolvedOutcome)
+    return outcome if getattr(outcome, "succeeded", False) else False  # type: ignore[return-value]
 
 
 def run_rebase_conflict_resolution_pipeline(

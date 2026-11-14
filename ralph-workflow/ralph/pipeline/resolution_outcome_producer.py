@@ -56,19 +56,17 @@ def classify_resolution_failure(
     if config_error is not None:
         typed = config_failure_from_exception(config_error)
         if typed is not None:
-            return typed
+            return ConfigFailureOutcome(file=typed.file, parse_error=typed.parse_error)
     if failure_cause is ResolutionFailureCause.CONFIG_FAILURE:
         return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
     if terminal_reason is ResolutionTerminationReason.OUT_OF_REACH:
         return NextStrategyOutcome(strategy="completion_in_place")
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
+        return RetryLaterOutcome(on_change="resolver_agent_eligibility_changed")
     return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
 
 
-def stop_resolution_outcome_from_legacy(
-    outcome: ResolutionOutcomeType | StopResolutionOutcome,
-) -> StopResolutionOutcome:
+def stop_resolution_outcome_from_legacy(outcome: object) -> StopResolutionOutcome:
     if isinstance(
         outcome,
         (
@@ -99,5 +97,5 @@ def stop_resolution_outcome_from_legacy(
             return NextStrategyOutcome(strategy=f"resolver agents exhausted: {', '.join(agents)}")
         case ConfigFailure(file=file, parse_error=parse_error):
             return ConfigFailureOutcome(file=file, parse_error=str(parse_error))
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            raise AssertionError(f"unexpected outcome: {outcome!r}")

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.config.models import UnifiedConfig
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import (
@@ -250,8 +251,10 @@ def resolve_rebase_in_progress(
     *,
     session: ResolutionSession | None = None,
 ) -> StopResolutionOutcome:
-    from ralph.config.models import UnifiedConfig
     from ralph.pipeline._stop_resolution_entry import production_rebase_runner
+    from ralph.pipeline.conflict_resolution.rebase_loop import (
+        resolution_session_from_config,
+    )
 
     runner = production_rebase_runner()
     resolved_session = (
@@ -274,15 +277,11 @@ def _resolve_rebase_stop(
 ) -> StopResolutionOutcome:
     if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
         session = resolution_session_from_config(config) if config is not None else None
-        raw_res: object = None
         try:
-            raw_res = resolve_rebase_in_progress(owner, target, resolver, session=session)
+            raw_outcome = resolve_rebase_in_progress(owner, target, resolver, session=session)
         except TypeError:
-            fallback_fn = cast(
-                "Callable[[Path, str, RebaseStopResolver], object]",
-                resolve_rebase_in_progress,
-            )
-            raw_res = fallback_fn(owner, target, resolver)
+            raw_outcome = resolve_rebase_in_progress(owner, target, resolver)
+        raw_res: object = raw_outcome
         if isinstance(
             raw_res,
             (
@@ -295,7 +294,7 @@ def _resolve_rebase_stop(
             ),
         ):
             return raw_res
-        if bool(raw_res):
+        if raw_res:
             return ResolvedOutcome()
         return RetryLaterOutcome(on_change="rebase resolution state changes")
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution

@@ -446,7 +446,7 @@ tests/test_conflict_resolution_futile_loop.py|9,0,2
 tests/test_conflict_resolution_lifecycle.py|0,2,0
 tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0
-tests/test_conflict_resolution_phase_parity.py|10,1,2
+tests/test_conflict_resolution_phase_parity.py|8,1,2
 tests/test_conflict_resolution_pipeline.py|8,1,1
 tests/test_conflict_resolution_pipeline_outcome.py|5,1,0
 tests/test_conflict_resolution_rebase_loop.py|16,0,9
@@ -471,7 +471,7 @@ tests/test_display_lifecycle_label_taxonomy.py|0,1,1
 tests/test_display_no_module_globals_injected_display_context_is_honored.py|0,2,1
 tests/test_display_phase_lifecycle_run_completion_model.py|0,1,0
 tests/test_display_visual_floor.py|0,5,22
-tests/test_driver_events.py|0,3,2
+tests/test_driver_events.py|0,2,2
 tests/test_evidence_provenance_lattice.py|1,9,1
 tests/test_exec_job_integration.py|0,8,3
 tests/test_exec_liveness_evidence_window.py|0,2,3

@@ -4,7 +4,6 @@ import pytest
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
-from ralph.cli.commands._load_result import _LoadResult
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
@@ -12,13 +11,14 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import cli_integration, remediation
+from ralph.project_policy.cli_integration import LoadResult
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.workspace.scope import WorkspaceScope
 from tests.project_policy.policy_corpus import policy_invocation_bundle
 
 
-def _load_result() -> _LoadResult:
-    return _LoadResult(
+def _load_result() -> LoadResult:
+    return LoadResult(
         config=UnifiedConfig(),
         workspace_scope=WorkspaceScope(root="/test/project", allowed_roots=["/test/project"]),
         initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
@@ -43,7 +43,7 @@ def test_real_policy_invoker_waits_for_owner_cooldown_across_rounds(
     workspace_scope = load_result.workspace_scope
     assert workspace_scope is not None
     display_context = make_display_context()
-    invoke = cli_integration._make_production_invoke_agent(
+    invoke = cli_integration.make_production_invoke_agent(
         load_result,
         PipelineDeps(display_context=display_context),
         workspace_scope,
@@ -78,7 +78,7 @@ def test_real_policy_invoker_routes_caught_launch_failure_through_owner(
     workspace_scope = load_result.workspace_scope
     assert workspace_scope is not None
     display_context = make_display_context()
-    invoke = cli_integration._make_production_invoke_agent(
+    invoke = cli_integration.make_production_invoke_agent(
         load_result,
         PipelineDeps(display_context=display_context),
         workspace_scope,

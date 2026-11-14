@@ -77,9 +77,9 @@ class FakeAgentRunner:
         *,
         session: ResolutionSession | None = None,
     ) -> bool:
-        from ralph.pipeline._stop_resolution_entry import production_rebase_runner
+        from ralph.pipeline.integration_actions import default_agent_runner
 
-        return production_rebase_runner().resolve_rebase(root, target, self, session=session)
+        return default_agent_runner().resolve_rebase(root, target, self, session=session)
 
     def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
         self.launches += 1

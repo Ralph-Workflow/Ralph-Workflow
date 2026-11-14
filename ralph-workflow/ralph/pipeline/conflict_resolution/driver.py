@@ -112,7 +112,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-type ResolutionInvoker = Callable[[str, "Path", int], StopResolutionOutcome]
+type ResolutionInvoker = Callable[[str, "Path", int], object]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -446,7 +446,11 @@ def _run_rounds(
     is_rotation = bool(strategy_history)
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
     if pipeline_deps is not None and session.unavailability_store is None:
-        session.unavailability_store = pipeline_deps.unavailability_store
+        store: object = getattr(pipeline_deps, "unavailability_store", None)
+        from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
+
+        if isinstance(store, UnavailabilityStore):
+            session.unavailability_store = store
     ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps, config=config)
     if session.workspace is None:
         ws_obj: object = getattr(effective_scope, "workspace", None)
@@ -455,12 +459,18 @@ def _run_rounds(
         if isinstance(ws_obj, Workspace):
             session.workspace = ws_obj
         else:
-            from ralph.workspace.fs import FsWorkspace
+            ws_root: object = getattr(effective_scope, "root", None)
+            from pathlib import Path
 
-            session.workspace = FsWorkspace(
-                effective_scope.root,
-                allowed_roots=effective_scope.allowed_roots,
-            )
+            if isinstance(ws_root, Path):
+                from ralph.workspace.fs import FsWorkspace
+
+                allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
+                allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
+                session.workspace = FsWorkspace(
+                    ws_root,
+                    allowed_roots=allowed,
+                )
     if session.workspace_probe is None:
         rc = session.recovery_controller
         if rc is not None and rc.workspace_probe is not None:

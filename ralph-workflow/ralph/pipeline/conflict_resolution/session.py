@@ -15,9 +15,10 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
 )
 from ralph.pipeline.attempt_runner import (
+    build_entry_point_recovery_controller,
     run_agent_attempt,
 )
-from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -223,47 +224,51 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    from ralph.pipeline.attempt_runner import seamed_dead_agent_probe_runner
-    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-    from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
-
-    injected_invoke = pipeline_deps.invoke_agent if pipeline_deps is not None else None
-    probe_runner = (
-        seamed_dead_agent_probe_runner(config, injected_invoke)
-        if injected_invoke is not None
-        else production_dead_agent_probe_runner(config)
-    )
+    from ralph.agents.timeout_clock import SystemClock
+    from ralph.recovery.controller import RecoveryController
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
-        if (
-            session.recovery_controller._dead_agent_probe_runner is None
-            and probe_runner is not None
-        ):
-            session.recovery_controller._dead_agent_probe_runner = probe_runner
         return session.recovery_controller
-    if pipeline_deps is not None and isinstance(
-        pipeline_deps.recovery_controller, RecoveryController
-    ):
-        controller = pipeline_deps.recovery_controller
-        if controller._dead_agent_probe_runner is None and probe_runner is not None:
-            controller._dead_agent_probe_runner = probe_runner
+    deps_rc = (
+        pipeline_deps.recovery_controller
+        if pipeline_deps is not None and hasattr(pipeline_deps, "recovery_controller")
+        else None
+    )
+    if isinstance(deps_rc, RecoveryController):
+        controller = deps_rc
         if session is not None:
             session.recovery_controller = controller
             session.ledger = controller.ledger
         return controller
     store = session.unavailability_store if session is not None else None
-    ledger = session.ledger if session is not None else None
-    clock = None
-    if ledger is not None and hasattr(ledger, "_clock"):
-        clock = ledger._clock
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            ledger=ledger,
-            clock=clock,
-            unavailability_store=store,
-            policy_bundle=policy_bundle,
-            dead_agent_probe_runner=probe_runner,
-        )
+    ledger = (
+        pipeline_deps.ledger
+        if pipeline_deps is not None
+        and hasattr(pipeline_deps, "ledger")
+        and pipeline_deps.ledger is not None
+        else (session.ledger if session is not None else None)
+    )
+    clock = (
+        pipeline_deps.recovery_clock
+        if pipeline_deps is not None
+        and hasattr(pipeline_deps, "recovery_clock")
+        and pipeline_deps.recovery_clock is not None
+        else SystemClock()
+    )
+    deps = AttemptRunnerDeps(
+        clock=clock,
+        invoke=PRODUCTION_INVOKE,
+        probe_runner=None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+    controller = build_entry_point_recovery_controller(
+        AgentEntryPoint.CONFLICT_RESOLUTION,
+        config=config,
+        policy_bundle=policy_bundle,
+        deps=deps,
+        ledger=ledger,
+        unavailability_store=store,
     )
     if session is not None:
         session.recovery_controller = controller

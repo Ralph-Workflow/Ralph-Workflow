@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.integration_observation import InProgressKind
 
-from ralph.pipeline._rung_post_condition import RungPostCondition
 
 __all__ = [
     "EnvironmentFailure",

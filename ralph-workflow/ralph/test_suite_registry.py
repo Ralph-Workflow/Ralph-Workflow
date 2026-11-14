@@ -99,6 +99,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/recovery/test_canary_probe_pty_launch.py",
     "tests/recovery/test_canary_probe_seam_integration.py",
     "tests/agents/invoke/test_pending_subagents_turn_end.py",
+    "tests/agents/invoke/test_pending_subagent_completion.py",
     "tests/scenarios/test_auto_integrate_symptom_matrix.py",
     "tests/scenarios/test_lifecycle_relations.py",
     "tests/scenarios/test_lifecycle_work_shapes.py",

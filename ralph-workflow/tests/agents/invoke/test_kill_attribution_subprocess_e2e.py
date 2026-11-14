@@ -121,3 +121,6 @@ def test_zero_exit_with_non_quiescing_descendant_attributes_post_exit_watchdog(
     termination = facts.termination
     assert termination is not None
     assert termination.issuer is TerminationIssuer.POST_EXIT_WATCHDOG
+    assert termination.observed_returncode == 0
+    assert termination.reported_returncode == 0
+    assert has_return_code_discrepancy(termination) is False

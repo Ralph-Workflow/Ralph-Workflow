@@ -4,8 +4,13 @@ from typing import TYPE_CHECKING
 
 import ralph.pipeline.conflict_resolution._driver_events as driver_events_module
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.pipeline._integration_status import IntegrationStatus
-from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline import IntegrationStatus
+from ralph.pipeline.conflict_resolution import (
+    ResolutionTerminationReason,
+)
+from ralph.pipeline.conflict_resolution import (
+    driver as driver_module,
+)
 from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions,
     emit_attempt_outcome,

@@ -3333,21 +3333,9 @@ def ledger_requires_intervention(state: PipelineState, controller: RecoveryContr
         else controller.agents_for_phase(target_phase)
     )
     ledger = controller.ledger
-    effective_agents: tuple[str, ...] = agents or (
-        ledger.registered_agents(target_phase) if ledger is not None else ()
-    )
-    if effective_agents:
-        from ralph.recovery.agent_failure_ledger import Cooldown, Spent, Unavailable
-
-        statuses = tuple(
-            ledger.agent_eligibility(target_phase, agent) for agent in effective_agents
-        )
-        if any(isinstance(status, Cooldown) for status in statuses):
-            return False
-        if all(isinstance(status, (Spent, Unavailable)) for status in statuses):
-            return True
-        if not ledger.any_eligible(target_phase, effective_agents):
-            return True
+    decision = ledger.requires_intervention(target_phase, agents, snapshot=state.ledger_snapshot)
+    if decision is not None:
+        return decision
     return (
         state.recovery_epoch >= _MAX_RECOVERY_EPOCHS
         or state.last_execution_result_status == "failed"

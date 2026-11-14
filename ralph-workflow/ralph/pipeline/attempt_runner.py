@@ -134,6 +134,7 @@ def build_entry_point_recovery_controller(
     config: UnifiedConfig | None,
     policy_bundle: PolicyBundle | None,
     deps: AttemptRunnerDeps,
+    ledger: AgentFailureLedger | None = None,
     ledger_snapshot: Mapping[str, object] | None = None,
     false_bench_snapshot: Mapping[str, object] | None = None,
     unavailability_store: UnavailabilityStore | None = None,
@@ -142,10 +143,14 @@ def build_entry_point_recovery_controller(
     agent_max_total_unproductive: int | None = None,
 ) -> RecoveryController:
     del entry_point
-    ledger = (
-        AgentFailureLedger.from_snapshot(ledger_snapshot, clock=deps.clock)
-        if ledger_snapshot is not None
-        else None
+    effective_ledger = (
+        ledger
+        if ledger is not None
+        else (
+            AgentFailureLedger.from_snapshot(ledger_snapshot, clock=deps.clock)
+            if ledger_snapshot is not None
+            else None
+        )
     )
     probe_runner = deps.probe_runner
     if probe_runner is None:
@@ -154,7 +159,7 @@ def build_entry_point_recovery_controller(
         cycle_cap=cycle_cap if cycle_cap is not None else _DEFAULT_CYCLE_CAP,
         policy_bundle=policy_bundle,
         clock=deps.clock,
-        ledger=ledger,
+        ledger=effective_ledger,
         workspace_probe=deps.workspace_probe,
         unavailability_store=unavailability_store,
         dead_agent_probe_runner=probe_runner,

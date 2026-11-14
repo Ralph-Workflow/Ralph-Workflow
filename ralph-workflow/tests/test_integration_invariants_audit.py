@@ -75,6 +75,7 @@ def _clean_tree(tmp_path: Path) -> Path:
         "ralph/pipeline/conflict_resolution/deterministic_resolution.py",
         "from ralph.pipeline.conflict_resolution.gitlink_policy import choose_gitlink\n",
     )
+
     _write(tmp_path, "ralph/process/__init__.py", "")
     _write(tmp_path, "ralph/process/manager/__init__.py", "")
     _write(tmp_path, "ralph/process/manager/_process_manager_runtime.py", _OWNER_SOURCE)

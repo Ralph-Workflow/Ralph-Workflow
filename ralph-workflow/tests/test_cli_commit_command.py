@@ -45,7 +45,7 @@ from tests._support.typed_accessors import (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "artifact contract": "commit prompts must name the required commit_message artifact",
-"file split": "public diff regression moved unchanged to a collected sibling module",
+    "file split": "public diff regression moved unchanged to a collected sibling module",
 }
 
 

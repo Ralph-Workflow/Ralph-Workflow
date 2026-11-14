@@ -937,7 +937,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_conflict_resolution_lifecycle.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_liveness_matrix.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_outcome_judging.py` | 5 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
-| `tests/test_conflict_resolution_phase_parity.py` | 10 | 1 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_conflict_resolution_phase_parity.py` | 8 | 1 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_pipeline.py` | 8 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_pipeline_outcome.py` | 5 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_rebase_loop.py` | 16 | 0 | 9 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
@@ -962,7 +962,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_display_no_module_globals_injected_display_context_is_honored.py` | 0 | 2 | 1 | display | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: display public-seam unit |
 | `tests/test_display_phase_lifecycle_run_completion_model.py` | 0 | 1 | 0 | display | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: display public-seam unit |
 | `tests/test_display_visual_floor.py` | 0 | 5 | 22 | display | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: display public-seam unit |
-| `tests/test_driver_events.py` | 0 | 3 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_driver_events.py` | 0 | 2 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_evidence_provenance_lattice.py` | 1 | 9 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_exec_job_integration.py` | 0 | 8 | 3 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_exec_liveness_evidence_window.py` | 0 | 2 | 3 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |

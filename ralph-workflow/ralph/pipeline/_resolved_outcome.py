@@ -7,4 +7,9 @@ __all__ = ["ResolvedOutcome"]
 
 @dataclass(frozen=True, slots=True)
 class ResolvedOutcome:
-    pass
+    succeeded: bool = True
+    reason: object = None
+    unresolved_paths: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        return True
