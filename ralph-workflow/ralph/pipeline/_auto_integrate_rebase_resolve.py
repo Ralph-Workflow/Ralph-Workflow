@@ -159,20 +159,7 @@ def resolve_conflicted_rebase(
             res = outcome
         else:
             raise TypeError("rebase stop resolution returned an invalid result")
-    actual_outcome = res.outcome if hasattr(res, "outcome") else res
-    match actual_outcome:
-        case ResolvedOutcome():
-            resolution_completed = True
-        case (
-            WaitingOutcome()
-            | RetryLaterOutcome()
-            | NextStrategyOutcome()
-            | ConfigFailureOutcome()
-            | UnknownOutcome()
-        ):
-            resolution_completed = False
-        case _:
-            raise AssertionError(f"unexpected outcome: {outcome!r}")
+    resolution_completed = isinstance(res, ResolvedOutcome)
     if resolution_completed and not _merge_mod.set_resolving_rebase(root, False):
         logger.warning(
             "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
@@ -304,22 +291,16 @@ def _rebase_run_result(
                 f"{condition}; resumes when {resumes_when}",
                 failure_cause,
             )
-        case (
-            RetryLater()
-            | RetryLaterOutcome()
-            | WaitingOutcome()
-            | NextStrategyOutcome()
-            | UnknownOutcome()
-        ):
+        case RetryLaterOutcome() | UnknownOutcome():
             return _conflict_run(target, failure_reason, failure_cause)
-        case ConfigFailure(file=file) | ConfigFailureOutcome(file=file):
+        case ConfigFailureOutcome(file=file):
             return _conflict_run(
                 target,
                 f"fix {file} then run ralph --check-config",
                 ResolutionFailureCause.CONFIG_FAILURE,
             )
-        case _:
-            raise AssertionError(f"unexpected outcome: {outcome!r}")
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _outcome_reason(outcome: StopResolutionOutcome) -> str:

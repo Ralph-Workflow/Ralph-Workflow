@@ -5,7 +5,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
@@ -47,9 +47,8 @@ from ralph.pipeline.resolution_outcome import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
-    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"

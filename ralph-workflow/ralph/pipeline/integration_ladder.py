@@ -80,9 +80,6 @@ __all__ = [
     "LadderTransition",
     "LandResult",
     "LandedVerdict",
-    "LastResortAgentPool",
-    "LastResortAgentProof",
-    "LastResortWaitProof",
     "RepointResult",
     "RungPostCondition",
     "adapt_environment_and_retry",
@@ -111,13 +108,13 @@ LAST_RESORT_WAIT_SECONDS: Final[float] = 600.0
 
 
 @dataclass(frozen=True, slots=True)
-class LastResortAgentPool:
+class _LastResortAgentPool:
     phase: str
     agents: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class LastResortAgentProof:
+class _LastResortAgentProof:
     phase: str
     agent: str
     tried: bool
@@ -127,12 +124,12 @@ class LastResortAgentProof:
 
 
 @dataclass(frozen=True, slots=True)
-class LastResortWaitProof:
+class _LastResortWaitProof:
     continuously_unavailable_since_epoch_ms: int | None
     eligible_after_epoch_ms: int
     next_eligible_agent: str | None
     next_eligible_at_ms: int | None
-    agents: tuple[LastResortAgentProof, ...]
+    agents: tuple[_LastResortAgentProof, ...]
     blocking_signature: str
     authorized: bool
 
@@ -712,21 +709,21 @@ def last_resort_wait_proof(
     *,
     ledger: AttemptLedger,
     eligibility: AgentFailureLedger,
-    pools: tuple[LastResortAgentPool, ...],
+    pools: tuple[_LastResortAgentPool, ...],
     blocking_signature: str,
     wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
     epoch_now: Callable[[], float] = time.time,
-) -> LastResortWaitProof:
+) -> _LastResortWaitProof:
     from ralph.recovery.agent_failure_ledger import CoolingDown, Spent
 
     now_ms = int(epoch_now() * 1000)
-    proofs: list[LastResortAgentProof] = []
+    proofs: list[_LastResortAgentProof] = []
     for pool in pools:
         for agent in pool.agents:
             status = eligibility.agent_eligibility(pool.phase, agent)
             if isinstance(status, CoolingDown):
                 proofs.append(
-                    LastResortAgentProof(
+                    _LastResortAgentProof(
                         pool.phase,
                         agent,
                         True,
@@ -737,7 +734,7 @@ def last_resort_wait_proof(
                 )
             elif isinstance(status, Spent):
                 proofs.append(
-                    LastResortAgentProof(
+                    _LastResortAgentProof(
                         pool.phase,
                         agent,
                         True,
@@ -751,7 +748,7 @@ def last_resort_wait_proof(
                     None if status.is_eligible else eligibility.failure_reason(pool.phase, agent)
                 )
                 proofs.append(
-                    LastResortAgentProof(
+                    _LastResortAgentProof(
                         pool.phase,
                         agent,
                         False,
@@ -781,7 +778,7 @@ def last_resort_wait_proof(
         ledger.record_last_resort_wait(json.dumps(cleared_payload, sort_keys=True))
     wait_ms = max(0, int(wait_seconds * 1000))
     authorized = since_ms is not None and now_ms - since_ms > wait_ms
-    next_proof: LastResortAgentProof | None = None
+    next_proof: _LastResortAgentProof | None = None
     for candidate in proofs:
         candidate_until = candidate.cooldown_until_ms
         if candidate_until is None:
@@ -789,7 +786,7 @@ def last_resort_wait_proof(
         current_until = None if next_proof is None else next_proof.cooldown_until_ms
         if current_until is None or candidate_until < current_until:
             next_proof = candidate
-    proof = LastResortWaitProof(
+    proof = _LastResortWaitProof(
         continuously_unavailable_since_epoch_ms=since_ms,
         eligible_after_epoch_ms=(since_ms + wait_ms) if since_ms is not None else now_ms,
         next_eligible_agent=None if next_proof is None else next_proof.agent,
@@ -814,7 +811,7 @@ def _last_resort_agent_wait(
     rung: CleanupLadderRung,
     key: str,
     agent_eligibility: AgentFailureLedger | None,
-    agent_pools: tuple[LastResortAgentPool, ...],
+    agent_pools: tuple[_LastResortAgentPool, ...],
     fresh_signature: str,
     wait_seconds: float,
     epoch_now: Callable[[], float],
@@ -904,7 +901,7 @@ def last_resort_recovery(
     budget: int = LADDER_ATTEMPT_BUDGET,
     terminal_when_disabled: bool = True,
     agent_eligibility: AgentFailureLedger | None = None,
-    agent_pools: tuple[LastResortAgentPool, ...] = (),
+    agent_pools: tuple[_LastResortAgentPool, ...] = (),
     wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
     epoch_now: Callable[[], float] = time.time,
 ) -> LadderStepResult:
@@ -1136,7 +1133,7 @@ def run_ladder_rung(
     shared_vendor_pointer: str | None = None,
     shared_conflicting_paths: tuple[str, ...] | None = None,
     agent_eligibility: AgentFailureLedger | None = None,
-    agent_pools: tuple[LastResortAgentPool, ...] = (),
+    agent_pools: tuple[_LastResortAgentPool, ...] = (),
     last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
     epoch_now: Callable[[], float] = time.time,
 ) -> LadderStepResult:
@@ -1147,7 +1144,11 @@ def run_ladder_rung(
     probe = env if env is not None else default_environment_probe()
     ladder_clock = clock if clock is not None else current_clock()
     ralph_state = state_dir if state_dir is not None else Path(root) / ".agent"
-    target_tip = shared_target_tip or expected_target_sha or plumbing.target_sha(root, target)
+    target_tip = (
+        shared_target_tip
+        or expected_target_sha
+        or (plumbing.target_sha(root, target) if (feature_tip or paths or shared_conflicting_paths) else None)
+    )
     shared_key: str | None = None
     if target_tip is not None:
         identity = shared_rung_result_key(

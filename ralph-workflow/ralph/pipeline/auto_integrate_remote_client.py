@@ -358,7 +358,7 @@ def _fast_forward_local_target_to_remote(
     remote: str,
     config: UnifiedConfig | None,
 ) -> None:
-    outcome = fast_forward_target_to_remote(
+    outcome: object = fast_forward_target_to_remote(
         repo_root,
         target,
         remote,

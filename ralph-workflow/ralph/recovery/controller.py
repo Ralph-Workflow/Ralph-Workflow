@@ -1414,6 +1414,12 @@ class RecoveryController:
     def _now_ms(self) -> int:
         return int(self._clock.monotonic() * 1000)
 
+    def prune_expired(self, *, now_ms: int | None = None) -> None:
+        effective_now_ms = now_ms if now_ms is not None else self._now_ms()
+        self._unavailability_tracker.prune_expired(now_ms=effective_now_ms)
+        if self._ledger is not None:
+            self._ledger.prune_expired(now_ms=effective_now_ms)
+
     def _tracker_windows(self, *, now_ms: int) -> dict[str, tuple[int, str]]:
         snap = self._unavailability_tracker.snapshot()
         timeouts = snap.get("unavailable_timeouts", {})

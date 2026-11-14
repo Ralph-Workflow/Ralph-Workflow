@@ -230,6 +230,7 @@ def ensure_session_controller(
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
     from ralph.agents.timeout_clock import SystemClock
+    from ralph.pipeline.integration_actions import current_clock
     from ralph.recovery.controller import RecoveryController
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
@@ -255,10 +256,12 @@ def ensure_session_controller(
     )
     clock = (
         pipeline_deps.recovery_clock
-        if pipeline_deps is not None
-        and hasattr(pipeline_deps, "recovery_clock")
-        and pipeline_deps.recovery_clock is not None
-        else SystemClock()
+        if pipeline_deps is not None and pipeline_deps.recovery_clock is not None
+        else (
+            session.ledger.clock
+            if session is not None and session.ledger is not None and getattr(session.ledger, "clock", None) is not None
+            else current_clock()
+        )
     )
     deps = AttemptRunnerDeps(
         clock=clock,
@@ -345,15 +348,8 @@ def classify_failed_resolution_attempt(
 
     controller = ensure_session_controller(session, policy_bundle)
     effective_outcome = outcome
-    if not workspace_changed:
-        if outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
-            effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
-        elif outcome is ConflictAttemptOutcome.ATTEMPT_FAILED:
-            effective_outcome = (
-                ConflictAttemptOutcome.STALLED_NO_PROGRESS
-                if session is not None and session.last_attempt_saw_activity
-                else ConflictAttemptOutcome.NO_ACTIVITY
-            )
+    if not workspace_changed and outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
+        effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
     classified = _build_classified_conflict_failure(
         effective_outcome,
         unresolved_count,
@@ -414,9 +410,18 @@ def classify_failed_resolution_attempt(
     agent_status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
     agent_available = agent_status.is_eligible
 
-    if not session.skip_same_agent_retries and agent_available:
+    from ralph.recovery.failure_category import FailureCategory
+
+    classified_eff = classified
+    if classified_eff is None and raw_failure is not None:
+        classified_eff = controller.classify_conflict_attempt(raw_failure, agent=agent_name)
+    is_environmental = (
+        classified_eff is not None and classified_eff.category == FailureCategory.ENVIRONMENTAL
+    )
+    if not session.skip_same_agent_retries and is_environmental and agent_available:
         session.chain_cursor = failed_index
     else:
+        session.skip_same_agent_retries = False
         candidates_tuple = tuple(candidates) if candidates else (agent_name,)
         selection = controller.preferred_agent_index(
             PHASE_RESOLUTION,

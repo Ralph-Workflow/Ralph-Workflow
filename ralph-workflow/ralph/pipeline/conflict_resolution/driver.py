@@ -179,6 +179,16 @@ def run_conflict_resolution_outcome(
 ) -> StopResolutionOutcome:
     active_session = session or _new_resolution_session(config)
     previous_model = capture_status_bar_model(display)
+    clock_inst = None
+    if active_session.ledger is not None and hasattr(active_session.ledger, "clock"):
+        clock_inst = getattr(active_session.ledger, "clock")
+    elif pipeline_deps is not None and getattr(pipeline_deps, "recovery_clock", None) is not None:
+        clock_inst = pipeline_deps.recovery_clock
+    token = None
+    if clock_inst is not None and hasattr(clock_inst, "sleep"):
+        from ralph.pipeline.integration_actions import install_executors
+
+        token = install_executors(clock=clock_inst)
     try:
         resolved = _run_rounds(
             root=root,
@@ -205,6 +215,10 @@ def run_conflict_resolution_outcome(
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         return _resolution_outcome(active_session, False)
     finally:
+        if token is not None:
+            from ralph.pipeline.integration_actions import reset_executors
+
+            reset_executors(token)
         _restore_status_bar(display, root, previous_model)
 
 

@@ -13,6 +13,9 @@ from ralph.pipeline.conflict_resolution import (
     run_conflict_resolution_outcome,
     run_rebase_conflict_resolution_outcome,
 )
+
+run_conflict_resolution_pipeline = run_conflict_resolution_outcome
+run_rebase_conflict_resolution_pipeline = run_rebase_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -20,13 +23,9 @@ from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolut
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.resolution_outcome import (
-    ConfigFailureOutcome,
     NextStrategyOutcome,
-    ResolvedOutcome,
-    RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
-    WaitingOutcome,
 )
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 
@@ -101,7 +100,7 @@ def build_agent_conflict_resolver(
             return NextStrategyOutcome("completion_in_place")
         try:
             if strategy_history:
-                return run_conflict_resolution_outcome(
+                return run_conflict_resolution_pipeline(
                     root=root,
                     target=target,
                     config=config,
@@ -112,7 +111,7 @@ def build_agent_conflict_resolver(
                     display_context=display_context,
                     strategy_history=strategy_history,
                 )
-            return run_conflict_resolution_outcome(
+            return run_conflict_resolution_pipeline(
                 root=root,
                 target=target,
                 config=config,

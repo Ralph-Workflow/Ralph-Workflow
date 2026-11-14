@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -15,13 +15,8 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.resolution_outcome import (
-    ConfigFailureOutcome,
-    NextStrategyOutcome,
     ResolvedOutcome,
-    RetryLaterOutcome,
     StopResolutionOutcome,
-    UnknownOutcome,
-    WaitingOutcome,
 )
 
 if TYPE_CHECKING:
@@ -39,9 +34,10 @@ __all__ = [
 
 
 def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
+    from dataclasses import replace
+
     from ralph.pipeline.resolution_outcome_producer import (
         classify_resolution_failure,
-        stop_resolution_outcome_from_legacy,
     )
 
     unresolved = tuple(session.unresolved_paths or ())
@@ -70,22 +66,13 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResol
         reason=ex_msg,
         paths=session.unresolved_paths,
     )
-    outcome = stop_resolution_outcome_from_legacy(raw_outcome)
-    match outcome:
-        case ResolvedOutcome():
-            return ResolvedOutcome(False, session.terminal_reason, unresolved)
-        case WaitingOutcome(external_condition=condition, resumes_when=resumes):
-            return WaitingOutcome(condition, resumes, False, session.terminal_reason, unresolved)
-        case RetryLaterOutcome():
-            return outcome
-        case NextStrategyOutcome(strategy=strategy):
-            return NextStrategyOutcome(strategy, False, session.terminal_reason, unresolved)
-        case ConfigFailureOutcome(file=file, parse_error=error):
-            return ConfigFailureOutcome(file, error, False, session.terminal_reason, unresolved)
-        case UnknownOutcome(error=error):
-            return UnknownOutcome(error, False, session.terminal_reason, unresolved)
-        case _ as unreachable:
-            assert_never(unreachable)
+    outcome = raw_outcome
+    return replace(
+        outcome,
+        succeeded=False,
+        reason=session.terminal_reason,
+        unresolved_paths=unresolved,
+    )
 
 
 def reset_round_reporting(session: ResolutionSession) -> None:

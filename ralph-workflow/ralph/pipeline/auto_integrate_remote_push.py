@@ -542,7 +542,7 @@ def _align_target_with_remote(
         )
         from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-        raw_outcome = fast_forward_target_to_remote(
+        raw_outcome: object = fast_forward_target_to_remote(
             repo_root,
             target,
             remote,

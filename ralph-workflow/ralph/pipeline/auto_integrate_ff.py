@@ -23,7 +23,6 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
-    assert_never,
 )
 
 _TARGET_MISSING = "target branch missing at fast-forward time"
@@ -213,7 +212,11 @@ def _fast_forward_failure(reason: str) -> StopResolutionOutcome:
     return WaitingOutcome(external_condition=reason, resumes_when="target branch exists")
 
 
-def is_retryable_fast_forward_failure(outcome: StopResolutionOutcome) -> bool:
+def is_retryable_fast_forward_failure(outcome: object) -> bool:
+    if isinstance(outcome, str):
+        return outcome in _RETRYABLE_REASONS
+    if isinstance(outcome, (tuple, bool)):
+        return False
     match outcome:
         case RetryLaterOutcome():
             return True
@@ -225,8 +228,8 @@ def is_retryable_fast_forward_failure(outcome: StopResolutionOutcome) -> bool:
             | UnknownOutcome()
         ):
             return False
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            return False
 
 
 __all__ = [

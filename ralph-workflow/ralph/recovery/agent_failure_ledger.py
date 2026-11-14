@@ -311,6 +311,14 @@ class AgentFailureLedger:
             entry.cooldown_reason = None
             entry.consecutive_unproductive = 0
 
+    def prune_expired(self, *, now_ms: int | None = None) -> None:
+        with self._lock:
+            effective_now_ms = (
+                now_ms if now_ms is not None else int(self._clock.monotonic() * 1000)
+            )
+            for entry in self._entries.values():
+                self._sync_cooldown_expiry(entry, effective_now_ms)
+
     def _status_locked(self, phase: str, agent: str, now_ms: int) -> AgentStatus:
         entry = self._entries.get((phase, agent))
         if entry is None:
@@ -428,44 +436,6 @@ class AgentFailureLedger:
             return 0
         if wait.kind is WaitKind.COOLING_DOWN:
             return wait.wait_ms
-        return None
-
-    def requires_intervention(
-        self,
-        phase: str,
-        agents: Sequence[str] = (),
-        *,
-        snapshot: Mapping[str, object] | None = None,
-    ) -> bool | None:
-        effective_agents = tuple(agents) or tuple(
-            agent for entry_phase, agent in self._entries if entry_phase == phase
-        )
-        if effective_agents:
-            statuses = tuple(self.status(phase, agent) for agent in effective_agents)
-            if any(isinstance(status, Cooldown) for status in statuses):
-                return False
-            if all(isinstance(status, Spent) for status in statuses):
-                return True
-        elif snapshot is not None:
-            raw_entries = snapshot.get("entries") if isinstance(snapshot, Mapping) else None
-            if isinstance(raw_entries, Mapping) and raw_entries:
-                entries = tuple(item for item in raw_entries.values() if isinstance(item, Mapping))
-                now_ms = int(self._clock.monotonic() * 1000)
-                statuses = tuple(
-                    _projected_status(
-                        is_spent=bool(item.get("is_spent")),
-                        spent_reason=_optional_str(item.get("spent_reason")),
-                        cooldown_until_ms=_optional_int(item.get("cooldown_until_ms")),
-                        cooldown_reason=_optional_str(item.get("cooldown_reason")),
-                        unavailable_reason=_optional_str(item.get("unavailable_reason")),
-                        now_ms=now_ms,
-                    )
-                    for item in entries
-                )
-                if any(isinstance(status, Cooldown) for status in statuses):
-                    return False
-                if any(isinstance(status, Spent) for status in statuses):
-                    return True
         return None
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:

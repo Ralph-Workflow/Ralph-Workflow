@@ -51,7 +51,7 @@ def run_conflict_resolution_pipeline(
         session=session,
         strategy_history=strategy_history,
     )
-    return outcome if getattr(outcome, "succeeded", False) else False  # type: ignore[return-value]
+    return outcome.succeeded
 
 
 def run_rebase_conflict_resolution_pipeline(

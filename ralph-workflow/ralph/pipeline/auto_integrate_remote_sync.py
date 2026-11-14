@@ -350,7 +350,7 @@ def _dispatch_ref_comparison(
                 last_refresh=REFRESH_UNREACHABLE,
                 publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
             )
-        raw_outcome = fast_forward_target_to_remote(
+        raw_outcome: object = fast_forward_target_to_remote(
             repo_root,
             target,
             chosen_remote,

@@ -188,18 +188,14 @@ class _ProductionGitOps:
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
     ) -> StopResolutionOutcome:
         from ralph.pipeline.auto_integrate_ff import fast_forward_target
-        from ralph.pipeline.resolution_outcome import stop_resolution_outcome_reason
 
-        outcome = fast_forward_target(
+        return fast_forward_target(
             root,
             target,
             feature_sha,
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=on_reclaimed,
         )
-        if hasattr(outcome, "succeeded") and bool(outcome.succeeded):
-            return True, ""
-        return False, stop_resolution_outcome_reason(outcome)
 
     def land_feature(
         self,
@@ -258,8 +254,22 @@ class _SystemClock:
     def now(self) -> float:
         return time.monotonic()
 
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+    def epoch(self) -> float:
+        return time.time()
+
+    def now_utc(self) -> datetime:
+        from datetime import UTC, datetime
+
+        return datetime.now(UTC)
+
     def sleep(self, seconds: float) -> None:
         self._wait_event.wait(seconds)
+
+    def wait_for_event(self, event: Event, seconds: float) -> bool:
+        return event.wait(seconds)
 
 
 _DEFAULT_GIT_OPS = _ProductionGitOps()

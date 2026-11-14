@@ -32,14 +32,7 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
-    assert_never,
 )
-from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
-from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
-from ralph.pipeline.resolution_outcome_resolved import Resolved
-from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -243,12 +236,10 @@ def _continue_rebase_resolution(
 
 
 def _rebase_failure_outcome(
-    result: object,
+    result: StopResolutionOutcome,
     chain_agents: tuple[str, ...] = (),
-) -> object:
+) -> StopResolutionOutcome:
     del chain_agents
-    if hasattr(result, "outcome") and isinstance(result.outcome, ResolvedOutcome):
-        return ResolvedOutcome()
     return result
 
 
@@ -266,7 +257,7 @@ def _rebase_failure_transport(
             return None
         case WaitingOutcome() | RetryLaterOutcome():
             return failure_reason
-        case NextStrategyOutcome() | NeedsOperator() | Exhausted():
+        case NextStrategyOutcome():
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha,
@@ -279,10 +270,10 @@ def _rebase_failure_transport(
                 failure_reason,
                 ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
             )
-        case ConfigFailureOutcome() | UnknownOutcome() | ConfigFailure():
+        case ConfigFailureOutcome() | UnknownOutcome():
             return failure_reason
-        case _:
-            raise AssertionError(f"unexpected outcome: {outcome!r}")
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _continuation_outcome_reason(outcome: StopResolutionOutcome, cause: str) -> str:

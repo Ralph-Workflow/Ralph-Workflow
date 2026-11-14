@@ -104,20 +104,26 @@ def emit_attempt_outcome(
                 session.last_activity_kind is not None
                 or session.last_activity_at is not None
                 or session.last_duration_seconds is not None
-                or session.unresolved_paths
             ):
-                duration_str = (
-                    f"duration={session.last_duration_seconds:.1f}s"
+                duration = (
+                    session.last_duration_seconds
                     if session.last_duration_seconds is not None
-                    else "duration=0.0s"
+                    else 0.0
                 )
-                kind_str = f"last_activity_kind={session.last_activity_kind or 'none'}"
-                at_str = f"last_activity_at={session.last_activity_at or 'never'}"
-                paths_str = f"unresolved_paths={', '.join(session.unresolved_paths)}"
+                last_kind = session.last_activity_kind or "none"
+                last_at = (
+                    f"{session.last_activity_at:.1f}"
+                    if isinstance(session.last_activity_at, float)
+                    else (session.last_activity_at or "never")
+                )
+                paths = session.unresolved_paths
                 line = (
-                    f"{strategy}: {duration_str}; {kind_str}; {at_str}; "
-                    f"last_progress=unresolved_count={len(session.unresolved_paths)}; "
-                    f"{paths_str}; next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
+                    f"{strategy}: duration={duration:.1f}s; "
+                    f"last_activity_kind={last_kind}; "
+                    f"last_activity_at={last_at}; "
+                    f"last_progress=unresolved_count={len(paths)}; "
+                    f"unresolved_paths={', '.join(paths)}; "
+                    f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
                 )
             else:
                 line = f"{strategy}: next strategy"

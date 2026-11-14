@@ -35,7 +35,7 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     session = ResolutionSession()
-    _ = driver_module.run_conflict_resolution_outcome(
+    driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=_config(),
@@ -50,7 +50,7 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
 
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
-    _ = driver_module.run_conflict_resolution_outcome(
+    driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=_config(),

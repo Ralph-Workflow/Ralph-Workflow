@@ -643,29 +643,12 @@ def _advance_observed_target(
         return charge_reason
     effective_clock = clock if clock is not None else default_clock()
     try:
-        from ralph.pipeline.resolution_outcome import (
-            ResolvedOutcome,
-            stop_resolution_outcome_reason,
-        )
-
         outcome: object = fast_forward_target(
             root,
             target,
             remote_sha,
             reclaim_target_worktree=False,
         )
-        if isinstance(outcome, tuple):
-            advanced = bool(outcome[0])
-            refusal_reason = str(outcome[1]) if len(outcome) > 1 and not advanced else ""
-        elif isinstance(outcome, bool):
-            advanced = outcome
-            refusal_reason = ""
-        else:
-            advanced = isinstance(outcome, ResolvedOutcome)
-            try:
-                refusal_reason = "" if advanced else stop_resolution_outcome_reason(outcome)  # type: ignore[arg-type]
-            except Exception:
-                refusal_reason = str(outcome)
     except Exception as exc:
         kind = _classify_git_exception(exc)
         if kind != GitOutcomeKind.FAILED:

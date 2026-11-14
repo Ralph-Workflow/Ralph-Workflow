@@ -16,7 +16,6 @@ from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
-    StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
     assert_never,
@@ -147,7 +146,7 @@ def record_resolution_outcome(
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case _ as unreachable:
-            assert_never(unreachable)
+            assert_never(unreachable)  # type: ignore[arg-type]
     return result
 
 
@@ -186,13 +185,48 @@ def classify_rebase_outcome(
     merge_outcome: MergeResult | None,
 ) -> tuple[str, str]:
     if isinstance(rebase_outcome, RebaseConflicts):
-        return ACTION_CONFLICT, rebase_outcome.reason
+        reason = (
+            merge_outcome.reason
+            if merge_attempted and merge_outcome is not None and merge_outcome.reason
+            else "rebase conflicts"
+        )
+        return ACTION_CONFLICT, reason
     if isinstance(rebase_outcome, RebaseNoOp):
         return ACTION_SKIPPED, rebase_outcome.reason
     if isinstance(rebase_outcome, RebaseFailed):
-        return ACTION_CONFLICT, rebase_outcome.reason
+        return ACTION_CONFLICT, f"rebase failed: {rebase_outcome.kind.kind.value}"
     if merge_attempted:
         if merge_outcome is None:
             return ACTION_CONFLICT, "branch is up to date"
         return ACTION_MERGED, "branch merged cleanly"
     return ACTION_REBASED, "branch rebased cleanly"
+
+
+def classify_merge_only_outcome(
+    merge_outcome: MergeResult | None,
+) -> tuple[str, str | None]:
+    if merge_outcome is None:
+        return ACTION_CONFLICT, "endpoint merge attempt raised"
+    if merge_outcome.outcome == RESOLUTION_FAILED:
+        return ACTION_CONFLICT, "conflict resolution failed; merge aborted"
+    if merge_outcome.outcome in {"success", "noop"}:
+        return ACTION_MERGED, None
+    if merge_outcome.reason:
+        return ACTION_CONFLICT, f"endpoint {merge_outcome.reason}"
+    return ACTION_CONFLICT, f"endpoint merge conflicted ({merge_outcome.outcome})"
+
+
+__all__ = [
+    "ACTION_CONFLICT",
+    "ACTION_MERGED",
+    "ACTION_REBASED",
+    "ACTION_RECOVERED",
+    "ACTION_SKIPPED",
+    "classify_merge_only_outcome",
+    "classify_rebase_outcome",
+    "record_conflict",
+    "record_rebase_outcome",
+    "record_resolution_exhausted",
+    "record_resolution_outcome",
+    "record_skip",
+]

@@ -49,6 +49,7 @@ from ralph.pipeline.conflict_resolution.progress import (
     load_progress_for_rebase,
     save_progress,
 )
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
 from ralph.pipeline.conflict_resolution.stray_paths import (
@@ -58,7 +59,6 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
 )
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
-    ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
@@ -273,16 +273,17 @@ def _resolve_one_stop(
             stop.stop_index,
         )
     outcome = resolver(root, target, stop)
-    active_session = active_rebase_resolution_session()
-    if active_session is not None:
-        if isinstance(outcome, ConfigFailureOutcome):
-            active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-            active_session.exhaustion_reason = str(outcome.parse_error)
-        elif isinstance(outcome, UnknownOutcome):
-            active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-            active_session.exhaustion_reason = str(outcome.error)
-        elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
-            active_session.exhaustion_reason = outcome.on_change
+    if not isinstance(outcome, bool):
+        active_session = active_rebase_resolution_session()
+        if active_session is not None:
+            if isinstance(outcome, ConfigFailureOutcome):
+                active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+                active_session.exhaustion_reason = str(outcome.parse_error)
+            elif isinstance(outcome, UnknownOutcome):
+                active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+                active_session.exhaustion_reason = str(outcome.error)
+            elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
+                active_session.exhaustion_reason = outcome.on_change
     if not _resolution_succeeded(outcome):
         logger.info(
             "conflict_resolution: rebase stop {} ({}) was not resolved",
