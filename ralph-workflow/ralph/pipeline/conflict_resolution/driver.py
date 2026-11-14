@@ -213,6 +213,8 @@ class _IntegrationClockAdapter:
 
     def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
         return self._clock.wait_for_event(event, seconds)
+
+
 __all__ = [
     "MonotonicClock",
     "ResolutionAction",
@@ -736,9 +738,7 @@ def _handle_repaired_or_fast_forward(
     stop: RebaseStop | None,
 ) -> bool:
     if action == ResolutionAction.ACCEPT_WORKTREE_REPAIR and not (
-        attempt.succeeded
-        or session.last_attempt_saw_activity
-        or session.exhaustion_reason is not None
+        attempt.succeeded or session.last_attempt_saw_activity
     ):
         session.terminal_reason = ResolutionTerminationReason.ATTEMPT_FAILED
         return False
@@ -994,6 +994,8 @@ def _wait_for_eligible_agent(
     candidates: tuple[str, ...],
 ) -> None:
     _wait_for_candidates_if_cooling_down(session, candidates)
+
+
 def _record_unconfigured_resolver(
     session: ResolutionSession,
     conflicted: tuple[str, ...],

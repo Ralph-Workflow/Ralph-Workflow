@@ -84,7 +84,10 @@ def _uninvoked_round_reason(
     session: ResolutionSession,
     candidates: Sequence[str],
 ) -> ResolutionTerminationReason:
-    effective_candidates = list(candidates)
+    from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
+
+    barred = skipped_candidates(session, tuple(candidates))
+    effective_candidates = [c for c in candidates if c not in barred]
     if not effective_candidates and session.recovery_state is not None:
         state = session.recovery_state
         from ralph.pipeline.state import PipelineState
@@ -92,22 +95,26 @@ def _uninvoked_round_reason(
         if isinstance(state, PipelineState):
             ch = state.chain_for_phase(PHASE_RESOLUTION)
             if ch is not None and ch.agents:
-                effective_candidates = list(ch.agents)
+                effective_candidates = [c for c in ch.agents if c not in barred]
 
     controller = session.recovery_controller
-    if controller is not None and effective_candidates:
-        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, effective_candidates)
-        if delay > 0:
-            return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-        if controller.all_exhausted(PHASE_RESOLUTION, effective_candidates):
-            return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    if controller is not None:
+        target = effective_candidates if effective_candidates else tuple(candidates)
+        if target:
+            delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, target)
+            if delay > 0:
+                return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+            if controller.all_exhausted(PHASE_RESOLUTION, target):
+                return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     ledger = session.ledger
-    if ledger is not None and effective_candidates:
-        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, effective_candidates)
-        if wait is not None and wait > 0:
-            return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-        if wait is None:
-            return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    if ledger is not None:
+        target = effective_candidates if effective_candidates else tuple(candidates)
+        if target:
+            wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, target)
+            if wait is not None and wait > 0:
+                return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+            if wait is None:
+                return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
 
     return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
 

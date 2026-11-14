@@ -3440,7 +3440,7 @@ def ledger_requires_intervention(state: PipelineState, controller: RecoveryContr
     decision = ledger.requires_intervention(target_phase, agents, snapshot=state.ledger_snapshot)
     if decision is not None:
         return decision
-    return (
+    return bool(
         state.recovery_epoch >= _MAX_RECOVERY_EPOCHS
         or state.last_execution_result_status == "failed"
     )

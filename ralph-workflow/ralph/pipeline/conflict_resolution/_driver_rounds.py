@@ -273,10 +273,11 @@ def _execute_single_candidate(
         session.unresolved_paths = unresolved_after
         count_dropped = len(unresolved_after) < unresolved_before
     probe_changed = bool(probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace))
+    agent_ran = bool(session.last_attempt_saw_activity) if not succeeded else True
     progress = RoundAttempt(
         succeeded=False,
         invoked=True,
-        agent_ran=True,
+        agent_ran=agent_ran,
         agent_name=agent_name,
         candidate_offset=offset,
         count_dropped=count_dropped,
@@ -390,7 +391,10 @@ def _run_one_round(
                 count_dropped=progress.count_dropped,
                 probe_changed=progress.probe_changed,
             )
-        agent_saw = bool(session.last_attempt_saw_activity)
+        agent_saw = bool(
+            session.last_attempt_saw_activity
+            or not isinstance(_invoker_result, ResolvedOutcome)
+        )
         agent_ran = agent_ran or agent_saw
         if _check_worktree_repair(
             session, agent_name, round_index, round_cap, display, worktree_resolved, agent_saw

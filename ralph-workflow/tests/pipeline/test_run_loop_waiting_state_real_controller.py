@@ -285,6 +285,9 @@ def test_controller_accepts_protocol_typed_unavailability_store() -> None:
         def reset_backoff(self, phase: str, agent: str) -> None:
             return None
 
+        def prune_expired(self, now_ms: int | None = None) -> int:
+            return 0
+
         def snapshot(self) -> dict[str, dict[str, object]]:
             return {
                 "unavailable_timeouts": {"development:claude": 200},

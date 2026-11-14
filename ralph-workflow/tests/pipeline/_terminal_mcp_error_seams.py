@@ -317,9 +317,11 @@ def _patch_invoke_agent(
     monkeypatch: pytest.MonkeyPatch,
     invoke: _InvokeAgentLike,
 ) -> None:
+    import ralph.agents.invoke as invoke_module
     import ralph.cli.commands.commit as commit_cli
     from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
 
+    monkeypatch.setattr(invoke_module, "invoke_agent", invoke, raising=False)
     for module in (effect_executor_module, smoke_plumbing, commit_plumbing, commit_cli):
         monkeypatch.setattr(module, "invoke_agent", invoke, raising=False)
 

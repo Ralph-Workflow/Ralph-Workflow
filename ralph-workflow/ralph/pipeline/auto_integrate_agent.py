@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay

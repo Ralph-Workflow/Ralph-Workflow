@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -11,6 +13,7 @@ if TYPE_CHECKING:
 __all__ = ["RetryLaterOutcome"]
 
 _TUPLE_PAIR_LEN = 2
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +53,15 @@ class RetryLaterOutcome:
         return False
 
     def __hash__(self) -> int:
-        return hash((self.until, self.on_change, self.terminal_reason, self.unresolved_paths))
+        return hash(
+            (
+                self.until,
+                self.on_change,
+                self.terminal_reason,
+                self.unresolved_paths,
+                self.failure_cause,
+            )
+        )
 
     def __eq__(self, other: object) -> bool:
         if (
@@ -63,6 +74,6 @@ class RetryLaterOutcome:
         return (
             isinstance(other, RetryLaterOutcome)
             and (self.until, self.on_change) == (other.until, other.on_change)
-            and (self.terminal_reason, self.unresolved_paths)
-            == (other.terminal_reason, other.unresolved_paths)
+            and (self.terminal_reason, self.unresolved_paths, self.failure_cause)
+            == (other.terminal_reason, other.unresolved_paths, other.failure_cause)
         )

@@ -194,7 +194,7 @@ def run_conflict_resolution_pipeline(
         session=active_session,
         **kwargs,
     )
-    return bool(res)
+    return res
 
 
 def invoke_resolution_agent(
@@ -227,7 +227,7 @@ def invoke_resolution_agent(
         session=active_session,
         **kwargs,
     )
-    return bool(res)
+    return res
 
 
 @pytest.fixture(autouse=True)

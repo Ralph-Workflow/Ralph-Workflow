@@ -157,10 +157,7 @@ def conflict_stage_entries(
         err_obj: object = getattr(result, "stderr", "")
         result_stderr = str(err_obj) if err_obj is not None else ""
         if "not a git repository" in result_stderr.lower():
-            return ConflictStageEntries(
-                {},
-                failures={p: f"could not read unmerged index stages for {p}" for p in paths},
-            )
+            return ConflictStageEntries({})
         if len(paths) > 1:
             return _query_individual_paths(runner, root, paths)
         return ConflictStageEntries(

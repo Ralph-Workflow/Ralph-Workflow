@@ -19,6 +19,7 @@ from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.recovery import dead_agent_probe
+from ralph.recovery.canary_probe import run_canary_probe
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts

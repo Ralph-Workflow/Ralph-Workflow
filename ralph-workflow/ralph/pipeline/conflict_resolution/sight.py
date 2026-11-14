@@ -217,6 +217,8 @@ def classify_stage_map(
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs
     if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
+        if _is_tree(ours_mode) or _is_tree(theirs_mode):
+            return ConflictSight.OUT_OF_REACH
         return _classify_gitlink(
             ours_mode,
             ours_blob,

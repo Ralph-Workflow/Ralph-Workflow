@@ -288,16 +288,26 @@ def _rebase_run_result(
         case NextStrategyOutcome(strategy=strategy):
             from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
 
-            if strategy in _LADDER_ACTION_VALUES:
-                AttemptLedger(root).charge_ladder_attempt(
-                    rebase_resolution_signature(
-                        record.pre_feature_sha if record is not None else None,
-                        record.pre_target_sha if record is not None else target,
-                        record.resolving_stop_sha if record is not None else None,
-                    ),
-                    strategy,
-                )
-            return _conflict_run(target, failure_reason, failure_cause)
+            action = (
+                strategy
+                if strategy in _LADDER_ACTION_VALUES
+                else NextAction.LAST_RESORT_RECOVERY.value
+            )
+            AttemptLedger(root).charge_ladder_attempt(
+                rebase_resolution_signature(
+                    record.pre_feature_sha if record is not None else None,
+                    record.pre_target_sha if record is not None else target,
+                    record.resolving_stop_sha if record is not None else None,
+                ),
+                action,
+            )
+            exhaustion_reason = (
+                strategy
+                if "needs operator action:" in strategy
+                or "all resolver agents are spent/unavailable" in strategy
+                else failure_reason
+            )
+            return _conflict_run(target, exhaustion_reason, failure_cause)
         case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
             return _conflict_run(
                 target,

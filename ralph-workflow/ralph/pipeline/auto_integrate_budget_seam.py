@@ -133,8 +133,15 @@ def charge_failed_attempt(
     identity: ConflictIdentity,
     attempts: int = MAX_TRACKED_CONFLICT_ATTEMPTS,
 ) -> RebaseState:
+    from ralph.pipeline._integration_action import RebaseOutcomeKind
+
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
-    updated = skip.record_consecutive_conflicts(carried, cap=attempts)
+    count = (
+        min(attempts, carried + 1)
+        if skip.last_outcome == RebaseOutcomeKind.CONFLICT
+        else carried
+    )
+    updated = skip.record_consecutive_conflicts(count, cap=attempts)
     return updated.model_copy(
         update={
             "last_conflict_feature_sha": identity.feature_sha,

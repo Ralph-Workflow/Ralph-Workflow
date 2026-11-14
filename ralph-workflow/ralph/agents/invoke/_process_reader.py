@@ -1486,8 +1486,6 @@ def _run_subprocess_and_read_lines(
         )
     )
     handle, agy_cli_log = _spawn_process_with_agy_log_offset(argv, spawn_options, ctx)
-    if ctx.process_teardown is not None:
-        _ = ctx.process_teardown.teardown_subtree
     supervisor = AttemptSupervisor(handle, process_teardown=ctx.process_teardown)
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
@@ -1495,7 +1493,7 @@ def _run_subprocess_and_read_lines(
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
-            supervisor.act(StartupFailureObserved(msg))
+            supervisor.teardown_subtree_for_observation(StartupFailureObserved(msg))
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)
