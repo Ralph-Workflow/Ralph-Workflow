@@ -46,6 +46,14 @@ _SKILL_POINTER_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 _SUPPORTED_TYPES_PATTERN = re.compile(r"Supported `artifact_type` values:\s*([^.]+)\.")
 _CONCRETE_SKILL_PATTERN = re.compile(r"^submit-([a-z0-9_-]+)-artifact$")
+_PAYLOAD_SECTION_PATTERN = re.compile(
+    r"^(?P<label>[A-Z][A-Z ]*) BEGIN$.*^(?P=label) END$",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _without_payload_sections(prompt_text: str) -> str:
+    return _PAYLOAD_SECTION_PATTERN.sub("", prompt_text)
 
 
 def extract_prompted_artifact_types(prompt_text: str) -> set[str]:
@@ -258,14 +266,15 @@ def validate_artifact_contract(
     )
     if resolved_text is None:
         return
+    instruction_text = _without_payload_sections(resolved_text)
 
     _validate_prompted_types(
         phase,
         target_type,
-        resolved_text,
+        instruction_text,
         require_prompted_type=require_prompted_type,
     )
 
     get_skill = skill_content_provider or get_skill_content
-    for skill in extract_referenced_skill_pointers(resolved_text):
+    for skill in extract_referenced_skill_pointers(instruction_text):
         _validate_skill_pointer(phase, target_type, skill, get_skill)
