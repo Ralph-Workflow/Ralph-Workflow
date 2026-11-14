@@ -570,6 +570,7 @@ class RecoveryController:
         self._last_resolved_verdict: PersistedVerdict | None = None
         self._last_attempt_outcome: AttemptOutcome | None = None
         self._last_demoted_reason: str | None = None
+        self._last_attempt_charged_ledger: bool = False
         self._dead_agent_verdict_runner = opts.dead_agent_verdict_runner
         self._false_bench_feedback: FalseBenchFeedback = (
             opts.false_bench_feedback
@@ -678,7 +679,6 @@ class RecoveryController:
             artifact_valid=artifact_valid,
             workspace_changed=workspace_changed,
         )
-        charged_before = self._unproductive_total(phase, current_agent)
         outcome = self.finalize_attempt(
             phase,
             current_agent,
@@ -695,7 +695,7 @@ class RecoveryController:
             failure.must_charge_ledger
             and current_agent is not None
             and not artifact_valid
-            and self._unproductive_total(phase, current_agent) == charged_before
+            and not self._last_attempt_charged_ledger
         ):
             # The agent run already finalized this attempt as a clean exit, so
             # the failure found afterwards was never charged. Charge it here so
@@ -725,14 +725,6 @@ class RecoveryController:
             bench_applied=bench_applied,
             sole_demoted_reason=self._last_demoted_reason,
         )
-
-    def _unproductive_total(self, phase: str, agent: str | None) -> int:
-        if agent is None:
-            return 0
-        entries = self._ledger.snapshot().get("entries")
-        entry = entries.get(f"{phase}:{agent}") if isinstance(entries, dict) else None
-        total = entry.get("total_unproductive") if isinstance(entry, dict) else None
-        return total if isinstance(total, int) else 0
 
     def next_attempt_ordinal(self, phase: str, agent: str | None) -> int:
         key = (phase, agent or "")
@@ -794,6 +786,7 @@ class RecoveryController:
         memoized: tuple[AttemptOutcome, str | None, PersistedVerdict | None],
     ) -> AttemptOutcome:
         outcome, demoted_reason, resolved_verdict = memoized
+        self._last_attempt_charged_ledger = False
         self._last_attempt_outcome = outcome
         self._last_demoted_reason = demoted_reason
         self._last_resolved_verdict = resolved_verdict
@@ -887,12 +880,14 @@ class RecoveryController:
                 verdict_ref=self._last_verdict_record or {},
                 session_ref=session_ref or {},
             )
+        self._last_attempt_charged_ledger = False
         if (
             _charges_agent_ledger(outcome, peer_failures_identical=peer_failures_identical)
             and not probe_mode
             and charge_ledger
             and agent is not None
         ):
+            self._last_attempt_charged_ledger = True
             demoted_reason = self.record_attempt_fact(
                 phase,
                 agent,
