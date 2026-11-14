@@ -91,8 +91,39 @@ def test_chain_agents_resolve_through_drain_binding() -> None:
     ]
 
 
-def test_chain_agents_empty_when_bundle_missing() -> None:
-    assert cli_integration._resolve_chain_agents(_load_result(None), PHASE_REMEDIATION) == []
+def test_chain_agents_empty_when_bundle_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ralph.workspace.memory import MemoryWorkspace
+
+    invoked_agents: list[str] = []
+    emitted: list[str] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        from ralph.pipeline.events import PipelineEvent
+
+        invoked_agents.append(must_str(getattr(effect, "agent_name", "")))
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=_load_result(None),
+        display_context=make_display_context(),
+        workspace_factory=MemoryWorkspace,
+        emit_factory=emitted.append,
+        commit_policy_updates=lambda *_a, **_k: None,
+    )
+
+    assert rc == 0
+    assert invoked_agents == [], "no remediation agent may run without a policy bundle"
+    assert any(
+        "policy_remediation chain has no configured agent" in message for message in emitted
+    ), "the readiness run must report that the remediation chain resolves to no agent"
 
 
 def test_analysis_cap_ignores_global_recovery_cycle_cap() -> None:

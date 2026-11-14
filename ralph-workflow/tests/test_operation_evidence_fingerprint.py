@@ -276,6 +276,7 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
     base_fp = identity_fingerprint(base)
 
     non_identity_mutations: dict[str, object] = {
+        "record_version": 99,
         "phase": "integrated",
         "pre_feature_sha": "x" * 40,
         "pre_target_sha": "y" * 40,

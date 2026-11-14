@@ -1216,8 +1216,6 @@ class PtyLineReader:
             raise self._quota_error
 
     def _raise_if_terminal_startup_error(self, queued_line: str) -> None:
-        if self._process_teardown is not None:
-            _ = self._process_teardown.teardown_subtree
         terminal_startup_error = _terminal_interactive_startup_error(
             self._agent_name,
             queued_line,

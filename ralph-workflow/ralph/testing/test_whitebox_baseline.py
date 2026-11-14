@@ -109,7 +109,6 @@ tests/agents/test_workspace_cross_process_coordination.py|0,8,3
 tests/agents/test_workspace_event_backpressure.py|0,3,0
 tests/agents/test_workspace_watch_scoping.py|0,4,0
 tests/config/test_agents_config_file.py|0,0,1
-tests/config/test_env_boundary.py|0,3,0
 tests/config/test_heartbeat_ceiling_config.py|0,2,0
 tests/config/test_no_output_at_start_config.py|0,2,0
 tests/config/test_retention_max_age_config.py|0,0,1
@@ -659,7 +658,7 @@ tests/test_pipeline_core.py|0,3,0
 tests/test_pipeline_development_timebox.py|0,0,5
 tests/test_pipeline_factory_default.py|2,1,0
 tests/test_pipeline_orchestration_flow.py|1,0,0
-tests/test_pipeline_runner.py|26,0,1
+tests/test_pipeline_runner.py|26,0,0
 tests/test_pipeline_runner_cycle_baseline_lifecycle.py|1,0,5
 tests/test_pipeline_runner_determine_effect.py|1,0,0
 tests/test_pipeline_runner_empty_commit_effect_execution.py|1,0,0

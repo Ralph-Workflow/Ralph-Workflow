@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -44,6 +44,9 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_cleanup import PlanningBaseline, ResidueCleanupOutcome
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
+
+
+PAUSED_REBASE_RECOVERY_PREFERS_MERGE: Final[bool] = True
 
 
 def capture_pre_planning_baseline(root: Path) -> PlanningBaseline | None:
@@ -263,9 +266,9 @@ def _finish_paused_rebase(
             root,
             target,
             conflict_resolver=None,
-            prefer_merge=True,
             require_in_sync=True,
             rebase_stop_resolver=resolver,
+            prefer_merge=PAUSED_REBASE_RECOVERY_PREFERS_MERGE,
         )
         return outcome
     except Exception as exc:

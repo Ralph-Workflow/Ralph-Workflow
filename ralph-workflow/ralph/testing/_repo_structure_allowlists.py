@@ -1199,10 +1199,5 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.server.lifecycle",
             ("_DEFERRAL_COUNT_CEILING",),
         ),
-        (
-            "tests/config/test_env_boundary.py",
-            "ralph.config",
-            ("_env",),
-        ),
     }
 )

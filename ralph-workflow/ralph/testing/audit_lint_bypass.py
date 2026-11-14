@@ -183,7 +183,11 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "workspace-health maintenance read. The two MCP tool modules "
             "resolve their retry-hint and validation-banner dependencies at "
             "call time so the MCP module tree does not pull the "
-            "ralph.recovery module tree. Mirrors the "
+            "ralph.recovery module tree. The agents catalog, registry, and "
+            "parser channels resolve their builtin-support, dynamic-agent, "
+            "session-extraction, and user-prompt dependencies at call time "
+            "so the agents package does not import itself cyclically. "
+            "Mirrors the "
             "CLI/config/display precedent."
         ),
     },
