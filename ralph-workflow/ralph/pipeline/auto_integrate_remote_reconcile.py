@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.config.models import UnifiedConfig
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import (
@@ -48,6 +47,7 @@ from ralph.pipeline.resolution_outcome import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
@@ -248,6 +248,7 @@ def resolve_rebase_in_progress(
     *,
     session: ResolutionSession | None = None,
 ) -> StopResolutionOutcome:
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline._stop_resolution_entry import production_rebase_runner
     from ralph.pipeline.conflict_resolution.rebase_loop import (
         resolution_session_from_config,
@@ -265,6 +266,47 @@ def resolve_rebase_in_progress(
 _DEFAULT_RESOLVE_REBASE_IN_PROGRESS = resolve_rebase_in_progress
 
 
+def _resolve_overridden_rebase(
+    owner: Path,
+    target: str,
+    resolver: RebaseStopResolver,
+    config: UnifiedConfig | None,
+) -> StopResolutionOutcome:
+    from ralph.pipeline.conflict_resolution.rebase_loop import (
+        resolution_session_from_config,
+    )
+
+    session = resolution_session_from_config(config) if config is not None else None
+    try:
+        raw_outcome = resolve_rebase_in_progress(owner, target, resolver, session=session)
+    except TypeError:
+        raw_outcome = resolve_rebase_in_progress(owner, target, resolver)
+    raw_res: object = raw_outcome
+    if isinstance(
+        raw_res,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
+        return raw_res
+    if isinstance(raw_res, bool):
+        return (
+            ResolvedOutcome()
+            if raw_res
+            else RetryLaterOutcome(on_change="rebase resolution declined")
+        )
+    return (
+        ResolvedOutcome()
+        if raw_res
+        else RetryLaterOutcome(on_change="rebase resolution state changes")
+    )
+
+
 def _resolve_rebase_stop(
     owner: Path,
     target: str,
@@ -272,6 +314,8 @@ def _resolve_rebase_stop(
     config: UnifiedConfig | None,
     record: IntegrationRecord,
 ) -> StopResolutionOutcome:
+    if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
+        return _resolve_overridden_rebase(owner, target, resolver, config)
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger

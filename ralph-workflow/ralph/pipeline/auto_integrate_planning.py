@@ -6,6 +6,7 @@ from loguru import logger
 
 from ralph.git.branch_relation import branch_relation
 from ralph.git.rebase.rebase_continuation import rebase_in_progress
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._auto_integrate_once import _integrate_once
 from ralph.pipeline._planning_obstruction import identify_planning_obstruction
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
@@ -25,8 +26,10 @@ from ralph.pipeline.integration_resolution import (
 )
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
+    NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
+    UnknownOutcome,
     WaitingOutcome,
 )
 
@@ -192,21 +195,37 @@ def _evaluate_paused_resolution(
     result: object,
     target: str,
 ) -> tuple[bool, RebaseState | None]:
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 
     if isinstance(result, StopResolutionBlocked):
         return True, record_conflict(reason=result.reason, target=target)
-    match result:
+    outcome = result.outcome if isinstance(result, RebaseResolutionResult) else result
+    failure_cause = (
+        result.failure_cause
+        if isinstance(result, RebaseResolutionResult)
+        else ResolutionFailureCause.NONE
+    )
+    result_reason = result.reason if isinstance(result, RebaseResolutionResult) else None
+    match outcome:
         case ResolvedOutcome():
             return True, None
-        case WaitingOutcome():
+        case (
+            WaitingOutcome()
+            | RetryLaterOutcome()
+            | ConfigFailureOutcome()
+            | UnknownOutcome()
+        ):
             return True, record_conflict(
-                reason=result.external_condition or "waiting", target=target
+                reason=(
+                    result_reason
+                    or "rebase already in progress could not be resolved; the resolver is asked again"
+                ),
+                target=target,
+                failure_cause=failure_cause,
             )
-        case RetryLaterOutcome():
-            return True, record_conflict(reason=result.on_change or "retry later", target=target)
-        case ConfigFailureOutcome():
-            return True, record_conflict(reason=str(result), target=target)
+        case NextStrategyOutcome():
+            return False, None
         case _:
             return False, None
 

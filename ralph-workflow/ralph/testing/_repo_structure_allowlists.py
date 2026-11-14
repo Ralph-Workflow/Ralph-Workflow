@@ -80,6 +80,8 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/testing/_repo_structure_allowlists.py",
         "ralph/testing/audit_banned_constructs.py",
         "ralph/testing/repo_structure_boundary_rules.py",
+        "ralph/testing/_single_owner_rules.py",
+        "tests/test_audit_agent_failure_single_owner.py",
         "ralph/mcp/artifacts/markdown/specs/plan.py",
         "tests/test_policy_validation.py",
         "ralph/display/theme.py",
@@ -584,6 +586,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         ),
         (
             "tests/project_policy/test_cli_integration_helpers.py",
+            "ralph.cli.commands._load_result",
+            ("_LoadResult",),
+        ),
+        (
+            "tests/project_policy/test_policy_invocation_cooldown.py",
             "ralph.cli.commands._load_result",
             ("_LoadResult",),
         ),

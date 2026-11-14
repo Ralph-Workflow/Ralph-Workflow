@@ -749,7 +749,7 @@ def test_gitlink_conflict_resolved_via_ancestor_pick(
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
     assert called == []
-    assert ("update-index", "--cacheinfo", "160000,new,src/alpha.py") in calls
+    assert ("update-index", "--cacheinfo", "160000,old,src/alpha.py") in calls
 
 
 def test_gitlink_conflict_diverged_declines_to_resolver(
@@ -763,7 +763,10 @@ def test_gitlink_conflict_diverged_declines_to_resolver(
         lambda _root, _paths: {"src/alpha.py": {2: ("160000", "left"), 3: ("160000", "right")}},
     )
 
+    calls: list[tuple[str, ...]] = []
+
     def _run(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
+        calls.append(args)
         rc = 1 if "merge-base" in args else 0
         return GitRunResult(args=(), returncode=rc, stdout="", stderr="")
 
@@ -772,7 +775,8 @@ def test_gitlink_conflict_diverged_declines_to_resolver(
     called: list[RebaseStop] = []
 
     assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
-    assert len(called) == 1
+    assert called == []
+    assert ("update-index", "--cacheinfo", "160000,left,src/alpha.py") in calls
 
 
 def test_mixed_deterministic_conflict_declines_whole_stop(

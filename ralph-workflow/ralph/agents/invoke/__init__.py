@@ -207,9 +207,9 @@ class _ExecutionStateModule(Protocol):
         command: str,
         transport: AgentTransport,
         *,
-        label_scope: str | None,
-        registry: ChildLivenessRegistry,
-        subagent_pid_source: object,
+        label_scope: str | None = None,
+        registry: ChildLivenessRegistry | None = None,
+        subagent_pid_source: object = None,
     ) -> BaseExecutionStrategy: ...
 
 
@@ -231,9 +231,9 @@ def strategy_for_command(
     command: str,
     transport: AgentTransport,
     *,
-    label_scope: str | None,
-    registry: ChildLivenessRegistry,
-    subagent_pid_source: object,
+    label_scope: str | None = None,
+    registry: ChildLivenessRegistry | None = None,
+    subagent_pid_source: object = None,
 ) -> BaseExecutionStrategy:
     module: object = import_module("ralph.agents.execution_state")
     if not isinstance(module, _ExecutionStateModule):
@@ -245,8 +245,6 @@ def strategy_for_command(
         registry=registry,
         subagent_pid_source=subagent_pid_source,
     )
-
-
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
     return ChildLivenessRegistry(
         progress_ttl=opts.child_progress_ttl_seconds
@@ -833,6 +831,7 @@ __all__ = [
     "check_process_result",
     "collect_r7_diagnostic_fields",
     "command_for_log",
+    "default_catalog",
     "discover_http_mcp_tool_names",
     "extract_choice_menu_state",
     "extract_transport_session_id",

@@ -46,6 +46,17 @@ def expected_exit_codes(label: str | None) -> frozenset[int]:
     return EXPECTED_EXIT_CODES.get(label, frozenset())
 """
 
+_GITLINK_POLICY_SOURCE = """POLICY_CANDIDATES = ()
+def choose_gitlink(): pass
+"""
+
+_GITLINK_RESOLUTION_SOURCE = """# choose_gitlink
+"""
+
+_WATCHDOG_REASON_SOURCE = """class WatchdogFireReason:
+    OPERATOR_CAP_REACHED = "operator_cap_reached"
+"""
+
 
 def _write(root: Path, relative: str, source: str) -> Path:
     path = root / relative
@@ -79,6 +90,9 @@ def _clean_tree(tmp_path: Path) -> Path:
     _write(tmp_path, "ralph/process/__init__.py", "")
     _write(tmp_path, "ralph/process/manager/__init__.py", "")
     _write(tmp_path, "ralph/process/manager/_process_manager_runtime.py", _OWNER_SOURCE)
+    _write(tmp_path, "ralph/pipeline/conflict_resolution/gitlink_policy.py", _GITLINK_POLICY_SOURCE)
+    _write(tmp_path, "ralph/pipeline/conflict_resolution/deterministic_resolution.py", _GITLINK_RESOLUTION_SOURCE)
+    _write(tmp_path, "ralph/agents/watchdog_fire_reason.py", _WATCHDOG_REASON_SOURCE)
     return tmp_path
 
 

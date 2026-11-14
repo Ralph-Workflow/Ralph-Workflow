@@ -47,7 +47,9 @@ _CONFLICTED: tuple[str, ...] = (
 )
 
 _POLICY_BUNDLE: PolicyBundle = load_policy(default_dir())
-_CONFIG = UnifiedConfig.model_validate({"general": {}})
+_CONFIG = UnifiedConfig.model_validate(
+    {"general": {}, "conflict_resolution": {"max_rounds_per_stop": 20}}
+)
 _RESOLUTION_PHASE = "rebase_conflict_resolution"
 _RESOLUTION_CHAIN = "rebase_conflict_resolution"
 

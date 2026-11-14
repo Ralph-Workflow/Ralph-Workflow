@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
         ResolutionTerminationReason,
     )
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 
 @dataclass(frozen=True)
@@ -58,3 +59,27 @@ class ResolutionOutcome(RetryLaterOutcome):
 
     def __bool__(self) -> bool:
         return self.succeeded
+
+    def to_stop_resolution_outcome(self) -> StopResolutionOutcome:
+        from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+            ResolutionTerminationReason,
+        )
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+        from ralph.pipeline.resolution_outcome_producer import (
+            classify_resolution_failure,
+            stop_resolution_outcome_from_legacy,
+        )
+
+        if self.succeeded:
+            return ResolvedOutcome()
+        term_reason = (
+            self.reason if isinstance(self.reason, ResolutionTerminationReason) else None
+        )
+        return stop_resolution_outcome_from_legacy(
+            classify_resolution_failure(
+                terminal_reason=term_reason,
+                failure_cause=self.failure_cause,
+                reason=self.exhaustion_message or (str(self.reason) if self.reason else None),
+                paths=self.unresolved_paths,
+            )
+        )

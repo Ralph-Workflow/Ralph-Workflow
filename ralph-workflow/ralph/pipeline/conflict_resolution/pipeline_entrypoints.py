@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
@@ -33,10 +34,10 @@ def run_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
-) -> bool:
+) -> StopResolutionOutcome:
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 
-    outcome = run_conflict_resolution_outcome(
+    return run_conflict_resolution_outcome(
         root=root,
         target=target,
         config=config,
@@ -50,7 +51,7 @@ def run_conflict_resolution_pipeline(
         session=session,
         strategy_history=strategy_history,
     )
-    return outcome.succeeded
+
 
 
 def run_rebase_conflict_resolution_pipeline(
@@ -68,13 +69,12 @@ def run_rebase_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
-) -> bool:
+) -> StopResolutionOutcome:
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-    from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
     _ = PHASE_RESOLUTION
-    outcome = run_rebase_conflict_resolution_outcome(
+    return run_rebase_conflict_resolution_outcome(
         root=root,
         target=target,
         stop=stop,
@@ -89,4 +89,4 @@ def run_rebase_conflict_resolution_pipeline(
         session=session,
         strategy_history=strategy_history,
     )
-    return isinstance(outcome, ResolvedOutcome)
+

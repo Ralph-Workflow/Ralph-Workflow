@@ -629,6 +629,20 @@ ralph.config.general_config
    :members:
    :show-inheritance:
 
+ralph.config.gitlink_policy_config
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.gitlink_policy_config
+   :members:
+   :show-inheritance:
+
+ralph.config.gitlink_preference
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.gitlink_preference
+   :members:
+   :show-inheritance:
+
 ralph.config.conflict_resolution_config
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1372,6 +1386,13 @@ ralph.pipeline.conflict_resolution.rebase_loop
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.conflict_resolution.rebase_loop
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.gitlink_policy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.gitlink_policy
    :members:
    :show-inheritance:
 

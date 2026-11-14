@@ -326,7 +326,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert not isinstance(outcome, ResolvedOutcome)
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
-    assert calls == ["primary", "fallback"]
+    assert calls == ["primary", "primary", "primary", "fallback", "fallback", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)

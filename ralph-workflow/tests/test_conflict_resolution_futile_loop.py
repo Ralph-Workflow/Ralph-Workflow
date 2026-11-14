@@ -99,7 +99,7 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
             return False
         return False
 
-    assert (
+    assert not isinstance(
         run_conflict_resolution_pipeline(
             root=tmp_path,
             target="main",
@@ -111,8 +111,8 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
             display_context=None,
             invoke=_invoke,
             session=session,
-        )
-        is False
+        ),
+        ResolvedOutcome,
     )
     assert called[0] == "primary"
     assert "fallback" in called

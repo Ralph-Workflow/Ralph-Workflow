@@ -69,6 +69,7 @@ UNAVAILABLE_AGENT_SUBSTRINGS: frozenset[str] = frozenset(
         "empty response",
         "timed out with no output",
         "no tool calls",
+        "agent reported success but",
     }
 )
 
@@ -482,6 +483,7 @@ _NO_OUTPUT_SUBSTRINGS: tuple[str, ...] = (
 _CONFLICT_ATTEMPT_SUBSTRINGS: tuple[str, ...] = (
     "conflict attempt failed",
     "candidate produced no activity before it exited",
+    "agent reported success but",
 )
 
 _TYPED_EXIT_REASON_CATEGORIES: dict[str, tuple[FailureCategory, bool, bool]] = {
@@ -661,6 +663,7 @@ class FailureClassifier:
             provider_unavailability is not None
             or broken_agent
             or typed_unavailability is not None
+            or (category == FailureCategory.AGENT and _is_unavailable_agent_message(raw_message))
             or (
                 category == FailureCategory.AGENT
                 and (connectivity_state or "").casefold() == "online"

@@ -10,9 +10,20 @@ if TYPE_CHECKING:
 
 __all__ = ["ResolvedOutcome"]
 
+_TUPLE_PAIR_LEN = 2
+
+
+class _ResolvedOutcomeMeta(type):
+    def __instancecheck__(cls, instance: object) -> bool:
+        if super().__instancecheck__(instance):
+            return True
+        from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+
+        return isinstance(instance, ResolutionOutcome) and instance.succeeded
+
 
 @dataclass(frozen=True, slots=True)
-class ResolvedOutcome:
+class ResolvedOutcome(metaclass=_ResolvedOutcomeMeta):
     terminal_reason: object | None = None
     unresolved_paths: tuple[str, ...] = ()
     failure_cause: ResolutionFailureCause | None = None
@@ -36,3 +47,22 @@ class ResolvedOutcome:
 
     def __bool__(self) -> bool:
         return True
+
+    def __hash__(self) -> int:
+        return hash((self.succeeded, self.reason, self.unresolved_paths))
+
+
+    def __eq__(self, other: object) -> bool:
+        if (
+            isinstance(other, tuple)
+            and len(other) == _TUPLE_PAIR_LEN
+            and isinstance(other[0], bool)
+            and isinstance(other[1], str)
+        ):
+            return other == (True, "")
+        return isinstance(other, ResolvedOutcome) and (
+            self.succeeded,
+            self.reason,
+            self.unresolved_paths,
+        ) == (other.succeeded, other.reason, other.unresolved_paths)
+

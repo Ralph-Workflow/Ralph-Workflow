@@ -8,6 +8,8 @@ if TYPE_CHECKING:
 
 __all__ = ["WaitingOutcome"]
 
+_TUPLE_PAIR_LEN = 2
+
 
 @dataclass(frozen=True, slots=True)
 class WaitingOutcome:
@@ -35,3 +37,34 @@ class WaitingOutcome:
 
     def __bool__(self) -> bool:
         return False
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.external_condition,
+                self.resumes_when,
+                self.succeeded,
+                self.reason,
+                self.unresolved_paths,
+            )
+        )
+
+    def __iter__(self) -> Iterator[object]:
+        return iter((False, self.external_condition or ""))
+
+    def __eq__(self, other: object) -> bool:
+        if (
+            isinstance(other, tuple)
+            and len(other) == _TUPLE_PAIR_LEN
+            and isinstance(other[0], bool)
+            and isinstance(other[1], str)
+        ):
+            return other == (False, self.external_condition or "")
+        return (
+            isinstance(other, WaitingOutcome)
+            and (self.external_condition, self.resumes_when)
+            == (other.external_condition, other.resumes_when)
+            and (self.succeeded, self.reason, self.unresolved_paths)
+            == (other.succeeded, other.reason, other.unresolved_paths)
+        )
+

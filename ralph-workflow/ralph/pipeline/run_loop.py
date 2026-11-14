@@ -1888,13 +1888,14 @@ def resolve_paused_rebase(
         active_executor = (
             executor if executor is not None else default_rebase_continuation_executor()
         )
-        outcome = active_executor.continue_rebase(
+        outcome: object = active_executor.continue_rebase(
             ctx.workspace_scope.root,
             target,
             stop_resolver,
             ctx.config.conflict_resolution,
         )
-        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+        from enum import Enum
+
         from ralph.pipeline.resolution_outcome import (
             ConfigFailureOutcome,
             NextStrategyOutcome,
@@ -1904,51 +1905,59 @@ def resolve_paused_rebase(
             WaitingOutcome,
         )
 
-        raw_outcome: object = outcome
-        resolved = isinstance(raw_outcome, ResolvedOutcome)
-        reason: str | None = None
-        cause_val = "unresolved_conflict"
-        if isinstance(raw_outcome, tuple):
-            resolved = bool(raw_outcome[0])
-            reason = str(raw_outcome[1]) if len(raw_outcome) > 1 and raw_outcome[1] else None
-            tuple_cause_index = 2
-            if len(raw_outcome) > tuple_cause_index and raw_outcome[tuple_cause_index]:
-                fc_raw = raw_outcome[tuple_cause_index]
-                cause_val = (
-                    str(fc_raw.value).lower()
-                    if isinstance(fc_raw, ResolutionFailureCause)
-                    else str(fc_raw).lower()
-                )
-        elif not resolved:
-            if isinstance(raw_outcome, RetryLaterOutcome):
-                reason = raw_outcome.on_change
-                if raw_outcome.failure_cause != ResolutionFailureCause.NONE:
-                    cause_val = str(raw_outcome.failure_cause.value).lower()
-                else:
-                    cause_val = "agent_failure"
-            elif isinstance(raw_outcome, WaitingOutcome):
-                reason = raw_outcome.external_condition
-            elif isinstance(raw_outcome, NextStrategyOutcome):
-                reason = raw_outcome.strategy
-            elif isinstance(raw_outcome, ConfigFailureOutcome):
-                reason = f"{raw_outcome.file}: {raw_outcome.parse_error}"
-                cause_val = "config_failure"
-            elif isinstance(raw_outcome, UnknownOutcome):
-                reason = str(raw_outcome.error)
-            elif isinstance(raw_outcome, RebaseResolutionResult):
-                resolved = raw_outcome.succeeded
-                reason = raw_outcome.reason
-                if raw_outcome.failure_cause != ResolutionFailureCause.NONE:
-                    cause_val = str(raw_outcome.failure_cause.value).lower()
+        if isinstance(outcome, tuple):
+            resolved = bool(outcome[0]) if outcome else False
+            reason = str(outcome[1]) if len(outcome) > 1 and outcome[1] is not None else None
+            tail = outcome[2:]
+            raw_cause: object = tail[0] if tail else None
+            if isinstance(raw_cause, Enum):
+                failure_cause = raw_cause.name
+            elif raw_cause is not None:
+                failure_cause = str(raw_cause)
+            else:
+                failure_cause = None
+        elif isinstance(outcome, ResolvedOutcome):
+            resolved = True
+            reason = None
+            failure_cause = None
+        elif isinstance(outcome, WaitingOutcome):
+            resolved = False
+            reason = outcome.external_condition
+            failure_cause = None
+        elif isinstance(outcome, RetryLaterOutcome):
+            resolved = False
+            reason = (
+                f"retry until {outcome.until}"
+                if outcome.until is not None
+                else f"retry on change {outcome.on_change}"
+            )
+            failure_cause = None
+        elif isinstance(outcome, NextStrategyOutcome):
+            resolved = False
+            reason = outcome.strategy
+            failure_cause = None
+        elif isinstance(outcome, ConfigFailureOutcome):
+            resolved = False
+            reason = f"{outcome.file}: {outcome.parse_error}"
+            failure_cause = "CONFIG_FAILURE"
+        elif isinstance(outcome, UnknownOutcome):
+            resolved = False
+            reason = str(outcome.error)
+            failure_cause = None
+        else:
+            resolved = False
+            reason = None
+            failure_cause = None
     except Exception as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
     if not resolved:
+        cause_suffix = f" (cause: {failure_cause})" if failure_cause is not None else ""
         logger.warning(
-            "integration resolution: the paused rebase for '{}' was not resolved: {} (cause: {})",
+            "integration resolution: the paused rebase for '{}' was not resolved: {}{}",
             target,
             reason or "no terminal evidence",
-            cause_val,
+            cause_suffix,
         )
     return bool(resolved)
 

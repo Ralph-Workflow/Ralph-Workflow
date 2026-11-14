@@ -82,14 +82,14 @@ def _run_outcome(
         root=tmp_path,
         target="main",
         config=_config(),
-        pipeline_deps=None,
+        pipeline_deps=None,  # type: ignore[arg-type]
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
         display=None,
         display_context=None,
         invoke=invoke,
         session=session,
-        strategy_history=strategy_history,
+        strategy_history=tuple(strategy_history),
     )
 
 

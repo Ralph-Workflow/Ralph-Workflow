@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -18,9 +19,11 @@ __all__ = [
     "MAX_TRACKED_CONFLICT_ATTEMPTS",
     "ConflictIdentity",
     "apply_conflict_budget",
+    "finish_conflict_attempt",
     "prior_conflict_count",
     "resolve_failure_ledger",
     "resolver_allowed",
+    "start_conflict_attempt",
 ]
 
 
@@ -109,6 +112,28 @@ def _is_same_conflict(
     )
 
 
+def _ledger_candidates_available(
+    ledger: AgentFailureLedger,
+    phase: str,
+    candidates: Sequence[str],
+) -> bool:
+    if candidates:
+        return any(ledger.is_available(phase, a) for a in candidates)
+    snap = ledger.snapshot()
+    raw_entries = snap.get("entries")
+    if isinstance(raw_entries, dict):
+        phase_agents: list[str] = []
+        for val in raw_entries.values():
+            if isinstance(val, dict):
+                p = val.get("phase")
+                a = val.get("agent")
+                if isinstance(p, str) and p == phase and isinstance(a, str) and a:
+                    phase_agents.append(a)
+        if phase_agents:
+            return any(ledger.is_available(phase, a) for a in phase_agents)
+    return True
+
+
 def resolver_allowed(
     state: RebaseState,
     target: str,
@@ -119,13 +144,14 @@ def resolver_allowed(
     phase: str = "rebase_conflict_resolution",
     **kwargs: object,
 ) -> bool:
+    del kwargs
     if _is_same_conflict(state, target, identity) and state.resolution_exhausted:
         return False
+
     if ledger is None:
         return True
-    if candidates:
-        return any(ledger.is_available(phase, c) for c in candidates)
-    return True
+
+    return _ledger_candidates_available(ledger, phase, candidates)
 
 
 @runtime_checkable
@@ -244,3 +270,31 @@ def apply_conflict_budget(
             f"{min(carried, attempts)} unresolved attempts; escalating to the next resolution strategy"
         )
     return updated.model_copy(update=update)
+
+
+_MAX_ACTIVE_CONFLICT_ATTEMPTS = 64
+_ACTIVE_CONFLICT_ATTEMPTS: OrderedDict[tuple[object, ...], None] = OrderedDict()
+
+
+def _conflict_attempt_key(identity: ConflictIdentity) -> tuple[object, ...]:
+    return (
+        identity.feature_sha,
+        identity.target_sha,
+        identity.conflicted_paths,
+        identity.stage_oids,
+        identity.scope,
+    )
+
+
+def start_conflict_attempt(identity: ConflictIdentity) -> bool:
+    key = _conflict_attempt_key(identity)
+    if key in _ACTIVE_CONFLICT_ATTEMPTS:
+        return False
+    while len(_ACTIVE_CONFLICT_ATTEMPTS) >= _MAX_ACTIVE_CONFLICT_ATTEMPTS:
+        _ACTIVE_CONFLICT_ATTEMPTS.popitem(last=False)
+    _ACTIVE_CONFLICT_ATTEMPTS[key] = None
+    return True
+
+
+def finish_conflict_attempt(identity: ConflictIdentity) -> None:
+    _ACTIVE_CONFLICT_ATTEMPTS.pop(_conflict_attempt_key(identity), None)

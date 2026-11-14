@@ -10,20 +10,15 @@ from loguru import logger
 from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import (
-    run_conflict_resolution_outcome,
-    run_rebase_conflict_resolution_outcome,
+    run_conflict_resolution_pipeline,
+    run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
-from ralph.pipeline.resolution_outcome import (
-    NextStrategyOutcome,
-    RetryLaterOutcome,
-    StopResolutionOutcome,
-    UnknownOutcome,
-)
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 
 if TYPE_CHECKING:
@@ -37,6 +32,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStop, RebaseStopResolver
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
@@ -44,8 +40,7 @@ if TYPE_CHECKING:
         def get(self, name: str) -> AgentConfig | None: ...
 
 
-run_conflict_resolution_pipeline = run_conflict_resolution_outcome
-run_rebase_conflict_resolution_pipeline = run_rebase_conflict_resolution_outcome
+
 
 _WARN_CHANNEL = "auto-integrate"
 
@@ -74,7 +69,7 @@ def build_agent_conflict_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> ConflictResolver:
 
-    def _resolver(root: Path, target: str) -> StopResolutionOutcome:
+    def _resolver(root: Path, target: str) -> StopResolutionOutcome | bool:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -87,7 +82,7 @@ def build_agent_conflict_resolver(
                 display,
                 f"conflict resolution unavailable: {missing} not threaded to this seam",
             )
-            return NextStrategyOutcome("completion_in_place")
+            return False
         if not _any_chain_agent_installed(policy_bundle, registry):
             logger.warning(
                 "auto_integrate: no agent of the rebase-conflict-resolution "
@@ -97,7 +92,7 @@ def build_agent_conflict_resolver(
                 display,
                 "conflict resolution unavailable: no rebase-conflict-resolution agent installed",
             )
-            return NextStrategyOutcome("completion_in_place")
+            return False
         try:
             return run_conflict_resolution_pipeline(
                 root=root,
@@ -115,9 +110,9 @@ def build_agent_conflict_resolver(
             emit_integration_warn_line(
                 display, f"conflict resolution failed: resolution pipeline raised {exc}"
             )
-            return UnknownOutcome(exc)
+            return False
 
-    return _resolver
+    return cast("ConflictResolver", _resolver)
 
 
 def build_agent_rebase_stop_resolver(
@@ -132,7 +127,7 @@ def build_agent_rebase_stop_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver:
 
-    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
+    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome | bool:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -145,7 +140,7 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {missing} not threaded to this seam",
             )
-            return NextStrategyOutcome("completion_in_place")
+            return False
         try:
             return _resolve_within_target_context(
                 root=root,
@@ -231,7 +226,7 @@ def build_agent_rebase_stop_resolver(
                 failure_cause=failure_cause,
             )
 
-    return _resolver
+    return cast("RebaseStopResolver", _resolver)
 
 
 def _resolve_within_target_context(
@@ -243,7 +238,7 @@ def _resolve_within_target_context(
     display: ParallelDisplay,
     display_context: DisplayContext | None,
     strategy_history: tuple[str, ...],
-) -> StopResolutionOutcome:
+) -> StopResolutionOutcome | bool:
     with workspace_context(root) as target_ctx:
         target_config = target_ctx.config
         target_policy = target_ctx.policy_bundle
@@ -259,10 +254,10 @@ def _resolve_within_target_context(
                 "rebase conflict resolution unavailable: no "
                 "rebase-conflict-resolution agent installed on the target worktree",
             )
-            return NextStrategyOutcome("completion_in_place")
+            return False
         try:
             if strategy_history:
-                return run_rebase_conflict_resolution_outcome(
+                return run_rebase_conflict_resolution_pipeline(
                     root=root,
                     target=target,
                     stop=stop,
@@ -274,7 +269,7 @@ def _resolve_within_target_context(
                     display_context=display_context,
                     strategy_history=strategy_history,
                 )
-            return run_rebase_conflict_resolution_outcome(
+            return run_rebase_conflict_resolution_pipeline(
                 root=root,
                 target=target,
                 stop=stop,
@@ -294,7 +289,7 @@ def _resolve_within_target_context(
                 display,
                 f"rebase conflict resolution failed: resolution pipeline raised {exc}",
             )
-            return UnknownOutcome(exc)
+            return False
 
 
 def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsAgentLookup) -> bool:

@@ -92,9 +92,9 @@ def test_only_a_submodule_pointer_is_genuinely_out_of_reach() -> None:
     from ralph.pipeline.conflict_resolution.sight import ConflictSight, classify_stage_map
 
     gitlink = {1: ("160000", "base"), 3: ("160000", "theirs")}
-    assert classify_stage_map(gitlink, binary=False) is ConflictSight.OUT_OF_REACH
+    assert classify_stage_map(gitlink, binary=False) is ConflictSight.GITLINK_POLICY
     both_gitlinks = {1: ("160000", "b"), 2: ("160000", "o"), 3: ("160000", "t")}
-    assert classify_stage_map(both_gitlinks, binary=False) is ConflictSight.OUT_OF_REACH
+    assert classify_stage_map(both_gitlinks, binary=False) is ConflictSight.GITLINK_POLICY
 
     tree = {1: ("100644", "base"), 2: ("040000", "ours")}
     assert classify_stage_map(tree, binary=False) is ConflictSight.AGENT_DECISION

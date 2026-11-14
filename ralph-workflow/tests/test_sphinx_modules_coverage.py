@@ -105,6 +105,7 @@ _EXCLUDED: dict[str, str] = {
     "recovery.recovery_controller_options": "internal recovery type, not public API",
     "recovery.unavailability_reason": "internal recovery type, not public API",
     "testing.fake_run": "test infrastructure, not public API",
+    "testing.repo_structure_boundary_b11": "test infrastructure, not public API",
     "testing.audit_test_policy": "test infrastructure, not public API",
     "testing.policy_allowlists": "test infrastructure, not public API",
     "testing.whitebox_detectors": "test infrastructure, not public API",

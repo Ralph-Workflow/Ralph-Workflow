@@ -56,6 +56,7 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
     select_resolution_action,
 )
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_status import (
     push_round_status as _push_round_status,
 )
@@ -90,11 +91,53 @@ from ralph.pipeline.conflict_resolution.sight import (
 )
 from ralph.pipeline.conflict_resolution.status import (
     capture_status_bar_model,
-    emit_conflict_phase_line,
+)
+from ralph.pipeline.conflict_resolution.status import (
+    emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
 from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+
+_ACTIVE_SESSION: list[ResolutionSession | None] = [None]
+
+
+def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
+    if session.recovery_controller is not None:
+        from ralph.pipeline.conflict_resolution.resolver_health import clear_resolver
+
+        clear_resolver(session.recovery_controller, agent)
+
+
+def emit_conflict_phase_line(
+    display: object, message: str, *, channel: str = "rebase-conflict"
+) -> None:
+    if message.endswith(": next strategy"):
+        reason_label = message.removesuffix(": next strategy")
+        session = _ACTIVE_SESSION[0]
+        if session is not None and (
+            session.last_activity_kind is not None
+            or session.last_activity_at is not None
+            or (session.last_duration_seconds is not None and session.last_duration_seconds > 0)
+        ):
+            dur = (
+                session.last_duration_seconds
+                if session.last_duration_seconds is not None
+                else 0.0
+            )
+            act_kind = session.last_activity_kind or "none"
+            act_at = session.last_activity_at or "never"
+            paths = ", ".join(session.unresolved_paths)
+            unres_count = len(session.unresolved_paths)
+            message = (
+                f"{reason_label}: duration={dur:.1f}s; "
+                f"last_activity_kind={act_kind}; "
+                f"last_activity_at={act_at}; "
+                f"last_progress=unresolved_count={unres_count}; "
+                f"unresolved_paths={paths}; "
+                f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
+            )
+    _status_emit_conflict_phase_line(display, message, channel=channel)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -105,14 +148,15 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
-type ResolutionInvoker = Callable[[str, "Path", int], object]
+type ResolutionInvoker = Callable[
+    [str, "Path", int], ResolutionOutcome | StopResolutionOutcome | bool
+]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -180,16 +224,20 @@ def run_conflict_resolution_outcome(
 ) -> StopResolutionOutcome:
     active_session = session or _new_resolution_session(config)
     previous_model = capture_status_bar_model(display)
-    clock_inst = None
-    if active_session.ledger is not None and hasattr(active_session.ledger, "clock"):
-        clock_inst = active_session.ledger.clock
-    elif pipeline_deps is not None and getattr(pipeline_deps, "recovery_clock", None) is not None:
-        clock_inst = pipeline_deps.recovery_clock
+    clock_candidate: object = (
+        getattr(active_session.ledger, "_clock", None)  # type: ignore[misc]
+        or getattr(active_session.ledger, "clock", None)  # type: ignore[misc]
+        if active_session.ledger is not None
+        else None
+    )
+    if clock_candidate is None and pipeline_deps is not None:
+        clock_candidate = pipeline_deps.recovery_clock
     token = None
-    if clock_inst is not None and hasattr(clock_inst, "sleep"):
+    if clock_candidate is not None and hasattr(clock_candidate, "sleep"):
         from ralph.pipeline.integration_actions import install_executors
 
-        token = install_executors(clock=clock_inst)
+        token = install_executors(clock=clock_candidate)  # type: ignore[arg-type]
+    _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(
             root=root,
@@ -216,6 +264,7 @@ def run_conflict_resolution_outcome(
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         return _resolution_outcome(active_session, False)
     finally:
+        _ACTIVE_SESSION[0] = None
         if token is not None:
             from ralph.pipeline.integration_actions import reset_executors
 
@@ -244,6 +293,7 @@ def run_rebase_conflict_resolution_outcome(
     active_session = (
         session or active_rebase_resolution_session() or _new_resolution_session(config)
     )
+    _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(
             root=root,
@@ -269,6 +319,8 @@ def run_rebase_conflict_resolution_outcome(
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         return _resolution_outcome(active_session, False)
+    finally:
+        _ACTIVE_SESSION[0] = None
 
 
 def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
@@ -431,6 +483,25 @@ def _status_scope(status: IntegrationStatus) -> str:
     return f"{status.summary}; path reasons: {details}" if details else status.summary
 
 
+def _wrap_invoker(
+    base_runner: ResolutionInvoker,
+    session: ResolutionSession,
+) -> ResolutionInvoker:
+    def runner(
+        agent_name: str, prompt_path: Path, round_index: int
+    ) -> StopResolutionOutcome | bool:
+        raw = base_runner(agent_name, prompt_path, round_index)
+        if isinstance(raw, ResolutionOutcome):
+            if raw.failure_cause is not ResolutionFailureCause.NONE:
+                session.last_failure_cause = raw.failure_cause
+            if isinstance(raw.reason, ResolutionTerminationReason):
+                session.terminal_reason = raw.reason
+            return raw.to_stop_resolution_outcome()
+        return raw
+
+    return runner
+
+
 def _run_rounds(
     *,
     root: Path,
@@ -509,7 +580,7 @@ def _run_rounds(
     if session.started_at is None:
         session.started_at = clock()
     session.unresolved_paths = conflicted
-    runner = invoke or _default_invoker(
+    base_runner = invoke or _default_invoker(
         config=config,
         pipeline_deps=pipeline_deps,
         workspace_scope=effective_scope,
@@ -526,6 +597,7 @@ def _run_rounds(
         target=target,
         require_completion_evidence=bool(decision_paths),
     )
+    runner = _wrap_invoker(base_runner, session)
     entry_scope = (
         f"{len(conflicted)} resolvable; {_status_scope(integration_status)}"
         if integration_status is not None
@@ -570,6 +642,29 @@ def _run_rounds(
         "abandoning conflict resolution; " + session.exhaustion_reason,
     )
     return False
+
+
+def _handle_repaired_or_fast_forward(
+    action: ResolutionAction,
+    attempt: RoundAttempt,
+    session: ResolutionSession,
+    display: ParallelDisplay | None,
+    round_index: int,
+    stop: RebaseStop | None,
+) -> bool:
+    if action == ResolutionAction.ACCEPT_WORKTREE_REPAIR and not (
+        attempt.succeeded
+        or session.last_attempt_saw_activity
+        or session.exhaustion_reason is not None
+    ):
+        session.terminal_reason = ResolutionTerminationReason.ATTEMPT_FAILED
+        return False
+    if _escalate_unreachable_remainder(session, display):
+        return False
+    _emit_success(display, round_index, stop)
+    if attempt.agent_name is not None:
+        _reset_conflict_success(session, attempt.agent_name)
+    return True
 
 
 def _execute_round_loop(
@@ -626,7 +721,6 @@ def _execute_round_loop(
                     observer=observer,
                 )
 
-            _wait_for_eligible_agent(session, candidates)
 
             attempt = _run_one_round(
                 runner,
@@ -639,9 +733,7 @@ def _execute_round_loop(
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
             )
-            if not attempt.invoked:
-                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
-                break
+
             if attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None:
                 logger.warning(
                     "conflict_resolution: round {} with '{}' reported success, but unresolved paths remain in worktree",
@@ -649,6 +741,7 @@ def _execute_round_loop(
                     attempt.agent_name,
                 )
                 made_progress = attempt.probe_changed or attempt.count_dropped
+                unresolved_count = len(session.unresolved_paths)
                 session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
                 session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
                 classify_failed_resolution_attempt(
@@ -684,49 +777,23 @@ def _execute_round_loop(
                 ResolutionAction.PROCEED_TO_FAST_FORWARD,
                 ResolutionAction.ACCEPT_WORKTREE_REPAIR,
             ):
-                if _escalate_unreachable_remainder(session, display):
-                    break
-                _emit_success(display, round_index, stop)
-                return True
+                if _handle_repaired_or_fast_forward(
+                    action, attempt, session, display, round_index, stop
+                ):
+                    return True
+                break
             session.rounds_spent = round_index
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
                 _escalate_unreachable_remainder(session, display)
                 break
             if not _can_continue_rounds(session, candidates):
                 break
-            _wait_for_candidates_if_cooling_down(session, candidates)
     finally:
         if prompt_path is not None:
             with contextlib.suppress(OSError):
                 prompt_path.unlink()
     return False
 
-
-def _wait_for_eligible_agent(
-    session: ResolutionSession,
-    candidates: tuple[str, ...],
-) -> None:
-    controller = session.recovery_controller
-    if controller is None:
-        return
-    skipped = skipped_candidates(session, candidates)
-    live = [name for name in candidates if name not in skipped]
-    if live and not any(
-        controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
-    ):
-        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
-        if wait_ms > 0:
-            _sleep_seconds(wait_ms / 1000.0)
-
-
-def _wait_for_candidates_if_cooling_down(
-    session: ResolutionSession, candidates: Sequence[str]
-) -> None:
-    controller = session.recovery_controller
-    if controller is not None:
-        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-        if wait_ms > 0:
-            _sleep_seconds(wait_ms / 1000.0)
 
 
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:

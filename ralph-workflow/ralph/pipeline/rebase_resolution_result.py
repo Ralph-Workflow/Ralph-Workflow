@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -12,7 +16,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
         ResolutionTerminationReason,
     )
-    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 __all__ = ["RebaseResolutionResult"]
 
