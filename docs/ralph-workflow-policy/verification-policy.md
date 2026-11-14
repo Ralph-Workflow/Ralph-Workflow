@@ -62,9 +62,13 @@ the code, tests, and this paragraph together.
 Every control declares its protected outcome, distinct fault sensitivity,
 cheapest sufficient layer, owner, trigger, lane, measured marginal seconds,
 inspectable evidence, lifecycle review or retirement condition, and one of
-`REMOVE`, `MERGE`, `REPLACE`, or `KEEP`. Only effective controls in the
-`default` lane count toward `default_budget_seconds`. Relabeling the same
-protected outcome in another lane is rejected instead of laundering cost.
+`REMOVE`, `MERGE`, `REPLACE`, or `KEEP`. An effective control's marginal
+seconds MUST be a measured value — the wall-clock its deterministic enforcer
+adds to the default gate, measured from invocation to answer and recorded
+with the measurement in that control's `evidence` field. Only effective
+controls in the `default` lane count toward `default_budget_seconds`.
+Relabeling the same protected outcome in another lane is rejected instead of
+laundering cost.
 
 Evidence for a material behavior claim must name a predeclared public-surface
 observation and bind it to an immutable subject and run, a preserved artifact,

@@ -40,6 +40,10 @@ markers MUST appear verbatim before any heading or content.
   the kernel rule is the floor; the domain rule is the ceiling.
 * Shipped skills hold technique; where a skill's guidance conflicts with
   this kernel, the kernel (policy) wins.
+* Conditional-domain applicability lives in
+  `docs/ralph-workflow-policy/applicability.toml`: one `required` or
+  `inactive` entry per conditional domain, and every inactive entry
+  carries its dated reactivation trigger.
 
 ## Loading direction
 

@@ -114,12 +114,12 @@ RALPH-COMMAND: make -C ralph-workflow formula-check
 The expected successful result is a clean lint run (exit 0). Lint
 failures MUST be addressed at the source, not by adding suppressions.
 For the Ruby formula, a clean `ruby -c` syntax check (the only Ruby
-gate the project needs). Known defect: this target is hollow on any
-machine without Ruby (it exits 0 with a "skipping" message when
-`ruby` is absent from `PATH`); see
-`docs/ralph-workflow-policy/gate-script-policy.md`
-`known_gate_corpus_defects` for the project-reality record and the
-dev-cycle repair obligation.
+gate the project needs). The target fails closed when Ruby is absent:
+`scripts/packaging_operations.sh` returns 127 with the gate-policy
+citation and `make formula-check` fails, so a machine without Ruby
+never reports a false pass. The project-reality record is the
+`formula_check_gate` fact in
+`docs/ralph-workflow-policy/gate-script-policy.md`.
 
 ## Exceptions
 
