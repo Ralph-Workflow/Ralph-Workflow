@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Protocol, TypedDict
 
 import pytest
 from loguru import logger
@@ -27,7 +27,22 @@ from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
+if TYPE_CHECKING:
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.workspace.scope import WorkspaceScope
+
 pytestmark = pytest.mark.timeout_seconds(5)
+
+
+class _LogLevelDouble(Protocol):
+    name: str
+
+
+class _LogRecord(TypedDict):
+    level: _LogLevelDouble
+    message: str
 
 
 @pytest.fixture(autouse=True)
@@ -35,8 +50,8 @@ def _clean_gate_state() -> None:
     reset_continuation_gate_state()
 
 
-def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
-    captured: list[dict[str, Any]] = []
+def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
+    captured: list[_LogRecord] = []
 
     def _sink(message: object) -> None:
         rec = getattr(message, "record", None)
@@ -157,7 +172,7 @@ def test_unchanged_key_invokes_resolver_once_one_waiting_zero_repeated_critical(
 
     resolver_invocations = [0]
 
-    def fake_resolve(*_args: Any, **_kwargs: Any) -> RebaseResolutionResult:
+    def fake_resolve(*_args: object, **_kwargs: object) -> RebaseResolutionResult:
         resolver_invocations[0] += 1
         return RebaseResolutionResult(
             succeeded=False,
@@ -232,7 +247,7 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
     )
     write_record(root, record)
 
-    def fake_resolve(*_args: Any, **_kwargs: Any) -> RebaseResolutionResult:
+    def fake_resolve(*_args: object, **_kwargs: object) -> RebaseResolutionResult:
         return RebaseResolutionResult(
             succeeded=False,
             reason="rebase resolution remains pending after continuation",
@@ -316,7 +331,7 @@ def test_agent_eligibility_change_retries_exactly_once(
     )
     write_record(root, record)
 
-    def fake_resolve(*_args: Any, **_kwargs: Any) -> RebaseResolutionResult:
+    def fake_resolve(*_args: object, **_kwargs: object) -> RebaseResolutionResult:
         return RebaseResolutionResult(
             succeeded=False,
             reason="rebase resolution remains pending after continuation",
@@ -399,7 +414,7 @@ def test_config_fingerprint_change_retries_once(
     )
     write_record(root, record)
 
-    def fake_resolve(*_args: Any, **_kwargs: Any) -> RebaseResolutionResult:
+    def fake_resolve(*_args: object, **_kwargs: object) -> RebaseResolutionResult:
         return RebaseResolutionResult(
             succeeded=False,
             reason="rebase resolution remains pending after continuation",
@@ -481,7 +496,7 @@ def test_legacy_record_without_gate_key_is_ungated(
     assert loaded is not None
     assert loaded.resolution_gate_key is None
 
-    def fake_resolve(*_args: Any, **_kwargs: Any) -> RebaseResolutionResult:
+    def fake_resolve(*_args: object, **_kwargs: object) -> RebaseResolutionResult:
         return RebaseResolutionResult(
             succeeded=False,
             reason="rebase resolution remains pending after continuation",
@@ -524,7 +539,7 @@ def test_merge_continuation_retry_gate(
 
     merge_resolve_invocations = [0]
 
-    def counting_resolver(*_args: Any, **_kwargs: Any) -> Any:
+    def counting_resolver(*_args: object, **_kwargs: object) -> bool:
         merge_resolve_invocations[0] += 1
         return False
 
@@ -589,7 +604,7 @@ def test_production_entry_recovery_retries_on_eligibility_and_command(
 
     monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", fake_resolve_in_progress)
 
-    def dummy_resolver(*_args: Any, **_kwargs: Any) -> bool:
+    def dummy_resolver(*_args: object, **_kwargs: object) -> bool:
         return False
 
     scope = WorkspaceScope(root=root)
@@ -652,8 +667,12 @@ def test_cli_retry_integration_invokes_recovery_with_force_retry(
     recovered_called: list[bool] = []
 
     def fake_recover(
-        scope: Any, *, config: Any = None, force_retry: bool = False, **kwargs: Any
-    ) -> Any:
+        scope: WorkspaceScope,
+        *,
+        config: UnifiedConfig | None = None,
+        force_retry: bool = False,
+        **kwargs: object,
+    ) -> RebaseState | None:
         recovered_called.append(force_retry)
         return None
 
@@ -698,7 +717,7 @@ def test_failed_attempt_that_consumes_the_eligible_agent_does_not_retrigger(
     resolve_calls = [0]
 
     def fake_resolve_in_progress(
-        root: Path, target: str, resolver: object, *, session: Any = None
+        root: Path, target: str, resolver: object, *, session: ResolutionSession | None = None
     ) -> bool:
         resolve_calls[0] += 1
         ctrl.unavailability_store.mark_unavailable(
@@ -747,7 +766,7 @@ def test_recorded_failure_cause_is_not_inferred_from_the_reason_text(
     write_record(root, record)
 
     def fake_resolve_in_progress(
-        root: Path, target: str, resolver: object, *, session: Any = None
+        root: Path, target: str, resolver: object, *, session: ResolutionSession | None = None
     ) -> bool:
         session.exhaustion_reason = "fix /tmp/ralph-workflow.toml then run ralph --check-config"
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH

@@ -23,4 +23,3 @@ def test_policy_and_writer_constant_agree_on_commit_path() -> None:
     assert ra is not None, f"no artifact contract for drain {_COMMIT_DRAIN!r}"
     assert ra.artifact_type == COMMIT_MESSAGE_TYPE
     assert ra.artifact_path == COMMIT_MESSAGE_ARTIFACT
-

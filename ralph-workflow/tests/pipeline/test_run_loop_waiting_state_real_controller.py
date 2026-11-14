@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, TypedDict
 from unittest.mock import MagicMock
 
 from loguru import logger
@@ -28,6 +28,17 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
+
+class _LogLevelDouble(Protocol):
+    name: str
+
+
+class _LogRecord(TypedDict):
+    level: _LogLevelDouble
+    message: str
+    extra: dict[str, object]
+
+
 if TYPE_CHECKING:
     import pytest
 
@@ -44,8 +55,8 @@ def _no_output_opts() -> InactivityTimeoutOpts:
     )
 
 
-def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
-    records: list[dict[str, Any]] = []
+def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
+    records: list[_LogRecord] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="DEBUG")
     return records, sink_id
 
@@ -79,7 +90,7 @@ def _build_real_controller_with_unavailable(
     )
 
 
-def _assert_waiting_log(records: list[dict[str, Any]], phase: str, agents: list[str]) -> None:
+def _assert_waiting_log(records: list[_LogRecord], phase: str, agents: list[str]) -> None:
     waiting_records = [
         r for r in records if "WAITING" in r["message"] and "all agents unavailable" in r["message"]
     ]
@@ -100,7 +111,7 @@ def _assert_waiting_log(records: list[dict[str, Any]], phase: str, agents: list[
         assert tup[2] >= 0
 
 
-def _assert_resumed_log(records: list[dict[str, Any]], phase: str) -> None:
+def _assert_resumed_log(records: list[_LogRecord], phase: str) -> None:
     resumed_records = [
         r for r in records if "RESUMED" in r["message"] and "cooldown expired" in r["message"]
     ]

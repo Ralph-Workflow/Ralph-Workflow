@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
-from typing import Any
+from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke._pty_line_reader import (
@@ -11,6 +11,9 @@ from ralph.agents.invoke._pty_line_reader import (
     PtyLineReader,
 )
 from ralph.agents.invoke.attempt_supervision import attempt_supervisor
+
+if TYPE_CHECKING:
+    import pytest
 
 _MODULE = sys.modules[PtyLineReader.__module__]
 _SUPERVISOR_MODULE = sys.modules[attempt_supervisor.__name__]
@@ -62,7 +65,7 @@ def _reader(handle: _Handle, grace: float | None) -> PtyLineReader:
     return reader
 
 
-def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: Any) -> None:
+def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     handle = _Handle(exited=False, calls=calls)
     reader = _reader(handle, _MAX_INTERACTIVE_EXIT_GRACE_SECONDS + 1.0)
@@ -90,7 +93,9 @@ def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: Any) -> 
     ]
 
 
-def test_natural_exit_uses_default_grace_without_termination(monkeypatch: Any) -> None:
+def test_natural_exit_uses_default_grace_without_termination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
     handle = _Handle(exited=True, calls=calls)
     reader = _reader(handle, None)

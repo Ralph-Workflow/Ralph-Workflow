@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -16,13 +16,17 @@ from ralph.mcp.server._in_memory_transport import (
 )
 from ralph.mcp.server.runtime import McpServer
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
-from ralph.mcp.tools._exec_run_deps import ExecRunDeps
+from ralph.mcp.tools._exec_run_deps import CommandRunner, ExecRunDeps
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.names import RalphToolName
 from ralph.mcp.webvisit.extractor import ExtractedPage
 from ralph.mcp.webvisit.fetcher import FetchOutcome
 from ralph.workspace.fs import FsWorkspace
 from tests._support.typed_accessors import must_dict_list, must_mapping, must_str_list
+
+if TYPE_CHECKING:
+    from ralph.config.web_search_config import WebSearchConfig
+    from ralph.mcp.websearch.backends.base import SearchResult, WebSearchBackend
 
 
 def _all_capabilities() -> set[str]:
@@ -73,7 +77,7 @@ def _drive_tools_list(server: McpServer) -> list[str]:
     return sorted(must_str_list([entry["name"] for entry in tools_block]))
 
 
-def _make_in_memory_runner() -> Any:
+def _make_in_memory_runner() -> CommandRunner:
 
     def runner(
         argv: list[str],
@@ -91,7 +95,7 @@ def _make_in_memory_runner() -> Any:
     return runner
 
 
-def _patch_exec_handlers_with_in_memory_runner(monkeypatch: Any) -> None:
+def _patch_exec_handlers_with_in_memory_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = _make_in_memory_runner()
     deps = ExecRunDeps(runner=runner)
     import ralph.mcp.tools.exec as _exec_mod
@@ -112,17 +116,17 @@ def _patch_exec_handlers_with_in_memory_runner(monkeypatch: Any) -> None:
 
 class _FakeWebSearchBackend:
     @staticmethod
-    def search(query: str, *, limit: int = 10) -> list[Any]:
+    def search(query: str, *, limit: int = 10) -> list[SearchResult]:
         del query, limit
         return []
 
 
-def _fake_web_search_backend_factory(name: str, config: Any) -> Any:
+def _fake_web_search_backend_factory(name: str, config: WebSearchConfig) -> WebSearchBackend:
     del name, config
     return _FakeWebSearchBackend()
 
 
-def _fake_web_visit_fetch(url: str, **_kwargs: Any) -> FetchOutcome:
+def _fake_web_visit_fetch(url: str, **_kwargs: object) -> FetchOutcome:
     return FetchOutcome(
         status="ok",
         effective_url=url,
@@ -132,7 +136,7 @@ def _fake_web_visit_fetch(url: str, **_kwargs: Any) -> FetchOutcome:
     )
 
 
-def _fake_web_visit_extract(*_args: Any, **_kwargs: Any) -> Any:
+def _fake_web_visit_extract(*_args: object, **_kwargs: object) -> ExtractedPage:
     return ExtractedPage(
         title="Mocked page",
         text="mocked content body",
@@ -140,7 +144,7 @@ def _fake_web_visit_extract(*_args: Any, **_kwargs: Any) -> Any:
     )
 
 
-def _install_web_backends(monkeypatch: Any) -> None:
+def _install_web_backends(monkeypatch: pytest.MonkeyPatch) -> None:
     import ralph.mcp.tools.websearch as _websearch_handler_module
     import ralph.mcp.tools.webvisit as _webvisit_handler_module
 
@@ -153,7 +157,7 @@ def _install_web_backends(monkeypatch: Any) -> None:
     monkeypatch.setattr(_webvisit_handler_module, "extract_readable", _fake_web_visit_extract)
 
 
-SWEEP_CALLS: dict[str, dict[str, Any]] = {
+SWEEP_CALLS: dict[str, dict[str, object]] = {
     RalphToolName.READ_FILE: {"path": "hello.txt"},
     RalphToolName.READ_MULTIPLE_FILES: {"paths": ["hello.txt", "subdir/nested.txt"]},
     RalphToolName.STAT_PATH: {"path": "hello.txt"},
@@ -233,7 +237,7 @@ SWEEP_CALLS: dict[str, dict[str, Any]] = {
 }
 
 
-def _drive_call(server: McpServer, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def _drive_call(server: McpServer, name: str, arguments: dict[str, object]) -> dict[str, object]:
     payload = json.dumps(
         {
             "jsonrpc": "2.0",
@@ -246,7 +250,7 @@ def _drive_call(server: McpServer, name: str, arguments: dict[str, Any]) -> dict
     return parse_sse_data(body)
 
 
-def _assert_call_round_trips(name: str, response: dict[str, Any]) -> None:
+def _assert_call_round_trips(name: str, response: dict[str, object]) -> None:
     assert "error" not in response, (
         f"{name}: tools/call returned a JSON-RPC error envelope: {response}"
     )
@@ -374,7 +378,7 @@ def test_exec_handler_does_not_spawn_subprocess_under_sweep(
         RalphToolName.UNSAFE_EXEC,
         RalphToolName.RAW_EXEC,
     ):
-        arguments = (
+        arguments: dict[str, object] = (
             {"command": "true"}
             if tool_name is RalphToolName.EXEC
             else {"command": "true", "timeout_ms": 5000}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -27,9 +27,7 @@ from ralph.pipeline.conflict_resolution import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
-from ralph.pipeline.conflict_resolution.driver import (
-    run_conflict_resolution_outcome,
-)
+from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
@@ -45,6 +43,8 @@ from ralph.recovery.events import FailureEventBus
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["a.py", "b.py"]
@@ -52,6 +52,15 @@ _POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[2] / "ralph" / "po
 _CONFIG = UnifiedConfig.model_validate({"general": {}})
 
 pytestmark = pytest.mark.timeout_seconds(10)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_all_controller_spent_repeat_yields_candidate_exhausted": (
+        "align exhausted-candidate deferral signal with canonical resolver_agent_eligibility_changed"
+    ),
+    "test_sequential_dead_launch_to_spent_repeat_exhaustion": (
+        "align exhausted-candidate deferral signal with canonical resolver_agent_eligibility_changed"
+    ),
+}
 
 
 def _policy_bundle() -> PolicyBundle:
@@ -88,7 +97,11 @@ def _install_seams(
 
 
 class _TestSessionRunner:
-    def __init__(self, persistent_session: ResolutionSession, invoke: Any = None) -> None:
+    def __init__(
+        self,
+        persistent_session: ResolutionSession,
+        invoke: ResolutionInvoker | None = None,
+    ) -> None:
         self.persistent_session = persistent_session
         self.invoke = invoke
 
@@ -96,7 +109,7 @@ class _TestSessionRunner:
         self,
         root: Path,
         target: str,
-        resolver: Any,
+        resolver: RebaseStopResolver,
         *,
         session: ResolutionSession | None = None,
     ) -> bool:
@@ -121,10 +134,10 @@ def drive_conflict_resolution_session(
     root: Path,
     session: ResolutionSession,
     *,
-    invoke: Any = None,
+    invoke: ResolutionInvoker | None = None,
 ) -> StopResolutionOutcome:
     runner = _TestSessionRunner(session, invoke=invoke)
-    result = attempt_stop_resolution(
+    raw = attempt_stop_resolution(
         None,
         StopResolutionTrigger(
             name="rebase_stop",
@@ -134,6 +147,9 @@ def drive_conflict_resolution_session(
             agent_runner=runner,
         ),
     )
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+
+    result = raw.outcome if isinstance(raw, RebaseResolutionResult) else raw
     assert isinstance(result, (ResolvedOutcome, RetryLaterOutcome))
     return result
 
@@ -204,9 +220,7 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
     result = drive_conflict_resolution_session(tmp_path, session)
 
     assert isinstance(result, RetryLaterOutcome)
-    assert result.on_change is not None
-    assert "spent/unavailable" in result.on_change
-    assert "git add -- a.py b.py" in result.on_change
+    assert result.on_change == "resolver_agent_eligibility_changed"
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
@@ -349,7 +363,7 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     def _fake_resolve_rebase_in_progress(
         root: Path,
         target: str,
-        resolver: Any,
+        resolver: RebaseStopResolver,
         *,
         session: ResolutionSession | None = None,
     ) -> bool:
@@ -450,9 +464,7 @@ def test_sequential_dead_launch_to_spent_repeat_exhaustion(
     assert session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
-    assert result2.on_change is not None
-    assert "spent/unavailable" in result2.on_change
-    assert "git add -- a.py b.py" in result2.on_change
+    assert result2.on_change == "resolver_agent_eligibility_changed"
 
 
 def test_stale_cooldown_overlap_with_controller_spent() -> None:

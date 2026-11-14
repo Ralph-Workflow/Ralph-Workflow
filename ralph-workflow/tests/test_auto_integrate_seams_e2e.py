@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
@@ -18,10 +18,15 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
-def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+def auto_integrate_after_commit(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: RebaseState,
+    **kwargs: object,
+) -> RebaseState | None:
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
-    return _auto_integrate_after_commit(*args, **kwargs)
+    return _auto_integrate_after_commit(config, workspace_scope, state, **kwargs)
 
 
 def _config() -> UnifiedConfig:

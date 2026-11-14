@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypedDict
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,6 +22,15 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 from ralph.workspace.scope import WorkspaceScope
+
+
+class _LogLevelDouble(Protocol):
+    name: str
+
+
+class _LogRecord(TypedDict):
+    level: _LogLevelDouble
+    message: str
 
 
 @pytest.fixture(autouse=True)
@@ -64,7 +73,7 @@ def _reload_once(resolver: RebaseStopResolver, root: Path) -> StopResolutionOutc
     return outcome
 
 
-def _config_failure_warnings(records: list[dict[str, Any]], broken_toml: Path) -> list[str]:
+def _config_failure_warnings(records: list[_LogRecord], broken_toml: Path) -> list[str]:
     return [
         str(record["message"])
         for record in records
@@ -94,7 +103,7 @@ def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> No
     broken_toml = agent_dir / "ralph-workflow.toml"
     broken_toml.write_text("syntax error = [", encoding="utf-8")
 
-    records: list[dict[str, Any]] = []
+    records: list[_LogRecord] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
 
     try:
@@ -152,7 +161,7 @@ def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> No
 def test_unchanged_broken_config_warns_once_across_reloads(tmp_path: Path) -> None:
     broken_toml = _write_broken_config(tmp_path)
 
-    records: list[dict[str, Any]] = []
+    records: list[_LogRecord] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
 
     try:
@@ -174,7 +183,7 @@ def test_unchanged_broken_config_warns_once_across_reloads(tmp_path: Path) -> No
 def test_changed_broken_config_warns_again(tmp_path: Path) -> None:
     broken_toml = _write_broken_config(tmp_path)
 
-    records: list[dict[str, Any]] = []
+    records: list[_LogRecord] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
 
     try:
@@ -196,7 +205,7 @@ def test_changed_broken_config_warns_again(tmp_path: Path) -> None:
 def test_startup_load_reports_failure_through_shared_recorder(tmp_path: Path) -> None:
     broken_toml = _write_broken_config(tmp_path, content="invalid_toml = [unclosed")
 
-    records: list[dict[str, Any]] = []
+    records: list[_LogRecord] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
 
     try:

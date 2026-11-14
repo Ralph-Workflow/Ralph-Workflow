@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -39,7 +38,7 @@ def _flat_paths(node: dict[str, object]) -> list[str]:
 
 
 class _FakeSession:
-    def __init__(self, explore_index: Any | None, *, capability: bool) -> None:
+    def __init__(self, explore_index: object | None, *, capability: bool) -> None:
         self.explore_index = explore_index
         self._has_capability = capability
         self._caps = {WORKSPACE_READ_CAPABILITY} if capability else set()

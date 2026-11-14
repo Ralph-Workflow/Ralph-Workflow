@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from rich.console import Group
 from rich.syntax import Syntax
@@ -23,7 +22,7 @@ def _agy_metadata(
     }
 
 
-def _render_contains_syntax(renderable: Any) -> bool:
+def _render_contains_syntax(renderable: object) -> bool:
     if isinstance(renderable, Syntax):
         return True
     if isinstance(renderable, Group):

@@ -98,7 +98,7 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
-from ralph.pipeline.integration_actions import current_clock
+from ralph.pipeline.integration_actions import Clock, current_clock, install_executors
 from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
@@ -147,7 +147,6 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from ralph.agents.clock import Clock
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -840,6 +839,7 @@ def _execute_round_loop(
                 policy_bundle,
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
+                stop_round_cap=round_cap,
             )
             _classify_incomplete_success(attempt, session, round_index, candidates, policy_bundle)
             action = _evaluate_round_attempt(

@@ -8,6 +8,7 @@ import re
 import sys
 import uuid
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -375,7 +376,7 @@ def _emit_kimi_stop() -> None:
     _emit_text_line("[DONE]")
 
 
-def _make_emit_functions(transport: str) -> dict[str, Any]:
+def _make_emit_functions(transport: str) -> dict[str, Callable[..., None] | None]:
     emitters = {
         "claude": (
             _emit_claude_session_id_line,
@@ -753,7 +754,7 @@ def _post_artifact_and_complete(
 
 def _emit_post_dispatch_frames(
     transport: str,
-    emitters: dict[str, Any],
+    emitters: dict[str, Callable[..., None] | None],
     *,
     session_id: str,
     skip_media: bool,
@@ -842,7 +843,9 @@ def _emit_post_dispatch_frames(
     _emit_stop_frame(transport, emitters.get("stop"), session_id)
 
 
-def _emit_stop_frame(transport: str, stop_emitter: Any, session_id: str) -> None:
+def _emit_stop_frame(
+    transport: str, stop_emitter: Callable[..., None] | None, session_id: str
+) -> None:
     if stop_emitter is None:
         return
     if transport == "agy":

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
 
 
-def _state(**rebase_updates: Any) -> PipelineState:
+def _state(**rebase_updates: object) -> PipelineState:
     rebase = RebaseState(**rebase_updates)
     return PipelineState(phase="development", rebase=rebase)
 
@@ -48,7 +48,7 @@ _BASE_RECORD: dict[str, object] = {
 def _write_record(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
-    **record_fields: Any,
+    **record_fields: object,
 ) -> None:
     record = IntegrationRecord(**{**_BASE_RECORD, **record_fields})
     monkeypatch.setattr(runner_module, "read_record", lambda _root: record)

@@ -28,6 +28,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_out_of_reach_is_needs_operator": "verify out-of-reach classification returns canonical NextStrategyOutcome with completion_in_place strategy",
     "test_out_of_reach_advances_to_completion_in_place": "verify out-of-reach classification returns canonical NextStrategyOutcome with completion_in_place strategy",
     "test_exhausted_but_not_spent_is_retry_later": "migrate assertion from retired RetryLater to canonical RetryLaterOutcome",
+    "test_candidate_exhausted_defers_without_leaking_detail": "pin the exhausted-candidate deferral signal so agent and operator detail never replaces resolver_agent_eligibility_changed",
     "test_union_is_closed_and_consumer_rejects_unknown_variant": "assert ResolutionOutcomeType union matches canonical closed variants including UnknownOutcome",
 }
 
@@ -72,6 +73,25 @@ def test_spent_chain_defers_until_resolver_eligibility_changes() -> None:
     outcome = classify_resolution_failure(
         terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
         failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        paths=("app.py",),
+        agents=("primary", "fallback"),
+    )
+
+    match outcome:
+        case RetryLaterOutcome(on_change=on_change):
+            assert on_change == "resolver_agent_eligibility_changed"
+        case _ as unreachable:
+            raise AssertionError(f"expected RetryLaterOutcome, got {unreachable!r}")
+    state = record_resolution_outcome(outcome, target="main")
+    assert state.resolution_exhausted is False
+    assert state.last_reason == "resolver_agent_eligibility_changed"
+
+
+def test_candidate_exhausted_defers_without_leaking_detail() -> None:
+    outcome = classify_resolution_failure(
+        terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        reason="all resolver agents are spent/unavailable; conflict on app.py needs operator action",
         paths=("app.py",),
         agents=("primary", "fallback"),
     )

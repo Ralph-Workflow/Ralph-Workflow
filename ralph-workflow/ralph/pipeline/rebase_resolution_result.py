@@ -23,11 +23,7 @@ _RESULT_LEN = 3
 
 
 def _is_outcome_success(outcome: object) -> bool:
-    if isinstance(outcome, ResolvedOutcome):
-        return True
-    if outcome is True:
-        return True
-    return False
+    return isinstance(outcome, ResolvedOutcome) or outcome is True
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -90,6 +86,10 @@ class RebaseResolutionResult:
 
     def __len__(self) -> int:
         return _RESULT_LEN
+
+    @property
+    def succeeded(self) -> bool:
+        return _is_outcome_success(self.outcome)
 
     def __iter__(self) -> Iterator[object]:
         return iter((self._succeeded(), self.reason, self.failure_cause))

@@ -100,9 +100,12 @@ class _AttemptOutcome:
 
     @property
     def reason(self) -> str | None:
-        if isinstance(self.status, (_Cooldown, _Spent)):
-            return self.status.reason
-        return None
+        status = self.status
+        match status:
+            case Cooldown() | Spent():
+                return status.reason
+            case _:
+                return None
 
 
 AttemptFact = _AttemptFact
@@ -114,6 +117,48 @@ Spent = _Spent
 Unavailable = _Unavailable
 AttemptOutcome = _AttemptOutcome
 type AgentEligibility = Eligible | CoolingDown | Spent | Unavailable
+
+
+def _never_eligible_reason(status: AgentStatus) -> str | None:
+    match status:
+        case Spent() | Unavailable():
+            return status.reason
+        case _:
+            return None
+
+
+def _coerce_optional_int(raw: object) -> int | None:
+    match raw:
+        case bool():
+            return int(raw)
+        case int():
+            return raw
+        case float():
+            return int(raw)
+        case str():
+            return int(raw)
+        case _:
+            return None
+
+
+def _coerce_optional_float(raw: object) -> float | None:
+    match raw:
+        case bool():
+            return float(raw)
+        case int() | float() | str():
+            return float(raw)
+        case _:
+            return None
+
+
+def _optional_int_or_default(raw: object, default: int) -> int:
+    value = _coerce_optional_int(raw)
+    return default if value is None else value
+
+
+def _optional_float_or_default(raw: object, default: float) -> float:
+    value = _coerce_optional_float(raw)
+    return default if value is None else value
 
 
 @dataclass
@@ -232,7 +277,9 @@ def eligibility_wait_from_statuses(
             until_ms=earliest.until_ms,
             reason=earliest.reason,
         )
-    reasons = [status.reason for status in statuses if isinstance(status, (Spent, Unavailable))]
+    reasons = [
+        reason for status in statuses if (reason := _never_eligible_reason(status)) is not None
+    ]
     return EligibilityWait(
         kind=WaitKind.NEVER_ELIGIBLE,
         wait_ms=None,
@@ -241,6 +288,17 @@ def eligibility_wait_from_statuses(
 
 
 class AgentFailureLedger:
+    __slots__ = (
+        "_backoff_factor",
+        "_base_cooldown_seconds",
+        "_clock",
+        "_consecutive_limit",
+        "_entries",
+        "_lock",
+        "_max_cooldown_seconds",
+        "_total_limit",
+    )
+
     def __init__(
         self,
         *,
@@ -365,8 +423,11 @@ class AgentFailureLedger:
     ) -> AgentEligibility:
         now_ms = int(self._clock.monotonic() * 1000)
         status = self.status(phase, agent)
-        if isinstance(status, (Spent, Unavailable)):
-            return status
+        match status:
+            case Spent() | Unavailable():
+                return status
+            case _:
+                pass
         if isinstance(status, Cooldown) and (cooldown is None or status.until_ms <= cooldown[0]):
             return status
         if cooldown is not None and now_ms < cooldown[0]:
@@ -492,10 +553,12 @@ class AgentFailureLedger:
             return None
 
     def failure_reason(self, phase: str, agent: str) -> str | None:
-        st = self.status(phase, agent)
-        if isinstance(st, (Cooldown, Spent, Unavailable)):
-            return st.reason
-        return None
+        status = self.status(phase, agent)
+        match status:
+            case Cooldown() | Spent() | Unavailable():
+                return status.reason
+            case _:
+                return None
 
     def record(self, fact: AttemptFact) -> AttemptOutcome:
         with self._lock:
@@ -645,9 +708,9 @@ class AgentFailureLedger:
             total_limit=total_limit,
         )
         raw_consecutive = entry_dict["consecutive_unproductive"]
-        consecutive = int(raw_consecutive) if isinstance(raw_consecutive, (int, float, str)) else 0
+        consecutive = _optional_int_or_default(raw_consecutive, 0)
         raw_total = entry_dict["total_unproductive"]
-        total = int(raw_total) if isinstance(raw_total, (int, float, str)) else 0
+        total = _optional_int_or_default(raw_total, 0)
         raw_spent_reason = entry_dict["spent_reason"]
         entry = _LedgerEntry(
             consecutive_unproductive=consecutive,
@@ -687,34 +750,11 @@ class AgentFailureLedger:
             "streak" in snap or "max_identical" in snap or "failed_closed" in snap
         ):
             return cls._from_legacy_snapshot(snap, clock=clock)
-        consecutive_limit = (
-            int(snap["consecutive_limit"])
-            if "consecutive_limit" in snap
-            and isinstance(snap["consecutive_limit"], (int, float, str))
-            else 3
-        )
-        total_limit = (
-            int(snap["total_limit"])
-            if "total_limit" in snap and isinstance(snap["total_limit"], (int, float, str))
-            else 9
-        )
-        base_cooldown_seconds = (
-            float(snap["base_cooldown_seconds"])
-            if "base_cooldown_seconds" in snap
-            and isinstance(snap["base_cooldown_seconds"], (int, float, str))
-            else 60.0
-        )
-        max_cooldown_seconds = (
-            float(snap["max_cooldown_seconds"])
-            if "max_cooldown_seconds" in snap
-            and isinstance(snap["max_cooldown_seconds"], (int, float, str))
-            else 3600.0
-        )
-        backoff_factor = (
-            float(snap["backoff_factor"])
-            if "backoff_factor" in snap and isinstance(snap["backoff_factor"], (int, float, str))
-            else 2.0
-        )
+        consecutive_limit = _optional_int_or_default(snap.get("consecutive_limit"), 3)
+        total_limit = _optional_int_or_default(snap.get("total_limit"), 9)
+        base_cooldown_seconds = _optional_float_or_default(snap.get("base_cooldown_seconds"), 60.0)
+        max_cooldown_seconds = _optional_float_or_default(snap.get("max_cooldown_seconds"), 3600.0)
+        backoff_factor = _optional_float_or_default(snap.get("backoff_factor"), 2.0)
 
         ledger = cls(
             clock=clock,
@@ -751,18 +791,19 @@ class AgentFailureLedger:
                     spent_reason_val = item.get("spent_reason")
                     unavailable_reason_val = item.get("unavailable_reason")
 
+                    restored_consecutive = _coerce_optional_int(consecutive_val)
+                    restored_total = _coerce_optional_int(total_val)
+                    restored_cooldown_count = _coerce_optional_int(cooldown_count_val)
                     entry = _LedgerEntry(
-                        consecutive_unproductive=int(consecutive_val)
-                        if isinstance(consecutive_val, (int, float, str))
-                        else 0,
-                        total_unproductive=int(total_val)
-                        if isinstance(total_val, (int, float, str))
-                        else 0,
+                        consecutive_unproductive=(
+                            restored_consecutive if restored_consecutive is not None else 0
+                        ),
+                        total_unproductive=restored_total if restored_total is not None else 0,
                         cooldown_until_ms=until_ms,
                         cooldown_reason=str(reason_val) if isinstance(reason_val, str) else None,
-                        cooldown_count=int(cooldown_count_val)
-                        if isinstance(cooldown_count_val, (int, float, str))
-                        else 0,
+                        cooldown_count=(
+                            restored_cooldown_count if restored_cooldown_count is not None else 0
+                        ),
                         is_spent=bool(is_spent_val) if is_spent_val is not None else False,
                         spent_reason=str(spent_reason_val)
                         if isinstance(spent_reason_val, str)
@@ -784,15 +825,25 @@ def _restored_cooldown_until_ms(
 ) -> int | None:
     epoch_val = item.get("cooldown_until_epoch_ms")
     until_val = item.get("cooldown_until_ms")
-    if isinstance(epoch_val, (int, float)) and not isinstance(epoch_val, bool):
-        remaining_ms = int(epoch_val) - now_epoch_ms
-    elif isinstance(until_val, (int, float, str)) and not isinstance(until_val, bool):
-        try:
-            remaining_ms = int(float(until_val)) - now_mono_ms
-        except ValueError:
-            return None
-    else:
-        return None
+    remaining_ms: int | None = None
+    match epoch_val:
+        case bool():
+            pass
+        case int() | float():
+            remaining_ms = int(epoch_val) - now_epoch_ms
+        case _:
+            pass
+    if remaining_ms is None:
+        match until_val:
+            case bool():
+                return None
+            case int() | float() | str():
+                try:
+                    remaining_ms = int(float(until_val)) - now_mono_ms
+                except ValueError:
+                    return None
+            case _:
+                return None
     return now_mono_ms + min(max(remaining_ms, 0), max_cooldown_ms)
 
 

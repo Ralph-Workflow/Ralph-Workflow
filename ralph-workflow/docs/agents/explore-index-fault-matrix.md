@@ -90,8 +90,8 @@ must not introduce new codes without updating this table.
   promotes the result; readers always see a complete generation or
   none.
 * **Throughput and footprint.** Transaction batching across 50 files
-  and eliminating redundant BLOB copies of chunk text yield >=10x
-  cold build wall-clock speedup and >=3x index size reduction.
+  and eliminating redundant BLOB copies of chunk text speed up the
+  cold build and reduce the index size.
 * **Truthful status.** `ralph_index_status` reports the current
   health (one of `healthy | building | stale | degraded | unhealthy`),
   the last failure reason, the recovery attempt counter, and the

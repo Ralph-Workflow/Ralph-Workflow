@@ -14,13 +14,16 @@ from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, RebaseSto
 
 builtins.run_conflict_resolution_outcome = run_conflict_resolution_outcome
 builtins.run_rebase_conflict_resolution_outcome = run_rebase_conflict_resolution_outcome
-from ralph.pipeline.resolution_outcome import STOP_RESOLUTION_OUTCOMES
 if TYPE_CHECKING:
     import pytest
 
-RALPH_TEST_CHANGE_REASONS = {
-    "test_unreadable_target_config_declines_instead_of_raising": "align outcome type check with sealed outcome union STOP_RESOLUTION_OUTCOMES after ResolutionOutcome deprecation",
-    "test_unreadable_target_config_is_reported_to_the_operator": "align outcome type check with sealed outcome union STOP_RESOLUTION_OUTCOMES after ResolutionOutcome deprecation",
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_unreadable_target_config_declines_instead_of_raising": (
+        "align outcome type check with sealed outcome union RetryLaterOutcome after ResolutionOutcome deprecation"
+    ),
+    "test_unreadable_target_config_is_reported_to_the_operator": (
+        "align outcome type check with sealed outcome union RetryLaterOutcome after ResolutionOutcome deprecation"
+    ),
 }
 
 
@@ -60,7 +63,7 @@ def test_unreadable_target_config_declines_instead_of_raising(
 
     outcome = resolver(tmp_path, "main", _stop())
     assert outcome is False or (
-        isinstance(outcome, STOP_RESOLUTION_OUTCOMES) and not outcome.succeeded
+        isinstance(outcome, agent_module.RetryLaterOutcome) and not outcome.succeeded
     )
 
 
@@ -82,7 +85,7 @@ def test_unreadable_target_config_is_reported_to_the_operator(
 
     outcome = resolver(tmp_path, "main", _stop())
     assert outcome is False or (
-        isinstance(outcome, STOP_RESOLUTION_OUTCOMES) and not outcome.succeeded
+        isinstance(outcome, agent_module.RetryLaterOutcome) and not outcome.succeeded
     )
     assert len(emitted) == 1
     assert "Unclosed array (at line 75, column 1)" in emitted[0]

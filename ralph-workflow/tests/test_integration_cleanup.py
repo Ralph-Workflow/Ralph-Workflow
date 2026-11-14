@@ -5,7 +5,6 @@ import json
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -66,7 +65,7 @@ class _FakeCleanupGit:
         self.preserve_calls: list[tuple[str, ...]] = []
         self.quarantine_calls: list[tuple[str, ...]] = []
         self.quarantined: dict[str, str] = {}
-        self.state: dict[str, Any] | None = None
+        self.state: dict[str, object] | None = None
         self.fail_restore = False
         self.fail_reobserve = False
         self.forced_blob: str | None = None
@@ -178,10 +177,10 @@ class _FakeCleanupGit:
     def incoming_overwrite_paths(self, root: Path, target: str | None) -> frozenset[str]:
         return self.incoming
 
-    def load_state(self, root: Path) -> Mapping[str, Any] | None:
+    def load_state(self, root: Path) -> Mapping[str, object] | None:
         return self.state
 
-    def store_state(self, root: Path, payload: Mapping[str, Any]) -> None:
+    def store_state(self, root: Path, payload: Mapping[str, object]) -> None:
         self.state = dict(payload)
 
     def clear_state(self, root: Path) -> None:
@@ -206,7 +205,7 @@ class _FakeLedger:
         self.charged: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
         self.attributions: list[DirtAttribution] = []
 
-    def charge_residue_attempt(self, root: Path, *, residue: Any) -> NextAction:
+    def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction:
         self.charged.append((residue.tracked_paths, residue.ambiguous_paths))
         self.attributions.append(residue_attribution(residue))
         index = min(len(self.charged) - 1, len(self.actions) - 1)

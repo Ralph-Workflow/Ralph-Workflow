@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import difflib
 from collections.abc import Callable, Mapping, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from pydantic import ValidationError
 
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
+
+
+class _ValidationErrorSource(Protocol):
+    def errors(
+        self,
+        *,
+        include_url: bool = True,
+        include_context: bool = True,
+        include_input: bool = True,
+    ) -> Sequence[object]: ...
+
 
 __all__ = [
     "ValidationErrorDetail",
@@ -22,8 +33,8 @@ __all__ = [
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
-    details = exc.errors()
-    return [format_validation_error_detail(detail) for detail in details]
+    source: _ValidationErrorSource = exc
+    return [format_validation_error_detail(_as_mapping(detail)) for detail in source.errors()]
 
 
 def format_validation_error_detail(detail: ValidationErrorDetail) -> str:

@@ -239,15 +239,17 @@ def _handle_sealed_outcome(
                 reason=f"waiting for {condition}; resumes when {resumes_when}",
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-        case RetryLaterOutcome(until=until, on_change=on_change):
+        case RetryLaterOutcome(until=until, on_change=on_change, failure_cause=cause):
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
                 reason=reason
                 or on_change
                 or (f"retry after {until}" if until is not None else _RETAINED_RESOLUTION_REASON),
-                failure_cause=result.failure_cause
-                if result.failure_cause is not None
-                else ResolutionFailureCause.UNRESOLVED_CONFLICT,
+                failure_cause=(
+                    cause
+                    if cause is not None
+                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
+                ),
             )
         case NextStrategyOutcome(strategy=strategy):
             return MergeResult(

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 from loguru import logger
@@ -316,7 +316,7 @@ def test_resolver_generic_optional_config_files_classify_as_config_failure(
 def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_evidence(
     tmp_path: Path,
 ) -> None:
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
 
     def _failing_resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
@@ -329,7 +329,12 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
             on_change="target worktree context failed: simulated context fault"
         )
 
-    def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
+    def _fake_resolve_rebase(
+        root: Path,
+        target: str,
+        resolver: Callable[[Path, str, RebaseStop | None], object],
+        session: ResolutionSession | None = None,
+    ) -> bool:
         outcome = resolver(root, target, None)
         if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
@@ -390,7 +395,12 @@ def test_resolve_conflicted_rebase_carries_context_failure_not_exhausted(
         workspace_scope=mock_scope,
     )
 
-    def _fake_resolve_rebase(root: Any, target: Any, res_fn: Any, session: Any = None) -> bool:
+    def _fake_resolve_rebase(
+        root: Path,
+        target: str,
+        res_fn: Callable[[Path, str, RebaseStop], object],
+        session: ResolutionSession | None = None,
+    ) -> bool:
         stop = RebaseStop(
             sha="1234abc",
             subject="conflict stop",
@@ -512,7 +522,7 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
     )
     write_record(repo, initial_record)
 
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
 
     try:
@@ -618,7 +628,7 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
     )
     write_record(repo, initial_record)
 
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
 
     try:
@@ -723,7 +733,7 @@ def test_integrated_transport_generic_config_failure_reaches_run_loop_alert_and_
     )
     write_record(repo, initial_record)
 
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
 
     try:

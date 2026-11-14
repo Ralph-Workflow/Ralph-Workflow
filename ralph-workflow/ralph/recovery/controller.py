@@ -1431,11 +1431,13 @@ class RecoveryController:
         now_ms: int,
     ) -> AgentStatus:
         window = windows.get(agent)
+        if agent in spent:
+            return self._ledger.spent_status(_SPENT_RETRY_EXHAUSTED_REASON)
         return self._ledger.agent_eligibility(
             phase,
             agent,
             cooldown=window,
-            spent_reason=_SPENT_RETRY_EXHAUSTED_REASON if agent in spent else None,
+            spent_reason=None,
             unavailable_reason=(
                 None
                 if self._unavailability_tracker.is_available(phase, agent)
@@ -1582,6 +1584,9 @@ class RecoveryController:
 
     def note_retry_exhaustion(self, phase: str, agent: str) -> None:
         self._spent_agents.setdefault(phase, set()).add(agent)
+
+    def clear_spent_agents(self, phase: str) -> None:
+        self._spent_agents.pop(phase, None)
 
     def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
         if not candidates:

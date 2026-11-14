@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -11,6 +11,9 @@ from ralph.git import operations as operations_module
 from ralph.git.commit_result import CommitCreationStatus
 from ralph.git.errors import GitOperationError
 from ralph.git.git_run_result import GitRunResult
+
+if TYPE_CHECKING:
+    from ralph.git.subprocess_runner import GitRunOptions
 
 
 def _stage_change(repo: Repo, repo_root: Path, name: str, content: str) -> None:
@@ -31,7 +34,7 @@ def test_create_commit_cas_race_does_not_publish_candidate(
         advanced = False
 
         def racing_run_git(
-            args: tuple[str, ...], *, cwd: Path, label: str, options: Any = None
+            args: tuple[str, ...], *, cwd: Path, label: str, options: GitRunOptions | None = None
         ) -> GitRunResult:
             nonlocal advanced
             result = original_run_git(args, cwd=cwd, label=label, options=options)
@@ -65,7 +68,7 @@ def test_create_commit_cas_failure_with_unchanged_head_raises_operation_error(
         original_run_git = operations_module.run_git
 
         def failed_update_ref(
-            args: tuple[str, ...], *, cwd: Path, label: str, options: Any = None
+            args: tuple[str, ...], *, cwd: Path, label: str, options: GitRunOptions | None = None
         ) -> GitRunResult:
             if label == "git-update-ref-cas":
                 return GitRunResult(

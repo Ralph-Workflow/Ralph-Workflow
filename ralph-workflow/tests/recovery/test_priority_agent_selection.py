@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from loguru import logger
 
@@ -220,7 +219,7 @@ def test_transcript_visibility() -> None:
     state = _three_agent_state(current_index=1)
     logs: list[str] = []
 
-    def sink(msg: Any) -> None:
+    def sink(msg: str) -> None:
         logs.append(str(msg))
 
     sink_id = logger.add(sink, level="INFO", format="{message}")

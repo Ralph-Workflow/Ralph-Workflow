@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,6 +12,7 @@ from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 
 if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 pytestmark = pytest.mark.timeout_seconds(5)
@@ -28,7 +29,7 @@ class _CandidateExhaustedRunner:
         self,
         root: Path,
         target: str,
-        resolver: Any,
+        resolver: RebaseStopResolver,
         *,
         session: ResolutionSession,
     ) -> bool:
@@ -43,7 +44,7 @@ class _ResolvedRunner:
         self,
         root: Path,
         target: str,
-        resolver: Any,
+        resolver: RebaseStopResolver,
         *,
         session: ResolutionSession,
     ) -> bool:

@@ -426,7 +426,7 @@ The freshness/staleness block also reports `stale_paths_count`, `last_refresh_ag
 
 ### Performance targets
 
-Performance is measured against committed baselines in `docs/performance/explore-index-baseline.json` and bounded by targets in `docs/performance/explore-index-targets.json`. The regression gate is wired into `tests/test_explore_perf_regression_gate.py` and `tests/test_explore_bench_gates.py`; it fails the build when a metric drifts past the documented tolerance. The before/after report (`docs/performance/explore-index-report.md`) covers every R6.2 metric × R6.3 workload pair. Cold-build throughput is optimized via batched transactions (per 50 files) and zero redundant full-text payload caching (`content_cache_payload` dropped in favor of authoritative FTS5 text), delivering >=10x cold-build wall-clock improvement and >=3x index footprint reduction.
+Performance is measured against committed baselines in `docs/performance/explore-index-baseline.json` and bounded by targets in `docs/performance/explore-index-targets.json`. The regression gate is wired into `tests/test_explore_perf_regression_gate.py` and `tests/test_explore_bench_gates.py`; it fails the build when a metric drifts past the documented tolerance. The before/after report (`docs/performance/explore-index-report.md`) covers every R6.2 metric × R6.3 workload pair. Cold-build throughput is optimized via batched transactions (per 50 files) and zero redundant full-text payload caching (`content_cache_payload` dropped in favor of authoritative FTS5 text), with the recorded self-workload comparison showing lower cold-build wall-clock time.
 
 ### Phase 1 / Phase 2 / Phase 3 / Phase 4 scope
 

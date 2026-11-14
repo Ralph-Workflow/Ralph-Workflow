@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, TypedDict
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
@@ -14,8 +14,18 @@ from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 
-def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
-    records: list[dict[str, Any]] = []
+class _LogLevelDouble(Protocol):
+    name: str
+
+
+class _LogRecord(TypedDict):
+    level: _LogLevelDouble
+    message: str
+    extra: dict[str, object]
+
+
+def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
+    records: list[_LogRecord] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="DEBUG")
     return records, sink_id
 
@@ -99,7 +109,7 @@ def _drive_run_loop_until_complete(
     state: PipelineState,
     slept: list[float],
     emitted: list[str],
-) -> list[dict[str, Any]]:
+) -> list[_LogRecord]:
 
     def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
         emitted.append(text)
@@ -134,7 +144,7 @@ def _assert_one_each(emitted: list[str], label: str) -> None:
     )
 
 
-def _assert_waiting_record_shape(records: list[dict[str, Any]]) -> None:
+def _assert_waiting_record_shape(records: list[_LogRecord]) -> None:
     waiting_records = [
         r for r in records if "WAITING" in r["message"] and "all agents unavailable" in r["message"]
     ]
@@ -157,7 +167,7 @@ def _assert_waiting_record_shape(records: list[dict[str, Any]]) -> None:
     assert waiting_extra.get("wait_ms") == 200
 
 
-def _assert_resumed_record_shape(records: list[dict[str, Any]]) -> None:
+def _assert_resumed_record_shape(records: list[_LogRecord]) -> None:
     resumed_records = [
         r for r in records if "RESUMED" in r["message"] and "cooldown expired" in r["message"]
     ]
@@ -173,7 +183,7 @@ def _assert_resumed_record_shape(records: list[dict[str, Any]]) -> None:
     assert resumed_extra.get("waited_seconds") == 0.2
 
 
-def _assert_pre_sleep_debug_record(records: list[dict[str, Any]]) -> None:
+def _assert_pre_sleep_debug_record(records: list[_LogRecord]) -> None:
     pre_sleep_records = [
         r
         for r in records

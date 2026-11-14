@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -20,10 +19,15 @@ pytestmark = [
 ]
 
 
-def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+def auto_integrate_after_commit(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: RebaseState,
+    **kwargs: object,
+) -> RebaseState | None:
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
-    return _auto_integrate_after_commit(*args, **kwargs)
+    return _auto_integrate_after_commit(config, workspace_scope, state, **kwargs)
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:

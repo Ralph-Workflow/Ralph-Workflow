@@ -61,10 +61,10 @@ def classify_resolution_failure(
         return NextStrategyOutcome(strategy="completion_in_place")
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         return RetryLaterOutcome(
-            on_change=reason or "resolver_agent_eligibility_changed",
-            terminal_reason=terminal_reason,
-            unresolved_paths=paths,
-            failure_cause=failure_cause,
+            on_change="resolver_agent_eligibility_changed",
+            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            unresolved_paths=tuple(paths),
+            failure_cause=None if failure_cause is ResolutionFailureCause.NONE else failure_cause,
         )
     return RetryLaterOutcome(
         on_change=reason or RETRY_LATER_REASON,

@@ -11,7 +11,7 @@ The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make 
 
 ## Verify steps and gates
 
-`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **47 steps**. The five gates that protect the supply chain and the test surface are:
+`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **52 steps**. The five gates that protect the supply chain and the test surface are:
 
 | Gate | Verify step label | Enforcing command |
 |---|---|---|
@@ -185,7 +185,7 @@ The terminal-escape containment contract keeps interactive agents (Claude Code, 
 
 - **Single-painter rule.** Every loguru terminal log record goes through `ralph.display.log_sink` (either `make_sanitizing_log_sink` for the DisplayContext Console, or `make_stderr_log_sink` for the library/worker fallback), never through a raw `logger.add(sys.stderr, ...)`. The CLI (`ralph/cli/main.py::_configure_logging`) takes an injected `console_sink` keyword; `ralph/cli/main.py::main` wires the Console-backed sink at the call site so the rich `Live` status bar is the only painter of Ralph's terminal. Sanitization happens through `strip_terminal_control`; the sink prints via `ctx.console.print(text, markup=False, highlight=False)` so bracketed paths and `[bold]` tokens survive verbatim. Module construction of `rich.console.Console` outside `ralph/display/theme.py` is forbidden by `tests/display/test_di_invariants.py`; the audit enforces the same rule on `ralph.display.log_sink` itself.
 
-- **Background-spawn rule.** `SpawnOptions.stdin` defaults to `subprocess.DEVNULL` (the dataclass field in `ralph/process/manager/_spawn_options.py`) so no child inherits Ralph's controlling-terminal stdin by construction. Callers that genuinely need stdio (`ralph/mcp/protocol/transport.py:270` for the stdio MCP transport and `ralph/mcp/upstream/_stdio_upstream_client.py:122` for the stdio upstream client) already pass `subprocess.PIPE` explicitly. The audit additionally enforces that NO `SpawnOptions(...)` call site anywhere under `ralph/` may pass `stdin=None` (the package-wide `PackageWideCallSiteInvariant` walks every `*.py` file and rejects the INHERIT literal). PTY children get their own session: `ralph/process/pty.py::spawn_pty_process` calls `os.setsid()` plus `fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)` inside the child branch — removing either fails the audit.
+- **Background-spawn rule.** `SpawnOptions.stdin` defaults to `subprocess.DEVNULL` (the dataclass field in `ralph/process/manager/_spawn_options.py`) so no child inherits Ralph's controlling-terminal stdin by construction. Callers that genuinely need stdio (`ralph/mcp/protocol/transport.py:236` for the stdio MCP transport and `ralph/mcp/upstream/_stdio_upstream_client.py:132` for the stdio upstream client) already pass `subprocess.PIPE` explicitly. The audit additionally enforces that NO `SpawnOptions(...)` call site anywhere under `ralph/` may pass `stdin=None` (the package-wide `PackageWideCallSiteInvariant` walks every `*.py` file and rejects the INHERIT literal). PTY children get their own session: `ralph/process/pty.py::spawn_pty_process` calls `os.setsid()` plus `fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)` inside the child branch — removing either fails the audit.
 
 - **Exception: keep the source reader raw.** `ralph/agents/invoke/_pty_line_reader.py` and `ralph/agents/invoke/_process_reader.py` keep yielding raw bytes / queued lines so the stream that auto-approves Claude Code's permission prompts is unchanged. Sanitization must happen ONLY at the display boundary (`display/parallel_display.py`, `display/activity_model.py`, the new `display/log_sink.py`) — never at the source.
 
@@ -195,7 +195,7 @@ Enforcing command:
 uv run python -m ralph.testing.audit_terminal_escape_containment
 ```
 
-This audit is one of the 47 steps in the `ralph/verify_steps.py::_VERIFY_STEPS` registry (re-exported as `ralph.verify._VERIFY_STEPS`) — it is not the last entry; the last one is `audit_mcp_agent_boundary`. It is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
+This audit is one of the 52 steps in the `ralph/verify_steps.py::_VERIFY_STEPS` registry (re-exported as `ralph.verify._VERIFY_STEPS`) — it is not the last entry; the last one is `audit_mcp_agent_boundary`. It is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
 
 ## Terminal state restoration contract
 

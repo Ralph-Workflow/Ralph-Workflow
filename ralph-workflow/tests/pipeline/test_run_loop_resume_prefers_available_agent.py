@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, NoReturn, Protocol
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,6 +27,10 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
+if TYPE_CHECKING:
+    from ralph.config.conflict_resolution_config import ConflictResolutionConfig
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
+
 
 def _policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as directory:
@@ -48,8 +52,12 @@ class _PendingMergeRecord:
     resolving_merge: bool = False
 
 
+class _ConflictResolverDouble(Protocol):
+    def __call__(self, root: Path, target: str, /) -> bool: ...
+
+
 def test_run_loop_resumes_on_highest_priority_newly_available_agent(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -122,7 +130,7 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
 
     logs: list[str] = []
 
-    def sink(msg: Any) -> None:
+    def sink(msg: object) -> None:
         logs.append(str(msg))
 
     sink_id = logger.add(sink, level="INFO", format="{message}")
@@ -142,7 +150,7 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
 
 
 def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
@@ -178,7 +186,7 @@ def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
 
 @pytest.mark.parametrize("auto_integrate_enabled", (True, False))
 def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
     auto_integrate_enabled: bool,
 ) -> None:
     config = MagicMock()
@@ -210,7 +218,7 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
 
 
 def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = MagicMock()
     config.general.auto_integrate_enabled = True
@@ -235,7 +243,7 @@ def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
 
 
 def test_recoverable_verdict_always_enters_conflict_resolution(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = MagicMock()
     config.general.auto_integrate_enabled = True
@@ -251,11 +259,11 @@ def test_recoverable_verdict_always_enters_conflict_resolution(
     calls: list[str] = []
     inspections = iter((recoverable, IntegrationResolutionVerdict(status=RESOLVED)))
 
-    def _resolve(_ctx: Any, _rebase: Any = None) -> bool:
+    def _resolve(_ctx: object, _rebase: object = None) -> bool:
         calls.append("conflict_resolution")
         return True
 
-    def _startup(*_args: Any) -> Any:
+    def _startup(*_args: object) -> object:
         calls.append("startup_integration")
         return state.rebase
 
@@ -272,7 +280,7 @@ def test_recoverable_verdict_always_enters_conflict_resolution(
 
 
 def test_conflict_resolution_runs_even_when_startup_integration_defers(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = MagicMock()
     config.general.auto_integrate_enabled = True
@@ -301,11 +309,11 @@ def test_conflict_resolution_runs_even_when_startup_integration_defers(
     assert resolver.call_args.args[0] is ctx
 
 
-def test_conflict_resolution_executor_never_raises(monkeypatch: Any) -> None:
+def test_conflict_resolution_executor_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
 
-    def _boom(*_args: Any, **_kwargs: Any) -> Any:
+    def _boom(*_args: object, **_kwargs: object) -> NoReturn:
         raise RuntimeError("resolver exploded")
 
     monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _boom)
@@ -317,7 +325,7 @@ def test_conflict_resolution_executor_never_raises(monkeypatch: Any) -> None:
     assert run_loop._run_integration_conflict_resolution(ctx) is False
 
 
-def test_blocked_dispatch_announces_the_real_evidence(monkeypatch: Any) -> None:
+def test_blocked_dispatch_announces_the_real_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
     lines: list[str] = []
     ctx = MagicMock()
     monkeypatch.setattr(
@@ -341,9 +349,9 @@ def test_blocked_dispatch_announces_the_real_evidence(monkeypatch: Any) -> None:
     assert "(None)" not in lines[0]
 
 
-def test_blocked_dispatch_announcement_never_raises(monkeypatch: Any) -> None:
+def test_blocked_dispatch_announcement_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
-    def _boom(*_args: Any, **_kwargs: Any) -> None:
+    def _boom(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("display gone")
 
     monkeypatch.setattr(run_loop, "emit_integration_warn_line", _boom)
@@ -355,7 +363,7 @@ def test_blocked_dispatch_announcement_never_raises(monkeypatch: Any) -> None:
 
 
 def test_direct_resolver_call_is_charged_against_the_conflict_budget(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
@@ -371,7 +379,7 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
 
-    def _build(**_kwargs: Any) -> Any:
+    def _build(**_kwargs: object) -> _ConflictResolverDouble:
         built.append("built")
         return lambda _root, _target: True
 
@@ -397,7 +405,9 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
     assert len(built) == 1
 
 
-def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(monkeypatch: Any) -> None:
+def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -427,14 +437,14 @@ class _RecordingContinuationExecutor:
     def __init__(self) -> None:
         self.root: Path | None = None
         self.target: str | None = None
-        self.resolver: Any = None
+        self.resolver: RebaseStopResolver | None = None
 
     def continue_rebase(
         self,
         root: Path,
         target: str,
-        resolver: Any,
-        config: Any,
+        resolver: RebaseStopResolver,
+        config: ConflictResolutionConfig | None,
     ) -> tuple[bool, str | None, ResolutionFailureCause]:
         self.root = root
         self.target = target
@@ -442,7 +452,9 @@ class _RecordingContinuationExecutor:
         return True, None, ResolutionFailureCause.NONE
 
 
-def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -> None:
+def test_a_paused_rebase_is_driven_through_the_stop_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     built: list[str] = []
@@ -459,7 +471,9 @@ def test_a_paused_rebase_is_driven_through_the_stop_resolver(monkeypatch: Any) -
     assert executor.resolver is not None
 
 
-def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: Any) -> None:
+def test_a_recorded_exhaustion_does_not_block_a_different_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from ralph.pipeline.auto_integrate_conflict_budget import (
         MAX_TRACKED_CONFLICT_ATTEMPTS,
         ConflictIdentity,
@@ -496,7 +510,7 @@ def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: 
 
 
 def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ralph.pipeline.integration_resolution import IntegrationResolutionVerdict
     from ralph.pipeline.integration_resolution_types import IntegrationResolutionStatus
@@ -531,7 +545,7 @@ def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
     assert resolved == ["resolver ran"]
 
 
-def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> None:
+def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     from ralph.pipeline.auto_integrate_conflict_budget import (
         MAX_TRACKED_CONFLICT_ATTEMPTS,
         ConflictIdentity,
@@ -551,7 +565,7 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> 
         ),
     )
 
-    def _build(**_kwargs: Any) -> Any:
+    def _build(**_kwargs: object) -> _ConflictResolverDouble:
         built.append("built")
         return lambda _root, _target: True
 
@@ -577,7 +591,7 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> 
     assert len(built) == 1
 
 
-def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: Any) -> None:
+def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -590,7 +604,7 @@ def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: Any) -> Non
 
 
 def test_completing_a_merge_stages_and_commits_not_just_resolves(
-    monkeypatch: Any, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS
 
@@ -621,11 +635,11 @@ def test_completing_a_merge_stages_and_commits_not_just_resolves(
 
 
 def test_completing_a_merge_declines_when_no_merge_is_in_progress(
-    monkeypatch: Any, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.git.merge import MERGE_STATE_NONE
 
-    def _must_not_run(*_args: Any, **_kwargs: Any) -> bool:
+    def _must_not_run(*_args: object, **_kwargs: object) -> bool:
         raise AssertionError("the resolver must not run without a merge")
 
     monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: MERGE_STATE_NONE)
@@ -634,7 +648,7 @@ def test_completing_a_merge_declines_when_no_merge_is_in_progress(
 
 
 def test_an_unreadable_rebase_state_never_answers_no_rebase(
-    monkeypatch: Any, tmp_path: Any
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from pathlib import Path as _Path
 
@@ -651,7 +665,9 @@ def test_an_unreadable_rebase_state_never_answers_no_rebase(
     assert run_loop._paused_rebase_at(clean) is False
 
 
-def test_the_merge_resolver_is_not_built_for_a_paused_rebase(monkeypatch: Any) -> None:
+def test_the_merge_resolver_is_not_built_for_a_paused_rebase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -670,7 +686,9 @@ def test_the_merge_resolver_is_not_built_for_a_paused_rebase(monkeypatch: Any) -
     assert built == []
 
 
-def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(monkeypatch: Any) -> None:
+def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     monkeypatch.setattr(
@@ -690,7 +708,9 @@ def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(monkeypatc
     assert orphaned == ["main"]
 
 
-def test_an_orphaned_conflicted_index_is_resolved_and_staged(monkeypatch: Any) -> None:
+def test_an_orphaned_conflicted_index_is_resolved_and_staged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
     ctx.pipeline_deps = MagicMock()
@@ -714,7 +734,7 @@ def test_an_orphaned_conflicted_index_is_resolved_and_staged(monkeypatch: Any) -
 
 
 def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_available(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -772,7 +792,7 @@ def test_resume_skips_still_unavailable_returns_to_higher_priority_newly_availab
 
 
 def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zero(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
@@ -829,7 +849,7 @@ def test_resume_with_persisted_high_index_does_not_advance_cursor_past_index_zer
 
 
 def test_resume_picks_higher_priority_even_when_cursor_neighbor_is_newly_available(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(

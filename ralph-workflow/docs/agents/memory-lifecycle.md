@@ -57,17 +57,13 @@ shows OOM in production**.
 ### Confirmed plateau surfaces
 
 The integration tracemalloc harnesses under
-`tests/integration/test_*memory_regression.py` reconfirm post-warmup
+`tests/integration/test_*memory_regression.py` check post-warmup
 retained-byte plateaus (and early/late elapsed means) for pipeline
-agent-output retention, recovery lineage/checkpoints, budget-debit
-paths, multimodal live-session media, and upstream embedded-media
-normalization. Representative retained spreads from the focused
-characterization (not CI wall-clock oracles): pipeline ≈136 B after
-5 cycles, multimodal ≈1–2 KiB after 5 cycles, recovery ≈3 KiB after
-5 cycles, recovery-budget ≈9.3 KiB after 17 × 16 KiB failure blobs,
-upstream-media ≈704 B after 5 cycles. Early/late elapsed means are
-printed by each harness for drift inspection; late pipeline elapsed
-can jitter under host load without a proportional retained-byte step.
+agent-output retention, recovery lineage/checkpoints, multimodal
+live-session media, and upstream embedded-media normalization. The
+harnesses print retained-byte and elapsed-time characterizations for
+drift inspection; late pipeline elapsed can jitter under host load
+without a proportional retained-byte step.
 
 Lifecycle owners and automated enforcement:
 
@@ -75,7 +71,7 @@ Lifecycle owners and automated enforcement:
 |---|---|---|
 | Agent output / parser buffers | `ralph/agents/` | `BoundedTextBuffer` / `TextAccumulator` + memory harness |
 | Per-unit display state | `ralph/display/` | `drop_unit` drains + ring buffers |
-| Recovery lineage / budgets | `ralph/recovery/` | cycle caps + budget memory harness |
+| Recovery lineage / budgets | `ralph/recovery/` | cycle caps + memory harness |
 | Media manifests / upstream | `ralph/mcp/` | MediaManifest FIFO + upstream harness |
 | Process records / teardown | `ralph/process/` | ProcessManager caps + teardown suites |
 | Structural leak classes | `ralph/testing/audit_resource_lifecycle.py` | `make verify` AST scan of every production root |
@@ -551,27 +547,23 @@ accumulator or process-lifecycle growth curve was found.
 
 ### Measured plateau and drift checks
 
-The focused tracemalloc run used the existing per-surface harnesses plus a new
-single-run, twelve-cycle pipeline harness. The twelve-cycle count makes a
-linear 1 MiB-per-cycle leak exceed 10 MiB after warmup, which is far above
-tracemalloc noise while remaining inside the test budget.
+The focused tracemalloc run uses the per-surface harnesses plus the
+multi-cycle pipeline harness. Each harness records retained bytes after
+warmup; elapsed-time characterizations are available only from harnesses that
+measure them.
 
-| Harness | Retained spread | Early elapsed mean | Late elapsed mean |
-|---|---:|---:|---:|
-| Pipeline output (3 cycles) | 16 B | 170.601 ms | 170.601 ms |
-| Recovery lineage (8 cycles; 3 warmup) | 2,774 B | 1.498 ms | 1.647 ms |
-| Multimodal session (3 cycles) | 615 B | 6.538 ms | 6.538 ms |
-| Upstream media (3 cycles) | 240 B | 2.138 ms | 2.138 ms |
-| Pipeline multi-cycle (12 cycles; 2 warmup) | 80 B | 177.046 ms | 151.325 ms |
+| Harness | Retained-byte finding | Elapsed-time finding |
+|---|---|---|
+| Pipeline output (3 iterations; 1 warmup) | Within the harness plateau bound | Early/late means printed for drift inspection |
+| Recovery lineage (8 iterations; 3 warmup) | Within the harness plateau bound | Early/late means printed for drift inspection |
+| Multimodal session (3 iterations; 1 warmup) | Within the harness plateau bound | Early/late means printed for drift inspection |
+| Upstream media (3 iterations; 1 warmup) | Within the harness retention bound | Early/late means printed for drift inspection |
+| Pipeline multi-cycle (12 iterations; 2 warmup) | Within the harness plateau bound | Not measured |
 
-The recovery-budget harness also held after 17 × 16 KiB failure payloads:
-registry retained/peak deltas were 17,467/17,967 B; failure-budget deltas were
-17,563/18,063 B. The recovery harness's iteration count was raised from five
-to eight so its post-warmup window contains five samples and its early/late
-pairs are disjoint. The twelve-cycle harness fails when the late elapsed mean
-exceeds three times the early mean; this documented shared-CI jitter band makes
-an adverse drift observable without turning normal host scheduling noise into a
-false regression.
+The recovery harness runs eight iterations with three warmup iterations,
+leaving five post-warmup samples for disjoint early/late comparisons. The
+multi-cycle harness checks the retained-byte spread; the per-surface harnesses
+print early/late elapsed means for drift inspection.
 
 ### Cleanup and deliberate boundary
 

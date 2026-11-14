@@ -17,6 +17,8 @@ from ralph.agents.invoke._subagent_transcript import (
 if TYPE_CHECKING:
     import pytest
 
+    from ralph.agents.parsers.interactive_transcript_event import InteractiveTranscriptEvent
+
 
 _SINK_WAIT_TIMEOUT_SECONDS = 5.0
 
@@ -442,7 +444,7 @@ def test_child_event_summary_carries_meta_metadata() -> None:
 
 
 def _invoke_summarize(
-    event: Any,
+    event: InteractiveTranscriptEvent,
     meta_dict: dict[str, Any] | None,
     transcript_path: Path,
 ) -> str:

@@ -682,7 +682,6 @@ def test_ac15_post_exit_watchdog_attribution_parity(
         assert attrib.get("runtime_cause") == "runtime_kill_post_exit_watchdog"
 
 
-
 @pytest.mark.parametrize(
     "entry_point",
     NON_PROBE_ENTRY_POINTS,

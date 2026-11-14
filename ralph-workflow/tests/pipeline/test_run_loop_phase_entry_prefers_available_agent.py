@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,7 +41,7 @@ _RESOLUTION_PHASE = "rebase_conflict_resolution"
 def _captured_logs() -> Iterator[list[str]]:
     logs: list[str] = []
 
-    def sink(msg: Any) -> None:
+    def sink(msg: object) -> None:
         logs.append(str(msg))
 
     sink_id = logger.add(sink, level="INFO", format="{message}")
@@ -131,7 +131,7 @@ def test_run_loop_reselects_preferred_agent_on_phase_entry(
 
     logs: list[str] = []
 
-    def sink(msg: Any) -> None:
+    def sink(msg: object) -> None:
         logs.append(str(msg))
 
     sink_id = logger.add(sink, level="INFO", format="{message}")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 from loguru import logger
@@ -156,7 +156,12 @@ def test_rebase_resolution_result_unpacking() -> None:
 
 def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> None:
 
-    def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
+    def _fake_resolve_rebase(
+        root: Path,
+        target: str,
+        resolver: Callable[[Path, str, RebaseStop | None], object],
+        session: ResolutionSession | None = None,
+    ) -> bool:
         outcome = resolver(root, target, None)
         if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
@@ -221,7 +226,12 @@ def _deferred_rebase_failure_cause(
     tmp_path: Path,
     failure_cause: ResolutionFailureCause,
 ) -> ResolutionFailureCause:
-    def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
+    def _fake_resolve_rebase(
+        root: Path,
+        target: str,
+        resolver: Callable[[Path, str, RebaseStop | None], object],
+        session: ResolutionSession | None = None,
+    ) -> bool:
         outcome = resolver(root, target, None)
         if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = (
@@ -336,7 +346,7 @@ def test_run_loop_integration_alert_format_with_cause_and_fix() -> None:
 
 
 def test_run_loop_waiting_log_gate_emits_once() -> None:
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
     try:
         mock_ctx = MagicMock(spec=LoopContext)
@@ -361,7 +371,7 @@ def test_run_loop_waiting_log_gate_emits_once() -> None:
 
 
 def test_run_loop_logs_carried_reason() -> None:
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
     try:
         mock_ctx = MagicMock(spec=LoopContext)
@@ -421,7 +431,7 @@ def test_run_loop_self_recovery_on_repaired_config_triggers_single_retry(tmp_pat
     mock_ctx.hooks = RetryDiagnosticHooks(recovery_preamble=lambda *_: None)
     mock_backend = MagicMock()
 
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
     try:
         state1 = handle_pending_retry(

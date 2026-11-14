@@ -272,6 +272,24 @@ def _rebase_failure_transport(
     match outcome:
         case ResolvedOutcome():
             return None
+        case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
+            AttemptLedger(root).charge_ladder_attempt(
+                rebase_resolution_signature(
+                    record.pre_feature_sha,
+                    record.pre_target_sha,
+                    stop_identity or record.resolving_stop_sha,
+                ),
+                NextAction.LAST_RESORT_RECOVERY.value,
+            )
+            msg = (
+                failure_reason
+                if "spent/unavailable" in failure_reason
+                else f"all resolver agents are spent/unavailable; {failure_reason}"
+            )
+            return ExhaustedResolutionFailure(
+                msg,
+                ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            )
         case WaitingOutcome() | RetryLaterOutcome():
             return failure_reason
         case NextStrategyOutcome():

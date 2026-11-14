@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.controller import RecoveryController
 
 __all__ = [
     "RoundAttempt",
@@ -226,6 +227,7 @@ def _execute_single_candidate(
     offset: int,
     policy_bundle: PolicyBundle,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
+    handover_to_alternative: bool = False,
 ) -> tuple[bool, StopResolutionOutcome, RoundAttempt]:
     session.terminal_reason = None
     session.last_attempt_failure = None
@@ -258,6 +260,10 @@ def _execute_single_candidate(
             session.last_failure_cause = ResolutionFailureCause.NONE
         else:
             _record_invoker_outcome(session, invoker_result)
+            if handover_to_alternative and not isinstance(
+                session.last_attempt_failure, BaseException
+            ):
+                session.skip_same_agent_retries = True
     except (OSError, RuntimeError, ValueError) as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
@@ -333,6 +339,18 @@ def _check_worktree_repair(
     return True
 
 
+def _alternative_candidate_available(
+    candidates: tuple[str, ...],
+    visited: set[int],
+    skipped: frozenset[str],
+    offset: int,
+) -> bool:
+    return any(
+        index not in visited and index != offset and candidates[index] not in skipped
+        for index in range(len(candidates))
+    )
+
+
 def _run_one_round(
     runner: ResolutionInvoker,
     candidates: tuple[str, ...],
@@ -343,6 +361,7 @@ def _run_one_round(
     policy_bundle: PolicyBundle,
     worktree_resolved: Callable[[], bool] | None = None,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
+    stop_round_cap: int = 0,
 ) -> RoundAttempt:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
@@ -368,6 +387,11 @@ def _run_one_round(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
         invoked = True
+        handover_to_alternative = (
+            stop_round_cap > 0
+            and round_index >= stop_round_cap
+            and _alternative_candidate_available(candidates, visited, skipped, offset)
+        )
         succeeded, _invoker_result, progress = _execute_single_candidate(
             runner,
             agent_name,
@@ -378,6 +402,7 @@ def _run_one_round(
             offset,
             policy_bundle,
             observe_unresolved,
+            handover_to_alternative=handover_to_alternative,
         )
         if succeeded:
             return RoundAttempt(
@@ -445,7 +470,7 @@ def _preferred_conflict_candidate(
         return None
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
-        return candidates.index(eligible[0]) if eligible else None
+        return candidates.index(eligible[0])
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
@@ -458,39 +483,46 @@ def _preferred_conflict_candidate(
     ):
         delay = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
     if delay > 0:
-        if session.caller_provided:
-            return None
-        from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
-        mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-        _driver_mod._sleep_seconds(delay / 1000.0)
-        mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-        if mono_after - mono_before < (delay / 1000.0) * 0.5:
-            clock_inst = getattr(controller, "clock", getattr(controller, "_clock", None))
-            if hasattr(clock_inst, "advance"):
-                clock_inst.advance(delay / 1000.0)
-            store_clock = getattr(
-                controller.unavailability_store, "clock", getattr(controller.unavailability_store, "_clock", None)
-            )
-            if store_clock is not clock_inst and hasattr(store_clock, "advance"):
-                store_clock.advance(delay / 1000.0)
-            controller.prune_expired()
-        selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
-        if selection.agent is not None:
-            return candidates.index(selection.agent)
-
-        def _candidate_wait_ms(name: str) -> int:
-            wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-            if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
-                wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
-            return wait
-
-        shortest_agent = min(
-            eligible,
-            key=_candidate_wait_ms,
-        )
-        return candidates.index(shortest_agent)
+        return _wait_and_select_candidate(controller, session, candidates, eligible, delay)
     return None
+
+
+def _wait_and_select_candidate(
+    controller: RecoveryController,
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+    eligible: list[str],
+    delay: int,
+) -> int | None:
+    if session.caller_provided:
+        return None
+    from ralph.pipeline.conflict_resolution import driver as _driver_mod
+
+    mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+    _driver_mod._sleep_seconds(delay / 1000.0)
+    mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+    if mono_after - mono_before < (delay / 1000.0) * 0.5:
+        clock_inst = getattr(controller, "clock", getattr(controller, "_clock", None))
+        if hasattr(clock_inst, "advance"):
+            clock_inst.advance(delay / 1000.0)
+        store_clock = getattr(
+            controller.unavailability_store, "clock", getattr(controller.unavailability_store, "_clock", None)
+        )
+        if store_clock is not clock_inst and hasattr(store_clock, "advance"):
+            store_clock.advance(delay / 1000.0)
+        controller.prune_expired()
+    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+    if selection.agent is not None:
+        return candidates.index(selection.agent)
+
+    def _candidate_wait_ms(name: str) -> int:
+        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+        if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
+            wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
+        return wait
+
+    shortest_agent = min(eligible, key=_candidate_wait_ms)
+    return candidates.index(shortest_agent)
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

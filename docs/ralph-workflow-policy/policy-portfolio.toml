@@ -88,7 +88,7 @@ lifecycle = "review when a maintained language, checker, linter, or ban catalog 
 disposition = "KEEP"
 detects = "per-language ban catalog findings"
 retirement_trigger = "when every cataloged construct becomes structurally impossible"
-enforcement = "advisory: the Python ban gate is not registered as an authoritative verify step yet; review: once the banned-construct audit is registered and the tracked-source scan is clean"
+enforcement = "deterministic: banned constructs audit (audit_banned_constructs)"
 
 [[controls]]
 id = "strictest-lint-configuration"

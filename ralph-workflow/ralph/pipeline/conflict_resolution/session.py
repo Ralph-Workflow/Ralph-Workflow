@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -10,7 +11,6 @@ from ralph.agents.clock import Clock
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
@@ -36,7 +36,6 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.resolution_outcome import (
     ResolvedOutcome,
-    RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
 )
@@ -44,6 +43,7 @@ from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
+    import threading
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.classified_failure import ClassifiedFailure
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
@@ -355,8 +356,6 @@ def ensure_session_controller(
 ) -> RecoveryController:
     from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
     from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-    from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
@@ -490,7 +489,6 @@ def classify_failed_resolution_attempt(
         )
         if raw_failure is None:
             raw_failure = reason
-    from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.classifier import FailureContext
 
@@ -588,7 +586,11 @@ def classify_failed_resolution_attempt(
             current_index=failed_index,
             exclude_current=True,
         )
-        if selection.agent is not None and selection.index is not None:
+        if (
+            selection.agent is not None
+            and selection.index is not None
+            and selection.index > bounded_index
+        ):
             session.chain_cursor = selection.index
             next_retries = 0
         elif candidates:
@@ -625,6 +627,22 @@ def conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
     return chain.max_retries
 
 
+def _conflict_config_with_inactivity(
+    config: UnifiedConfig,
+    inactivity_timeout_seconds: float | None,
+) -> UnifiedConfig:
+    conflict_limits = config.conflict_resolution.model_copy(
+        update={
+            "inactivity_timeout_seconds": (
+                inactivity_timeout_seconds
+                if inactivity_timeout_seconds is not None
+                else config.conflict_resolution.inactivity_timeout_seconds
+            )
+        }
+    )
+    return config.model_copy(update={"conflict_resolution": conflict_limits})
+
+
 def invoke_resolution_agent(
     *,
     agent_name: str,
@@ -653,20 +671,7 @@ def invoke_resolution_agent(
 
         display_context = make_display_context()
     pop_last_captured_retry_intent()
-    conflict_limits = config.conflict_resolution.model_copy(
-        update={
-            "inactivity_timeout_seconds": (
-                inactivity_timeout_seconds
-                if inactivity_timeout_seconds is not None
-                else config.conflict_resolution.inactivity_timeout_seconds
-            )
-        }
-    )
-    conflict_config = config.model_copy(
-        update={
-            "conflict_resolution": conflict_limits,
-        }
-    )
+    conflict_config = _conflict_config_with_inactivity(config, inactivity_timeout_seconds)
     controller = ensure_session_controller(
         session,
         policy_bundle,

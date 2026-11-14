@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
@@ -24,12 +24,16 @@ from ralph.pipeline.run_loop import run_auto_integrate_recovery_preamble
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Spent
 from ralph.workspace.scope import WorkspaceScope
 
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+
 pytestmark = pytest.mark.timeout_seconds(5)
 
 _CANDIDATES = ("agent1", "agent2")
 
 
-def _set_spent_chain_terminal_reason(session: Any) -> None:
+def _set_spent_chain_terminal_reason(session: ResolutionSession) -> None:
     ledger = AgentFailureLedger(clock=FakeClock(), total_limit=1)
     for candidate in _CANDIDATES:
         ledger.record(AttemptFact(PHASE_RESOLUTION, candidate, artifact_valid=False))
@@ -55,9 +59,9 @@ class _TerminalRunner:
         self,
         root: Path,
         target: str,
-        resolver: Any,
+        resolver: RebaseStopResolver,
         *,
-        session: Any,
+        session: ResolutionSession,
     ) -> bool:
         if self.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
             _set_spent_chain_terminal_reason(session)
@@ -114,7 +118,12 @@ def test_rebase_exhaustion_regression_continuation_is_durable_and_charges_once(
     ledger = AttemptLedger(tmp_path)
     before = ladder_charge_count(ledger.read())
 
-    def exhausted_resolve(root: Path, target: str, resolver: object, session: Any = None) -> bool:
+    def exhausted_resolve(
+        root: Path,
+        target: str,
+        resolver: object,
+        session: ResolutionSession | None = None,
+    ) -> bool:
         _set_spent_chain_terminal_reason(session)
         return False
 

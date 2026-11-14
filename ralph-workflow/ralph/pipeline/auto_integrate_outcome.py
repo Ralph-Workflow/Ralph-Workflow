@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never, assert_never, cast
+from typing import TYPE_CHECKING, assert_never
 
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
@@ -112,7 +112,7 @@ def record_resolution_outcome(
                 target=target,
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-        case RetryLaterOutcome(until=until, on_change=on_change):
+        case RetryLaterOutcome(until=until, on_change=on_change, failure_cause=cause):
             message = on_change or (
                 f"retry after {until}" if until is not None else RETRY_LATER_REASON
             )
@@ -126,7 +126,9 @@ def record_resolution_outcome(
                 result = record_conflict(
                     reason=message,
                     target=target,
-                    failure_cause=ResolutionFailureCause.AGENT_FAILURE,
+                    failure_cause=(
+                        cause if cause is not None else ResolutionFailureCause.AGENT_FAILURE
+                    ),
                 )
         case NextStrategyOutcome(strategy=strategy):
             result = record_conflict(
@@ -147,7 +149,7 @@ def record_resolution_outcome(
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case _ as unreachable:
-            assert_never(cast("Never", unreachable))
+            assert_never(unreachable)
     return result
 
 
@@ -245,9 +247,10 @@ def classify_rebase_outcome(
             merge_attempted=merge_attempted,
             merge_outcome=merge_outcome,
         )
-    if merge_attempted and merge_outcome is not None:
-        return ACTION_MERGED, None
-    return ACTION_REBASED, None
+    default_action = (
+        ACTION_MERGED if merge_attempted and merge_outcome is not None else ACTION_REBASED
+    )
+    return default_action, None
 
 
 def _classify_rebase_noop_outcome(

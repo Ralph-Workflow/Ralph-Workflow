@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import subprocess
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypedDict
 
 from ralph.process.manager import SpawnOptions, default_sync_process_factory
 
 if TYPE_CHECKING:
     import pytest
+
+
+class _PopenCapture(TypedDict):
+    args: tuple[object, ...]
+    kwargs: dict[str, object]
 
 
 def test_spawn_options_pass_fds_default_is_empty_tuple() -> None:
@@ -19,10 +24,10 @@ def test_spawn_options_pass_fds_default_is_empty_tuple() -> None:
 def test_default_sync_process_factory_forwards_pass_fds_to_popen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: list[dict[str, Any]] = []
+    captured: list[_PopenCapture] = []
 
     class _CapturePopen:
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
+        def __init__(self, *args: object, **kwargs: object) -> None:
             captured.append({"args": args, "kwargs": kwargs})
             self.pid = 0
 

@@ -9,7 +9,13 @@ from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     import pytest
+
+    from ralph.agents.parsers.claude_interactive_transcript_parser import (
+        ClaudeInteractiveTranscriptParser,
+    )
 
 
 class _RecordingReadlineFile:
@@ -72,11 +78,13 @@ def _wait_for_tailer_start(event: threading.Event, reader: PtyLineReader) -> Non
     assert tails.is_started
 
 
-def _install_tailer_start_signal(monkeypatch: pytest.MonkeyPatch, module: Any) -> threading.Event:
+def _install_tailer_start_signal(
+    monkeypatch: pytest.MonkeyPatch, module: ModuleType
+) -> threading.Event:
     event = threading.Event()
     original_start = module.ClaudeSubagentTranscriptTails.start
 
-    def start_and_signal(tails: Any) -> threading.Thread:
+    def start_and_signal(tails: ClaudeSubagentTranscriptTails) -> threading.Thread:
         thread = original_start(tails)
         event.set()
         return thread
@@ -281,7 +289,7 @@ def test_transcript_tailer_regression_completion_does_not_resurrect_prepopulated
     assert str(child_path) in tailer._tails
 
     def block_forward(
-        _parser: Any,
+        _parser: ClaudeInteractiveTranscriptParser,
         _chunk: str,
         _transcript_path: Path,
         _meta_dict: dict[str, object] | None,

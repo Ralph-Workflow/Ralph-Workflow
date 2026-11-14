@@ -76,12 +76,13 @@ source. A rule whose enforcer does not exist yet stays
 advisory with a review trigger and is never marked `deterministic`.
 Only a rule tagged `strong` or `moderate` may carry a `deterministic`
 enforcement status; a rule tagged `anecdotal` or `none` ships
-`advisory` with a review trigger. The two exceptions are the absolute
-comment and docstring ban and the banned-construct ban in
+`advisory` with a review trigger. Exactly two exceptions are the
+absolute comment and docstring ban and the banned-construct ban in
 `clean-code-policy.md`, project rules tagged `none` that ship
 `deterministic` because their wired checkers
-(`ralph.testing.audit_comments`, `ralph.testing.audit_banned_constructs`)
-enforce them; each reverts to `advisory` if its enforcer is removed.
+(`ralph.testing.audit_comments`, `ralph.testing.audit_banned_constructs`,
+respectively) enforce them; each reverts to `advisory` if its enforcer is
+removed.
 
 Every rule below is an agent rule or a runtime rule. No rule asks an
 agent to count its own retries, to keep state across sessions, to

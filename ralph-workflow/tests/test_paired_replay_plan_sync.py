@@ -11,6 +11,12 @@ RALPH_TEST_CHANGE_REASONS = {
         "the two bounded exceptions, so both plan copies must carry the bounded "
         "statements and reject the broad wording"
     ),
+    "test_plan_copies_carry_the_banned_constructs_replay_row": (
+        "the §13 table carries the banned-construct ban as the second `none`-tagged "
+        "deterministic exception, so each plan copy must carry exactly one row with "
+        "its enforcement id, `none` tag, arm-snapshot replay procedure, and "
+        "outstanding behavior-change evidence"
+    ),
 }
 
 _CANONICAL_PLAN_RELATIVE_PATH = "ralph-workflow/docs/agents/policy-v5-paired-replay-plan.md"
@@ -27,17 +33,20 @@ _FORBIDDEN_NARRATION = (
 )
 
 _MODEL_FAMILY_ROW_GUARD = "Independent review model-family diversification"
+_BANNED_CONSTRUCTS_ROW_GUARD = "Banned constructs"
+_BANNED_CONSTRUCTS_ENFORCEMENT = "deterministic: banned-constructs audit (audit_banned_constructs)"
+_BANNED_CONSTRUCTS_EVIDENCE_TAG = "evidence tag `none`"
 
 _PLAN_BOUNDED_DETERMINISTIC_STATEMENTS = (
     "Only a rule tagged `strong` or `moderate` may carry a `deterministic` "
     "enforcement status; a rule tagged `none` (judgment) or `anecdotal` ships "
     "`advisory` with a review trigger, and no rule is marked `deterministic` on "
     "the strength of an enforcer that is planned but not wired.",
-    "The two exceptions are the absolute comment and docstring ban and the "
+    "Exactly two exceptions are the absolute comment and docstring ban and the "
     "banned-construct ban, project rules tagged `none` that ship "
     "`deterministic` because their wired checkers (`audit_comments`, "
-    "`audit_banned_constructs`) enforce them; each reverts to `advisory` if "
-    "its enforcer is removed.",
+    "`audit_banned_constructs`, respectively) enforce them; each reverts to "
+    "`advisory` if its enforcer is removed.",
 )
 
 _PLAN_BROAD_DETERMINISTIC_PHRASES = (
@@ -90,6 +99,45 @@ def test_plan_copies_carry_the_model_family_replay_row(relative_path: str) -> No
     )
     assert "review.md" in row, (
         f"{relative_path} §13 row for {_MODEL_FAMILY_ROW_GUARD!r} names no replay procedure output"
+    )
+
+
+@pytest.mark.parametrize("relative_path", _PLAN_RELATIVE_PATHS)
+def test_plan_copies_carry_the_banned_constructs_replay_row(relative_path: str) -> None:
+    text = _read_bytes(relative_path).decode("utf-8")
+    rows = [
+        line
+        for line in text.splitlines()
+        if line.startswith("| ") and _BANNED_CONSTRUCTS_ROW_GUARD in line
+    ]
+    assert len(rows) == 1, (
+        f"{relative_path} must carry exactly one §13 row for "
+        f"{_BANNED_CONSTRUCTS_ROW_GUARD!r}; found {len(rows)}"
+    )
+    row = rows[0]
+    assert _BANNED_CONSTRUCTS_ENFORCEMENT in row, (
+        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not name "
+        f"the banned-constructs enforcement id: {row!r}"
+    )
+    assert _BANNED_CONSTRUCTS_EVIDENCE_TAG in row, (
+        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not carry "
+        f"the `none` evidence tag: {row!r}"
+    )
+    assert "runs the banned-constructs audit over each arm snapshot" in row, (
+        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not run "
+        f"the audit over each arm snapshot: {row!r}"
+    )
+    assert "fail on each banned construct" in row, (
+        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not require "
+        f"a failure for each banned construct: {row!r}"
+    )
+    assert "pass on a clean tree" in row, (
+        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not require "
+        f"a clean-tree pass: {row!r}"
+    )
+    assert "behavior-change evidence remains outstanding at the §6 minimum" in row, (
+        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not record "
+        f"the outstanding behavior-change evidence: {row!r}"
     )
 
 

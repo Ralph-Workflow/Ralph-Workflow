@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 from ralph.phases.artifact_freshness import artifact_fingerprint
 from ralph.pipeline.effect_executor import has_valid_terminal_artifact
@@ -15,11 +14,11 @@ class _KilledError(Exception):
     returncode = 143
 
 
-def _ctx(root: Path) -> Any:
+def _ctx(root: Path) -> SimpleNamespace:
     return SimpleNamespace(workspace_scope=SimpleNamespace(root=root))
 
 
-def _artifact() -> Any:
+def _artifact() -> SimpleNamespace:
     return SimpleNamespace(artifact_path=".agent/artifacts/plan.md", artifact_type="plan")
 
 

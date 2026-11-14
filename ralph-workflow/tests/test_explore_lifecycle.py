@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -37,7 +36,7 @@ class _Index:
 
 
 class _Workspace:
-    def __init__(self, root: Path, index: Any | None) -> None:
+    def __init__(self, root: Path, index: object | None) -> None:
         self.root = root
         self.explore_index = index
 

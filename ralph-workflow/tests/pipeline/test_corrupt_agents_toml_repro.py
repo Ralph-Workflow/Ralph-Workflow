@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -32,6 +32,10 @@ from ralph.pipeline.run_loop import LoopContext, resolve_paused_rebase
 from ralph.pipeline.run_loop import run as pipeline_run
 from ralph.policy.loader import default_dir, load_policy
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from ralph.config.conflict_resolution_config import ConflictResolutionConfig
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 
 @pytest.fixture(autouse=True)
@@ -82,9 +86,9 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
         workspace_scope=WorkspaceScope(repo_root),
     )
 
-    launched_pipeline_kwargs: list[dict[str, Any]] = []
+    launched_pipeline_kwargs: list[dict[str, object]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
+    def _fake_run_pipeline(**kwargs: object) -> ResolvedOutcome:
         launched_pipeline_kwargs.append(kwargs)
         return ResolvedOutcome()
 
@@ -151,9 +155,9 @@ def test_corrupt_agents_toml_auto_integrate_rebase_does_not_enter_waiting(
         workspace_scope=WorkspaceScope(repo_root),
     )
 
-    pipeline_invocations: list[dict[str, Any]] = []
+    pipeline_invocations: list[dict[str, object]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
+    def _fake_run_pipeline(**kwargs: object) -> ResolvedOutcome:
         pipeline_invocations.append(kwargs)
         return ResolvedOutcome()
 
@@ -165,8 +169,8 @@ def test_corrupt_agents_toml_auto_integrate_rebase_does_not_enter_waiting(
     def _fake_resolve_rebase(
         root: Path,
         target: str,
-        res_fn: Any,
-        session: Any = None,
+        res_fn: RebaseStopResolver,
+        session: ResolutionSession | None = None,
     ) -> bool:
         del session
         stop = RebaseStop(
@@ -221,9 +225,9 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
     ctx.workspace_scope = WorkspaceScope(repo_root)
     ctx.display_context = None
 
-    pipeline_invocations: list[dict[str, Any]] = []
+    pipeline_invocations: list[dict[str, object]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
+    def _fake_run_pipeline(**kwargs: object) -> ResolvedOutcome:
         pipeline_invocations.append(kwargs)
         return ResolvedOutcome()
 
@@ -237,8 +241,8 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
             self,
             root: Path,
             target: str,
-            resolver: Any,
-            config: Any,
+            resolver: RebaseStopResolver,
+            config: ConflictResolutionConfig | None,
         ) -> ResolvedOutcome:
             del config
             stop = RebaseStop(
@@ -285,7 +289,7 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
         workspace_scope=WorkspaceScope(repo_root),
     )
 
-    pipeline_invocations: list[dict[str, Any]] = []
+    pipeline_invocations: list[dict[str, object]] = []
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_outcome",
         lambda **kwargs: pipeline_invocations.append(kwargs) or ResolvedOutcome(),
@@ -311,8 +315,8 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
     def _fake_resolve_rebase(
         root: Path,
         target: str,
-        res_fn: Any,
-        session: Any = None,
+        res_fn: RebaseStopResolver,
+        session: ResolutionSession | None = None,
     ) -> bool:
         if session is not None:
             with bind_active_rebase_resolution_session(session):
@@ -406,9 +410,9 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
         workspace_scope=WorkspaceScope(repo_root),
     )
 
-    launched_kwargs: list[dict[str, Any]] = []
+    launched_kwargs: list[dict[str, object]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
+    def _fake_run_pipeline(**kwargs: object) -> ResolvedOutcome:
         launched_kwargs.append(kwargs)
         return ResolvedOutcome()
 

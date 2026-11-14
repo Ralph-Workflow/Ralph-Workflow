@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from ralph.pipeline import resolve_conflicted_rebase
 from ralph.pipeline.conflict_resolution.round_verdict import resolution_exhaustion_reason
@@ -9,6 +9,9 @@ from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     ResolutionTerminationReason,
 )
+
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStopResolver
 
 
 class _SpentChainRunner:
@@ -19,7 +22,7 @@ class _SpentChainRunner:
         self,
         root: Path,
         target: str,
-        resolver: Any,
+        resolver: RebaseStopResolver,
         *,
         session: ResolutionSession | None = None,
     ) -> bool:

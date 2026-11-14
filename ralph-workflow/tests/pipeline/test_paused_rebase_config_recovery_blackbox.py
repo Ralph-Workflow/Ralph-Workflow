@@ -5,7 +5,7 @@ import functools
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -36,6 +36,9 @@ from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
+
 pytestmark = pytest.mark.timeout_seconds(10)
 
 
@@ -55,8 +58,8 @@ def _isolate_home_xdg(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_xdg))
 
 
-def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
-    captured: list[dict[str, Any]] = []
+def _capture_loguru_records() -> tuple[list[dict[str, object]], int]:
+    captured: list[dict[str, object]] = []
 
     def _sink(message: object) -> None:
         rec = getattr(message, "record", None)
@@ -125,7 +128,7 @@ def _setup_agent_rebase_resolver(
     root: Path,
     agent_invocations: list[int] | None = None,
     monkeypatch: pytest.MonkeyPatch | None = None,
-) -> Any:
+) -> RebaseStopResolver:
     mock_display = MagicMock()
     mock_policy = MagicMock()
     mock_registry = MagicMock()
@@ -137,7 +140,7 @@ def _setup_agent_rebase_resolver(
 
     if monkeypatch is not None and agent_invocations is not None:
 
-        def fake_agent_pipeline(*args: Any, **kwargs: Any) -> ResolvedOutcome:
+        def fake_agent_pipeline(*args: object, **kwargs: object) -> ResolvedOutcome:
             agent_invocations[0] += 1
             (root / "conflict.txt").write_text("resolved content\n", encoding="utf-8")
             return ResolvedOutcome()

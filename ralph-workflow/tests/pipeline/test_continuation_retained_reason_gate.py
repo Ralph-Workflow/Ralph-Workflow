@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypedDict
 
 import pytest
 from loguru import logger
@@ -23,13 +23,22 @@ from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 
+class _LogLevelDouble(Protocol):
+    name: str
+
+
+class _LogRecord(TypedDict):
+    level: _LogLevelDouble
+    message: str
+
+
 @pytest.fixture(autouse=True)
 def _clean_gate_state() -> None:
     reset_continuation_gate_state()
 
 
-def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
-    captured: list[dict[str, Any]] = []
+def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
+    captured: list[_LogRecord] = []
 
     def _sink(message: object) -> None:
         rec = getattr(message, "record", None)

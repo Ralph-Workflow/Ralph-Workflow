@@ -39,15 +39,15 @@ RALPH_TEST_CHANGE_REASONS = {
     ),
     "test_kernel_anchors_the_deterministic_evidence_rule": (
         "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
-        "`moderate` rules; the comment and docstring ban is the single bounded "
-        "exception, so the broad any-tag wording and its contract statements are "
-        "replaced"
+        "`moderate` rules; the comment and docstring ban and the banned-construct ban "
+        "are the two bounded exceptions, so the broad any-tag wording and its contract "
+        "statements are replaced"
     ),
     "test_anecdotal_and_none_guard_rows_ship_advisory_enforcement": (
         "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
-        "`moderate` rules; the comment and docstring ban is the single bounded "
-        "exception, so every `anecdotal` or `none`-tagged guard row must ship an "
-        "advisory enforcement with a review trigger"
+        "`moderate` rules; the comment and docstring ban and the banned-construct ban "
+        "are the two bounded exceptions, so every `anecdotal` or `none`-tagged guard "
+        "row must ship an advisory enforcement with a review trigger"
     ),
 }
 
@@ -585,7 +585,8 @@ def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
         )
         assert COMMENT_BAN_ANCHOR in normalized, (
             f"{source_name} kernel does not name the absolute comment and docstring "
-            f"ban as the single `none`-tagged exception to the bounded evidence-tag rule"
+            f"ban as one of the two `none`-tagged exceptions to the bounded "
+            f"evidence-tag rule"
         )
 
 

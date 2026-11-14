@@ -18,6 +18,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
+from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
@@ -314,6 +315,14 @@ def _rebase_run_result(
                 failure_cause,
             )
         case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
+            AttemptLedger(root).charge_ladder_attempt(
+                rebase_resolution_signature(
+                    record.pre_feature_sha if record is not None else None,
+                    record.pre_target_sha if record is not None else target,
+                    record.resolving_stop_sha if record is not None else None,
+                ),
+                NextAction.LAST_RESORT_RECOVERY.value,
+            )
             return RebaseRunResult(
                 rebase_outcome=RebaseConflicts(files=[]),
                 merge_attempted=False,

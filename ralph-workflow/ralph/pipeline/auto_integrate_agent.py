@@ -3,18 +3,15 @@ from __future__ import annotations
 __doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
 
 import re
-from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loguru import logger
 
 from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import (
-    run_conflict_resolution_outcome,
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_outcome,
-    run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -22,7 +19,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.resolution_outcome import (
-    STOP_RESOLUTION_OUTCOMES,
     ConfigFailureOutcome,
     NextStrategyOutcome,
     ResolvedOutcome,
@@ -33,13 +29,30 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 
-ResolutionOutcome = STOP_RESOLUTION_OUTCOMES
-run_conflict_resolution_outcome = run_conflict_resolution_pipeline
-run_rebase_conflict_resolution_outcome = run_rebase_conflict_resolution_pipeline
+
+@runtime_checkable
+class _WarnLineDisplay(Protocol):
+    def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None: ...
+
+
+class _AutoIntegrateError(Exception):
+    __slots__ = ("original",)
+
+    def __init__(self, original: Exception) -> None:
+        self.original = original
+        super().__init__(str(original))
+
+
+def _run_auto_integrate_operation[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except Exception as exc:
+        raise _AutoIntegrateError(exc) from exc
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Protocol
+    from pathlib import Path
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -59,15 +72,12 @@ _WARN_CHANNEL = "auto-integrate"
 
 
 def emit_integration_warn_line(display: object, message: str) -> None:
+    if not isinstance(display, _WarnLineDisplay):
+        return
     try:
-        emit = cast(
-            "Callable[[str, str, str], None] | None",
-            getattr(display, "emit_warn_line", None),
-        )
-        if emit is not None:
-            emit("run", _WARN_CHANNEL, message)
-    except Exception as exc:
-        logger.debug("auto_integrate: operator warn line failed (non-fatal): {}", exc)
+        _run_auto_integrate_operation(lambda: display.emit_warn_line("run", _WARN_CHANNEL, message))
+    except _AutoIntegrateError as failure:
+        logger.debug("auto_integrate: operator warn line failed (non-fatal): {}", failure.original)
 
 
 def build_agent_conflict_resolver(
@@ -82,9 +92,11 @@ def build_agent_conflict_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> ConflictResolver:
 
-    def _resolver(root: Path, target: str) -> StopResolutionOutcome | bool:
-        if pipeline_deps is None or workspace_scope is None:
-            missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
+    def _resolver(root: Path, target: str) -> StopResolutionOutcome:
+        effective_pipeline_deps = pipeline_deps
+        effective_workspace_scope = workspace_scope
+        if effective_pipeline_deps is None or effective_workspace_scope is None:
+            missing = "pipeline_deps" if effective_pipeline_deps is None else "workspace_scope"
             logger.warning(
                 "auto_integrate: conflict resolution unavailable ({} not "
                 "threaded to this seam); declining rather than invoking an "
@@ -107,26 +119,29 @@ def build_agent_conflict_resolver(
             )
             return NextStrategyOutcome("completion_in_place")
         try:
-            raw_outcome = run_conflict_resolution_pipeline(
-                root=root,
-                target=target,
-                config=config,
-                pipeline_deps=pipeline_deps,
-                workspace_scope=workspace_scope,
-                policy_bundle=policy_bundle,
-                display=display,
-                display_context=display_context,
-                strategy_history=strategy_history,
+            raw_obj = _run_auto_integrate_operation(
+                lambda: run_conflict_resolution_pipeline(
+                    root=root,
+                    target=target,
+                    config=config,
+                    pipeline_deps=effective_pipeline_deps,
+                    workspace_scope=effective_workspace_scope,
+                    policy_bundle=policy_bundle,
+                    display=display,
+                    display_context=display_context,
+                    strategy_history=strategy_history,
+                )
             )
-            return _wrap_stop_resolution_outcome(raw_outcome)
-        except Exception as exc:
+            return _wrap_stop_resolution_outcome(raw_obj)
+        except _AutoIntegrateError as failure:
+            exc = failure.original
             logger.warning("auto_integrate: conflict-resolution pipeline raised: {}", exc)
             emit_integration_warn_line(
                 display, f"conflict resolution failed: resolution pipeline raised {exc}"
             )
             return UnknownOutcome(exc)
 
-    return cast("ConflictResolver", _resolver)
+    return _resolver
 
 
 def _wrap_stop_resolution_outcome(raw_obj: object) -> StopResolutionOutcome:
@@ -163,7 +178,7 @@ def build_agent_rebase_stop_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver:
 
-    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome | bool:
+    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -260,7 +275,7 @@ def build_agent_rebase_stop_resolver(
                 failure_cause=failure_cause,
             )
 
-    return cast("RebaseStopResolver", _resolver)
+    return _resolver
 
 
 def _resolve_within_target_context(

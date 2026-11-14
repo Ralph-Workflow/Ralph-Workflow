@@ -5,7 +5,6 @@ import importlib
 import inspect
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 import pytest
 
@@ -90,8 +89,8 @@ class _CannedDirector:
 def _install_director(
     monkeypatch: pytest.MonkeyPatch,
     observation: Observation,
-) -> list[dict[str, Any]]:
-    seen: list[dict[str, Any]] = []
+) -> list[dict[str, object]]:
+    seen: list[dict[str, object]] = []
 
     def _factory(
         root: Path,
@@ -121,7 +120,7 @@ def _install_seam_recorder(
     recorded: list[IntegrationAction | RecordFactOutcome] = []
     real = module.decide_seam_action
 
-    def _recorder(*args: Any, **kwargs: Any) -> IntegrationAction | RecordFactOutcome:
+    def _recorder(*args: object, **kwargs: object) -> IntegrationAction | RecordFactOutcome:
         action = real(*args, **kwargs)
         recorded.append(action)
         return action
@@ -454,9 +453,9 @@ def test_diagnostic_handoff_decides_through_the_seam(
     root = tmp_path / "diagnostic"
     root.mkdir()
 
-    calls: list[dict[str, Any]] = []
+    calls: list[dict[str, object]] = []
 
-    def _spy(root_arg: Path, /, **kwargs: Any) -> IntegrationAction:
+    def _spy(root_arg: Path, /, **kwargs: object) -> IntegrationAction:
         calls.append({"root": root_arg, **kwargs})
         return IntegrationAction.RESOLVE_ACTIVE_OPERATION
 

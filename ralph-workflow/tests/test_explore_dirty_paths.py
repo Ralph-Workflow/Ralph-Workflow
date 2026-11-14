@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -30,7 +29,7 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _FakeSession:
-    def __init__(self, explore_index: Any | None) -> None:
+    def __init__(self, explore_index: object | None) -> None:
         self.explore_index = explore_index
 
     def check_capability(self, capability: str) -> object:
@@ -86,7 +85,7 @@ class _Workspace:
         return (self.root / path).exists()
 
 
-def _decode(result) -> dict[str, Any]:
+def _decode(result) -> dict[str, object]:
     payload = result.content[0].text
     try:
         return json.loads(payload)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import pytest
 
@@ -27,10 +27,15 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
-def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+def auto_integrate_after_commit(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: RebaseState,
+    **kwargs: object,
+) -> RebaseState | None:
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
-    return _auto_integrate_after_commit(*args, **kwargs)
+    return _auto_integrate_after_commit(config, workspace_scope, state, **kwargs)
 
 
 def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.CompletedProcess[str]:

@@ -280,7 +280,7 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
     base_fp = identity_fingerprint(base)
 
     non_identity_mutations: dict[str, object] = {
-        "record_version": 2,
+        "record_version": 999,
         "phase": "integrated",
         "pre_feature_sha": "x" * 40,
         "pre_target_sha": "y" * 40,
@@ -314,7 +314,6 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
         "merge_commit_tree": "m_tree",
         "reintegrate_pending": True,
         "initiating_feature_sha": "init_sha",
-        "record_version": 2,
         "resolution_gate_key": "gate:stop1:primary:sha",
         "waiting_notification_key": "gate:stop1:primary:sha",
         "resolution_terminal_marker": (

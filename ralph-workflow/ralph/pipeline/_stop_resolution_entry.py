@@ -36,7 +36,6 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
-    assert_never,
 )
 from ralph.pipeline.resolution_outcome_producer import (
     classify_resolution_failure,
@@ -358,6 +357,33 @@ def _gate_record(trigger: StopResolutionTrigger) -> IntegrationRecord:
     return resolution_gate_record(trigger.root, trigger.target)
 
 
+def _record_outcome_attempt(
+    trigger: StopResolutionTrigger,
+    key: ResolutionAttemptKey,
+    outcome: StopResolutionOutcome,
+) -> None:
+    attempt_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+    if isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
+        if outcome.failure_cause is not None:
+            attempt_cause = outcome.failure_cause
+    elif isinstance(outcome, ConfigFailureOutcome):
+        attempt_cause = ResolutionFailureCause.CONFIG_FAILURE
+    if attempt_cause == ResolutionFailureCause.NONE:
+        attempt_cause = _deferred_failure_cause(trigger.root, trigger.record)
+    failure_reason: str | None = None
+    if isinstance(outcome, RetryLaterOutcome):
+        failure_reason = outcome.on_change
+    elif isinstance(outcome, ConfigFailureOutcome):
+        failure_reason = f"fix {outcome.file} then run ralph --check-config"
+    elif isinstance(outcome, WaitingOutcome):
+        failure_reason = outcome.external_condition
+    elif isinstance(outcome, NextStrategyOutcome):
+        failure_reason = outcome.strategy
+    elif isinstance(outcome, UnknownOutcome):
+        failure_reason = str(outcome.error)
+    _record_failed_attempt(trigger, key, attempt_cause, failure_reason=failure_reason)
+
+
 def attempt_stop_resolution(
     stop_identity: str | None,
     trigger: StopResolutionTrigger,
@@ -419,36 +445,6 @@ def attempt_stop_resolution(
     return result
 
 
-def _extract_failure_cause_and_reason(
-    trigger: StopResolutionTrigger,
-    result: (
-        WaitingOutcome
-        | RetryLaterOutcome
-        | NextStrategyOutcome
-        | ConfigFailureOutcome
-        | UnknownOutcome
-    ),
-) -> tuple[ResolutionFailureCause, str | None]:
-    attempt_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
-    if isinstance(result, (ResolvedOutcome, RetryLaterOutcome)):
-        if result.failure_cause is not None:
-            attempt_cause = result.failure_cause
-    elif isinstance(result, ConfigFailureOutcome):
-        attempt_cause = ResolutionFailureCause.CONFIG_FAILURE
-    if attempt_cause == ResolutionFailureCause.NONE:
-        attempt_cause = _deferred_failure_cause(trigger.root, trigger.record)
-    failure_reason: str | None = None
-    if isinstance(result, RetryLaterOutcome):
-        failure_reason = result.on_change
-    elif isinstance(result, ConfigFailureOutcome):
-        failure_reason = f"fix {result.file} then run ralph --check-config"
-    elif isinstance(result, WaitingOutcome):
-        failure_reason = result.external_condition
-    elif isinstance(result, NextStrategyOutcome):
-        failure_reason = result.strategy
-    elif isinstance(result, UnknownOutcome):
-        failure_reason = str(result.error)
-    return attempt_cause, failure_reason
 
 
 def _record_post_attempt(
@@ -468,24 +464,8 @@ def _record_post_attempt(
             UnknownOutcome,
         ),
     ):
-        match eff_outcome:
-            case ResolvedOutcome():
-                pass
-            case (
-                WaitingOutcome()
-                | RetryLaterOutcome()
-                | NextStrategyOutcome()
-                | ConfigFailureOutcome()
-                | UnknownOutcome()
-            ):
-                attempt_cause, failure_reason = _extract_failure_cause_and_reason(
-                    trigger, eff_outcome
-                )
-                _record_failed_attempt(
-                    trigger, post_key, attempt_cause, failure_reason=failure_reason
-                )
-            case _ as unreachable:
-                assert_never(unreachable)
+        if not isinstance(eff_outcome, ResolvedOutcome):
+            _record_outcome_attempt(trigger, post_key, eff_outcome)
     else:
         from ralph.git.merge import MergeResult
 
@@ -498,56 +478,24 @@ def _record_post_attempt(
             )
 
 
-def _create_resolution_session(
-    config: ConflictResolutionConfig | None,
-) -> ResolutionSession:
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
-
-    if config is None:
-        return ResolutionSession()
-    return ResolutionSession(
-        inactivity_timeout_seconds=config.inactivity_timeout_seconds,
-        max_rounds_per_stop=config.max_rounds_per_stop,
-        max_rebase_conflict_stops=config.max_rebase_conflict_stops,
-        max_fallback_agents=config.max_fallback_agents,
-    )
-
-
-def _execute_rebase_resolution(
-    root: Path,
-    target: str,
-    resolver: RebaseStopResolver,
-    session: ResolutionSession,
-    agent_runner: AgentRunner | None,
-) -> bool:
-    if agent_runner is not None:
-        return agent_runner.resolve_rebase(root, target, resolver, session=session)
-    return production_rebase_runner().resolve_rebase(root, target, resolver, session=session)
-
-
-def _session_carried_cause(session: ResolutionSession) -> ResolutionFailureCause:
-    carried_cause = session.last_failure_cause
-    if carried_cause == ResolutionFailureCause.NONE:
-        if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE:
-            return ResolutionFailureCause.CONFIG_FAILURE
-        if session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE:
-            return ResolutionFailureCause.CONTEXT_FAILURE
-    return carried_cause
-
-
-def _handle_unspent_session(
-    root: Path,
-    target: str,
-    session: ResolutionSession,
-    carried_cause: ResolutionFailureCause,
-    record: IntegrationRecord | None,
-) -> RebaseResolutionResult:
+def _warn_chain_not_spent(target: str, session: ResolutionSession) -> None:
+    if session.charge_conflict_budget and (
+        session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    ):
+        return
     logger.warning(
         "auto_integrate: rebase conflict resolution for '{}' ended on {} without the "
         "resolver chain being spent; not recording it as exhausted",
         target,
         session.terminal_reason.value if session.terminal_reason else "no terminal evidence",
     )
+
+
+def _not_spent_resolution_outcome(
+    session: ResolutionSession,
+    carried_cause: ResolutionFailureCause,
+) -> tuple[StopResolutionOutcome, str | None]:
+    reason: str | None
     if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH:
         reason = session.operator_action_message or session.exhaustion_reason
         if not reason and session.unresolved_paths:
@@ -575,7 +523,7 @@ def _handle_unspent_session(
         )
     else:
         reason = None
-    outcome: StopResolutionOutcome = stop_resolution_outcome_from_legacy(
+    outcome = stop_resolution_outcome_from_legacy(
         classify_resolution_failure(
             terminal_reason=session.terminal_reason,
             failure_cause=carried_cause,
@@ -583,6 +531,65 @@ def _handle_unspent_session(
             paths=session.unresolved_paths,
         )
     )
+    return outcome, reason
+
+
+def _create_resolution_session(
+    config: ConflictResolutionConfig | None,
+) -> ResolutionSession:
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+
+    if config is None:
+        return ResolutionSession()
+    return ResolutionSession(
+        inactivity_timeout_seconds=config.inactivity_timeout_seconds,
+        max_rounds_per_stop=config.max_rounds_per_stop,
+        max_rebase_conflict_stops=config.max_rebase_conflict_stops,
+        max_fallback_agents=config.max_fallback_agents,
+    )
+
+
+def _execute_rebase_resolution(
+    root: Path,
+    target: str,
+    resolver: RebaseStopResolver,
+    session: ResolutionSession,
+    agent_runner: AgentRunner | None,
+) -> bool:
+    from ralph.pipeline.conflict_resolution.rebase_loop import (
+        bind_active_rebase_resolution_session,
+    )
+
+    with bind_active_rebase_resolution_session(session):
+        if agent_runner is not None:
+            return agent_runner.resolve_rebase(root, target, resolver, session=session)
+        return production_rebase_runner().resolve_rebase(root, target, resolver, session=session)
+
+
+def _session_carried_cause(session: ResolutionSession) -> ResolutionFailureCause:
+    raw_cause: object = session.last_failure_cause
+    carried_cause = (
+        raw_cause
+        if isinstance(raw_cause, ResolutionFailureCause)
+        else ResolutionFailureCause.NONE
+    )
+    if carried_cause == ResolutionFailureCause.NONE:
+        if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE:
+            return ResolutionFailureCause.CONFIG_FAILURE
+        if session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE:
+            return ResolutionFailureCause.CONTEXT_FAILURE
+    return carried_cause
+
+
+def _handle_unspent_session(
+    root: Path,
+    target: str,
+    session: ResolutionSession,
+    carried_cause: ResolutionFailureCause,
+    record: IntegrationRecord | None,
+) -> RebaseResolutionResult:
+    _warn_chain_not_spent(target, session)
+    outcome, reason = _not_spent_resolution_outcome(session, carried_cause)
     _persist_resolution_cause(root, carried_cause, reason=reason, record=record)
     return RebaseResolutionResult(outcome, reason, carried_cause, session.terminal_reason)
 
@@ -614,15 +621,28 @@ def _handle_spent_session(
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT
     )
-    outcome = stop_resolution_outcome_from_legacy(
-        classify_resolution_failure(
-            terminal_reason=session.terminal_reason,
+    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+        outcome = RetryLaterOutcome(
+            on_change="resolver_agent_eligibility_changed",
+            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            unresolved_paths=tuple(session.unresolved_paths),
             failure_cause=effective_cause,
-            reason=reason,
-            paths=session.unresolved_paths,
         )
+    else:
+        outcome = stop_resolution_outcome_from_legacy(
+            classify_resolution_failure(
+                terminal_reason=session.terminal_reason,
+                failure_cause=effective_cause,
+                reason=reason,
+                paths=session.unresolved_paths,
+            )
+        )
+    _persist_resolution_cause(
+        root,
+        effective_cause,
+        reason=reason,
+        record=record,
     )
-    _persist_resolution_cause(root, effective_cause, reason=reason, record=record)
     return RebaseResolutionResult(
         outcome,
         reason,
@@ -647,6 +667,7 @@ def _resolve_rebase_with_config(
     if session.last_resolution_outcome is not None and not isinstance(
         session.last_resolution_outcome, ResolvedOutcome
     ):
+        _warn_chain_not_spent(target, session)
         return RebaseResolutionResult(
             session.last_resolution_outcome,
             session.exhaustion_reason,

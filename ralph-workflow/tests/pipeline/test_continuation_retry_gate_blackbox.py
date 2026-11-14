@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypedDict
 
 import pytest
 from loguru import logger
@@ -30,6 +30,16 @@ from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.scope import WorkspaceScope
 
+
+class _LogLevelDouble(Protocol):
+    name: str
+
+
+class _LogRecord(TypedDict):
+    level: _LogLevelDouble
+    message: str
+
+
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -38,8 +48,8 @@ def _clean_gate_state() -> None:
     reset_continuation_gate_state()
 
 
-def _capture_loguru_records() -> tuple[list[dict[str, Any]], int]:
-    captured: list[dict[str, Any]] = []
+def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
+    captured: list[_LogRecord] = []
 
     def _sink(message: object) -> None:
         rec = getattr(message, "record", None)
