@@ -32,6 +32,14 @@ if TYPE_CHECKING:
 _AGENTS = ("primary", "fallback")
 
 
+class _NoSleepClock(FakeClock):
+    def now(self) -> float:
+        return self.monotonic()
+
+    def sleep(self, seconds: float) -> None:
+        return None
+
+
 def _controller() -> RecoveryController:
     with tempfile.TemporaryDirectory() as d:
         bundle = load_policy(Path(d) / ".agent")
@@ -115,7 +123,7 @@ def test_driver_never_reinvokes_a_stalled_agent_while_it_is_cooling_down(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three")
     )
-    clock = FakeClock()
+    clock = _NoSleepClock()
     token = install_executors(clock=clock)
     try:
         _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED] * 40)

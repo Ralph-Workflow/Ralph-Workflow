@@ -40,7 +40,7 @@ def config_failure_from_exception(exc: BaseException) -> ConfigFailure | None:
     payload = config_parse_error_of(exc)
     if payload is None:
         return None
-    return ConfigFailure.from_payload(payload)
+    return ConfigFailure(file=payload.file, parse_error=payload.parse_error)
 
 
 def classify_resolution_failure(

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop, RebaseStopResolver
 
+__all__ = ["CountingResolver"]
+
 
 class CountingResolver:
     def __init__(self, inner: RebaseStopResolver) -> None:

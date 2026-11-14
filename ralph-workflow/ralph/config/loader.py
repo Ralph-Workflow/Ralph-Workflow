@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.config._config_load_error import ConfigLoadError
 from ralph.config._source_migrations import remove_retired_agent_can_commit_assignments
 from ralph.config._toml_fallback import (
     emit_config_failure_warning,
@@ -15,6 +16,8 @@ from ralph.config._toml_fallback import (
 )
 from ralph.config.config_error_messages import format_config_validation_error
 from ralph.pydantic_validation_errors import suggest_canonical_field
+
+__all__ = ["ConfigLoadError", "ConfigTomlError"]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,21 +39,6 @@ def _drop_cli_only_fields(*layers: dict[str, object]) -> None:
     for data in layers:
         for field in CLI_ONLY_CONFIG_FIELDS:
             data.pop(field, None)
-
-
-class ConfigLoadError(ValueError):
-    def __init__(self, file: Path | str, parse_error: str | None = None) -> None:
-        resolved_file = Path(file) if parse_error is not None else Path("<unknown>")
-        resolved_error = parse_error if parse_error is not None else str(file)
-        self.file = resolved_file
-        self.parse_error = resolved_error
-        super().__init__(
-            f"What failed: Ralph could not read {resolved_file}: {resolved_error}.\n"
-            "Why it matters: settings in a malformed file are not safe to use.\n"
-            f"Fix: correct the TOML syntax in {resolved_file}, then run `ralph --check-config`."
-            if parse_error is not None
-            else resolved_error
-        )
 
 
 class _ConfigTomlError(ConfigLoadError):

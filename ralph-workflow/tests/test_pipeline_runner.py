@@ -5,8 +5,8 @@ import threading
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING, Final
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rich.console import Console
@@ -32,8 +32,8 @@ from ralph.policy.models import (
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.recovery.controller import RecoveryController
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "default sleep": "tests default event wait helper rather than banned time.sleep in production",
+RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
+    "default sleep": "asserts the public waiting behavior instead of the private event-wait helper",
 }
 
 if TYPE_CHECKING:
@@ -933,16 +933,14 @@ class TestInjectionPrecedence:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         waits: list[float | None] = []
-
-        def _fake_wait(_event: threading.Event, timeout: float | None = None) -> bool:
+        def _record_wait(_event: object, timeout: float | None = None) -> bool:
             waits.append(timeout)
-            return True
+            return False
 
-        monkeypatch.setattr(threading.Event, "wait", _fake_wait)
         ctx, _ = _capture_run_ctx(monkeypatch, tmp_path)
-        waits.clear()
 
-        ctx.sleep(0.25)
+        with patch.object(threading.Event, "wait", _record_wait):
+            assert ctx.sleep(0.25) is None
 
         assert waits == [0.25]
 

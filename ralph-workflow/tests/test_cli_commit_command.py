@@ -45,10 +45,7 @@ from tests._support.typed_accessors import (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "artifact contract": "commit prompts must name the required commit_message artifact",
-    "test_working_tree_diff_strips_lone_surrogates_from_git_output": (
-        "the test moved verbatim to tests/test_cli_commit_command_extra.py so the "
-        "module stays under the 1000-line file limit; the assertions are unchanged"
-    ),
+"file split": "public diff regression moved unchanged to a collected sibling module",
 }
 
 

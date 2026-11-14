@@ -7,6 +7,7 @@ import pytest
 from ralph.testing import repo_structure_boundary_rules as boundary_rules
 from ralph.testing.repo_structure_boundary_rules import (
     B4_ALLOWLIST,
+    B11_ALLOWLIST,
     RULE_PAIRINGS,
     allowlist_justification,
     collect_boundary_violations,
@@ -665,6 +666,39 @@ def test_b10_skips_the_process_tree() -> None:
         " B10 " in item
         for item in collect_boundary_violations("ralph/process/manager/_process_manager.py", source)
     )
+
+
+def _b11_nested_dispatch_source(function_name: str, call_line: int) -> str:
+    return (
+        "\n" * (call_line - 3)
+        + f"def {function_name}(target: AgentConfig):\n"
+        + "    def dispatch():\n"
+        + "        return invoke_agent(target)\n"
+    )
+
+
+def test_b11_regression_rejects_agent_dispatch_outside_allowlist() -> None:
+    source = "def dispatch(target: AgentConfig):\n    return invoke_agent(target)\n"
+    violations = collect_boundary_violations("ralph/pipeline/unregistered.py", source)
+    assert any(
+        " B11 agent dispatch outside the entry-point registry allowlist" in item
+        for item in violations
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "function_name", "call_line", "_justification"),
+    B11_ALLOWLIST,
+)
+def test_b11_regression_accepts_allowlisted_agent_dispatch(
+    path: str,
+    function_name: str,
+    call_line: int,
+    _justification: str,
+) -> None:
+    source = _b11_nested_dispatch_source(function_name, call_line)
+    violations = collect_boundary_violations(path, source)
+    assert not any(" B11 " in item for item in violations)
 
 
 def test_b9_leaves_module_level_signalling_to_b4() -> None:

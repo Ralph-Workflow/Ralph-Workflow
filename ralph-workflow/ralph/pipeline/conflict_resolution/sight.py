@@ -17,7 +17,7 @@ from ralph.git.merge import (
 )
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.conflict_resolution._conflict_classification import ConflictClassification
-from ralph.pipeline.conflict_resolution._conflict_kind import ConflictKind
+from ralph.pipeline.conflict_resolution._kind import ConflictKind
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
 __all__ = [

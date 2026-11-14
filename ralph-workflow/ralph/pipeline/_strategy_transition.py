@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.pipeline._integration_strategy import IntegrationStrategy
     from ralph.pipeline._strategy_transition_guard import StrategyTransitionGuard
-    from ralph.pipeline.integration_strategy import IntegrationStrategy
 
 __all__ = ["StrategyTransition"]
 

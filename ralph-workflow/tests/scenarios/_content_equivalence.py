@@ -15,13 +15,12 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._scenario_harness import (
     AgentMode,
     FakeAgentRunner,
-    OperatorLine,
     capture_operator_lines,
     commit_file,
     git,
 )
-from tests.scenarios._content_equivalence_report import ContentEquivalence
 from tests.scenarios._counting_resolver import CountingResolver
+from tests.scenarios._fast_import_commit import FastImportCommit
 from tests.scenarios._integration_run import IntegrationRun
 
 if TYPE_CHECKING:
@@ -35,7 +34,6 @@ __all__ = [
     "CountingResolver",
     "FastImportCommit",
     "IntegrationRun",
-    "OperatorLine",
     "assert_content_equivalence",
     "build_feature_branch",
     "commit_file",
@@ -64,15 +62,6 @@ def lifecycle_config(**conflict_resolution_overrides: object) -> UnifiedConfig:
     assert isinstance(limits, dict)
     limits.update(conflict_resolution_overrides)
     return UnifiedConfig.model_validate(payload)
-
-
-@dataclass(frozen=True)
-class FastImportCommit:
-    ref: str
-    message: str
-    files: tuple[tuple[str, bytes], ...]
-    parent_index: int | None = None
-    parent_sha: str | None = None
 
 
 def fast_import_commits(root: Path, commits: Sequence[FastImportCommit]) -> None:
@@ -140,6 +129,29 @@ def build_feature_branch(
     git(root, "add", "--", *files)
     git(root, "commit", "-q", "-m", message)
     return git(root, "rev-parse", "HEAD")
+
+
+@dataclass(frozen=True)
+class ContentEquivalence:
+    missing: tuple[str, ...] = ()
+    unexpected: tuple[str, ...] = ()
+    lost: tuple[str, ...] = ()
+
+    @property
+    def satisfied(self) -> bool:
+        return not (self.missing or self.unexpected or self.lost)
+
+    def describe(self) -> str:
+        parts: list[str] = []
+        if self.missing:
+            parts.append("feature change absent from the target: " + ", ".join(self.missing))
+        if self.unexpected:
+            parts.append(
+                "unrelated content introduced on the target: " + ", ".join(self.unexpected)
+            )
+        if self.lost:
+            parts.append("uncommitted work lost: " + ", ".join(self.lost))
+        return "; ".join(parts) if parts else "content equivalence holds"
 
 
 def _tree_paths(root: Path, ref: str) -> tuple[str, ...]:

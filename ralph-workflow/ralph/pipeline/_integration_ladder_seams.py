@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
+from ralph.pipeline._rung_post_condition import RungPostCondition
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path

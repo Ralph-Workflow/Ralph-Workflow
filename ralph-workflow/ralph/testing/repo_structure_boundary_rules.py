@@ -5,21 +5,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from ralph.testing._repo_structure_boundary_b11 import (
-    B11_ALLOWLIST,
-    _b11_violations,
-    b11_allowlist_justification,
-)
-from ralph.testing._repo_structure_boundary_common import (
-    _PAIRING_BY_RULE,
-    RULE_PAIRINGS,
-    _call_name,
-    _is_call,
-    _parent_map,
-    _target_root_names,
-    _type_checking_nodes,
-    _violation,
-)
+from ralph.testing.repo_structure_boundary_b11 import b11_violations
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -35,6 +21,21 @@ __all__ = (
     "rule_pairing",
 )
 
+RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
+    ("B1", "U6"),
+    ("B2", "AC16"),
+    ("B3", "AC16"),
+    ("B4", "U3a/U10"),
+    ("B5", "U6"),
+    ("B6", "AC4"),
+    ("B7", "U6"),
+    ("B8", "AC4"),
+    ("B9", "AC3/AC15"),
+    ("B9b", "AC3/AC15"),
+    ("B10", "AC13"),
+    ("B11", "AC-matrix-completeness"),
+)
+_PAIRING_BY_RULE: Final[Mapping[str, str]] = MappingProxyType(dict(RULE_PAIRINGS))
 B4_ALLOWLIST: Final[Mapping[str, str]] = MappingProxyType(
     {
         "ralph/interrupt/dispatcher.py": (
@@ -100,6 +101,56 @@ _B9B_TEARDOWN_NAME: Final = "teardown_subtree"
 _B10_FACTS_ATTRIBUTE: Final = "attempt_facts"
 _B10_DELETED_NAMES: Final[frozenset[str]] = frozenset(
     {"attach_attempt_facts", "attempt_facts_from_exception"}
+)
+B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
+    (
+        "ralph/_session_runtime_deps.py",
+        "_invoke_agent",
+        79,
+        "session runtime raw agent invocation owned by the registered session runtime route",
+    ),
+    (
+        "ralph/_session_runtime_runtime.py",
+        "_session_invoke",
+        296,
+        "session runtime dispatch through the deps owned by the registered session runtime route",
+    ),
+    (
+        "ralph/pipeline/attempt_runner.py",
+        "run_agent_attempt",
+        237,
+        "canonical attempt dispatch inside the registered attempt runner",
+    ),
+    (
+        "ralph/pipeline/attempt_runner_deps.py",
+        "raw_attempt_invoke",
+        144,
+        "raw attempt invocation seam reached only through the registered attempt runner",
+    ),
+    (
+        "ralph/pipeline/effect_executor.py",
+        "_consume_attempt_output",
+        1559,
+        "effect executor dispatch owned by the registered effect route",
+    ),
+    (
+        "ralph/pipeline/plumbing/commit_plumbing.py",
+        "_attempt_deps",
+        197,
+        "commit attempt invoke seam reached only through the registered commit route",
+    ),
+    (
+        "ralph/pipeline/plumbing/commit_plumbing.py",
+        "_attempt_deps",
+        205,
+        "commit attempt invoke seam reached only through the registered commit route",
+    ),
+    (
+        "ralph/pipeline/plumbing/commit_plumbing.py",
+        "invoke_commit_agent_attempt",
+        943,
+        "commit module agent invocation owned by the registered commit route",
+    ),
 )
 _BOUNDARY_TRIGGERS: Final[tuple[str, ...]] = (
     "RecoveryController",
@@ -167,6 +218,14 @@ def _b9_invoke_layer_signalling_violation(relative_path: str, node: ast.Call) ->
     )
 
 
+def _call_name(func: ast.AST) -> str | None:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
 def _contains_manager_factory(node: ast.AST) -> bool:
     return any(
         isinstance(child, ast.Call)
@@ -192,6 +251,21 @@ def _manager_bound_names(tree: ast.Module) -> frozenset[str]:
         for target in targets:
             bound.update(_target_root_names(target))
     return frozenset(bound)
+
+
+def _target_root_names(target: ast.AST) -> set[str]:
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, ast.Attribute):
+        return {target.attr}
+    if isinstance(target, ast.Starred):
+        return _target_root_names(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: set[str] = set()
+        for element in target.elts:
+            names.update(_target_root_names(element))
+        return names
+    return set()
 
 
 def _b9_manager_receiver(node: ast.Call, manager_names: frozenset[str]) -> bool:
@@ -382,6 +456,18 @@ def rule_pairing(rule: str) -> str:
     return _PAIRING_BY_RULE[rule]
 
 
+def b11_allowlist_justification(
+    module_path: str, function_name: str | None, call_line: int
+) -> str | None:
+    for path, function, line, justification in B11_ALLOWLIST:
+        if path != module_path or function != function_name or line != call_line:
+            continue
+        if not justification.strip():
+            raise ValueError(f"B11 allowlist entry without justification: {path}:{line}")
+        return justification
+    return None
+
+
 def _allowlist_entries(rule: str) -> Mapping[str, str] | None:
     if rule == "B4":
         return B4_ALLOWLIST
@@ -402,6 +488,19 @@ def allowlist_justification(rule: str, relative_path: str) -> str | None:
     return justification
 
 
+def _violation(path: str, node: ast.AST, rule: str, reason: str) -> str:
+    if rule not in _PAIRING_BY_RULE:
+        raise ValueError(f"undeclared boundary rule id: {rule}")
+    return f"{path}:{getattr(node, 'lineno', 1)} {rule} {reason}"
+
+
+def _is_call(node: ast.AST, name: str) -> bool:
+    return isinstance(node, ast.Call) and (
+        (isinstance(node.func, ast.Name) and node.func.id == name)
+        or (isinstance(node.func, ast.Attribute) and node.func.attr == name)
+    )
+
+
 def _decision_path(path: str) -> bool:
     name = PurePosixPath(path).name
     return (
@@ -409,6 +508,26 @@ def _decision_path(path: str) -> bool:
         or name.startswith("attempt_outcome")
         or name.startswith("attempt_runner")
     )
+
+
+def _type_checking_nodes(tree: ast.Module) -> set[int]:
+    guarded: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
+            for child in node.body:
+                guarded.update(id(item) for item in ast.walk(child))
+    return guarded
+
+
+def _parent_map(tree: ast.Module) -> dict[int, ast.AST]:
+    parents: dict[int, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[id(child)] = node
+    return parents
 
 
 def _enclosing_function_name(node: ast.AST, parents: dict[int, ast.AST]) -> str | None:
@@ -855,5 +974,5 @@ def collect_boundary_violations(relative_path: str, source: str) -> list[str]:
         + _b9_violations(relative_path, nodes, tree)
         + _b9b_violations(relative_path, nodes, tree, parents)
         + _b10_violations(relative_path, nodes)
-        + _b11_violations(relative_path, tree, source, nodes)
+        + b11_violations(relative_path, tree, source, nodes, b11_allowlist_justification)
     )

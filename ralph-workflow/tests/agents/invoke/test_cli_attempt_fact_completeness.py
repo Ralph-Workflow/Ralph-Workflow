@@ -36,9 +36,8 @@ from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.end_attempt import end_attempt
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from ralph.agents.invoke.opencode_subagent_sessions import OpenCodeChildPart
+    from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
     from ralph.recovery.attempt_facts import AttemptFacts
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -260,21 +259,61 @@ class _NoChildPartSource:
         return
 
 
-class _ExitedHandle(ManagedProcess):
-    stdin = None
-    stderr = None
-    pid = None
-    returncode: int | None = None
+class _NoopProcessTeardown:
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del host_pid, issuer, owner_label
 
+
+class _ProcessOutput:
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = iter(lines)
+        self.exhausted = False
+
+    def __iter__(self) -> _ProcessOutput:
+        return self
+
+    def __next__(self) -> str:
+        try:
+            return next(self._lines)
+        except StopIteration:
+            self.exhausted = True
+            raise
+
+
+class _ExitedHandle(ManagedProcess):
     def __init__(self, lines: list[str], *, returncode: int, stderr_line: str | None) -> None:
-        self._stdout = iter(lines)
+        self._stdout = _ProcessOutput(lines)
         self._ralph_bounded_stderr = "" if stderr_line is None else f"{stderr_line}\n"
-        self.returncode = returncode
+        self._final_returncode = returncode
+        self._signalled_returncode: int | None = None
+        self._exit_observed = False
         self._termination_issuer: str | None = None
 
     @property
-    def stdout(self) -> Iterator[str]:
+    def stdin(self) -> None:
+        return None
+
+    @property
+    def stdout(self):
         return self._stdout
+
+    @property
+    def stderr(self) -> None:
+        return None
+
+    @property
+    def pid(self) -> int:
+        return 1
+
+    @property
+    def returncode(self) -> int | None:
+        return self.poll()
 
     def terminate(
         self,
@@ -285,20 +324,35 @@ class _ExitedHandle(ManagedProcess):
     ) -> None:
         del grace_period_s
         self._termination_issuer = str(issuer) if issuer is not None else None
-        self.returncode = -15
+        self._signalled_returncode = -15
+
+    def kill(self, *, issuer: object, **_kwargs: object) -> None:
+        self._termination_issuer = str(issuer)
+        self._signalled_returncode = -9
 
     def wait(self, timeout: float | None = None) -> int:
         del timeout
-        return self.returncode if self.returncode is not None else -1
+        returncode = self.poll()
+        return self._final_returncode if returncode is None else returncode
 
     def poll(self) -> int | None:
-        return self.returncode
+        if self._signalled_returncode is not None:
+            return self._signalled_returncode
+        return self._final_returncode if self._exit_observed else None
+
+    def observe_exit(self) -> None:
+        if not self._stdout.exhausted:
+            raise AssertionError("process exit observed before stdout reached EOF")
+        self._exit_observed = True
+
+    def descendant_snapshot(self) -> tuple[int, float | None]:
+        return (0, None)
 
     def termination_issuer(self) -> str | None:
         return self._termination_issuer
 
     def record_terminal_reason(self, reason: str) -> None:
-        del reason
+        self._termination_issuer = reason
 
     def has_live_descendants(self) -> bool:
         return False
@@ -320,7 +374,8 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
         returncode=shape.returncode,
         stderr_line=shape.stderr_line,
     )
-    supervisor = AttemptSupervisor(handle)
+    process_teardown = _NoopProcessTeardown()
+    supervisor = AttemptSupervisor(handle, process_teardown=process_teardown)
     reader = ProcessLineReader(
         handle,
         ProcessReaderCtx(
@@ -330,10 +385,12 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
                 drain_window_seconds=10.0,
                 idle_poll_interval_seconds=1.0,
                 max_session_seconds=None,
+                process_monitor_enabled=False,
             ),
             execution_strategy=strategy_for_transport(_transport_for(parser_key)),
             liveness_probe=FakeLivenessProbe(active=False),
             opencode_child_part_source=_NoChildPartSource(),
+            process_teardown=process_teardown,
             workspace_path=workspace,
         ),
         clock,
@@ -344,6 +401,7 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
         list(reader.read_lines())
     except BaseException as exc:
         reader_failure = exc
+    handle.observe_exit()
     if shape.supervisor_timing == "after-reader":
         supervisor.act(SilenceObserved(WatchdogFireReason.STALLED_AFTER_TOOL_RESULT))
     elif shape.supervisor_timing == "after-parent-exit":

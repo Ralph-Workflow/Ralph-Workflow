@@ -1,24 +1,29 @@
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Final
 
 from ralph.pipeline._integration_policy import IntegrationPolicy
 from ralph.pipeline._integration_relation import IntegrationRelation
+from ralph.pipeline._integration_strategy import IntegrationStrategy
 from ralph.pipeline._integration_work_shape import IntegrationWorkShape
 from ralph.pipeline._observed_integration import ObservedIntegration
 from ralph.pipeline._strategy_decision import StrategyDecision
 from ralph.pipeline._strategy_transition import StrategyTransition
 from ralph.pipeline._strategy_transition_guard import StrategyTransitionGuard
 
-
-class IntegrationStrategy(StrEnum):
-    NOTHING_TO_DO = "nothing_to_do"
-    FAST_FORWARD = "fast_forward"
-    REBASE = "rebase"
-    MERGE = "merge"
-    COMPLETE_IN_PLACE = "complete_in_place"
-
+__all__ = [
+    "STRATEGY_ORDER",
+    "STRATEGY_TRANSITIONS",
+    "IntegrationPolicy",
+    "IntegrationRelation",
+    "IntegrationStrategy",
+    "IntegrationWorkShape",
+    "ObservedIntegration",
+    "StrategyDecision",
+    "StrategyTransition",
+    "StrategyTransitionGuard",
+    "choose_integration_strategy",
+]
 
 STRATEGY_ORDER: Final[tuple[IntegrationStrategy, ...]] = (
     IntegrationStrategy.NOTHING_TO_DO,
@@ -356,18 +361,3 @@ def choose_integration_strategy(
             )
         case IntegrationRelation.UNRELATED:
             return _unrelated_decision(policy)
-
-
-__all__ = [
-    "STRATEGY_ORDER",
-    "STRATEGY_TRANSITIONS",
-    "IntegrationPolicy",
-    "IntegrationRelation",
-    "IntegrationStrategy",
-    "IntegrationWorkShape",
-    "ObservedIntegration",
-    "StrategyDecision",
-    "StrategyTransition",
-    "StrategyTransitionGuard",
-    "choose_integration_strategy",
-]

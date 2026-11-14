@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tests._scenario_operator_line import OperatorLine
 
+__all__ = ["ScenarioResult"]
+
 
 @dataclass
 class ScenarioResult:

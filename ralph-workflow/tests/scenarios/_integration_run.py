@@ -7,6 +7,8 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
     from tests._scenario_operator_line import OperatorLine
 
+__all__ = ["IntegrationRun"]
+
 
 @dataclass(frozen=True)
 class IntegrationRun:
