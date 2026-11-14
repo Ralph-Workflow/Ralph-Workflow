@@ -105,7 +105,10 @@ def resolve_conflicted_rebase(
         return None
     blocked_reason: str | None = None
     with conflict_status_bar_session(display, root):
-        from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+        from ralph.pipeline._stop_resolution_entry import (
+            DeferredStopResolution,
+            attempt_stop_resolution,
+        )
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
@@ -123,12 +126,22 @@ def resolve_conflicted_rebase(
             ),
         )
         res: RebaseResolutionResult
+        deferred_cause = ResolutionFailureCause.NONE
         if isinstance(outcome, StopResolutionBlocked):
             blocked_reason = outcome.reason
+            deferred_cause = (
+                outcome.failure_cause
+                if isinstance(outcome, DeferredStopResolution)
+                else ResolutionFailureCause.NONE
+            )
             res = RebaseResolutionResult(
                 False,
                 outcome.reason,
-                ResolutionFailureCause.UNRESOLVED_CONFLICT,
+                (
+                    deferred_cause
+                    if deferred_cause is not ResolutionFailureCause.NONE
+                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
+                ),
             )
         elif isinstance(outcome, RebaseResolutionResult):
             blocked_reason = None
@@ -141,7 +154,7 @@ def resolve_conflicted_rebase(
         )
     record = _merge_mod.read_record(root)
     if blocked_reason is not None:
-        return _blocked_run(record, target, blocked_reason)
+        return _blocked_run(record, target, blocked_reason, carried_cause=deferred_cause)
     if record is not None and record.rebase_continue_pending:
         return _pending_continue_run(record, target)
     return _rebase_run_result(root, record, target, res)
@@ -151,11 +164,16 @@ def _blocked_run(
     record: IntegrationRecord | None,
     target: str,
     blocked_reason: str,
+    carried_cause: ResolutionFailureCause = ResolutionFailureCause.NONE,
 ) -> RebaseRunResult:
     blocked_cause = (
         record.last_failure_cause
         if record is not None and record.last_failure_cause is not ResolutionFailureCause.NONE
-        else ResolutionFailureCause.UNRESOLVED_CONFLICT
+        else (
+            carried_cause
+            if carried_cause is not ResolutionFailureCause.NONE
+            else ResolutionFailureCause.UNRESOLVED_CONFLICT
+        )
     )
     return RebaseRunResult(
         rebase_outcome=RebaseConflicts(files=[]),

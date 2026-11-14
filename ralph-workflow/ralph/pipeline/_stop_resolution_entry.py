@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -48,6 +49,11 @@ _GATE_ACTIVE_REASON = (
     "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
 )
 _KEY_UNAVAILABLE_PREFIX = "WAITING: continuation retry key unavailable"
+
+
+@dataclass(frozen=True)
+class DeferredStopResolution(StopResolutionBlocked):
+    failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
 
 _PRESENTED_ROUNDS_CAP: int = 256
@@ -209,6 +215,13 @@ def _clock_ms(clock: Clock | None) -> int:
     return int(effective.monotonic() * 1000)
 
 
+def _deferred_failure_cause(root: Path, record: IntegrationRecord | None) -> ResolutionFailureCause:
+    current = read_record(root) or record
+    if current is None:
+        return ResolutionFailureCause.NONE
+    return current.last_failure_cause
+
+
 def _present_block(root: Path, record: IntegrationRecord, key: ResolutionAttemptKey) -> None:
     current = read_record(root) or record
     serialized_key = (key.stop_identity, key.eligible_agents, key.config_fingerprint)
@@ -335,8 +348,13 @@ def attempt_stop_resolution(
             )
         )
         if decision.blocked and not trigger.force_retry:
+            carried_cause = _deferred_failure_cause(trigger.root, trigger.record)
             _present_block(trigger.root, trigger.record, decision.key)
-            return StopResolutionBlocked(decision.reason or _GATE_ACTIVE_REASON, decision.key)
+            return DeferredStopResolution(
+                decision.reason or _GATE_ACTIVE_REASON,
+                decision.key,
+                carried_cause,
+            )
 
     result = _execute_trigger(trigger)
     if key is not None:

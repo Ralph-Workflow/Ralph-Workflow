@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import dataclasses
 from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
@@ -15,26 +16,34 @@ from ralph.agents.system_clock import SystemClock
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.git.operations import create_commit, stage_all
+from ralph.git.operations import (
+    create_commit,
+    get_head_sha,
+    has_uncommitted_changes,
+    list_changed_paths,
+    stage_all,
+    write_tree,
+)
 from ralph.git.proposal_seal import seal_pending
+from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
+from ralph.mcp.server import append_wire_record
 from ralph.mcp.tools.coordination import handle_declare_complete
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
-from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline import phase_agent_handler, runner
-from ralph.pipeline.effect_executor import demotion_after_finalization
-from ralph.pipeline.effects import (
-    CommitEffect,
-    Effect,
-    EmptyCommitEffect,
-    InvokeAgentEffect,
+from ralph.phases.required_artifacts import (
+    RequiredArtifact,
+    resolve_phase_required_artifact,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline import effect_executor, phase_agent_handler, runner
+from ralph.pipeline.effect_executor import demotion_after_finalization
+from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
     PolicyValidationError,
 )
+from ralph.policy.validation.artifact_contract import ArtifactContractMismatchError
+from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
     Cooldown,
@@ -47,11 +56,19 @@ from ralph.recovery.controller import (
 )
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._tool_artifact_helpers import MockSession
-from tests.plan_fixtures import commit_message_markdown, commit_review_markdown
+from tests.plan_fixtures import commit_review_markdown
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.config.agent_config import AgentConfig
+    from ralph.display.context import DisplayContext
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
+    from ralph.pro_support.hooks import RecoveryControllerFactory
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
@@ -59,6 +76,18 @@ pytestmark = [
     pytest.mark.timeout_seconds(15),
     pytest.mark.required_auto_integrate_e2e,
 ]
+
+REVIEW_PHASES: tuple[str, ...] = (
+    "development_commit_review",
+    "development_final_commit_review",
+)
+COMMIT_PHASES: tuple[str, ...] = (
+    "development_commit",
+    "development_final_commit",
+)
+
+REVIEWED_FILE = "src/feature.py"
+REVIEWED_CONTENT = "print('reviewed change')\n"
 
 
 @lru_cache(maxsize=1)
@@ -90,62 +119,232 @@ def _install_runner_display_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
 
 
-def _stub_prompt_materialization(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *args, **kwargs: "noop")
-    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-
-
 @pytest.fixture
 def commit_review_repo(tmp_git_repo: Path) -> Path:
-    sample_file = tmp_git_repo / "src" / "feature.py"
+    sample_file = tmp_git_repo / REVIEWED_FILE
     sample_file.parent.mkdir(parents=True, exist_ok=True)
     sample_file.write_text("print('baseline')\n", encoding="utf-8")
     stage_all(tmp_git_repo)
-    create_commit(tmp_git_repo, "baseline commit")
+    create_commit(
+        tmp_git_repo,
+        "baseline commit",
+        expected_head=get_head_sha(tmp_git_repo),
+    )
 
-    sample_file.write_text("print('reviewed change')\n", encoding="utf-8")
+    sample_file.write_text(REVIEWED_CONTENT, encoding="utf-8")
     stage_all(tmp_git_repo)
     return tmp_git_repo
 
 
-def _submit_review_approval(repo: Path, run_id: str, broker_secret: str) -> None:
-    seal = seal_pending(repo, "run", 1)
-    md = commit_review_markdown([], tree_sha=seal.tree_sha)
-    ws = FsWorkspace(repo)
-    session = MockSession(drain="commit")
-    session.run_id = run_id
-    session.broker_secret = broker_secret
+def _commit_message_markdown(subject: str, files: Iterable[str]) -> str:
+    rendered_files = "\n".join(
+        f"- [F-{index}] {path}" for index, path in enumerate(files, start=1)
+    )
+    return f"""\
+---
+type: commit
+subject: {subject}
+---
+## Body Summary
+- [BS-1] Complete the requested repository change.
 
-    handle_submit_md_artifact(session, ws, {"artifact_type": "commit_review", "content": md})
-    handle_declare_complete(session, ws, {"summary": "Review approved"})
+## Body Details
+- [BD-1] The scoped implementation and focused verification are complete.
 
-
-def _submit_commit_message(repo: Path, run_id: str, broker_secret: str, subject: str) -> None:
-    md = commit_message_markdown(subject)
-    ws = FsWorkspace(repo)
-    session = MockSession(drain="development_commit")
-    session.run_id = run_id
-    session.broker_secret = broker_secret
-    handle_submit_md_artifact(session, ws, {"artifact_type": "commit_message", "content": md})
-    handle_declare_complete(session, ws, {"summary": "Commit message ready"})
+## Files
+{rendered_files}
+"""
 
 
-def test_development_commit_review_grading_e2e_pass_advances_to_commit(
+@dataclasses.dataclass(frozen=True)
+class _TransportCall:
+    phase: str
+    agent: str
+    run_id: str
+
+
+class _ApprovingTransport:
+    def __init__(self, repo: Path, broker_secret: str) -> None:
+        self._repo = repo
+        self._broker_secret = broker_secret
+        self.calls: list[_TransportCall] = []
+        self.reviewed_tree_shas: dict[str, str] = {}
+
+    def __call__(
+        self,
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str]:
+        del prompt_file
+        phase = str(getattr(options, "phase", "") or "")
+        agent = str(getattr(options, "agent_name", "") or config.cmd)
+        run_id = self._run_id(options)
+        self.calls.append(_TransportCall(phase=phase, agent=agent, run_id=run_id))
+        if phase in REVIEW_PHASES:
+            self._submit_review(run_id)
+        elif phase in COMMIT_PHASES:
+            self._submit_commit_message(run_id)
+        return iter(("Task declared complete: fake transport",))
+
+    def _run_id(self, options: InvokeOptions | None) -> str:
+        env = getattr(options, "extra_env", None)
+        if not isinstance(env, dict):
+            return ""
+        raw = env.get(str(MCP_RUN_ID_ENV))
+        return raw if isinstance(raw, str) else ""
+
+    def _session(self, run_id: str, drain: str) -> MockSession:
+        session = MockSession(drain=drain)
+        session.run_id = run_id
+        session.broker_secret = self._broker_secret
+        return session
+
+    def _submit_review(self, run_id: str) -> None:
+        seal = seal_pending(self._repo, "run", 1)
+        self.reviewed_tree_shas[run_id] = seal.tree_sha
+        markdown = commit_review_markdown([], tree_sha=seal.tree_sha)
+        workspace = FsWorkspace(self._repo)
+        session = self._session(run_id, drain="commit")
+        submitted = handle_submit_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "commit_review", "content": markdown},
+        )
+        assert not submitted.is_error, f"commit_review submission rejected: {submitted.content}"
+        append_wire_record(
+            self._repo,
+            method="tools/call",
+            tool_name="ralph_submit_md_artifact",
+            params={"artifact_type": "commit_review"},
+            run_id=run_id,
+            secret=self._broker_secret,
+        )
+        completed = handle_declare_complete(
+            session,
+            workspace,
+            {"summary": "Review approved"},
+        )
+        assert not completed.is_error, f"declare_complete rejected: {completed.content}"
+        append_wire_record(
+            self._repo,
+            method="tools/call",
+            tool_name="declare_complete",
+            params={"summary": "Review approved"},
+            run_id=run_id,
+            secret=self._broker_secret,
+        )
+
+    def _submit_commit_message(self, run_id: str) -> None:
+        changed = [path for path in list_changed_paths(self._repo) if path == REVIEWED_FILE]
+        assert changed, "the reviewed change must still be pending when the commit message is written"
+        markdown = _commit_message_markdown(
+            "feat(feature): apply reviewed change",
+            changed,
+        )
+        workspace = FsWorkspace(self._repo)
+        session = self._session(run_id, drain="development_commit")
+        submitted = handle_submit_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "commit_message", "content": markdown},
+        )
+        assert not submitted.is_error, f"commit_message submission rejected: {submitted.content}"
+        append_wire_record(
+            self._repo,
+            method="tools/call",
+            tool_name="ralph_submit_md_artifact",
+            params={"artifact_type": "commit_message"},
+            run_id=run_id,
+            secret=self._broker_secret,
+        )
+        completed = handle_declare_complete(
+            session,
+            workspace,
+            {"summary": "Commit message ready"},
+        )
+        assert not completed.is_error, f"declare_complete rejected: {completed.content}"
+        append_wire_record(
+            self._repo,
+            method="tools/call",
+            tool_name="declare_complete",
+            params={"summary": "Commit message ready"},
+            run_id=run_id,
+            secret=self._broker_secret,
+        )
+
+
+def _selected_agent_for_phase(policy_bundle: PolicyBundle, phase: str) -> str:
+    phase_def = policy_bundle.pipeline.phases[phase]
+    drain_binding = policy_bundle.agents.agent_drains[phase_def.drain]
+    chain_config = policy_bundle.agents.agent_chains[drain_binding.chain]
+    assert chain_config.agents, f"no agent chain bound for phase {phase!r}"
+    return chain_config.agents[0]
+
+
+def _build_pipeline_deps(
+    *,
+    repo: Path,
+    policy_bundle: PolicyBundle,
+    transport: _ApprovingTransport,
+    controller_factory: RecoveryControllerFactory,
+    display_context: DisplayContext,
+) -> PipelineDeps:
+    deps = make_test_pipeline_deps(
+        display_context,
+        phase_prompt_materializer=materialize_prompt_for_phase,
+        artifact_requirements_resolver=resolve_phase_required_artifact,
+        policy_bundle=policy_bundle,
+        recovery_controller_factory=controller_factory,
+        invoke_agent=transport,
+        resolve_workspace_scope_fn=lambda _root: WorkspaceScope(repo),
+        write_start_commit_fn=lambda _root: None,
+        validate_custom_mcp_servers_fn=lambda _root: 0,
+    )
+    return dataclasses.replace(
+        deps,
+        commit_effect_executor=None,
+        has_uncommitted_changes=has_uncommitted_changes,
+    )
+
+
+def _ledger_counts(ledger: AgentFailureLedger, phase: str, agent: str) -> tuple[int, int]:
+    entries = ledger.snapshot()["entries"]
+    assert isinstance(entries, dict)
+    entry = entries.get(f"{phase}:{agent}")
+    if not isinstance(entry, dict):
+        return (0, 0)
+    return (
+        int(entry["consecutive_unproductive"]),
+        int(entry["total_unproductive"]),
+    )
+
+
+@pytest.mark.parametrize(
+    ("review_phase", "commit_phase"),
+    [
+        ("development_commit_review", "development_commit"),
+        ("development_final_commit_review", "development_final_commit"),
+    ],
+    ids=["development_commit_review", "development_final_commit_review"],
+)
+def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
     monkeypatch: pytest.MonkeyPatch,
     commit_review_repo: Path,
+    review_phase: str,
+    commit_phase: str,
 ) -> None:
-    broker_secret = "test-secret-dev-review-42"
+    broker_secret = "test-secret-commit-review-grade"
     monkeypatch.setenv("RALPH_BROKER_SECRET", broker_secret)
 
     policy_bundle = _default_policy_bundle()
-    monkeypatch.setattr(
-        runner, "resolve_workspace_scope", lambda: WorkspaceScope(commit_review_repo)
-    )
-    monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    _stub_prompt_materialization(monkeypatch)
     _install_runner_display_context(monkeypatch)
 
+    console = Console(record=True, force_terminal=False, width=120, color_system=None)
+    display_context = make_display_context(console=console, force_width=120)
+
+    transport = _ApprovingTransport(commit_review_repo, broker_secret)
     captured_controllers: list[RecoveryController] = []
 
     def controller_factory(
@@ -154,213 +353,219 @@ def test_development_commit_review_grading_e2e_pass_advances_to_commit(
         config: UnifiedConfig,
     ) -> tuple[RecoveryController, int]:
         del state, bundle, config
-        ctrl = RecoveryController(
+        controller = RecoveryController(
             options=RecoveryControllerOptions(
                 clock=SystemClock(),
                 agent_max_consecutive_unproductive=1,
             )
         )
-        captured_controllers.append(ctrl)
-        return ctrl, 0
+        captured_controllers.append(controller)
+        return controller, 0
 
-    phases_executed: list[str] = []
-    last_run_ids: dict[str, str] = {}
+    deps = _build_pipeline_deps(
+        repo=commit_review_repo,
+        policy_bundle=policy_bundle,
+        transport=transport,
+        controller_factory=controller_factory,
+        display_context=display_context,
+    )
 
-    def stub_execute_effect(
-        effect: Effect,
-        _config: UnifiedConfig,
-        _workspace_scope: WorkspaceScope,
-        **kwargs: Any,
-    ) -> PipelineEvent:
-        if isinstance(effect, InvokeAgentEffect):
-            phases_executed.append(effect.phase)
-            run_id = str(kwargs.get("run_id") or "test-run-id")
-            last_run_ids[effect.phase] = run_id
-            if effect.phase == "development_commit_review":
-                _submit_review_approval(commit_review_repo, run_id, broker_secret)
-                return PipelineEvent.AGENT_SUCCESS
-            if effect.phase == "development_commit":
-                _submit_commit_message(
-                    commit_review_repo,
-                    run_id,
-                    broker_secret,
-                    "feat(feature): apply reviewed change",
-                )
-                return PipelineEvent.AGENT_SUCCESS
-            return PipelineEvent.AGENT_SUCCESS
+    production_execute_effect = runner.execute_effect
+    head_before = get_head_sha(commit_review_repo)
 
-        if isinstance(effect, CommitEffect):
-            phases_executed.append("execute_commit")
-            return runner.execute_commit_effect(
-                effect, create_commit, stage_all, commit_review_repo
-            )
-        if isinstance(effect, EmptyCommitEffect):
-            phases_executed.append("empty_commit")
-            return PipelineEvent.AGENT_SUCCESS
-        raise AssertionError(f"Unexpected effect: {type(effect)!r}")
-
-    monkeypatch.setattr(runner, "execute_effect", stub_execute_effect)
-    monkeypatch.setattr(runner, "execute_effect_with_optional_display", stub_execute_effect)
-
-    init_state = PipelineState(phase="development_commit_review")
     rc = runner.run(
         _config(),
-        initial_state=init_state,
-        recovery_controller_factory=controller_factory,
+        initial_state=PipelineState(phase=review_phase),
         verbosity=Verbosity.QUIET,
         counter_overrides={"iteration": 1},
+        pipeline_deps=deps,
     )
-    assert rc == 0
-    assert "development_commit_review" in phases_executed
-    assert "development_commit" in phases_executed
 
-    review_run_id = last_run_ids.get("development_commit_review")
-    assert review_run_id is not None
-    ra = resolve_phase_required_artifact(
+    assert rc == 0
+    assert runner.execute_effect is production_execute_effect, (
+        "the production executor must not be replaced by the test"
+    )
+
+    review_calls = [call for call in transport.calls if call.phase == review_phase]
+    commit_calls = [call for call in transport.calls if call.phase == commit_phase]
+    assert review_calls, f"the production executor never invoked the agent for {review_phase}"
+    assert commit_calls, f"the pipeline did not advance from {review_phase} to {commit_phase}"
+
+    prompt_path = commit_review_repo / ".agent" / "tmp" / f"{review_phase}_prompt.md"
+    assert prompt_path.is_file(), (
+        "the production prompt materializer must render the phase prompt on disk"
+    )
+    prompt_text = prompt_path.read_text(encoding="utf-8")
+    assert "commit_review" in prompt_text, (
+        "the rendered commit-review prompt must name the required artifact type"
+    )
+
+    review_run_id = review_calls[0].run_id
+    assert review_run_id, "the production invocation must carry a run id"
+    required_artifact = resolve_phase_required_artifact(
         policy_bundle.pipeline,
         policy_bundle.artifacts,
-        phase="development_commit_review",
+        phase=review_phase,
     )
-    assert ra is not None
+    assert required_artifact is not None
 
     computed_label, _weakest, _detail = phase_agent_handler.compute_graded_phase_verdict(
         commit_review_repo,
-        ra,
+        required_artifact,
         review_run_id,
     )
-    assert computed_label == "PASS"
+    assert computed_label == "PASS", (
+        f"the production graded verdict for {review_phase} must be PASS"
+    )
 
     signals = evaluate_completion(
         commit_review_repo,
-        required_artifact=ra,
+        required_artifact=required_artifact,
         run_id=review_run_id,
         receipt_secret=broker_secret,
         sentinel_secret=broker_secret,
     )
-    independent_label, _weakest, _detail = graded_phase_verdict(signals, required_artifact=ra)
+    independent_label, _weakest, _detail = graded_phase_verdict(
+        signals,
+        required_artifact=required_artifact,
+    )
     assert independent_label == "PASS"
+
+    head_after = get_head_sha(commit_review_repo)
+    assert head_after != head_before, "the pipeline must create a real commit"
+    assert write_tree(commit_review_repo) == transport.reviewed_tree_shas[review_run_id], (
+        "the committed workspace tree must equal the tree approved by commit review"
+    )
+    assert FsWorkspace(commit_review_repo).read(REVIEWED_FILE) == REVIEWED_CONTENT, (
+        "the committed workspace must contain the reviewed file content"
+    )
 
     assert captured_controllers, "Expected a recovery controller to be instantiated"
     ledger = captured_controllers[0].ledger
-    assert ledger.is_available("development_commit_review", "claude")
-    assert not isinstance(ledger.status("development_commit_review", "claude"), (Cooldown, Spent))
+    selected_agent = _selected_agent_for_phase(policy_bundle, review_phase)
+    assert selected_agent == review_calls[0].agent, (
+        "the ledger must be inspected for the agent the policy chain actually selected"
+    )
+    assert ledger.is_available(review_phase, selected_agent)
+    assert not isinstance(ledger.status(review_phase, selected_agent), (Cooldown, Spent))
+    assert _ledger_counts(ledger, review_phase, selected_agent) == (0, 0), (
+        "a graded PASS must not charge the agent failure ledger"
+    )
+
+    calls_before_mismatch = len(transport.calls)
+    mismatched = RequiredArtifact(
+        phase=review_phase,
+        artifact_type="commit_message",
+        artifact_path=required_artifact.artifact_path,
+        markdown_path=required_artifact.markdown_path,
+        normalizer=None,
+    )
+    with pytest.raises(ArtifactContractMismatchError):
+        effect_executor.execute_agent_effect(
+            InvokeAgentEffect(
+                agent_name=selected_agent,
+                phase=review_phase,
+                prompt_file=str(prompt_path.relative_to(commit_review_repo)),
+                drain="commit",
+            ),
+            _config(),
+            deps,
+            WorkspaceScope(commit_review_repo),
+            display_context=display_context,
+            invoke_agent=transport,
+            required_artifact=mismatched,
+        )
+    assert len(transport.calls) == calls_before_mismatch, (
+        "the mismatching required-artifact type must be rejected before the agent is invoked"
+    )
 
 
-def test_development_final_commit_review_grading_e2e_pass_advances_to_commit(
-    monkeypatch: pytest.MonkeyPatch,
+def test_commit_review_grading_diagnostic_log_ordering(
     commit_review_repo: Path,
 ) -> None:
-    broker_secret = "test-secret-final-review-99"
-    monkeypatch.setenv("RALPH_BROKER_SECRET", broker_secret)
-
-    policy_bundle = _default_policy_bundle()
-    monkeypatch.setattr(
-        runner, "resolve_workspace_scope", lambda: WorkspaceScope(commit_review_repo)
+    captured_messages: list[str] = []
+    handler_id = logger.add(
+        lambda msg: captured_messages.append(msg.record["message"]),
+        level="DEBUG",
     )
-    monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    _stub_prompt_materialization(monkeypatch)
-    _install_runner_display_context(monkeypatch)
 
-    captured_controllers: list[RecoveryController] = []
+    try:
+        run_id = "diagnostic-run-order-01"
+        secret = "diag-secret"
+        seal = seal_pending(commit_review_repo, "run", 1)
+        md = commit_review_markdown([], tree_sha=seal.tree_sha)
+        ws = FsWorkspace(commit_review_repo)
+        session = MockSession(drain="commit")
+        session.run_id = run_id
+        session.broker_secret = secret
 
-    def controller_factory(
-        state: PipelineState,
-        bundle: PolicyBundle,
-        config: UnifiedConfig,
-    ) -> tuple[RecoveryController, int]:
-        del state, bundle, config
-        ctrl = RecoveryController(
-            options=RecoveryControllerOptions(
-                clock=SystemClock(),
-                agent_max_consecutive_unproductive=1,
-            )
+        logger.info("TEST_STEP: submit_artifact")
+        handle_submit_md_artifact(
+            session,
+            ws,
+            {"artifact_type": "commit_review", "content": md},
         )
-        captured_controllers.append(ctrl)
-        return ctrl, 0
 
-    phases_executed: list[str] = []
-    last_run_ids: dict[str, str] = {}
+        logger.info("TEST_STEP: declare_complete")
+        handle_declare_complete(session, ws, {"summary": "Approved review"})
+        append_wire_record(
+            commit_review_repo,
+            method="tools/call",
+            tool_name="ralph_submit_md_artifact",
+            params={"artifact_type": "commit_review"},
+            run_id=run_id,
+            secret=secret,
+        )
+        append_wire_record(
+            commit_review_repo,
+            method="tools/call",
+            tool_name="declare_complete",
+            params={"summary": "Approved review"},
+            run_id=run_id,
+            secret=secret,
+        )
 
-    def stub_execute_effect(
-        effect: Effect,
-        _config: UnifiedConfig,
-        _workspace_scope: WorkspaceScope,
-        **kwargs: Any,
-    ) -> PipelineEvent:
-        if isinstance(effect, InvokeAgentEffect):
-            phases_executed.append(effect.phase)
-            run_id = str(kwargs.get("run_id") or "test-run-id")
-            last_run_ids[effect.phase] = run_id
-            if effect.phase == "development_final_commit_review":
-                _submit_review_approval(commit_review_repo, run_id, broker_secret)
-                return PipelineEvent.AGENT_SUCCESS
-            if effect.phase == "development_final_commit":
-                _submit_commit_message(
-                    commit_review_repo,
-                    run_id,
-                    broker_secret,
-                    "feat(feature): final reviewed commit",
-                )
-                return PipelineEvent.AGENT_SUCCESS
-            return PipelineEvent.AGENT_SUCCESS
+        logger.info("TEST_STEP: compute_verdict")
+        ra = resolve_phase_required_artifact(
+            _default_policy_bundle().pipeline,
+            _default_policy_bundle().artifacts,
+            phase="development_commit_review",
+        )
+        assert ra is not None
+        signals = evaluate_completion(
+            commit_review_repo,
+            required_artifact=ra,
+            run_id=run_id,
+            receipt_secret=secret,
+            sentinel_secret=secret,
+        )
+        label, _weakest, _detail = graded_phase_verdict(signals, required_artifact=ra)
+        assert label == "PASS"
 
-        if isinstance(effect, CommitEffect):
-            phases_executed.append("execute_commit")
-            return runner.execute_commit_effect(
-                effect, create_commit, stage_all, commit_review_repo
-            )
-        if isinstance(effect, EmptyCommitEffect):
-            phases_executed.append("empty_commit")
-            return PipelineEvent.AGENT_SUCCESS
-        raise AssertionError(f"Unexpected effect: {type(effect)!r}")
+    finally:
+        logger.remove(handler_id)
 
-    monkeypatch.setattr(runner, "execute_effect", stub_execute_effect)
-    monkeypatch.setattr(runner, "execute_effect_with_optional_display", stub_execute_effect)
-
-    init_state = PipelineState(phase="development_final_commit_review")
-    rc = runner.run(
-        _config(),
-        initial_state=init_state,
-        recovery_controller_factory=controller_factory,
-        verbosity=Verbosity.QUIET,
-        counter_overrides={"iteration": 1},
+    submit_idx = next(
+        (i for i, m in enumerate(captured_messages) if "TEST_STEP: submit_artifact" in m),
+        None,
     )
-    assert rc == 0
-    assert "development_final_commit_review" in phases_executed
-    assert "development_final_commit" in phases_executed
-
-    review_run_id = last_run_ids.get("development_final_commit_review")
-    assert review_run_id is not None
-    ra = resolve_phase_required_artifact(
-        policy_bundle.pipeline,
-        policy_bundle.artifacts,
-        phase="development_final_commit_review",
+    complete_idx = next(
+        (i for i, m in enumerate(captured_messages) if "TEST_STEP: declare_complete" in m),
+        None,
     )
-    assert ra is not None
-
-    computed_label, _weakest, _detail = phase_agent_handler.compute_graded_phase_verdict(
-        commit_review_repo,
-        ra,
-        review_run_id,
+    verdict_idx = next(
+        (i for i, m in enumerate(captured_messages) if "TEST_STEP: compute_verdict" in m),
+        None,
     )
-    assert computed_label == "PASS"
 
-    signals = evaluate_completion(
-        commit_review_repo,
-        required_artifact=ra,
-        run_id=review_run_id,
-        receipt_secret=broker_secret,
-        sentinel_secret=broker_secret,
-    )
-    independent_label, _weakest, _detail = graded_phase_verdict(signals, required_artifact=ra)
-    assert independent_label == "PASS"
+    assert submit_idx is not None
+    assert complete_idx is not None
+    assert verdict_idx is not None
+    assert submit_idx < complete_idx < verdict_idx
 
-    assert captured_controllers, "Expected a recovery controller to be instantiated"
-    ledger = captured_controllers[0].ledger
-    assert ledger.is_available("development_final_commit_review", "claude")
-    assert not isinstance(
-        ledger.status("development_final_commit_review", "claude"), (Cooldown, Spent)
-    )
+    for msg in captured_messages[:submit_idx]:
+        assert "auto-integrate skipped: worktree not clean" not in msg
+        assert "catch-up publication deferred" not in msg
 
 
 RETIRED_PHASE_NAME = "commit_" + "cleanup"
@@ -467,75 +672,3 @@ def test_ledger_only_fallback_demotion_records_no_fact_for_configuration_failure
         "Ledger fallback must not record AttemptFact on engine configuration failure"
     )
     assert not isinstance(ledger.status(phase, agent), (Cooldown, Spent))
-
-
-def test_commit_review_grading_diagnostic_log_ordering(
-    commit_review_repo: Path,
-) -> None:
-    captured_messages: list[str] = []
-    handler_id = logger.add(
-        lambda msg: captured_messages.append(msg.record["message"]),
-        level="DEBUG",
-    )
-
-    try:
-        run_id = "diagnostic-run-order-01"
-        secret = "diag-secret"
-        seal = seal_pending(commit_review_repo, "run", 1)
-        md = commit_review_markdown([], tree_sha=seal.tree_sha)
-        ws = FsWorkspace(commit_review_repo)
-        session = MockSession(drain="commit")
-        session.run_id = run_id
-        session.broker_secret = secret
-
-        logger.info("TEST_STEP: submit_artifact")
-        handle_submit_md_artifact(
-            session,
-            ws,
-            {"artifact_type": "commit_review", "content": md},
-        )
-
-        logger.info("TEST_STEP: declare_complete")
-        handle_declare_complete(session, ws, {"summary": "Approved review"})
-
-        logger.info("TEST_STEP: compute_verdict")
-        ra = resolve_phase_required_artifact(
-            _default_policy_bundle().pipeline,
-            _default_policy_bundle().artifacts,
-            phase="development_commit_review",
-        )
-        assert ra is not None
-        signals = evaluate_completion(
-            commit_review_repo,
-            required_artifact=ra,
-            run_id=run_id,
-            receipt_secret=secret,
-            sentinel_secret=secret,
-        )
-        label, _weakest, _detail = graded_phase_verdict(signals, required_artifact=ra)
-        assert label == "PASS"
-
-    finally:
-        logger.remove(handler_id)
-
-    submit_idx = next(
-        (i for i, m in enumerate(captured_messages) if "TEST_STEP: submit_artifact" in m),
-        None,
-    )
-    complete_idx = next(
-        (i for i, m in enumerate(captured_messages) if "TEST_STEP: declare_complete" in m),
-        None,
-    )
-    verdict_idx = next(
-        (i for i, m in enumerate(captured_messages) if "TEST_STEP: compute_verdict" in m),
-        None,
-    )
-
-    assert submit_idx is not None
-    assert complete_idx is not None
-    assert verdict_idx is not None
-    assert submit_idx < complete_idx < verdict_idx
-
-    for msg in captured_messages[:submit_idx]:
-        assert "auto-integrate skipped: worktree not clean" not in msg
-        assert "catch-up publication deferred" not in msg

@@ -71,6 +71,7 @@ from ralph.timeout_defaults import (
 )
 
 __all__ = [
+    "ENGINE_ORIGIN_REASONS",
     "RecoveryController",
     "RecoveryControllerOptions",
     "build_dead_agent_verdict",
@@ -78,6 +79,17 @@ __all__ = [
     "compute_backoff_ms",
     "is_configuration_failure",
 ]
+
+
+ENGINE_ORIGIN_REASONS: frozenset[str] = frozenset({str(FailureCategory.USER_CONFIG)})
+
+_ENGINE_ORIGIN_MESSAGE_MARKERS: tuple[str, ...] = (
+    "Contract mismatch",
+    "is not bound",
+    "is not defined",
+    "Checkpoint was saved at phase",
+    "no longer exists in pipeline.toml",
+)
 
 
 def is_configuration_failure(
@@ -98,30 +110,10 @@ def is_configuration_failure(
         }:
             return True
         msg = str(exc)
-        if any(
-            marker in msg
-            for marker in (
-                "Contract mismatch",
-                "is not bound",
-                "is not defined",
-                "Checkpoint was saved at phase",
-                "no longer exists in pipeline.toml",
-            )
-        ):
+        if any(marker in msg for marker in _ENGINE_ORIGIN_MESSAGE_MARKERS):
             return True
-    if reason is not None:
-        lower = reason.lower()
-        if any(
-            k in lower
-            for k in (
-                "config",
-                "user_config",
-                "checkpoint",
-                "policy",
-                "contract mismatch",
-            )
-        ):
-            return True
+    if reason is not None and reason in ENGINE_ORIGIN_REASONS:
+        return True
     return False
 
 

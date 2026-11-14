@@ -218,6 +218,95 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
         merge_mod.read_record = orig_read
 
 
+def _deferred_rebase_failure_cause(
+    tmp_path: Path,
+    failure_cause: ResolutionFailureCause,
+) -> ResolutionFailureCause:
+    def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
+        outcome = resolver(root, target, None)
+        if session is not None and isinstance(outcome, ResolutionOutcome):
+            session.charge_conflict_budget = (
+                failure_cause is not ResolutionFailureCause.CONFIG_FAILURE
+            )
+            session.last_failure_cause = failure_cause
+            session.terminal_reason = (
+                ResolutionTerminationReason.CONFIG_FAILURE
+                if failure_cause is ResolutionFailureCause.CONFIG_FAILURE
+                else None
+            )
+            session.exhaustion_reason = (
+                "fix .agent/ralph-workflow.toml then run ralph --check-config"
+                if failure_cause is ResolutionFailureCause.CONFIG_FAILURE
+                else "conflict remains unresolved"
+            )
+        return False
+
+    def _resolver(root: Path, target: str, stop: RebaseStop) -> ResolutionOutcome:
+        return ResolutionOutcome(
+            succeeded=False,
+            reason=ResolutionTerminationReason.CONFIG_FAILURE,
+            duration_seconds=0.0,
+            last_activity_kind=None,
+            last_activity_at=None,
+            unresolved_paths=(),
+            failure_cause=failure_cause,
+        )
+
+    runner = MagicMock()
+    runner.resolve_rebase.side_effect = _fake_resolve_rebase
+
+    attempted = resolve_conflicted_rebase(
+        tmp_path,
+        "main",
+        _resolver,
+        None,
+        None,
+        agent_runner=runner,
+    )
+    assert attempted is not None
+    assert attempted.short_circuit is not None
+    assert attempted.short_circuit.last_failure_cause == failure_cause
+
+    from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
+
+    orig_set = merge_mod.set_resolving_rebase
+    orig_read = merge_mod.read_record
+    try:
+        merge_mod.set_resolving_rebase = MagicMock(return_value=True)
+        merge_mod.read_record = MagicMock(return_value=None)
+        deferred = resolve_conflicted_rebase(
+            tmp_path,
+            "main",
+            _resolver,
+            None,
+            None,
+            agent_runner=runner,
+        )
+    finally:
+        merge_mod.set_resolving_rebase = orig_set
+        merge_mod.read_record = orig_read
+
+    assert deferred is not None
+    assert deferred.short_circuit is not None
+    return deferred.short_circuit.last_failure_cause
+
+
+def test_deferred_rebase_resolution_carries_config_failure_cause(tmp_path: Path) -> None:
+    config_case = tmp_path / "config"
+    config_case.mkdir()
+    assert (
+        _deferred_rebase_failure_cause(config_case, ResolutionFailureCause.CONFIG_FAILURE)
+        == ResolutionFailureCause.CONFIG_FAILURE
+    )
+
+    plain_case = tmp_path / "plain"
+    plain_case.mkdir()
+    assert (
+        _deferred_rebase_failure_cause(plain_case, ResolutionFailureCause.UNRESOLVED_CONFLICT)
+        == ResolutionFailureCause.UNRESOLVED_CONFLICT
+    )
+
+
 def test_run_loop_does_not_bump_consecutive_conflicts_on_config_failure() -> None:
     rebase = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,

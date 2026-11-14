@@ -904,21 +904,15 @@ def _maybe_validate_artifact_contract(
 ) -> None:
     if resolved_required_artifact is None:
         return
-    prompt_path = Path(ctx.effect.prompt_file) if ctx.effect.prompt_file else None
-    if (
-        prompt_path is not None
-        and not prompt_path.is_absolute()
-        and ctx.workspace_scope.root is not None
-    ):
-        prompt_path = ctx.workspace_scope.root / prompt_path
-    if prompt_path is not None and prompt_path.is_file():
-        validate_artifact_contract(
-            phase=str(ctx.effect.phase),
-            prompt_file=ctx.effect.prompt_file,
-            workspace_root=ctx.workspace_scope.root,
-            required_artifact=resolved_required_artifact,
-            require_prompted_type=False,
-        )
+    if not resolved_required_artifact.artifact_required:
+        return
+    validate_artifact_contract(
+        phase=str(ctx.effect.phase),
+        prompt_file=ctx.effect.prompt_file,
+        workspace_root=ctx.workspace_scope.root,
+        required_artifact=resolved_required_artifact,
+        require_prompted_type=True,
+    )
 
 
 def _invoke_agent_with_recovery(
