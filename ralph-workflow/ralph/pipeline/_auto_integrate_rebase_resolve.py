@@ -28,10 +28,15 @@ from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
-    StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
 )
+from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
+from ralph.pipeline.resolution_outcome_exhausted import Exhausted
+from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+from ralph.pipeline.resolution_outcome_resolved import Resolved
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,6 +49,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.integration_actions import AgentRunner
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 
 __all__ = [
     "RebaseResolutionResult",
@@ -161,7 +167,7 @@ def resolve_conflicted_rebase(
         else:
             raise TypeError("rebase stop resolution returned an invalid result")
     match res.outcome:
-        case ResolvedOutcome():
+        case ResolvedOutcome() | Resolved():
             resolution_completed = True
         case (
             WaitingOutcome()
@@ -169,6 +175,10 @@ def resolve_conflicted_rebase(
             | NextStrategyOutcome()
             | ConfigFailureOutcome()
             | UnknownOutcome()
+            | NeedsOperator()
+            | RetryLater()
+            | Exhausted()
+            | ConfigFailure()
         ):
             resolution_completed = False
         case _ as unreachable:
@@ -231,8 +241,23 @@ def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunRe
     )
 
 
-def _rebase_outcome(result: RebaseResolutionResult) -> StopResolutionOutcome:
-    return result.outcome
+def _rebase_outcome(result: RebaseResolutionResult) -> ResolutionOutcomeType:
+    if (
+        getattr(result, "succeeded", False)
+        or isinstance(getattr(result, "outcome", None), (Resolved, ResolvedOutcome))
+        or getattr(getattr(result, "outcome", None), "__class__", None).__name__
+        == "ResolvedOutcome"
+    ):
+        return Resolved()
+    if isinstance(
+        getattr(result, "outcome", None), (NeedsOperator, RetryLater, Exhausted, ConfigFailure)
+    ):
+        return result.outcome
+    return classify_resolution_failure(
+        terminal_reason=result.terminal_reason,
+        failure_cause=result.failure_cause,
+        reason=result.reason,
+    )
 
 
 def _conflict_run(
@@ -267,7 +292,7 @@ def _rebase_run_result(
     failure_reason = (
         result.reason or "rebase resolution incomplete; progress retained for next agent"
     )
-    if record is not None and not isinstance(outcome, ResolvedOutcome):
+    if record is not None and not isinstance(outcome, (Resolved, ResolvedOutcome)):
         from ralph.pipeline.auto_integrate_record import write_record
 
         write_record(root, record.model_copy(update={"last_failure_cause": failure_cause}))

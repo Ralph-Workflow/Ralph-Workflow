@@ -23,15 +23,12 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
 from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.rebase_state import StartupRetentionReason
-from ralph.pipeline.resolution_outcome import (
-    ConfigFailureOutcome,
-    NextStrategyOutcome,
-    ResolvedOutcome,
-    RetryLaterOutcome,
-    StopResolutionOutcome,
-    UnknownOutcome,
-    WaitingOutcome,
-)
+from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
+from ralph.pipeline.resolution_outcome_exhausted import Exhausted
+from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+from ralph.pipeline.resolution_outcome_resolved import Resolved
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,6 +40,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
@@ -215,8 +213,21 @@ def _continue_rebase_resolution(
 
 def _rebase_failure_outcome(
     result: RebaseResolutionResult,
-) -> StopResolutionOutcome:
-    return result.outcome
+    chain_agents: tuple[str, ...],
+) -> ResolutionOutcomeType:
+    if (
+        getattr(result, "succeeded", False)
+        or isinstance(getattr(result, "outcome", None), Resolved)
+        or getattr(getattr(result, "outcome", None), "__class__", None).__name__
+        == "ResolvedOutcome"
+    ):
+        return Resolved()
+    return classify_resolution_failure(
+        terminal_reason=result.terminal_reason,
+        failure_cause=result.failure_cause,
+        reason=result.reason,
+        agents=chain_agents,
+    )
 
 
 def _rebase_failure_transport(
@@ -230,13 +241,13 @@ def _rebase_failure_transport(
         "rebase resolution remains pending after continuation "
         f"(cause: {result.failure_cause.value})"
     )
-    outcome = _rebase_failure_outcome(result)
+    outcome = _rebase_failure_outcome(result, chain_agents)
     match outcome:
-        case ResolvedOutcome():
+        case Resolved():
             return None
-        case WaitingOutcome() | RetryLaterOutcome():
+        case RetryLater():
             return failure_reason
-        case NextStrategyOutcome():
+        case NeedsOperator():
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha,
@@ -246,7 +257,7 @@ def _rebase_failure_transport(
                 NextAction.LAST_RESORT_RECOVERY.value,
             )
             return failure_reason
-        case ConfigFailureOutcome() | UnknownOutcome():
+        case Exhausted() | ConfigFailure():
             return failure_reason
         case _ as unreachable:
             assert_never(unreachable)

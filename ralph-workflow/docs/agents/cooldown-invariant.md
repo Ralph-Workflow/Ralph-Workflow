@@ -42,7 +42,7 @@ Cooldown reasons and their durations come from `UnavailabilityReason` and
 `ralph/recovery/unavailability_reason.py`. There is no second policy
 table.
 
-Every cooldown decision is logged once, by the owner, with the phase, the
+Every cooldown is logged once, by the owner, with the phase, the
 agent, the `UnavailabilityReason`, the duration and the expiry
 (`cooldown_decision` in `ralph/recovery/controller.py`).
 

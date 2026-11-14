@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from typing import Final
 
-from ralph.agents.invoke._session import extract_transport_session_id
-
 
 def _extract_transport_session_id_inline(
     raw_output: list[str] | tuple[str, ...],
 ) -> str | None:
+    from ralph.agents.invoke._session import extract_transport_session_id
+
     return extract_transport_session_id(raw_output)
 
 

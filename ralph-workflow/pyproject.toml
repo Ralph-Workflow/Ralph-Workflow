@@ -161,6 +161,18 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"ralph/agents/catalog.py" = [
+    "PLC0415"
+]
+"ralph/agents/registry.py" = [
+    "PLC0415"
+]
+"ralph/agents/parsers/_event_classification.py" = [
+    "PLC0415"
+]
+"ralph/agents/parsers/content_channel.py" = [
+    "PLC0415"
+]
 "ralph/visual/**/*.py" = [
     "PLR0911",
     "PLR0912",

@@ -1,20 +1,34 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, assert_never
+
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    WaitingOutcome,
+)
 from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
 from ralph.pipeline.resolution_outcome_exhausted import Exhausted
 from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+from ralph.pipeline.resolution_outcome_resolved import Resolved
 from ralph.pipeline.resolution_outcome_retry_later import RetryLater
-from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
+
+if TYPE_CHECKING:
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
+    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 
 __all__ = [
     "RETRY_LATER_REASON",
     "classify_resolution_failure",
     "config_failure_from_exception",
+    "stop_resolution_outcome_from_legacy",
 ]
 
 RETRY_LATER_REASON = "conflict resolution incomplete; progress retained for next agent"
@@ -53,3 +67,28 @@ def classify_resolution_failure(
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         return Exhausted(agents=agents)
     return RetryLater(on_change=reason or RETRY_LATER_REASON)
+
+
+def stop_resolution_outcome_from_legacy(outcome: ResolutionOutcomeType) -> StopResolutionOutcome:
+    match outcome:
+        case Resolved():
+            return ResolvedOutcome()
+        case NeedsOperator(command=command):
+            return WaitingOutcome(
+                external_condition=(
+                    f"operator action required: {command}"
+                    if command
+                    else "operator action required"
+                ),
+                resumes_when="operator resolves the conflict",
+            )
+        case RetryLater(until=until, on_change=on_change):
+            return RetryLaterOutcome(until=until, on_change=on_change)
+        case Exhausted(agents=agents):
+            return NextStrategyOutcome(
+                strategy=f"resolver agents exhausted: {', '.join(agents)}"
+            )
+        case ConfigFailure(file=file, parse_error=parse_error):
+            return ConfigFailureOutcome(file=file, parse_error=str(parse_error))
+        case _ as unreachable:
+            assert_never(unreachable)

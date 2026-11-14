@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from ralph.git.rebase._rebase_kind import RebaseKind
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_outcome import record_resolution_outcome
-from ralph.pipeline.resolution_outcome import RetryLaterOutcome
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from ralph.git.rebase.rebase import RebaseFailed
@@ -74,7 +74,7 @@ def _failed_rebase_reason(failure: RebaseFailed) -> str:
 def _failed_rebase_state(failure: RebaseFailed, target: str) -> RebaseState:
     reason = _failed_rebase_reason(failure)
     return record_resolution_outcome(
-        RetryLaterOutcome(
+        RetryLater(
             on_change=reason,
         ),
         target=target,

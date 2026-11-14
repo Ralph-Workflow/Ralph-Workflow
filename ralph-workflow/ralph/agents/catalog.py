@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar, overload
 
 from ralph.agents._contracts import StrategyFactory
-from ralph.agents.builtin import builtin_supports
 from ralph.agents.execution_state._strategy_builders import (
     _make_agy_strategy,
     _make_cursor_strategy,
@@ -27,7 +26,6 @@ from ralph.agents.parsers.kimi import KimiParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
-from ralph.agents.registry import _resolve_dynamic_agent
 from ralph.agents.registry_types import ParserRegistryEntry
 from ralph.agents.support import AgentSupport
 from ralph.config.agent_config import AgentConfig
@@ -56,6 +54,8 @@ _ParserRegistryEntry = ParserRegistryEntry
 
 
 def _builtin_supports() -> tuple[AgentSupport, ...]:
+    from ralph.agents.builtin import builtin_supports
+
     return builtin_supports()
 
 
@@ -65,6 +65,8 @@ def _resolve_dynamic_agent(
     *,
     base_lookup: Callable[[str], AgentConfig | None] | None = None,
 ) -> AgentConfig | None:
+    from ralph.agents.registry import _resolve_dynamic_agent
+
     return _resolve_dynamic_agent(name, ccs_defaults, base_lookup=base_lookup)
 
 

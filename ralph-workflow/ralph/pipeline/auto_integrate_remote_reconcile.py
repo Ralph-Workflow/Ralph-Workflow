@@ -32,9 +32,7 @@ from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_pro
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
     current_rebase_identity,
-    resolution_session_from_config,
 )
-from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -49,6 +47,9 @@ from ralph.pipeline.resolution_outcome import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
