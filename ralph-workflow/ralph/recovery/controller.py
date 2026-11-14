@@ -699,9 +699,6 @@ class RecoveryController:
             and not failure.is_unavailable
             and not self._last_attempt_charged_ledger
         ):
-            # The agent run already finalized this attempt as a clean exit, so
-            # the failure found afterwards was never charged. Charge it here so
-            # the shared cooldown applies to it like any other unproductive attempt.
             self._last_demoted_reason = self.record_attempt_fact(
                 phase,
                 current_agent,

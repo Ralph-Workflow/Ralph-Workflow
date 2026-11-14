@@ -40,8 +40,6 @@ from ralph.pipeline.integration_resolution import retained_integration_reason
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
-
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
 
@@ -228,13 +226,11 @@ def resolve_rebase_in_progress(
     *,
     session: ResolutionSession | None = None,
 ) -> bool:
-    from ralph.pipeline._stop_resolution_entry import production_rebase_runner
-
-    runner = production_rebase_runner()
-    resolved_session = (
-        session if session is not None else resolution_session_from_config(UnifiedConfig())
+    from ralph.pipeline.conflict_resolution.rebase_loop import (
+        resolve_rebase_in_progress as resolve_rebase_stops,
     )
-    return runner.resolve_rebase(owner, target, resolver, session=resolved_session)
+
+    return resolve_rebase_stops(owner, target, resolver, session=session)
 
 
 _DEFAULT_RESOLVE_REBASE_IN_PROGRESS = resolve_rebase_in_progress

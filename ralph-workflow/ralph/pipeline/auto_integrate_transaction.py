@@ -7,8 +7,9 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
+from ralph.checked_accessors import as_str_list
 from ralph.git.merge import branch_sha, is_ancestor
 from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -215,6 +216,10 @@ def _write_operation(path: Path, facts: _OperationFacts, steps: tuple[str, ...])
     )
 
 
+def _is_text(value: object) -> TypeGuard[str]:
+    return isinstance(value, str)
+
+
 def _read_operation(path: Path) -> _OperationFacts | None:
     payload = _read_json(path)
     if payload is None or payload.get("version") != _RECORD_VERSION:
@@ -224,16 +229,23 @@ def _read_operation(path: Path) -> _OperationFacts | None:
     target_tip = payload.get("target_tip")
     feature_tip = payload.get("feature_tip")
     raw_steps = payload.get("completed_steps", [])
-    if not all(isinstance(value, str) for value in (operation_id, target, target_tip, feature_tip)):
+    if not (
+        _is_text(operation_id)
+        and _is_text(target)
+        and _is_text(target_tip)
+        and _is_text(feature_tip)
+    ):
         return None
-    if not isinstance(raw_steps, list) or not all(isinstance(step, str) for step in raw_steps):
+    try:
+        completed_steps = tuple(as_str_list(raw_steps))
+    except TypeError:
         return None
     return _OperationFacts(
-        operation_id=cast("str", operation_id),
-        target=cast("str", target),
-        target_tip=cast("str", target_tip),
-        feature_tip=cast("str", feature_tip),
-        completed_steps=tuple(cast("list[str]", raw_steps)),
+        operation_id=operation_id,
+        target=target,
+        target_tip=target_tip,
+        feature_tip=feature_tip,
+        completed_steps=completed_steps,
     )
 
 

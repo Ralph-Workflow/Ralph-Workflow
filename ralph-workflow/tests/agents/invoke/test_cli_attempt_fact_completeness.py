@@ -7,7 +7,7 @@ import tempfile
 from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -30,13 +30,15 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
+from ralph.process.manager import ManagedProcess
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.end_attempt import end_attempt
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ralph.agents.invoke.opencode_subagent_sessions import OpenCodeChildPart
-    from ralph.process.manager import ManagedProcess
     from ralph.recovery.attempt_facts import AttemptFacts
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -258,16 +260,21 @@ class _NoChildPartSource:
         return
 
 
-class _ExitedHandle:
+class _ExitedHandle(ManagedProcess):
     stdin = None
+    stderr = None
+    pid = None
+    returncode: int | None = None
 
     def __init__(self, lines: list[str], *, returncode: int, stderr_line: str | None) -> None:
-        self.stdout = iter(lines)
-        self.stderr = None
+        self._stdout = iter(lines)
         self._ralph_bounded_stderr = "" if stderr_line is None else f"{stderr_line}\n"
-        self.pid = None
         self.returncode = returncode
         self._termination_issuer: str | None = None
+
+    @property
+    def stdout(self) -> Iterator[str]:
+        return self._stdout
 
     def terminate(
         self,
@@ -280,15 +287,21 @@ class _ExitedHandle:
         self._termination_issuer = str(issuer) if issuer is not None else None
         self.returncode = -15
 
-    def wait(self, timeout: float | None = None) -> int | None:
+    def wait(self, timeout: float | None = None) -> int:
         del timeout
-        return self.returncode
+        return self.returncode if self.returncode is not None else -1
 
     def poll(self) -> int | None:
         return self.returncode
 
     def termination_issuer(self) -> str | None:
         return self._termination_issuer
+
+    def record_terminal_reason(self, reason: str) -> None:
+        del reason
+
+    def has_live_descendants(self) -> bool:
+        return False
 
 
 @cache
@@ -307,10 +320,9 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
         returncode=shape.returncode,
         stderr_line=shape.stderr_line,
     )
-    managed_handle = cast("ManagedProcess", handle)
-    supervisor = AttemptSupervisor(managed_handle)
+    supervisor = AttemptSupervisor(handle)
     reader = ProcessLineReader(
-        managed_handle,
+        handle,
         ProcessReaderCtx(
             config=AgentConfig(cmd=_COMMANDS[parser_key], transport=_transport_for(parser_key)),
             policy=TimeoutPolicy(
@@ -342,7 +354,7 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
     if reader_failure is None:
         try:
             check_process_result(
-                managed_handle,
+                handle,
                 shlex.split(_COMMANDS[parser_key])[0],
                 termination_recorder=reader.termination_recorder,
             )

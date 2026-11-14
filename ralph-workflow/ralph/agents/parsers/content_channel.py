@@ -4,12 +4,11 @@ import json
 from dataclasses import dataclass
 from enum import StrEnum
 
+from ralph.agents.execution_state import is_user_prompt_event_line
 from ralph.recovery.failure_classifier import _SUBSCRIPTION_LIMIT_SUBSTRINGS
 
 
 def _is_user_prompt_event_line(line: str) -> bool:
-    from ralph.agents.execution_state import is_user_prompt_event_line
-
     return is_user_prompt_event_line(line)
 
 

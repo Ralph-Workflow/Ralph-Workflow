@@ -20,6 +20,7 @@ from ralph.git.rebase._rebase_continuation_error import RebaseContinuationError
 from ralph.git.rebase._rebase_verification_error import RebaseVerificationError
 from ralph.git.rebase.rebase import is_empty_rebase_stop
 from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -142,13 +143,6 @@ def _blocked_by_unstaged_changes(stderr: str, stdout: str) -> bool:
 
 
 def _set_unstaged_changes_aside(repo_root: Path) -> Path | None:
-    """Move unstaged tracked edits out of the worktree; return the saved patch.
-
-    ``git rebase --continue`` refuses to run while tracked files carry unstaged
-    changes, and reports it with the same text it uses for real conflicts. The
-    edits are kept as a patch under the git directory and reapplied afterwards,
-    so the verified index is what gets replayed and no work is discarded.
-    """
     located = run_git(
         ["rev-parse", "--git-path", f"ralph-set-aside-{uuid.uuid4().hex}.patch"],
         cwd=repo_root,
@@ -164,8 +158,8 @@ def _set_unstaged_changes_aside(repo_root: Path) -> Path | None:
         label="git-rebase:set-aside-diff",
         options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
     )
-    if not patch.exists() or patch.stat().st_size == 0:
-        patch.unlink(missing_ok=True)
+    if not DEFAULT_FILE_BACKEND.exists(patch) or not DEFAULT_FILE_BACKEND.read_bytes(patch):
+        DEFAULT_FILE_BACKEND.unlink(patch, missing_ok=True)
         return None
     run_git(
         ["checkout", "--", "."],
@@ -189,7 +183,7 @@ def _restore_set_aside_changes(repo_root: Path, patch: Path) -> None:
         options=GitRunOptions(env=scrub_git_env(_git_env())),
     )
     if restored.returncode == 0:
-        patch.unlink(missing_ok=True)
+        DEFAULT_FILE_BACKEND.unlink(patch, missing_ok=True)
         return
     logger.error(
         "rebase continuation: could not reapply the set-aside unstaged changes ({}); "

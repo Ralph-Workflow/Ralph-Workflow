@@ -1,11 +1,3 @@
-"""Catalog group 2: the *shape* of the work that has to reach the target.
-
-Few commits versus very many, one hot conflict repeated on every commit
-versus unrelated conflicts, a range that contains merge commits and a range
-that contains already-published commits.  The size of the work must never
-decide the outcome: every shape ends in landed-and-verified.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -60,7 +52,6 @@ def _many_commits(root: Path, count: int) -> str:
 
 
 def _hot_conflict(root: Path) -> str:
-    """Every replayed commit touches the same file the target changed."""
     _seed_base(root)
     git(root, "checkout", "-q", "-b", "feature")
     commit_file(root, "hot.txt", "feature one\n", "feature one")
@@ -73,7 +64,6 @@ def _hot_conflict(root: Path) -> str:
 
 
 def _unrelated_conflicts(root: Path) -> str:
-    """Each replayed commit conflicts on a different file."""
     _seed_base(root)
     git(root, "checkout", "-q", "-b", "feature")
     for index in range(4):
@@ -97,7 +87,6 @@ def _range_with_merge_commit(root: Path) -> str:
 
 
 def _range_with_published_commit(root: Path) -> tuple[str, str]:
-    """The feature range contains a commit that is already published."""
     _seed_base(root)
     published = commit_file(root, "published.txt", "published\n", "published commit")
     git(root, "checkout", "-q", "-b", "feature")

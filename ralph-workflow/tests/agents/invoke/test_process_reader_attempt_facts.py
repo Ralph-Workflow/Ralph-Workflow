@@ -2,14 +2,30 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import ProcessLineReader, ProcessReaderCtx
+from ralph.agents.invoke import (
+    AgentInvocationError,
+    AgentRunCtx,
+    ProcessLineReader,
+    ProcessReaderCtx,
+    run_subprocess_and_read_lines,
+)
 from ralph.agents.invoke.opencode_subagent_sessions import OpenCodeChildPart
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationIssuer,
+    install_process_manager,
+    reset_process_manager,
+)
+from ralph.testing.fake_process import make_sync_process_factory
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -69,6 +85,21 @@ class _ExitedHandle:
         return self.returncode
 
 
+class _RecordingProcessTeardown:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, ProcessTerminationIssuer]] = []
+
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del owner_label
+        self.calls.append((host_pid, issuer))
+
+
 def _reader(tmp_path: Path, *, child_active_from: float) -> ProcessLineReader:
     clock = FakeClock(start=0.0)
     return ProcessLineReader(
@@ -120,3 +151,35 @@ def test_event_kinds_and_completed_tool_calls_are_recorded_in_order(tmp_path: Pa
     assert "tool_use" in facts.event_kinds
     assert facts.event_kinds.index("tool_use") < len(facts.event_kinds) - 1
     assert facts.workspace_changed_by_tool is None
+
+
+def test_startup_failure_missing_stdout_single_teardown() -> None:
+    recording = _RecordingProcessTeardown()
+    install_process_manager(
+        ProcessManager(
+            policy=ProcessManagerPolicy(
+                default_grace_period_s=0.0,
+                kill_followup_timeout_s=0.0,
+                log_events=False,
+                enable_zombie_reaper=False,
+            ),
+            sync_process_factory=make_sync_process_factory(iter((4242,)), returncode=None),
+            psutil=None,
+        )
+    )
+    ctx = AgentRunCtx(
+        config=AgentConfig(cmd="/bin/sh", transport=AgentTransport.GENERIC),
+        show_progress=False,
+        extra_env=None,
+        workspace_path=None,
+        policy=TimeoutPolicy(idle_timeout_seconds=5.0),
+        process_teardown=recording,
+    )
+
+    try:
+        with pytest.raises(AgentInvocationError):
+            list(run_subprocess_and_read_lines(["/bin/sh"], ctx))
+    finally:
+        reset_process_manager()
+
+    assert recording.calls == [(4242, ProcessTerminationIssuer.INVOKE_TEARDOWN)]

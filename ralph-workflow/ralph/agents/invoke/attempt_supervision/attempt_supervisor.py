@@ -142,6 +142,8 @@ class AttemptSupervisor:
             raise ValueError("observation does not permit subtree teardown")
         return self.act(observation)
 
+    teardown_subtree_for_observation = teardown_observed_subtree
+
     act_with_teardown = teardown_observed_subtree
 
     def cleanup(

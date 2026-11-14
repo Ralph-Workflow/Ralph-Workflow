@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents._codex_alias import resolve_codex_alias
+from ralph.agents.builtin import builtin_supports as builtin_supports_impl
 from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.idle_watchdog import SubagentPidRegistry
 from ralph.agents.registration import register_agent_support_to_catalog
@@ -126,8 +127,6 @@ def agy_alias_help() -> str:
 
 
 def builtin_supports() -> tuple[AgentSupport, ...]:
-    from ralph.agents.builtin import builtin_supports as builtin_supports_impl
-
     return builtin_supports_impl()
 
 

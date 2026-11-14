@@ -4,7 +4,6 @@ import ast
 import io
 import json
 import re
-import subprocess
 import sys
 import tokenize
 import tomllib
@@ -14,10 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 CONFIG_ENV_MODULE = "ralph.config._env"
 FIX_HINT = "restructure so the type checker can verify it"
+_GIT_PROBE_TIMEOUT_SECONDS = 30.0
 _SKIP_PARTS = frozenset(
     [
         ".git",
@@ -936,14 +938,17 @@ def _resolve_explicit_paths(paths: Sequence[str], base: Path) -> list[Path]:
 
 def _git_root(start: Path) -> Path:
     try:
-        completed = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=start,
-            capture_output=True,
-            text=True,
-            check=False,
+        completed = run_process(
+            "git",
+            ["rev-parse", "--show-toplevel"],
+            options=ProcessRunOptions(
+                cwd=start,
+                timeout=_GIT_PROBE_TIMEOUT_SECONDS,
+                capture_output=True,
+                label="testing:audit-banned-constructs",
+            ),
         )
-    except OSError as error:
+    except ProcessExecutionError as error:
         raise _AuditInputError(f"cannot locate git repository: {error}") from error
     if completed.returncode != 0:
         detail = completed.stderr.strip() or f"exit status {completed.returncode}"
@@ -953,14 +958,17 @@ def _git_root(start: Path) -> Path:
 
 def _tracked_python_paths(root: Path) -> list[Path]:
     try:
-        completed = subprocess.run(
-            ["git", "ls-files", "-z", "--", "*.py"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=False,
+        completed = run_process(
+            "git",
+            ["ls-files", "-z", "--", "*.py"],
+            options=ProcessRunOptions(
+                cwd=root,
+                timeout=_GIT_PROBE_TIMEOUT_SECONDS,
+                capture_output=True,
+                label="testing:audit-banned-constructs",
+            ),
         )
-    except OSError as error:
+    except ProcessExecutionError as error:
         raise _AuditInputError(f"cannot enumerate tracked Python files: {error}") from error
     if completed.returncode != 0:
         detail = completed.stderr.strip() or f"exit status {completed.returncode}"

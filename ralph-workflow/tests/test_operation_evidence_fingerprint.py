@@ -316,7 +316,6 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
             "NeedsOperator",
             "ralph --resume",
         ),
-        "record_version": 2,
     }
 
     for field_name in IntegrationRecord.model_fields:

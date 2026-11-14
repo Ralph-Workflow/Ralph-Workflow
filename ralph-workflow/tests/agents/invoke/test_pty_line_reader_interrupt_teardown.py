@@ -3,7 +3,11 @@ from __future__ import annotations
 import threading
 from unittest.mock import MagicMock
 
+import pytest
+
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
+from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import teardown_subtree
 
@@ -21,6 +25,21 @@ class _TrackTeardown:
     ) -> None:
         del issuer, owner_label
         self._teardown_calls.append(host_pid)
+
+
+class _RecordingTeardown:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, ProcessTerminationIssuer]] = []
+
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del owner_label
+        self.calls.append((host_pid, issuer))
 
 
 class _BoomTeardown:
@@ -42,6 +61,7 @@ def _make_reader_for_interrupt(teardown_calls: list[int] | None = None) -> PtyLi
     reader._handle.terminate = MagicMock()
     reader._handle.close = MagicMock()
     reader._monitor_stop = threading.Event()
+    reader._agent_name = "nanocoder"
     reader._process_teardown = None if teardown_calls is None else _TrackTeardown(teardown_calls)
     return reader
 
@@ -110,6 +130,20 @@ def test_on_interrupt_skips_teardown_when_pid_missing() -> None:
     assert teardown_calls == [], (
         f"teardown_subtree must be skipped when pid is None; got {teardown_calls!r}"
     )
+
+
+def test_terminal_startup_error_teardown_sequence() -> None:
+    recording = _RecordingTeardown()
+    reader = _make_reader_for_interrupt()
+    reader._process_teardown = recording
+    reader._supervisor = AttemptSupervisor(reader._handle, process_teardown=recording)
+
+    with pytest.raises(AgentInvocationError):
+        reader._raise_if_terminal_startup_error(
+            "Provider 'openai/gpt-5' not found in agents.config.json"
+        )
+
+    assert recording.calls == [(4242, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
 
 
 def test_on_interrupt_real_teardown_subtree_call() -> None:

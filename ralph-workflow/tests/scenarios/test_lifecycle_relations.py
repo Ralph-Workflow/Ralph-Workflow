@@ -1,10 +1,3 @@
-"""Catalog group 1: the relation between the feature branch and the target.
-
-Every relation named by the scenario catalog must end in *landed and verified*:
-the feature's content is reachable from the target tip and nothing else
-changed.  The relation is observed from git, never assumed.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path

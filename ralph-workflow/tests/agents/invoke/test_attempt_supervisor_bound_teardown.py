@@ -47,6 +47,15 @@ def test_cleanup_uses_bound_teardown_without_per_call_override() -> None:
     assert fake.calls == [(_PID, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
 
 
+def test_property_teardown_subtree_invokes_injected_teardown_fn() -> None:
+    fake = _RecordingTeardown()
+    supervisor = AttemptSupervisor(_handle(), process_teardown=fake)
+
+    supervisor.teardown_subtree(4242, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+
+    assert fake.calls == [(4242, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
+
+
 def test_for_recorder_passes_seam_through_and_first_construction_wins() -> None:
     recorder = TerminationRecorder()
     first = _RecordingTeardown()

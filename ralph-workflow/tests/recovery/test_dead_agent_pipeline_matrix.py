@@ -117,7 +117,6 @@ def _assert_observation(
     if scenario.corpus_id is not None and entry_point is not AgentEntryPoint.CANARY_PROBE:
         _assert_corpus_expectations(scenario, observation, controller)
     if entry_point is AgentEntryPoint.CANARY_PROBE:
-        # Canary is nonrecursive, so parity is outcome kind, invocations, and no bench.
         assert observation.probe_calls == ()
         assert observation.availability is True
         assert observation.wait_ms == 0

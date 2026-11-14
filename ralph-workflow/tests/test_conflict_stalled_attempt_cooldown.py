@@ -1,5 +1,3 @@
-"""A stalled conflict-resolution attempt must hit the shared cooldown system."""
-
 from __future__ import annotations
 
 import tempfile
@@ -73,11 +71,6 @@ def test_u2_regression_stalled_attempt_immediately_enters_shared_cooldown() -> N
 
 
 def test_stall_is_charged_even_when_the_invocation_already_reported_success() -> None:
-    """Production shape: the agent run finalizes its own attempt as a clean exit.
-
-    The driver then finds the conflicts untouched. That stall must still be
-    charged to the shared ledger, or the same agent is re-invoked forever.
-    """
     controller = _controller()
     session = ResolutionSession(recovery_controller=controller)
     limit = controller.ledger.consecutive_limit

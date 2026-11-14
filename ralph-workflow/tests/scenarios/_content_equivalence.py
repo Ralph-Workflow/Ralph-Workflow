@@ -1,15 +1,3 @@
-"""Shared support for the integration-lifecycle scenario catalog.
-
-The module carries two things the scenario files share:
-
-* ``assert_content_equivalence`` -- the reusable group-10 assertion helper.
-  Every landing scenario calls it so that "the work reached the target" is
-  always checked as *content*, never as a recorded SHA.
-* small builders that drive the real integration entry point with the real
-  ``tmp_git_repo`` template, so no scenario needs its own virtualenv, clock
-  sleep or per-commit shell loop.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -56,18 +44,7 @@ __all__ = [
 ]
 
 
-# --------------------------------------------------------------------------
-# configuration
-# --------------------------------------------------------------------------
-
-
 def lifecycle_config(**conflict_resolution_overrides: object) -> UnifiedConfig:
-    """The scenario configuration, with optional conflict-resolution overrides.
-
-    The defaults are exactly the harness' ``scenario_config()`` values, so a
-    scenario that does not override anything runs with the same budget as every
-    other lifecycle scenario.
-    """
     payload: dict[str, object] = {
         "general": {
             "auto_integrate_enabled": True,
@@ -86,15 +63,8 @@ def lifecycle_config(**conflict_resolution_overrides: object) -> UnifiedConfig:
     return UnifiedConfig.model_validate(payload)
 
 
-# --------------------------------------------------------------------------
-# git plumbing helpers
-# --------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class FastImportCommit:
-    """One commit for :func:`fast_import_commits`."""
-
     ref: str
     message: str
     files: tuple[tuple[str, bytes], ...]
@@ -103,11 +73,6 @@ class FastImportCommit:
 
 
 def fast_import_commits(root: Path, commits: Sequence[FastImportCommit]) -> None:
-    """Create many commits with a single ``git fast-import`` invocation.
-
-    ``git fast-import`` is plain git plumbing: one process, no per-commit shell
-    loop, which keeps the large-work scenario inside the suite time budget.
-    """
     stream = bytearray()
     blob_marks: list[list[int]] = []
     commit_marks: list[int] = []
@@ -164,7 +129,6 @@ def build_feature_branch(
     message: str = "feature change",
     branch: str = "feature",
 ) -> str:
-    """Create ``branch`` from the current target tip with one commit."""
     git(root, "checkout", "-q", "-b", branch)
     for relative, content in files.items():
         path = root / relative
@@ -175,15 +139,8 @@ def build_feature_branch(
     return git(root, "rev-parse", "HEAD")
 
 
-# --------------------------------------------------------------------------
-# content equivalence (catalog group 10)
-# --------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class ContentEquivalence:
-    """The three content-equivalence obligations of catalog group 10."""
-
     missing: tuple[str, ...] = ()
     unexpected: tuple[str, ...] = ()
     lost: tuple[str, ...] = ()
@@ -224,7 +181,6 @@ def _changed_paths(root: Path, base: str, feature: str) -> tuple[str, ...]:
 
 
 def snapshot_uncommitted(root: Path, paths: Iterable[str]) -> dict[str, bytes]:
-    """Snapshot the bytes of worktree paths that are not committed."""
     snapshot: dict[str, bytes] = {}
     for relative in paths:
         candidate = root / relative
@@ -272,14 +228,6 @@ def content_equivalence(
     source_refs: Sequence[str] = (),
     preserved: Mapping[str, bytes] | None = None,
 ) -> ContentEquivalence:
-    """Compare the feature's content with the target's content.
-
-    * every non-excluded change the feature made must be visible on the
-      target (the target must not still carry the pre-feature content),
-    * nothing may appear on the target that comes from neither the feature,
-      the merge base nor the target's own pre-integration state,
-    * uncommitted worktree content must still be present afterwards.
-    """
     excluded = set(excluded_paths)
     resolved_base = base if base is not None else _merge_base(root, target, feature)
     unexpected: list[str] = []
@@ -326,7 +274,6 @@ def assert_content_equivalence(
     source_refs: Sequence[str] = (),
     preserved: Mapping[str, bytes] | None = None,
 ) -> ContentEquivalence:
-    """Assert catalog group 10 and return the report for further assertions."""
     report = content_equivalence(
         root,
         target=target,
@@ -340,14 +287,7 @@ def assert_content_equivalence(
     return report
 
 
-# --------------------------------------------------------------------------
-# driving the real integration entry point
-# --------------------------------------------------------------------------
-
-
 class CountingResolver:
-    """Wrap a rebase-stop resolver and count how often it is launched."""
-
     def __init__(self, inner: RebaseStopResolver) -> None:
         self.inner = inner
         self.launches = 0
@@ -361,8 +301,6 @@ class CountingResolver:
 
 @dataclass(frozen=True)
 class IntegrationRun:
-    """What one integration tick did."""
-
     state: RebaseState | None
     error: str | None
     operator_lines: tuple[OperatorLine, ...] = ()
@@ -382,7 +320,6 @@ def drive_integration(
     conflict_resolver: ConflictResolver | None = None,
     state: RebaseState | None = None,
 ) -> IntegrationRun:
-    """Run one integration tick against ``root`` and report what happened."""
     effective_config = config if config is not None else lifecycle_config()
     inner = resolver if resolver is not None else FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
     counting = CountingResolver(inner)
