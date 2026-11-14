@@ -489,18 +489,17 @@ def _warn_chain_not_spent(target: str, session: ResolutionSession) -> None:
     )
 
 
-def _not_spent_resolution_outcome(
-    session: ResolutionSession,
-    carried_cause: ResolutionFailureCause,
-) -> tuple[StopResolutionOutcome, str | None]:
-    reason: str | None
+def _determine_not_spent_reason(
+    session: ResolutionSession, carried_cause: ResolutionFailureCause
+) -> str | None:
     if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH:
         reason = session.operator_action_message or session.exhaustion_reason
         if not reason and session.unresolved_paths:
             from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
 
-            reason = gitlink_escalation_message(session.unresolved_paths)
-    elif session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+            return gitlink_escalation_message(session.unresolved_paths)
+        return reason
+    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         reason = session.operator_action_message or session.exhaustion_reason
         if not reason or "needs operator action:" not in reason:
             from ralph.pipeline.conflict_resolution._operator_command import (
@@ -508,19 +507,26 @@ def _not_spent_resolution_outcome(
             )
 
             paths = tuple(session.unresolved_paths)
-            reason = (
+            return (
                 "all resolver agents are spent/unavailable; conflict on "
                 f"{', '.join(paths)} needs operator action: {operator_command_for_paths(paths)}"
             )
-    elif carried_cause in (
+        return reason
+    if carried_cause in (
         ResolutionFailureCause.CONFIG_FAILURE,
         ResolutionFailureCause.CONTEXT_FAILURE,
     ):
-        reason = session.exhaustion_reason or (
+        return session.exhaustion_reason or (
             session.terminal_reason.value if session.terminal_reason is not None else None
         )
-    else:
-        reason = None
+    return None
+
+
+def _not_spent_resolution_outcome(
+    session: ResolutionSession,
+    carried_cause: ResolutionFailureCause,
+) -> tuple[StopResolutionOutcome, str | None]:
+    reason = _determine_not_spent_reason(session, carried_cause)
     outcome: StopResolutionOutcome
     if session.last_resolution_outcome is not None and not isinstance(
         session.last_resolution_outcome, ResolvedOutcome

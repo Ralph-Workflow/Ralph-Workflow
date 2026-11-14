@@ -68,6 +68,9 @@ if TYPE_CHECKING:
         def get(self, name: str) -> AgentConfig | None: ...
 
 
+run_conflict_resolution_outcome = run_conflict_resolution_pipeline
+run_rebase_conflict_resolution_outcome = run_rebase_conflict_resolution_pipeline
+
 _WARN_CHANNEL = "auto-integrate"
 
 

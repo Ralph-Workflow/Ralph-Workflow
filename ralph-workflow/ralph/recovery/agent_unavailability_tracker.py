@@ -204,6 +204,10 @@ class AgentUnavailabilityTracker:
     def scope(self) -> Literal["session", "persistent"]:
         return self._scope
 
+    @property
+    def clock(self) -> Clock:
+        return self._clock
+
 
 __all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityStore"]
 
@@ -218,7 +222,7 @@ _READONLY_PUBLIC_METHODS: frozenset[str] = frozenset(
         "snapshot",
     }
 )
-_READONLY_PROPERTIES: frozenset[str] = frozenset({"scope"})
+_READONLY_PROPERTIES: frozenset[str] = frozenset({"scope", "clock"})
 
 
 def _is_property_decorated(member: ast.FunctionDef) -> bool:

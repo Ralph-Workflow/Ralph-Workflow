@@ -57,7 +57,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
-    from ralph.recovery.controller import RecoveryController
 
 __all__ = [
     "RoundAttempt",
@@ -195,7 +194,9 @@ def _handle_candidate_failure(
     else:
         outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
         raw_failure = (
-            session.last_attempt_failure if isinstance(session.last_attempt_failure, str) else None
+            session.last_attempt_failure
+            if isinstance(session.last_attempt_failure, str)
+            else None
         )
     _driver_mod.classify_failed_resolution_attempt(
         session,
@@ -474,50 +475,17 @@ def _preferred_conflict_candidate(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-    if (
-        delay == 0
-        and not session.caller_provided
-        and hasattr(controller, "ledger")
-        and controller.ledger is not None
-    ):
-        delay = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
-    if delay > 0:
-        return _wait_and_select_candidate(controller, session, candidates, eligible, delay)
-    return None
+    def _candidate_wait_ms(name: str) -> int:
+        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+        if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
+            wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
+        return wait
 
-
-def _wait_and_select_candidate(
-    controller: RecoveryController,
-    session: ResolutionSession,
-    candidates: tuple[str, ...],
-    eligible: list[str],
-    delay: int,
-) -> int | None:
-    del session
-    from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
-    mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-    _driver_mod._sleep_seconds(delay / 1000.0)
-    mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-    if mono_after - mono_before < (delay / 1000.0) * 0.5:
-        from ralph.agents.timeout_clock import FakeClock
-
-        clock_inst = controller.clock
-        if isinstance(clock_inst, FakeClock):
-            clock_inst.advance(delay / 1000.0)
-        controller.prune_expired()
-    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
-    if selection.agent is not None:
-        return candidates.index(selection.agent)
-    from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
-
-    def _sort_key(name: str) -> int:
-        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-
-    if current_clock() is _DEFAULT_CLOCK:
-        return candidates.index(min(eligible, key=_sort_key))
-    return None
+    shortest_agent = min(
+        eligible,
+        key=_candidate_wait_ms,
+    )
+    return candidates.index(shortest_agent)
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

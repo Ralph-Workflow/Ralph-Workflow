@@ -50,7 +50,9 @@ class _FakePlumbing:
         self._head = head
         self._target_shas = target_shas if target_shas is not None else {"main": "f00d"}
         self._commit_ref = commit_ref
-        self._readable_refs = readable_refs
+        self._readable_refs = (
+            readable_refs if commit_ref is None else (readable_refs | {commit_ref})
+        )
         self.rename_blocked = rename_blocked
         self._pruned_landed = pruned_landed
         self.fail_patch = fail_patch

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from ralph.pipeline import auto_integrate_agent as agent_module
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, RebaseStopResolver
+from ralph.pipeline.resolution_outcome import STOP_RESOLUTION_OUTCOMES
 
 if TYPE_CHECKING:
     import pytest
