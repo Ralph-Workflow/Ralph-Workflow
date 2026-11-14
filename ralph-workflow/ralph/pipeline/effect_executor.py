@@ -915,6 +915,23 @@ def _maybe_validate_artifact_contract(
     )
 
 
+def _resolve_bridge_and_run_id(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+    bridge: RestartAwareMcpBridge | None,
+    run_id: str | None,
+) -> tuple[RestartAwareMcpBridge, str, bool]:
+    if fresh_bridge_requested() is True:
+        bridge = None
+    own_bridge = bridge is None
+    effective_run_id = run_id or str(uuid.uuid4())
+    if bridge is None:
+        bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
+    elif run_id is None:
+        effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
+    return bridge, effective_run_id, own_bridge
+
+
 def _invoke_agent_with_recovery(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
@@ -934,21 +951,15 @@ def _invoke_agent_with_recovery(
     recovery_controller: RecoveryController | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
-    raw_fresh_bridge: object = fresh_bridge_requested()
-    if raw_fresh_bridge is True:
-        bridge = None
-    own_bridge = bridge is None
-    effective_run_id = run_id or str(uuid.uuid4())
+    bridge, effective_run_id, own_bridge = _resolve_bridge_and_run_id(
+        ctx, pipeline_deps, bridge, run_id
+    )
     resolved_required_artifact = _resolve_required_artifact(
         ctx,
         pipeline_deps,
         required_artifact,
     )
     _maybe_validate_artifact_contract(ctx, resolved_required_artifact)
-    if bridge is None:
-        bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
-    elif run_id is None:
-        effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
     state = _AttemptState(
         prompt_file=ctx.effect.prompt_file,
         resume_session_id=session_id or _initial_resume_session_id(ctx),
@@ -1093,6 +1104,8 @@ def _invoke_agent_with_recovery(
         AgentInactivityTimeoutError,
         SupervisionInfrastructureError,
     ) as exc:
+        if surfaces_supervision_error(ctx.effect, exc):
+            raise
         if isinstance(exc, McpServerError):
             terminal_mcp_error = True
             if own_bridge and bridge is not None:

@@ -22,6 +22,7 @@ from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.canary_probe import run_canary_probe
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.dead_agent_probe import (
     build_dead_agent_probe_runner,
@@ -438,5 +439,6 @@ __all__ = (
     "registered_entry_points",
     "registered_runners",
     "run_agent_attempt",
+    "run_canary_probe",
     "seamed_dead_agent_probe_runner",
 )

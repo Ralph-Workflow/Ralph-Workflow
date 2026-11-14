@@ -11,22 +11,14 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PolicyBundle
 
-import ralph.pipeline.conflict_resolution._driver_events as _de
-import ralph.pipeline.conflict_resolution._driver_rounds as _dr
-import ralph.pipeline.conflict_resolution.rebase_loop as _rl
-import ralph.pipeline.conflict_resolution.round_verdict as _rv
-import ralph.pipeline.conflict_resolution.session as _rs
-import ralph.pipeline.resolution_outcome as _ro
 from ralph.agents.clock import Clock
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.pipeline._retry_later_outcome import RetryLaterOutcome as _FullRetryLaterOutcome
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
-from ralph.pipeline.conflict_resolution.git_worktree_observer import GitWorktreeConflictObserver
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
@@ -39,7 +31,7 @@ from ralph.pipeline.integration_actions import install_executors, reset_executor
 from ralph.pipeline.resolution_outcome import (
     ResolvedOutcome,
     RetryLaterOutcome,
-    UnknownOutcome,
+    StopResolutionOutcome,
 )
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
@@ -51,16 +43,6 @@ from tests._conflict_resolution_phase_parity_seams import (
     _install_seams,
     _policy_bundle,
 )
-
-GitWorktreeConflictObserver.path_exists = lambda self, path: True
-GitWorktreeConflictObserver.is_effectively_empty = lambda self, path: False
-
-_dr.RetryLaterOutcome = _FullRetryLaterOutcome
-_de.RetryLaterOutcome = _FullRetryLaterOutcome
-_rv.RetryLaterOutcome = _FullRetryLaterOutcome
-_rs.RetryLaterOutcome = _FullRetryLaterOutcome
-_rl.RetryLaterOutcome = _FullRetryLaterOutcome
-_ro.RetryLaterOutcome = _FullRetryLaterOutcome
 
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
@@ -160,11 +142,13 @@ def run_conflict_resolution_pipeline(
     adapted_invoke = None
     if invoke is not None:
 
-        def _invoke_adapter(*args: object, **kw: object) -> object:
+        def _invoke_adapter(*args: object, **kw: object) -> StopResolutionOutcome:
             res = invoke(*args, **kw)
             if isinstance(res, bool):
-                return ResolvedOutcome() if res else _FullRetryLaterOutcome(on_change="unresolved")
-            return res
+                return ResolvedOutcome() if res else RetryLaterOutcome(on_change="unresolved")
+            if isinstance(res, StopResolutionOutcome):
+                return res
+            raise TypeError(f"Unexpected invoke return type: {type(res)}")
 
         adapted_invoke = _invoke_adapter
 
@@ -462,18 +446,19 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
     prompt = tmp_path / "prompt.md"
     prompt.write_text("resolve", encoding="utf-8")
     config = UnifiedConfig.model_validate({"general": {"max_same_agent_retries": 4}})
-    outcome = invoke_resolution_agent(
-        agent_name="claude",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
+    assert (
+        invoke_resolution_agent(
+            agent_name="claude",
+            prompt_path=prompt,
+            config=config,
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+        )
+        is False
     )
-    assert isinstance(outcome, UnknownOutcome)
-    assert outcome.succeeded is False
     assert captured == [4]
     assert probed, "the failed resolution attempt must still reach the dead-agent probe boundary"
 
@@ -855,19 +840,20 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    outcome = invoke_resolution_agent(
-        agent_name="pi",
-        prompt_path=prompt,
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        session=session,
+    assert (
+        invoke_resolution_agent(
+            agent_name="pi",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
     )
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert outcome.succeeded is False
     assert session.last_attempt_failure == "PiContextExhaustedExitError"
     assert session.skip_same_agent_retries is True
     assert effect_executor_module.pop_last_captured_retry_intent().failure_reason == ""
@@ -893,19 +879,20 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    outcome = invoke_resolution_agent(
-        agent_name="claude",
-        prompt_path=prompt,
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        session=session,
+    assert (
+        invoke_resolution_agent(
+            agent_name="claude",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
     )
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert outcome.succeeded is False
     assert session.last_attempt_failure == "conflict attempt failed"
     assert session.skip_same_agent_retries is False
     assert session.last_attempt_saw_activity is True
@@ -925,19 +912,20 @@ def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    outcome = invoke_resolution_agent(
-        agent_name="claude",
-        prompt_path=prompt,
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        session=session,
+    assert (
+        invoke_resolution_agent(
+            agent_name="claude",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
     )
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert outcome.succeeded is False
     assert session.last_attempt_saw_activity is False
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXITED
 
@@ -967,19 +955,20 @@ def test_an_uninstalled_candidate_is_unavailable_not_declining(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    outcome = invoke_resolution_agent(
-        agent_name="pi",
-        prompt_path=prompt,
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        session=session,
+    assert (
+        invoke_resolution_agent(
+            agent_name="pi",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
     )
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert outcome.succeeded is False
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     assert session.skip_same_agent_retries is True
 

@@ -368,8 +368,6 @@ class AgentFailureLedger:
         unavailable_reason: str | None = None,
     ) -> AgentEligibility:
         now_ms = int(self._clock.monotonic() * 1000)
-        if spent_reason is not None:
-            return Spent(reason=spent_reason)
         status = self.status(phase, agent)
         if isinstance(status, (Spent, Unavailable)):
             return status
@@ -377,6 +375,8 @@ class AgentFailureLedger:
             return status
         if cooldown is not None and now_ms < cooldown[0]:
             return CoolingDown(until_ms=cooldown[0], reason=cooldown[1])
+        if spent_reason is not None:
+            return Spent(reason=spent_reason)
         if unavailable_reason is not None:
             return Unavailable(reason=unavailable_reason)
         return Eligible()

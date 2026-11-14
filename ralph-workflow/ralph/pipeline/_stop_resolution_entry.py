@@ -212,10 +212,8 @@ def compute_resolution_attempt_key(
 def _stored_key(
     root: Path, record: IntegrationRecord
 ) -> tuple[str | None, tuple[str, ...], str | None] | None:
-    if record.resolution_gate_key is not None:
-        return record.resolution_gate_key
-    current = read_record(root)
-    return None if current is None else current.resolution_gate_key
+    del root
+    return record.resolution_gate_key
 
 
 def _clock_ms(clock: Clock | None) -> int:
@@ -262,7 +260,7 @@ def _record_failed_attempt(
         "resolution_gate_key": tuple(key),
         "last_failure_cause": effective_cause,
     }
-    if failure_reason:
+    if failure_reason is not None:
         updates["rebase_continue_error"] = failure_reason
     write_record(
         trigger.root,
@@ -433,23 +431,24 @@ def attempt_stop_resolution(
                 | UnknownOutcome()
             ):
                 attempt_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+                failure_reason: str | None = None
                 if isinstance(result, (ResolvedOutcome, RetryLaterOutcome)):
                     if result.failure_cause is not None:
                         attempt_cause = result.failure_cause
+                    failure_reason = str(result.reason) if result.reason is not None else None
                 elif isinstance(result, ConfigFailureOutcome):
                     attempt_cause = ResolutionFailureCause.CONFIG_FAILURE
+                    failure_reason = str(result.reason) if result.reason is not None else None
+                elif isinstance(result, (WaitingOutcome, NextStrategyOutcome, UnknownOutcome)):
+                    failure_reason = str(result.reason) if result.reason is not None else None
                 if attempt_cause == ResolutionFailureCause.NONE:
                     attempt_cause = _deferred_failure_cause(trigger.root, trigger.record)
-                failure_reason: str | None = None
-                if isinstance(result, RetryLaterOutcome):
-                    failure_reason = result.on_change
-                elif isinstance(result, ConfigFailureOutcome):
-                    failure_reason = f"fix {result.file} then run ralph --check-config"
-                elif isinstance(result, WaitingOutcome):
-                    failure_reason = result.external_condition
-                elif isinstance(result, UnknownOutcome):
-                    failure_reason = str(result.error)
-                _record_failed_attempt(trigger, post_key, attempt_cause, failure_reason=failure_reason)
+                _record_failed_attempt(
+                    trigger,
+                    post_key,
+                    attempt_cause,
+                    failure_reason=failure_reason,
+                )
             case _ as unreachable:
                 assert_never(unreachable)
     else:
@@ -457,7 +456,10 @@ def attempt_stop_resolution(
 
         if isinstance(result, MergeResult) and result.outcome != "success":
             _record_failed_attempt(
-                trigger, post_key, result.failure_cause, failure_reason=result.reason
+                trigger,
+                post_key,
+                result.failure_cause,
+                failure_reason=result.reason,
             )
     return result
 
@@ -542,7 +544,7 @@ def _resolve_rebase_with_config(
                 paths=session.unresolved_paths,
             )
         )
-        _persist_resolution_cause(root, carried_cause, record)
+        _persist_resolution_cause(root, carried_cause, reason=reason, record=record)
         return outcome
     reason = (
         session.operator_action_message
@@ -580,7 +582,8 @@ def _resolve_rebase_with_config(
         carried_cause
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT,
-        record,
+        reason=reason,
+        record=record,
     )
     return outcome
 
@@ -588,8 +591,12 @@ def _resolve_rebase_with_config(
 def _persist_resolution_cause(
     root: Path,
     cause: ResolutionFailureCause,
+    reason: str | None = None,
     record: IntegrationRecord | None = None,
 ) -> None:
     current = read_record(root) or record
     if current is not None:
-        write_record(root, current.model_copy(update={"last_failure_cause": cause}))
+        updates: dict[str, object] = {"last_failure_cause": cause}
+        if reason is not None:
+            updates["rebase_continue_error"] = reason
+        write_record(root, current.model_copy(update=updates))

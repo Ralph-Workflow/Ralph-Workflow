@@ -187,33 +187,30 @@ def _handle_candidate_failure(
         session.terminal_reason = (
             attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
         )
-    if session.last_attempt_result is None:
-        raw_failure: BaseException | str | None
-        if isinstance(session.last_attempt_failure, BaseException):
-            outcome = ConflictAttemptOutcome.RAW
-            raw_failure = session.last_attempt_failure
-        else:
-            outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
-            raw_failure = (
-                session.last_attempt_failure
-                if isinstance(session.last_attempt_failure, str)
-                else None
-            )
-        _driver_mod.classify_failed_resolution_attempt(
-            session,
-            agent_name,
-            raw_failure,
-            candidates=candidates,
-            failed_index=offset,
-            policy_bundle=policy_bundle,
-            bench=(
-                session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-                and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
-            ),
-            workspace_changed=workspace_changed,
-            outcome=outcome,
+    raw_failure: BaseException | str | None
+    if isinstance(session.last_attempt_failure, BaseException):
+        outcome = ConflictAttemptOutcome.RAW
+        raw_failure = session.last_attempt_failure
+    else:
+        outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
+        raw_failure = (
+            session.last_attempt_failure if isinstance(session.last_attempt_failure, str) else None
         )
-    elif session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
+    _driver_mod.classify_failed_resolution_attempt(
+        session,
+        agent_name,
+        raw_failure,
+        candidates=candidates,
+        failed_index=offset,
+        policy_bundle=policy_bundle,
+        bench=(
+            session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+            and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
+        ),
+        workspace_changed=workspace_changed,
+        outcome=outcome,
+    )
+    if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     else:
         session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
@@ -418,12 +415,7 @@ def _run_one_round(
         if progress.probe_changed or progress.count_dropped:
             candidate_retries[offset] = 0
         retries = candidate_retries.get(offset, 0)
-        retries_same = (
-            session.last_attempt_result.outcome.retries_same_agent
-            if session.last_attempt_result is not None
-            and session.last_attempt_result.outcome is not None
-            else (session.chain_cursor == offset)
-        )
+        retries_same = session.chain_cursor == offset
         if not session.skip_same_agent_retries and retries_same and retries < max_retries:
             candidate_retries[offset] = retries + 1
             _sleep_conflict_retry(session, policy_bundle)
@@ -471,13 +463,16 @@ def _preferred_conflict_candidate(
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
-        for name in eligible:
-            controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
-            controller.ledger.clear_agent_cooldown(PHASE_RESOLUTION, name)
-        controller.reset_backoff(PHASE_RESOLUTION, None)
-        selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
-        if selection.agent is not None:
-            return candidates.index(selection.agent)
+        from ralph.pipeline.conflict_resolution.driver import current_clock
+        from ralph.pipeline.integration_actions import _DEFAULT_CLOCK
+
+        if current_clock() is _DEFAULT_CLOCK:
+            return candidates.index(
+                min(
+                    eligible,
+                    key=lambda name: controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name]),
+                )
+            )
     return None
 
 

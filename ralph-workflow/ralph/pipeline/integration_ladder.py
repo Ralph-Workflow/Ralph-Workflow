@@ -791,12 +791,8 @@ def _last_resort_agent_wait(
     wait_seconds: float,
     epoch_now: Callable[[], float],
 ) -> LadderStepResult | None:
-    if agent_eligibility is None and not agent_pools:
-        return None
     if agent_eligibility is None or not agent_pools:
-        value = "waiting:last-resort-agent-proof-unavailable"
-        _record_evidence(ledger, key, value)
-        return LadderStepResult(rung, "waiting", value, evidence={key: value})
+        return None
     wait_proof = last_resort_wait_proof(
         ledger=ledger,
         eligibility=agent_eligibility,
@@ -951,7 +947,7 @@ def last_resort_recovery(
         git.remove_operation_state(root, in_progress_kind)
 
     if feature_tip is not None and git.ref_is_readable(root, feature_tip):
-        tip: str = feature_tip
+        tip = feature_tip
     else:
         tip = target
     if not git.reset_hard(root, tip) and not (

@@ -48,6 +48,10 @@ class RetryLaterOutcome:
 
     @property
     def reason(self) -> object:
+        if self.on_change is not None:
+            return self.on_change
+        if self.until is not None:
+            return f"retry after {self.until}"
         return self.terminal_reason
 
     def __iter__(self) -> Iterator[object]:

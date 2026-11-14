@@ -26,10 +26,10 @@ class WaitingOutcome:
     def reason(self) -> object:
         return self.terminal_reason
     def __iter__(self) -> Iterator[object]:
-        return iter((False, self.external_condition))
+        return iter((False, self.external_condition or ""))
 
     def __getitem__(self, index: int) -> object:
-        return (False, self.external_condition)[index]
+        return (False, self.external_condition or "")[index]
 
     def __len__(self) -> int:
         return 2
@@ -63,4 +63,3 @@ class WaitingOutcome:
             and (self.succeeded, self.reason, self.unresolved_paths)
             == (other.succeeded, other.reason, other.unresolved_paths)
         )
-

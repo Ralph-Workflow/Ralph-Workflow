@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loguru import logger
 
@@ -302,6 +302,11 @@ def _record_publication_failure(
     return new_state
 
 
+@runtime_checkable
+class _OutcomeWithSucceeded(Protocol):
+    succeeded: bool
+
+
 def _dispatch_ref_comparison(
     *,
     config: UnifiedConfig | None,
@@ -357,23 +362,22 @@ def _dispatch_ref_comparison(
             reclaim_target_worktree=False,
             remote_sha=remote_sha,
         )
-        from ralph.pipeline.resolution_outcome import (
-            ResolvedOutcome,
-            RetryLaterOutcome,
-            WaitingOutcome,
-        )
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
         if isinstance(raw_outcome, tuple):
-            advanced = bool(raw_outcome[0])
-            refusal = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
+            advanced, refusal = (
+                bool(raw_outcome[0]),
+                str(raw_outcome[1]) if len(raw_outcome) > 1 else "",
+            )
         elif isinstance(raw_outcome, bool):
             advanced, refusal = raw_outcome, "" if raw_outcome else "fast forward failed"
         elif isinstance(raw_outcome, ResolvedOutcome):
             advanced, refusal = True, ""
-        elif isinstance(raw_outcome, RetryLaterOutcome):
-            advanced, refusal = False, raw_outcome.on_change or ""
-        elif isinstance(raw_outcome, WaitingOutcome):
-            advanced, refusal = False, raw_outcome.external_condition
+        elif isinstance(raw_outcome, _OutcomeWithSucceeded):
+            advanced = bool(raw_outcome.succeeded)
+            on_change: object = getattr(raw_outcome, "on_change", None)
+            reason: object = getattr(raw_outcome, "reason", "")
+            refusal = str(on_change or reason or "")
         else:
             advanced, refusal = False, str(raw_outcome)
         if advanced:

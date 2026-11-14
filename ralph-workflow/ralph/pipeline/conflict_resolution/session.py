@@ -15,6 +15,7 @@ from ralph.pipeline.agent_entry_point import (
     register_entry_point,
     registered_entry_points,
 )
+from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.attempt_runner import run_agent_attempt
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -31,6 +32,7 @@ from ralph.pipeline.effect_executor import (
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
@@ -42,7 +44,6 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
@@ -295,23 +296,37 @@ def ensure_session_controller(
             session.recovery_controller = controller
             session.ledger = controller.ledger
         return controller
-    store = session.unavailability_store if session is not None else None
+    store = (
+        session.unavailability_store
+        if session is not None and session.unavailability_store is not None
+        else (
+            getattr(pipeline_deps, "unavailability_store", None)
+            if pipeline_deps is not None
+            else None
+        )
+    )
+    if session is not None and session.unavailability_store is None and store is not None:
+        session.unavailability_store = store
     ledger = (
         pipeline_deps.ledger
         if pipeline_deps is not None and pipeline_deps.ledger is not None
         else (session.ledger if session is not None else None)
     )
-    deps_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
-    ledger_clock = getattr(ledger, "clock", None) if ledger is not None else None
-    clock: Clock
-    if isinstance(deps_clock, Clock):
-        clock = deps_clock
-    elif isinstance(ledger_clock, Clock):
-        clock = ledger_clock
-    else:
-        from ralph.pipeline.integration_actions import current_clock
-
-        clock = _LegacyClockAdapter(current_clock())
+    if ledger is None and store is not None and getattr(store, "_failure_ledger", None) is not None:
+        ledger = getattr(store, "_failure_ledger")
+    store_clock: object = getattr(store, "_clock", None) if store is not None else None
+    deps_clock: object = (
+        getattr(pipeline_deps, "recovery_clock", None) if pipeline_deps is not None else None
+    )
+    clock: Clock = (
+        ledger._clock
+        if ledger is not None and isinstance(getattr(ledger, "_clock", None), Clock)
+        else (
+            store_clock
+            if isinstance(store_clock, Clock)
+            else (deps_clock if isinstance(deps_clock, Clock) else SystemClock())
+        )
+    )
     effective_probe_runner = (
         probe_runner
         if probe_runner is not None
@@ -342,7 +357,6 @@ def ensure_session_controller(
     return controller
 
 
-
 def classify_failed_resolution_attempt(
     session: ResolutionSession | None,
     agent_name: str,
@@ -357,6 +371,8 @@ def classify_failed_resolution_attempt(
     outcome: ConflictAttemptOutcome | None = None,
     unresolved_count: int = 0,
 ) -> None:
+    if session is None:
+        return
     del bench, outcome, unresolved_count
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
@@ -395,8 +411,19 @@ def classify_failed_resolution_attempt(
             exc=exc,
         )
         session.last_recovery_reason = attempt_outcome.reason
+        session.last_attempt_result = AttemptResult(
+            event=PipelineEvent.AGENT_FAILURE,
+            facts=facts,
+            outcome=attempt_outcome,
+            attempt_outcomes=((1, attempt_outcome),),
+        )
     else:
-        last_outcome = session.last_attempt_result.outcome
+        last_outcome = (
+            session.last_attempt_result.outcome
+            if session.last_attempt_result is not None
+            and session.last_attempt_result.outcome is not None
+            else controller.last_attempt_outcome
+        )
         session.last_recovery_reason = (
             last_outcome.reason
             if last_outcome is not None and last_outcome.reason
@@ -425,10 +452,10 @@ def classify_failed_resolution_attempt(
         not session.skip_same_agent_retries
         and not candidate_unavailable
         and agent_available
-        and current_retries < max_retries
+        and (workspace_changed or current_retries < max_retries)
     ):
         session.chain_cursor = failed_index
-        next_retries = current_retries + 1
+        next_retries = 0 if workspace_changed else current_retries + 1
     else:
         session.skip_same_agent_retries = False
         candidates_tuple = tuple(candidates) if candidates else (agent_name,)
@@ -529,6 +556,12 @@ def invoke_resolution_agent(
 
     def _supervision_health_error() -> str | None:
         return None if observed_fault is None else observed_fault.value
+    wrapped_listener = wrap_activity_listener(
+        activity_status_listener,
+        session,
+        agent_name=agent_name,
+        on_fault=_record_fault,
+    )
     effect = InvokeAgentEffect(
         agent_name=agent_name,
         phase=PHASE_RESOLUTION,
@@ -538,12 +571,7 @@ def invoke_resolution_agent(
         requires_completion_evidence=require_completion_evidence,
         activity_only_supervision=True,
         activity_only_status_interval_seconds=status_interval_seconds,
-        activity_status_listener=wrap_activity_listener(
-            activity_status_listener,
-            session,
-            agent_name=agent_name,
-            on_fault=_record_fault,
-        ),
+        activity_status_listener=wrapped_listener,
         supervision_health_error=_supervision_health_error,
     )
     try:
@@ -570,16 +598,67 @@ def invoke_resolution_agent(
         _record_attempt_failure(session, exc)
         _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
+        if session is not None:
+            facts = AttemptFacts(artifact_valid=False, workspace_changed=False)
+            outcome = controller.last_attempt_outcome
+            if outcome is None:
+                outcome = controller.finalize_attempt(
+                    PHASE_RESOLUTION,
+                    agent_name,
+                    facts=facts,
+                    attempt_failed=True,
+                    exc=exc,
+                )
+            session.last_attempt_result = AttemptResult(
+                event=PipelineEvent.AGENT_FAILURE,
+                facts=facts,
+                outcome=outcome,
+                attempt_outcomes=((1, outcome),),
+            )
         return False
     except SupervisionInfrastructureError as exc:
         _record_attempt_failure(session, exc)
         _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
+        if session is not None:
+            facts = AttemptFacts(artifact_valid=False, workspace_changed=False)
+            outcome = controller.last_attempt_outcome
+            if outcome is None:
+                outcome = controller.finalize_attempt(
+                    PHASE_RESOLUTION,
+                    agent_name,
+                    facts=facts,
+                    attempt_failed=True,
+                    exc=exc,
+                )
+            session.last_attempt_result = AttemptResult(
+                event=PipelineEvent.AGENT_FAILURE,
+                facts=facts,
+                outcome=outcome,
+                attempt_outcomes=((1, outcome),),
+            )
         return False
     except Exception as exc:
         _record_attempt_failure(session, exc)
         _record_resolution_exception(session)
         logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
+        if session is not None:
+            outcome = controller.last_attempt_outcome
+            if outcome is None:
+                outcome = controller.finalize_attempt(
+                    PHASE_RESOLUTION,
+                    agent_name,
+                    facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
+                    attempt_failed=True,
+                    exc=exc,
+                )
+            facts = AttemptFacts(artifact_valid=False, workspace_changed=False)
+            session.last_attempt_result = AttemptResult(
+                event=PipelineEvent.AGENT_FAILURE,
+                facts=facts,
+                outcome=outcome,
+                attempt_outcomes=((1, outcome),),
+            )
         return False
     if session is not None:
         session.last_attempt_result = attempt

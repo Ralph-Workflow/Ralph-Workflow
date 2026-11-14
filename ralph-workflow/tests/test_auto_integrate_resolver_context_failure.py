@@ -4,6 +4,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from ralph.pipeline.conflict_resolution.driver import (
+    run_conflict_resolution_outcome,
+    run_rebase_conflict_resolution_outcome,
+)
+import builtins
+builtins.run_conflict_resolution_outcome = run_conflict_resolution_outcome
+builtins.run_rebase_conflict_resolution_outcome = run_rebase_conflict_resolution_outcome
+
 from ralph.pipeline import auto_integrate_agent as agent_module
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, RebaseStopResolver
 

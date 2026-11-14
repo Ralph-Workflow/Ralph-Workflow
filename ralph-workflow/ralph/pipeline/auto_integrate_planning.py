@@ -210,12 +210,7 @@ def _evaluate_paused_resolution(
     match outcome:
         case ResolvedOutcome():
             return True, None
-        case (
-            WaitingOutcome()
-            | RetryLaterOutcome()
-            | ConfigFailureOutcome()
-            | UnknownOutcome()
-        ):
+        case WaitingOutcome() | RetryLaterOutcome() | ConfigFailureOutcome() | UnknownOutcome():
             return True, record_conflict(
                 reason=(
                     result_reason
@@ -285,7 +280,19 @@ def _finish_paused_rebase(
             return None
     except Exception:
         return None
-    from ralph.pipeline.conflict_resolution.rebase_loop import finish_resolved_rebase_stops
+    from ralph.git.merge import observe_branch_sha
+    from ralph.pipeline.conflict_resolution.rebase_loop import (
+        current_rebase_identity,
+        finish_resolved_rebase_stops,
+    )
+
+    try:
+        feature_sha, _ = current_rebase_identity(root)
+        tip, ok = observe_branch_sha(root, "feature")
+        if ok and feature_sha and tip and feature_sha != tip:
+            return _abort_and_fallback_merge(config, root, target, resolver)
+    except Exception:
+        pass
 
     if finish_resolved_rebase_stops(root, target) or resolver is None:
         return None

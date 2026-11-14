@@ -48,8 +48,6 @@ if TYPE_CHECKING:
         def get(self, name: str) -> AgentConfig | None: ...
 
 
-
-
 _WARN_CHANNEL = "auto-integrate"
 
 
@@ -102,7 +100,6 @@ def build_agent_conflict_resolver(
             )
             return NextStrategyOutcome("completion_in_place")
         try:
-
             return run_conflict_resolution_pipeline(
                 root=root,
                 target=target,

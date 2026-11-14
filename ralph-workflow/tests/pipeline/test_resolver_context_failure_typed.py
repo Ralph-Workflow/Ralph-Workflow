@@ -325,7 +325,9 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
         session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
         session.exhaustion_reason = "target worktree context failed: simulated context fault"
-        return RetryLaterOutcome(on_change="target context restored")
+        return RetryLaterOutcome(
+            on_change="target worktree context failed: simulated context fault"
+        )
 
     def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
         outcome = resolver(root, target, None)

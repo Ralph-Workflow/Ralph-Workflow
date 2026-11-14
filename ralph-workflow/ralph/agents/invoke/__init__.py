@@ -245,6 +245,8 @@ def strategy_for_command(
         registry=registry,
         subagent_pid_source=subagent_pid_source,
     )
+
+
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
     return ChildLivenessRegistry(
         progress_ttl=opts.child_progress_ttl_seconds
