@@ -51,6 +51,9 @@ def test_continue_rebase_finishes_conflicted_rebase(
     )
     monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: False)
     monkeypatch.setattr(continuation_module, "head_is_descendant", lambda *_args: True)
+    monkeypatch.setattr(
+        continuation_module, "rebase_in_progress_at", lambda _root: state["in_progress"]
+    )
 
     def fake_run_git(*_args: object, **_kwargs: object) -> GitRunResult:
         state["in_progress"] = False
@@ -58,12 +61,12 @@ def test_continue_rebase_finishes_conflicted_rebase(
 
     monkeypatch.setattr(continuation_module, "run_git", fake_run_git)
 
-    assert rebase_in_progress_at(tmp_path)
+    assert continuation_module.rebase_in_progress_at(tmp_path)
     assert not verify_rebase_completed_at(tmp_path, "main")
 
     continue_rebase_at(tmp_path)
 
-    assert not rebase_in_progress_at(tmp_path)
+    assert not continuation_module.rebase_in_progress_at(tmp_path)
     assert verify_rebase_completed_at(tmp_path, "main")
 
 
@@ -77,13 +80,13 @@ def test_continue_rebase_requires_clean_index(
         "open_repo",
         lambda _repo_root: SimpleNamespace(head=SimpleNamespace(is_detached=False)),
     )
-    monkeypatch.setattr(continuation_module, "rebase_in_progress_impl", lambda _repo: True)
+    monkeypatch.setattr(continuation_module, "rebase_in_progress_at", lambda _root: True)
     monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: True)
 
     with pytest.raises(ConflictRemainingError):
         continue_rebase_at(tmp_path)
 
-    assert rebase_in_progress_at(tmp_path)
+    assert continuation_module.rebase_in_progress_at(tmp_path)
 
 
 def test_continue_rebase_requires_active_rebase(tmp_git_repo: Path) -> None:
@@ -205,7 +208,7 @@ def test_continue_rebase_at_preserves_nonempty_failure(
 ) -> None:
     repo = SimpleNamespace(head=SimpleNamespace(is_detached=False))
     monkeypatch.setattr(continuation_module, "open_repo", lambda _root: repo)
-    monkeypatch.setattr(continuation_module, "rebase_in_progress_impl", lambda _repo: True)
+    monkeypatch.setattr(continuation_module, "rebase_in_progress_at", lambda _root: True)
     monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: False)
 
     def _run_git(args: list[str], **_kwargs: object) -> GitRunResult:
