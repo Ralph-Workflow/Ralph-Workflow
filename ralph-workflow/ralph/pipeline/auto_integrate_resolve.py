@@ -246,9 +246,7 @@ def _handle_sealed_outcome(
                 or on_change
                 or (f"retry after {until}" if until is not None else _RETAINED_RESOLUTION_REASON),
                 failure_cause=(
-                    cause
-                    if cause is not None
-                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
+                    cause if cause is not None else ResolutionFailureCause.UNRESOLVED_CONFLICT
                 ),
             )
         case NextStrategyOutcome(strategy=strategy):

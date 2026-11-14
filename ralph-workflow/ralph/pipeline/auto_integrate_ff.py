@@ -16,9 +16,12 @@ from ralph.git.merge import (
 from ralph.git.operations import find_main_worktree_root
 from ralph.pipeline._auto_integrate_reclaim import ReclaimResult, reclaim_dirty_target_worktree
 from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
+    UnknownOutcome,
     WaitingOutcome,
 )
 

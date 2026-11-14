@@ -506,7 +506,9 @@ def _wait_and_select_candidate(
         if hasattr(clock_inst, "advance"):
             clock_inst.advance(delay / 1000.0)
         store_clock = getattr(
-            controller.unavailability_store, "clock", getattr(controller.unavailability_store, "_clock", None)
+            controller.unavailability_store,
+            "clock",
+            getattr(controller.unavailability_store, "_clock", None),
         )
         if store_clock is not clock_inst and hasattr(store_clock, "advance"):
             store_clock.advance(delay / 1000.0)

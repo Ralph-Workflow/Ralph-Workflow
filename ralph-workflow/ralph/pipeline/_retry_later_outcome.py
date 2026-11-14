@@ -19,7 +19,6 @@ class RetryLaterOutcome:
     on_change: str | None = None
     terminal_reason: object | None = None
     unresolved_paths: tuple[str, ...] = ()
-    terminal_reason: object | None = None
     failure_cause: ResolutionFailureCause | None = None
 
     def __post_init__(self) -> None:
@@ -51,9 +50,7 @@ class RetryLaterOutcome:
         return False
 
     def __hash__(self) -> int:
-        return hash(
-            (self.until, self.on_change, self.terminal_reason, self.unresolved_paths)
-        )
+        return hash((self.until, self.on_change, self.terminal_reason, self.unresolved_paths))
 
     def __eq__(self, other: object) -> bool:
         if (

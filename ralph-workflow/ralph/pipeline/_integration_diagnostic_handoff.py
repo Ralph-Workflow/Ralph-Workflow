@@ -681,7 +681,9 @@ def create_planning_handoff_record(
         "next_phase": next_phase,
     }
     carry_path = Path(manifest_path).with_name(PLANNING_HANDOFF_FILENAME)
-    write_text_if_changed(DEFAULT_FILE_BACKEND, carry_path, json.dumps(payload, indent=2), encoding="utf-8")
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND, carry_path, json.dumps(payload, indent=2), encoding="utf-8"
+    )
     if ledger is not None:
         _record_evidence(ledger, "preserved:planning-handoff", str(carry_path))
     return carry_path

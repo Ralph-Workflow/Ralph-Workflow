@@ -73,12 +73,6 @@ class RebaseResolutionResult:
         object.__setattr__(self, "terminal_reason", terminal_reason)
         object.__setattr__(self, "_raw_succeeded", raw_succ)
 
-    @property
-    def succeeded(self) -> bool:
-        if self._raw_succeeded is not None:
-            return self._raw_succeeded
-        raise AttributeError("succeeded")
-
     def _succeeded(self) -> bool:
         if self._raw_succeeded is not None:
             return self._raw_succeeded

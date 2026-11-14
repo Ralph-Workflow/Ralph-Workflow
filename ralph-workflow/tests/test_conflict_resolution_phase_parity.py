@@ -105,7 +105,9 @@ def _ensure_parity_session_controller(
             def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
                 return event.wait(seconds)
 
-        ledger_clock = getattr(session.ledger, "clock", None) if session.ledger is not None else None
+        ledger_clock = (
+            getattr(session.ledger, "clock", None) if session.ledger is not None else None
+        )
         clock_source = ledger_clock if ledger_clock is not None else current_clock()
         cw = _ClockWrapper(clock_source)
         probe_runner = production_dead_agent_probe_runner(config)

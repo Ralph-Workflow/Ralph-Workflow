@@ -86,7 +86,6 @@ _EXCLUDED: dict[str, str] = {
     "pipeline.plumbing": "internal pipeline plumbing submodule, not public API",
     "pipeline.conflict_resolution.resolution_outcome": "internal legacy resolution outcome type, not public API",
     "pipeline.resolution_outcome": "internal pipeline type, not public API",
-    "pipeline.conflict_resolution.resolution_outcome": "legacy resolution outcome module, not public API",
     "pipeline.session_bridge": "internal pipeline DI helper, not public API",
     "pipeline.parallel.worker_context": "internal pipeline type, not public API",
     "pipeline.parallel.worker_failure_error": "internal pipeline type, not public API",

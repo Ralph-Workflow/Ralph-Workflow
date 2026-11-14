@@ -255,7 +255,10 @@ def run_conflict_resolution_outcome(
     active_session.caller_provided = session_provided
     previous_model = capture_status_bar_model(display)
     clock_candidate: object = (
-        (getattr(active_session.ledger, "clock", None) or getattr(active_session.ledger, "_clock", None))
+        (
+            getattr(active_session.ledger, "clock", None)
+            or getattr(active_session.ledger, "_clock", None)
+        )
         if active_session.ledger is not None
         else (
             getattr(pipeline_deps, "recovery_clock", None)
@@ -937,9 +940,8 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
             return False
         if session.rounds_spent >= 1 and not ledger.any_eligible(PHASE_RESOLUTION, live):
             return False
-        return (
-            ledger.any_eligible(PHASE_RESOLUTION, live)
-            or (session.rounds_spent == 0 and (ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0) > 0)
+        return ledger.any_eligible(PHASE_RESOLUTION, live) or (
+            session.rounds_spent == 0 and (ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0) > 0
         )
     controller = session.recovery_controller
     if controller is not None:

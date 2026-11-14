@@ -157,7 +157,10 @@ def _assert_observation(
         assert store.is_available(PHASE, last_attempt.agent) is False
         assert store.earliest_unavailable_wait_ms(PHASE, [last_attempt.agent]) > 0
         expected_reason = scenario.expected_reason or DEAD
-        assert store.snapshot().get("unavailability_reasons", {}).get(last_attempt.agent) == expected_reason
+        assert (
+            store.snapshot().get("unavailability_reasons", {}).get(last_attempt.agent)
+            == expected_reason
+        )
         assert observation.unavailability_reasons.get(last_attempt.agent) == expected_reason
 
 
@@ -751,4 +754,3 @@ def test_canary_probe_mode_contract_explicit_exception(
     assert store.is_available(PHASE, agent) is True
     assert store.earliest_unavailable_wait_ms(PHASE, [agent]) == 0
     assert agent not in store.snapshot().get("unavailability_reasons", {})
-

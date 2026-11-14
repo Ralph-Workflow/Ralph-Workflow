@@ -445,8 +445,6 @@ def attempt_stop_resolution(
     return result
 
 
-
-
 def _record_post_attempt(
     trigger: StopResolutionTrigger,
     post_key: ResolutionAttemptKey,
@@ -569,9 +567,7 @@ def _execute_rebase_resolution(
 def _session_carried_cause(session: ResolutionSession) -> ResolutionFailureCause:
     raw_cause: object = session.last_failure_cause
     carried_cause = (
-        raw_cause
-        if isinstance(raw_cause, ResolutionFailureCause)
-        else ResolutionFailureCause.NONE
+        raw_cause if isinstance(raw_cause, ResolutionFailureCause) else ResolutionFailureCause.NONE
     )
     if carried_cause == ResolutionFailureCause.NONE:
         if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE:

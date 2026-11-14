@@ -33,6 +33,9 @@ from ralph.pipeline._pending_rebase_continue import (
     retain_pending_rebase_error,
 )
 from ralph.pipeline._retained_resolution_scope import retained_rebase_paths
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
     resolve_completion_in_place,
     try_deterministic_resolution,
@@ -246,11 +249,14 @@ def _record_resolver_outcome_on_session(
     if isinstance(outcome, bool) or active_session is None:
         return
     active_session.last_resolution_outcome = outcome
-    if isinstance(outcome, ResolutionOutcome):
-        if outcome.failure_cause != ResolutionFailureCause.NONE:
+    if isinstance(outcome, RetryLaterOutcome):
+        if (
+            outcome.failure_cause is not None
+            and outcome.failure_cause != ResolutionFailureCause.NONE
+        ):
             active_session.last_failure_cause = outcome.failure_cause
-        if outcome.reason is not None:
-            raw_reason: object = outcome.reason
+        if outcome.terminal_reason is not None:
+            raw_reason: object = outcome.terminal_reason
             if isinstance(raw_reason, ResolutionTerminationReason):
                 active_session.terminal_reason = raw_reason
             elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:

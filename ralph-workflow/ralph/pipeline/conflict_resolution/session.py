@@ -399,7 +399,11 @@ def ensure_session_controller(
         ledger=ledger,
         unavailability_store=store,
     )
-    if store is not None and getattr(store, "_failure_ledger", None) is None and controller.ledger is not None:
+    if (
+        store is not None
+        and getattr(store, "_failure_ledger", None) is None
+        and controller.ledger is not None
+    ):
         object.__setattr__(store, "_failure_ledger", controller.ledger)
     if session is not None:
         session.recovery_controller = controller
@@ -411,11 +415,15 @@ def _typed_conflict_attempt_reason(
     outcome: ConflictAttemptOutcome,
     unresolved_count: int,
 ) -> str:
-    if outcome in (
-        ConflictAttemptOutcome.UNRESOLVED_REMAINING,
-        ConflictAttemptOutcome.STALLED,
-        ConflictAttemptOutcome.STALLED_NO_PROGRESS,
-    ) or outcome.value == "unresolved_remaining":
+    if (
+        outcome
+        in (
+            ConflictAttemptOutcome.UNRESOLVED_REMAINING,
+            ConflictAttemptOutcome.STALLED,
+            ConflictAttemptOutcome.STALLED_NO_PROGRESS,
+        )
+        or outcome.value == "unresolved_remaining"
+    ):
         return f"agent reported success but {unresolved_count} conflicted path(s) remain"
     if outcome.value == "no_activity":
         return "candidate produced no activity before it exited"
@@ -463,6 +471,8 @@ def _build_classified_conflict_failure(
         is_unavailable=unavailable_reason is not None,
         unavailability_reason=unavailable_reason,
     )
+
+
 def classify_failed_resolution_attempt(
     session: ResolutionSession | None,
     agent_name: str,
