@@ -321,6 +321,14 @@ class AgentFailureLedger:
             for entry in self._entries.values():
                 self._sync_cooldown_expiry(entry, effective_now_ms)
 
+    def clear_agent_cooldown(self, phase: str, agent: str) -> None:
+        with self._lock:
+            entry = self._entries.get((phase, agent))
+            if entry is not None and not entry.is_spent:
+                entry.cooldown_until_ms = None
+                entry.cooldown_reason = None
+                entry.consecutive_unproductive = 0
+
     def _status_locked(self, phase: str, agent: str, now_ms: int) -> AgentStatus:
         entry = self._entries.get((phase, agent))
         if entry is None:
@@ -444,6 +452,48 @@ class AgentFailureLedger:
         if not agents:
             return False
         return all(status.is_spent for _agent, status in self.eligibility(phase, agents))
+
+    def requires_intervention(
+        self,
+        phase: str | None = None,
+        agents: Sequence[str] = (),
+        snapshot: Mapping[str, object] | None = None,
+    ) -> bool | None:
+        with self._lock:
+            now_ms = int(self._clock.monotonic() * 1000)
+            snap = snapshot if snapshot is not None else self._snapshot_locked(now_ms=now_ms)
+            if agents and phase is not None:
+                targets = [(phase, agent) for agent in agents]
+                require_all = True
+            else:
+                require_all = False
+                raw_entries = snap.get("entries") if isinstance(snap, Mapping) else None
+                targets = []
+                if isinstance(raw_entries, Mapping):
+                    for key in raw_entries:
+                        if isinstance(key, str) and ":" in key:
+                            p, a = key.split(":", 1)
+                            if phase is None or p == phase:
+                                targets.append((p, a))
+                if not targets and self._entries:
+                    targets = [
+                        (p, a) for (p, a) in self._entries if phase is None or p == phase
+                    ] or list(self._entries.keys())
+            if not targets:
+                return None
+            statuses = [
+                _project_eligibility(snap, phase=p, agent=a, now_ms=now_ms) for p, a in targets
+            ]
+            if any(status.is_cooldown for status in statuses):
+                return False
+            spent_condition = (
+                all(status.is_spent for status in statuses)
+                if require_all
+                else any(status.is_spent for status in statuses)
+            )
+            if spent_condition:
+                return True
+            return None
 
     def failure_reason(self, phase: str, agent: str) -> str | None:
         st = self.status(phase, agent)

@@ -17,6 +17,7 @@ from ralph.agents.invoke import (
 )
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+from ralph.process.manager import ProcessTerminationIssuer, get_process_manager
 from ralph.recovery.attempt_facts import TerminationIssuer, has_return_code_discrepancy
 
 if TYPE_CHECKING:
@@ -121,6 +122,34 @@ def test_zero_exit_with_non_quiescing_descendant_attributes_post_exit_watchdog(
     termination = facts.termination
     assert termination is not None
     assert termination.issuer is TerminationIssuer.POST_EXIT_WATCHDOG
+    assert termination.issuer is not TerminationIssuer.AGENT_EXIT, (
+        "post-exit watchdog termination must never be confused with an ordinary agent exit"
+    )
+    assert termination.liveness_observed is True, (
+        "the non-quiescing descendant must be observed as active before watchdog kill"
+    )
     assert termination.observed_returncode == 0
     assert termination.reported_returncode == 0
     assert has_return_code_discrepancy(termination) is False
+
+    kill_record = tmp_path / "descendant_kill.txt"
+    assert kill_record.exists(), "the non-quiescing descendant must receive the watchdog kill"
+    descendant_observed_returncode = int(kill_record.read_text().strip())
+    assert descendant_observed_returncode in _KILL_RETURN_CODES, (
+        "the actual process killed by the watchdog must exit with the kill signal code"
+    )
+    assert descendant_observed_returncode != termination.reported_returncode, (
+        "the killed descendant's exit code disagrees with the parent's reported zero exit"
+    )
+
+    manager = get_process_manager()
+    teardown_outcomes = [
+        outcome
+        for record in manager.list_records(include_terminal=True)
+        for outcome in manager._termination_outcomes.get(record.pid, [])
+        if outcome.get("stage") == "teardown_subtree"
+    ]
+    assert any(
+        outcome.get("issuer") == ProcessTerminationIssuer.POST_EXIT_WATCHDOG.value
+        for outcome in teardown_outcomes
+    ), "process manager must record teardown_subtree with post_exit_watchdog issuer"

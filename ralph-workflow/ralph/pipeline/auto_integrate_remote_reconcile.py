@@ -48,6 +48,7 @@ from ralph.pipeline.resolution_outcome import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
@@ -218,7 +219,7 @@ def _resolve_owned_reconciliation(
             case _ as unreachable:
                 assert_never(unreachable)
     except Exception as exc:
-        detail = str(exc)
+        detail = f"resolution interrupted: {exc}"
     if is_temporary:
         try:
             if rebase_in_progress(owner):

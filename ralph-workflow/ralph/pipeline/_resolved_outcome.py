@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
     from ralph.git.resolution_failure_cause import ResolutionFailureCause
 
 __all__ = ["ResolvedOutcome"]

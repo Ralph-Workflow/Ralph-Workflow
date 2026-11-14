@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -10,7 +10,7 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
     registered_runners,
 )
-from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.unavailability_reason import (
@@ -571,3 +571,90 @@ def test_ac13_the_verdict_record_carries_the_full_evidence_set(
     assert termination["return_code_discrepancy"] is True
     assert termination["log"]
     assert record["return_code_discrepancy"] is True
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
+)
+def test_ac14_unattributed_live_session_end_parity(
+    entry_point: AgentEntryPoint,
+) -> None:
+    scenario = _scenario("unattributed_live_end")
+    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+
+    assert observation.outcome_kind in ("runtime_ended", "unknown")
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+
+    script = scenario.attempts[-1]
+    assert script.facts.liveness_observed is True
+    assert "read_file" in script.facts.tool_calls
+    assert script.facts.termination is not None
+    assert script.facts.termination.issuer is TerminationIssuer.UNKNOWN
+    assert script.facts.termination.observed_returncode == -15
+    assert script.facts.termination.reported_returncode == 0
+    assert script.facts.termination.return_code_discrepancy is True
+
+    record = observation.verdict_record
+    if isinstance(record, dict) and entry_point is not AgentEntryPoint.CANARY_PROBE:
+        typed_record = cast("dict[str, object]", record)
+        facts_record = cast("dict[str, object]", typed_record.get("facts", {}))
+        assert facts_record.get("liveness_observed") is True
+        tool_calls = cast("list[str]", facts_record.get("tool_calls", []))
+        assert "read_file" in tool_calls
+        term_record = cast("dict[str, object]", typed_record.get("termination", {}))
+        assert term_record.get("issuer") == "unknown"
+        assert term_record.get("observed_returncode") == -15
+        assert term_record.get("reported_returncode") == 0
+        assert term_record.get("return_code_discrepancy") is True
+        attrib = cast("dict[str, object]", typed_record.get("attribution", {}))
+        assert attrib.get("attribution") == "runtime"
+        assert attrib.get("runtime_cause") == "runtime_kill_unattributed"
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
+)
+def test_ac15_post_exit_watchdog_attribution_parity(
+    entry_point: AgentEntryPoint,
+) -> None:
+    scenario = _scenario("post_exit_watchdog")
+    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+
+    assert observation.outcome_kind == "runtime_ended"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+
+    script = scenario.attempts[-1]
+    assert script.facts.liveness_observed is True
+    assert "read_file" in script.facts.tool_calls
+    assert script.facts.termination is not None
+    assert script.facts.termination.issuer is TerminationIssuer.POST_EXIT_WATCHDOG
+    assert script.facts.termination.observed_returncode == 143
+    assert script.facts.termination.reported_returncode == 0
+    assert script.facts.termination.return_code_discrepancy is True
+
+    record = observation.verdict_record
+    if isinstance(record, dict) and entry_point is not AgentEntryPoint.CANARY_PROBE:
+        typed_record = cast("dict[str, object]", record)
+        facts_record = cast("dict[str, object]", typed_record.get("facts", {}))
+        assert facts_record.get("liveness_observed") is True
+        tool_calls = cast("list[str]", facts_record.get("tool_calls", []))
+        assert "read_file" in tool_calls
+        term_record = cast("dict[str, object]", typed_record.get("termination", {}))
+        assert term_record.get("issuer") == "post_exit_watchdog"
+        assert term_record.get("observed_returncode") == 143
+        assert term_record.get("reported_returncode") == 0
+        assert term_record.get("return_code_discrepancy") is True
+        attrib = cast("dict[str, object]", typed_record.get("attribution", {}))
+        assert attrib.get("attribution") == "runtime"
+        assert attrib.get("runtime_cause") == "runtime_kill_post_exit_watchdog"
+

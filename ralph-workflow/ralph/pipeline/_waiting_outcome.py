@@ -48,9 +48,6 @@ class WaitingOutcome:
             )
         )
 
-    def __iter__(self) -> Iterator[object]:
-        return iter((False, self.external_condition or ""))
-
     def __eq__(self, other: object) -> bool:
         if (
             isinstance(other, tuple)

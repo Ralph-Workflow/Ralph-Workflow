@@ -34,7 +34,6 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
 )
 
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -237,7 +236,7 @@ def _continue_rebase_resolution(
 
 
 def _rebase_failure_outcome(
-    result: StopResolutionOutcome,
+    result: object,
     chain_agents: tuple[str, ...] = (),
 ) -> StopResolutionOutcome:
     del chain_agents
@@ -247,7 +246,18 @@ def _rebase_failure_outcome(
         return ResolvedOutcome()
     if isinstance(result, ResolvedOutcome):
         return ResolvedOutcome()
-    return result
+    if isinstance(
+        result,
+        (
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
+        return result
+    return UnknownOutcome(RuntimeError(f"unexpected outcome {result!r}"))
 
 
 def _rebase_failure_transport(

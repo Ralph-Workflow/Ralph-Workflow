@@ -321,16 +321,25 @@ SCENARIOS = (
         (
             MatrixScenario.Script(
                 facts=AttemptFacts(
+                    event_kinds=("tool_result",),
+                    tool_calls=("read_file",),
                     artifact_valid=False,
                     workspace_changed=None,
                     elapsed_to_terminal_ms=97_900,
                     exit_status="exit_0",
                     liveness_observed=True,
+                    termination=TerminationRecord.create(
+                        TerminationIssuer.UNKNOWN,
+                        observed_returncode=-15,
+                        reported_returncode=0,
+                        liveness_observed=True,
+                    ),
                 ),
                 returncode=0,
             ),
         ),
-        expected_kind="unknown",
+        expected_kind="runtime_ended",
+        no_ledger_charge=True,
     ),
     MatrixScenario(
         "post_exit_watchdog",
@@ -343,6 +352,7 @@ SCENARIOS = (
                     reported=0,
                     liveness=True,
                     event_kinds=("tool_result",),
+                    tool_calls=("read_file",),
                 ),
                 returncode=0,
             ),

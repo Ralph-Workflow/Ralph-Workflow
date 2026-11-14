@@ -243,12 +243,8 @@ def run_rebase_or_merge(
             from ralph.git.merge import unmerged_paths
             from ralph.pipeline.conflict_resolution import RebaseStop
             from ralph.pipeline.resolution_outcome import (
-                ConfigFailureOutcome,
                 NextStrategyOutcome,
                 ResolvedOutcome,
-                RetryLaterOutcome,
-                UnknownOutcome,
-                WaitingOutcome,
             )
 
             unmerged = tuple(unmerged_paths(r))

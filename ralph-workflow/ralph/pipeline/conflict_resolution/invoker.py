@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 def default_invoker(
     *,
     config: UnifiedConfig,
-    pipeline_deps: PipelineDeps,
+    pipeline_deps: PipelineDeps | None = None,
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
     display: ParallelDisplay | None,

@@ -357,10 +357,23 @@ def _dispatch_ref_comparison(
             reclaim_target_worktree=False,
             remote_sha=remote_sha,
         )
-        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+        from ralph.pipeline.resolution_outcome import (
+            ResolvedOutcome,
+            RetryLaterOutcome,
+            WaitingOutcome,
+        )
 
-        if isinstance(raw_outcome, ResolvedOutcome):
+        if isinstance(raw_outcome, tuple):
+            advanced = bool(raw_outcome[0])
+            refusal = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
+        elif isinstance(raw_outcome, bool):
+            advanced, refusal = raw_outcome, "" if raw_outcome else "fast forward failed"
+        elif isinstance(raw_outcome, ResolvedOutcome):
             advanced, refusal = True, ""
+        elif isinstance(raw_outcome, RetryLaterOutcome):
+            advanced, refusal = False, raw_outcome.on_change or ""
+        elif isinstance(raw_outcome, WaitingOutcome):
+            advanced, refusal = False, raw_outcome.external_condition
         else:
             advanced, refusal = False, str(raw_outcome)
         if advanced:

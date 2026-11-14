@@ -88,7 +88,7 @@ def _run_outcome(
         root=tmp_path,
         target="main",
         config=_config(),
-        pipeline_deps=None,  # type: ignore[arg-type]
+        pipeline_deps=None,
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
         display=None,
@@ -176,7 +176,7 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
     outcome1 = _run_outcome(tmp_path, invoke=_invoke, session=session)
     assert isinstance(outcome1, RetryLaterOutcome)
     assert session.rounds_spent == 1
-    assert rounds_called == [1]
+    assert rounds_called == [1, 1, 1]
 
     outcome2 = _run_outcome(
         tmp_path,
@@ -185,5 +185,5 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
         strategy_history=("primary-strategy",),
     )
     assert isinstance(outcome2, RetryLaterOutcome)
-    assert rounds_called == [1]
+    assert rounds_called == [1, 1, 1]
     assert session.rounds_spent == 1

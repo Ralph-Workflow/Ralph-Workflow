@@ -650,13 +650,6 @@ ralph.config.conflict_resolution_config
    :members:
    :show-inheritance:
 
-ralph.config.gitlink_policy_config
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.config.gitlink_policy_config
-   :members:
-   :show-inheritance:
-
 ralph.config.json_parser_type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -1224,7 +1224,7 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
-        outcome = self._attempt_supervisor().teardown_observed_subtree(
+        outcome = self._attempt_supervisor().act(
             TerminalStartupErrorObserved(terminal_startup_error)
         )
         if outcome is None:

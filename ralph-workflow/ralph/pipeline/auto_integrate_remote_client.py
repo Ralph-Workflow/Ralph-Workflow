@@ -364,6 +364,14 @@ def _fast_forward_local_target_to_remote(
         remote,
         reclaim_target_worktree=reclaim_target_worktree_enabled(config),
     )
+    if isinstance(outcome, tuple) and len(outcome) >= 1:
+        if not outcome[0]:
+            raise RuntimeError(str(outcome[1]) if len(outcome) > 1 else "fast forward failed")
+        return
+    if isinstance(outcome, bool):
+        if not outcome:
+            raise RuntimeError("fast forward failed")
+        return
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
     if not isinstance(outcome, ResolvedOutcome):

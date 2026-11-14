@@ -51,9 +51,6 @@ class RetryLaterOutcome(metaclass=_RetryLaterOutcomeMeta):
             (self.until, self.on_change, self.succeeded, self.reason, self.unresolved_paths)
         )
 
-    def __iter__(self) -> Iterator[object]:
-        return iter((False, self.on_change or ""))
-
     def __eq__(self, other: object) -> bool:
         if (
             isinstance(other, tuple)

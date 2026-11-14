@@ -131,7 +131,6 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_fsevents_watch_consolidation": "test infrastructure, not public API",
     "testing.audit_filesystem_polling_invocation": "test infrastructure, not public API",
     "testing.audit_log_sink_buffering": "test infrastructure, not public API",
-    "testing.repo_structure_boundary_b11": "test infrastructure, not public API",
     "testing._audit_scope": "test infrastructure, not public API",
 }
 _EXCLUDED_PREFIXES = tuple(f"{name}." for name in _EXCLUDED)

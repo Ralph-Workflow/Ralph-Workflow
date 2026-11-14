@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.agents.clock import Clock
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
@@ -157,6 +156,7 @@ class ResolutionSession:
     workspace_probe: WorkspaceChangeProbe | None = None
     probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
     last_resolution_outcome: StopResolutionOutcome | None = None
+    caller_provided: bool = False
 
 
 def begin_resolution_stop(
@@ -281,7 +281,7 @@ def ensure_session_controller(
     from ralph.agents.timeout_clock import Clock, SystemClock
     from ralph.pipeline.agent_entry_point import AgentEntryPoint
     from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
-    from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
@@ -363,6 +363,8 @@ def classify_failed_resolution_attempt(
     from ralph.recovery.attempt_facts import AttemptFacts
 
     controller = ensure_session_controller(session, policy_bundle)
+    if session is None:
+        return
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
     recovery_state: PipelineState
@@ -408,7 +410,11 @@ def classify_failed_resolution_attempt(
         agent_available = controller.ledger.is_available(PHASE_RESOLUTION, agent_name)
     max_retries = conflict_chain_max_retries(policy_bundle)
     recovery_chain = recovery_state.chain_for_phase(PHASE_RESOLUTION) if recovery_state else None
-    current_retries = recovery_chain.retries if recovery_chain is not None else 0
+    current_retries = (
+        recovery_chain.retries
+        if recovery_chain is not None and recovery_chain.current_index == bounded_index
+        else 0
+    )
 
     candidate_unavailable = session.terminal_reason in (
         ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
@@ -474,7 +480,7 @@ def invoke_resolution_agent(
     agent_name: str,
     prompt_path: Path,
     config: UnifiedConfig,
-    pipeline_deps: PipelineDeps,
+    pipeline_deps: PipelineDeps | None = None,
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
     display: ParallelDisplay | None,

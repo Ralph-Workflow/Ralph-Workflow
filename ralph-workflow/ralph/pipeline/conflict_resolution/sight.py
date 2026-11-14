@@ -205,7 +205,7 @@ def classify_stage_map(
     theirs = stages.get(3)
     if ours is None and theirs is None:
         return ConflictSight.AGENT_DECISION if binary else ConflictSight.AGENT
-    gitlink_sight = ConflictSight.OUT_OF_REACH if has_markers else ConflictSight.GITLINK_POLICY
+    gitlink_sight = ConflictSight.GITLINK_POLICY
     if ours is None or theirs is None:
         present = ours if ours is not None else theirs
         if present is not None and present[0] == _GITLINK_MODE:

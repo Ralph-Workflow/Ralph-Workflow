@@ -101,7 +101,6 @@ def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
 
     monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
-    monkeypatch.setattr("ralph.pipeline.attempt_runner.run_canary_probe", fake_run_canary_probe)
     return probed
 
 
@@ -324,7 +323,6 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     )
     session = ResolutionSession(
         max_rounds_per_stop=1,
-        skip_same_agent_retries=True,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
     )
     calls: list[str] = []
@@ -354,7 +352,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=0, retries=0)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
 
 
 def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -254,7 +254,7 @@ def _execute_single_candidate(
                 )
             )
         else:
-            invoker_result = cast("StopResolutionOutcome", raw_result)
+            invoker_result = raw_result
         succeeded = isinstance(invoker_result, ResolvedOutcome)
         if succeeded:
             session.chain_cursor = 0
@@ -457,6 +457,13 @@ def _preferred_conflict_candidate(
     if selection.agent is not None:
         return candidates.index(selection.agent)
     delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
+    if (
+        delay == 0
+        and not session.caller_provided
+        and hasattr(controller, "ledger")
+        and controller.ledger is not None
+    ):
+        delay = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
     if delay > 0:
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
@@ -466,11 +473,8 @@ def _preferred_conflict_candidate(
             return candidates.index(selection.agent)
         for name in eligible:
             controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
-            entry = getattr(controller.ledger, "_entries", {}).get((PHASE_RESOLUTION, name))
-            if entry is not None and not entry.is_spent:
-                entry.cooldown_until_ms = None
-                entry.cooldown_reason = None
-                entry.consecutive_unproductive = 0
+            controller.ledger.clear_agent_cooldown(PHASE_RESOLUTION, name)
+        controller.reset_backoff(PHASE_RESOLUTION, None)
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
