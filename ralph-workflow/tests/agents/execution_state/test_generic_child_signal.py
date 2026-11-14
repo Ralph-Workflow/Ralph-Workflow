@@ -563,3 +563,136 @@ class TestOpenCodeStrategyDoesNotDoubleInvokeSink:
             f" child_progress line (NOT two -- base + override),"
             f" got {len(subagent_sink_spy)} invocations"
         )
+
+
+class TestGenericExecutionStrategyToolClassification:
+    def test_generic_strategy_classifies_codex_item_started_mcp_tool_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        line = '{"type":"item.started","item":{"id":"mcp-1","type":"mcp_tool_call","tool":"list_mcp_resources","arguments":{"server":"ralph"},"status":"in_progress"}}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+        assert signal.raw == line
+
+    def test_generic_strategy_classifies_codex_item_completed_mcp_tool_as_tool_result(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        line = '{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","tool":"list_mcp_resources","arguments":{"server":"ralph"},"status":"completed","result":{"content":[]}}}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_RESULT
+        assert signal.raw == line
+
+    def test_generic_strategy_classifies_codex_command_execution_started_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        line = '{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"uv run pytest -q","status":"in_progress"}}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_codex_command_execution_completed_as_tool_result(
+        self,
+    ) -> None:
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        line = '{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","command":"uv run pytest -q","status":"failed","exit_code":1,"error":"tests failed"}}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_RESULT
+        assert signal.error_message == "tests failed"
+
+    def test_generic_strategy_classifies_gemini_sse_tool_call_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.GENERIC)
+        line = 'data: {"type":"tool_call","name":"Read","args":{"path":"ralph/display/record_writer.py"}}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_gemini_sse_tool_result_as_tool_result(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.GENERIC)
+        line = 'data: {"type":"tool_result","result":"record source"}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_RESULT
+
+    def test_generic_strategy_classifies_gemini_function_call_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.GENERIC)
+        line = '{"type":"function_call","name":"bash","args":{"command":"ls"}}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_gemini_nested_function_call_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.GENERIC)
+        line = '{"function_call":{"name":"read_file","args":{"path":"foo.py"}}}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_gemini_candidates_function_call_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.GENERIC)
+        line = '{"candidates":[{"content":{"parts":[{"function_call":{"name":"read_file"}}]}}]}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_gemini_parts_function_call_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.GENERIC)
+        line = '{"parts":[{"function_call":{"name":"read_file"}}]}'
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_nanocoder_executed_tool_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.NANOCODER)
+        line = "⚒ Executed Read \u00d7 1"
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_plain_tool_line_as_tool_use(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.NANOCODER)
+        line = "[plain] tool: bash"
+
+        signal = strategy.classify_activity_line(line)
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.TOOL_USE
+
+    def test_generic_strategy_classifies_standard_tool_use_and_result(self) -> None:
+        strategy = GenericExecutionStrategy()
+        call_signal = strategy.classify_activity_line('{"type":"tool_use","name":"bash"}')
+        result_signal = strategy.classify_activity_line('{"type":"tool_result","content":"ok"}')
+
+        assert call_signal is not None
+        assert call_signal.kind == AgentActivityKind.TOOL_USE
+
+        assert result_signal is not None
+        assert result_signal.kind == AgentActivityKind.TOOL_RESULT
+
+    def test_generic_strategy_falls_back_to_output_line_for_text(self) -> None:
+        strategy = GenericExecutionStrategy()
+        signal = strategy.classify_activity_line("hello world text output")
+
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.OUTPUT_LINE

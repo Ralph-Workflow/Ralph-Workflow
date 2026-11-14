@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import atexit
+import json
 import shlex
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
@@ -25,6 +27,11 @@ from ralph.agents.invoke.attempt_supervision import (
     ProviderErrorObserved,
     SilenceObserved,
 )
+from ralph.agents.invoke.opencode_subagent_sessions import (
+    OpenCodeChildPart,
+    OpenCodeChildPartSource,
+    part_kind_from_data,
+)
 from ralph.agents.parsers import AgentParser, get_parser, list_parser_keys
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
@@ -36,12 +43,12 @@ from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.end_attempt import end_attempt
 
 if TYPE_CHECKING:
-    from ralph.agents.invoke.opencode_subagent_sessions import OpenCodeChildPart
     from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
     from ralph.recovery.attempt_facts import AttemptFacts
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DISPLAY_FIXTURES = _REPO_ROOT / "tests" / "display" / "_fixtures"
+_OPENCODE_STORE_FIXTURE = _DISPLAY_FIXTURES / "opencode_subagent_child_store.json"
 _CLAUDE_INTERACTIVE_CAPTURE = (
     _REPO_ROOT
     / "tests"
@@ -77,7 +84,7 @@ _CAPTURES: dict[str, Path | None] = {
     "cursor": _DISPLAY_FIXTURES / "cursor_wire.jsonl",
     "gemini": _DISPLAY_FIXTURES / "gemini_wire.jsonl",
     "generic": _DISPLAY_FIXTURES / "generic_wire.jsonl",
-    "kimi": None,
+    "kimi": _DISPLAY_FIXTURES / "kimi_wire.jsonl",
     "nanocoder": _DISPLAY_FIXTURES / "nanocoder_wire.jsonl",
     "opencode": _DISPLAY_FIXTURES / "opencode_wire.jsonl",
     "pi": _DISPLAY_FIXTURES / "pi_wire.jsonl",
@@ -161,17 +168,10 @@ _RECORDED_SHAPE_GAPS: tuple[tuple[str, str, str], ...] = tuple(
     )
     for parser_key in _REGISTRY_KEYS
     for shape in _SHAPES
-    if parser_key == "kimi" or shape.name != "healthy"
+    if _CAPTURES[parser_key] is None or shape.name != "healthy"
 )
 
 _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
-    ("kimi", "capture", "no recorded capture"),
-    (
-        "opencode",
-        "subagent_activity_observed",
-        "no recorded task/child-session capture (opencode_wire_provenance.md:47-52);"
-        " populated by the store probe, not the wire",
-    ),
     (
         "agy",
         "subagent_activity_observed",
@@ -192,11 +192,6 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "codex",
-        "tool_calls",
-        "codex runs GenericExecutionStrategy, which classifies every captured line as output_line",
-    ),
-    (
-        "codex",
         "subagent_activity_observed",
         "codex_wire.jsonl carries no subagent frame",
     ),
@@ -204,11 +199,6 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
         "cursor",
         "subagent_activity_observed",
         "cursor_wire.jsonl carries no subagent frame",
-    ),
-    (
-        "gemini",
-        "tool_calls",
-        "gemini runs GenericExecutionStrategy, which classifies every captured line as output_line",
     ),
     (
         "gemini",
@@ -224,6 +214,11 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
         "generic",
         "subagent_activity_observed",
         "generic_wire.jsonl carries no subagent frame",
+    ),
+    (
+        "kimi",
+        "subagent_activity_observed",
+        "kimi_wire.jsonl carries no subagent frame",
     ),
     (
         "nanocoder",
@@ -259,6 +254,39 @@ class _NoChildPartSource:
         return
 
 
+class _FixtureOpenCodeChildPartSource:
+    def __init__(self, store_path: Path) -> None:
+        loaded = json.loads(store_path.read_text(encoding="utf-8"))
+        store_data = loaded if isinstance(loaded, dict) else {}
+        parts_val = store_data.get("parts")
+        raw_parts = (
+            [p for p in parts_val if isinstance(p, dict)] if isinstance(parts_val, list) else []
+        )
+        child_id = str(store_data.get("child_session_id", "child_1"))
+        self._parts = [
+            OpenCodeChildPart(
+                child_session_id=child_id,
+                agent="explore",
+                title="sample.txt",
+                part_id=str(p.get("id")),
+                kind=part_kind_from_data(str(p.get("data"))),
+                time_updated_ms=int(time.time() * 1000) + 100_000,
+            )
+            for p in raw_parts
+        ]
+        self._fetched = False
+
+    def fetch(self, parent_session_id: str, since_ms: int) -> list[OpenCodeChildPart]:
+        del parent_session_id, since_ms
+        if not self._fetched:
+            self._fetched = True
+            return list(self._parts)
+        return []
+
+    def close(self) -> None:
+        return
+
+
 class _NoopProcessTeardown:
     def teardown_subtree(
         self,
@@ -271,8 +299,9 @@ class _NoopProcessTeardown:
 
 
 class _ProcessOutput:
-    def __init__(self, lines: list[str]) -> None:
+    def __init__(self, lines: list[str], clock: FakeClock | None = None) -> None:
         self._lines = iter(lines)
+        self._clock = clock
         self.exhausted = False
 
     def __iter__(self) -> _ProcessOutput:
@@ -280,15 +309,25 @@ class _ProcessOutput:
 
     def __next__(self) -> str:
         try:
-            return next(self._lines)
+            line = next(self._lines)
+            if self._clock is not None:
+                self._clock.advance(3.0)
+            return line
         except StopIteration:
             self.exhausted = True
             raise
 
 
 class _ExitedHandle(ManagedProcess):
-    def __init__(self, lines: list[str], *, returncode: int, stderr_line: str | None) -> None:
-        self._stdout = _ProcessOutput(lines)
+    def __init__(
+        self,
+        lines: list[str],
+        *,
+        returncode: int,
+        stderr_line: str | None,
+        clock: FakeClock | None = None,
+    ) -> None:
+        self._stdout = _ProcessOutput(lines, clock=clock)
         self._ralph_bounded_stderr = "" if stderr_line is None else f"{stderr_line}\n"
         self._final_returncode = returncode
         self._signalled_returncode: int | None = None
@@ -300,7 +339,7 @@ class _ExitedHandle(ManagedProcess):
         return None
 
     @property
-    def stdout(self):
+    def stdout(self) -> _ProcessOutput:
         return self._stdout
 
     @property
@@ -373,9 +412,15 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
         lines,
         returncode=shape.returncode,
         stderr_line=shape.stderr_line,
+        clock=clock,
     )
     process_teardown = _NoopProcessTeardown()
     supervisor = AttemptSupervisor(handle, process_teardown=process_teardown)
+    opencode_source: OpenCodeChildPartSource = (
+        _FixtureOpenCodeChildPartSource(_OPENCODE_STORE_FIXTURE)
+        if parser_key == "opencode"
+        else _NoChildPartSource()
+    )
     reader = ProcessLineReader(
         handle,
         ProcessReaderCtx(
@@ -389,7 +434,7 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
             ),
             execution_strategy=strategy_for_transport(_transport_for(parser_key)),
             liveness_probe=FakeLivenessProbe(active=False),
-            opencode_child_part_source=_NoChildPartSource(),
+            opencode_child_part_source=opencode_source,
             process_teardown=process_teardown,
             workspace_path=workspace,
         ),
@@ -517,7 +562,7 @@ def test_recorded_shape_gap_rows_cover_only_missing_real_captures() -> None:
         (parser_key, shape.name)
         for parser_key in _REGISTRY_KEYS
         for shape in _SHAPES
-        if parser_key == "kimi" or shape.name != "healthy"
+        if _CAPTURES[parser_key] is None or shape.name != "healthy"
     }
     declared = {(key, shape) for key, shape, _reason in _RECORDED_SHAPE_GAPS}
     assert declared == expected

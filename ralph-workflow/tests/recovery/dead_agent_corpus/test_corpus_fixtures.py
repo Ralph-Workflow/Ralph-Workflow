@@ -110,7 +110,7 @@ def test_the_agy_case_derives_one_event_and_no_tool_calls() -> None:
 def test_the_codex_case_derives_the_read_only_mcp_tool_call() -> None:
     facts = _case("codex_quote_kill").facts
 
-    assert facts.event_kinds == ("output_line", "output_line", "output_line", "output_line")
+    assert facts.event_kinds == ("tool_use", "tool_result", "output_line", "output_line")
     assert facts.tool_calls == ("read_multiple_files",)
     assert facts.termination is not None
     assert facts.termination.issuer is TerminationIssuer.QUOTA_DETECTOR

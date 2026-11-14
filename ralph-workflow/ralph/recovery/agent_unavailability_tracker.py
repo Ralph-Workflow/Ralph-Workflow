@@ -18,7 +18,8 @@ if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
-    class _UnavailabilityStoreMeta(type): ...
+    class _UnavailabilityStoreMeta(type):
+        def __instancecheck__(cls, instance: object) -> bool: ...
 else:
 
     class _UnavailabilityStoreMeta(type(Protocol)):

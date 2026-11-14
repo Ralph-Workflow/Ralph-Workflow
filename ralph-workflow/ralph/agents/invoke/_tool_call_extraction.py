@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import contextlib
 import json
+import re
 from typing import cast
 
+from ralph.display.vt_normalizer import normalize_vt_text
+
 _PLAIN_TEXT_TOOL_PREFIXES = ("claude tool:", "[plain] tool:")
+_MULTIPLICATION_SIGN = chr(215)
+_NANOCODER_EXECUTED_TOOL_RE = re.compile(
+    rf"^⚒\s+Executed\s+(?P<tool>\S+)(?:\s+{_MULTIPLICATION_SIGN}\s+\d+)?$"
+)
 _CURSOR_TOOL_CALL_METADATA_KEYS = frozenset(
     {
         "toolCallId",
@@ -36,6 +44,8 @@ def _parse_json_object(raw: str) -> dict[str, object] | None:
     stripped = raw.strip()
     if not stripped:
         return None
+    if stripped.startswith("data:"):
+        stripped = stripped[5:].strip()
     try:
         parsed = cast("object", json.loads(stripped, strict=False))
     except (json.JSONDecodeError, ValueError):
@@ -75,6 +85,11 @@ def _extract_plain_text_tool_call(raw: str) -> tuple[str, dict[str, object]] | N
     stripped = raw.strip()
     if not stripped:
         return None
+    normalized = normalize_vt_text(stripped).strip()
+    match = _NANOCODER_EXECUTED_TOOL_RE.match(normalized)
+    if match is not None:
+        tool_name = match.group("tool")
+        return tool_name, {}
     lower = stripped.lower()
     for prefix in _PLAIN_TEXT_TOOL_PREFIXES:
         if lower.startswith(prefix):
@@ -102,14 +117,72 @@ def _unwrap_stream_event_envelope(obj: dict[str, object]) -> dict[str, object]:
     return obj
 
 
+def _unwrap_gemini_function_call(obj: dict[str, object]) -> dict[str, object] | None:
+    function_call = obj.get("function_call")
+    if isinstance(function_call, dict):
+        unwrapped = dict(cast("dict[str, object]", function_call))
+        unwrapped.setdefault("type", "function_call")
+        return unwrapped
+    candidates = obj.get("candidates")
+    if isinstance(candidates, list) and candidates:
+        first = candidates[0]
+        if isinstance(first, dict):
+            content = first.get("content")
+            if isinstance(content, dict):
+                parts = content.get("parts")
+                if isinstance(parts, list):
+                    for part in parts:
+                        if isinstance(part, dict) and isinstance(part.get("function_call"), dict):
+                            unwrapped = dict(cast("dict[str, object]", part["function_call"]))
+                            unwrapped.setdefault("type", "function_call")
+                            return unwrapped
+    parts = obj.get("parts")
+    if isinstance(parts, list):
+        for part in parts:
+            if isinstance(part, dict) and isinstance(part.get("function_call"), dict):
+                unwrapped = dict(cast("dict[str, object]", part["function_call"]))
+                unwrapped.setdefault("type", "function_call")
+                return unwrapped
+    return None
+
+
+def _unwrap_tool_calls_list(obj: dict[str, object]) -> dict[str, object] | None:
+    tool_calls = obj.get("tool_calls")
+    if not (isinstance(tool_calls, list) and tool_calls):
+        return None
+    first = tool_calls[0]
+    if not isinstance(first, dict):
+        return None
+    func = first.get("function")
+    if isinstance(func, dict):
+        unwrapped = dict(cast("dict[str, object]", func))
+        unwrapped.setdefault("type", "function_call")
+        args_str = unwrapped.get("arguments")
+        if isinstance(args_str, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                decoded = cast("object", json.loads(args_str))
+                if isinstance(decoded, dict):
+                    unwrapped["arguments"] = cast("dict[str, object]", decoded)
+        return unwrapped
+    return cast("dict[str, object]", first)
+
+
 def _unwrap_tool_use_envelope(obj: dict[str, object]) -> dict[str, object]:
     if obj.get("type") == "stream_event" or "event" in obj:
         return _unwrap_stream_event_envelope(obj)
-    if obj.get("type") == "content_block_start" and isinstance(obj.get("content_block"), dict):
-        return cast("dict[str, object]", obj["content_block"])
-    assistant_event = obj.get("assistantMessageEvent")
-    if isinstance(assistant_event, dict):
-        return cast("dict[str, object]", assistant_event)
+    content_block = obj.get("content_block")
+    if obj.get("type") == "content_block_start" and isinstance(content_block, dict):
+        return cast("dict[str, object]", content_block)
+    for key in ("assistantMessageEvent", "item"):
+        inner = obj.get(key)
+        if isinstance(inner, dict):
+            return cast("dict[str, object]", inner)
+    gemini_func = _unwrap_gemini_function_call(obj)
+    if gemini_func is not None:
+        return gemini_func
+    tool_calls = _unwrap_tool_calls_list(obj)
+    if tool_calls is not None:
+        return tool_calls
     return obj
 
 
@@ -134,15 +207,19 @@ def _is_tool_use_dict(obj: dict[str, object]) -> bool:
         type_field
         in {
             "tool_use",
+            "tool_call",
             "assistant_tool_use",
             "mcp_tool_call",
+            "function_call",
+            "command_execution",
             "tool_execution_start",
             "toolcall_end",
         }
-        or event_field in {"tool_use", "mcp_tool_call"}
+        or event_field in {"tool_use", "tool_call", "mcp_tool_call", "function_call"}
         or "tool_name" in obj
         or "toolName" in obj
         or "toolCall" in obj
+        or "function_call" in obj
         or (type_field == "tool_call" and "tool_call" in obj)
     )
 
@@ -162,12 +239,20 @@ def _resolve_tool_name_and_args(
     if isinstance(tool_call, dict):
         return _resolve_flat_tool_call(cast("dict[str, object]", tool_call))
 
+    function_call = obj.get("function_call")
+    if isinstance(function_call, dict):
+        return _resolve_flat_tool_call(cast("dict[str, object]", function_call))
+
     return _resolve_flat_tool_call(obj)
 
 
 def _resolve_flat_tool_call(
     obj: dict[str, object],
 ) -> tuple[str, dict[str, object]] | None:
+    if obj.get("type") == "command_execution":
+        command = obj.get("command")
+        if isinstance(command, str) and command:
+            return "bash", {"command": command}
     tool_name_raw = (
         obj.get("name") or obj.get("tool_name") or obj.get("tool") or obj.get("toolName")
     )

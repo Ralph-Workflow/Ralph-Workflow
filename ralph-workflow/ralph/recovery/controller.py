@@ -1138,14 +1138,14 @@ class RecoveryController:
                     outcome.total_unproductive,
                     outcome.reason,
                 )
+            if outcome.status.is_spent:
+                self.note_retry_exhaustion(phase, agent)
             chain_agents = self._get_chain_agents(phase)
             if chain_agents is not None and len(chain_agents) == 1 and chain_agents[0] == agent:
                 return (
                     f"Sole agent '{agent}' demoted in phase '{phase}': "
                     f"unproductive attempt limit reached ({outcome.reason})"
                 )
-            if outcome.status.is_spent:
-                self.note_retry_exhaustion(phase, agent)
         return None
 
     def _handle_classified_failure(

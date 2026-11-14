@@ -48,6 +48,8 @@ class _AttemptFact:
 
 
 class _AgentStatus:
+    reason: str = ""
+
     @property
     def is_eligible(self) -> bool:
         return isinstance(self, _Eligible)

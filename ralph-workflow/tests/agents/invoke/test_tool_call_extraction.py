@@ -147,3 +147,187 @@ class TestToolCallExtraction:
         assert signal is not None
         assert signal.kind == AgentActivityKind.TOOL_USE
         assert signal.raw == line
+
+    def test_codex_item_completed_mcp_tool_call_extracts_name_and_arguments(self) -> None:
+        line = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "mcp-1",
+                    "type": "mcp_tool_call",
+                    "tool": "list_mcp_resources",
+                    "arguments": {"server": "ralph"},
+                    "status": "completed",
+                    "result": {"content": [{"type": "text", "text": '{"resources":[]}'}]},
+                },
+            }
+        )
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "list_mcp_resources"
+        assert tool_args == {"server": "ralph"}
+
+    def test_codex_item_started_mcp_tool_call_extracts_name_and_arguments(self) -> None:
+        line = json.dumps(
+            {
+                "type": "item.started",
+                "item": {
+                    "id": "mcp-1",
+                    "type": "mcp_tool_call",
+                    "tool": "list_mcp_resources",
+                    "arguments": {"server": "ralph"},
+                    "status": "in_progress",
+                },
+            }
+        )
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "list_mcp_resources"
+        assert tool_args == {"server": "ralph"}
+
+    def test_codex_item_command_execution_extracts_bash_and_command(self) -> None:
+        line = json.dumps(
+            {
+                "type": "item.started",
+                "item": {
+                    "id": "cmd-1",
+                    "type": "command_execution",
+                    "command": "uv run pytest -q",
+                    "status": "in_progress",
+                },
+            }
+        )
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "bash"
+        assert tool_args == {"command": "uv run pytest -q"}
+
+    def test_gemini_sse_data_tool_call_extracts_name_and_args(self) -> None:
+        line = 'data: {"type":"tool_call","name":"Read","args":{"path":"ralph/display/record_writer.py"}}'
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "Read"
+        assert tool_args == {"path": "ralph/display/record_writer.py"}
+
+    def test_gemini_function_call_frame_extracts_name_and_args(self) -> None:
+        line = json.dumps(
+            {
+                "type": "function_call",
+                "name": "bash",
+                "args": {"command": "ls -la"},
+            }
+        )
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "bash"
+        assert tool_args == {"command": "ls -la"}
+
+    def test_gemini_nested_function_call_dict_extracts_name_and_args(self) -> None:
+        line = json.dumps(
+            {
+                "function_call": {
+                    "name": "read_file",
+                    "args": {"path": "foo.py"},
+                }
+            }
+        )
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "read_file"
+        assert tool_args == {"path": "foo.py"}
+
+    def test_gemini_parts_function_call_extracts_name_and_args(self) -> None:
+        line = json.dumps(
+            {
+                "parts": [
+                    {
+                        "function_call": {
+                            "name": "view_file",
+                            "args": {"target": "bar.txt"},
+                        }
+                    }
+                ]
+            }
+        )
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "view_file"
+        assert tool_args == {"target": "bar.txt"}
+
+    def test_gemini_candidates_function_call_extracts_name_and_args(self) -> None:
+        line = json.dumps(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "function_call": {
+                                        "name": "read_file",
+                                        "args": {"path": "foo.py"},
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "read_file"
+        assert tool_args == {"path": "foo.py"}
+
+    def test_nanocoder_executed_tool_line_extracts_name_with_multiplication(self) -> None:
+        line = "⚒ Executed Read \u00d7 1"
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "Read"
+        assert tool_args == {}
+
+    def test_nanocoder_executed_tool_line_extracts_name_without_multiplication(self) -> None:
+        line = "⚒ Executed write_file"
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "write_file"
+        assert tool_args == {}
+
+    def test_nanocoder_executed_tool_line_with_vt_escapes(self) -> None:
+        line = "\x1b[2K\r⚒ Executed list_dir \u00d7 3\n"
+
+        result = extract_tool_call_from_activity_signal(line)
+
+        assert result is not None
+        tool_name, tool_args = result
+        assert tool_name == "list_dir"
+        assert tool_args == {}

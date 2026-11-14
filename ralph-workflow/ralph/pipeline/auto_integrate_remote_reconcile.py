@@ -34,6 +34,7 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
     current_rebase_identity,
 )
 from ralph.pipeline.integration_resolution import retained_integration_reason
+from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -353,6 +354,8 @@ def _resolve_rebase_stop(
     )
     if isinstance(attempt_result, StopResolutionBlocked):
         return WaitingOutcome(attempt_result.reason, "resolution attempt key changes")
+    if isinstance(attempt_result, RebaseResolutionResult):
+        return attempt_result.outcome
     return _coerce_stop_resolution_outcome(attempt_result)
 
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.invoke import InvokeOptions
+from ralph.agents.parsers.kimi import KimiParser
 from ralph.cli.commands.smoke import _required_evidence
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_models import McpConfig
@@ -159,3 +160,50 @@ def test_kimi_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
 
     assert label == PASS
     assert weakest == Provenance.WIRE
+
+
+_FIXTURE_PATH: Path = Path(__file__).parent / "display" / "_fixtures" / "kimi_wire.jsonl"
+_PROVENANCE_PATH: Path = Path(__file__).parent / "display" / "_fixtures" / "kimi_wire_provenance.md"
+
+
+def test_kimi_wire_fixture_is_loadable_ndjson() -> None:
+    assert _FIXTURE_PATH.is_file()
+    lines = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+    assert len(lines) > 0
+    for line in lines:
+        parsed_json = json.loads(line)
+        assert isinstance(parsed_json, dict)
+
+
+def test_kimi_wire_fixture_parses_expected_event_sequence() -> None:
+    lines = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+    parser = KimiParser()
+    events = list(parser.parse(iter(lines)))
+
+    assert len(events) == 7
+    event_types = [event.type for event in events]
+    assert event_types == [
+        "lifecycle",
+        "tool_use",
+        "tool_result",
+        "tool_use",
+        "tool_result",
+        "lifecycle",
+        "text",
+    ]
+
+    tools_called = [event.metadata.get("tool") for event in events if event.type == "tool_use"]
+    assert tools_called == ["Write", "Read"]
+
+    lifecycle_events = [event for event in events if event.type == "lifecycle"]
+    assert len(lifecycle_events) == 2
+    assert "2.3.0" in lifecycle_events[0].content
+    assert "session_eb6d7ec7-8341-4357-b73b-099e24b8102f" in lifecycle_events[1].content
+
+
+def test_kimi_wire_provenance_document_matches_fixture() -> None:
+    assert _PROVENANCE_PATH.is_file()
+    text = _PROVENANCE_PATH.read_text(encoding="utf-8")
+    assert "2.3.0" in text
+    assert "stream-json" in text
+    assert "kimi_wire.jsonl" in text

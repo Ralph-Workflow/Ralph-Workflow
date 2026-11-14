@@ -1,0 +1,258 @@
+{
+  "parent_session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+  "child_session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+  "sessions": [
+    {
+      "id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "project_id": "global",
+      "workspace_id": null,
+      "parent_id": null,
+      "slug": "kind-river",
+      "directory": "/tmp/test-subagent-capture",
+      "path": "tmp/test-subagent-capture",
+      "title": "Reading sample.txt via subagent",
+      "version": "1.19.4",
+      "share_url": null,
+      "summary_additions": 0,
+      "summary_deletions": 0,
+      "summary_files": 0,
+      "summary_diffs": null,
+      "metadata": null,
+      "cost": 0.0,
+      "tokens_input": 15269,
+      "tokens_output": 78,
+      "tokens_reasoning": 44,
+      "tokens_cache_read": 0,
+      "tokens_cache_write": 0,
+      "revert": null,
+      "permission": "[{\"permission\":\"question\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"plan_enter\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"plan_exit\",\"pattern\":\"*\",\"action\":\"deny\"}]",
+      "agent": "build",
+      "model": "{\"id\":\"longcat-2.5-free\",\"providerID\":\"opencode\",\"variant\":\"default\"}",
+      "time_created": 1794674360442,
+      "time_updated": 1794674375890,
+      "time_compacting": null,
+      "time_archived": null
+    },
+    {
+      "id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "project_id": "global",
+      "workspace_id": null,
+      "parent_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "slug": "glowing-eagle",
+      "directory": "/tmp/test-subagent-capture",
+      "path": "tmp/test-subagent-capture",
+      "title": "Read sample.txt (@explore subagent)",
+      "version": "1.19.4",
+      "share_url": null,
+      "summary_additions": 0,
+      "summary_deletions": 0,
+      "summary_files": 0,
+      "summary_diffs": null,
+      "metadata": null,
+      "cost": 0.0,
+      "tokens_input": 6863,
+      "tokens_output": 68,
+      "tokens_reasoning": 18,
+      "tokens_cache_read": 0,
+      "tokens_cache_write": 0,
+      "revert": null,
+      "permission": "[{\"permission\":\"question\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"plan_enter\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"plan_exit\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"todowrite\",\"pattern\":\"*\",\"action\":\"deny\"},{\"permission\":\"task\",\"pattern\":\"*\",\"action\":\"deny\"}]",
+      "agent": "explore",
+      "model": "{\"id\":\"longcat-2.5-free\",\"providerID\":\"opencode\",\"variant\":\"default\"}",
+      "time_created": 1794674365103,
+      "time_updated": 1794674372172,
+      "time_compacting": null,
+      "time_archived": null
+    }
+  ],
+  "parts": [
+    {
+      "id": "prt_1daed92be001pBGRCzC2mY7Ch3",
+      "message_id": "msg_1daed92bb001i3e7jjaTdOvP4a",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674365120,
+      "time_updated": 1794674365121,
+      "data": "{\"type\":\"text\",\"text\":\"Read the file /tmp/test-subagent-capture/sample.txt using the Read tool and report its exact contents back to me.\"}"
+    },
+    {
+      "id": "prt_1daed9aee001toWdlO39GZ0d2B",
+      "message_id": "msg_1daed92cc001Kg9EOwwqU1dIX0",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674367215,
+      "time_updated": 1794674367216,
+      "data": "{\"type\":\"step-start\"}"
+    },
+    {
+      "id": "prt_1daed9af1001ZhAYXe7z2zILyi",
+      "message_id": "msg_1daed92cc001Kg9EOwwqU1dIX0",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674367217,
+      "time_updated": 1794674367514,
+      "data": "{\"type\":\"reasoning\",\"text\":\"\\nThe user wants me to read a file and report its contents. Simple task.\",\"time\":{\"start\":1794674367217,\"end\":1794674367511}}"
+    },
+    {
+      "id": "prt_1daed9c1d001OcUz7WwOw1v4vJ",
+      "message_id": "msg_1daed92cc001Kg9EOwwqU1dIX0",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674367517,
+      "time_updated": 1794674367790,
+      "data": "{\"type\":\"tool\",\"tool\":\"read\",\"callID\":\"call_4474758cd1bb459bb16946ca\",\"state\":{\"status\":\"completed\",\"input\":{\"filePath\":\"/tmp/test-subagent-capture/sample.txt\"},\"output\":\"<path>/tmp/test-subagent-capture/sample.txt</path>\\n<type>file</type>\\n<content>\\n1: hello world\\n\\n(End of file - total 1 lines)\\n</content>\",\"metadata\":{\"preview\":\"hello world\",\"truncated\":false,\"loaded\":[],\"display\":{\"type\":\"file\",\"path\":\"/tmp/test-subagent-capture/sample.txt\",\"text\":\"hello world\",\"lineStart\":1,\"lineEnd\":1,\"totalLines\":1,\"truncated\":false}},\"title\":\"tmp/test-subagent-capture/sample.txt\",\"time\":{\"start\":1794674367692,\"end\":1794674367789}}}"
+    },
+    {
+      "id": "prt_1daed9d34001Ht2DNEwbMLIZ15",
+      "message_id": "msg_1daed92cc001Kg9EOwwqU1dIX0",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674367796,
+      "time_updated": 1794674367797,
+      "data": "{\"reason\":\"tool-calls\",\"type\":\"step-finish\",\"tokens\":{\"total\":3425,\"input\":3385,\"output\":23,\"reasoning\":17,\"cache\":{\"write\":0,\"read\":0}},\"cost\":0}"
+    },
+    {
+      "id": "prt_1daedabe6001MY4152haUXh6qi",
+      "message_id": "msg_1daed9d3f001nRZ6Fo8bQI4Fwk",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674371558,
+      "time_updated": 1794674371570,
+      "data": "{\"type\":\"step-start\"}"
+    },
+    {
+      "id": "prt_1daedabf3001htoWlnPwo6qOIH",
+      "message_id": "msg_1daed9d3f001nRZ6Fo8bQI4Fwk",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674371571,
+      "time_updated": 1794674371700,
+      "data": "{\"type\":\"reasoning\",\"text\":\"\\n\\n\",\"time\":{\"start\":1794674371571,\"end\":1794674371698}}"
+    },
+    {
+      "id": "prt_1daedac75001cL35Z7Zl9W3zpO",
+      "message_id": "msg_1daed9d3f001nRZ6Fo8bQI4Fwk",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674371701,
+      "time_updated": 1794674372144,
+      "data": "{\"type\":\"text\",\"text\":\"Here are the exact contents of `/tmp/test-subagent-capture/sample.txt`:\\n\\n```\\nhello world\\n```\\n\\nThe file contains a single line with the text `hello world`, with no additional lines or trailing content.\",\"time\":{\"start\":1794674371701,\"end\":1794674372143}}"
+    },
+    {
+      "id": "prt_1daedae32001unnakJYJnC1PgO",
+      "message_id": "msg_1daed9d3f001nRZ6Fo8bQI4Fwk",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674372146,
+      "time_updated": 1794674372147,
+      "data": "{\"reason\":\"stop\",\"type\":\"step-finish\",\"tokens\":{\"total\":3524,\"input\":3478,\"output\":45,\"reasoning\":1,\"cache\":{\"write\":0,\"read\":0}},\"cost\":0}"
+    },
+    {
+      "id": "prt_1daed80a1001LLpzAQRSsNgiDv",
+      "message_id": "msg_1daed809a001DkxKl7S5YthKnp",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674360485,
+      "time_updated": 1794674360486,
+      "data": "{\"type\":\"text\",\"text\":\"\\\"Use the task tool to dispatch a subagent with agent 'explore' or 'general' to read /tmp/test-subagent-capture/sample.txt and report its contents.\\\"\"}"
+    },
+    {
+      "id": "prt_1daed8d37001o5YWL85HbfpokA",
+      "message_id": "msg_1daed82f30017xTrrbTpJNcp7g",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674363703,
+      "time_updated": 1794674363704,
+      "data": "{\"type\":\"step-start\"}"
+    },
+    {
+      "id": "prt_1daed8d3a001FmoKW0w60tY3AZ",
+      "message_id": "msg_1daed82f30017xTrrbTpJNcp7g",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674363706,
+      "time_updated": 1794674364493,
+      "data": "{\"type\":\"reasoning\",\"text\":\"\\nThe user wants me to dispatch a subagent with agent 'explore' or 'general' to read /tmp/test-subagent-capture/sample.txt and report its contents. Let me use the task tool.\\n\",\"time\":{\"start\":1794674363706,\"end\":1794674364491}}"
+    },
+    {
+      "id": "prt_1daed904e001WEVkp5L1HWJfoY",
+      "message_id": "msg_1daed82f30017xTrrbTpJNcp7g",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674364495,
+      "time_updated": 1794674372160,
+      "data": "{\"type\":\"tool\",\"tool\":\"task\",\"callID\":\"call_04ab6c6402d946f3b96ff22a\",\"state\":{\"status\":\"completed\",\"input\":{\"description\":\"Read sample.txt\",\"prompt\":\"Read the file /tmp/test-subagent-capture/sample.txt using the Read tool and report its exact contents back to me.\",\"subagent_type\":\"explore\"},\"output\":\"<task id=\\\"ses_e25126d50ffeAJgP3Zps4s3fnU\\\" state=\\\"completed\\\">\\n<task_result>\\nHere are the exact contents of `/tmp/test-subagent-capture/sample.txt`:\\n\\n```\\nhello world\\n```\\n\\nThe file contains a single line with the text `hello world`, with no additional lines or trailing content.\\n</task_result>\\n</task>\",\"metadata\":{\"parentSessionId\":\"ses_e25127f85ffesMj5vyUffLGYFT\",\"sessionId\":\"ses_e25126d50ffeAJgP3Zps4s3fnU\",\"model\":{\"modelID\":\"longcat-2.5-free\",\"providerID\":\"opencode\"},\"truncated\":false},\"title\":\"Read sample.txt\",\"time\":{\"start\":1794674365109,\"end\":1794674372160}}}"
+    },
+    {
+      "id": "prt_1daedae4200180kYoCuvPh7gA2",
+      "message_id": "msg_1daed82f30017xTrrbTpJNcp7g",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674372162,
+      "time_updated": 1794674372162,
+      "data": "{\"reason\":\"tool-calls\",\"type\":\"step-finish\",\"tokens\":{\"total\":7639,\"input\":7535,\"output\":61,\"reasoning\":43,\"cache\":{\"write\":0,\"read\":0}},\"cost\":0}"
+    },
+    {
+      "id": "prt_1daedb71f001GV4x1n91h7L2yX",
+      "message_id": "msg_1daedae47001tEg76TOA5pPfMk",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674374431,
+      "time_updated": 1794674374434,
+      "data": "{\"type\":\"step-start\"}"
+    },
+    {
+      "id": "prt_1daedb724001gAhnozKDGPSZyQ",
+      "message_id": "msg_1daedae47001tEg76TOA5pPfMk",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674374436,
+      "time_updated": 1794674374640,
+      "data": "{\"type\":\"reasoning\",\"text\":\"\\n\\n\",\"time\":{\"start\":1794674374436,\"end\":1794674374639}}"
+    },
+    {
+      "id": "prt_1daedb7f1001lZCaaaA3vI0DFC",
+      "message_id": "msg_1daedae47001tEg76TOA5pPfMk",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674374642,
+      "time_updated": 1794674375860,
+      "data": "{\"type\":\"text\",\"text\":\"The subagent read the file. Contents:\\n\\n```\\nhello world\\n```\",\"time\":{\"start\":1794674374641,\"end\":1794674375858}}"
+    },
+    {
+      "id": "prt_1daedbcb7001rfOkZql2FbPy17",
+      "message_id": "msg_1daedae47001tEg76TOA5pPfMk",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674375863,
+      "time_updated": 1794674375865,
+      "data": "{\"reason\":\"stop\",\"type\":\"step-finish\",\"tokens\":{\"total\":7752,\"input\":7734,\"output\":17,\"reasoning\":1,\"cache\":{\"write\":0,\"read\":0}},\"cost\":0}"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_1daed92bb001i3e7jjaTdOvP4a",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674365115,
+      "time_updated": 1794674372176,
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1794674365115},\"agent\":\"explore\",\"model\":{\"providerID\":\"opencode\",\"modelID\":\"longcat-2.5-free\"},\"summary\":{\"diffs\":[]}}"
+    },
+    {
+      "id": "msg_1daed92cc001Kg9EOwwqU1dIX0",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674365132,
+      "time_updated": 1794674367804,
+      "data": "{\"parentID\":\"msg_1daed92bb001i3e7jjaTdOvP4a\",\"role\":\"assistant\",\"mode\":\"explore\",\"agent\":\"explore\",\"path\":{\"cwd\":\"/tmp/test-subagent-capture\",\"root\":\"/\"},\"cost\":0,\"tokens\":{\"total\":3425,\"input\":3385,\"output\":23,\"reasoning\":17,\"cache\":{\"write\":0,\"read\":0}},\"modelID\":\"longcat-2.5-free\",\"providerID\":\"opencode\",\"time\":{\"created\":1794674365132,\"completed\":1794674367804},\"finish\":\"tool-calls\"}"
+    },
+    {
+      "id": "msg_1daed9d3f001nRZ6Fo8bQI4Fwk",
+      "session_id": "ses_e25126d50ffeAJgP3Zps4s3fnU",
+      "time_created": 1794674367807,
+      "time_updated": 1794674372152,
+      "data": "{\"parentID\":\"msg_1daed92bb001i3e7jjaTdOvP4a\",\"role\":\"assistant\",\"mode\":\"explore\",\"agent\":\"explore\",\"path\":{\"cwd\":\"/tmp/test-subagent-capture\",\"root\":\"/\"},\"cost\":0,\"tokens\":{\"total\":3524,\"input\":3478,\"output\":45,\"reasoning\":1,\"cache\":{\"write\":0,\"read\":0}},\"modelID\":\"longcat-2.5-free\",\"providerID\":\"opencode\",\"time\":{\"created\":1794674367807,\"completed\":1794674372151},\"finish\":\"stop\"}"
+    },
+    {
+      "id": "msg_1daed809a001DkxKl7S5YthKnp",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674360474,
+      "time_updated": 1794674372181,
+      "data": "{\"role\":\"user\",\"time\":{\"created\":1794674360474},\"agent\":\"build\",\"model\":{\"providerID\":\"opencode\",\"modelID\":\"longcat-2.5-free\"},\"summary\":{\"diffs\":[]}}"
+    },
+    {
+      "id": "msg_1daed82f30017xTrrbTpJNcp7g",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674361075,
+      "time_updated": 1794674372165,
+      "data": "{\"parentID\":\"msg_1daed809a001DkxKl7S5YthKnp\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/tmp/test-subagent-capture\",\"root\":\"/\"},\"cost\":0,\"tokens\":{\"total\":7639,\"input\":7535,\"output\":61,\"reasoning\":43,\"cache\":{\"write\":0,\"read\":0}},\"modelID\":\"longcat-2.5-free\",\"providerID\":\"opencode\",\"time\":{\"created\":1794674361075,\"completed\":1794674372165},\"finish\":\"tool-calls\"}"
+    },
+    {
+      "id": "msg_1daedae47001tEg76TOA5pPfMk",
+      "session_id": "ses_e25127f85ffesMj5vyUffLGYFT",
+      "time_created": 1794674372167,
+      "time_updated": 1794674375871,
+      "data": "{\"parentID\":\"msg_1daed809a001DkxKl7S5YthKnp\",\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/tmp/test-subagent-capture\",\"root\":\"/\"},\"cost\":0,\"tokens\":{\"total\":7752,\"input\":7734,\"output\":17,\"reasoning\":1,\"cache\":{\"write\":0,\"read\":0}},\"modelID\":\"longcat-2.5-free\",\"providerID\":\"opencode\",\"time\":{\"created\":1794674372167,\"completed\":1794674375870},\"finish\":\"stop\"}"
+    }
+  ]
+}

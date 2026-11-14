@@ -429,15 +429,13 @@ def _run_one_round(
     return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
 
 
-def _resolve_delayed_selection(
+def _select_after_delay(
     controller: RecoveryController,
     session: ResolutionSession,
-    candidates: tuple[str, ...],
     eligible: list[str],
+    candidates: tuple[str, ...],
     delay: int,
 ) -> int | None:
-    if session.caller_provided:
-        return None
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     _driver_mod._sleep_seconds(delay / 1000.0)
@@ -445,20 +443,23 @@ def _resolve_delayed_selection(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
+    from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
 
-    def _candidate_wait_ms(name: str) -> int:
-        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, (name,))
-        ledger: object = getattr(controller, "ledger", None)
-        if wait == 0 and ledger is not None:
-            earliest_wait_fn: object = getattr(ledger, "earliest_wait_ms", None)
-            if callable(earliest_wait_fn):
-                res: object = earliest_wait_fn(PHASE_RESOLUTION, (name,))
-                if isinstance(res, int):
-                    wait = res
-        return wait
+    if current_clock() is _DEFAULT_CLOCK and not controller.all_exhausted(
+        PHASE_RESOLUTION, eligible
+    ):
+        unspent = [
+            agent
+            for agent, status in controller.chain_eligibility(PHASE_RESOLUTION, eligible)
+            if not status.is_spent
+        ]
+        if unspent:
 
-    shortest_agent = min(eligible, key=_candidate_wait_ms)
-    return candidates.index(shortest_agent)
+            def _wait_key(agent_id: str) -> int:
+                return int(controller.earliest_available_wait_ms(PHASE_RESOLUTION, [agent_id]))
+
+            return candidates.index(min(unspent, key=_wait_key))
+    return None
 
 
 def _preferred_conflict_candidate(
@@ -483,16 +484,22 @@ def _preferred_conflict_candidate(
     if selection.agent is not None:
         return candidates.index(selection.agent)
     delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-    if (
-        delay == 0
-        and not session.caller_provided
-        and hasattr(controller, "ledger")
-        and controller.ledger is not None
-    ):
+    if delay == 0 and not session.caller_provided:
         delay = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
     if delay > 0:
-        return _resolve_delayed_selection(controller, session, candidates, eligible, delay)
-    return None
+        return _select_after_delay(controller, session, eligible, candidates, delay)
+
+    def _candidate_wait_ms(name: str) -> int:
+        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+        if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
+            wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
+        return wait
+
+    shortest_agent = min(
+        eligible,
+        key=_candidate_wait_ms,
+    )
+    return candidates.index(shortest_agent)
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

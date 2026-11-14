@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -9,6 +8,7 @@ from loguru import logger
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
@@ -17,7 +17,7 @@ from ralph.pipeline.agent_entry_point import (
 )
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.attempt_runner import run_agent_attempt
-from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -32,11 +32,6 @@ from ralph.pipeline.effect_executor import (
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.resolution_outcome import (
-    ResolvedOutcome,
-    StopResolutionOutcome,
-    UnknownOutcome,
-)
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
@@ -49,6 +44,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
@@ -105,22 +101,7 @@ _MIN_FALLBACK_CHAIN_LENGTH = 2
 
 ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 
-_effect_executor_module = importlib.import_module("ralph.pipeline.effect_executor")
-
-
-def _invoke_effect(target: object, *args: object, **kwargs: object) -> object:
-    config = kwargs.pop("config")
-    pipeline_deps = kwargs.pop("pipeline_deps")
-    workspace_scope = kwargs.pop("workspace_scope")
-    result: object = _effect_executor_module.execute_agent_effect(
-        target,
-        config,
-        pipeline_deps,
-        workspace_scope,
-        *args,
-        **kwargs,
-    )
-    return result
+_invoke_effect = effect_attempt_invoke(_effect_executor_module.execute_agent_effect)
 
 
 @dataclass

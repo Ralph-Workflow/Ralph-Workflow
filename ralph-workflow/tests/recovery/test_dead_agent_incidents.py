@@ -750,3 +750,89 @@ def test_incident_4_subagent_child_session_activity_counts_as_supervisor_livenes
         "a session whose only evidence is subagent child-session activity must be classified as "
         f"active, not stuck (observed: {kind!r})"
     )
+
+
+INCIDENT_5_CLAUDE_TOOL_USE_LINE = (
+    '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01",'
+    '"name":"Read","input":{"file_path":"ralph/recovery/controller.py"}}]}}'
+)
+
+INCIDENT_5_CLAUDE_TOOL_RESULT_LINE = (
+    '{"type":"user","message":{"role":"user","content":[{"type":"tool_result",'
+    '"tool_use_id":"toolu_01","content":"class RecoveryController:"}]}}'
+)
+
+INCIDENT_6_OPENCODE_TOOL_USE_LINE = (
+    '{"type":"tool_use","sessionID":"s_0001","part":{"type":"tool","tool":"read_file",'
+    '"callID":"c_0001","state":{"status":"completed","input":{"path":"docs/agents/verification.md"},'
+    '"output":"verification"}}}'
+)
+
+INCIDENT_6_WATCHDOG_FIRE_LINE = "[post-exit-watchdog] FIRE reason=descendant_hang elapsed=30.0s"
+
+
+class _DescendantFakeHandle(FakeManagedHandle):
+    def __init__(self, *, has_descendants: bool = True) -> None:
+        super().__init__(returncode=0, issuer=None)
+        self._has_descendants = has_descendants
+
+    def has_live_descendants(self) -> bool:
+        return self._has_descendants
+
+    def descendant_snapshot(self) -> tuple[int, float | None]:
+        return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
+
+
+def test_incident_5_live_session_without_completion_evidence_records_unknown_issuer_and_liveness() -> (
+    None
+):
+    from ralph.recovery.attempt_facts import AttemptFacts, TerminationRecord
+    from ralph.recovery.attribution import Attribution, RuntimeCause, attribute_attempt
+    from ralph.recovery.dead_agent_verdict import (
+        DeadAgentVerdict,
+        decide_dead_agent_verdict,
+        verdict_benches_agent,
+    )
+
+    facts = AttemptFacts(
+        event_kinds=("tool_result",),
+        tool_calls=("Read",),
+        artifact_valid=False,
+        workspace_changed=None,
+        elapsed_to_terminal_ms=97_900,
+        exit_status="exit_0",
+        liveness_observed=True,
+        termination=TerminationRecord.create(
+            TerminationIssuer.UNKNOWN,
+            observed_returncode=0,
+            reported_returncode=0,
+            liveness_observed=True,
+        ),
+    )
+
+    verdict = attribute_attempt(facts)
+    assert verdict.attribution is Attribution.RUNTIME, (
+        "an unattributed end of a visibly live session must be attributed to runtime "
+        f"(observed attribution: {verdict.attribution!r})"
+    )
+    assert verdict.runtime_cause is RuntimeCause.KILL_UNATTRIBUTED, (
+        f"the runtime cause must record an unattributed kill (observed: {verdict.runtime_cause!r})"
+    )
+    assert verdict.cleared is True, (
+        "a live session whose exit is unattributed must be cleared "
+        f"(observed cleared: {verdict.cleared!r})"
+    )
+    assert verdict.counts_toward_agent_state is False, (
+        "an unattributed live session must never count toward the agent's failure budget "
+        f"(observed: {verdict.counts_toward_agent_state!r})"
+    )
+
+    dead_agent_verdict = decide_dead_agent_verdict(facts, verdict, probe_outcome=None)
+    assert dead_agent_verdict.verdict is DeadAgentVerdict.UNKNOWN, (
+        "without a canary probe verdict the outcome remains unknown "
+        f"(observed: {dead_agent_verdict.verdict!r})"
+    )
+    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+        "an unknown verdict must never bench the agent"
+    )
+

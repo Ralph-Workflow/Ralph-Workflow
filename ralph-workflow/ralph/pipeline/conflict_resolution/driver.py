@@ -213,8 +213,6 @@ class _IntegrationClockAdapter:
 
     def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
         return self._clock.wait_for_event(event, seconds)
-
-
 __all__ = [
     "MonotonicClock",
     "ResolutionAction",
@@ -777,11 +775,7 @@ def _classify_incomplete_success(
         candidates=candidates,
         failed_index=attempt.candidate_offset,
         policy_bundle=policy_bundle,
-        outcome=(
-            ConflictAttemptOutcome.UNRESOLVED_REMAINING
-            if made_progress
-            else ConflictAttemptOutcome.STALLED
-        ),
+        outcome=ConflictAttemptOutcome.UNRESOLVED_REMAINING,
         unresolved_count=unresolved_count,
         workspace_changed=made_progress,
     )
@@ -964,6 +958,19 @@ def _can_continue_controller_rounds(
     )
 
 
+def _ledger_can_continue(
+    ledger: AgentFailureLedger,
+    live: list[str],
+    rounds_spent: int,
+) -> bool:
+    if ledger.all_exhausted(PHASE_RESOLUTION, live):
+        return False
+    if rounds_spent == 0:
+        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
+        return ledger.any_eligible(PHASE_RESOLUTION, live) or (wait is not None and wait > 0)
+    return ledger.any_eligible(PHASE_RESOLUTION, live)
+
+
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
 
     skipped = skipped_candidates(session, candidates)
@@ -978,10 +985,7 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         return _can_continue_controller_rounds(session, controller, live)
     ledger = session_ledger(session)
     if ledger is not None:
-        if ledger.all_exhausted(PHASE_RESOLUTION, live):
-            return False
-        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
-        return ledger.any_eligible(PHASE_RESOLUTION, live) or (wait is not None and wait > 0)
+        return _ledger_can_continue(ledger, live, session.rounds_spent)
     return True
 
 
@@ -990,8 +994,6 @@ def _wait_for_eligible_agent(
     candidates: tuple[str, ...],
 ) -> None:
     _wait_for_candidates_if_cooling_down(session, candidates)
-
-
 def _record_unconfigured_resolver(
     session: ResolutionSession,
     conflicted: tuple[str, ...],
