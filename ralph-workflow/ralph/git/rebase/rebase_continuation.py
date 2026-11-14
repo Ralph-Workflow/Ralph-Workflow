@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import os
 import subprocess
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
+from loguru import logger
 
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import PINNED_CONFIG_ARGS, scrub_git_env
@@ -132,7 +134,87 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
     return verify_rebase_completed_at(path, upstream_branch)
 
 
+_UNSTAGED_BLOCK_MARKER = "mark them as resolved using git add"
+
+
+def _blocked_by_unstaged_changes(stderr: str, stdout: str) -> bool:
+    return _UNSTAGED_BLOCK_MARKER in f"{stderr}\n{stdout}"
+
+
+def _set_unstaged_changes_aside(repo_root: Path) -> Path | None:
+    """Move unstaged tracked edits out of the worktree; return the saved patch.
+
+    ``git rebase --continue`` refuses to run while tracked files carry unstaged
+    changes, and reports it with the same text it uses for real conflicts. The
+    edits are kept as a patch under the git directory and reapplied afterwards,
+    so the verified index is what gets replayed and no work is discarded.
+    """
+    located = run_git(
+        ["rev-parse", "--git-path", f"ralph-set-aside-{uuid.uuid4().hex}.patch"],
+        cwd=repo_root,
+        label="git-rebase:set-aside-path",
+        options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
+    )
+    patch = Path(located.stdout.strip())
+    if not patch.is_absolute():
+        patch = repo_root / patch
+    run_git(
+        ["diff", "--binary", "--no-ext-diff", "--no-color", f"--output={patch}"],
+        cwd=repo_root,
+        label="git-rebase:set-aside-diff",
+        options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
+    )
+    if not patch.exists() or patch.stat().st_size == 0:
+        patch.unlink(missing_ok=True)
+        return None
+    run_git(
+        ["checkout", "--", "."],
+        cwd=repo_root,
+        label="git-rebase:set-aside-checkout",
+        options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
+    )
+    logger.warning(
+        "rebase continuation: unstaged tracked changes blocked `git rebase --continue`; "
+        "set aside as {} and continuing with the staged resolution",
+        patch,
+    )
+    return patch
+
+
+def _restore_set_aside_changes(repo_root: Path, patch: Path) -> None:
+    restored = run_git(
+        ["apply", "--whitespace=nowarn", str(patch)],
+        cwd=repo_root,
+        label="git-rebase:set-aside-restore",
+        options=GitRunOptions(env=scrub_git_env(_git_env())),
+    )
+    if restored.returncode == 0:
+        patch.unlink(missing_ok=True)
+        return
+    logger.error(
+        "rebase continuation: could not reapply the set-aside unstaged changes ({}); "
+        "they are preserved in {}",
+        (restored.stderr or restored.stdout).strip(),
+        patch,
+    )
+
+
 def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> None:
+    try:
+        _continue_rebase_once(repo_root, skip_empty=skip_empty)
+    except RebaseContinuationError as exc:
+        if not _blocked_by_unstaged_changes(str(exc), "") or not rebase_in_progress_at(repo_root):
+            raise
+        patch = _set_unstaged_changes_aside(Path(repo_root))
+        if patch is None:
+            raise
+        try:
+            _continue_rebase_once(repo_root, skip_empty=skip_empty)
+        finally:
+            _restore_set_aside_changes(Path(repo_root), patch)
+
+
+def _continue_rebase_once(repo_root: Path | str, *, skip_empty: bool = True) -> None:
     repo = open_repo(repo_root)
     try:
         if not rebase_in_progress_at(repo_root):

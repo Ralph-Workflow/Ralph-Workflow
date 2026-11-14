@@ -82,6 +82,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **HOTFIX fix(rebase): `git rebase --continue` is no longer blocked forever by unstaged tracked changes** — with every conflict resolved and staged, any unstaged tracked edit (for example the engine's own `AGENTS.md` policy-marker rewrite) made git refuse with its "You must edit all merge conflicts" text, and auto-integrate retried the same continuation indefinitely. `continue_rebase_at` now sets those edits aside as a patch under the git directory, continues with the staged resolution, and reapplies them. Locked by `tests/test_git_rebase_continuation.py`.
+
 - **HOTFIX fix(conflict-resolution): apply the agent cooldown system to stalled rebase-conflict attempts** — an agent that reported success while the same conflicted paths remained (or produced no activity) was classified without cooldown or budget charge, so the same agent was re-invoked every round indefinitely (`round=33/3` in production). Such attempts now go through the shared `RecoveryController` cooldown (`DEAD_AGENT_NO_PROGRESS` / `NO_OUTPUT_AT_START`), so the agent is benched and the chain advances or waits for expiry. Locked by `tests/test_conflict_stalled_attempt_cooldown.py`.
 
 - **fix(artifacts): prune obsolete format docs during materialization** — `materialize_all_format_docs` deletes stale markdown files in `.agent/artifact-formats/` and its `examples/` subdirectory whose stems do not belong to active artifact types, preventing retired format documentation from lingering beside active specifications across phase renames. Locked by `tests/test_materialize_format_docs_pruning.py`.

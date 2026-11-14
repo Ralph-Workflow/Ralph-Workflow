@@ -215,3 +215,34 @@ def test_continue_rebase_at_preserves_nonempty_failure(
 
     with pytest.raises(RebaseContinuationError, match="could not apply commit"):
         continue_rebase_at(tmp_path)
+
+
+def test_continue_rebase_at_is_not_blocked_by_unrelated_unstaged_changes(
+    tmp_git_repo: Path,
+) -> None:
+    repo = Repo(tmp_git_repo)
+    try:
+        (tmp_git_repo / "bystander.txt").write_text("tracked\n")
+        repo.index.add(["bystander.txt"])
+        repo.index.commit("add bystander")
+    finally:
+        repo.close()
+    _setup_conflicted_rebase(tmp_git_repo)
+    _resolve_conflict(tmp_git_repo)
+    (tmp_git_repo / "bystander.txt").write_text("tracked\nedited outside the resolution\n")
+
+    continue_rebase_at(tmp_git_repo)
+
+    assert not rebase_in_progress_at(tmp_git_repo)
+    assert (tmp_git_repo / "conflict.txt").read_text() == "resolved\n"
+    assert (
+        tmp_git_repo / "bystander.txt"
+    ).read_text() == "tracked\nedited outside the resolution\n"
+    committed = subprocess.run(
+        ["git", "show", "HEAD:bystander.txt"],
+        cwd=str(tmp_git_repo),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert committed == "tracked\n"
