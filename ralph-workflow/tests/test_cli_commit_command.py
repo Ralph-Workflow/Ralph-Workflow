@@ -247,7 +247,7 @@ def test_commit_invocation_passes_default_product_criteria_to_materialize_master
 ) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+    prompt_file.write_text("## Submit a `commit_message` artifact", encoding="utf-8")
 
     display_context = make_display_context()
 
@@ -348,7 +348,7 @@ def test_build_invoke_options_from_config_maps_all_timeout_fields() -> None:
 def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+    prompt_file.write_text("## Submit a `commit_message` artifact", encoding="utf-8")
 
     general_config = GeneralConfig(
         agent_idle_timeout_seconds=99.0,
@@ -394,7 +394,7 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
 def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+    prompt_file.write_text("## Submit a `commit_message` artifact", encoding="utf-8")
 
     attempt_context = CommitAttemptContext(
         repo_root=tmp_path,

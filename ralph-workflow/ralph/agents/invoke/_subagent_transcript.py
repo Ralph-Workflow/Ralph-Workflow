@@ -229,10 +229,7 @@ class ClaudeSubagentTranscriptTails:
                 meta_dict = read_meta_file(meta_path) if meta_path is not None else None
                 if isinstance(meta_dict, dict):
                     child_use_id: object = meta_dict.get("toolUseId")
-                    if (
-                        isinstance(child_use_id, str)
-                        and child_use_id in completed_dispatch_ids
-                    ):
+                    if isinstance(child_use_id, str) and child_use_id in completed_dispatch_ids:
                         continue
                 parser = ClaudeInteractiveTranscriptParser()
                 try:

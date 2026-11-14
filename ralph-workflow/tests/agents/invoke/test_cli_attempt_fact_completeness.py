@@ -349,7 +349,9 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
         except BaseException as exc:
             completion_failure = exc
     failure = reader_failure if reader_failure is not None else completion_failure
-    facts = failure.facts if isinstance(failure, AttemptEnded) else reader.termination_recorder.facts()
+    facts = (
+        failure.facts if isinstance(failure, AttemptEnded) else reader.termination_recorder.facts()
+    )
     facts = replace(facts, artifact_valid=shape.artifact_valid)
     typed_signal = facts.typed_signal
     outcome = end_attempt(

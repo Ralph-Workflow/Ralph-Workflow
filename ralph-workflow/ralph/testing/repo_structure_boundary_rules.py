@@ -9,9 +9,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = (
-    "B11_ALLOWLIST",
     "B4_ALLOWLIST",
     "B5_ALLOWLIST",
+    "B11_ALLOWLIST",
     "RULE_PAIRINGS",
     "allowlist_justification",
     "b11_allowlist_justification",
@@ -967,10 +967,13 @@ def _b11_value_agentness(value: ast.AST | None) -> str:
     return "unknown"
 
 
-def _b11_function_owners(tree: ast.Module) -> dict[int, ast.AST | None]:
-    owners: dict[int, ast.AST | None] = {}
+_B11Function = ast.FunctionDef | ast.AsyncFunctionDef
 
-    def visit(node: ast.AST, current: ast.AST | None) -> None:
+
+def _b11_function_owners(tree: ast.Module) -> dict[int, _B11Function | None]:
+    owners: dict[int, _B11Function | None] = {}
+
+    def visit(node: ast.AST, current: _B11Function | None) -> None:
         owners[id(node)] = current
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -991,14 +994,15 @@ def _b11_parameter_agentness(
     bindings: dict[str, str] = {}
     for parameter in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs):
         bindings[parameter.arg] = _b11_annotation_agentness(parameter.annotation)
-    for parameter in (arguments.vararg, arguments.kwarg):
-        if parameter is not None:
-            bindings[parameter.arg] = "unknown"
+    if arguments.vararg is not None:
+        bindings[arguments.vararg.arg] = "unknown"
+    if arguments.kwarg is not None:
+        bindings[arguments.kwarg.arg] = "unknown"
     return bindings
 
 
 def _b11_local_bindings(
-    tree: ast.Module, owners: dict[int, ast.AST | None]
+    tree: ast.Module, owners: dict[int, _B11Function | None]
 ) -> tuple[
     dict[int, dict[str, str]],
     dict[int, dict[str, ast.FunctionDef | ast.AsyncFunctionDef]],
@@ -1008,19 +1012,19 @@ def _b11_local_bindings(
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             owner = owners.get(id(node))
-            scope = definitions.setdefault(id(owner) if owner is not None else 0, {})
-            scope[node.name] = node
+            definition_scope = definitions.setdefault(id(owner) if owner is not None else 0, {})
+            definition_scope[node.name] = node
             continue
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         owner = owners.get(id(node))
-        scope = bindings.setdefault(id(owner) if owner is not None else 0, {})
+        binding_scope = bindings.setdefault(id(owner) if owner is not None else 0, {})
         value = node.value
         targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
         agentness = _b11_value_agentness(value)
         for target in targets:
             for name in _target_root_names(target):
-                scope[name] = agentness
+                binding_scope[name] = agentness
     return bindings, definitions
 
 
@@ -1057,8 +1061,8 @@ def _b11_callable_first_argument(annotation: ast.AST | None) -> ast.AST | None:
 
 def _b11_callee_agentness(
     func: ast.AST,
-    owner: ast.AST | None,
-    owners: dict[int, ast.AST | None],
+    owner: _B11Function | None,
+    owners: dict[int, _B11Function | None],
     definitions: dict[int, dict[str, ast.FunctionDef | ast.AsyncFunctionDef]],
 ) -> str:
     if not isinstance(func, ast.Name):
@@ -1083,8 +1087,8 @@ def _b11_callee_agentness(
 
 def _b11_lookup_name(
     name: str,
-    owner: ast.AST | None,
-    owners: dict[int, ast.AST | None],
+    owner: _B11Function | None,
+    owners: dict[int, _B11Function | None],
     local_bindings: dict[int, dict[str, str]],
 ) -> str:
     current = owner
@@ -1103,16 +1107,16 @@ def _b11_lookup_name(
 
 def _b11_argument_agentness(
     argument: ast.AST,
-    owner: ast.AST | None,
-    owners: dict[int, ast.AST | None],
+    owner: _B11Function | None,
+    owners: dict[int, _B11Function | None],
     local_bindings: dict[int, dict[str, str]],
 ) -> str:
     if isinstance(argument, ast.Name):
         return _b11_lookup_name(argument.id, owner, owners, local_bindings)
     if isinstance(argument, ast.Attribute):
-        if argument.attr in _B11_AGENT_ATTRIBUTE_NAMES:
-            return "agent"
-        if any(marker in argument.attr for marker in _B11_AGENT_TYPE_MARKERS):
+        if argument.attr in _B11_AGENT_ATTRIBUTE_NAMES or any(
+            marker in argument.attr for marker in _B11_AGENT_TYPE_MARKERS
+        ):
             return "agent"
         return "unknown"
     if isinstance(argument, ast.Constant):

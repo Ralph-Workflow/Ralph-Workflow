@@ -241,8 +241,10 @@ def test_rule_pairings_cover_every_boundary_rule() -> None:
         "B9",
         "B9b",
         "B10",
+        "B11",
     }
     assert rule_pairing("B2") == "AC16"
+    assert rule_pairing("B11") == "AC-matrix-completeness"
     assert rule_pairing("B8") == "AC4"
     assert rule_pairing("B9") == "AC3/AC15"
     assert rule_pairing("B9b") == "AC3/AC15"

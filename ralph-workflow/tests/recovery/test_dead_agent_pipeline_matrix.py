@@ -190,11 +190,7 @@ def test_completeness_every_entry_point_and_corpus_fixture_is_in_the_matrix() ->
 
 def test_completeness_every_acceptance_criterion_is_tagged() -> None:
     expected = {f"AC{number}" for number in range(1, 19)}
-    actual = {
-        acceptance
-        for scenario in ALL_SCENARIOS
-        for acceptance in scenario.acceptance
-    }
+    actual = {acceptance for scenario in ALL_SCENARIOS for acceptance in scenario.acceptance}
 
     assert actual == expected
 

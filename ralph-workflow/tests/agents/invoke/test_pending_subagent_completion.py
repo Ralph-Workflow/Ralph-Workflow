@@ -18,8 +18,8 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.recovery.attempt_facts import TerminationIssuer
 from tests.agents.invoke.test_pending_subagents_turn_end import (
-    _StubCliHandle,
     _spawn_stub,
+    _StubCliHandle,
 )
 
 pytestmark = pytest.mark.subprocess_e2e
@@ -121,10 +121,10 @@ def _append_result(transcript_path: Path, tool_use_id: str) -> str:
 
 
 def _cleanup(child: object, master_fd: int, reader_thread: threading.Thread) -> None:
-    pid = getattr(child, "pid")
+    pid = child.pid
     with contextlib.suppress(Exception):
         os.killpg(pid, signal.SIGKILL)
-    getattr(child, "wait")(timeout=5)
+    child.wait(timeout=5)
     reader_thread.join(timeout=2)
     os.close(master_fd)
 
@@ -167,7 +167,9 @@ def test_session_exits_exactly_once_after_pending_dispatch_completes(
         threading.Event().wait(0.7)
         assert child.poll() is None
         result_record = _append_result(transcript_path, _DISPATCH_ID)
-        _wait_until(lambda: result_record in "".join(lines), detail="matching result was not observed")
+        _wait_until(
+            lambda: result_record in "".join(lines), detail="matching result was not observed"
+        )
         sentinel_path.touch()
         reader_thread.join(timeout=2)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import fields
+from importlib import import_module
 from typing import TYPE_CHECKING, get_args, get_origin
 
 import pytest
@@ -41,6 +42,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.recovery.controller import RecoveryController
+
+import_module("ralph.pipeline.runner")
 
 _PHASE = "development"
 _AGENT = "fake"
