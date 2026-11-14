@@ -138,7 +138,7 @@ contract, and how to fix a slow test: `docs/agents/verification.md`
 Zero tolerance for any type of dead code. This is not negotiable, it is **INFINITELY BETTER** to rewrite dead code if we need to later on
 than it is to leave dead code around. If in doubt, **REMOVE IT**.
 
-<!-- ralph-workflow-policy:begin v3 -->
+<!-- ralph-workflow-policy:begin v2 -->
 Quality policies live under docs/ralph-workflow-policy/. All agent roles MUST load policies in this order: execution-kernel.md first, then their role slice, then any triggered domain policy before changing the project; load only its effective bounded policy portfolio: kernel, selected profiles, local tightening, and valid exceptions.
 Run declared RALPH-COMMAND gates; read docs/ralph-workflow-policy/gate-script-policy.md FIRST when touching a build, gate, gate script, or CI.
 Search nearest coverage before a control; record REMOVE, MERGE, REPLACE, or KEEP; use the cheapest sufficient layer and keep the default-gate budget neutral — the testing policy's B5 below-budget browser carve-out (a new browser journey under the measured `browser_budget_seconds` needs no offset elsewhere in the lane) is the only relaxation of the mandatory offset, and the aggregate ceiling plus the distinct-risk requirement still hold.
