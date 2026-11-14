@@ -62,11 +62,17 @@ def default_invoker(
         from ralph.pipeline.conflict_resolution import driver as _driver
 
         patched = _driver.invoke_resolution_agent
+        deps = pipeline_deps
+        if deps is None:
+            from ralph.display.context import make_display_context
+            from ralph.pipeline.factory import DefaultPipelineFactory
+
+            deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
         result = patched(
             agent_name=agent_name,
             prompt_path=prompt_path,
             config=config,
-            pipeline_deps=pipeline_deps,
+            pipeline_deps=deps,
             workspace_scope=workspace_scope,
             policy_bundle=policy_bundle,
             display=display,

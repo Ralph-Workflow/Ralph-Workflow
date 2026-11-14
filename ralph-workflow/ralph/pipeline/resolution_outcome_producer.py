@@ -56,8 +56,18 @@ def classify_resolution_failure(
     if terminal_reason is ResolutionTerminationReason.OUT_OF_REACH:
         return NextStrategyOutcome(strategy="completion_in_place")
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        return RetryLaterOutcome(on_change=reason or "resolver_agent_eligibility_changed")
-    return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
+        return RetryLaterOutcome(
+            on_change=reason or "resolver_agent_eligibility_changed",
+            terminal_reason=terminal_reason,
+            unresolved_paths=paths,
+            failure_cause=failure_cause,
+        )
+    return RetryLaterOutcome(
+        on_change=reason or RETRY_LATER_REASON,
+        terminal_reason=terminal_reason,
+        unresolved_paths=paths,
+        failure_cause=failure_cause,
+    )
 
 
 def stop_resolution_outcome_from_legacy(

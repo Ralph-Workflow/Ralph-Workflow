@@ -215,10 +215,20 @@ def is_retryable_fast_forward_failure(
     if isinstance(outcome, str):
         return outcome in _RETRYABLE_REASONS
     if isinstance(outcome, tuple):
-        return any(isinstance(item, str) and item in _RETRYABLE_REASONS for item in outcome)
+        return bool(len(outcome) > 1 and not outcome[0] and outcome[1] in _RETRYABLE_REASONS)
     if isinstance(outcome, bool):
         return False
-    return isinstance(outcome, RetryLaterOutcome)
+    match outcome:
+        case RetryLaterOutcome():
+            return True
+        case (
+            ResolvedOutcome()
+            | WaitingOutcome()
+            | NextStrategyOutcome()
+            | ConfigFailureOutcome()
+            | UnknownOutcome()
+        ):
+            return False
 
 
 __all__ = [

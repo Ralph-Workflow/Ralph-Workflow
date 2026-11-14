@@ -194,7 +194,7 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    result = invoke_resolution_agent(
+    assert not invoke_resolution_agent(
         agent_name="claude",
         prompt_path=prompt,
         config=_config(),
@@ -205,7 +205,6 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
         display_context=None,
         session=session,
     )
-    assert result is False
     assert session.last_attempt_failure == "conflict attempt failed"
     assert session.last_attempt_evidence != "PiProviderFailureExitError"
     assert session.skip_same_agent_retries is False

@@ -27,6 +27,17 @@ _TEST_RESOLVER_ATTEMPTS = 2
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
+    repo_root = None
+    if len(args) > 1 and hasattr(args[1], "root"):
+        repo_root = Path(args[1].root)
+    elif "workspace_scope" in kwargs and hasattr(kwargs["workspace_scope"], "root"):
+        repo_root = Path(kwargs["workspace_scope"].root)
+    if repo_root is not None:
+        from ralph.pipeline.auto_integrate_record import read_record, write_record
+
+        rec = read_record(repo_root)
+        if rec is not None and rec.resolution_gate_key is not None:
+            write_record(repo_root, rec.with_resolution_gate_key(None))
     return _auto_integrate_after_commit(*args, **kwargs)
 
 

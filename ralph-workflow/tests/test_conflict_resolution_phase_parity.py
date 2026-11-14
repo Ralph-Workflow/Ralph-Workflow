@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from ralph.agents.clock import Clock
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome as _FullRetryLaterOutcome
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,

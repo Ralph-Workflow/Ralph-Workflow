@@ -657,4 +657,3 @@ def test_ac15_post_exit_watchdog_attribution_parity(
         attrib = cast("dict[str, object]", typed_record.get("attribution", {}))
         assert attrib.get("attribution") == "runtime"
         assert attrib.get("runtime_cause") == "runtime_kill_post_exit_watchdog"
-

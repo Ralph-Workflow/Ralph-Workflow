@@ -849,11 +849,7 @@ def _complete_preservation_bundle(
             is_landed=is_landed,
         )
         if compatibility_preservation.outcome == "failed":
-            logger.warning(
-                "integration ladder rung 6: final preservation failed ({}); "
-                "the reset may discard work that nothing could save",
-                compatibility_preservation.reason,
-            )
+            return None, f"failed:no-preserved-copy:{compatibility_preservation.reason}"
     preservation = preserve_integration_state(root, state_dir=state_dir, target=target)
     if preservation is None:
         return None, "failed:no-complete-preservation-bundle"

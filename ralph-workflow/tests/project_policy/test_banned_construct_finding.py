@@ -65,5 +65,4 @@ def test_missing_ban_table_heading_fires_finding() -> None:
         f for f in findings if f.requirement_id == markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID
     ]
     assert len(banned_findings) == 1
-
     assert "Python" in banned_findings[0].missing_evidence

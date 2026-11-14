@@ -245,7 +245,9 @@ def _handle_sealed_outcome(
                 reason=reason
                 or on_change
                 or (f"retry after {until}" if until is not None else _RETAINED_RESOLUTION_REASON),
-                failure_cause=ResolutionFailureCause.AGENT_FAILURE,
+                failure_cause=result.failure_cause
+                if result.failure_cause is not None
+                else ResolutionFailureCause.UNRESOLVED_CONFLICT,
             )
         case NextStrategyOutcome(strategy=strategy):
             return MergeResult(

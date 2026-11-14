@@ -59,23 +59,22 @@ def _land_and_reconcile(
         elif isinstance(raw_outcome, bool):
             ok = raw_outcome
             skip_reason = ""
-        else:
+        elif isinstance(
+            raw_outcome,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
             ok = isinstance(raw_outcome, ResolvedOutcome)
-            if not ok and isinstance(
-                raw_outcome,
-                (
-                    WaitingOutcome,
-                    RetryLaterOutcome,
-                    NextStrategyOutcome,
-                    ConfigFailureOutcome,
-                    UnknownOutcome,
-                ),
-            ):
-                skip_reason = stop_resolution_outcome_reason(raw_outcome)
-            elif not ok:
-                skip_reason = str(raw_outcome)
-            else:
-                skip_reason = ""
+            skip_reason = "" if ok else stop_resolution_outcome_reason(raw_outcome)
+        else:
+            ok = False
+            skip_reason = str(raw_outcome)
     except Exception as exc:
         ff_failed = True
         skip_reason = f"fast-forward raised: {exc}"

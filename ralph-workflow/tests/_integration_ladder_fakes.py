@@ -89,7 +89,9 @@ class _FakePlumbing:
 
     def ref_is_readable(self, root: Path, ref: str) -> bool:
         self.calls.append(f"ref_is_readable:{ref}")
-        return ref in self._readable_refs
+        return ref in self._readable_refs or (
+            self._commit_ref is not None and ref == self._commit_ref
+        )
 
     def prune_landed_backup_refs(
         self, root: Path, is_landed: Callable[[str], bool]

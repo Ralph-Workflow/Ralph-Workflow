@@ -99,8 +99,7 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
-from ralph.pipeline.integration_actions import Clock as IntegrationClock
-from ralph.pipeline.integration_actions import current_clock
+from ralph.pipeline.integration_actions import Clock, current_clock, install_executors
 from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
@@ -274,10 +273,8 @@ def run_conflict_resolution_outcome(
         )
     )
     token = None
-    if isinstance(clock_candidate, IntegrationClock):
-        from ralph.pipeline.integration_actions import install_executors
-
-        token = install_executors(clock=cast("Clock", clock_candidate))
+    if isinstance(clock_candidate, Clock):
+        token = install_executors(clock=clock_candidate)
     _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(
@@ -331,9 +328,23 @@ def run_rebase_conflict_resolution_outcome(
     observer: WorktreeConflictObserver | None = None,
     prompt_materializer: PromptMaterializer | None = None,
 ) -> StopResolutionOutcome:
+    session_provided = session is not None
     active_session = (
         session or active_rebase_resolution_session() or _new_resolution_session(config)
     )
+    active_session.caller_provided = session_provided
+    clock_candidate: object = None
+    if active_session.ledger is not None:
+        ledger_obj: object = active_session.ledger
+        raw_clock: object = getattr(ledger_obj, "_clock", None)
+        if raw_clock is None:
+            raw_clock = getattr(ledger_obj, "clock", None)
+        clock_candidate = raw_clock
+    if clock_candidate is None and pipeline_deps is not None:
+        clock_candidate = pipeline_deps.recovery_clock
+    token = None
+    if isinstance(clock_candidate, Clock):
+        token = install_executors(clock=clock_candidate)
     _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(
@@ -362,6 +373,10 @@ def run_rebase_conflict_resolution_outcome(
         return _resolution_outcome(active_session, False)
     finally:
         _ACTIVE_SESSION[0] = None
+        if token is not None:
+            from ralph.pipeline.integration_actions import reset_executors
+
+            reset_executors(token)
 
 
 def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
@@ -774,7 +789,7 @@ def _execute_round_loop(
                 break
             round_index += 1
             if session.recovery_controller is not None:
-                session.recovery_controller._spent_agents.pop(PHASE_RESOLUTION, None)
+                session.recovery_controller.reset_backoff(PHASE_RESOLUTION, None)
             _push_round_status(display, root, target, round_index, round_cap, stop)
             prompt_path = prompt_materializer(
                 root=root,

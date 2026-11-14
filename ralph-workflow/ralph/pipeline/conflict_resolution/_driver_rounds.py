@@ -412,12 +412,13 @@ def _run_one_round(
             offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset
             continue
-        if progress.probe_changed or progress.count_dropped:
+        made_progress = progress.count_dropped or progress.probe_changed
+        if made_progress:
             candidate_retries[offset] = 0
         retries = candidate_retries.get(offset, 0)
         retries_same = session.chain_cursor == offset
         if not session.skip_same_agent_retries and retries_same and retries < max_retries:
-            candidate_retries[offset] = retries + 1
+            candidate_retries[offset] = 0 if made_progress else (retries + 1)
             _sleep_conflict_retry(session, policy_bundle)
             continue
         visited.add(offset)
@@ -457,9 +458,16 @@ def _preferred_conflict_candidate(
     ):
         delay = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
     if delay > 0:
+        if session.caller_provided:
+            return None
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
-        _driver_mod._sleep_seconds(delay / 1000.0)
+        secs = delay / 1000.0
+        _driver_mod._sleep_seconds(secs)
+        clock = getattr(controller, "_clock", None)
+        if clock is not None and hasattr(clock, "advance"):
+            clock.advance(secs)
+            controller.prune_expired()
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
