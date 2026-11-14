@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -32,9 +32,18 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
     select_resolution_action,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_verdict import (
     round_termination_reason as _round_termination_reason,
+)
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+    assert_never,
 )
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
@@ -57,7 +66,6 @@ __all__ = [
     "_paths_still_unresolved",
     "_preferred_conflict_candidate",
     "_record_invoker_outcome",
-    "_reset_conflict_success",
     "_run_one_round",
     "_sleep_conflict_retry",
 ]
@@ -96,31 +104,12 @@ def _evaluate_round_attempt(
         else _round_termination_reason(session, invoked=attempt.invoked, candidates=candidates)
     )
     session.terminal_reason = round_reason
-    outcome = ResolutionOutcome(
-        succeeded=resolved_now,
-        reason=round_reason,
-        duration_seconds=(
-            session.last_duration_seconds
-            if session.last_duration_seconds is not None
-            else max(0.0, clock() - attempt_started)
-        ),
-        last_activity_kind=session.last_activity_kind,
-        last_activity_at=session.last_activity_at,
-        unresolved_paths=session.unresolved_paths,
-        failure_cause=(
-            ResolutionFailureCause.NONE
-            if resolved_now
-            else (
-                session.last_failure_cause
-                if session.last_failure_cause != ResolutionFailureCause.NONE
-                else (
-                    ResolutionFailureCause.AGENT_FAILURE
-                    if round_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
-                )
-            )
-        ),
-    )
+    if resolved_now:
+        outcome: StopResolutionOutcome = ResolvedOutcome()
+    else:
+        outcome = NextStrategyOutcome(
+            strategy=round_reason.value if round_reason is not None else "resolution_incomplete"
+        )
     _emit_attempt_outcome(display, outcome)
     return action
 
@@ -160,30 +149,30 @@ def _paths_still_unresolved(
 
 def _record_invoker_outcome(
     session: ResolutionSession,
-    invoker_result: ResolutionOutcome,
+    invoker_result: StopResolutionOutcome,
 ) -> None:
-    session.last_failure_cause = invoker_result.failure_cause
-    if invoker_result.reason is not None:
-        if isinstance(invoker_result.reason, ResolutionTerminationReason):
-            session.terminal_reason = invoker_result.reason
-        else:
-            session.exhaustion_reason = invoker_result.reason
-    if invoker_result.last_activity_kind is not None:
-        session.last_activity_kind = invoker_result.last_activity_kind
-    if invoker_result.last_activity_at is not None:
-        session.last_activity_at = invoker_result.last_activity_at
-    if invoker_result.duration_seconds > 0:
-        session.last_duration_seconds = invoker_result.duration_seconds
-    if invoker_result.unresolved_paths:
-        session.unresolved_paths = invoker_result.unresolved_paths
-    if invoker_result.failure_cause == ResolutionFailureCause.AGENT_FAILURE:
-        session.charge_conflict_budget = False
+    match invoker_result:
+        case ResolvedOutcome():
+            session.last_failure_cause = ResolutionFailureCause.NONE
+        case WaitingOutcome(external_condition=condition):
+            session.exhaustion_reason = condition
+        case RetryLaterOutcome(on_change=on_change, until=until):
+            session.exhaustion_reason = on_change or f"retry at {until}"
+        case NextStrategyOutcome(strategy=strategy):
+            session.exhaustion_reason = strategy
+        case ConfigFailureOutcome(parse_error=parse_error):
+            session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+            session.exhaustion_reason = str(parse_error) if parse_error is not None else None
+        case UnknownOutcome(error=error):
+            session.exhaustion_reason = str(error)
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _handle_candidate_failure(
     session: ResolutionSession,
     agent_name: str,
-    invoker_result: ResolutionOutcome | bool,
+    invoker_result: StopResolutionOutcome,
     candidates: tuple[str, ...],
     offset: int,
     policy_bundle: PolicyBundle,
@@ -192,17 +181,11 @@ def _handle_candidate_failure(
 ) -> None:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
-    if not isinstance(invoker_result, ResolutionOutcome):
-        fault = classify_attempt_fault(session.terminal_reason)
-        if session.terminal_reason is None:
-            session.terminal_reason = (
-                attempt_fault_to_termination_reason(fault)
-                or ResolutionTerminationReason.ATTEMPT_FAILED
-            )
-        if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
-            session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        else:
-            session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+    fault = classify_attempt_fault(session.terminal_reason)
+    if session.terminal_reason is None:
+        session.terminal_reason = (
+            attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
+        )
     raw_failure: BaseException | str | None
     if isinstance(session.last_attempt_failure, BaseException):
         outcome = ConflictAttemptOutcome.RAW
@@ -238,12 +221,12 @@ def _execute_single_candidate(
     offset: int,
     policy_bundle: PolicyBundle,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
-) -> tuple[bool, ResolutionOutcome | bool, RoundAttempt]:
+) -> tuple[bool, StopResolutionOutcome, RoundAttempt]:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     session.terminal_reason = None
     session.charge_conflict_budget = True
-    invoker_result: ResolutionOutcome | bool = False
+    invoker_result: StopResolutionOutcome = UnknownOutcome(RuntimeError("invoker did not return"))
     probe = session.workspace_probe
     workspace = session.workspace
     if probe is not None and workspace is not None:
@@ -252,17 +235,23 @@ def _execute_single_candidate(
     raised: BaseException | None = None
     succeeded = False
     try:
-        invoker_result = runner(agent_name, prompt_path, round_index)
-        succeeded = (
-            invoker_result.succeeded
-            if isinstance(invoker_result, ResolutionOutcome)
-            else bool(invoker_result)
-        )
-        if succeeded:
-            session.chain_cursor = 0
-            session.last_failure_cause = ResolutionFailureCause.NONE
-        elif isinstance(invoker_result, ResolutionOutcome):
-            _record_invoker_outcome(session, invoker_result)
+        raw_result = cast("object", runner(agent_name, prompt_path, round_index))
+        if isinstance(raw_result, bool):
+            succeeded = raw_result
+            if succeeded:
+                session.chain_cursor = 0
+                session.last_failure_cause = ResolutionFailureCause.NONE
+                invoker_result = ResolvedOutcome()
+            else:
+                invoker_result = UnknownOutcome(RuntimeError("resolution attempt failed"))
+        else:
+            invoker_result = cast("StopResolutionOutcome", raw_result)
+            succeeded = isinstance(invoker_result, ResolvedOutcome)
+            if succeeded:
+                session.chain_cursor = 0
+                session.last_failure_cause = ResolutionFailureCause.NONE
+            else:
+                _record_invoker_outcome(session, invoker_result)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
@@ -296,7 +285,7 @@ def _execute_single_candidate(
             bench=True,
             workspace_changed=probe_changed or count_dropped,
         )
-        return False, False, progress
+        return False, UnknownOutcome(raised), progress
     if succeeded:
         return True, invoker_result, progress
     _handle_candidate_failure(
@@ -391,16 +380,12 @@ def _run_one_round(
                 probe_changed=progress.probe_changed,
             )
         agent_saw = session.last_attempt_saw_activity or (
-            isinstance(invoker_result, ResolutionOutcome)
-            and (
-                invoker_result.last_activity_kind is not None or invoker_result.duration_seconds > 0
-            )
+            not isinstance(invoker_result, ResolvedOutcome)
         )
         agent_ran = agent_ran or agent_saw
         if _check_worktree_repair(
             session, agent_name, round_index, round_cap, display, worktree_resolved, agent_saw
         ):
-            _reset_conflict_success(session, agent_name)
             return RoundAttempt(
                 succeeded=False,
                 invoked=True,
@@ -464,13 +449,6 @@ def _preferred_conflict_candidate(
         if selection.agent is not None:
             return candidates.index(selection.agent)
     return None
-
-
-def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
-    if session.recovery_controller is not None:
-        from ralph.pipeline.conflict_resolution.resolver_health import clear_resolver
-
-        clear_resolver(session.recovery_controller, agent)
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

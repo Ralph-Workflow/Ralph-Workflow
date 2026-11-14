@@ -37,7 +37,13 @@ class _LiveRebaseContinuationExecutor:
     ) -> StopResolutionOutcome:
         from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
-        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+        from ralph.pipeline.resolution_outcome import (
+            ConfigFailureOutcome,
+            NextStrategyOutcome,
+            ResolvedOutcome,
+            RetryLaterOutcome,
+            UnknownOutcome,
+        )
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -54,12 +60,22 @@ class _LiveRebaseContinuationExecutor:
         )
         if isinstance(outcome, StopResolutionBlocked):
             return WaitingOutcome(outcome.reason, "resolution attempt key changes")
-        if not isinstance(outcome, RebaseResolutionResult):
+        if not isinstance(
+            outcome,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
             return WaitingOutcome(
                 "rebase stop resolution returned an invalid result",
                 "resolution implementation is repaired",
             )
-        return outcome.outcome
+        return outcome
 
 
 _LIVE_REBASE_CONTINUATION_EXECUTOR = _LiveRebaseContinuationExecutor()

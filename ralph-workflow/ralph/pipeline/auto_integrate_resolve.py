@@ -68,6 +68,7 @@ _NOT_SPENT_TERMINAL_REASONS = RESOLVER_NOT_SPENT_TERMINATION_REASONS - {
 }
 
 
+
 def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
     record = read_record(root)
     if record is not None:

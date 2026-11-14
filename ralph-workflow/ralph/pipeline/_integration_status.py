@@ -19,6 +19,10 @@ class IntegrationStatus:
     agent_reasons: tuple[str, ...] = ()
     done_count: int | None = None
     remaining_count: int | None = None
+    relation: str | None = None
+    strategy: str | None = None
+    strategy_reason: str | None = None
+    at_risk: tuple[str, ...] = ()
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -74,6 +78,10 @@ def build_integration_status(
     agent_reasons: Sequence[str] = (),
     done_count: int | None = None,
     remaining_count: int | None = None,
+    relation: str | None = None,
+    strategy: str | None = None,
+    strategy_reason: str | None = None,
+    at_risk: Sequence[str] = (),
 ) -> IntegrationStatus:
     facts = tuple(paths_with_reasons)
     return IntegrationStatus(
@@ -84,6 +92,10 @@ def build_integration_status(
         agent_reasons=tuple(agent_reasons),
         done_count=done_count,
         remaining_count=remaining_count,
+        relation=relation,
+        strategy=strategy,
+        strategy_reason=strategy_reason,
+        at_risk=tuple(at_risk),
     )
 
 

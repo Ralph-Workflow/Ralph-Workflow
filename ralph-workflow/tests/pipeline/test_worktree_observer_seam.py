@@ -12,6 +12,7 @@ from ralph.pipeline.conflict_resolution.prompt import PromptMaterializer
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -19,8 +20,10 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.pipeline.resolution_outcome import (
+        StopResolutionOutcome,
+    )
 
 _CONFLICTED = ("src/alpha.py", "docs/beta.md")
 _POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults")
@@ -131,7 +134,7 @@ def _run(
     observer: _FakeObserver,
     materializer: _FakeMaterializer,
     invoke: ResolutionInvoker,
-) -> ResolutionOutcome:
+) -> StopResolutionOutcome:
     return run_conflict_resolution_outcome(
         root=workspace,
         target="main",
@@ -158,7 +161,7 @@ def test_full_round_resolves_through_fake_observer_and_materializer(tmp_path: Pa
 
     outcome = _run(tmp_path, observer=observer, materializer=materializer, invoke=_invoke)
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert [round_index for _, _, round_index in invoked] == [1]
     assert materializer.rendered_bodies == ["resolve the conflicts"]
     assert materializer.rounds == [1]
@@ -179,7 +182,7 @@ def test_surviving_markers_drive_a_second_round_with_feedback(tmp_path: Path) ->
 
     outcome = _run(tmp_path, observer=observer, materializer=materializer, invoke=_invoke)
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invoked_rounds == [1, 2]
     assert materializer.rounds == [1, 2]
     assert materializer.surviving_feedback == [(), ("src/alpha.py",)]
@@ -197,7 +200,7 @@ def test_empty_unmerged_set_exits_without_invoking_anyone(tmp_path: Path) -> Non
 
     outcome = _run(tmp_path, observer=observer, materializer=materializer, invoke=_invoke)
 
-    assert outcome.succeeded is False
+    assert isinstance(outcome, RetryLaterOutcome)
     assert invoked == []
     assert materializer.rounds == []
 
@@ -213,5 +216,5 @@ def test_markers_that_never_clear_decline_the_merge(tmp_path: Path) -> None:
         invoke=lambda _agent, _prompt, _round: True,
     )
 
-    assert outcome.succeeded is False
-    assert outcome.unresolved_paths == _CONFLICTED
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None

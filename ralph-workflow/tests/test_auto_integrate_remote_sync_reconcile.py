@@ -19,6 +19,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
 from ralph.policy.loader import load_policy
 
 _STOP_CAP = 10
@@ -474,7 +475,7 @@ def test_target_reconciliation_regression_retains_record_when_abort_cannot_resto
     assert cleared == []
 
 
-def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_all_three_argument_resolver_calls(
+def test_conflict_resolution_regression_remote_reconcile_accepts_sealed_resolver_outcome(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ralph.git.rebase.rebase import RebaseConflicts
@@ -495,14 +496,6 @@ def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_al
     )
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
-    sessions: list[object] = []
-    monkeypatch.setattr(
-        remote_reconcile,
-        "resolve_rebase_in_progress",
-        lambda _root, _target, resolver, *, session: (
-            sessions.append(session) or resolver(_root, _target, object())
-        ),
-    )
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
 
     config = _config()
@@ -510,12 +503,11 @@ def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_al
         Path("/repo"),
         "main",
         "origin",
-        rebase_stop_resolver=lambda *_a: True,
+        rebase_stop_resolver=lambda *_a: ResolvedOutcome(),
         conflict_resolution_config=config,
     )
 
     assert outcome.reconciled is True
-    assert len(sessions) == 1
 
 
 def test_target_reconciliation_offers_rebase_stop_resolver(
@@ -540,23 +532,17 @@ def test_target_reconciliation_offers_rebase_stop_resolver(
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
 
-    def resolver(*_a: object, **_kw: object) -> bool:
-        return True
-
     calls: list[tuple[Path, str]] = []
-    monkeypatch.setattr(
-        remote_reconcile,
-        "resolve_rebase_in_progress",
-        lambda root, target, received: (
-            calls.append((root, target)) or received(root, target, object())
-        ),
-    )
 
-    success, _reason = remote_reconcile.reconcile_target_onto_remote(
+    def resolver(root: Path, target: str, _stop: object) -> ResolvedOutcome:
+        calls.append((root, target))
+        return ResolvedOutcome()
+
+    outcome = remote_reconcile.reconcile_target_onto_remote(
         Path("/repo"), "main", "origin", rebase_stop_resolver=resolver
     )
     assert calls == [(owner, "origin/main")]
-    assert success is True
+    assert outcome.reconciled is True
 
 
 def test_target_reconciliation_regression_resolver_success_requires_finished_rebase(
@@ -580,7 +566,6 @@ def test_target_reconciliation_regression_resolver_success_requires_finished_reb
     )
     states = iter((True, True, True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
-    monkeypatch.setattr(remote_reconcile, "resolve_rebase_in_progress", lambda *_a: True)
     aborts: list[bool] = []
     monkeypatch.setattr(
         remote_reconcile, "abort_rebase_discarding_progress", lambda _root: aborts.append(True)
@@ -592,7 +577,7 @@ def test_target_reconciliation_regression_resolver_success_requires_finished_reb
         Path("/repo"),
         "main",
         "origin",
-        rebase_stop_resolver=lambda *_a: True,
+        rebase_stop_resolver=lambda *_a: ResolvedOutcome(),
     )
 
     assert outcome.reconciled is False
@@ -730,7 +715,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             stop_cap=_STOP_CAP,
         )
 
-        assert resolver(target, "main", stop) is True
+        assert isinstance(resolver(target, "main", stop), ResolvedOutcome)
 
         assert observations["root"] == target
         assert observations["target"] == "main"
@@ -783,7 +768,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         outcome = resolver(target, "main", stop)
         after = _snapshot_caller(caller)
 
-        assert outcome is True
+        assert isinstance(outcome, ResolvedOutcome)
         assert after == before
         assert caller_proxies["scope"].root == caller.resolve()
 
@@ -828,7 +813,9 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         outcome = resolver(target, "main", stop)
         after = _snapshot_caller(caller)
 
-        assert outcome is False
+        assert isinstance(outcome, UnknownOutcome)
+        assert isinstance(outcome.error, RuntimeError)
+        assert str(outcome.error) == "pipeline exploded"
         assert after == before
 
 

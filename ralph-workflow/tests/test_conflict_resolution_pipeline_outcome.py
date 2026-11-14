@@ -11,11 +11,12 @@ from ralph.git.conflict_stage_entries import ConflictStageEntries
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution import sight as sight_module
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession, begin_resolution_stop
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -76,7 +77,7 @@ def _run_outcome(
     invoke: driver_module.ResolutionInvoker,
     session: ResolutionSession | None = None,
     strategy_history: Sequence[str] = (),
-) -> ResolutionOutcome:
+) -> StopResolutionOutcome:
     return driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
@@ -98,20 +99,12 @@ def test_invoker_returning_outcome_agent_failure_propagates_cause(
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,
-            duration_seconds=1.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=tuple(_CONFLICTED),
-            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
-        )
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
+        return RetryLaterOutcome(on_change="tool surface restored")
 
     outcome = _run_outcome(tmp_path, invoke=_invoke)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.AGENT_FAILURE
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
 
 
 def test_invoker_returning_outcome_context_failure_propagates_cause(
@@ -120,20 +113,12 @@ def test_invoker_returning_outcome_context_failure_propagates_cause(
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.EXCEPTION,
-            duration_seconds=1.5,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=tuple(_CONFLICTED),
-            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
-        )
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
+        return RetryLaterOutcome(on_change="target context restored")
 
     outcome = _run_outcome(tmp_path, invoke=_invoke)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
 
 
 def test_invoker_returning_outcome_success_has_cause_none(
@@ -141,21 +126,11 @@ def test_invoker_returning_outcome_success_has_cause_none(
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=True,
-            reason=None,
-            duration_seconds=0.5,
-            last_activity_kind="done",
-            last_activity_at=100.0,
-            unresolved_paths=(),
-            failure_cause=ResolutionFailureCause.NONE,
-        )
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
+        return ResolvedOutcome()
 
     outcome = _run_outcome(tmp_path, invoke=_invoke)
-    assert outcome.succeeded is True
-    assert outcome.failure_cause == ResolutionFailureCause.NONE
-    assert outcome.unresolved_paths == ()
+    assert isinstance(outcome, ResolvedOutcome)
 
 
 def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
@@ -193,9 +168,9 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
 
     session = ResolutionSession(max_rounds_per_stop=2)
     outcome1 = _run_outcome(tmp_path, invoke=_invoke, session=session)
-    assert outcome1.succeeded is False
+    assert isinstance(outcome1, RetryLaterOutcome)
     assert session.rounds_spent == 1
-    assert rounds_called == [1]
+    assert rounds_called == [1, 1, 1]
 
     outcome2 = _run_outcome(
         tmp_path,
@@ -203,6 +178,6 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
         session=session,
         strategy_history=("primary-strategy",),
     )
-    assert outcome2.succeeded is False
-    assert rounds_called == [1]
+    assert isinstance(outcome2, RetryLaterOutcome)
+    assert rounds_called == [1, 1, 1]
     assert session.rounds_spent == 1

@@ -31,13 +31,16 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
 
 
-def _persisted_integration_status(workspace_root: Path) -> IntegrationStatus | None:
+def _persisted_integration_status(
+    workspace_root: Path,
+    view: IntegrationLifecycleView | None = None,
+) -> IntegrationStatus | None:
     state = load_checkpoint(workspace_root / ".agent" / "checkpoint.json")
     if state is None:
-        return None
+        return _status_from_view(view)
     rebase = state.rebase
     if not rebase.resolution_exhausted and not rebase.integration_unresolved:
-        return None
+        return _status_from_view(view)
     reason = rebase.resolution_exhaustion_reason or rebase.last_reason or ""
     prefix, separator, _detail = reason.partition(":")
     cause = prefix if separator and prefix.isupper() else rebase.last_failure_cause.value
@@ -47,6 +50,27 @@ def _persisted_integration_status(workspace_root: Path) -> IntegrationStatus | N
         paths_with_reasons=tuple((path, "persisted integration conflict") for path in paths),
         command=operator_command_for_paths(paths),
         agents_can_finish=False,
+        done_count=None if view is None else view.done_count,
+        remaining_count=None if view is None else view.remaining_count,
+        relation=None if view is None or view.relation is None else view.relation.value,
+        strategy=(None if view is None or view.decision is None else view.decision.strategy.value),
+        strategy_reason=None if view is None or view.decision is None else view.decision.reason,
+        at_risk=() if view is None else view.at_risk,
+    )
+
+
+def _status_from_view(view: IntegrationLifecycleView | None) -> IntegrationStatus | None:
+    if view is None:
+        return None
+    return build_integration_status(
+        cause=view.state_text,
+        command="",
+        done_count=view.done_count,
+        remaining_count=view.remaining_count,
+        relation=None if view.relation is None else view.relation.value,
+        strategy=None if view.decision is None else view.decision.strategy.value,
+        strategy_reason=None if view.decision is None else view.decision.reason,
+        at_risk=view.at_risk,
     )
 
 

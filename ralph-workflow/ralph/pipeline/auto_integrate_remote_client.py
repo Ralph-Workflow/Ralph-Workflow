@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_ff import RemoteClient
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 
@@ -128,23 +129,20 @@ def _prepare_effective_resolver(
     identity: ConflictIdentity,
     ledger: AgentFailureLedger | None,
     candidates: Sequence[str],
-) -> tuple[RebaseStopResolver | None, bool]:
+) -> RebaseStopResolver | None:
     if rebase_stop_resolver is None:
-        return None, False
+        return None
     from ralph.pipeline.auto_integrate_remote_sync import (
         resolver_allowed as _resolver_allowed,
-    )
-    from ralph.pipeline.auto_integrate_remote_sync import (
-        start_conflict_attempt as _start_conflict_attempt,
     )
 
     budget_allows = _resolver_allowed(prior_state, target, identity)
     eligibility_allows = ledger is None or ledger.any_eligible(
         "rebase_conflict_resolution", candidates
     )
-    if not budget_allows or not eligibility_allows or not _start_conflict_attempt(identity):
-        return None, False
-    return rebase_stop_resolver, True
+    if not budget_allows or not eligibility_allows:
+        return None
+    return rebase_stop_resolver
 
 
 def pull_and_reconcile_target(
@@ -173,7 +171,7 @@ def pull_and_reconcile_target(
         identity = ConflictIdentity(scope="remote")
     prior_state = prior or RebaseState()
     effective_ledger = _resolve_effective_ledger(ledger)
-    effective_resolver, booked = _prepare_effective_resolver(
+    effective_resolver = _prepare_effective_resolver(
         rebase_stop_resolver,
         prior_state,
         target,
@@ -181,56 +179,48 @@ def pull_and_reconcile_target(
         effective_ledger,
         candidates,
     )
-    try:
-        import ralph.pipeline.auto_integrate_remote_sync as _remote_sync
+    import ralph.pipeline.auto_integrate_remote_sync as _remote_sync
 
-        if not _remote_sync._throttle_allows_pull(repo_root, chosen_remote, target, config, clock):
-            state = _record_remote_state(
-                target,
-                last_remote_sync="refresh suppressed",
-                last_refresh="refresh suppressed by throttle",
-                reason="remote freshness probe suppressed by configured interval",
-                freshness_verdict="unverified",
-                freshness_source="suppressed probe",
-            )
-        else:
-            refresh = client.refresh_target(
-                repo_root,
-                target,
-                timeout_seconds=FETCH_TIMEOUT_SECONDS,
-                remote=chosen_remote,
-            )
-            pulled = _remote_sync._dispatch_pull_outcome(
-                refresh, repo_root, target, chosen_remote, clock, config, effective_resolver
-            )
-            if pulled is None:
-                state = prior_state
-            else:
-                from ralph.git.merge import branch_sha
-
-                try:
-                    target_sha = branch_sha(repo_root, target)
-                except OSError:
-                    target_sha = None
-                state = pulled.model_copy(
-                    update={"last_remote": chosen_remote, "freshness_target_sha": target_sha}
-                )
-        from ralph.pipeline.auto_integrate_remote_sync import apply_conflict_budget
-
-        return apply_conflict_budget(
-            state,
-            prior=prior_state,
-            target=target,
-            resolver_suppressed=rebase_stop_resolver is not None and effective_resolver is None,
-            identity=identity,
+    if not _remote_sync._throttle_allows_pull(repo_root, chosen_remote, target, config, clock):
+        state = _record_remote_state(
+            target,
+            last_remote_sync="refresh suppressed",
+            last_refresh="refresh suppressed by throttle",
+            reason="remote freshness probe suppressed by configured interval",
+            freshness_verdict="unverified",
+            freshness_source="suppressed probe",
         )
-    finally:
-        if booked:
-            from ralph.pipeline.auto_integrate_remote_sync import (
-                finish_conflict_attempt as _finish_cb,
-            )
+    else:
+        refresh = client.refresh_target(
+            repo_root,
+            target,
+            timeout_seconds=FETCH_TIMEOUT_SECONDS,
+            remote=chosen_remote,
+        )
+        pulled = _remote_sync._dispatch_pull_outcome(
+            refresh, repo_root, target, chosen_remote, clock, config, effective_resolver
+        )
+        if pulled is None:
+            state = prior_state
+        else:
+            from ralph.git.merge import branch_sha
 
-            _finish_cb(identity)
+            try:
+                target_sha = branch_sha(repo_root, target)
+            except OSError:
+                target_sha = None
+            state = pulled.model_copy(
+                update={"last_remote": chosen_remote, "freshness_target_sha": target_sha}
+            )
+    from ralph.pipeline.auto_integrate_remote_sync import apply_conflict_budget
+
+    return apply_conflict_budget(
+        state,
+        prior=prior_state,
+        target=target,
+        resolver_suppressed=rebase_stop_resolver is not None and effective_resolver is None,
+        identity=identity,
+    )
 
 
 def _dispatch_pull_outcome(
@@ -368,14 +358,20 @@ def _fast_forward_local_target_to_remote(
     remote: str,
     config: UnifiedConfig | None,
 ) -> None:
-    ok, reason = fast_forward_target_to_remote(
+    outcome = fast_forward_target_to_remote(
         repo_root,
         target,
         remote,
         reclaim_target_worktree=reclaim_target_worktree_enabled(config),
     )
-    if not ok:
-        raise RuntimeError(reason)
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+    if isinstance(outcome, tuple):
+        if not outcome[0]:
+            raise RuntimeError(outcome[1] if len(outcome) > 1 else str(outcome))
+        return
+    if not isinstance(outcome, ResolvedOutcome):
+        raise RuntimeError(str(outcome))
 
 
 def fast_forward_target_to_remote(
@@ -385,20 +381,25 @@ def fast_forward_target_to_remote(
     *,
     reclaim_target_worktree: bool,
     remote_sha: str | None = None,
-) -> tuple[bool, str]:
+) -> StopResolutionOutcome:
     from ralph.git.merge import branch_sha, is_ancestor
     from ralph.pipeline.auto_integrate_ff import fast_forward_target
+    from ralph.pipeline.resolution_outcome import (
+        ResolvedOutcome,
+        RetryLaterOutcome,
+        UnknownOutcome,
+    )
 
     observed = remote_sha or _remote_tracking_sha(repo_root, target, remote)
     if observed is None:
-        return False, f"{remote}/{target} missing for ff"
+        return UnknownOutcome(RuntimeError(f"{remote}/{target} missing for ff"))
     local_sha = branch_sha(repo_root, target)
     if local_sha is None:
-        return False, f"local {target} missing for ff"
+        return UnknownOutcome(RuntimeError(f"local {target} missing for ff"))
     if local_sha == observed:
-        return True, ""
+        return ResolvedOutcome()
     if not is_ancestor(repo_root, local_sha, observed):
-        return False, f"local/{target} diverged from {remote}/{target}"
+        return RetryLaterOutcome(on_change=f"local/{target} diverged from {remote}/{target}")
     return fast_forward_target(
         repo_root,
         target,

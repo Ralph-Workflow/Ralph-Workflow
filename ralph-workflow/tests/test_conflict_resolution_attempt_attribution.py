@@ -47,7 +47,7 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
         invoke=lambda *_args: False,
         session=session,
     )
-    assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
+    assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
 
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
     quiet = driver_module.run_conflict_resolution_outcome(
@@ -62,7 +62,7 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
         invoke=lambda *_args: False,
         session=session,
     )
-    assert quiet.reason is not ResolutionTerminationReason.ATTEMPT_FAILED
+    assert session.terminal_reason is not ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.terminal_reason is None
 
 
@@ -253,9 +253,11 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("ghost", "healthy")
     )
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     clock = FakeClock()
+    monkeypatch.setattr(
+        driver_module, "_sleep_seconds", lambda seconds: clock.advance(max(seconds, 65.0))
+    )
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(ledger=ledger, max_rounds_per_stop=1)
     called: list[str] = []
@@ -283,7 +285,7 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
         )
         is False
     )
-    assert called == ["ghost"] + ["healthy"] * 9
+    assert called == ["ghost"] + ["healthy"] * 3
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
     assert session.exhaustion_reason is not None

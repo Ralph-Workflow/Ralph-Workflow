@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, assert_never
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -212,7 +212,9 @@ def _fast_forward_failure(reason: str) -> StopResolutionOutcome:
     return WaitingOutcome(external_condition=reason, resumes_when="target branch exists")
 
 
-def is_retryable_fast_forward_failure(outcome: StopResolutionOutcome) -> bool:
+def is_retryable_fast_forward_failure(outcome: object) -> bool:
+    if isinstance(outcome, (tuple, bool)):
+        return False
     match outcome:
         case RetryLaterOutcome():
             return True
@@ -224,8 +226,8 @@ def is_retryable_fast_forward_failure(outcome: StopResolutionOutcome) -> bool:
             | UnknownOutcome()
         ):
             return False
-        case _ as unreachable:
-            assert_never(unreachable)
+        case _:
+            return False
 
 
 __all__ = [

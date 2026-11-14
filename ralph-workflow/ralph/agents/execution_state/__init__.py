@@ -1,13 +1,8 @@
 from ._base import BaseExecutionStrategy, with_prompt_echo_flag
 from ._completion_mixin import CompletionEnforcingStrategy
-from ._factory import (
-    strategy_for_command,
-    strategy_for_transport,
-)
+from ._factory import strategy_for_command, strategy_for_transport
 from ._harness_echo import is_prompt_echo_line, is_user_prompt_event_line
-from ._helpers import (
-    _route_opencode_line_to_registry,
-)
+from ._helpers import _route_opencode_line_to_registry
 from ._live_descendant_handle import LiveDescendantHandle
 from .agent_execution_state import AgentExecutionState
 from .claude_execution_strategy import ClaudeExecutionStrategy

@@ -15,9 +15,7 @@ from ralph.pipeline._remote_default_client import (
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
 from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
-    finish_conflict_attempt,
     resolver_allowed,
-    start_conflict_attempt,
 )
 from ralph.pipeline.auto_integrate_ff import RemoteClient
 from ralph.pipeline.auto_integrate_remote_client import (
@@ -117,7 +115,6 @@ __all__ = [
     "_throttle_allows_pull",
     "apply_conflict_budget",
     "fast_forward_target_to_remote",
-    "finish_conflict_attempt",
     "observe_conflict_identity",
     "pull_and_reconcile_target",
     "push_single_remote",
@@ -131,7 +128,6 @@ __all__ = [
     "remote_target_name",
     "remote_unreachable_reason",
     "resolver_allowed",
-    "start_conflict_attempt",
 ]
 
 
@@ -354,13 +350,21 @@ def _dispatch_ref_comparison(
                 last_refresh=REFRESH_UNREACHABLE,
                 publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
             )
-        advanced, refusal = fast_forward_target_to_remote(
+        raw_outcome = fast_forward_target_to_remote(
             repo_root,
             target,
             chosen_remote,
             reclaim_target_worktree=False,
             remote_sha=remote_sha,
         )
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+        if isinstance(raw_outcome, tuple):
+            advanced, refusal = raw_outcome[0], raw_outcome[1] if len(raw_outcome) > 1 else ""
+        elif isinstance(raw_outcome, ResolvedOutcome):
+            advanced, refusal = True, ""
+        else:
+            advanced, refusal = False, str(raw_outcome)
         if advanced:
             return reconcile_remote_publication(
                 config,

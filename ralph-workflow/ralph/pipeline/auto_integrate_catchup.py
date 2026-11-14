@@ -643,7 +643,7 @@ def _advance_observed_target(
         return charge_reason
     effective_clock = clock if clock is not None else default_clock()
     try:
-        advanced, refusal_reason = fast_forward_target(
+        outcome = fast_forward_target(
             root,
             target,
             remote_sha,
@@ -654,9 +654,11 @@ def _advance_observed_target(
         if kind != GitOutcomeKind.FAILED:
             _backoff_after_failure(effective_clock, attempt_count, jitter=jitter)
         return _failure_reason(kind, observation)
-    if advanced:
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+    if isinstance(outcome, ResolvedOutcome):
         return CATCHUP_FAST_FORWARDED
-    return f"{CATCHUP_DEFEDITELY_FAILED}; {refusal_reason}"
+    return f"{CATCHUP_DEFEDITELY_FAILED}; {outcome}"
 
 
 def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | None:

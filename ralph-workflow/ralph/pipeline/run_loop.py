@@ -7,7 +7,6 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Mapping
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1895,18 +1894,40 @@ def resolve_paused_rebase(
             stop_resolver,
             ctx.config.conflict_resolution,
         )
-        resolved, reason, failure_cause = res
     except Exception as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
-    if not resolved:
-        logger.warning(
-            "integration resolution: the paused rebase for '{}' was not resolved: {} (cause: {})",
-            target,
-            reason or "no terminal evidence",
-            failure_cause.value,
-        )
-    return bool(resolved)
+    from ralph.pipeline.resolution_outcome import (
+        ConfigFailureOutcome,
+        NextStrategyOutcome,
+        ResolvedOutcome,
+        RetryLaterOutcome,
+        UnknownOutcome,
+        WaitingOutcome,
+        assert_never,
+    )
+
+    match res:
+        case ResolvedOutcome():
+            return True
+        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+            reason = f"{condition}; resumes when {resumes_when}"
+        case RetryLaterOutcome(until=until, on_change=on_change):
+            reason = on_change or f"retry after {until}"
+        case NextStrategyOutcome(strategy=strategy):
+            reason = f"continue with autonomous strategy: {strategy}"
+        case ConfigFailureOutcome(file=file):
+            reason = f"fix {file} then run ralph --check-config"
+        case UnknownOutcome(error=error):
+            reason = str(error)
+        case _ as unreachable:
+            assert_never(unreachable)
+    logger.warning(
+        "integration resolution: the paused rebase for '{}' was not resolved: {}",
+        target,
+        reason or "no terminal evidence",
+    )
+    return False
 
 
 def _resolve_paused_rebase(
@@ -3304,25 +3325,27 @@ _MAX_RECOVERY_EPOCHS: int = 3
 def ledger_requires_intervention(state: PipelineState, controller: RecoveryController) -> bool:
     target_phase = state.previous_phase or state.phase
     chain = state.chain_for_phase(target_phase)
-    agents = chain.agents if chain is not None and chain.agents else ()
+    agents = (
+        tuple(chain.agents)
+        if chain is not None and chain.agents
+        else controller.agents_for_phase(target_phase)
+    )
     ledger = controller.ledger
-    if agents:
-        from ralph.recovery.agent_failure_ledger import Cooldown, Spent
+    effective_agents: tuple[str, ...] = agents or (
+        ledger.registered_agents(target_phase) if ledger is not None else ()
+    )
+    if effective_agents:
+        from ralph.recovery.agent_failure_ledger import Cooldown, Spent, Unavailable
 
-        statuses = tuple(ledger.status(target_phase, agent) for agent in agents)
+        statuses = tuple(
+            ledger.agent_eligibility(target_phase, agent) for agent in effective_agents
+        )
         if any(isinstance(status, Cooldown) for status in statuses):
             return False
-        if all(isinstance(status, Spent) for status in statuses):
+        if all(isinstance(status, (Spent, Unavailable)) for status in statuses):
             return True
-    else:
-        snap = state.ledger_snapshot or ledger.snapshot()
-        raw_entries = snap.get("entries") if isinstance(snap, Mapping) else None
-        if isinstance(raw_entries, Mapping) and raw_entries:
-            entries = tuple(item for item in raw_entries.values() if isinstance(item, Mapping))
-            if any(item.get("cooldown_until_ms") is not None for item in entries):
-                return False
-            if any(item.get("is_spent") for item in entries):
-                return True
+        if not ledger.any_eligible(target_phase, effective_agents):
+            return True
     return (
         state.recovery_epoch >= _MAX_RECOVERY_EPOCHS
         or state.last_execution_result_status == "failed"

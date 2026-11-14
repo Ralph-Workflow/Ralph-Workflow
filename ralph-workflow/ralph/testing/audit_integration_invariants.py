@@ -744,9 +744,7 @@ def _gitlink_owner_violations(modules: Mapping[str, str]) -> list[Violation]:
                 path=GITLINK_POLICY_MODULE,
                 line=1,
                 rule="gitlink_policy_owner_missing",
-                detail=(
-                    f"the gitlink pointer-preference owner {GITLINK_POLICY_MODULE} must exist"
-                ),
+                detail=(f"the gitlink pointer-preference owner {GITLINK_POLICY_MODULE} must exist"),
             )
         )
     else:

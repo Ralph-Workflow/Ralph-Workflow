@@ -1,21 +1,40 @@
 from __future__ import annotations
 
 import json
-from importlib import import_module
-from typing import Final, Protocol, cast
+from typing import Final, cast
+
+from ralph.checked_accessors import as_mapping
+
+_SESSION_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {"session", "session_ready", "session_start", "session_resume", "thread.started"}
+)
 
 
-class _SessionModule(Protocol):
-    def extract_transport_session_id(
-        self, raw_output: list[str] | tuple[str, ...]
-    ) -> str | None: ...
-
-
-def _extract_transport_session_id_inline(
-    raw_output: list[str] | tuple[str, ...],
-) -> str | None:
-    session = cast("_SessionModule", import_module("ralph.agents.invoke._session"))
-    return session.extract_transport_session_id(raw_output)
+def _has_session_identifier(parsed: dict[str, object]) -> bool:
+    event_type = parsed.get("type")
+    session_event = isinstance(event_type, str) and event_type in _SESSION_EVENT_TYPES
+    session_event = session_event or parsed.get("event") == "init"
+    session_event = session_event or (
+        parsed.get("type") == "system" and parsed.get("subtype") == "init"
+    )
+    session_event = session_event or (
+        parsed.get("role") == "meta" and parsed.get("type") == "session.resume_hint"
+    )
+    if session_event:
+        for key in ("session_id", "sessionId", "conversation_id", "thread_id", "id"):
+            value = parsed.get(key)
+            if isinstance(value, str) and value:
+                return True
+    opencode_session_id = parsed.get("sessionID")
+    if isinstance(opencode_session_id, str) and opencode_session_id:
+        return True
+    meta = parsed.get("meta")
+    if not isinstance(meta, dict):
+        return False
+    return any(
+        isinstance(meta.get(key), str) and bool(meta.get(key))
+        for key in ("session_id", "sessionId")
+    )
 
 
 LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
@@ -61,7 +80,33 @@ def is_session_metadata_event(parsed_json: object) -> bool:
         serialized = json.dumps(parsed_json)
     except (TypeError, ValueError):
         return False
-    return _extract_transport_session_id_inline((serialized,)) is not None
+    reparsed = cast("object", json.loads(serialized))
+    return isinstance(reparsed, dict) and _has_session_identifier(reparsed)
+
+
+def _event_role(event: object) -> str | None:
+    try:
+        mapping = as_mapping(event)
+        direct_role = mapping.get("role")
+        if isinstance(direct_role, str):
+            return direct_role
+        message = as_mapping(mapping.get("message"))
+        nested_role = message.get("role")
+        return nested_role if isinstance(nested_role, str) else None
+    except TypeError:
+        return None
+
+
+def is_user_prompt_event_line(line: str) -> bool:
+    try:
+        raw_event = cast("object", json.loads(line))
+        event = as_mapping(raw_event)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return False
+    return (
+        event.get("type") in {"user", "message_start", "message_end"}
+        and _event_role(event) == "user"
+    )
 
 
 __all__ = [
@@ -70,4 +115,5 @@ __all__ = [
     "is_lifecycle_event",
     "is_lifecycle_kind",
     "is_session_metadata_event",
+    "is_user_prompt_event_line",
 ]

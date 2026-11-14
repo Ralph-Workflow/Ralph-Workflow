@@ -3,10 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.recovery.agent_failure_ledger import AttemptFact
+from ralph.recovery.attempt_facts import AttemptFacts
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -52,55 +50,6 @@ def choose_resolver(
     )
 
 
-def _record_resolver_fact(
-    controller: RecoveryController,
-    agent: str,
-    *,
-    artifact_valid: bool,
-    workspace_changed: bool = False,
-    free_retry_category: bool = False,
-) -> None:
-    fact = AttemptFact(
-        phase=PHASE_RESOLUTION,
-        agent=agent,
-        artifact_valid=artifact_valid,
-        workspace_changed=workspace_changed,
-        free_retry_category=free_retry_category,
-    )
-    try:
-        ledger = controller.ledger
-    except AttributeError:
-        ledger = None
-    if ledger is None:
-        logger.error(
-            "Cannot record resolver fact: RecoveryController has no ledger (agent='{}', phase='{}')",
-            agent,
-            PHASE_RESOLUTION,
-        )
-        raise RuntimeError(
-            f"Cannot record resolver fact: RecoveryController has no ledger for agent '{agent}'"
-        )
-    try:
-        outcome = ledger.record(fact)
-        if outcome.demoted:
-            logger.warning(
-                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
-                agent,
-                PHASE_RESOLUTION,
-                outcome.consecutive_unproductive,
-                outcome.total_unproductive,
-                outcome.reason,
-            )
-    except Exception as exc:
-        logger.error(
-            "Failed to record resolver fact for agent '{}' in phase '{}': {}",
-            agent,
-            PHASE_RESOLUTION,
-            exc,
-        )
-        raise RuntimeError(f"Failed to record resolver fact for agent '{agent}': {exc}") from exc
-
-
 def bench_resolver(
     controller: RecoveryController,
     agent: str,
@@ -110,21 +59,26 @@ def bench_resolver(
     outcome: ConflictAttemptOutcome | None = None,
     unresolved_count: int = 0,
 ) -> None:
-    del raw_failure, outcome, unresolved_count
-
-    _record_resolver_fact(
-        controller,
-        agent,
+    del outcome, unresolved_count
+    exc: BaseException | None = raw_failure if isinstance(raw_failure, BaseException) else None
+    facts = AttemptFacts(
         artifact_valid=False,
         workspace_changed=workspace_changed,
-        free_retry_category=False,
+    )
+    controller.finalize_attempt(
+        PHASE_RESOLUTION,
+        agent,
+        facts=facts,
+        attempt_failed=True,
+        exc=exc,
     )
 
 
 def clear_resolver(controller: RecoveryController, agent: str) -> None:
-    _record_resolver_fact(
-        controller,
+    controller.record_attempt_fact(
+        PHASE_RESOLUTION,
         agent,
         artifact_valid=True,
+        workspace_changed=False,
     )
     controller.reset_backoff(PHASE_RESOLUTION, agent)

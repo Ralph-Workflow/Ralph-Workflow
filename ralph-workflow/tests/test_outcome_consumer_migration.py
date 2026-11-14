@@ -14,7 +14,7 @@ from ralph.pipeline.auto_integrate_resolve import (
 )
 from ralph.pipeline.conflict_resolution import operator_cap
 from ralph.pipeline.conflict_resolution.pipeline_entrypoints import (
-    run_conflict_resolution_pipeline,
+    run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.resolution_outcome import (
@@ -30,7 +30,7 @@ from ralph.pipeline.resolution_outcome import (
 
 def test_fast_forward_producer_returns_sealed_outcome() -> None:
     assert inspect.signature(fast_forward_target).return_annotation == "StopResolutionOutcome"
-    assert inspect.signature(run_conflict_resolution_pipeline).return_annotation == (
+    assert inspect.signature(run_rebase_conflict_resolution_pipeline).return_annotation == (
         "StopResolutionOutcome"
     )
 

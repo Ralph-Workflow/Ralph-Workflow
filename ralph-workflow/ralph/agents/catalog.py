@@ -53,7 +53,6 @@ _T = TypeVar("_T")
 
 _ParserRegistryEntry = ParserRegistryEntry
 
-
 class _BuiltinModule(Protocol):
     def builtin_supports(self) -> tuple[AgentSupport, ...]: ...
 

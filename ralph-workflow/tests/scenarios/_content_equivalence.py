@@ -154,13 +154,15 @@ class ContentEquivalence:
         return "; ".join(parts) if parts else "content equivalence holds"
 
 
-def _tree_paths(root: Path, ref: str) -> tuple[str, ...]:
-    output = git(root, "ls-tree", "-r", "--name-only", ref, check=False)
-    return tuple(line for line in output.splitlines() if line)
-
-
-def _blob_oid(root: Path, ref: str, path: str) -> str:
-    return git(root, "rev-parse", f"{ref}:{path}", check=False)
+def _tree_entries(root: Path, ref: str) -> dict[str, str]:
+    output = git(root, "ls-tree", "-r", ref, check=False)
+    entries: dict[str, str] = {}
+    for line in output.splitlines():
+        metadata, separator, path = line.partition("\t")
+        fields = metadata.split()
+        if separator and path and len(fields) >= 3:
+            entries[path] = fields[2]
+    return entries
 
 
 def _merge_base(root: Path, target: str, feature: str) -> str:
@@ -182,20 +184,24 @@ def snapshot_uncommitted(root: Path, paths: Iterable[str]) -> dict[str, bytes]:
 
 
 def _find_missing_paths(
-    root: Path,
     target: str,
     feature: str,
     resolved_base: str,
     feature_paths: Sequence[str],
     excluded: set[str],
+    trees: Mapping[str, Mapping[str, str]],
 ) -> list[str]:
     missing: list[str] = []
     for relative in feature_paths:
         if relative in excluded:
             continue
-        feature_blob = _blob_oid(root, feature, relative)
-        base_blob = _blob_oid(root, resolved_base, relative) if resolved_base else ""
-        target_blob = _blob_oid(root, target, relative)
+        feature_blob = trees[feature].get(relative, f"{feature}:{relative}")
+        base_blob = (
+            trees[resolved_base].get(relative, f"{resolved_base}:{relative}")
+            if resolved_base
+            else ""
+        )
+        target_blob = trees[target].get(relative, f"{target}:{relative}")
         if feature_blob == base_blob:
             continue
         if not feature_blob:
@@ -224,22 +230,33 @@ def content_equivalence(
     resolved_base = base if base is not None else _merge_base(root, target, feature)
     unexpected: list[str] = []
     lost: list[str] = []
+    refs = {target, feature, *source_refs}
+    if resolved_base:
+        refs.add(resolved_base)
+    trees = {ref: _tree_entries(root, ref) for ref in refs}
 
     if resolved_base:
         feature_paths = _changed_paths(root, resolved_base, feature)
-        base_paths = set(_tree_paths(root, resolved_base))
+        base_paths = set(trees[resolved_base])
     else:
-        feature_paths = _tree_paths(root, feature)
+        feature_paths = tuple(trees[feature])
         base_paths = set()
 
-    missing = _find_missing_paths(root, target, feature, resolved_base, feature_paths, excluded)
+    missing = _find_missing_paths(
+        target,
+        feature,
+        resolved_base,
+        feature_paths,
+        excluded,
+        trees,
+    )
 
     allowed: set[str] = set()
     for ref in (*source_refs, feature):
-        allowed.update(_tree_paths(root, ref))
+        allowed.update(trees[ref])
     if resolved_base:
         allowed.update(base_paths)
-    for relative in _tree_paths(root, target):
+    for relative in trees[target]:
         if relative not in allowed:
             unexpected.append(relative)
 

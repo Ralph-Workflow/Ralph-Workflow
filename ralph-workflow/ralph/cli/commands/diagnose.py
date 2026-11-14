@@ -17,7 +17,6 @@ from ralph.cli._capability_summary import DOCS_MCP_NOT_INSTALLED_MESSAGE
 from ralph.cli.commands import _diagnose_integration
 from ralph.cli.commands._diagnose_integration import (
     _integration_lifecycle_view,
-    _lifecycle_rows,
     _persisted_integration_status,
 )
 from ralph.cli.commands._diagnose_mcp import check_mcp_servers as _check_mcp_servers_extracted
@@ -186,7 +185,6 @@ def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
-    status = _persisted_integration_status(workspace_root)
     view = _integration_lifecycle_view(workspace_root)
     if view is None:
         display.emit_status(
@@ -194,10 +192,10 @@ def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
         )
         return True
     display.emit_status(f"Integration: {view.state_text}")
+    status = _persisted_integration_status(workspace_root, view)
     rows: list[tuple[object, ...]] = []
     if status is not None:
         rows.extend(_integration_status_rows(status))
-    rows.extend(_lifecycle_rows(view))
     _emit_simple_table(display, "Integration Status", rows)
     return True
 
@@ -211,6 +209,19 @@ def integration_status_rows(status: IntegrationStatus) -> list[tuple[object, ...
         ("Agents can finish", "yes" if status.agents_can_finish else "no"),
         ("Agent reasons", "\n".join(status.agent_reasons) or "(none)"),
         ("Progress", status.progress),
+        ("Relation (feature vs target)", status.relation or "unknown"),
+        ("Chosen strategy", status.strategy or "unknown"),
+        (
+            "Why this strategy",
+            status.strategy_reason or "no strategy could be chosen from the observed relation",
+        ),
+        ("Done", str(status.done_count) if status.done_count is not None else "unknown"),
+        (
+            "Remaining",
+            str(status.remaining_count) if status.remaining_count is not None else "unknown",
+        ),
+        ("Human action if stopped", status.command or "none"),
+        ("At risk of loss", "\n".join(status.at_risk) or "nothing"),
         ("Build", status.build_identity),
     ]
     return rows

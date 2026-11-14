@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
 
 from ralph.git.merge import merge_in_progress
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
 pytestmark = [
     pytest.mark.timeout_seconds(15),
@@ -291,13 +292,13 @@ def test_verified_resolution_using_target_version_lands_and_synchronizes(
     _commit_file(tmp_git_repo, "shared.txt", "mainline\n", "mainline")
     assert _run(tmp_git_repo, "checkout", "feature").returncode == 0
 
-    def discard_feature(root: Path, _target: str) -> bool:
+    def discard_feature(root: Path, _target: str) -> ResolvedOutcome:
         (root / "shared.txt").write_text("mainline\n", encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
-    def choose_target_at_stop(root: Path, _target: str, _stop: RebaseStop) -> bool:
+    def choose_target_at_stop(root: Path, _target: str, _stop: RebaseStop) -> ResolvedOutcome:
         (root / "shared.txt").write_text("mainline\n", encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
     outcome = auto_integrate_after_commit(
         UnifiedConfig.model_validate({"general": {"auto_integrate_target": base}}),
@@ -464,11 +465,11 @@ def test_rejected_merge_commit_retains_resolution_until_commit_and_fast_forward(
     hook.chmod(0o755)
     target_before = _run(tmp_git_repo, "rev-parse", base).stdout.strip()
 
-    def _resolver(root: Path, target: str) -> bool:
+    def _resolver(root: Path, target: str) -> ResolvedOutcome:
         resolver_calls.append(target)
         (root / "shared.txt").write_text("resolved version\n", encoding="utf-8")
         _run(root, "add", "shared.txt")
-        return True
+        return ResolvedOutcome()
 
     config = UnifiedConfig.model_validate(
         {"general": {"auto_integrate_enabled": True, "auto_integrate_target": base}}
@@ -544,7 +545,7 @@ def test_rebase_continuation_rejection_retains_resolved_stop(
     hook = root / ".git" / "hooks" / "reference-transaction"
     calls: list[str] = []
 
-    def resolve(repo: Path, branch: str, stop: RebaseStop) -> bool:
+    def resolve(repo: Path, branch: str, stop: RebaseStop) -> ResolvedOutcome:
         calls.append(stop.sha)
         (repo / "shared.txt").write_text(
             "target\n" if empty_stop else "resolved\n", encoding="utf-8"
@@ -554,7 +555,7 @@ def test_rebase_continuation_rejection_retains_resolved_stop(
             encoding="utf-8",
         )
         hook.chmod(0o755)
-        return True
+        return ResolvedOutcome()
 
     config = UnifiedConfig.model_validate(
         {
@@ -704,8 +705,8 @@ def test_interrupted_merge_resolver_preserves_edits_for_next_agent(
 ) -> None:
     from ralph.pipeline.auto_integrate_record import read_record
     from ralph.pipeline.auto_integrate_resolve import (
-        _resolve_and_commit,
         endpoint_merge_with_resolution,
+        resolve_and_commit_with_reason,
     )
 
     root = tmp_git_repo
@@ -716,13 +717,13 @@ def test_interrupted_merge_resolver_preserves_edits_for_next_agent(
     _commit_file(root, "shared.txt", "target\n", "target")
     _run(root, "checkout", "feature")
 
-    def interrupted(repo: Path, _target: str) -> bool:
+    def interrupted(repo: Path, _target: str) -> ResolvedOutcome:
         content = (
             "<<<<<<< unfinished\n" if operation.endswith("marker") else "partial agent resolution\n"
         )
         (repo / "shared.txt").write_text(content, encoding="utf-8")
         if operation.endswith("marker"):
-            return True
+            return ResolvedOutcome()
         raise RuntimeError("agent transport disconnected")
 
     if operation.startswith("merge"):
@@ -734,27 +735,37 @@ def test_interrupted_merge_resolver_preserves_edits_for_next_agent(
     else:
         _interrupt_rebase_agent(root, target, interrupted)
 
-    def next_agent(repo: Path, _target: str) -> bool:
+    def next_agent(repo: Path, _target: str) -> ResolvedOutcome:
         expected = (
             "<<<<<<< unfinished\n" if operation.endswith("marker") else "partial agent resolution\n"
         )
         assert (repo / "shared.txt").read_text(encoding="utf-8") == expected
         (repo / "shared.txt").write_text("completed resolution\n", encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
     if operation.startswith("merge"):
-        assert _resolve_and_commit(root, target, next_agent)
+        assert resolve_and_commit_with_reason(root, target, next_agent).outcome == "success"
     else:
-        from ralph.pipeline.conflict_resolution.rebase_loop import resolve_rebase_in_progress
+        from ralph.pipeline import StopResolutionTrigger, attempt_stop_resolution
+        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 
-        assert resolve_rebase_in_progress(
-            root, target, lambda repo, branch, _stop: next_agent(repo, branch)
+        result = attempt_stop_resolution(
+            None,
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=root,
+                target=target,
+                resolver=lambda repo, branch, _stop: next_agent(repo, branch),
+                force_retry=True,
+            ),
         )
+        assert isinstance(result, RebaseResolutionResult)
+        assert isinstance(result.outcome, ResolvedOutcome)
     assert _run(root, "show", "HEAD:shared.txt").stdout == "completed resolution\n"
 
 
 def _interrupt_rebase_agent(
-    root: Path, target: str, interrupted: Callable[[Path, str], bool]
+    root: Path, target: str, interrupted: Callable[[Path, str], ResolvedOutcome]
 ) -> None:
 
     from ralph.config.models import UnifiedConfig
@@ -763,7 +774,7 @@ def _interrupt_rebase_agent(
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
-    def agent(repo: Path, branch: str, _stop: RebaseStop) -> bool:
+    def agent(repo: Path, branch: str, _stop: RebaseStop) -> ResolvedOutcome:
         return interrupted(repo, branch)
 
     config = UnifiedConfig.model_validate(
@@ -802,16 +813,18 @@ def test_unknown_merge_observation_preserves_live_operation(
 
     with monkeypatch.context() as patch:
         patch.setattr(resolution, "merge_state", unknown)
-        pending = resolution.endpoint_merge_with_resolution(root, target, lambda *_args: True)
+        pending = resolution.endpoint_merge_with_resolution(
+            root, target, lambda *_args: ResolvedOutcome()
+        )
     assert pending is not None and pending.outcome == "merge_commit_pending"
     assert _run(root, "rev-parse", "--verify", "MERGE_HEAD").returncode == 0
 
-    def resolve(repo: Path, _target: str) -> bool:
+    def resolve(repo: Path, _target: str) -> ResolvedOutcome:
         assert "<<<<<<<" in (repo / "shared.txt").read_text(encoding="utf-8")
         (repo / "shared.txt").write_text("resolved\n", encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
-    assert resolution._resolve_and_commit(root, target, resolve)
+    assert resolution.resolve_and_commit_with_reason(root, target, resolve).outcome == "success"
     assert _run(root, "show", "HEAD:shared.txt").stdout == "resolved\n"
 
 
@@ -873,12 +886,12 @@ def test_remote_reconciliation_preserves_and_resumes_target_agent_work(
     assert record is not None and record.resolving_rebase
     assert read_record(tmp_git_repo) is None
 
-    def finish(root: Path, _target: str, _stop: RebaseStop) -> bool:
+    def finish(root: Path, _target: str, _stop: RebaseStop) -> ResolvedOutcome:
         assert root == tmp_git_repo
         assert (root / "shared.txt").read_text(encoding="utf-8") == "valuable partial repair\n"
         calls.append(root)
         (root / "shared.txt").write_text("completed repair\n", encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
     with integration_transaction(tmp_git_repo) as acquired:
         assert acquired

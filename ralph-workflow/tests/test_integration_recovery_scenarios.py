@@ -9,7 +9,6 @@ import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery_record import (
@@ -17,12 +16,11 @@ from ralph.pipeline.auto_integrate_recovery_record import (
     continue_retained_resolution,
     reset_continuation_gate_state,
 )
-from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.integration_diagnostic import handoff_integration_diagnostic
 from ralph.pipeline.operation_evidence import identity_fingerprint
+from ralph.pipeline.resolution_outcome import ConfigFailureOutcome, NextStrategyOutcome
 from ralph.policy.loader import default_dir, load_policy
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
@@ -238,30 +236,14 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
 
     consulted: list[str] = []
 
-    def _resolver(resolver_root: Path, _target: str, _stop: RebaseStop) -> ResolutionOutcome:
+    def _resolver(resolver_root: Path, _target: str, _stop: RebaseStop):
         consulted.append(str(resolver_root))
         try:
             with workspace_context(resolver_root):
                 pass
         except WorkspaceContextError as exc:
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=exc.fix,
-                duration_seconds=0.0,
-                last_activity_kind=None,
-                last_activity_at=None,
-                unresolved_paths=(),
-                failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
-            )
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
-            duration_seconds=0.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=(),
-            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
-        )
+            return ConfigFailureOutcome(exc.file, exc.reason)
+        return NextStrategyOutcome("completion_in_place")
 
     reset_continuation_gate_state()
     lines, handler = _capture_lines()
@@ -328,16 +310,8 @@ def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
         _root: Path,
         _target: str,
         _stop: RebaseStop,
-    ) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
-            duration_seconds=0.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=(),
-            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
-        )
+    ) -> NextStrategyOutcome:
+        return NextStrategyOutcome(NextAction.LAST_RESORT_RECOVERY.value)
 
     ledger = AttemptLedger(root)
     reset_continuation_gate_state()

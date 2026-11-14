@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from loguru import logger
 
@@ -33,9 +33,6 @@ from ralph.pipeline._pending_rebase_continue import (
     retain_pending_rebase_error,
 )
 from ralph.pipeline._retained_resolution_scope import retained_rebase_paths
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
     resolve_completion_in_place,
     try_deterministic_resolution,
@@ -52,13 +49,21 @@ from ralph.pipeline.conflict_resolution.progress import (
     load_progress_for_rebase,
     save_progress,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
 from ralph.pipeline.conflict_resolution.stray_paths import (
     is_ralph_workspace_path,
     revert_unrequested_paths,
     worktree_dirty_paths,
+)
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
 )
 
 if TYPE_CHECKING:
@@ -111,15 +116,30 @@ class RebaseStop:
     replay_total: int | None = None
 
 
-type RebaseStopResolver = Callable[["Path", str, RebaseStop], ResolutionOutcome | bool]
+type RebaseStopResolver = Callable[["Path", str, RebaseStop], StopResolutionOutcome | bool]
 
 _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
     "active_gitlink_policy", default=None
 )
 
 
-def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
-    return result.succeeded if isinstance(result, ResolutionOutcome) else result
+def _resolution_succeeded(result: StopResolutionOutcome | bool) -> bool:
+    if isinstance(result, bool):
+        return result
+    if isinstance(result, ResolvedOutcome):
+        return True
+    if isinstance(
+        result,
+        (
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
+        return False
+    assert_never(result)
 
 
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
@@ -270,17 +290,17 @@ def _resolve_one_stop(
             stop.stop_index,
         )
     outcome = resolver(root, target, stop)
-    if isinstance(outcome, ResolutionOutcome):
+    if not isinstance(outcome, bool):
         active_session = active_rebase_resolution_session()
         if active_session is not None:
-            if outcome.failure_cause != ResolutionFailureCause.NONE:
-                active_session.last_failure_cause = outcome.failure_cause
-            if outcome.reason is not None:
-                raw_reason: object = outcome.reason
-                if isinstance(raw_reason, ResolutionTerminationReason):
-                    active_session.terminal_reason = raw_reason
-                elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
-                    active_session.exhaustion_reason = raw_reason
+            if isinstance(outcome, ConfigFailureOutcome):
+                active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+                active_session.exhaustion_reason = outcome.parse_error
+            elif isinstance(outcome, UnknownOutcome):
+                active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+                active_session.exhaustion_reason = str(outcome.error)
+            elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
+                active_session.exhaustion_reason = outcome.on_change
     if not _resolution_succeeded(outcome):
         logger.info(
             "conflict_resolution: rebase stop {} ({}) was not resolved",

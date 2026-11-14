@@ -54,7 +54,6 @@ __all__ = [
     "run_spent_gate",
     "run_unstaged_text_resolution",
     "scenario_config",
-    "spent_ledger_state",
     "supervisor_restart",
 ]
 
@@ -66,7 +65,9 @@ class FakeAgentRunner:
     mode: AgentMode
     launches: int = 0
     launch_times: list[float] = field(default_factory=list)
+    completed_stops: list[str] = field(default_factory=list)
     clock: object | None = None
+    fail_at_launch: int | None = None
 
     def resolve_rebase(
         self,
@@ -84,6 +85,13 @@ class FakeAgentRunner:
         self.launches += 1
         now = getattr(self.clock, "monotonic", None)
         self.launch_times.append(cast("float", now()) if callable(now) else 0.0)
+        stop_identity: str | None = None
+        if self.fail_at_launch is not None:
+            stop_identity = git(root, "rev-parse", "REBASE_HEAD")
+            if stop_identity in self.completed_stops:
+                raise AssertionError("a completed stop must never be presented to the agent again")
+            if self.fail_at_launch == self.launches:
+                raise ConnectionError("agent provider unavailable partway through finite work")
         if self.mode is AgentMode.NON_ZERO_EXIT:
             raise RuntimeError("agent exited with status 7")
         if self.mode is AgentMode.SIGNAL:
@@ -102,6 +110,8 @@ class FakeAgentRunner:
                 path.write_text("resolved by scenario agent\n", encoding="utf-8")
         if self.mode is AgentMode.EDITS_AND_STAGES:
             git(root, "add", "--", *stop.conflicted_files)
+            if stop_identity is not None:
+                self.completed_stops.append(stop_identity)
         return True
 
 
@@ -267,7 +277,11 @@ def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
                 force_retry=True,
             ),
         )
-        succeeded = bool(getattr(outcome, "succeeded", False))
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+        succeeded = isinstance(outcome, ResolvedOutcome) or bool(
+            getattr(outcome, "succeeded", False)
+        )
     terminal = "resolved" if succeeded and not rebase_in_progress(root) else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 
@@ -287,7 +301,11 @@ def run_marker_resolution(root: Path) -> ScenarioResult:
                 force_retry=True,
             ),
         )
-        succeeded = bool(getattr(outcome, "succeeded", False))
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+        succeeded = isinstance(outcome, ResolvedOutcome) or bool(
+            getattr(outcome, "succeeded", False)
+        )
     terminal = "resolved" if succeeded else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 

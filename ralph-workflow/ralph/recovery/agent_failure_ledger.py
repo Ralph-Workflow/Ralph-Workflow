@@ -406,6 +406,10 @@ class AgentFailureLedger:
             for agent in effective_agents
         )
 
+    def registered_agents(self, phase: str) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(agent for entry_phase, agent in self._entries if entry_phase == phase)
+
     def mark_unavailable(self, phase: str, agent: str, *, reason: str) -> None:
         with self._lock:
             entry = self._entries.get((phase, agent))

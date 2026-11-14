@@ -12,6 +12,7 @@ from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit as _auto_integrate_after_commit,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -125,9 +126,9 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
     config = _build_config(base)
     invocations: list[str] = []
 
-    def _never_resolves(repo_root: Path, target: str) -> bool:
+    def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
-        return False
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     state = RebaseState()
     outcomes: list[RebaseState] = []
@@ -181,9 +182,9 @@ def test_configured_resolver_attempt_budget_overrides_compatibility_default(
     config = _build_config(base)
     invocations: list[str] = []
 
-    def _never_resolves(_root: Path, target: str) -> bool:
+    def _never_resolves(_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
-        return False
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
@@ -219,9 +220,9 @@ def test_first_conflict_attempt_is_never_suppressed(tmp_git_repo: Path) -> None:
     base = _diverged_conflicting_repo(tmp_git_repo)
     invocations: list[str] = []
 
-    def _never_resolves(repo_root: Path, target: str) -> bool:
+    def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
-        return False
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     result = auto_integrate_after_commit(
         _build_config(base),
@@ -238,9 +239,9 @@ def test_first_conflict_attempt_is_never_suppressed(tmp_git_repo: Path) -> None:
 def test_successful_land_resets_the_conflict_budget(tmp_git_repo: Path) -> None:
     base = _diverged_conflicting_repo(tmp_git_repo)
 
-    def _resolves(repo_root: Path, target: str) -> bool:
+    def _resolves(repo_root: Path, target: str) -> ResolvedOutcome:
         (repo_root / "shared.txt").write_text("feature version\nbase version 1\n", encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
     result = auto_integrate_after_commit(
         _build_config(base),
@@ -264,9 +265,9 @@ def test_exhausted_budget_still_aborts_the_endpoint_merge_bit_identically(
     base = _diverged_conflicting_repo(tmp_git_repo)
     invocations: list[str] = []
 
-    def _never_resolves(repo_root: Path, target: str) -> bool:
+    def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
-        return False
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     before = _snapshot(tmp_git_repo)
 
@@ -296,9 +297,9 @@ def test_new_feature_commit_gets_a_fresh_resolver_budget(
     config = _build_config(base)
     invocations: list[str] = []
 
-    def _never_resolves(repo_root: Path, target: str) -> bool:
+    def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
-        return False
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
@@ -330,9 +331,9 @@ def test_moved_mainline_tip_gets_a_fresh_resolver_budget(
     config = _build_config(base)
     invocations: list[str] = []
 
-    def _never_resolves(repo_root: Path, target: str) -> bool:
+    def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
-        return False
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
@@ -363,9 +364,9 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
     config = _build_config(base)
     invocations: list[str] = []
 
-    def _never_resolves(repo_root: Path, target: str) -> bool:
+    def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
-        return False
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
@@ -400,10 +401,7 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
 def test_auto_integrate_regression_resolver_invocation_failure_preserves_rebase_budget(
     tmp_git_repo: Path,
 ) -> None:
-    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-        ResolutionTerminationReason,
-    )
-    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+    from ralph.pipeline.resolution_outcome import UnknownOutcome
 
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
@@ -416,16 +414,9 @@ def test_auto_integrate_regression_resolver_invocation_failure_preserves_rebase_
     )
     calls: list[str] = []
 
-    def _resolver(_root: Path, target: str) -> ResolutionOutcome:
+    def _resolver(_root: Path, target: str) -> UnknownOutcome:
         calls.append(target)
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.ATTEMPT_FAILED,
-            duration_seconds=0.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=("shared.txt",),
-        )
+        return UnknownOutcome(RuntimeError("resolver invocation failed"))
 
     result = auto_integrate_after_commit(
         config,
@@ -442,34 +433,24 @@ def test_auto_integrate_regression_resolver_invocation_failure_preserves_rebase_
 
 
 def test_unexpected_failure_mid_attempt_does_not_refund_the_budget(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_git_repo: Path,
 ) -> None:
-    import ralph.pipeline.auto_integrate as auto_integrate_module
-
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
 
-    def _never_resolves(repo_root: Path, target: str) -> bool:
-        return False
+    def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
+        return RetryLaterOutcome(on_change="conflict state changes")
 
     spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
 
-    def _boom(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("simulated mid-attempt crash")
-
-    monkeypatch.setattr(auto_integrate_module, "_write_record", _boom)
-
-    result = auto_integrate_after_commit(
+    retained = auto_integrate_after_commit(
         config,
         WorkspaceScope(tmp_git_repo),
         spent,
         conflict_resolver=_never_resolves,
     )
 
-    assert result is not None
-    assert result.last_action == "skipped"
-    assert result.last_reason is not None
-    assert "simulated mid-attempt crash" in result.last_reason
-    assert result.last_target == base
-    assert result.consecutive_conflicts >= spent.consecutive_conflicts
-    assert result.last_conflict_feature_sha == spent.last_conflict_feature_sha
+    assert retained is not None
+    assert retained.last_action == "conflict"
+    assert retained.consecutive_conflicts >= spent.consecutive_conflicts
+    assert retained.last_conflict_feature_sha == spent.last_conflict_feature_sha

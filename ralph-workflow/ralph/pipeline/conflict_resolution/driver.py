@@ -25,7 +25,6 @@ from ralph.pipeline.conflict_resolution._driver_rounds import (
     RoundAttempt,
     _evaluate_round_attempt,
     _paths_still_unresolved,
-    _reset_conflict_success,
     _run_one_round,
 )
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
@@ -57,7 +56,6 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
     select_resolution_action,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_status import (
     push_round_status as _push_round_status,
 )
@@ -95,6 +93,7 @@ from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line,
 )
 from ralph.pipeline.integration_actions import current_clock
+from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
@@ -112,7 +111,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-type ResolutionInvoker = Callable[[str, "Path", int], ResolutionOutcome | bool]
+type ResolutionInvoker = Callable[[str, "Path", int], StopResolutionOutcome]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -175,7 +174,7 @@ def run_conflict_resolution_outcome(
     strategy_history: tuple[str, ...] = (),
     observer: WorktreeConflictObserver | None = None,
     prompt_materializer: PromptMaterializer | None = None,
-) -> ResolutionOutcome:
+) -> StopResolutionOutcome:
     active_session = session or _new_resolution_session(config)
     previous_model = capture_status_bar_model(display)
     try:
@@ -224,7 +223,7 @@ def run_rebase_conflict_resolution_outcome(
     strategy_history: tuple[str, ...] = (),
     observer: WorktreeConflictObserver | None = None,
     prompt_materializer: PromptMaterializer | None = None,
-) -> ResolutionOutcome:
+) -> StopResolutionOutcome:
     active_session = (
         session or active_rebase_resolution_session() or _new_resolution_session(config)
     )
@@ -568,7 +567,7 @@ def _execute_round_loop(
     prompt_path: Path | None = None
     try:
         round_index = session.rounds_spent
-        while True:
+        while round_index < round_cap:
             round_index += 1
             _push_round_status(display, root, target, round_index, round_cap, stop)
             prompt_path = prompt_materializer(
@@ -599,6 +598,17 @@ def _execute_round_loop(
                     substantive=substantive_at_entry,
                     observer=observer,
                 )
+
+            controller = session.recovery_controller
+            if controller is not None:
+                skipped = skipped_candidates(session, candidates)
+                live = [name for name in candidates if name not in skipped]
+                if live and not any(
+                    controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+                ):
+                    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+                    if wait_ms > 0:
+                        _sleep_seconds(wait_ms / 1000.0)
 
             attempt = _run_one_round(
                 runner,
@@ -654,8 +664,6 @@ def _execute_round_loop(
                 if _escalate_unreachable_remainder(session, display):
                     break
                 _emit_success(display, round_index, stop)
-                if attempt.agent_name is not None:
-                    _reset_conflict_success(session, attempt.agent_name)
                 return True
             if not attempt.invoked:
                 _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
@@ -666,6 +674,11 @@ def _execute_round_loop(
                 break
             if not _can_continue_rounds(session, candidates):
                 break
+            controller = session.recovery_controller
+            if controller is not None:
+                wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
+                if wait_ms > 0:
+                    _sleep_seconds(wait_ms / 1000.0)
     finally:
         if prompt_path is not None:
             with contextlib.suppress(OSError):
@@ -680,12 +693,14 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         return False
     controller = session.recovery_controller
     if controller is not None:
-        if any(controller._is_agent_available(PHASE_RESOLUTION, name) for name in live):
+        if any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live):
             return True
         return controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
     if session.ledger is not None:
+        if session.ledger.any_eligible(PHASE_RESOLUTION, live):
+            return True
         wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
-        return wait is not None
+        return wait is not None and wait > 0
     return True
 
 

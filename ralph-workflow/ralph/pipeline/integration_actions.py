@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStopResolver
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 __all__ = [
     "AgentRunner",
@@ -62,7 +63,7 @@ class GitOps(Protocol):
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]: ...
+    ) -> StopResolutionOutcome: ...
 
     def land_feature(
         self,
@@ -72,7 +73,7 @@ class GitOps(Protocol):
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]: ...
+    ) -> StopResolutionOutcome: ...
 
     def create_backup_ref(
         self,
@@ -185,7 +186,7 @@ class _ProductionGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         from ralph.pipeline.auto_integrate_ff import fast_forward_target
 
         return fast_forward_target(
@@ -204,20 +205,22 @@ class _ProductionGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         from ralph.pipeline.auto_integrate_context import current_branch_or_detached_marker
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
         feature_branch = current_branch_or_detached_marker(root)
-        landed, reason = self.fast_forward_target(
+        outcome = self.fast_forward_target(
             root,
             target,
             feature_sha,
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=on_reclaimed,
         )
+        landed = isinstance(outcome, ResolvedOutcome)
         if landed and feature_branch:
             self.reattach_head(root, feature_branch)
-        return landed, reason
+        return outcome
 
     def create_backup_ref(
         self,
@@ -350,7 +353,7 @@ def fast_forward_target(
     *,
     reclaim_target_worktree: bool = True,
     on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-) -> tuple[bool, str]:
+) -> StopResolutionOutcome:
     return current_git_ops().fast_forward_target(
         root,
         target,

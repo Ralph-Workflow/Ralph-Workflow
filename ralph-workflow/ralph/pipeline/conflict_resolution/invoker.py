@@ -6,7 +6,6 @@ from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
 )
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
-from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -59,6 +58,7 @@ def default_invoker(
             agent_name=agent_name,
         )
         from ralph.pipeline.conflict_resolution import driver as _driver
+        from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
 
         patched = _driver.invoke_resolution_agent
         result = patched(
@@ -77,7 +77,7 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
-        if result:
+        if bool(result):
             return ResolvedOutcome()
         return classify_resolution_failure(
             terminal_reason=session.terminal_reason,

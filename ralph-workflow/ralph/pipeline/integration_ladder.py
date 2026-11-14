@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import replace
+import json
+import time
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -33,6 +35,10 @@ from ralph.pipeline.integration_decision import (
     CleanupLadderRung,
 )
 from ralph.pipeline.integration_observation import InProgressKind
+from ralph.pipeline.integration_preservation_bundle import (
+    carry_preserved_commits,
+    preserve_integration_state,
+)
 from ralph.pipeline.ladder_effect import LadderEffect
 from ralph.pipeline.ladder_effect_kind import LadderEffectKind
 from ralph.pipeline.ladder_facts import LadderFacts
@@ -49,6 +55,8 @@ if TYPE_CHECKING:
         AttemptLedger,
         AttemptLedgerState,
     )
+    from ralph.pipeline.integration_preservation_bundle import IntegrationPreservationBundle
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 __all__ = [
     "LADDER_ATTEMPT_BUDGET",
@@ -56,6 +64,7 @@ __all__ = [
     "LAST_RESORT_PRECONDITIONS",
     "LAST_RESORT_REFUSED_NO_PRESERVED_COPY",
     "LAST_RESORT_TERMINAL_NO_SIGNATURE",
+    "LAST_RESORT_WAIT_SECONDS",
     "PRESERVED_COPY_LEDGER_KEY",
     "QUARANTINE_COPY_LEDGER_KEY",
     "EnvironmentFailure",
@@ -71,6 +80,9 @@ __all__ = [
     "LadderTransition",
     "LandResult",
     "LandedVerdict",
+    "LastResortAgentPool",
+    "LastResortAgentProof",
+    "LastResortWaitProof",
     "RepointResult",
     "RungPostCondition",
     "adapt_environment_and_retry",
@@ -80,6 +92,7 @@ __all__ = [
     "ladder_charge_count",
     "ladder_facts_fingerprint",
     "last_resort_recovery",
+    "last_resort_wait_proof",
     "preserve_via_temp_index",
     "preserved_copy_identity",
     "quarantine_and_restore",
@@ -93,6 +106,40 @@ __all__ = [
 
 
 LADDER_ATTEMPT_BUDGET: Final[int] = 16
+
+LAST_RESORT_WAIT_SECONDS: Final[float] = 600.0
+
+
+@dataclass(frozen=True, slots=True)
+class LastResortAgentPool:
+    phase: str
+    agents: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class LastResortAgentProof:
+    phase: str
+    agent: str
+    tried: bool
+    outcome: str
+    cooldown_until_ms: int | None
+    reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class LastResortWaitProof:
+    continuously_unavailable_since_epoch_ms: int | None
+    eligible_after_epoch_ms: int
+    next_eligible_agent: str | None
+    next_eligible_at_ms: int | None
+    agents: tuple[LastResortAgentProof, ...]
+    blocking_signature: str
+    authorized: bool
+
+    @property
+    def waiting(self) -> bool:
+        return not self.authorized and all(agent.tried for agent in self.agents)
+
 
 LAST_RESORT_PRECONDITIONS: Final[tuple[str, ...]] = (
     "rungs_1_to_5_tried_or_shown_impossible",
@@ -642,6 +689,201 @@ def terminal_operator_message(
     )
 
 
+def _wait_record(state: AttemptLedgerState) -> tuple[int, str] | None:
+    from ralph.pipeline.integration_attempt_ledger import LAST_RESORT_WAIT_KEY
+
+    raw = state.ladder_evidence.get(LAST_RESORT_WAIT_KEY)
+    if raw is None:
+        return None
+    try:
+        payload: object = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    since = payload.get("since_epoch_ms")
+    signature = payload.get("blocking_signature")
+    if isinstance(since, int) and not isinstance(since, bool) and isinstance(signature, str):
+        return since, signature
+    return None
+
+
+def last_resort_wait_proof(
+    *,
+    ledger: AttemptLedger,
+    eligibility: AgentFailureLedger,
+    pools: tuple[LastResortAgentPool, ...],
+    blocking_signature: str,
+    wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
+    epoch_now: Callable[[], float] = time.time,
+) -> LastResortWaitProof:
+    from ralph.recovery.agent_failure_ledger import CoolingDown, Spent
+
+    now_ms = int(epoch_now() * 1000)
+    proofs: list[LastResortAgentProof] = []
+    for pool in pools:
+        for agent in pool.agents:
+            status = eligibility.agent_eligibility(pool.phase, agent)
+            if isinstance(status, CoolingDown):
+                proofs.append(
+                    LastResortAgentProof(
+                        pool.phase,
+                        agent,
+                        True,
+                        "cooling_down",
+                        status.until_ms,
+                        status.reason,
+                    )
+                )
+            elif isinstance(status, Spent):
+                proofs.append(
+                    LastResortAgentProof(
+                        pool.phase,
+                        agent,
+                        True,
+                        "spent",
+                        None,
+                        status.reason,
+                    )
+                )
+            else:
+                reason = (
+                    None if status.is_eligible else eligibility.failure_reason(pool.phase, agent)
+                )
+                proofs.append(
+                    LastResortAgentProof(
+                        pool.phase,
+                        agent,
+                        False,
+                        "eligible" if status.is_eligible else "unavailable",
+                        None,
+                        reason,
+                    )
+                )
+    all_tried_and_unavailable = bool(proofs) and all(proof.tried for proof in proofs)
+    durable = _wait_record(ledger.read())
+    since_ms: int | None = None
+    if all_tried_and_unavailable:
+        if durable is not None and durable[1] == blocking_signature:
+            since_ms = durable[0]
+        else:
+            since_ms = now_ms
+            payload: dict[str, int | str] = {
+                "since_epoch_ms": since_ms,
+                "blocking_signature": blocking_signature,
+            }
+            ledger.record_last_resort_wait(json.dumps(payload, sort_keys=True))
+    elif durable is not None:
+        cleared_payload: dict[str, int | str] = {
+            "cleared_epoch_ms": now_ms,
+            "blocking_signature": blocking_signature,
+        }
+        ledger.record_last_resort_wait(json.dumps(cleared_payload, sort_keys=True))
+    wait_ms = max(0, int(wait_seconds * 1000))
+    authorized = since_ms is not None and now_ms - since_ms > wait_ms
+    next_proof: LastResortAgentProof | None = None
+    for candidate in proofs:
+        candidate_until = candidate.cooldown_until_ms
+        if candidate_until is None:
+            continue
+        current_until = None if next_proof is None else next_proof.cooldown_until_ms
+        if current_until is None or candidate_until < current_until:
+            next_proof = candidate
+    proof = LastResortWaitProof(
+        continuously_unavailable_since_epoch_ms=since_ms,
+        eligible_after_epoch_ms=(since_ms + wait_ms) if since_ms is not None else now_ms,
+        next_eligible_agent=None if next_proof is None else next_proof.agent,
+        next_eligible_at_ms=None if next_proof is None else next_proof.cooldown_until_ms,
+        agents=tuple(proofs),
+        blocking_signature=blocking_signature,
+        authorized=authorized,
+    )
+    logger.info(
+        "integration ladder last-resort wait: authorized={}; eligible after {}; next eligible {} at {}",
+        proof.authorized,
+        proof.eligible_after_epoch_ms,
+        proof.next_eligible_agent or "none",
+        proof.next_eligible_at_ms or "never",
+    )
+    return proof
+
+
+def _last_resort_agent_wait(
+    *,
+    ledger: AttemptLedger,
+    rung: CleanupLadderRung,
+    key: str,
+    agent_eligibility: AgentFailureLedger | None,
+    agent_pools: tuple[LastResortAgentPool, ...],
+    fresh_signature: str,
+    wait_seconds: float,
+    epoch_now: Callable[[], float],
+) -> LadderStepResult | None:
+    if agent_eligibility is None or not agent_pools:
+        value = "waiting:last-resort-agent-proof-unavailable"
+        _record_evidence(ledger, key, value)
+        return LadderStepResult(rung, "waiting", value, evidence={key: value})
+    wait_proof = last_resort_wait_proof(
+        ledger=ledger,
+        eligibility=agent_eligibility,
+        pools=agent_pools,
+        blocking_signature=fresh_signature,
+        wait_seconds=wait_seconds,
+        epoch_now=epoch_now,
+    )
+    proof_evidence = {
+        f"agent:{proof.phase}:{proof.agent}": (
+            f"tried={proof.tried};outcome={proof.outcome};"
+            f"cooldown_until={proof.cooldown_until_ms};reason={proof.reason}"
+        )
+        for proof in wait_proof.agents
+    }
+    for proof_key, proof_value in proof_evidence.items():
+        _record_evidence(ledger, proof_key, proof_value)
+    if wait_proof.authorized:
+        return None
+    eligible = next(
+        (proof for proof in wait_proof.agents if proof.outcome == "eligible"),
+        None,
+    )
+    value = (
+        f"waiting:agent-eligible:{eligible.phase}:{eligible.agent}"
+        if eligible is not None
+        else "waiting:all-agents-unavailable:"
+        f"until={wait_proof.eligible_after_epoch_ms}:"
+        f"next={wait_proof.next_eligible_agent or 'none'}:"
+        f"next-at={wait_proof.next_eligible_at_ms or 'never'}"
+    )
+    _record_evidence(ledger, key, value)
+    return LadderStepResult(rung, "waiting", value, evidence=proof_evidence)
+
+
+def _complete_preservation_bundle(
+    root: Path,
+    *,
+    git: GitPlumbing,
+    fs: FileQuarantine,
+    ledger: AttemptLedger,
+    state_dir: Path,
+    target: str,
+    is_landed: Callable[[str], bool] | None,
+) -> tuple[IntegrationPreservationBundle | None, str | None]:
+    compatibility_preservation = preserve_via_temp_index(
+        root,
+        git=git,
+        fs=fs,
+        ledger=ledger,
+        state_dir=state_dir,
+        is_landed=is_landed,
+    )
+    if compatibility_preservation.outcome == "failed":
+        return None, f"failed:no-preserved-copy:{compatibility_preservation.reason}"
+    preservation = preserve_integration_state(root, state_dir=state_dir, target=target)
+    if preservation is None:
+        return None, "failed:no-complete-preservation-bundle"
+    return preservation, None
+
+
 def last_resort_recovery(
     root: Path,
     *,
@@ -661,6 +903,10 @@ def last_resort_recovery(
     is_landed: Callable[[str], bool] | None = None,
     budget: int = LADDER_ATTEMPT_BUDGET,
     terminal_when_disabled: bool = True,
+    agent_eligibility: AgentFailureLedger | None = None,
+    agent_pools: tuple[LastResortAgentPool, ...] = (),
+    wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
+    epoch_now: Callable[[], float] = time.time,
 ) -> LadderStepResult:
     rung = CleanupLadderRung.LAST_RESORT
     key = _rung_key(rung)
@@ -691,38 +937,56 @@ def last_resort_recovery(
         _record_evidence(ledger, key, value)
         return LadderStepResult(rung, "failed", value, evidence=preconditions)
 
-    state = ledger.read()
-    if PRESERVED_COPY_LEDGER_KEY not in state.ladder_evidence:
-        preserved = preserve_via_temp_index(
-            root,
-            git=git,
-            fs=fs,
-            ledger=ledger,
-            state_dir=state_dir,
-            is_landed=is_landed,
-        )
-        if preserved.outcome == "failed":
-            logger.warning(
-                "integration ladder rung 6: final preservation failed ({}); "
-                "the reset may discard work that nothing could save",
-                preserved.reason,
-            )
+    agent_wait = _last_resort_agent_wait(
+        ledger=ledger,
+        rung=rung,
+        key=key,
+        agent_eligibility=agent_eligibility,
+        agent_pools=agent_pools,
+        fresh_signature=fresh_signature,
+        wait_seconds=wait_seconds,
+        epoch_now=epoch_now,
+    )
+    if agent_wait is not None:
+        return agent_wait
+
+    preservation, preservation_failure = _complete_preservation_bundle(
+        root,
+        git=git,
+        fs=fs,
+        ledger=ledger,
+        state_dir=state_dir,
+        target=target,
+        is_landed=is_landed,
+    )
+    if preservation is None:
+        value = preservation_failure or "failed:no-complete-preservation-bundle"
+        _record_evidence(ledger, key, value)
+        return LadderStepResult(rung, "failed", value, evidence=preconditions)
+    _record_evidence(ledger, "preserved:bundle", preservation.manifest_path)
 
     if in_progress_kind is not InProgressKind.NONE and not git.abort_operation(
         root, in_progress_kind
     ):
         git.remove_operation_state(root, in_progress_kind)
 
-    if feature_tip is not None and git.ref_is_readable(root, feature_tip):
-        tip: str = feature_tip
-    else:
-        tip = target
+    tip = target
     if not git.reset_hard(root, tip) and not (
         git.recreate_worktree(root, branch) and git.reset_hard(root, tip)
     ):
         value = f"failed:reset-hard:{tip}"
         _record_evidence(ledger, key, value)
         return LadderStepResult(rung, "failed", value, evidence=preconditions)
+    carried, carry_failures = carry_preserved_commits(root, preservation)
+    carry_record = {
+        "bundle": preservation.manifest_path,
+        "carried": carried,
+        "not_carried": carry_failures,
+        "next_phase": "planning",
+    }
+    carry_path = Path(preservation.manifest_path).with_name("planning-handoff.json")
+    carry_path.write_text(json.dumps(carry_record, indent=2), encoding="utf-8")
+    _record_evidence(ledger, "preserved:planning-handoff", str(carry_path))
     git.clean_untracked(root, untracked_paths)
     removed_locks = git.remove_stale_locks(root)
     value = f"succeeded:reset-hard-to={tip}:locks-removed={len(removed_locks)}"
@@ -766,6 +1030,81 @@ def _refuse_without_preserved_copy(
     return LadderStepResult(rung, "failed", value, evidence={_rung_key(rung): value})
 
 
+def _shared_rung_result(
+    ledger: AttemptLedger,
+    rung: CleanupLadderRung,
+    key: str,
+) -> LadderStepResult | None:
+    shared_value = ledger.read_rung_result(key)
+    if shared_value is None:
+        return None
+    try:
+        shared_payload: object = json.loads(shared_value)
+    except ValueError:
+        return None
+    if not isinstance(shared_payload, dict):
+        return None
+    outcome = shared_payload.get("outcome")
+    reason = shared_payload.get("reason")
+    if not isinstance(reason, str):
+        return None
+    outcomes: dict[str, LadderOutcome] = {
+        "succeeded": "succeeded",
+        "failed": "failed",
+        "impossible": "impossible",
+        "waiting": "waiting",
+        "terminal": "terminal",
+    }
+    if not isinstance(outcome, str) or outcome not in outcomes:
+        return None
+    shared_outcome = outcomes[outcome]
+    return LadderStepResult(
+        rung,
+        shared_outcome,
+        f"shared:{reason}",
+        evidence={"shared_rung_result": key},
+        post_condition=_RUNG_POST_CONDITIONS[rung],
+        post_condition_verified=shared_outcome == "succeeded",
+    )
+
+
+def _finish_rung(
+    result: LadderStepResult,
+    *,
+    rung: CleanupLadderRung,
+    ledger: AttemptLedger,
+    shared_key: str | None,
+    verify_post_condition: Callable[[RungPostCondition], bool] | None,
+) -> LadderStepResult:
+    condition = _RUNG_POST_CONDITIONS[rung]
+    if result.outcome != "succeeded":
+        final = replace(result, post_condition=condition)
+    elif verify_post_condition is None or verify_post_condition(condition):
+        final = replace(result, post_condition=condition, post_condition_verified=True)
+    else:
+        value = f"failed:post-condition:{condition.value}"
+        _record_evidence(ledger, _rung_key(rung), value)
+        final = LadderStepResult(
+            rung,
+            "failed",
+            value,
+            preserved_ref=result.preserved_ref,
+            preserved_sidecar=result.preserved_sidecar,
+            quarantined_paths=result.quarantined_paths,
+            next_rung=_next_enabled_rung(rung, frozenset(CLEANUP_LADDER_ORDER)),
+            evidence={**result.evidence, _rung_key(rung): value},
+            post_condition=condition,
+            post_condition_verified=False,
+        )
+    if shared_key is not None:
+        published_payload: dict[str, str] = {
+            "outcome": final.outcome,
+            "reason": final.reason,
+        }
+        ledger.publish_rung_result(shared_key, json.dumps(published_payload, sort_keys=True))
+    return final
+
+
 def run_ladder_rung(
     rung: CleanupLadderRung,
     *,
@@ -793,12 +1132,33 @@ def run_ladder_rung(
     expected_target_sha: str | None = None,
     terminal_when_disabled: bool = False,
     verify_post_condition: Callable[[RungPostCondition], bool] | None = None,
+    shared_target_tip: str | None = None,
+    shared_vendor_pointer: str | None = None,
+    shared_conflicting_paths: tuple[str, ...] | None = None,
+    agent_eligibility: AgentFailureLedger | None = None,
+    agent_pools: tuple[LastResortAgentPool, ...] = (),
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
+    epoch_now: Callable[[], float] = time.time,
 ) -> LadderStepResult:
+    from ralph.pipeline.integration_attempt_ledger import shared_rung_result_key
+
     plumbing = git if git is not None else default_git_plumbing()
     quarantine = fs if fs is not None else default_file_quarantine()
     probe = env if env is not None else default_environment_probe()
     ladder_clock = clock if clock is not None else current_clock()
     ralph_state = state_dir if state_dir is not None else Path(root) / ".agent"
+    target_tip = shared_target_tip or expected_target_sha or plumbing.target_sha(root, target)
+    shared_key: str | None = None
+    if target_tip is not None:
+        identity = shared_rung_result_key(
+            target_tip,
+            shared_vendor_pointer if shared_vendor_pointer is not None else feature_tip,
+            paths if shared_conflicting_paths is None else shared_conflicting_paths,
+        )
+        shared_key = f"{identity}:{rung.value}"
+        shared_result = _shared_rung_result(ledger, rung, shared_key)
+        if shared_result is not None:
+            return shared_result
     result: LadderStepResult
     if rung is CleanupLadderRung.NORMAL_CLEANUP:
         value = "failed:not-owned-here"
@@ -914,26 +1274,17 @@ def run_ladder_rung(
                 is_landed=is_landed,
                 budget=budget,
                 terminal_when_disabled=terminal_when_disabled,
+                agent_eligibility=agent_eligibility,
+                agent_pools=agent_pools,
+                wait_seconds=last_resort_wait_seconds,
+                epoch_now=epoch_now,
             )
-    condition = _RUNG_POST_CONDITIONS[rung]
-    if result.outcome != "succeeded":
-        return replace(result, post_condition=condition)
-    verified = verify_post_condition is None or verify_post_condition(condition)
-    if verified:
-        return replace(result, post_condition=condition, post_condition_verified=True)
-    value = f"failed:post-condition:{condition.value}"
-    _record_evidence(ledger, _rung_key(rung), value)
-    return LadderStepResult(
-        rung,
-        "failed",
-        value,
-        preserved_ref=result.preserved_ref,
-        preserved_sidecar=result.preserved_sidecar,
-        quarantined_paths=result.quarantined_paths,
-        next_rung=_next_enabled_rung(rung, frozenset(CLEANUP_LADDER_ORDER)),
-        evidence={**result.evidence, _rung_key(rung): value},
-        post_condition=condition,
-        post_condition_verified=False,
+    return _finish_rung(
+        result,
+        rung=rung,
+        ledger=ledger,
+        shared_key=shared_key,
+        verify_post_condition=verify_post_condition,
     )
 
 

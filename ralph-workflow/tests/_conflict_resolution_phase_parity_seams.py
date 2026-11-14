@@ -27,7 +27,9 @@ def _policy_bundle() -> PolicyBundle:
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate({"general": {}})
+    return UnifiedConfig.model_validate(
+        {"general": {}, "conflict_resolution": {"max_rounds_per_stop": 10}}
+    )
 
 
 def _install_seams(

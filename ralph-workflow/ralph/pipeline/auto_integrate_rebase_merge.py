@@ -85,6 +85,7 @@ if TYPE_CHECKING:
         AgentRunner,
         GitOps,
     )
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 
 SKIP_MERGE_COMMITS_IN_RANGE = "merge_commits_in_range"
@@ -238,9 +239,10 @@ def run_rebase_or_merge(
     effective_conflict_resolver = conflict_resolver
     if effective_conflict_resolver is None and rebase_stop_resolver is not None:
 
-        def _adapted_resolver(r: Path, t: str) -> bool:
+        def _adapted_resolver(r: Path, t: str) -> StopResolutionOutcome:
             from ralph.git.merge import unmerged_paths
             from ralph.pipeline.conflict_resolution import RebaseStop
+            from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
 
             unmerged = tuple(unmerged_paths(r))
             stop = RebaseStop(
@@ -252,7 +254,14 @@ def run_rebase_or_merge(
                 replay_index=1,
                 replay_total=1,
             )
-            return bool(rebase_stop_resolver(r, t, stop))
+            res = rebase_stop_resolver(r, t, stop)
+            if isinstance(res, bool):
+                return (
+                    ResolvedOutcome()
+                    if res
+                    else UnknownOutcome(RuntimeError("merge resolution failed"))
+                )
+            return res
 
         effective_conflict_resolver = _adapted_resolver
 

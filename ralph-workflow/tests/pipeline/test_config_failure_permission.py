@@ -13,8 +13,11 @@ from ralph.pipeline.conflict_resolution import (
     ResolutionTerminationReason,
     bind_active_rebase_resolution_session,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+)
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 from ralph.workspace.scope import WorkspaceScope
 
@@ -117,10 +120,10 @@ def test_auto_integrate_resolver_directory_in_place_of_config(tmp_path: Path) ->
     with bind_active_rebase_resolution_session(session):
         outcome = resolver(tmp_path, "main", stop)
 
-    assert isinstance(outcome, ResolutionOutcome)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert f"fix {cfg_dir} then run ralph --check-config" in str(outcome.reason)
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
+    assert f"fix {cfg_dir} then run ralph --check-config" in str(outcome.on_change)
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
@@ -182,10 +185,10 @@ def test_auto_integrate_resolver_unreadable_permission_denied_config(
         with bind_active_rebase_resolution_session(session):
             outcome = resolver(tmp_path, "main", stop)
 
-        assert isinstance(outcome, ResolutionOutcome)
-        assert outcome.succeeded is False
-        assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-        assert f"fix {cfg_file} then run ralph --check-config" in str(outcome.reason)
+        assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+        assert isinstance(outcome, RetryLaterOutcome)
+        assert outcome.on_change is not None
+        assert f"fix {cfg_file} then run ralph --check-config" in str(outcome.on_change)
         assert session.charge_conflict_budget is False
         assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
         assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE

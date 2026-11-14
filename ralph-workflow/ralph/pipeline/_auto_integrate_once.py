@@ -111,6 +111,18 @@ def _integrate_once(
         reset_executors(clock_token)
 
 
+def _extract_fast_forward_outcome(ff_outcome: object) -> tuple[bool, str]:
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+    if isinstance(ff_outcome, ResolvedOutcome):
+        return True, ""
+    if isinstance(ff_outcome, tuple):
+        return bool(ff_outcome[0]), str(ff_outcome[1]) if len(ff_outcome) > 1 else ""
+    if isinstance(ff_outcome, bool):
+        return ff_outcome, ""
+    return False, str(ff_outcome)
+
+
 def _integrate_once_owned(
     config: UnifiedConfig,
     root: Path,
@@ -204,13 +216,14 @@ def _integrate_once_owned(
             nonlocal reclamation
             reclamation = result
 
-        ok, skip_reason = _ai._fast_forward_target(
+        ff_outcome = _ai._fast_forward_target(
             root,
             target,
             feature_sha,
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=remember_reclamation,
         )
+        ok, skip_reason = _extract_fast_forward_outcome(ff_outcome)
 
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:
@@ -248,7 +261,7 @@ def _integrate_once_owned(
                 record.model_copy(update={"last_reason": skip_reason, "fast_forwarded": False}),
                 rebase_result.skip_reason,
             )
-            return record, is_retryable_fast_forward_failure(skip_reason)
+            return record, is_retryable_fast_forward_failure(ff_outcome)
         record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
         if publish:
             record = _ai.reconcile_remote_publication(

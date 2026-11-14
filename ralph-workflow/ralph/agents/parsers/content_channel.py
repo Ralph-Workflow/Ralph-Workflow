@@ -8,6 +8,8 @@ from typing import Protocol, cast
 
 from ralph.recovery.failure_classifier import _SUBSCRIPTION_LIMIT_SUBSTRINGS
 
+from ._event_classification import is_user_prompt_event_line
+
 
 class _HarnessEchoModule(Protocol):
     def is_user_prompt_event_line(self, line: str) -> bool: ...

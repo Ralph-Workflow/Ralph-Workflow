@@ -93,8 +93,7 @@ def test_default_gitlink_policy_completes_in_place_and_records_review(
     )
     assert deterministic_resolution.try_deterministic_resolution(Path("/repo"), stop)
     assert any(
-        label == "git-gitlink-resolve-readd"
-        and args[-1] == f"160000,{_OURS_SHA},vendor"
+        label == "git-gitlink-resolve-readd" and args[-1] == f"160000,{_OURS_SHA},vendor"
         for label, args in calls
     )
     assert records == [

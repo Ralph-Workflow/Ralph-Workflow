@@ -27,6 +27,7 @@ __all__ = [
     "ATTEMPT_LEDGER_FILENAME",
     "CURRENT_SCHEMA_VERSION",
     "GLOBAL_ACTION_BOUND",
+    "LAST_RESORT_WAIT_KEY",
     "TOMBSTONE_FILENAME",
     "AttemptLedger",
     "AttemptLedgerState",
@@ -60,6 +61,8 @@ _REPEAT_KEY_TUPLE_LEN = 2
 
 _LADDER_EVIDENCE_CAP: Final[int] = 64
 _SHARED_RUNG_RESULTS_CAP: Final[int] = 256
+
+LAST_RESORT_WAIT_KEY: Final[str] = "last-resort:all-agents-unavailable-since"
 
 _TOMBSTONE_SCHEMA_VERSION: Final[int] = 1
 
@@ -513,6 +516,28 @@ class AttemptLedger:
                 global_actions_charged=state.global_actions_charged,
                 ladder_evidence=dict(state.ladder_evidence),
                 shared_rung_results=shared,
+            )
+            self._write_state(updated, state)
+            persisted, _status = self._load()
+            return persisted
+
+    def record_last_resort_wait(self, value: str) -> AttemptLedgerState:
+        with self._locked() as acquired:
+            if not acquired:
+                raise OSError("integration attempt ledger lock unavailable")
+            state, _status = self._load()
+            evidence = dict(state.ladder_evidence)
+            evidence[LAST_RESORT_WAIT_KEY] = value
+            updated = AttemptLedgerState(
+                rung=state.rung,
+                repeat_counts=OrderedDict(state.repeat_counts),
+                unknown_attempts=state.unknown_attempts,
+                unknown_budget=state.unknown_budget,
+                repeat_threshold=state.repeat_threshold,
+                saturated_repeats=state.saturated_repeats,
+                global_actions_charged=state.global_actions_charged,
+                ladder_evidence=evidence,
+                shared_rung_results=dict(state.shared_rung_results),
             )
             self._write_state(updated, state)
             persisted, _status = self._load()

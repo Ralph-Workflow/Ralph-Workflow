@@ -25,12 +25,9 @@ from ralph.pipeline.integration_resolution import (
 )
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
-    NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
-    UnknownOutcome,
     WaitingOutcome,
-    assert_never,
 )
 
 if TYPE_CHECKING:
@@ -191,53 +188,35 @@ def integrate_before_planning(
     )
 
 
-def _finish_paused_rebase(
+def _evaluate_paused_resolution(
+    result: object,
+    target: str,
+) -> tuple[bool, RebaseState | None]:
+    from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
+
+    if isinstance(result, StopResolutionBlocked):
+        return True, record_conflict(reason=result.reason, target=target)
+    match result:
+        case ResolvedOutcome():
+            return True, None
+        case WaitingOutcome():
+            return True, record_conflict(
+                reason=result.external_condition or "waiting", target=target
+            )
+        case RetryLaterOutcome():
+            return True, record_conflict(reason=result.on_change or "retry later", target=target)
+        case ConfigFailureOutcome():
+            return True, record_conflict(reason=str(result), target=target)
+        case _:
+            return False, None
+
+
+def _abort_and_fallback_merge(
     config: UnifiedConfig,
     root: Path,
     target: str,
     resolver: RebaseStopResolver | None,
 ) -> RebaseState | None:
-    if not rebase_in_progress(root):
-        return None
-    from ralph.pipeline.conflict_resolution.rebase_loop import finish_resolved_rebase_stops
-
-    if finish_resolved_rebase_stops(root, target) or resolver is None:
-        return None
-    from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
-    from ralph.pipeline.auto_integrate_record import read_record
-    from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
-    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
-    from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
-    from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
-
-    result = attempt_stop_resolution(
-        None,
-        StopResolutionTrigger(
-            name="rebase_stop",
-            root=root,
-            target=target,
-            resolver=resolver,
-            record=read_record(root) or resolution_gate_record(root, target),
-            conflict_config=config.conflict_resolution,
-            force_retry=True,
-        ),
-    )
-    if isinstance(result, StopResolutionBlocked):
-        return record_conflict(reason=result.reason, target=target)
-    if isinstance(result, RebaseResolutionResult):
-        match result.outcome:
-            case ResolvedOutcome():
-                return None
-            case (
-                WaitingOutcome()
-                | RetryLaterOutcome()
-                | NextStrategyOutcome()
-                | ConfigFailureOutcome()
-                | UnknownOutcome()
-            ):
-                pass
-            case _ as unreachable:
-                assert_never(unreachable)
     from ralph.git.merge import observe_branch_sha
     from ralph.git.rebase.rebase import abort_rebase
     from ralph.pipeline.auto_integrate_record import clear_record
@@ -274,6 +253,44 @@ def _finish_paused_rebase(
     except Exception as exc:
         logger.warning("abort_rebase or merge fallback failed: {}", exc)
     return None
+
+
+def _finish_paused_rebase(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    resolver: RebaseStopResolver | None,
+) -> RebaseState | None:
+    try:
+        if not rebase_in_progress(root):
+            return None
+    except Exception:
+        return None
+    from ralph.pipeline.conflict_resolution.rebase_loop import finish_resolved_rebase_stops
+
+    if finish_resolved_rebase_stops(root, target) or resolver is None:
+        return None
+    from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+    from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
+
+    result = attempt_stop_resolution(
+        None,
+        StopResolutionTrigger(
+            name="rebase_stop",
+            root=root,
+            target=target,
+            resolver=resolver,
+            record=read_record(root) or resolution_gate_record(root, target),
+            conflict_config=config.conflict_resolution,
+            force_retry=True,
+        ),
+    )
+    handled, state = _evaluate_paused_resolution(result, target)
+    if handled:
+        return state
+    return _abort_and_fallback_merge(config, root, target, resolver)
 
 
 def _record_staged_block(

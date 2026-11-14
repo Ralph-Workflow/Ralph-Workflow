@@ -7,7 +7,7 @@ from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
 from ralph.agents.builtin_spec import BuiltinAgentSpec
 from ralph.agents.display_capabilities import DisplayCapability
 from ralph.agents.display_capability_stance import DisplayCapabilityStance
-from ralph.agents.execution_state._factory import (
+from ralph.agents.execution_state._strategy_builders import (
     _make_agy_strategy,
     _make_cursor_strategy,
     _make_kimi_strategy,
@@ -32,6 +32,38 @@ from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
     from ralph.agents.support import AgentSupport
+
+
+_AGY_MODELS = frozenset(
+    {
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-low",
+        "gemini-3.7-flash-high",
+        "gemini-3.7-flash-medium",
+        "gemini-3.7-flash-low",
+        "gemini-3.6-flash-high",
+        "gemini-3.6-flash-medium",
+        "gemini-3.6-flash-low",
+        "gemini-3.1-pro-high",
+        "gemini-3.1-pro-low",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-opus-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "gpt-oss-120b-medium",
+    }
+)
+
+
+def _agy_alias_help() -> str:
+    return (
+        f"Available AGY models: {', '.join(sorted(_AGY_MODELS))}. "
+        "Effort suffixes are not supported when a model is given explicitly; "
+        "use the bare published model ID (e.g. agy/gemini-3.8-flash-low)."
+    )
 
 
 _CLAUDE_LEVEL_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
@@ -198,7 +230,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         print_flag="--print",
         interactive=True,
         no_default_session_flag=True,
-        dynamic_alias_help=agy_alias_help,
+        dynamic_alias_help=_agy_alias_help,
         dynamic_alias_help_prefix=("agy",),
         empty_output_diagnostic_factory=agy_empty_output_reason,
         empty_output_diagnostic_prefix=("agy",),
@@ -247,4 +279,4 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
 
 
 def builtin_supports() -> tuple[AgentSupport, ...]:
-    return tuple(_BUILTIN_AGENT_SUPPORTS)
+    return _BUILTIN_AGENT_SUPPORTS

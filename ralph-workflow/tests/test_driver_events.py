@@ -11,11 +11,8 @@ from ralph.pipeline.conflict_resolution._driver_events import (
     emit_attempt_outcome,
     emit_success,
 )
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 
 if TYPE_CHECKING:
     import pytest
@@ -117,14 +114,7 @@ def test_emit_success_merge(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_emit_attempt_outcome_ignores_success() -> None:
     display = _FakeDisplay()
-    outcome = ResolutionOutcome(
-        succeeded=True,
-        reason=None,
-        duration_seconds=1.0,
-        last_activity_kind=None,
-        last_activity_at=None,
-        unresolved_paths=(),
-    )
+    outcome = ResolvedOutcome()
     emit_attempt_outcome(display, outcome)
     assert display.warnings == []
 
@@ -136,15 +126,7 @@ def test_emit_attempt_outcome_emits_failure(monkeypatch: pytest.MonkeyPatch) -> 
         _record(lines, _d, line)
 
     monkeypatch.setattr(driver_module, "emit_conflict_phase_line", _hook)
-    outcome = ResolutionOutcome(
-        succeeded=False,
-        reason=ResolutionTerminationReason.ATTEMPT_FAILED,
-        duration_seconds=3.2,
-        last_activity_kind="test",
-        last_activity_at=123.45,
-        unresolved_paths=("file.py",),
-    )
+    outcome = RetryLaterOutcome(on_change="file.py changed")
     emit_attempt_outcome(None, outcome)
     assert len(lines) == 1
-    assert "ATTEMPT_FAILED: duration=3.2s" in lines[0]
-    assert "file.py" in lines[0]
+    assert lines == ["retry later: on_change=file.py changed"]

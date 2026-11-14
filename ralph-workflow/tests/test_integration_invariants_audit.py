@@ -56,8 +56,25 @@ def _write(root: Path, relative: str, source: str) -> Path:
 
 def _clean_tree(tmp_path: Path) -> Path:
     _write(tmp_path, "ralph/__init__.py", "")
+    _write(
+        tmp_path,
+        "ralph/agents/watchdog_fire_reason.py",
+        "from enum import StrEnum\n\n\n"
+        "class WatchdogFireReason(StrEnum):\n"
+        '    OPERATOR_CAP_REACHED = "OPERATOR_CAP_REACHED"\n',
+    )
     _write(tmp_path, "ralph/pipeline/__init__.py", _PIPELINE_INIT_SOURCE)
     _write(tmp_path, "ralph/pipeline/_stop_resolution_entry.py", _ENTRY_SOURCE)
+    _write(
+        tmp_path,
+        "ralph/pipeline/conflict_resolution/gitlink_policy.py",
+        "POLICY_CANDIDATES = ()\n\n\ndef choose_gitlink():\n    return None\n",
+    )
+    _write(
+        tmp_path,
+        "ralph/pipeline/conflict_resolution/deterministic_resolution.py",
+        "from ralph.pipeline.conflict_resolution.gitlink_policy import choose_gitlink\n",
+    )
     _write(tmp_path, "ralph/process/__init__.py", "")
     _write(tmp_path, "ralph/process/manager/__init__.py", "")
     _write(tmp_path, "ralph/process/manager/_process_manager_runtime.py", _OWNER_SOURCE)

@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     type MonotonicClock = Callable[[], float]
 
 
-
 def run_conflict_resolution_pipeline(
     *,
     root: Path,
@@ -35,10 +34,11 @@ def run_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
-) -> StopResolutionOutcome:
+) -> bool:
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-    return run_conflict_resolution_outcome(
+    outcome = run_conflict_resolution_outcome(
         root=root,
         target=target,
         config=config,
@@ -52,6 +52,7 @@ def run_conflict_resolution_pipeline(
         session=session,
         strategy_history=strategy_history,
     )
+    return isinstance(outcome, ResolvedOutcome)
 
 
 def run_rebase_conflict_resolution_pipeline(

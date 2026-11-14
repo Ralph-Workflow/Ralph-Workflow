@@ -301,6 +301,7 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_shared_finaliz
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.recovery.controller import RecoveryController
+
     seen: list[str] = []
 
     original = RecoveryController.finalize_attempt

@@ -396,7 +396,6 @@ def _reconcile_in_progress_rebase(
         from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
         from ralph.pipeline.auto_integrate_record import read_record
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
-        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -417,13 +416,23 @@ def _reconcile_in_progress_rebase(
                 summary=result.reason,
                 pushed=False,
             )
-        if not isinstance(result, RebaseResolutionResult):
+        if not isinstance(
+            result,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
             return _PushOutcome(
                 success=False,
                 summary=f"rebase in progress on {target} could not be resolved",
                 pushed=False,
             )
-        match result.outcome:
+        match result:
             case ResolvedOutcome():
                 return None
             case (
@@ -435,7 +444,7 @@ def _reconcile_in_progress_rebase(
             ):
                 return _PushOutcome(
                     success=False,
-                    summary=result.reason or f"rebase in progress on {target} could not be resolved",
+                    summary=_resolution_reason(result, target),
                     pushed=False,
                 )
             case _ as unreachable:
@@ -451,6 +460,32 @@ def _reconcile_in_progress_rebase(
         pushed=False,
         status=_remote_push_module.PushStatus.NON_FAST_FORWARD,
     )
+
+
+def _resolution_reason(
+    outcome: ResolvedOutcome
+    | WaitingOutcome
+    | RetryLaterOutcome
+    | NextStrategyOutcome
+    | ConfigFailureOutcome
+    | UnknownOutcome,
+    target: str,
+) -> str:
+    match outcome:
+        case ResolvedOutcome():
+            return f"rebase in progress on {target} was resolved"
+        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+            return f"{condition}; resumes when {resumes_when}"
+        case RetryLaterOutcome(until=until, on_change=on_change):
+            return on_change or f"retry after {until}"
+        case NextStrategyOutcome(strategy=strategy):
+            return f"continue with autonomous strategy: {strategy}"
+        case ConfigFailureOutcome(file=file):
+            return f"fix {file} then run ralph --check-config"
+        case UnknownOutcome(error=error):
+            return str(error)
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _align_target_with_remote(
@@ -505,13 +540,21 @@ def _align_target_with_remote(
             if remote_client is not None
             else None
         )
-        advanced, refusal = fast_forward_target_to_remote(
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+        raw_outcome = fast_forward_target_to_remote(
             repo_root,
             target,
             remote,
             reclaim_target_worktree=False,
             remote_sha=observed,
         )
+        if isinstance(raw_outcome, tuple):
+            advanced, refusal = raw_outcome[0], raw_outcome[1] if len(raw_outcome) > 1 else ""
+        elif isinstance(raw_outcome, ResolvedOutcome):
+            advanced, refusal = True, ""
+        else:
+            advanced, refusal = False, str(raw_outcome)
         if not advanced:
             return _PushOutcome(
                 success=False,

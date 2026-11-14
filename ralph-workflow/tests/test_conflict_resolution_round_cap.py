@@ -11,6 +11,7 @@ from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from tests._conflict_resolution_phase_parity_seams import _install_seams, _policy_bundle
 
 if TYPE_CHECKING:
@@ -73,7 +74,7 @@ def test_round_cap_regression_unresolved_success_never_exceeds_cap(
     finally:
         reset_executors(token)
 
-    assert outcome.succeeded is False
+    assert isinstance(outcome, RetryLaterOutcome)
     assert invoked_rounds
     assert invoked_rounds == list(range(1, len(invoked_rounds) + 1))
     assert max(invoked_rounds) <= cap

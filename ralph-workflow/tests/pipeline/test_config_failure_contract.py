@@ -19,9 +19,13 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     bind_active_rebase_resolution_session,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 from ralph.pipeline.run_loop import (
     LoopContext,
     handle_pending_retry,
@@ -123,10 +127,10 @@ def test_auto_integrate_agent_resolver_catches_workspace_context_error(tmp_path:
     with bind_active_rebase_resolution_session(session):
         outcome = resolver(tmp_path, "main", stop)
 
-    assert isinstance(outcome, ResolutionOutcome)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert f"fix {cfg_file} then run ralph --check-config" in str(outcome.reason)
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
+    assert f"fix {cfg_file} then run ralph --check-config" in str(outcome.on_change)
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
@@ -153,7 +157,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
 
     def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
         outcome = resolver(root, target, None)
-        if session is not None and isinstance(outcome, ResolutionOutcome):
+        if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
             session.last_failure_cause = outcome.failure_cause
             session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
@@ -165,21 +169,13 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
     mock_runner = MagicMock()
     mock_runner.resolve_rebase.side_effect = _fake_resolve_rebase
 
-    def _failing_resolver(root: Path, target: str, stop: RebaseStop) -> ResolutionOutcome:
+    def _failing_resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
         session = ResolutionSession()
         session.charge_conflict_budget = False
         session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
         session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
         session.exhaustion_reason = "fix .agent/ralph-workflow.toml then run ralph --check-config"
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.CONFIG_FAILURE,
-            duration_seconds=0.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=(),
-            failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
-        )
+        return RetryLaterOutcome(on_change="configuration changed")
 
     public_result = resolve_conflicted_rebase(
         tmp_path,
@@ -224,7 +220,7 @@ def _deferred_rebase_failure_cause(
 ) -> ResolutionFailureCause:
     def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
         outcome = resolver(root, target, None)
-        if session is not None and isinstance(outcome, ResolutionOutcome):
+        if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = (
                 failure_cause is not ResolutionFailureCause.CONFIG_FAILURE
             )
@@ -241,16 +237,8 @@ def _deferred_rebase_failure_cause(
             )
         return False
 
-    def _resolver(root: Path, target: str, stop: RebaseStop) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.CONFIG_FAILURE,
-            duration_seconds=0.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=(),
-            failure_cause=failure_cause,
-        )
+    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
+        return RetryLaterOutcome(on_change="configuration changed")
 
     runner = MagicMock()
     runner.resolve_rebase.side_effect = _fake_resolve_rebase

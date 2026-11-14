@@ -18,8 +18,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
-from ralph.pipeline.integration_decision import NextAction
-from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
@@ -28,15 +26,10 @@ from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
+    StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
 )
-from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
-from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
-from ralph.pipeline.resolution_outcome_resolved import Resolved
-from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -49,10 +42,8 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.integration_actions import AgentRunner
     from ralph.pipeline.rebase_state import RebaseState
-    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 
 __all__ = [
-    "RebaseResolutionResult",
     "RebaseRunResult",
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
@@ -143,7 +134,7 @@ def resolve_conflicted_rebase(
                 agent_runner=agent_runner or production_rebase_runner(),
             ),
         )
-        res: RebaseResolutionResult
+        res: StopResolutionOutcome
         deferred_cause = ResolutionFailureCause.NONE
         if isinstance(outcome, StopResolutionBlocked):
             blocked_reason = outcome.reason
@@ -152,22 +143,24 @@ def resolve_conflicted_rebase(
                 if isinstance(outcome, DeferredStopResolution)
                 else ResolutionFailureCause.NONE
             )
-            res = RebaseResolutionResult(
-                RetryLaterOutcome(on_change=outcome.reason),
-                outcome.reason,
-                (
-                    deferred_cause
-                    if deferred_cause is not ResolutionFailureCause.NONE
-                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
-                ),
-            )
-        elif isinstance(outcome, RebaseResolutionResult):
+            res = RetryLaterOutcome(on_change=outcome.reason)
+        elif isinstance(
+            outcome,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
             blocked_reason = None
             res = outcome
         else:
             raise TypeError("rebase stop resolution returned an invalid result")
-    match res.outcome:
-        case ResolvedOutcome() | Resolved():
+    match res:
+        case ResolvedOutcome():
             resolution_completed = True
         case (
             WaitingOutcome()
@@ -175,10 +168,6 @@ def resolve_conflicted_rebase(
             | NextStrategyOutcome()
             | ConfigFailureOutcome()
             | UnknownOutcome()
-            | NeedsOperator()
-            | RetryLater()
-            | Exhausted()
-            | ConfigFailure()
         ):
             resolution_completed = False
         case _ as unreachable:
@@ -241,23 +230,6 @@ def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunRe
     )
 
 
-def _rebase_outcome(result: RebaseResolutionResult) -> ResolutionOutcomeType:
-    raw_outcome = getattr(result, "outcome", None)
-    if (
-        getattr(result, "succeeded", False)
-        or isinstance(raw_outcome, (Resolved, ResolvedOutcome))
-        or getattr(raw_outcome, "__class__", type(None)).__name__ == "ResolvedOutcome"
-    ):
-        return Resolved()
-    if isinstance(raw_outcome, (NeedsOperator, RetryLater, Exhausted, ConfigFailure)):
-        return raw_outcome
-    return classify_resolution_failure(
-        terminal_reason=result.terminal_reason,
-        failure_cause=result.failure_cause,
-        reason=result.reason,
-    )
-
-
 def _conflict_run(
     target: str,
     reason: str,
@@ -279,23 +251,20 @@ def _rebase_run_result(
     root: Path,
     record: IntegrationRecord | None,
     target: str,
-    result: RebaseResolutionResult,
+    outcome: StopResolutionOutcome,
 ) -> RebaseRunResult:
-    outcome = _rebase_outcome(result)
     failure_cause = (
-        result.failure_cause
-        if result.failure_cause is not ResolutionFailureCause.NONE
+        record.last_failure_cause
+        if record is not None and record.last_failure_cause is not ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT
     )
-    failure_reason = (
-        result.reason or "rebase resolution incomplete; progress retained for next agent"
-    )
-    if record is not None and not isinstance(outcome, (Resolved, ResolvedOutcome)):
+    failure_reason = _outcome_reason(outcome)
+    if record is not None and not isinstance(outcome, ResolvedOutcome):
         from ralph.pipeline.auto_integrate_record import write_record
 
         write_record(root, record.model_copy(update={"last_failure_cause": failure_cause}))
     match outcome:
-        case Resolved():
+        case ResolvedOutcome():
             logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
             return RebaseRunResult(
                 rebase_outcome=RebaseSuccess(),
@@ -303,14 +272,14 @@ def _rebase_run_result(
                 merge_outcome=None,
                 short_circuit=None,
             )
-        case Exhausted():
+        case NextStrategyOutcome(strategy=strategy):
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha if record is not None else None,
                     record.pre_target_sha if record is not None else target,
                     record.resolving_stop_sha if record is not None else None,
                 ),
-                NextAction.LAST_RESORT_RECOVERY.value,
+                strategy,
             )
             return RebaseRunResult(
                 rebase_outcome=RebaseConflicts(files=[]),
@@ -320,25 +289,43 @@ def _rebase_run_result(
                     reason=failure_reason,
                     target=target,
                     failure_cause=failure_cause,
-                    terminal_reason=(
-                        result.terminal_reason or ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-                    ),
+                    terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
                 ),
             )
-        case NeedsOperator(cause=cause, paths=paths, command=command):
+        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
             return _conflict_run(
                 target,
-                f"conflict on {', '.join(paths)} needs operator action: {command}",
-                cause,
+                f"{condition}; resumes when {resumes_when}",
+                failure_cause,
             )
-        case RetryLater():
+        case RetryLaterOutcome():
             return _conflict_run(target, failure_reason, failure_cause)
-        case ConfigFailure(file=file):
+        case ConfigFailureOutcome(file=file):
             return _conflict_run(
                 target,
                 f"fix {file} then run ralph --check-config",
                 ResolutionFailureCause.CONFIG_FAILURE,
             )
+        case UnknownOutcome(error=error):
+            return _conflict_run(target, str(error), failure_cause)
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def _outcome_reason(outcome: StopResolutionOutcome) -> str:
+    match outcome:
+        case ResolvedOutcome():
+            return "conflict resolution completed"
+        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+            return f"{condition}; resumes when {resumes_when}"
+        case RetryLaterOutcome(until=until, on_change=on_change):
+            return on_change or f"retry after {until}"
+        case NextStrategyOutcome(strategy=strategy):
+            return f"continue with autonomous strategy: {strategy}"
+        case ConfigFailureOutcome(file=file):
+            return f"fix {file} then run ralph --check-config"
+        case UnknownOutcome(error=error):
+            return str(error)
         case _ as unreachable:
             assert_never(unreachable)
 

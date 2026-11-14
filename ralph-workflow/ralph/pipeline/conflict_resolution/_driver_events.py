@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, assert_never, cast
 
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -53,6 +57,11 @@ def emit_expired_operator_cap(
     conflicted: tuple[str, ...],
     clock: MonotonicClock,
 ) -> None:
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause
+    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+        ResolutionTerminationReason,
+    )
+
     session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.last_activity_kind = None
@@ -60,15 +69,7 @@ def emit_expired_operator_cap(
     session.last_duration_seconds = max(0.0, clock() - (session.started_at or clock()))
     emit_attempt_outcome(
         display,
-        ResolutionOutcome(
-            succeeded=False,
-            reason=session.terminal_reason,
-            duration_seconds=session.last_duration_seconds,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=session.unresolved_paths or conflicted,
-            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
-        ),
+        NextStrategyOutcome(strategy=session.terminal_reason.value),
     )
 
 
@@ -83,23 +84,24 @@ def emit_success(
     _emit(display, f"conflicts resolved in round {round_index}; {next_action}")
 
 
-def emit_attempt_outcome(display: ParallelDisplay | None, outcome: ResolutionOutcome) -> None:
-    if outcome.succeeded or outcome.reason is None:
-        return
-    reason_label = (
-        outcome.reason.value
-        if isinstance(outcome.reason, ResolutionTerminationReason)
-        else str(outcome.reason)
-    )
-    _emit(
-        display,
-        f"{reason_label}: duration={outcome.duration_seconds:.1f}s; "
-        f"last_activity_kind={outcome.last_activity_kind or 'none'}; "
-        f"last_activity_at={outcome.last_activity_at or 'never'}; "
-        f"last_progress=unresolved_count={len(outcome.unresolved_paths)}; "
-        f"unresolved_paths={', '.join(outcome.unresolved_paths)}; "
-        f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed",
-    )
+def emit_attempt_outcome(display: ParallelDisplay | None, outcome: StopResolutionOutcome) -> None:
+    match outcome:
+        case ResolvedOutcome():
+            return
+        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+            line = f"waiting: {condition}; resumes_when={resumes_when}"
+        case RetryLaterOutcome(until=until, on_change=on_change):
+            resume = f"until={until}" if until is not None else f"on_change={on_change}"
+            line = f"retry later: {resume}"
+        case NextStrategyOutcome(strategy=strategy):
+            line = f"{strategy}: next strategy"
+        case ConfigFailureOutcome(file=file, parse_error=parse_error):
+            line = f"configuration failure: {file}: {parse_error}"
+        case UnknownOutcome(error=error):
+            line = f"unknown resolution failure: {error}"
+        case _ as unreachable:
+            assert_never(unreachable)
+    _emit(display, line)
 
 
 def render_round_prompt(

@@ -15,15 +15,9 @@ from ralph.pipeline.auto_integrate_outcome import (
     record_resolution_exhausted,
     record_skip,
 )
-from ralph.pipeline.auto_integrate_resolve import (
-    RESOLUTION_AGENT_FAILURE,
-    RESOLUTION_FAILED,
-)
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 
 
 def test_resolution_failure_cause_enum_members() -> None:
@@ -38,27 +32,10 @@ def test_resolution_failure_cause_enum_members() -> None:
     assert ResolutionFailureCause.CONTEXT_FAILURE.name == "CONTEXT_FAILURE"
 
 
-def test_resolution_outcome_dto_defaults_and_override() -> None:
-    outcome_default = ResolutionOutcome(
-        succeeded=True,
-        reason=None,
-        duration_seconds=1.5,
-        last_activity_kind=None,
-        last_activity_at=None,
-        unresolved_paths=(),
-    )
-    assert outcome_default.failure_cause == ResolutionFailureCause.NONE
-
-    outcome_failed = ResolutionOutcome(
-        succeeded=False,
-        reason=ResolutionTerminationReason.ATTEMPT_FAILED,
-        duration_seconds=2.0,
-        last_activity_kind=None,
-        last_activity_at=None,
-        unresolved_paths=("file.py",),
-        failure_cause=ResolutionFailureCause.AGENT_FAILURE,
-    )
-    assert outcome_failed.failure_cause == ResolutionFailureCause.AGENT_FAILURE
+def test_resolution_outcome_union_has_typed_success_and_retry() -> None:
+    assert isinstance(ResolvedOutcome(), ResolvedOutcome)
+    retry = RetryLaterOutcome(on_change="file.py changed")
+    assert retry.on_change == "file.py changed"
 
 
 def test_merge_result_dto_defaults_and_override() -> None:
@@ -108,30 +85,10 @@ def test_rebase_state_legacy_load_missing_field_maps_to_none() -> None:
     assert state.last_failure_cause == ResolutionFailureCause.NONE
 
 
-def test_rebase_state_legacy_load_agent_failure_sentinel_maps_to_agent_failure() -> None:
-    legacy_payload: dict[str, object] = {
-        "pending": False,
-        "last_outcome": "conflict",
-        "last_reason": RESOLUTION_AGENT_FAILURE,
-    }
-    state = RebaseState.model_validate(legacy_payload)
-    assert state.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
-
-
-def test_rebase_state_legacy_load_other_prose_is_not_interpreted() -> None:
-    legacy_payload: dict[str, object] = {
-        "pending": False,
-        "last_outcome": "conflict",
-        "last_reason": f"prefix {RESOLUTION_AGENT_FAILURE} suffix",
-    }
-    state = RebaseState.model_validate(legacy_payload)
-    assert state.last_failure_cause == ResolutionFailureCause.NONE
-
-
 def test_rebase_state_explicit_field_overrides_legacy_reason() -> None:
     payload: dict[str, object] = {
         "last_failure_cause": "CONTEXT_FAILURE",
-        "last_reason": RESOLUTION_AGENT_FAILURE,
+        "last_reason": "arbitrary legacy prose",
     }
     state = RebaseState.model_validate(payload)
     assert state.last_failure_cause == ResolutionFailureCause.CONTEXT_FAILURE

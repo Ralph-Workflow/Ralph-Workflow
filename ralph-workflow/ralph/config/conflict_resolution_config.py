@@ -50,13 +50,12 @@ class ConflictResolutionConfig(RalphBaseModel):
                 )
         return data
 
-    @field_validator(
-        "inactivity_timeout_seconds", "status_interval_seconds"
-    )
+    @field_validator("inactivity_timeout_seconds", "status_interval_seconds")
     @classmethod
     def _validate_finite_duration(cls, value: float | None) -> float | None:
         if value is not None and not math.isfinite(value):
             raise ValueError("must be finite")
         return value
+
 
 __all__ = ["ConflictResolutionConfig"]

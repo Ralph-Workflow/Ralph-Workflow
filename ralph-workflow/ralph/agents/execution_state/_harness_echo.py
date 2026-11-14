@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import cast
 
-from ralph.checked_accessors import as_mapping
+from ralph.agents.parsers._event_classification import is_user_prompt_event_line
 
 HARNESS_ECHO_MARKERS: tuple[str, ...] = ("<|user|>", "<|im_start|>", "[INST]")
 _SHELL_PROMPT_PREFIXES: tuple[str, ...] = ("> ", "$ ", "% ", "# ")
@@ -39,31 +38,6 @@ def is_prompt_echo_line(line: str, input_prompt: str | None) -> bool:
         stripped_line == stripped_prompt
         or stripped_prompt in stripped_line
         or stripped_line in _prompt_edge_sentences(stripped_prompt)
-    )
-
-
-def _event_role(event: object) -> str | None:
-    try:
-        mapping = as_mapping(event)
-        direct_role = mapping.get("role")
-        if isinstance(direct_role, str):
-            return direct_role
-        message = as_mapping(mapping.get("message"))
-        nested_role = message.get("role")
-        return nested_role if isinstance(nested_role, str) else None
-    except TypeError:
-        return None
-
-
-def is_user_prompt_event_line(line: str) -> bool:
-    try:
-        raw_event = cast("object", json.loads(line))
-        event = as_mapping(raw_event)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return False
-    return (
-        event.get("type") in {"user", "message_start", "message_end"}
-        and _event_role(event) == "user"
     )
 
 

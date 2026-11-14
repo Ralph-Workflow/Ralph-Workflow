@@ -14,8 +14,12 @@ from ralph.pipeline.conflict_resolution import RebaseStop, RebaseStopResolver
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     bind_active_rebase_resolution_session,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 from ralph.workspace.scope import WorkspaceScope
 
@@ -45,7 +49,7 @@ def _build_resolver(root: Path) -> RebaseStopResolver:
     )
 
 
-def _reload_once(resolver: RebaseStopResolver, root: Path) -> ResolutionOutcome:
+def _reload_once(resolver: RebaseStopResolver, root: Path) -> StopResolutionOutcome:
     stop = RebaseStop(
         sha="1234567",
         subject="conflict stop",
@@ -56,7 +60,7 @@ def _reload_once(resolver: RebaseStopResolver, root: Path) -> ResolutionOutcome:
     session = ResolutionSession()
     with bind_active_rebase_resolution_session(session):
         outcome = resolver(root, "main", stop)
-    assert isinstance(outcome, ResolutionOutcome)
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
     return outcome
 
 
@@ -123,9 +127,9 @@ def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> No
         with bind_active_rebase_resolution_session(session):
             outcome = resolver(tmp_path, "main", stop)
 
-        assert isinstance(outcome, ResolutionOutcome)
-        assert outcome.succeeded is False
-        assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
+        assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+        assert isinstance(outcome, RetryLaterOutcome)
+        assert outcome.on_change is not None
 
         matching_logs = [
             r["message"]

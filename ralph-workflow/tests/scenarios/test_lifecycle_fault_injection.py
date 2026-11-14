@@ -76,35 +76,24 @@ def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
 ) -> None:
     feature_sha = _large_conflicted_range(tmp_git_repo)
     target_before = git(tmp_git_repo, "rev-parse", "main")
-    completed_stops: list[str] = []
-    calls = 0
-    cooldown_observed = False
-    wait_or_fallover_observed = False
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, fail_at_launch=11)
+    run1 = drive_integration(tmp_git_repo, config=scenario_config(), resolver=runner)
+    assert run1.error is None, f"large finite work must survive one resolver failure: {run1.error}"
+    assert runner.launches == 11
+    assert len(runner.completed_stops) == 10
 
-    def resolver(root: Path, _target: str, stop: RebaseStop) -> bool:
-        nonlocal calls, cooldown_observed, wait_or_fallover_observed
-        calls += 1
-        conflicted = tuple(stop.conflicted_files)
-        stop_identity = git(root, "rev-parse", "REBASE_HEAD")
-        assert stop_identity not in completed_stops, "a completed stop must never be redone"
-        if calls == 11:
-            raise ConnectionError("scenario provider failed partway through finite work")
-        for relative in conflicted:
-            (root / relative).write_text(f"resolved stop {calls}\n", encoding="utf-8")
-        git(root, "add", "--", *conflicted)
-        completed_stops.append(stop_identity)
-        return True
-
-    run = drive_integration(tmp_git_repo, config=scenario_config(), resolver=resolver)
     durable = record_path(tmp_git_repo)
-    if durable.exists():
-        payload = durable.read_text(encoding="utf-8").lower()
-        cooldown_observed = "cooldown" in payload or "retry_not_before" in payload
-        wait_or_fallover_observed = "waiting" in payload or "fall" in payload
-    assert run.error is None, f"large finite work must survive one resolver failure: {run.error}"
-    assert cooldown_observed, "the shared agent cooldown must be durably observable"
-    assert wait_or_fallover_observed, "the run must expose fall-over or waiting after failure"
-    assert len(completed_stops) >= 20
+    assert durable.exists(), "the shared rebase state must be durably observable"
+    record_data = json.loads(durable.read_text(encoding="utf-8"))
+    gate_key = record_data.get("resolution_gate_key")
+    assert gate_key is not None and gate_key[1] == [], (
+        "shared cooldown must empty eligible agents in gate key"
+    )
+
+    run2 = drive_integration(tmp_git_repo, config=scenario_config(), resolver=runner)
+    assert run2.error is None, f"continuation must succeed: {run2.error}"
+    assert runner.launches == 21
+    assert len(runner.completed_stops) >= 20
     assert_content_equivalence(
         tmp_git_repo,
         contract="large finite work with a mid-work agent failure must still land",

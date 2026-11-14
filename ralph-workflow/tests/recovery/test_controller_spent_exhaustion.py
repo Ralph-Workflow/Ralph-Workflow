@@ -10,7 +10,6 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import (
-    RebaseResolutionResult,
     StopResolutionTrigger,
     attempt_stop_resolution,
 )
@@ -32,15 +31,19 @@ from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pi
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 from ralph.policy.loader import load_policy
+from ralph.recovery.agent_failure_ledger import Spent
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
-
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
 _CONFLICTED = ["a.py", "b.py"]
 _POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults")
@@ -93,10 +96,11 @@ class _TestSessionRunner:
         target: str,
         resolver: Any,
         *,
-        session: ResolutionSession,
+        session: ResolutionSession | None = None,
     ) -> bool:
+        assert session is not None
         session.__dict__ = self.persistent_session.__dict__
-        return run_conflict_resolution_pipeline(
+        outcome = run_conflict_resolution_pipeline(
             root=root,
             target=target,
             config=_CONFIG,
@@ -108,6 +112,7 @@ class _TestSessionRunner:
             invoke=self.invoke,
             session=session,
         )
+        return isinstance(outcome, ResolvedOutcome)
 
 
 def drive_conflict_resolution_session(
@@ -115,7 +120,7 @@ def drive_conflict_resolution_session(
     session: ResolutionSession,
     *,
     invoke: Any = None,
-) -> RebaseResolutionResult:
+) -> StopResolutionOutcome:
     runner = _TestSessionRunner(session, invoke=invoke)
     result = attempt_stop_resolution(
         None,
@@ -127,7 +132,7 @@ def drive_conflict_resolution_session(
             agent_runner=runner,
         ),
     )
-    assert isinstance(result, RebaseResolutionResult)
+    assert isinstance(result, (ResolvedOutcome, RetryLaterOutcome))
     return result
 
 
@@ -146,20 +151,14 @@ def test_prior_dead_launch_records_tool_surface_dead(
     session = ResolutionSession(recovery_controller=controller)
     invoked_agents: list[str] = []
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> RetryLaterOutcome:
         invoked_agents.append(agent_name)
         session.last_attempt_saw_activity = True
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,
-            duration_seconds=1.0,
-            last_activity_kind="process_exit",
-            last_activity_at=clock.monotonic(),
-            unresolved_paths=tuple(_CONFLICTED),
-            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
-        )
+        session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        return RetryLaterOutcome(on_change="agent tool surface becomes available")
 
-    success = run_conflict_resolution_pipeline(
+    outcome = run_conflict_resolution_pipeline(
         root=tmp_path,
         target="main",
         config=_CONFIG,
@@ -171,7 +170,7 @@ def test_prior_dead_launch_records_tool_surface_dead(
         invoke=_invoke,
         session=session,
     )
-    assert success is False
+    assert isinstance(outcome, RetryLaterOutcome)
     assert invoked_agents == ["primary", "fallback"]
     assert session.terminal_reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
     assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
@@ -192,58 +191,23 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
     controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
     controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
 
+    assert isinstance(controller.agent_eligibility(PHASE_RESOLUTION, "primary"), Spent)
+    assert isinstance(controller.agent_eligibility(PHASE_RESOLUTION, "fallback"), Spent)
     assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is True
     assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == 0
 
-    from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
+    session = ResolutionSession(recovery_controller=controller)
+    session.rounds_spent = 1
+    session.charge_conflict_budget = True
+    result = drive_conflict_resolution_session(tmp_path, session)
 
-    captured_session: list[ResolutionSession] = []
-
-    def _fake_resolve_rebase(
-        root: Path,
-        target: str,
-        _resolver: Any,
-        *,
-        session: ResolutionSession | None = None,
-    ) -> bool:
-        assert session is not None
-        captured_session.append(session)
-        session.recovery_controller = controller
-        session.rounds_spent = 1
-        session.charge_conflict_budget = True
-
-        return run_conflict_resolution_pipeline(
-            root=root,
-            target=target,
-            config=_CONFIG,
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
-        )
-
-    monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", _fake_resolve_rebase)
-
-    result = attempt_stop_resolution(
-        None,
-        StopResolutionTrigger(
-            name="rebase_stop",
-            root=tmp_path,
-            target="main",
-            resolver=lambda *args: False,
-        ),
-    )
-
-    assert isinstance(result, RebaseResolutionResult)
-    assert result.succeeded is False
-    assert result.reason is not None
-    assert "spent/unavailable" in result.reason
-    assert "git add -- a.py b.py" in result.reason
-    assert result.failure_cause == ResolutionFailureCause.AGENT_FAILURE
-    assert captured_session[0].terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-    assert captured_session[0].terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert isinstance(result, RetryLaterOutcome)
+    assert result.on_change is not None
+    assert "spent/unavailable" in result.on_change
+    assert "git add -- a.py b.py" in result.on_change
+    assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
 
 
 def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
@@ -280,7 +244,7 @@ def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
 
     token = install_executors(clock=_NoSleepClock())
     try:
-        success = run_conflict_resolution_pipeline(
+        outcome = run_conflict_resolution_pipeline(
             root=tmp_path,
             target="main",
             config=_CONFIG,
@@ -294,7 +258,7 @@ def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
     finally:
         reset_executors(token)
 
-    assert success is False
+    assert isinstance(outcome, RetryLaterOutcome)
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
 
@@ -462,37 +426,31 @@ def test_sequential_dead_launch_to_spent_repeat_exhaustion(
     session = ResolutionSession(recovery_controller=controller)
     invoked: list[str] = []
 
-    def _dead_invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
+    def _dead_invoke(agent_name: str, prompt_path: Path, round_index: int) -> RetryLaterOutcome:
         invoked.append(agent_name)
         session.last_attempt_saw_activity = True
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,
-            duration_seconds=1.0,
-            last_activity_kind="process_exit",
-            last_activity_at=clock.monotonic(),
-            unresolved_paths=tuple(_CONFLICTED),
-            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
-        )
+        session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        return RetryLaterOutcome(on_change="agent tool surface becomes available")
 
     result1 = drive_conflict_resolution_session(tmp_path, session, invoke=_dead_invoke)
-    assert result1.succeeded is False
+    assert isinstance(result1, RetryLaterOutcome)
     assert invoked == ["primary", "fallback"]
     assert session.terminal_reason == ResolutionTerminationReason.TOOL_SURFACE_DEAD
     assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-    assert result1.reason is None
+    assert result1.on_change is not None
 
     controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
     controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
 
     result2 = drive_conflict_resolution_session(tmp_path, session)
-    assert result2.succeeded is False
+    assert isinstance(result2, RetryLaterOutcome)
     assert session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-    assert result2.failure_cause == ResolutionFailureCause.AGENT_FAILURE
-    assert result2.reason is not None
-    assert "spent/unavailable" in result2.reason
-    assert "git add -- a.py b.py" in result2.reason
+    assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
+    assert result2.on_change is not None
+    assert "spent/unavailable" in result2.on_change
+    assert "git add -- a.py b.py" in result2.on_change
 
 
 def test_stale_cooldown_overlap_with_controller_spent() -> None:

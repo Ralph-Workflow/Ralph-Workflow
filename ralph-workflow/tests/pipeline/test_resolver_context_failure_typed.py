@@ -29,8 +29,12 @@ from ralph.pipeline.conflict_resolution import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 from ralph.pipeline.run_loop import (
     LoopContext,
     build_status_bar_model,
@@ -92,10 +96,10 @@ def test_resolver_generic_context_failure_populates_all_sinks(tmp_path: Path) ->
     ):
         outcome = resolver(tmp_path, "main", stop)
 
-    assert isinstance(outcome, ResolutionOutcome)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
-    assert "target worktree context failed: simulated filesystem error" in str(outcome.reason)
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
+    assert "target worktree context failed: simulated filesystem error" in str(outcome.on_change)
 
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE
@@ -141,13 +145,13 @@ def test_resolver_workspace_path_with_project_name_retains_context_failure(
     ):
         outcome = resolver(tmp_path, "main", stop)
 
-    assert isinstance(outcome, ResolutionOutcome)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
     expected_reason = f"target worktree context failed: {err_msg}"
-    assert outcome.reason == expected_reason
-    assert "ralph --check-config" not in str(outcome.reason)
-    assert "CONFIG_FAILURE" not in str(outcome.reason)
+    assert outcome.on_change == expected_reason
+    assert "ralph --check-config" not in str(outcome.on_change)
+    assert "CONFIG_FAILURE" not in str(outcome.on_change)
 
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE
@@ -193,10 +197,10 @@ def test_resolver_config_related_exception_classifies_as_config_failure(
     ):
         outcome = resolver(tmp_path, "main", stop)
 
-    assert isinstance(outcome, ResolutionOutcome)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert outcome.reason == "fix agents.toml then run ralph --check-config"
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
+    assert outcome.on_change == "fix agents.toml then run ralph --check-config"
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
@@ -240,10 +244,10 @@ def test_resolver_generic_pipeline_toml_config_failure_formats_remediation(
     ):
         outcome = resolver(tmp_path, "main", stop)
 
-    assert isinstance(outcome, ResolutionOutcome)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert outcome.reason == "fix pipeline.toml then run ralph --check-config"
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
+    assert outcome.on_change == "fix pipeline.toml then run ralph --check-config"
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
@@ -299,10 +303,10 @@ def test_resolver_generic_optional_config_files_classify_as_config_failure(
         ):
             outcome = resolver(tmp_path, "main", stop)
 
-        assert isinstance(outcome, ResolutionOutcome)
-        assert outcome.succeeded is False
-        assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-        assert outcome.reason == expected_reason
+        assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+        assert isinstance(outcome, RetryLaterOutcome)
+        assert outcome.on_change is not None
+        assert outcome.on_change == expected_reason
         assert session.charge_conflict_budget is False
         assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
         assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
@@ -315,25 +319,17 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
 
-    def _failing_resolver(root: Path, target: str, stop: RebaseStop) -> ResolutionOutcome:
+    def _failing_resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
         session = ResolutionSession()
         session.charge_conflict_budget = False
         session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
         session.exhaustion_reason = "target worktree context failed: simulated context fault"
-        return ResolutionOutcome(
-            succeeded=False,
-            reason="target worktree context failed: simulated context fault",
-            duration_seconds=0.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=(),
-            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
-        )
+        return RetryLaterOutcome(on_change="target context restored")
 
     def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
         outcome = resolver(root, target, None)
-        if session is not None and isinstance(outcome, ResolutionOutcome):
+        if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
             session.last_failure_cause = outcome.failure_cause
             session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
@@ -399,7 +395,7 @@ def test_resolve_conflicted_rebase_carries_context_failure_not_exhausted(
             stop_cap=10,
         )
         outcome = res_fn(root, target, stop)
-        if session is not None and isinstance(outcome, ResolutionOutcome):
+        if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
             session.last_failure_cause = outcome.failure_cause
             session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE

@@ -11,8 +11,8 @@ from loguru import logger
 from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import (
-    run_conflict_resolution_pipeline,
-    run_rebase_conflict_resolution_pipeline,
+    run_conflict_resolution_outcome,
+    run_rebase_conflict_resolution_outcome,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -97,7 +97,7 @@ def build_agent_conflict_resolver(
             return NextStrategyOutcome("completion_in_place")
         try:
             if strategy_history:
-                return run_conflict_resolution_pipeline(
+                return run_conflict_resolution_outcome(
                     root=root,
                     target=target,
                     config=config,
@@ -108,7 +108,7 @@ def build_agent_conflict_resolver(
                     display_context=display_context,
                     strategy_history=strategy_history,
                 )
-            return run_conflict_resolution_pipeline(
+            return run_conflict_resolution_outcome(
                 root=root,
                 target=target,
                 config=config,
@@ -262,7 +262,7 @@ def _resolve_within_target_context(
             return NextStrategyOutcome("completion_in_place")
         try:
             if strategy_history:
-                return run_rebase_conflict_resolution_pipeline(
+                return run_rebase_conflict_resolution_outcome(
                     root=root,
                     target=target,
                     stop=stop,
@@ -274,7 +274,7 @@ def _resolve_within_target_context(
                     display_context=display_context,
                     strategy_history=strategy_history,
                 )
-            return run_rebase_conflict_resolution_pipeline(
+            return run_rebase_conflict_resolution_outcome(
                 root=root,
                 target=target,
                 stop=stop,

@@ -121,13 +121,9 @@ def _node_identifier(node: ast.AST) -> tuple[str, int] | None:
         identifier, line = node.id, node.lineno
     elif isinstance(node, ast.Attribute):
         identifier, line = node.attr, node.lineno
-    elif isinstance(node, ast.arg):
+    elif isinstance(node, (ast.arg, ast.keyword)):
         identifier, line = node.arg, node.lineno
-    elif isinstance(node, ast.keyword):
-        identifier, line = node.arg, node.lineno
-    elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-        identifier, line = node.name, node.lineno
-    elif isinstance(node, ast.ClassDef):
+    elif isinstance(node, (ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef)):
         identifier, line = node.name, node.lineno
     if identifier is None:
         return None

@@ -12,7 +12,6 @@ from loguru import logger as loguru_logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution.driver import (
     run_conflict_resolution_outcome,
     run_rebase_conflict_resolution_outcome,
@@ -20,14 +19,17 @@ from ralph.pipeline.conflict_resolution.driver import (
 from ralph.pipeline.conflict_resolution.git_worktree_observer import GitWorktreeConflictObserver
 from ralph.pipeline.conflict_resolution.prompt import PromptMaterializer
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
-    ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models import AgentChainConfig
 from tests._resolver_controller import make_resolver_controller
@@ -172,7 +174,7 @@ class _ScriptedRunner:
 
     def __call__(
         self, agent_name: str, prompt_path: Path, round_index: int
-    ) -> ResolutionOutcome | bool:
+    ) -> StopResolutionOutcome | bool:
         del prompt_path, round_index
         self._invocations.append(agent_name)
         attempt_number = self._attempts.get(agent_name, 0)
@@ -184,15 +186,7 @@ class _ScriptedRunner:
         if step.raw_error is not None:
             raise RuntimeError(step.raw_error)
         if step.active_failure:
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=ResolutionTerminationReason.EXCEPTION,
-                duration_seconds=30.0,
-                last_activity_kind="tool_call",
-                last_activity_at=1.0,
-                unresolved_paths=(),
-                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
-            )
+            return RetryLaterOutcome(on_change="unresolved conflict remains")
         return step.report_success
 
 
@@ -271,7 +265,7 @@ def _drive(
     observer: _ScriptedObserver | None = None,
     stop: RebaseStop | None = None,
     clock: _FrozenSleepClock | None = None,
-) -> tuple[ResolutionOutcome, list[str], ResolutionSession]:
+) -> tuple[StopResolutionOutcome, list[str], ResolutionSession]:
     active_observer = observer or _ScriptedObserver(_CONFLICTED)
     materializer = _FakeMaterializer(workspace)
     invocations: list[str] = []
@@ -322,7 +316,7 @@ def _drive_captured(
     stop: RebaseStop | None = None,
     observer: _ScriptedObserver | None = None,
     clock: _FrozenSleepClock | None = None,
-) -> tuple[ResolutionOutcome, list[str], list[str], ResolutionSession]:
+) -> tuple[StopResolutionOutcome, list[str], list[str], ResolutionSession]:
     with _captured_logs() as logs:
         outcome, invocations, session = _drive(
             workspace,
@@ -349,7 +343,7 @@ def test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA", "agentA", "agentA", "agentB"]
     assert any(_typed_reason(6) in line for line in logs), (
         "the typed failure reason must be logged, not rediscovered from prose"
@@ -375,7 +369,7 @@ def test_B1_count_drop_restarts_the_consecutive_streak(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA", "agentA", "agentA"]
     assert not any("demoted" in line for line in logs), (
         "a resolver whose attempts drop the count must not be demoted"
@@ -403,7 +397,7 @@ def test_B2_demotion_requires_three_no_progress_attempts_after_a_drop(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA", "agentA", "agentA", "agentA", "agentB"], (
         "the drop must restart the streak: demotion only after 3 further "
         f"no-progress attempts; got {invocations}"
@@ -447,7 +441,7 @@ def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["lead", "lead", "lead", "second"]
     selection_lines = [line for line in logs if "Selected agent second" in line]
     assert selection_lines, "the next eligible candidate must be selected after demotion"
@@ -483,9 +477,9 @@ def test_C_all_resolvers_demoted_reports_pending_not_failed(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is False
-    assert outcome.unresolved_paths == _CONFLICTED
-    assert outcome.reason is not ResolutionTerminationReason.OUT_OF_REACH
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
+    assert "operator" not in (outcome.on_change or "")
     assert invocations == ["agentA", "agentA", "agentA", "agentB", "agentB", "agentB"], (
         f"each resolver must be spent to its demotion; got {invocations}"
     )
@@ -518,7 +512,7 @@ def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_lim
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA", "agentA", "agentA", "agentB"], (
         f"three consecutive RAW failures demote, then the next agent runs; got {invocations}"
     )
@@ -559,7 +553,7 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA"] * 9 + ["agentB"], (
         "each count drop must restart the consecutive streak: the resolver "
         f"survives to the 9th total unproductive attempt; got {invocations}"
@@ -596,7 +590,7 @@ def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA", "agentA", "agentA", "agentA", "agentB"], (
         "the exception-carried drop must restart the streak: demotion only "
         f"after 3 further no-progress attempts; got {invocations}"
@@ -632,7 +626,7 @@ def test_D4_false_return_with_count_drop_restarts_the_streak(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA", "agentA", "agentA", "agentA", "agentB"], (
         "the false-return drop must restart the streak: demotion only after "
         f"3 further no-progress attempts; got {invocations}"
@@ -658,7 +652,7 @@ def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is True
+    assert isinstance(outcome, ResolvedOutcome)
     assert invocations == ["agentA"], (
         f"the repaired worktree must end the stop in one attempt; got {invocations}"
     )
@@ -679,8 +673,8 @@ def test_E_sole_resolver_demoted_reports_pending_without_operator_handoff(
         clock=frozen_clock,
     )
 
-    assert outcome.succeeded is False
-    assert outcome.unresolved_paths == _CONFLICTED
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change is not None
     assert invocations == ["solo", "solo", "solo"]
     assert any(
         f"Sole agent 'solo' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs

@@ -115,6 +115,13 @@ ralph.pipeline.integration_ladder
    :members:
    :show-inheritance:
 
+ralph.pipeline.integration_preservation_bundle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_preservation_bundle
+   :members:
+   :show-inheritance:
+
 ralph.logging
 ~~~~~~~~~~~~~
 
@@ -626,6 +633,13 @@ ralph.config.conflict_resolution_config
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.config.conflict_resolution_config
+   :members:
+   :show-inheritance:
+
+ralph.config.gitlink_policy_config
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.gitlink_policy_config
    :members:
    :show-inheritance:
 
@@ -1347,10 +1361,10 @@ ralph.pipeline.conflict_resolution.resolution_action
    :members:
    :show-inheritance:
 
-ralph.pipeline.conflict_resolution.resolution_outcome
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.pipeline.conflict_resolution.gitlink_policy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.pipeline.conflict_resolution.resolution_outcome
+.. automodule:: ralph.pipeline.conflict_resolution.gitlink_policy
    :members:
    :show-inheritance:
 

@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+
 
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
@@ -242,27 +242,6 @@ def _resolve_owned_reconciliation(
     )
 
 
-def resolve_rebase_in_progress(
-    owner: Path,
-    target: str,
-    resolver: RebaseStopResolver,
-    *,
-    session: ResolutionSession | None = None,
-) -> StopResolutionOutcome:
-    from ralph.pipeline._stop_resolution_entry import production_rebase_runner
-
-    runner = production_rebase_runner()
-    resolved_session = (
-        session if session is not None else resolution_session_from_config(UnifiedConfig())
-    )
-    if runner.resolve_rebase(owner, target, resolver, session=resolved_session):
-        return ResolvedOutcome()
-    return RetryLaterOutcome(on_change="rebase resolution state changes")
-
-
-_DEFAULT_RESOLVE_REBASE_IN_PROGRESS = resolve_rebase_in_progress
-
-
 def _resolve_rebase_stop(
     owner: Path,
     target: str,
@@ -270,15 +249,7 @@ def _resolve_rebase_stop(
     config: UnifiedConfig | None,
     record: IntegrationRecord,
 ) -> StopResolutionOutcome:
-    if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
-        from ralph.pipeline.conflict_resolution.rebase_loop import (
-            resolution_session_from_config,
-        )
-
-        session = resolution_session_from_config(config) if config is not None else None
-        return resolve_rebase_in_progress(owner, target, resolver, session=session)
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
-    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -295,9 +266,19 @@ def _resolve_rebase_stop(
     )
     if isinstance(result, StopResolutionBlocked):
         return WaitingOutcome(result.reason, "resolution attempt key changes")
-    if not isinstance(result, RebaseResolutionResult):
+    if not isinstance(
+        result,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         return UnknownOutcome(TypeError("rebase stop resolution returned an invalid result"))
-    return result.outcome
+    return result
 
 
 def _clear_successful_reconciliation_record(

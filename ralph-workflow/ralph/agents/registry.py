@@ -72,6 +72,7 @@ _AGY_MODELS = frozenset(
     }
 )
 
+
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
