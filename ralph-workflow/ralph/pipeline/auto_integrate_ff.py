@@ -212,12 +212,15 @@ def _fast_forward_failure(reason: str) -> StopResolutionOutcome:
     return WaitingOutcome(external_condition=reason, resumes_when="target branch exists")
 
 
-def is_retryable_fast_forward_failure(outcome: object) -> bool:
+def is_retryable_fast_forward_failure(
+    outcome: StopResolutionOutcome | tuple[object, ...] | str | bool,
+) -> bool:
     if isinstance(outcome, str):
         return outcome in _RETRYABLE_REASONS
     if isinstance(outcome, tuple):
-        succeeded, reason = outcome[0], str(outcome[1])
-        return (not bool(succeeded)) and (reason in _RETRYABLE_REASONS)
+        return bool(len(outcome) > 1 and not outcome[0] and outcome[1] in _RETRYABLE_REASONS)
+    if isinstance(outcome, bool):
+        return False
     match outcome:
         case RetryLaterOutcome():
             return True

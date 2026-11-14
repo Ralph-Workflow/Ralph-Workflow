@@ -10,6 +10,7 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
     registered_runners,
 )
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.unavailability_reason import (
@@ -22,6 +23,7 @@ from tests.recovery.pipeline_matrix_scenarios import (
     AGENT_A,
     AGENT_B,
     AGENTS,
+    DEAD_SIGNAL,
     PHASE,
     SCENARIOS,
     MatrixScenario,
@@ -356,9 +358,34 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     assert controller.snapshot()["spent_agents"] == {}
 
 
-def test_ac16_probe_could_not_run_keeps_a_selectable() -> None:
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac6_slow_productive_agent_with_mid_run_error_is_not_benched(
+    entry_point: AgentEntryPoint,
+) -> None:
     observation, controller, _clock = run_matrix_scenario(
-        MAIN_PHASE_LOOP,
+        entry_point, _scenario("slow_productive_mid_run_error")
+    )
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
+    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac16_probe_could_not_run_keeps_a_selectable(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point,
         _scenario("probe_could_not_run_rc1"),
     )
 
@@ -390,9 +417,16 @@ def test_ac10_the_second_confirmed_failure_escalates_the_bench(
     assert wait == _BENCH_POLICY.base_backoff_ms * 2
 
 
-def test_ac11_the_wait_listing_names_agent_reason_and_remaining_time() -> None:
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac11_the_wait_listing_names_agent_reason_and_remaining_time(
+    entry_point: AgentEntryPoint,
+) -> None:
     observation, controller, _clock = run_matrix_scenario(
-        MAIN_PHASE_LOOP, _scenario("bench_while_peer_cooling")
+        entry_point, _scenario("bench_while_peer_cooling")
     )
 
     assert observation.outcome_kind == "agent_dead"
@@ -413,10 +447,29 @@ def test_ac11_the_wait_listing_names_agent_reason_and_remaining_time() -> None:
     assert {entry[0] for entry in payload} == set(AGENTS)
     assert all(entry[2] > 0 for entry in payload)
 
+    selection = controller.preferred_agent_index(PHASE, list(AGENTS))
+    assert selection.agent is None
+    assert selection.index is None
+    assert len(selection.skipped_reasons) == 2
+    skipped_dict = dict(selection.skipped_reasons)
+    assert "dead_agent_no_progress" in skipped_dict[AGENT_A]
+    assert "out_of_credits" in skipped_dict[AGENT_B]
 
-def test_ac12_an_expired_bench_leaves_no_tracker_trace_but_feeds_back() -> None:
+    eligibility = dict(controller.chain_eligibility(PHASE, list(AGENTS)))
+    assert eligibility[AGENT_A].reason == "dead_agent_no_progress"
+    assert eligibility[AGENT_B].reason == "out_of_credits"
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac12_an_expired_bench_leaves_no_tracker_trace_but_feeds_back(
+    entry_point: AgentEntryPoint,
+) -> None:
     observation, controller, clock = run_matrix_scenario(
-        MAIN_PHASE_LOOP, _scenario("false_bench_feedback")
+        entry_point, _scenario("false_bench_feedback")
     )
 
     assert observation.outcome_kind == "completed"
@@ -432,9 +485,45 @@ def test_ac12_an_expired_bench_leaves_no_tracker_trace_but_feeds_back() -> None:
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
 
 
-def test_ac12_unavailability_store_snapshot_restore_round_trip() -> None:
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac12_success_resets_active_cooldown_and_next_failure_returns_to_base_backoff(
+    entry_point: AgentEntryPoint,
+) -> None:
+    scenario = MatrixScenario(
+        "success_resets_active_cooldown",
+        ("AC12",),
+        (
+            MatrixScenario.Script(agent=AGENT_A, typed_signal=DEAD_SIGNAL),
+            MatrixScenario.Script(
+                agent=AGENT_A,
+                failed=False,
+                facts=AttemptFacts(artifact_valid=True),
+                advance_before_seconds=1.0,
+            ),
+            MatrixScenario.Script(agent=AGENT_A, typed_signal=DEAD_SIGNAL),
+        ),
+        ProbeOutcome.PASSED,
+    )
+    _observation, controller, clock = run_matrix_scenario(entry_point, scenario)
+    assert clock.monotonic() == 1.0
+    wait = controller.unavailability_store.earliest_unavailable_wait_ms(PHASE, [AGENT_A])
+    assert wait == _BENCH_POLICY.base_backoff_ms
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac12_unavailability_store_snapshot_restore_round_trip(
+    entry_point: AgentEntryPoint,
+) -> None:
     _observation, controller, clock = run_matrix_scenario(
-        MAIN_PHASE_LOOP, _scenario("typed_signal_bench_online")
+        entry_point, _scenario("typed_signal_bench_online")
     )
     store = controller.unavailability_store
     assert store.is_available(PHASE, AGENT_A) is False
@@ -458,9 +547,16 @@ def test_ac12_unavailability_store_snapshot_restore_round_trip() -> None:
     assert restored_store.snapshot()["unavailable_timeouts"] == {}
 
 
-def test_ac13_the_verdict_record_carries_the_full_evidence_set() -> None:
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac13_the_verdict_record_carries_the_full_evidence_set(
+    entry_point: AgentEntryPoint,
+) -> None:
     observation, _controller, _clock = run_matrix_scenario(
-        MAIN_PHASE_LOOP, _scenario("failed_probe_benches")
+        entry_point, _scenario("failed_probe_benches")
     )
 
     record = observation.verdict_record

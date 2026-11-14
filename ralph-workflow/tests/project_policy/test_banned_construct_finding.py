@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ralph.project_policy import _content_checks, markers, validators
+from ralph.project_policy import markers, validators
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy import policy_corpus
 
@@ -51,13 +51,13 @@ def test_unknown_enforcer_in_ban_table_fires_finding() -> None:
 
 def test_missing_ban_table_heading_fires_finding() -> None:
     ws = MemoryWorkspace()
+    policy_corpus.seed_complete_corpus(ws)
     clean_code_path = f"{markers.CANONICAL_DIR}clean-code-policy.md"
     ws.write(clean_code_path, "# Clean Code Policy\n\nNo ban table here.\n")
-    findings = _content_checks._check_ban_table_coverage(
-        ws,
-        policy_corpus.stack(),
-        known_enforcers=frozenset({"make test"}),
-    )
-    assert len(findings) == 1
-    assert findings[0].requirement_id == markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID
-    assert "Python" in findings[0].missing_evidence
+    findings = validators.validate_readiness(ws, policy_corpus.stack())
+    banned_findings = [
+        f for f in findings if f.requirement_id == markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID
+    ]
+    assert len(banned_findings) == 1
+    assert banned_findings[0].requirement_id == markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID
+    assert "Python" in banned_findings[0].missing_evidence

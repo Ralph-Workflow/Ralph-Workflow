@@ -22,6 +22,9 @@ from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 
+run_conflict_resolution_pipeline = run_conflict_resolution_outcome
+run_rebase_conflict_resolution_pipeline = run_rebase_conflict_resolution_outcome
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Protocol
@@ -116,6 +119,32 @@ def build_agent_conflict_resolver(
     return cast("ConflictResolver", _resolver)
 
 
+def _wrap_stop_resolution_outcome(raw_obj: object) -> StopResolutionOutcome:
+    if isinstance(raw_obj, bool):
+        return (
+            ResolvedOutcome()
+            if raw_obj
+            else RetryLaterOutcome(on_change="rebase resolution failed")
+        )
+    if isinstance(raw_obj, ResolutionOutcome):
+        return (
+            ResolvedOutcome() if raw_obj.succeeded else RetryLaterOutcome(on_change=raw_obj.reason)
+        )
+    if isinstance(
+        raw_obj,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
+        return raw_obj
+    return UnknownOutcome(RuntimeError(f"unexpected resolution outcome {raw_obj!r}"))
+
+
 def build_agent_rebase_stop_resolver(
     *,
     policy_bundle: PolicyBundle,
@@ -143,7 +172,7 @@ def build_agent_rebase_stop_resolver(
             )
             return False
         try:
-            return _resolve_within_target_context(
+            raw_obj: object = _resolve_within_target_context(
                 root=root,
                 target=target,
                 stop=stop,
@@ -152,6 +181,7 @@ def build_agent_rebase_stop_resolver(
                 display_context=display_context,
                 strategy_history=strategy_history,
             )
+            return _wrap_stop_resolution_outcome(raw_obj)
         except WorkspaceContextError as exc:
             session = active_rebase_resolution_session()
             reason_text = f"fix {exc.file} then run ralph --check-config"

@@ -1074,7 +1074,9 @@ def _invoke_agent_with_recovery(
                 )
             )
         except ctx.deps.agent_invocation_error as exc:
-            if raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError):
+            if (
+                raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError)
+            ) or surfaces_supervision_error(ctx.effect, exc):
                 raise
             _write_terminal_missing_artifact_hint(ctx, exc, resolved_required_artifact)
             return _handle_terminal_agent_invocation_error(
@@ -1716,8 +1718,10 @@ def recovery_attempts_for_effect(effect: InvokeAgentEffect, config: UnifiedConfi
 
 
 def surfaces_supervision_error(effect: InvokeAgentEffect, exc: BaseException) -> bool:
-    del effect, exc
-    return False
+    return bool(
+        effect.activity_only_supervision
+        and isinstance(exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError))
+    )
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:

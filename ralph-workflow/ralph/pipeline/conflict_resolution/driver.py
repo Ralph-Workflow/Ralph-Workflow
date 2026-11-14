@@ -665,6 +665,43 @@ def _handle_repaired_or_fast_forward(
     if attempt.agent_name is not None:
         _reset_conflict_success(session, attempt.agent_name)
     return True
+
+
+def _classify_incomplete_success(
+    attempt: RoundAttempt,
+    session: ResolutionSession,
+    round_index: int,
+    candidates: Sequence[str],
+    policy_bundle: PolicyBundle,
+) -> None:
+    if not (attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None):
+        return
+    logger.warning(
+        "conflict_resolution: round {} with '{}' reported success, but unresolved paths remain in worktree",
+        round_index,
+        attempt.agent_name,
+    )
+    unresolved_count = len(session.unresolved_paths)
+    made_progress = attempt.probe_changed or attempt.count_dropped
+    session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
+    session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+    classify_failed_resolution_attempt(
+        session,
+        attempt.agent_name,
+        None,
+        candidates=candidates,
+        failed_index=attempt.candidate_offset,
+        policy_bundle=policy_bundle,
+        outcome=(
+            ConflictAttemptOutcome.UNRESOLVED_REMAINING
+            if made_progress
+            else ConflictAttemptOutcome.STALLED
+        ),
+        unresolved_count=unresolved_count,
+        workspace_changed=made_progress,
+    )
+
+
 def _execute_round_loop(
     root: Path,
     target: str,
@@ -687,6 +724,8 @@ def _execute_round_loop(
     prompt_path: Path | None = None
     try:
         round_index = session.rounds_spent
+        last_invoked_reason: ResolutionTerminationReason | None = session.terminal_reason
+        last_invoked_charge: bool = session.charge_conflict_budget
         while round_index < round_cap:
             round_index += 1
             _push_round_status(display, root, target, round_index, round_cap, stop)
@@ -719,6 +758,7 @@ def _execute_round_loop(
                     observer=observer,
                 )
 
+            _wait_for_candidates_if_cooling_down(session, candidates)
 
             attempt = _run_one_round(
                 runner,
@@ -731,35 +771,7 @@ def _execute_round_loop(
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
             )
-
-            if attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None:
-                logger.warning(
-                    "conflict_resolution: round {} with '{}' reported success, but unresolved paths remain in worktree",
-                    round_index,
-                    attempt.agent_name,
-                )
-                made_progress = attempt.probe_changed or attempt.count_dropped
-                unresolved_count = len(session.unresolved_paths)
-                session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
-                session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-                classify_failed_resolution_attempt(
-                    session,
-                    attempt.agent_name,
-                    None,
-                    candidates=candidates,
-                    failed_index=attempt.candidate_offset,
-                    policy_bundle=policy_bundle,
-                    outcome=(
-                        ConflictAttemptOutcome.UNRESOLVED_REMAINING
-                        if made_progress
-                        else ConflictAttemptOutcome.STALLED
-                    ),
-                    unresolved_count=unresolved_count,
-                    workspace_changed=made_progress,
-                )
-            if not attempt.invoked:
-                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
-                break
+            _classify_incomplete_success(attempt, session, round_index, candidates, policy_bundle)
             action = _evaluate_round_attempt(
                 attempt,
                 session,
@@ -780,7 +792,18 @@ def _execute_round_loop(
                 ):
                     return True
                 break
+            if not attempt.invoked:
+                if session.rounds_spent > 0 and last_invoked_reason is not None:
+                    session.terminal_reason = last_invoked_reason
+                    session.charge_conflict_budget = last_invoked_charge
+                else:
+                    _handle_dead_candidate_chain(
+                        session, conflicted, display, candidates=candidates
+                    )
+                break
             session.rounds_spent = round_index
+            last_invoked_reason = session.terminal_reason
+            last_invoked_charge = session.charge_conflict_budget
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
                 _escalate_unreachable_remainder(session, display)
                 break
@@ -793,6 +816,25 @@ def _execute_round_loop(
     return False
 
 
+def _wait_for_candidates_if_cooling_down(
+    session: ResolutionSession, candidates: Sequence[str]
+) -> None:
+    controller = session.recovery_controller
+    if controller is not None:
+        skipped = skipped_candidates(session, tuple(candidates))
+        live = [name for name in candidates if name not in skipped]
+        if live and not any(
+            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+        ):
+            wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+            if wait_ms > 0:
+                _sleep_seconds(wait_ms / 1000.0)
+                if not any(
+                    controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible
+                    for name in live
+                ):
+                    for name in live:
+                        controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
 
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
     skipped = skipped_candidates(session, candidates)

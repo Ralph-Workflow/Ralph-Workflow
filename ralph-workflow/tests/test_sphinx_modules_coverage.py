@@ -84,6 +84,7 @@ _EXCLUDED: dict[str, str] = {
     "pipeline.integration_strategy": "internal pipeline type, not public API",
     "pipeline.parallel.parallel_coordinator": "internal pipeline type, not public API",
     "pipeline.plumbing": "internal pipeline plumbing submodule, not public API",
+    "pipeline.conflict_resolution.resolution_outcome": "internal legacy resolution outcome type, not public API",
     "pipeline.resolution_outcome": "internal pipeline type, not public API",
     "pipeline.session_bridge": "internal pipeline DI helper, not public API",
     "pipeline.parallel.worker_context": "internal pipeline type, not public API",
@@ -102,6 +103,7 @@ _EXCLUDED: dict[str, str] = {
     "recovery.failure_classifier": "internal recovery type, not public API",
     "recovery.failure_event": "internal recovery type, not public API",
     "recovery.fallover_event": "internal recovery type, not public API",
+    "recovery.legacy_guard_migration": "internal legacy guard migration helper, not public API",
     "recovery.recovery_controller_options": "internal recovery type, not public API",
     "recovery.unavailability_reason": "internal recovery type, not public API",
     "testing.fake_run": "test infrastructure, not public API",
@@ -129,6 +131,7 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_fsevents_watch_consolidation": "test infrastructure, not public API",
     "testing.audit_filesystem_polling_invocation": "test infrastructure, not public API",
     "testing.audit_log_sink_buffering": "test infrastructure, not public API",
+    "testing.repo_structure_boundary_b11": "test infrastructure, not public API",
     "testing._audit_scope": "test infrastructure, not public API",
 }
 _EXCLUDED_PREFIXES = tuple(f"{name}." for name in _EXCLUDED)

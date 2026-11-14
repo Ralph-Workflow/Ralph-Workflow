@@ -535,7 +535,7 @@ def _resolve_rebase_with_config(
             f"{', '.join(paths)} needs operator action: {operator_command_for_paths(paths)}"
         )
     if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        outcome = NextStrategyOutcome(strategy=reason or "resolver agents exhausted")
+        outcome = NextStrategyOutcome(strategy=reason or "resolver_agent_eligibility_changed")
     else:
         outcome = stop_resolution_outcome_from_legacy(
             classify_resolution_failure(

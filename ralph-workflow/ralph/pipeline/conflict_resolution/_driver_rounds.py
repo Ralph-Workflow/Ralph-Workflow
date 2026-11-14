@@ -297,8 +297,6 @@ def _execute_single_candidate(
         return False, UnknownOutcome(raised), progress
     if succeeded:
         return True, invoker_result, progress
-    if session.last_attempt_failure is None and isinstance(invoker_result, UnknownOutcome):
-        session.last_attempt_failure = invoker_result.error
     _handle_candidate_failure(
         session,
         agent_name,
@@ -464,7 +462,16 @@ def _preferred_conflict_candidate(
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
-        return candidates.index(eligible[0])
+        for name in eligible:
+            controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
+            entry = getattr(controller.ledger, "_entries", {}).get((PHASE_RESOLUTION, name))
+            if entry is not None and not entry.is_spent:
+                entry.cooldown_until_ms = None
+                entry.cooldown_reason = None
+                entry.consecutive_unproductive = 0
+        selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+        if selection.agent is not None:
+            return candidates.index(selection.agent)
     return None
 
 

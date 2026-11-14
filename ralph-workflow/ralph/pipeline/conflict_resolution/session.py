@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.clock import Clock
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
@@ -244,9 +245,15 @@ def ensure_session_controller(
         if pipeline_deps is not None and pipeline_deps.ledger is not None
         else (session.ledger if session is not None else None)
     )
-    clock: Clock = (
-        ledger._clock if ledger is not None and isinstance(ledger._clock, Clock) else SystemClock()
-    )
+    clock: Clock = SystemClock()
+    if pipeline_deps is not None:
+        rec_clock: object = getattr(pipeline_deps, "recovery_clock", None)
+        if isinstance(rec_clock, Clock):
+            clock = rec_clock
+    elif ledger is not None:
+        ledger_clock: object = getattr(ledger, "clock", None)
+        if isinstance(ledger_clock, Clock):
+            clock = ledger_clock
     deps = AttemptRunnerDeps(
         clock=clock,
         invoke=_invoke_effect,
@@ -360,11 +367,11 @@ def classify_failed_resolution_attempt(
         else:
             session.chain_cursor = failed_index
             next_retries = 0
-    chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
+    chain_state = recovery_state.chain_for_phase(PHASE_RESOLUTION)
     chain_agents: list[str] = (
         list(chain_state.agents) if chain_state is not None else list(candidates)
     )
-    session.recovery_state = new_state.with_phase_chain(
+    session.recovery_state = recovery_state.with_phase_chain(
         PHASE_RESOLUTION,
         AgentChainState(
             agents=chain_agents,

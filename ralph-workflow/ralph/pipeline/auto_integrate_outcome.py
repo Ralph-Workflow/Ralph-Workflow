@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never, assert_never, cast
 
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
@@ -20,7 +20,6 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
-    assert_never,
 )
 from ralph.pipeline.resolution_outcome_producer import RETRY_LATER_REASON
 
@@ -148,7 +147,7 @@ def record_resolution_outcome(
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case _ as unreachable:
-            assert_never(unreachable)
+            assert_never(cast("Never", unreachable))
     return result
 
 

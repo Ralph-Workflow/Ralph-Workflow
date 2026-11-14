@@ -119,6 +119,8 @@ class MatrixScenario:
         invocations: tuple[str, ...]
         probe_calls: tuple[str, ...]
         outcome_kinds: tuple[str, ...] = ()
+        waiting_payload: tuple[tuple[str, int, int], ...] = ()
+        unavailability_reasons: dict[str, str] = field(default_factory=dict)
 
         @property
         def wait_positive(self) -> bool:
@@ -133,6 +135,8 @@ class MatrixScenario:
                 self.ledger_status,
                 self.verdict_record,
                 self.false_bench_count,
+                self.waiting_payload,
+                tuple(sorted(self.unavailability_reasons.items())),
             )
 
     name: str
@@ -256,6 +260,35 @@ SCENARIOS = (
                 facts=termination_facts(workspace_changed=True), workspace_changed=True
             ),
         ),
+        expected_kind="unknown",
+    ),
+    MatrixScenario(
+        "slow_productive_mid_run_error",
+        ("AC6",),
+        (
+            MatrixScenario.Script(
+                facts=AttemptFacts(
+                    artifact_valid=False,
+                    workspace_changed=True,
+                    workspace_changed_by_tool=True,
+                    elapsed_to_terminal_ms=90_000,
+                    liveness_observed=True,
+                    event_kinds=("error",),
+                    tool_calls=("edit_file",),
+                    termination=TerminationRecord.create(
+                        TerminationIssuer.AGENT_EXIT,
+                        observed_returncode=1,
+                        reported_returncode=1,
+                        liveness_observed=True,
+                    ),
+                ),
+                workspace_changed=True,
+                failed=True,
+                returncode=1,
+                message="transient mid-run error event",
+            ),
+        ),
+        ProbeOutcome.PASSED,
         expected_kind="unknown",
     ),
     MatrixScenario(
@@ -757,6 +790,10 @@ def _observe(
     if not isinstance(raw_entries, dict):
         raise AssertionError("ledger snapshot entries must be a dictionary")
     status = controller.ledger.status(PHASE, agent)
+    waiting_payload = tuple(controller.waiting_state_payload(PHASE, list(AGENTS)))
+    store_snap = controller.unavailability_store.snapshot()
+    raw_reasons = store_snap.get("unavailability_reasons", {})
+    unavailability_reasons = dict(raw_reasons) if isinstance(raw_reasons, dict) else {}
     return MatrixScenario.Observation(
         outcome_kind=outcome_kind,
         availability=controller.unavailability_store.is_available(PHASE, agent),
@@ -770,6 +807,8 @@ def _observe(
         invocations=invocations,
         probe_calls=probe_calls,
         outcome_kinds=outcome_kinds,
+        waiting_payload=waiting_payload,
+        unavailability_reasons=unavailability_reasons,
     )
 
 

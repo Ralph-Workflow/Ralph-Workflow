@@ -66,8 +66,7 @@ def classify_resolution_failure(
         )
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         return RetryLaterOutcome(
-            on_change=reason
-            or ("resolver_agent_eligibility_changed" if agents else RETRY_LATER_REASON),
+            on_change=reason or "resolver_agent_eligibility_changed",
             terminal_reason=terminal_reason,
             unresolved_paths=paths,
             failure_cause=failure_cause,

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 __all__ = [
+    "STOP_RESOLUTION_OUTCOMES",
     "ConfigFailureOutcome",
     "KeyUnavailable",
     "NextStrategyOutcome",
@@ -69,6 +70,15 @@ ResolutionOutcomeUnion = (
     | NextStrategyOutcome
     | ConfigFailureOutcome
     | UnknownOutcome
+)
+
+STOP_RESOLUTION_OUTCOMES: tuple[type, ...] = (
+    ResolvedOutcome,
+    WaitingOutcome,
+    RetryLaterOutcome,
+    NextStrategyOutcome,
+    ConfigFailureOutcome,
+    UnknownOutcome,
 )
 
 type StopResolutionOutcome = ResolutionOutcomeUnion

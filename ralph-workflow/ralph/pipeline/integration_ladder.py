@@ -791,6 +791,8 @@ def _last_resort_agent_wait(
     wait_seconds: float,
     epoch_now: Callable[[], float],
 ) -> LadderStepResult | None:
+    if agent_eligibility is None and not agent_pools:
+        return None
     if agent_eligibility is None or not agent_pools:
         value = "waiting:last-resort-agent-proof-unavailable"
         _record_evidence(ledger, key, value)
@@ -840,16 +842,22 @@ def _complete_preservation_bundle(
     target: str,
     is_landed: Callable[[str], bool] | None,
 ) -> tuple[IntegrationPreservationBundle | None, str | None]:
-    compatibility_preservation = preserve_via_temp_index(
-        root,
-        git=git,
-        fs=fs,
-        ledger=ledger,
-        state_dir=state_dir,
-        is_landed=is_landed,
-    )
-    if compatibility_preservation.outcome == "failed":
-        return None, f"failed:no-preserved-copy:{compatibility_preservation.reason}"
+    state = ledger.read()
+    if PRESERVED_COPY_LEDGER_KEY not in state.ladder_evidence:
+        compatibility_preservation = preserve_via_temp_index(
+            root,
+            git=git,
+            fs=fs,
+            ledger=ledger,
+            state_dir=state_dir,
+            is_landed=is_landed,
+        )
+        if compatibility_preservation.outcome == "failed":
+            logger.warning(
+                "integration ladder rung 6: final preservation failed ({}); "
+                "the reset may discard work that nothing could save",
+                compatibility_preservation.reason,
+            )
     preservation = preserve_integration_state(root, state_dir=state_dir, target=target)
     if preservation is None:
         return None, "failed:no-complete-preservation-bundle"
@@ -942,7 +950,10 @@ def last_resort_recovery(
     ):
         git.remove_operation_state(root, in_progress_kind)
 
-    tip = target
+    if feature_tip is not None and git.ref_is_readable(root, feature_tip):
+        tip: str = feature_tip
+    else:
+        tip = target
     if not git.reset_hard(root, tip) and not (
         git.recreate_worktree(root, branch) and git.reset_hard(root, tip)
     ):
@@ -1077,20 +1088,45 @@ def _finish_rung(
     return final
 
 
-def _resolve_target_tip(
+def _resolve_shared_key(
+    rung: CleanupLadderRung,
+    ledger: AttemptLedger,
     root: Path,
     target: str,
-    rung: CleanupLadderRung,
-    decided_signature: str,
-    shared_target_tip: str | None,
-    expected_target_sha: str | None,
     plumbing: GitPlumbing,
-) -> str | None:
-    if shared_target_tip or expected_target_sha:
-        return shared_target_tip or expected_target_sha
-    if rung is CleanupLadderRung.LAST_RESORT and not decided_signature:
-        return None
-    return plumbing.target_sha(root, target)
+    feature_tip: str | None,
+    paths: tuple[str, ...],
+    decided_signature: str,
+    fresh_signature: str,
+    shared_target_tip: str | None,
+    shared_vendor_pointer: str | None,
+    shared_conflicting_paths: tuple[str, ...] | None,
+    expected_target_sha: str | None,
+) -> tuple[str | None, LadderStepResult | None]:
+    from ralph.pipeline.integration_attempt_ledger import shared_rung_result_key
+
+    target_tip = shared_target_tip or expected_target_sha
+    if (
+        target_tip is None
+        and (
+            shared_vendor_pointer is not None
+            or feature_tip is not None
+            or shared_conflicting_paths is not None
+            or paths
+        )
+        and (rung is not CleanupLadderRung.LAST_RESORT or decided_signature or fresh_signature)
+    ):
+        target_tip = plumbing.target_sha(root, target)
+    if target_tip is None:
+        return None, None
+    identity = shared_rung_result_key(
+        target_tip,
+        shared_vendor_pointer if shared_vendor_pointer is not None else feature_tip,
+        paths if shared_conflicting_paths is None else shared_conflicting_paths,
+    )
+    shared_key = f"{identity}:{rung.value}"
+    shared_result = _shared_rung_result(ledger, rung, shared_key)
+    return shared_key, shared_result
 
 
 def run_ladder_rung(
@@ -1128,33 +1164,28 @@ def run_ladder_rung(
     last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
     epoch_now: Callable[[], float] = time.time,
 ) -> LadderStepResult:
-    from ralph.pipeline.integration_attempt_ledger import shared_rung_result_key
-
     plumbing = git if git is not None else default_git_plumbing()
     quarantine = fs if fs is not None else default_file_quarantine()
     probe = env if env is not None else default_environment_probe()
     ladder_clock = clock if clock is not None else current_clock()
     ralph_state = state_dir if state_dir is not None else Path(root) / ".agent"
-    target_tip = _resolve_target_tip(
+    shared_key, shared_result = _resolve_shared_key(
+        rung=rung,
+        ledger=ledger,
         root=root,
         target=target,
-        rung=rung,
-        decided_signature=decided_signature,
-        shared_target_tip=shared_target_tip,
-        expected_target_sha=expected_target_sha,
         plumbing=plumbing,
+        feature_tip=feature_tip,
+        paths=paths,
+        decided_signature=decided_signature,
+        fresh_signature=fresh_signature,
+        shared_target_tip=shared_target_tip,
+        shared_vendor_pointer=shared_vendor_pointer,
+        shared_conflicting_paths=shared_conflicting_paths,
+        expected_target_sha=expected_target_sha,
     )
-    shared_key: str | None = None
-    if target_tip is not None:
-        identity = shared_rung_result_key(
-            target_tip,
-            shared_vendor_pointer if shared_vendor_pointer is not None else feature_tip,
-            paths if shared_conflicting_paths is None else shared_conflicting_paths,
-        )
-        shared_key = f"{identity}:{rung.value}"
-        shared_result = _shared_rung_result(ledger, rung, shared_key)
-        if shared_result is not None:
-            return shared_result
+    if shared_result is not None:
+        return shared_result
     result: LadderStepResult
     if rung is CleanupLadderRung.NORMAL_CLEANUP:
         value = "failed:not-owned-here"

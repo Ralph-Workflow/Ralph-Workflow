@@ -243,10 +243,12 @@ def _resolve_stops(
 resolve_rebase_in_progress = _resolve_rebase_in_progress
 
 
-def _record_stop_failure(
-    active_session: ResolutionSession,
-    outcome: StopResolutionOutcome | ResolutionOutcome | bool,
+def _record_resolver_outcome_on_session(
+    outcome: object,
+    active_session: ResolutionSession | None,
 ) -> None:
+    if isinstance(outcome, bool) or active_session is None:
+        return
     if isinstance(outcome, ResolutionOutcome):
         if outcome.failure_cause != ResolutionFailureCause.NONE:
             active_session.last_failure_cause = outcome.failure_cause
@@ -256,15 +258,17 @@ def _record_stop_failure(
                 active_session.terminal_reason = raw_reason
             elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
                 active_session.exhaustion_reason = raw_reason
-    elif not isinstance(outcome, bool):
-        if isinstance(outcome, ConfigFailureOutcome):
-            active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-            active_session.exhaustion_reason = str(outcome.parse_error)
-        elif isinstance(outcome, UnknownOutcome):
-            active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-            active_session.exhaustion_reason = str(outcome.error)
-        elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
-            active_session.exhaustion_reason = outcome.on_change
+    elif isinstance(outcome, NextStrategyOutcome):
+        active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        active_session.exhaustion_reason = outcome.strategy
+    elif isinstance(outcome, ConfigFailureOutcome):
+        active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+        active_session.exhaustion_reason = str(outcome.parse_error)
+    elif isinstance(outcome, UnknownOutcome):
+        active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        active_session.exhaustion_reason = str(outcome.error)
+    elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
+        active_session.exhaustion_reason = outcome.on_change
 
 
 def _resolve_one_stop(
@@ -305,20 +309,7 @@ def _resolve_one_stop(
             stop.stop_index,
         )
     outcome = resolver(root, target, stop)
-    if not isinstance(outcome, bool):
-        active_session = active_rebase_resolution_session()
-        if active_session is not None:
-            if isinstance(outcome, ConfigFailureOutcome):
-                active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-                active_session.exhaustion_reason = str(outcome.parse_error)
-            elif isinstance(outcome, UnknownOutcome):
-                active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-                active_session.exhaustion_reason = str(outcome.error)
-            elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
-                active_session.exhaustion_reason = outcome.on_change
-            elif isinstance(outcome, NextStrategyOutcome):
-                active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-                active_session.exhaustion_reason = outcome.strategy
+    _record_resolver_outcome_on_session(outcome, active_rebase_resolution_session())
     if not _resolution_succeeded(outcome):
         logger.info(
             "conflict_resolution: rebase stop {} ({}) was not resolved",
