@@ -224,9 +224,7 @@ def _assert_loopback_url(url: str) -> None:
     assert urlsplit(url).hostname in _LOOPBACK_HOSTS, url
 
 
-def _point_at(server: _TestServer, monkeypatch: pytest.MonkeyPatch) -> None:
-    releases = f"{server.base_url}/releases/latest.json"
-    archive = f"{server.base_url}/archive/{{tag}}.tar.gz"
+def _point_sources_at(releases: str, archive: str, monkeypatch: pytest.MonkeyPatch) -> None:
     _assert_loopback_url(releases)
     _assert_loopback_url(archive)
     monkeypatch.setattr(
@@ -251,6 +249,14 @@ def _point_at_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
             replace(source, api_url=releases, archive_url_template=archive)
             for source in upstream.UNIVERSAL_UPSTREAMS
         ),
+    )
+
+
+def _point_at(server: _TestServer, monkeypatch: pytest.MonkeyPatch) -> None:
+    _point_sources_at(
+        f"{server.base_url}/releases/latest.json",
+        f"{server.base_url}/archive/{{tag}}.tar.gz",
+        monkeypatch,
     )
 
 
@@ -374,6 +380,8 @@ def test_a_failing_upstream_keeps_the_installed_skills_byte_identical(
 
     assert outcome.status == expected_status
     assert outcome.error == expected_error
+    if failure == "missing-upstream":
+        assert outcome.attempted is True
     assert _tree_snapshot(root) == before
 
 

@@ -4,23 +4,39 @@ import atexit
 import shlex
 import shutil
 import tempfile
+from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from ralph.agents.execution_state import strategy_for_transport
-from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import ProcessLineReader, ProcessReaderCtx, check_process_result
+from ralph.agents.idle_watchdog import PostExitVerdict, TimeoutPolicy, WatchdogFireReason
+from ralph.agents.invoke import (
+    AttemptEnded,
+    ProcessLineReader,
+    ProcessReaderCtx,
+    check_process_result,
+)
+from ralph.agents.invoke.attempt_supervision import (
+    AttemptSupervisor,
+    PostExitHangObserved,
+    ProviderErrorObserved,
+    SilenceObserved,
+)
 from ralph.agents.parsers import AgentParser, get_parser, list_parser_keys
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
+from ralph.recovery.attempt_facts import TerminationIssuer
+from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
+from ralph.recovery.end_attempt import end_attempt
 
 if TYPE_CHECKING:
     from ralph.agents.invoke.opencode_subagent_sessions import OpenCodeChildPart
+    from ralph.process.manager import ManagedProcess
     from ralph.recovery.attempt_facts import AttemptFacts
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -71,6 +87,80 @@ _FACT_FIELDS: tuple[str, ...] = (
     "tool_calls",
     "liveness_observed",
     "termination",
+)
+
+
+@dataclass(frozen=True)
+class _Shape:
+    name: str
+    returncode: int
+    stderr_line: str | None
+    supervisor_timing: str | None
+    attempt_failed: bool
+    artifact_valid: bool
+    expected_kind: AttemptOutcomeKind
+    expected_issuer: TerminationIssuer | None
+    expected_liveness: bool | None
+
+
+_SHAPES: tuple[_Shape, ...] = (
+    _Shape("healthy", 0, None, None, False, True, AttemptOutcomeKind.COMPLETED, None, False),
+    _Shape("nonzero-exit", 1, None, None, True, False, AttemptOutcomeKind.UNKNOWN, None, None),
+    _Shape(
+        "stderr-quota-line",
+        1,
+        "quota exceeded",
+        "provider-error",
+        True,
+        False,
+        AttemptOutcomeKind.RUNTIME_ENDED,
+        TerminationIssuer.QUOTA_DETECTOR,
+        True,
+    ),
+    _Shape(
+        "auth-error",
+        1,
+        "ralph-test-harness-auth-marker: 401 unauthorized",
+        None,
+        True,
+        False,
+        AttemptOutcomeKind.UNKNOWN,
+        None,
+        None,
+    ),
+    _Shape(
+        "killed",
+        0,
+        None,
+        "after-reader",
+        True,
+        False,
+        AttemptOutcomeKind.RUNTIME_ENDED,
+        TerminationIssuer.SUPERVISOR_IDLE,
+        True,
+    ),
+    _Shape(
+        "descendant-hang",
+        0,
+        None,
+        "after-parent-exit",
+        True,
+        False,
+        AttemptOutcomeKind.RUNTIME_ENDED,
+        TerminationIssuer.POST_EXIT_WATCHDOG,
+        True,
+    ),
+)
+
+_RECORDED_SHAPE_GAPS: tuple[tuple[str, str, str], ...] = tuple(
+    (
+        parser_key,
+        shape.name,
+        f"missing real {shape.name} capture for {parser_key}",
+    )
+    for parser_key in _REGISTRY_KEYS
+    for shape in _SHAPES
+    if parser_key == "kimi" or shape.name != "healthy"
 )
 
 _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
@@ -171,14 +261,24 @@ class _NoChildPartSource:
 class _ExitedHandle:
     stdin = None
 
-    def __init__(self, lines: list[str]) -> None:
+    def __init__(self, lines: list[str], *, returncode: int, stderr_line: str | None) -> None:
         self.stdout = iter(lines)
-        self.stderr = iter(())
+        self.stderr = None
+        self._ralph_bounded_stderr = "" if stderr_line is None else f"{stderr_line}\n"
         self.pid = None
-        self.returncode = 0
+        self.returncode = returncode
+        self._termination_issuer: str | None = None
 
-    def terminate(self, grace_period_s: float | None = None, **_kwargs: object) -> None:
+    def terminate(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        issuer: object | None = None,
+        **_kwargs: object,
+    ) -> None:
         del grace_period_s
+        self._termination_issuer = str(issuer) if issuer is not None else None
+        self.returncode = -15
 
     def wait(self, timeout: float | None = None) -> int | None:
         del timeout
@@ -187,20 +287,30 @@ class _ExitedHandle:
     def poll(self) -> int | None:
         return self.returncode
 
+    def termination_issuer(self) -> str | None:
+        return self._termination_issuer
+
 
 @cache
-def _facts_for(parser_key: str) -> AttemptFacts:
+def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, AttemptOutcomeKind]:
     capture = _CAPTURES[parser_key]
     if capture is None:
         msg = f"{parser_key}: no recorded capture; record a gap row instead"
         raise AssertionError(msg)
+    shape = next(item for item in _SHAPES if item.name == shape_name)
     lines = capture.read_text(encoding="utf-8").splitlines(keepends=True)
     workspace = Path(tempfile.mkdtemp(prefix=f"ralph-u3-{parser_key}-"))
     atexit.register(shutil.rmtree, workspace, True)
     clock = FakeClock(start=0.0)
-    handle = _ExitedHandle(lines)
+    handle = _ExitedHandle(
+        lines,
+        returncode=shape.returncode,
+        stderr_line=shape.stderr_line,
+    )
+    managed_handle = cast("ManagedProcess", handle)
+    supervisor = AttemptSupervisor(managed_handle)
     reader = ProcessLineReader(
-        handle,
+        managed_handle,
         ProcessReaderCtx(
             config=AgentConfig(cmd=_COMMANDS[parser_key], transport=_transport_for(parser_key)),
             policy=TimeoutPolicy(
@@ -215,14 +325,44 @@ def _facts_for(parser_key: str) -> AttemptFacts:
             workspace_path=workspace,
         ),
         clock,
+        supervisor=supervisor,
     )
-    list(reader.read_lines())
-    check_process_result(
-        handle,
-        shlex.split(_COMMANDS[parser_key])[0],
-        termination_recorder=reader.termination_recorder,
+    reader_failure: BaseException | None = None
+    try:
+        list(reader.read_lines())
+    except BaseException as exc:
+        reader_failure = exc
+    if shape.supervisor_timing == "after-reader":
+        supervisor.act(SilenceObserved(WatchdogFireReason.STALLED_AFTER_TOOL_RESULT))
+    elif shape.supervisor_timing == "after-parent-exit":
+        supervisor.act(PostExitHangObserved(PostExitVerdict.FIRE_DESCENDANT_HANG))
+    elif shape.supervisor_timing == "provider-error":
+        supervisor.act(ProviderErrorObserved(shape.stderr_line or "quota exceeded"))
+    completion_failure: BaseException | None = None
+    if reader_failure is None:
+        try:
+            check_process_result(
+                managed_handle,
+                shlex.split(_COMMANDS[parser_key])[0],
+                termination_recorder=reader.termination_recorder,
+            )
+        except BaseException as exc:
+            completion_failure = exc
+    failure = reader_failure if reader_failure is not None else completion_failure
+    facts = failure.facts if isinstance(failure, AttemptEnded) else reader.termination_recorder.facts()
+    facts = replace(facts, artifact_valid=shape.artifact_valid)
+    typed_signal = facts.typed_signal
+    outcome = end_attempt(
+        facts,
+        attempt_failed=shape.attempt_failed,
+        typed_signal=typed_signal,
     )
-    return reader.termination_recorder.facts()
+    assert outcome.issuer is shape.expected_issuer
+    return facts, outcome.kind
+
+
+def _facts_for(parser_key: str) -> AttemptFacts:
+    return _replay_shape(parser_key, "healthy")[0]
 
 
 def _populated_fields(facts: AttemptFacts) -> set[str]:
@@ -233,7 +373,7 @@ def _populated_fields(facts: AttemptFacts) -> set[str]:
         populated.add("tool_calls")
     if facts.liveness_observed is not None:
         populated.add("liveness_observed")
-    if facts.termination.log:
+    if facts.termination is not None and facts.termination.log:
         populated.add("termination")
     if facts.subagent_activity_observed is True:
         populated.add("subagent_activity_observed")
@@ -269,6 +409,51 @@ def test_recorded_capture_populates_attempt_facts(parser_key: str) -> None:
                 f"{parser_key}: {field} not populated from {capture.name};"
                 " record a captured replay or a gap row"
             )
+
+
+@pytest.mark.parametrize(
+    "parser_key",
+    _REGISTRY_KEYS,
+    ids=[_param_id(key) for key in _REGISTRY_KEYS],
+)
+def test_capture_shape_axis_preserves_facts_and_decides_outcome(parser_key: str) -> None:
+    capture = _CAPTURES[parser_key]
+    shape_gap_keys = {(key, shape) for key, shape, _reason in _RECORDED_SHAPE_GAPS}
+    if capture is None:
+        assert all((parser_key, shape.name) in shape_gap_keys for shape in _SHAPES)
+        return
+
+    field_gap_keys = {(key, field) for key, field, _reason in _GAP_ROWS}
+    for shape in _SHAPES:
+        facts, outcome_kind = _replay_shape(parser_key, shape.name)
+        populated = _populated_fields(facts)
+        assert outcome_kind is shape.expected_kind
+        assert facts.liveness_observed is shape.expected_liveness
+        for field in ("event_kinds", "tool_calls", "termination"):
+            if (parser_key, field) in field_gap_keys:
+                assert field not in populated
+            else:
+                assert field in populated
+        if shape.name == "healthy":
+            assert (parser_key, shape.name) not in shape_gap_keys
+        else:
+            assert (parser_key, shape.name) in shape_gap_keys
+
+
+def test_recorded_shape_gap_rows_cover_only_missing_real_captures() -> None:
+    expected = {
+        (parser_key, shape.name)
+        for parser_key in _REGISTRY_KEYS
+        for shape in _SHAPES
+        if parser_key == "kimi" or shape.name != "healthy"
+    }
+    declared = {(key, shape) for key, shape, _reason in _RECORDED_SHAPE_GAPS}
+    assert declared == expected
+    assert len(declared) == len(_RECORDED_SHAPE_GAPS)
+    assert all(
+        reason == f"missing real {shape} capture for {key}"
+        for key, shape, reason in _RECORDED_SHAPE_GAPS
+    )
 
 
 def test_gap_tables_equal_replayed_gaps() -> None:

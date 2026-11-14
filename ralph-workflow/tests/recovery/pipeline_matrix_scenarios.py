@@ -108,6 +108,7 @@ class MatrixScenario:
         false_bench_count: int
         invocations: tuple[str, ...]
         probe_calls: tuple[str, ...]
+        outcome_kinds: tuple[str, ...] = ()
 
         @property
         def wait_positive(self) -> bool:
@@ -139,10 +140,74 @@ class MatrixScenario:
 SCENARIOS = (
     MatrixScenario(
         "failed_probe_benches",
-        ("AC1", "AC2", "AC5", "AC10", "AC16"),
+        ("AC1", "AC2", "AC5", "AC10", "AC13", "AC16", "AC18"),
         (MatrixScenario.Script(facts=termination_facts(reported=0), returncode=0),),
         ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
         expected_kind="agent_dead",
+    ),
+    MatrixScenario(
+        "ac1_chain_selects_b_after_bench",
+        ("AC1",),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(
+                    observed=0,
+                    reported=0,
+                    event_kinds=("error",),
+                ),
+                returncode=0,
+                message="provider rejected this request for an unprecedented reason",
+            ),
+            MatrixScenario.Script(
+                agent=AGENT_B,
+                failed=False,
+                facts=AttemptFacts(artifact_valid=True),
+            ),
+        ),
+        ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
+        expected_kind="completed",
+    ),
+    MatrixScenario(
+        "ac2_post_event_kill_failed_canary",
+        ("AC2",),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(
+                    TerminationIssuer.UNKNOWN,
+                    observed=137,
+                    reported=137,
+                    liveness=False,
+                    event_kinds=("error",),
+                ),
+                returncode=137,
+                message="provider stopped for a never-before-seen reason",
+            ),
+            MatrixScenario.Script(
+                agent=AGENT_B,
+                failed=False,
+                facts=AttemptFacts(artifact_valid=True),
+            ),
+        ),
+        ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
+        expected_kind="completed",
+    ),
+    MatrixScenario(
+        "probe_could_not_run_rc1",
+        ("AC16",),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(
+                    TerminationIssuer.UNKNOWN,
+                    observed=1,
+                    reported=1,
+                    liveness=False,
+                ),
+                returncode=1,
+            ),
+        ),
+        ProbeOutcome.INCONCLUSIVE,
+        expected_kind="unknown",
+        no_ledger_charge=True,
     ),
     MatrixScenario(
         "runtime_live_end",
@@ -209,7 +274,7 @@ SCENARIOS = (
     ),
     MatrixScenario(
         "unattributed_live_end",
-        ("AC2", "AC14"),
+        ("AC2", "AC13", "AC14"),
         (
             MatrixScenario.Script(
                 facts=AttemptFacts(
@@ -415,7 +480,7 @@ def run_matrix_scenario(
     deps = _deps(clock, invoke, probe_runner, scenario)
     config = matrix_config()
     controller = _controller(entry_point, config, deps, scenario)
-    outcome_kind = ""
+    outcome_kinds: list[str] = []
     runner = _registered_route(entry_point)
     for script in scenario.attempts:
         _advance_and_prune(clock, controller, script)
@@ -431,12 +496,94 @@ def run_matrix_scenario(
             state=None,
             run_id=RUN_ID,
         )
-        outcome_kind = result.outcome.kind.value
+        outcome_kinds.append(result.outcome.kind.value)
     return (
-        _observe(controller, scenario, outcome_kind, tuple(invocations), tuple(probe_calls)),
+        _observe(
+            controller,
+            scenario,
+            outcome_kinds[-1],
+            tuple(invocations),
+            tuple(probe_calls),
+            tuple(outcome_kinds),
+        ),
         controller,
         clock,
     )
+
+
+def run_matrix_scenario_with_selection(
+    entry_point: AgentEntryPoint,
+    scenario: MatrixScenario,
+) -> tuple[MatrixScenario.Observation, RecoveryController, FakeClock, str | None]:
+    if len(scenario.attempts) != 2:
+        raise AssertionError("selection scenario requires exactly two attempts")
+    clock = FakeClock(start=0.0)
+    invocations: list[str] = []
+    probe_calls: list[str] = []
+    scripts = list(scenario.attempts)
+
+    def probe_runner(_phase: str, agent: str) -> ProbeOutcome | None:
+        probe_calls.append(agent)
+        return scenario.probe_outcome
+
+    def invoke(target: object, *_args: object, **kwargs: object) -> object:
+        if not isinstance(target, InvokeAgentEffect):
+            raise AssertionError("matrix invocation requires an InvokeAgentEffect")
+        script = scripts.pop(0)
+        if script.agent != target.agent_name:
+            raise AssertionError(f"expected {script.agent}, got {target.agent_name}")
+        invocations.append(target.agent_name)
+        finalizer = kwargs["attempt_finalizer"]
+        if not isinstance(finalizer, _AttemptFinalizer):
+            raise AssertionError("matrix invocation requires an attempt finalizer")
+        finalizer(
+            AttemptFinalization(
+                1,
+                script.failed,
+                _script_exception(script) if script.failed else None,
+                script.workspace_changed,
+                script.typed_signal,
+                script.retryable_reason,
+            )
+        )
+        return PipelineEvent.AGENT_FAILURE if script.failed else PipelineEvent.AGENT_SUCCESS
+
+    deps = _deps(clock, invoke, probe_runner, scenario)
+    config = matrix_config()
+    controller = _controller(entry_point, config, deps, scenario)
+    runner = _registered_route(entry_point)
+    first = scenario.attempts[0]
+    first_result = runner(
+        effect=InvokeAgentEffect(agent_name=first.agent, phase=PHASE, prompt_file="prompt.md"),
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=None,
+        run_id=RUN_ID,
+    )
+    selected = controller.preferred_agent_index(PHASE, AGENTS).agent
+    second_result = runner(
+        effect=InvokeAgentEffect(
+            agent_name=selected or "",
+            phase=PHASE,
+            prompt_file="prompt.md",
+        ),
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=None,
+        run_id=RUN_ID,
+    )
+    outcome_kinds = (first_result.outcome.kind.value, second_result.outcome.kind.value)
+    observation = _observe(
+        controller,
+        scenario,
+        outcome_kinds[-1],
+        tuple(invocations),
+        tuple(probe_calls),
+        outcome_kinds,
+    )
+    return observation, controller, clock, selected
 
 
 def run_via_finalize_attempt(
@@ -458,7 +605,7 @@ def run_via_finalize_attempt(
     deps = _deps(clock, unreachable_invoke, probe_runner, scenario)
     config = matrix_config()
     controller = _controller(entry_point, config, deps, scenario)
-    outcome_kind = ""
+    outcome_kinds: list[str] = []
     for script in scenario.attempts:
         _advance_and_prune(clock, controller, script)
         outcome = controller.finalize_attempt(
@@ -473,8 +620,19 @@ def run_via_finalize_attempt(
             config_fingerprint=_config_fingerprint(script.agent),
             session_ref=_session_ref(entry_point, script.agent),
         )
-        outcome_kind = outcome.kind.value
-    return _observe(controller, scenario, outcome_kind, (), tuple(probe_calls)), controller, clock
+        outcome_kinds.append(outcome.kind.value)
+    return (
+        _observe(
+            controller,
+            scenario,
+            outcome_kinds[-1],
+            (),
+            tuple(probe_calls),
+            tuple(outcome_kinds),
+        ),
+        controller,
+        clock,
+    )
 
 
 def _script_exception(script: MatrixScenario.Script) -> AgentInvocationError:
@@ -541,6 +699,7 @@ def _observe(
     outcome_kind: str,
     invocations: tuple[str, ...],
     probe_calls: tuple[str, ...],
+    outcome_kinds: tuple[str, ...] = (),
 ) -> MatrixScenario.Observation:
     agent = scenario.attempts[-1].agent
     ledger_snapshot = controller.ledger.snapshot()
@@ -560,6 +719,7 @@ def _observe(
         false_bench_count=controller.false_bench_feedback.count,
         invocations=invocations,
         probe_calls=probe_calls,
+        outcome_kinds=outcome_kinds,
     )
 
 

@@ -28,6 +28,7 @@ from tests.recovery.pipeline_matrix_scenarios import (
     corpus_scenarios,
     matrix_entry_points,
     run_matrix_scenario,
+    run_matrix_scenario_with_selection,
     run_via_finalize_attempt,
 )
 
@@ -116,8 +117,11 @@ def _assert_observation(
     if scenario.corpus_id is not None and entry_point is not AgentEntryPoint.CANARY_PROBE:
         _assert_corpus_expectations(scenario, observation, controller)
     if entry_point is AgentEntryPoint.CANARY_PROBE:
+        # Canary is nonrecursive, so parity is outcome kind, invocations, and no bench.
         assert observation.probe_calls == ()
         assert observation.availability is True
+        assert observation.wait_ms == 0
+        assert observation.ledger_status == "eligible"
         assert observation.ledger_entries == {}
         assert observation.false_bench_count == 0
         if scenario.expected_kind is not None:
@@ -182,6 +186,17 @@ def test_completeness_every_entry_point_and_corpus_fixture_is_in_the_matrix() ->
     assert set(matrix_entry_points()) == set(ENTRY_POINTS)
     covered = {scenario.corpus_id for scenario in corpus_scenarios() if scenario.corpus_id}
     assert covered == {case.id for case in load_corpus()}
+
+
+def test_completeness_every_acceptance_criterion_is_tagged() -> None:
+    expected = {f"AC{number}" for number in range(1, 19)}
+    actual = {
+        acceptance
+        for scenario in ALL_SCENARIOS
+        for acceptance in scenario.acceptance
+    }
+
+    assert actual == expected
 
 
 def test_completeness_the_ac17_scenario_and_the_incident_7_fixtures_are_registered() -> None:
@@ -310,6 +325,45 @@ def test_ac9_corpus_replay_over_the_matrix_reports_zero_false_benches(
     observation, _controller, _clock = run_matrix_scenario(MAIN_PHASE_LOOP, agy_failed)
     assert observation.outcome_kind == "agent_dead"
     assert observation.probe_calls == ("agy",)
+
+
+@pytest.mark.parametrize(
+    "scenario_name",
+    ("ac1_chain_selects_b_after_bench", "ac2_post_event_kill_failed_canary"),
+)
+def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
+    scenario_name: str,
+) -> None:
+    observation, controller, _clock, selected = run_matrix_scenario_with_selection(
+        MAIN_PHASE_LOOP,
+        _scenario(scenario_name),
+    )
+
+    assert selected == AGENT_B
+    assert observation.invocations == (AGENT_A, AGENT_B)
+    assert observation.invocations.count(AGENT_A) == 1
+    assert observation.outcome_kinds == ("agent_dead", "completed")
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, AGENT_A) is False
+    assert store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) > 0
+    reasons = store.snapshot().get("unavailability_reasons", {})
+    assert reasons.get(AGENT_A) == DEAD
+    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    assert controller.snapshot()["spent_agents"] == {}
+
+
+def test_ac16_probe_could_not_run_keeps_a_selectable() -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        MAIN_PHASE_LOOP,
+        _scenario("probe_could_not_run_rc1"),
+    )
+
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
 
 
 def _case_for(scenario: MatrixScenario) -> CorpusCase:

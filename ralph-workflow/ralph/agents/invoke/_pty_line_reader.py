@@ -813,17 +813,17 @@ class PtyLineReader:
         tails.note_parent_record(cast("dict[str, object]", obj))
 
     def _sentinel_thread(self) -> None:
-        if self._stop_sentinel_path is None:
+        sentinel_path = self._stop_sentinel_path
+        if sentinel_path is None:
             return
         while not self._monitor_stop.is_set():
-            if self._stop_sentinel_path.exists():
-                with self._lines_lock:
-                    self._lines_queue.append(TURN_BOUNDARY_MARKER + "\n")
-                    self._lines_event.set()
-                with contextlib.suppress(OSError):
-                    _write_pty_input(
-                        self._input_writer_fd, "/exit\r\n", lock=self._input_writer_lock
-                    )
+            if sentinel_path.exists():
+                tails = self._subagent_tails
+                if tails is not None and tails.pending_dispatch_ids:
+                    with contextlib.suppress(OSError):
+                        sentinel_path.unlink()
+                    continue
+                self._request_interactive_exit()
                 return
             self._monitor_stop.wait(0.05)
 
@@ -1222,7 +1222,7 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
-        outcome = self._attempt_supervisor().act(
+        outcome = self._attempt_supervisor().teardown_subtree(
             TerminalStartupErrorObserved(terminal_startup_error)
         )
         if outcome is None:

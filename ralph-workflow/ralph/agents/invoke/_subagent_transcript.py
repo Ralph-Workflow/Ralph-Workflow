@@ -72,6 +72,7 @@ class ClaudeSubagentTranscriptTails:
             ],
         ] = {}
         self._tails_lock = threading.RLock()
+        self._dispatch_lock = threading.RLock()
         self._probed_dispatch_ids: set[str] = set()
         self._completed_dispatch_ids: set[str] = set()
         self._claude_code_version: str | None = None
@@ -84,7 +85,13 @@ class ClaudeSubagentTranscriptTails:
 
     @property
     def probed_dispatch_ids(self) -> frozenset[str]:
-        return frozenset(self._probed_dispatch_ids)
+        with self._dispatch_lock:
+            return frozenset(self._probed_dispatch_ids)
+
+    @property
+    def pending_dispatch_ids(self) -> frozenset[str]:
+        with self._dispatch_lock:
+            return frozenset(self._probed_dispatch_ids - self._completed_dispatch_ids)
 
     def note_parent_record(self, obj: dict[str, object]) -> None:
         if self._claude_code_version is not None:
@@ -96,8 +103,9 @@ class ClaudeSubagentTranscriptTails:
     def note_completion(self, *, tool_use_id: str) -> bool:
         if not tool_use_id:
             return False
-        with self._tails_lock:
+        with self._dispatch_lock:
             self._completed_dispatch_ids.add(tool_use_id)
+        with self._tails_lock:
             return self._drop_child_for_tool_use_id(tool_use_id)
 
     def _drop_child_for_tool_use_id(self, tool_use_id: str) -> bool:
@@ -131,9 +139,10 @@ class ClaudeSubagentTranscriptTails:
     ) -> None:
         if tool_name not in SUBAGENT_DISPATCH_TOOLS:
             return
-        if tool_use_id in self._probed_dispatch_ids:
-            return
-        self._probed_dispatch_ids.add(tool_use_id)
+        with self._dispatch_lock:
+            if tool_use_id in self._probed_dispatch_ids:
+                return
+            self._probed_dispatch_ids.add(tool_use_id)
         probe_path = (
             Path.home()
             / ".claude"
@@ -210,6 +219,8 @@ class ClaudeSubagentTranscriptTails:
             return
 
     def _discover_new_files(self) -> None:
+        with self._dispatch_lock:
+            completed_dispatch_ids = frozenset(self._completed_dispatch_ids)
         with self._tails_lock:
             for transcript_path, meta_path in find_claude_subagent_transcripts(self._session_id):
                 key = str(transcript_path)
@@ -220,7 +231,7 @@ class ClaudeSubagentTranscriptTails:
                     child_use_id: object = meta_dict.get("toolUseId")
                     if (
                         isinstance(child_use_id, str)
-                        and child_use_id in self._completed_dispatch_ids
+                        and child_use_id in completed_dispatch_ids
                     ):
                         continue
                 parser = ClaudeInteractiveTranscriptParser()

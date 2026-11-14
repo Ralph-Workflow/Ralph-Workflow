@@ -450,18 +450,25 @@ def _transport_error_reason(exc: Exception, prefix: str) -> str:
     )
 
 
+def _release_tag_from_body(body: bytes) -> str | None:
+    try:
+        payload: object = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    tag = optional_str(_mapping(payload).get("tag_name"), field="tag_name")
+    if tag is None or _TAG_PATTERN.fullmatch(tag) is None:
+        return None
+    return tag
+
+
 def _parse_release_tag(status: int, body: bytes) -> tuple[str | None, str | None]:
     if status != HTTP_OK:
         reason = NO_RELEASE_ERROR if status == HTTP_NOT_FOUND else f"release-api-status-{status}"
         return (None, reason)
     if len(body) > MAX_RELEASE_BYTES:
         return (None, "release-api-too-large")
-    try:
-        payload: object = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
-        return (None, "release-api-malformed")
-    tag = optional_str(_mapping(payload).get("tag_name"), field="tag_name")
-    if tag is None or _TAG_PATTERN.fullmatch(tag) is None:
+    tag = _release_tag_from_body(body)
+    if tag is None:
         return (None, "release-api-malformed")
     return (tag, None)
 

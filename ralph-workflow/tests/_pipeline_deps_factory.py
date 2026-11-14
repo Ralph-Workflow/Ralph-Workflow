@@ -152,7 +152,11 @@ def _phase_prompt_materializer_impl(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("worker prompt body", encoding="utf-8")
         return str(path)
-    return ".agent/tmp/development_prompt.md"
+    relative_path = Path(".agent/tmp/development_prompt.md")
+    path = Path(str(kwargs["workspace_root"])) / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("## Submit a `development_result` artifact", encoding="utf-8")
+    return str(relative_path)
 
 
 _phase_prompt_materializer: PhasePromptMaterializerFn = _phase_prompt_materializer_impl

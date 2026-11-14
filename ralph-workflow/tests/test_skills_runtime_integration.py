@@ -417,6 +417,14 @@ def _assert_every_companion_is_readable(files: dict[str, dict[str, bytes]]) -> N
                 )
 
 
+def _expected_upstream_calls(tag: str) -> list[str]:
+    calls: list[str] = []
+    for source in upstream.UNIVERSAL_UPSTREAMS:
+        calls.append(source.api_url)
+        calls.append(source.archive_url_template.format(tag=tag))
+    return calls
+
+
 def _make_the_next_attempt_due() -> None:
     cache = upstream.attempt_cache_path()
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -448,12 +456,7 @@ def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tre
     _run_seam(tmp_path, _build_dependencies(warnings), workspace_root=tmp_git_repo)
 
     assert update_done.wait(timeout=5), "the universal-skill updater never ran"
-    assert first_calls == [
-        upstream.RELEASES_API_URL,
-        upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
-        upstream.ANTI_SLOP_RELEASES_API_URL,
-        upstream.ANTI_SLOP_ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
-    ]
+    assert first_calls == _expected_upstream_calls("v-test-1")
     _assert_every_companion_is_readable(_SKILL_FILES)
     assert get_head_sha(tmp_git_repo) != head_before, (
         "the seam must commit its own project writes instead of leaving them uncommitted"
@@ -472,12 +475,7 @@ def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tre
     _run_seam(tmp_path, _build_dependencies(warnings), workspace_root=tmp_git_repo)
 
     assert update_done.wait(timeout=5), "the universal-skill updater never ran for the new release"
-    assert second_calls == [
-        upstream.RELEASES_API_URL,
-        upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-2"),
-        upstream.ANTI_SLOP_RELEASES_API_URL,
-        upstream.ANTI_SLOP_ARCHIVE_URL_TEMPLATE.format(tag="v-test-2"),
-    ]
+    assert second_calls == _expected_upstream_calls("v-test-2")
     _assert_every_companion_is_readable(changed)
     assert has_uncommitted_changes(tmp_git_repo) is False, (
         "the run that installs the newer release must leave the user's git tree clean"
@@ -557,9 +555,4 @@ def test_the_injected_http_client_is_reached_when_no_switch_is_set(
 
     assert reached.wait(timeout=5), "the injected HTTP client must be reached when no switch is set"
     assert finished.wait(timeout=5), "the universal-skill update never finished"
-    assert calls == [
-        upstream.RELEASES_API_URL,
-        upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
-        upstream.ANTI_SLOP_RELEASES_API_URL,
-        upstream.ANTI_SLOP_ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
-    ]
+    assert calls == _expected_upstream_calls("v-test-1")

@@ -191,6 +191,8 @@ def run_agent_attempt(
     if (effect is None) == (invocation is None):
         raise ValueError("exactly one of effect or invocation is required")
     phase, agent = _attempt_identity(effect, invocation, execute_kwargs)
+    if entry_point not in registered_entry_points():
+        raise ValueError(f"unregistered agent entry point: {entry_point.value}")
     fingerprint = _config_fingerprint(config, agent, execute_kwargs)
     session_ref = _session_ref(entry_point, phase, agent, execute_kwargs)
     finalized: dict[int, tuple[AttemptFacts, AttemptOutcome]] = {}
