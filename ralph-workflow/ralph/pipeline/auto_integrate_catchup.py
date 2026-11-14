@@ -673,7 +673,9 @@ def _advance_observed_target(
         return _failure_reason(kind, observation)
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-    if isinstance(outcome, ResolvedOutcome):
+    if isinstance(outcome, ResolvedOutcome) or (
+        isinstance(outcome, tuple) and bool(outcome[0])
+    ):
         return CATCHUP_FAST_FORWARDED
     return f"{CATCHUP_DEFEDITELY_FAILED}; {outcome}"
 

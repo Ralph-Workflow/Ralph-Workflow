@@ -21,6 +21,7 @@ from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.round_verdict import round_termination_reason
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
@@ -304,8 +305,8 @@ def test_an_unspendable_chain_reports_candidate_exhausted(
         invoke=lambda *_args: True,
         session=session,
     )
-    assert outcome.succeeded is False
-    assert outcome.reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.exhaustion_reason is not None
     assert session.exhaustion_reason.startswith(
         ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value
@@ -335,7 +336,7 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
         round_termination_reason(session_spent, invoked=False, candidates=candidates)
         is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     )
-    outcome_spent = driver_module.run_conflict_resolution_outcome(
+    _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=_CONFIG,
@@ -347,7 +348,7 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
         invoke=lambda *_args: True,
         session=session_spent,
     )
-    assert outcome_spent.reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert session_spent.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
 
     cooldown_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=5)
     for agent in candidates:
@@ -615,7 +616,7 @@ def test_every_reason_less_exit_now_names_itself(
 
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ())
     session = ResolutionSession()
-    outcome = driver_module.run_conflict_resolution_outcome(
+    _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=UnifiedConfig.model_validate({"general": {}}),
@@ -627,13 +628,13 @@ def test_every_reason_less_exit_now_names_itself(
         invoke=lambda *_a: True,
         session=session,
     )
-    assert outcome.reason is ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
+    assert session.terminal_reason is ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
     assert session.exhaustion_reason is not None
 
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_k: None)
     session = ResolutionSession()
-    outcome = driver_module.run_conflict_resolution_outcome(
+    _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=UnifiedConfig.model_validate({"general": {}}),
@@ -645,7 +646,7 @@ def test_every_reason_less_exit_now_names_itself(
         invoke=lambda *_a: True,
         session=session,
     )
-    assert outcome.reason is ResolutionTerminationReason.PROMPT_UNAVAILABLE
+    assert session.terminal_reason is ResolutionTerminationReason.PROMPT_UNAVAILABLE
     assert session.exhaustion_reason is not None
 
 
@@ -733,9 +734,11 @@ def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
         session=session,
     )
     assert calls, "the resolvable path must still reach a resolver"
-    assert outcome.succeeded is False, "the stop cannot land while a path is unreachable"
-    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert outcome.unresolved_paths == ("vendor/sub",), "and it is named"
+    assert not isinstance(outcome, ResolvedOutcome), (
+        "the stop cannot land while a path is unreachable"
+    )
+    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert session.unresolved_paths == ("vendor/sub",), "and it is named"
 
 
 def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
@@ -753,7 +756,7 @@ def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
     monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
     session = ResolutionSession()
 
-    outcome = driver_module.run_conflict_resolution_outcome(
+    _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=UnifiedConfig.model_validate({"general": {}}),
@@ -768,7 +771,7 @@ def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
     assert session.exhaustion_reason is not None
     assert "markers survive" not in session.exhaustion_reason
     assert "vendor/sub" in session.exhaustion_reason
-    assert outcome.unresolved_paths == ("vendor/sub",)
+    assert session.unresolved_paths == ("vendor/sub",)
 
 
 def test_a_clean_stop_is_not_reported_as_a_failure_reason(
@@ -777,7 +780,7 @@ def test_a_clean_stop_is_not_reported_as_a_failure_reason(
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
     session = ResolutionSession()
 
-    outcome = driver_module.run_conflict_resolution_outcome(
+    _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=UnifiedConfig.model_validate({"general": {}}),
@@ -789,7 +792,7 @@ def test_a_clean_stop_is_not_reported_as_a_failure_reason(
         invoke=lambda *_a: True,
         session=session,
     )
-    assert outcome.reason is None
+    assert session.terminal_reason is None
     assert session.exhaustion_reason is None
 
 
@@ -823,6 +826,6 @@ def test_mechanical_staging_never_masks_a_path_nobody_can_repair(
         invoke=lambda *_a: True,
         session=session,
     )
-    assert outcome.succeeded is False
-    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert outcome.unresolved_paths == ("sub",)
+    assert not isinstance(outcome, ResolvedOutcome)
+    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
+    assert session.unresolved_paths == ("sub",)

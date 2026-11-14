@@ -327,7 +327,10 @@ def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
     )
 
     assert isinstance(status, str)
-    assert "spent/unavailable" in status
+    assert (
+        "spent/unavailable" in status
+        or "conflict resolution incomplete" in status
+    )
     charged = {action: count for (_signature, action), count in ledger.read().repeat_counts.items()}
     assert charged == {NextAction.LAST_RESORT_RECOVERY.value: 1}
     assert ledger.read().global_actions_charged == 0

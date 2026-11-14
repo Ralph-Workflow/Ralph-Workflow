@@ -50,7 +50,15 @@ def test_four_agent_chain_tries_every_candidate(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three", "four")
     )
     clock = FakeClock()
-    token = install_executors(clock=clock)
+
+    class _FakeClockAdapter:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    token = install_executors(clock=_FakeClockAdapter())
     try:
         _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
         called: list[str] = []
@@ -208,9 +216,14 @@ def test_next_round_keeps_the_successful_highest_priority_candidate(
         surviving_per_round=[["src/alpha.py"], ["src/alpha.py"], []],
     )
     called: list[tuple[str, int]] = []
+    session = ResolutionSession()
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         called.append((agent_name, round_index))
+        if round_index == 2:
+            session.recovery_controller.ledger.mark_unavailable(
+                PHASE_RESOLUTION, "one", reason="unproductive"
+            )
         return True
 
     assert (
@@ -224,6 +237,7 @@ def test_next_round_keeps_the_successful_highest_priority_candidate(
             display=None,
             display_context=None,
             invoke=_invoke,
+            session=session,
         )
         is True
     )
@@ -376,7 +390,15 @@ def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three", "four")
     )
     clock = FakeClock()
-    token = install_executors(clock=clock)
+
+    class _FakeClockAdapter:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    token = install_executors(clock=_FakeClockAdapter())
     try:
         _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
         called: list[str] = []
@@ -424,13 +446,26 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
         called.append((round_index, agent_name))
         return agent_name == "two"
 
-    token = install_executors(clock=clock)
+    config = UnifiedConfig.model_validate(
+        {
+            "conflict_resolution": {"max_rounds_per_stop": 3},
+        }
+    )
+
+    class _FakeClockAdapter:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    token = install_executors(clock=_FakeClockAdapter())
     try:
         assert (
             run_conflict_resolution_pipeline(
                 root=tmp_path,
                 target="main",
-                config=_config(),
+                config=config,
                 pipeline_deps=None,
                 workspace_scope=None,
                 policy_bundle=_policy_bundle(),
@@ -445,7 +480,7 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
     finally:
         reset_executors(token)
 
-    cap = _config().conflict_resolution.max_rounds_per_stop
+    cap = config.conflict_resolution.max_rounds_per_stop
     invoked_rounds = sorted({round_index for round_index, _ in called})
     assert invoked_rounds == list(range(1, cap + 1))
     assert len(called) > len(invoked_rounds)
@@ -928,7 +963,14 @@ def test_conflict_invocations_skip_cooldown_and_restore_priority(
         clock.advance(6.0)
         return True
 
-    token = install_executors(clock=clock)
+    class _FakeClockAdapter:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    token = install_executors(clock=_FakeClockAdapter())
     try:
         assert run_conflict_resolution_pipeline(
             root=tmp_path,

@@ -62,7 +62,7 @@ from ralph.project_policy.status_bar import (
     remediation_status_bar_session,
 )
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
-from ralph.recovery.classifier import FailureContext
+from ralph.recovery.classifier import FailureClassifier, FailureContext
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -341,6 +341,11 @@ def _make_production_invoke_agent(
                         policy_bundle=load_result.policy_bundle,
                     )
                 except Exception as exc:
+                    classified = FailureClassifier().classify(
+                        exc,
+                        phase=phase,
+                        agent=agent_name,
+                    )
                     controller.handle(
                         PipelineState(
                             phase=phase,
@@ -357,6 +362,7 @@ def _make_production_invoke_agent(
                         FailureContext(
                             phase=phase,
                             agent=agent_name,
+                            classified_failure=classified,
                         ),
                     )
                     logger.warning(

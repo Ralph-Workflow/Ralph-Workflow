@@ -111,18 +111,6 @@ def _integrate_once(
         reset_executors(clock_token)
 
 
-def _extract_fast_forward_outcome(ff_outcome: object) -> tuple[bool, str]:
-    from ralph.pipeline.resolution_outcome import ResolvedOutcome
-
-    if isinstance(ff_outcome, ResolvedOutcome):
-        return True, ""
-    if isinstance(ff_outcome, tuple):
-        return bool(ff_outcome[0]), str(ff_outcome[1]) if len(ff_outcome) > 1 else ""
-    if isinstance(ff_outcome, bool):
-        return ff_outcome, ""
-    return False, str(ff_outcome)
-
-
 def _integrate_once_owned(
     config: UnifiedConfig,
     root: Path,
@@ -223,7 +211,12 @@ def _integrate_once_owned(
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=remember_reclamation,
         )
-        ok, skip_reason = _extract_fast_forward_outcome(ff_outcome)
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+        ok = isinstance(ff_outcome, ResolvedOutcome) or (
+            isinstance(ff_outcome, tuple) and bool(ff_outcome[0])
+        )
+        skip_reason = "" if ok else str(ff_outcome)
 
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:

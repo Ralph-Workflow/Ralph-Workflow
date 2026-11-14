@@ -28,6 +28,7 @@ from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
     is_retryable_fast_forward_failure,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
 
 if TYPE_CHECKING:
@@ -214,11 +215,10 @@ def test_fast_forward_regression_worktree_query_failure_is_a_retryable_skip(
 ) -> None:
     calls, _ = _install_fast_forward_stub(monkeypatch, (128, ""))
 
-    landed, reason = fast_forward_target(Path("/repos/feature"), "main", _FEATURE_SHA)
+    outcome = fast_forward_target(Path("/repos/feature"), "main", _FEATURE_SHA)
 
-    assert landed is False
-    assert reason
-    assert is_retryable_fast_forward_failure(reason) is True
+    assert not isinstance(outcome, ResolvedOutcome)
+    assert is_retryable_fast_forward_failure(outcome) is True
     assert not any(argv and argv[0] == "update-ref" for argv in calls)
 
 
@@ -229,10 +229,9 @@ def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(
         monkeypatch, (0, _WORKTREE_LIST_OUTPUT.replace("refs/heads/main", "refs/heads/other"))
     )
 
-    landed, reason = fast_forward_target(Path("/repos/feature"), "main", _FEATURE_SHA)
+    outcome = fast_forward_target(Path("/repos/feature"), "main", _FEATURE_SHA)
 
-    assert landed is True
-    assert reason == ""
+    assert isinstance(outcome, ResolvedOutcome)
     assert (
         "update-ref",
         "refs/heads/main",

@@ -52,7 +52,6 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
-
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
 
 

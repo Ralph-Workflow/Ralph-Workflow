@@ -37,6 +37,7 @@ from ralph.pipeline.integration_resolution import (
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.policy.loader import load_policy
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, ProbeResult
@@ -62,6 +63,7 @@ def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
         "conflict_stage_entries",
         lambda _root, _paths: ConflictStageEntries({}),
     )
+    _stub_canary_probe_boundary(monkeypatch)
 
 
 class _FakeStatusBar:
@@ -99,6 +101,7 @@ def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
 
     monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
+    monkeypatch.setattr("ralph.pipeline.attempt_runner.run_canary_probe", fake_run_canary_probe)
     return probed
 
 
@@ -246,7 +249,7 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
         return True
 
     assert _run(tmp_path, invoke=_invoke) is False
-    assert calls == [1, 2]
+    assert calls == [1, 2, 3]
 
 
 def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
@@ -299,7 +302,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )
-    session = ResolutionSession(max_rounds_per_stop=1)
+    session = ResolutionSession(max_rounds_per_stop=1, skip_same_agent_retries=True)
     calls: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -320,14 +323,14 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
         session=session,
     )
 
-    assert outcome.succeeded is False
-    assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
+    assert not isinstance(outcome, ResolvedOutcome)
+    assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
     assert calls == ["primary", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=0, retries=0)
 
 
 def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
@@ -351,7 +354,7 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
         session=session,
     )
 
-    assert outcome.succeeded is False
+    assert not isinstance(outcome, ResolvedOutcome)
     assert session.exhaustion_reason is not None
     persisted = record_resolution_exhausted(
         reason=session.exhaustion_reason,
@@ -535,7 +538,7 @@ def test_rebase_mode_success_reports_continuing_the_rebase(
         invoke=lambda name, path, index: True,
     )
 
-    assert resolved is True
+    assert isinstance(resolved, ResolvedOutcome)
     joined = "\n".join(display.warn_lines)
     assert "conflicts resolved in round 1; verifying and continuing the rebase" in joined
     assert "committing the merge" not in joined

@@ -14,7 +14,6 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
-    assert_never,
 )
 from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
 from ralph.pipeline.resolution_outcome_exhausted import Exhausted
@@ -23,7 +22,7 @@ from ralph.pipeline.resolution_outcome_resolved import Resolved
 from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
-    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 __all__ = [
     "RETRY_LATER_REASON",
@@ -52,7 +51,7 @@ def classify_resolution_failure(
     paths: tuple[str, ...] = (),
     agents: tuple[str, ...] = (),
     config_error: BaseException | None = None,
-) -> ResolutionOutcomeType:
+) -> StopResolutionOutcome:
     if config_error is not None:
         typed = config_failure_from_exception(config_error)
         if typed is not None:
@@ -62,7 +61,12 @@ def classify_resolution_failure(
     if terminal_reason is ResolutionTerminationReason.OUT_OF_REACH:
         return NextStrategyOutcome(strategy="completion_in_place")
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        return RetryLaterOutcome(on_change="resolver_agent_eligibility_changed")
+        strat = (
+            f"resolver agents exhausted: {', '.join(agents)}"
+            if agents
+            else (reason or "resolver agents exhausted")
+        )
+        return NextStrategyOutcome(strategy=strat)
     return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
 
 

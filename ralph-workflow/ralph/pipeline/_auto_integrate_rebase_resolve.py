@@ -276,14 +276,17 @@ def _rebase_run_result(
                 short_circuit=None,
             )
         case NextStrategyOutcome(strategy=strategy):
-            AttemptLedger(root).charge_ladder_attempt(
-                rebase_resolution_signature(
-                    record.pre_feature_sha if record is not None else None,
-                    record.pre_target_sha if record is not None else target,
-                    record.resolving_stop_sha if record is not None else None,
-                ),
-                strategy,
-            )
+            from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
+
+            if strategy in _LADDER_ACTION_VALUES:
+                AttemptLedger(root).charge_ladder_attempt(
+                    rebase_resolution_signature(
+                        record.pre_feature_sha if record is not None else None,
+                        record.pre_target_sha if record is not None else target,
+                        record.resolving_stop_sha if record is not None else None,
+                    ),
+                    strategy,
+                )
             return RebaseRunResult(
                 rebase_outcome=RebaseConflicts(files=[]),
                 merge_attempted=False,

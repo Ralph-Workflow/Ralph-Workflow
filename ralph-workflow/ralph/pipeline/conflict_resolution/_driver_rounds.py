@@ -111,7 +111,7 @@ def _evaluate_round_attempt(
         outcome = NextStrategyOutcome(
             strategy=round_reason.value if round_reason is not None else "resolution_incomplete"
         )
-    _emit_attempt_outcome(display, outcome)
+    _emit_attempt_outcome(display, outcome, session=session)
     return action
 
 
@@ -187,29 +187,36 @@ def _handle_candidate_failure(
         session.terminal_reason = (
             attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
         )
-    raw_failure: BaseException | str | None
-    if isinstance(session.last_attempt_failure, BaseException):
-        outcome = ConflictAttemptOutcome.RAW
-        raw_failure = session.last_attempt_failure
-    else:
-        outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
-        raw_failure = (
-            session.last_attempt_failure if isinstance(session.last_attempt_failure, str) else None
+    if session.last_attempt_result is None:
+        raw_failure: BaseException | str | None
+        if isinstance(session.last_attempt_failure, BaseException):
+            outcome = ConflictAttemptOutcome.RAW
+            raw_failure = session.last_attempt_failure
+        else:
+            outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
+            raw_failure = (
+                session.last_attempt_failure
+                if isinstance(session.last_attempt_failure, str)
+                else None
+            )
+        _driver_mod.classify_failed_resolution_attempt(
+            session,
+            agent_name,
+            raw_failure,
+            candidates=candidates,
+            failed_index=offset,
+            policy_bundle=policy_bundle,
+            bench=(
+                session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+                and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
+            ),
+            workspace_changed=workspace_changed,
+            outcome=outcome,
         )
-    _driver_mod.classify_failed_resolution_attempt(
-        session,
-        agent_name,
-        raw_failure,
-        candidates=candidates,
-        failed_index=offset,
-        policy_bundle=policy_bundle,
-        bench=(
-            session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-            and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
-        ),
-        workspace_changed=workspace_changed,
-        outcome=outcome,
-    )
+    elif session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+    else:
+        session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
 
 
 def _execute_single_candidate(
@@ -222,12 +229,15 @@ def _execute_single_candidate(
     offset: int,
     policy_bundle: PolicyBundle,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
-) -> tuple[bool, object, RoundAttempt]:
-    from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
+) -> tuple[bool, StopResolutionOutcome, RoundAttempt]:
     session.terminal_reason = None
+    session.last_attempt_failure = None
+    session.last_attempt_result = None
+    session.last_attempt_outcome = None
     session.charge_conflict_budget = True
-    invoker_result: object = False
+    invoker_result: StopResolutionOutcome = RetryLaterOutcome(
+        on_change="resolution attempt failed"
+    )
     probe = session.workspace_probe
     workspace = session.workspace
     if probe is not None and workspace is not None:
@@ -236,29 +246,20 @@ def _execute_single_candidate(
     raised: BaseException | None = None
     succeeded = False
     try:
-        raw_result = cast("object", runner(agent_name, prompt_path, round_index))
-        if isinstance(raw_result, bool):
-            succeeded = raw_result
-            if succeeded:
-                session.chain_cursor = 0
-                session.last_failure_cause = ResolutionFailureCause.NONE
-                invoker_result = ResolvedOutcome()
-            else:
-                invoker_result = UnknownOutcome(RuntimeError("resolution attempt failed"))
+        invoker_result = cast("StopResolutionOutcome", runner(agent_name, prompt_path, round_index))
+        succeeded = isinstance(invoker_result, ResolvedOutcome)
+        if succeeded:
+            session.chain_cursor = 0
+            session.last_failure_cause = ResolutionFailureCause.NONE
         else:
-            invoker_result = cast("StopResolutionOutcome", raw_result)
-            succeeded = isinstance(invoker_result, ResolvedOutcome)
-            if succeeded:
-                session.chain_cursor = 0
-                session.last_failure_cause = ResolutionFailureCause.NONE
-            else:
-                _record_invoker_outcome(session, invoker_result)
+            _record_invoker_outcome(session, invoker_result)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
         )
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        session.last_attempt_failure = exc
         raised = exc
     count_dropped = False
     if observe_unresolved is not None:
@@ -276,19 +277,20 @@ def _execute_single_candidate(
         probe_changed=probe_changed,
     )
     if raised is not None:
-        _driver_mod.classify_failed_resolution_attempt(
+        _handle_candidate_failure(
             session,
             agent_name,
-            raised,
-            candidates=candidates,
-            failed_index=offset,
-            policy_bundle=policy_bundle,
-            bench=True,
+            UnknownOutcome(raised),
+            candidates,
+            offset,
+            policy_bundle,
             workspace_changed=probe_changed or count_dropped,
         )
         return False, UnknownOutcome(raised), progress
     if succeeded:
         return True, invoker_result, progress
+    if session.last_attempt_failure is None and isinstance(invoker_result, UnknownOutcome):
+        session.last_attempt_failure = invoker_result.error
     _handle_candidate_failure(
         session,
         agent_name,
@@ -346,6 +348,10 @@ def _run_one_round(
         return RoundAttempt(succeeded=False, invoked=False)
     skipped = _skipped_candidates(session, candidates)
     visited: set[int] = set()
+    candidate_retries: dict[int, int] = {}
+    from ralph.pipeline.conflict_resolution.session import conflict_chain_max_retries
+
+    max_retries = conflict_chain_max_retries(policy_bundle)
     invoked = False
     agent_ran = False
     round_cap = session.max_rounds_per_stop or 3
@@ -359,7 +365,7 @@ def _run_one_round(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
         invoked = True
-        succeeded, invoker_result, progress = _execute_single_candidate(
+        succeeded, _invoker_result, progress = _execute_single_candidate(
             runner,
             agent_name,
             prompt_path,
@@ -380,9 +386,7 @@ def _run_one_round(
                 count_dropped=progress.count_dropped,
                 probe_changed=progress.probe_changed,
             )
-        agent_saw = session.last_attempt_saw_activity or (
-            not isinstance(invoker_result, ResolvedOutcome)
-        )
+        agent_saw = session.last_attempt_saw_activity
         agent_ran = agent_ran or agent_saw
         if _check_worktree_repair(
             session, agent_name, round_index, round_cap, display, worktree_resolved, agent_saw
@@ -405,12 +409,20 @@ def _run_one_round(
             offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset
             continue
-        if session.chain_cursor == offset:
+        retries = candidate_retries.get(offset, 0)
+        retries_same = (
+            session.last_attempt_result.outcome.retries_same_agent
+            if session.last_attempt_result is not None
+            and session.last_attempt_result.outcome is not None
+            else (session.chain_cursor == offset)
+        )
+        if not session.skip_same_agent_retries and retries_same and retries < max_retries:
+            candidate_retries[offset] = retries + 1
             _sleep_conflict_retry(session, policy_bundle)
             continue
         visited.add(offset)
-        proposed = session.chain_cursor % total
-        offset = proposed if proposed not in visited else _next_unvisited(offset, total, visited)
+        proposed = _next_unvisited(offset, total, visited)
+        offset = proposed
         session.chain_cursor = offset
     return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
 
@@ -432,12 +444,7 @@ def _preferred_conflict_candidate(
         return None
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
-        available = (
-            [name for name in eligible if session.ledger.is_available(PHASE_RESOLUTION, name)]
-            if session.ledger is not None
-            else eligible
-        )
-        return candidates.index(available[0]) if available else None
+        return candidates.index(eligible[0]) if eligible else None
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
@@ -449,6 +456,7 @@ def _preferred_conflict_candidate(
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
+        return None
     return None
 
 

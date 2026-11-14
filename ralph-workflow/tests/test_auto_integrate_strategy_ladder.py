@@ -53,7 +53,7 @@ def test_auto_integrate_regression_next_persisted_strategy_receives_budget() -> 
     )
 
     exhausted = spent.model_copy(update={"resolution_exhausted": True})
-    assert resolver_allowed(exhausted, "main", identity, ledger=_available_ledger()) is False
+    assert resolver_allowed(exhausted, "main", identity) is False
 
     restored = RebaseState.model_validate(
         spent.model_copy(
@@ -61,4 +61,4 @@ def test_auto_integrate_regression_next_persisted_strategy_receives_budget() -> 
         ).model_dump(mode="json")
     )
 
-    assert resolver_allowed(restored, "main", identity, ledger=_available_ledger()) is True
+    assert resolver_allowed(restored, "main", identity) is True

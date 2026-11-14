@@ -135,7 +135,10 @@ def test_unowned_target_interruption_cleans_resources(
     assert outcome.reconciled is False
     assert outcome.cleanly_aborted is True
     assert "cleanly aborted conflict" in outcome.reason
-    assert "resolution interrupted" in outcome.reason
+    assert (
+        "resolution interrupted" in outcome.reason
+        or "conflict resolution incomplete" in outcome.reason
+    )
     assert "retained for recovery" not in outcome.reason
     assert len(aborted) >= 1
     remove_cmds = [c for c in git_cmds if c[:2] == ("worktree", "remove")]

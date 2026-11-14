@@ -278,9 +278,7 @@ def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
         )
         from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-        succeeded = isinstance(outcome, ResolvedOutcome) or bool(
-            getattr(outcome, "succeeded", False)
-        )
+        succeeded = isinstance(outcome, ResolvedOutcome)
     terminal = "resolved" if succeeded and not rebase_in_progress(root) else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 
@@ -302,9 +300,7 @@ def run_marker_resolution(root: Path) -> ScenarioResult:
         )
         from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-        succeeded = isinstance(outcome, ResolvedOutcome) or bool(
-            getattr(outcome, "succeeded", False)
-        )
+        succeeded = isinstance(outcome, ResolvedOutcome)
     terminal = "resolved" if succeeded else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 

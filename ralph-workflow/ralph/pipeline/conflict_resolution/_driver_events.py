@@ -70,6 +70,7 @@ def emit_expired_operator_cap(
     emit_attempt_outcome(
         display,
         NextStrategyOutcome(strategy=session.terminal_reason.value),
+        session=session,
     )
 
 
@@ -84,7 +85,12 @@ def emit_success(
     _emit(display, f"conflicts resolved in round {round_index}; {next_action}")
 
 
-def emit_attempt_outcome(display: ParallelDisplay | None, outcome: StopResolutionOutcome) -> None:
+def emit_attempt_outcome(
+    display: ParallelDisplay | None,
+    outcome: StopResolutionOutcome,
+    *,
+    session: ResolutionSession | None = None,
+) -> None:
     match outcome:
         case ResolvedOutcome():
             return
@@ -94,7 +100,27 @@ def emit_attempt_outcome(display: ParallelDisplay | None, outcome: StopResolutio
             resume = f"until={until}" if until is not None else f"on_change={on_change}"
             line = f"retry later: {resume}"
         case NextStrategyOutcome(strategy=strategy):
-            line = f"{strategy}: next strategy"
+            if session is not None and (
+                session.last_activity_kind is not None
+                or session.last_activity_at is not None
+                or session.last_duration_seconds is not None
+                or session.unresolved_paths
+            ):
+                duration_str = (
+                    f"duration={session.last_duration_seconds:.1f}s"
+                    if session.last_duration_seconds is not None
+                    else "duration=0.0s"
+                )
+                kind_str = f"last_activity_kind={session.last_activity_kind or 'none'}"
+                at_str = f"last_activity_at={session.last_activity_at or 'never'}"
+                paths_str = f"unresolved_paths={', '.join(session.unresolved_paths)}"
+                line = (
+                    f"{strategy}: {duration_str}; {kind_str}; {at_str}; "
+                    f"last_progress=unresolved_count={len(session.unresolved_paths)}; "
+                    f"{paths_str}; next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
+                )
+            else:
+                line = f"{strategy}: next strategy"
         case ConfigFailureOutcome(file=file, parse_error=parse_error):
             line = f"configuration failure: {file}: {parse_error}"
         case UnknownOutcome(error=error):

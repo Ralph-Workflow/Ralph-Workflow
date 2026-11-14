@@ -873,6 +873,7 @@ __all__ = [
     "run_subprocess_and_read_lines",
     "shutil",
     "starts_with_canonical_session_marker",
+    "strategy_for_command",
     "subprocess",
     "termination_issuer_for_exception",
     "termination_issuer_for_fire_reason",

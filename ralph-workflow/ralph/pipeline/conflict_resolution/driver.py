@@ -94,7 +94,6 @@ from ralph.pipeline.conflict_resolution.status import (
 )
 from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.resolution_outcome import StopResolutionOutcome
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -155,7 +154,9 @@ def _sleep_seconds(
     seconds: float,
     *,
     sleep: Callable[[float], None] | None = None,
+    session: ResolutionSession | None = None,
 ) -> None:
+    del session
     (sleep if sleep is not None else current_clock().sleep)(seconds)
 
 
@@ -556,7 +557,7 @@ def _run_rounds(
     return False
 
 
-def _execute_round_loop(
+def _execute_round_loop(  # noqa: PLR0912
     root: Path,
     target: str,
     runner: ResolutionInvoker,
@@ -615,7 +616,8 @@ def _execute_round_loop(
                 skipped = skipped_candidates(session, candidates)
                 live = [name for name in candidates if name not in skipped]
                 if live and not any(
-                    controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+                    controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible
+                    for name in live
                 ):
                     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
                     if wait_ms > 0:
@@ -632,31 +634,28 @@ def _execute_round_loop(
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
             )
+            if not attempt.invoked:
+                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
+                break
             if attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None:
                 logger.warning(
                     "conflict_resolution: round {} with '{}' reported success, but unresolved paths remain in worktree",
                     round_index,
                     attempt.agent_name,
                 )
-                unresolved_count = len(session.unresolved_paths)
                 made_progress = attempt.probe_changed or attempt.count_dropped
                 session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
                 session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-                classify_failed_resolution_attempt(
-                    session,
-                    attempt.agent_name,
-                    None,
-                    candidates=candidates,
-                    failed_index=attempt.candidate_offset,
-                    policy_bundle=policy_bundle,
-                    outcome=(
-                        ConflictAttemptOutcome.UNRESOLVED_REMAINING
-                        if made_progress
-                        else ConflictAttemptOutcome.STALLED
-                    ),
-                    unresolved_count=unresolved_count,
-                    workspace_changed=made_progress,
-                )
+                controller = session.recovery_controller
+                if controller is not None:
+                    from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver
+
+                    bench_resolver(
+                        controller,
+                        attempt.agent_name,
+                        "unresolved paths remain in worktree",
+                        workspace_changed=made_progress,
+                    )
             action = _evaluate_round_attempt(
                 attempt,
                 session,
@@ -676,9 +675,6 @@ def _execute_round_loop(
                     break
                 _emit_success(display, round_index, stop)
                 return True
-            if not attempt.invoked:
-                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
-                break
             session.rounds_spent = round_index
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
                 _escalate_unreachable_remainder(session, display)
@@ -713,11 +709,6 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         if any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live):
             return True
         return controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
-    if session.ledger is not None:
-        if session.ledger.any_eligible(PHASE_RESOLUTION, live):
-            return True
-        wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
-        return wait is not None and wait > 0
     return True
 
 
@@ -736,15 +727,12 @@ def _record_unconfigured_resolver(
 def _dead_chain_reason(
     live_candidates: Sequence[str],
     controller: RecoveryController | None,
-    ledger: AgentFailureLedger | None,
+    ledger: AgentFailureLedger | None = None,
 ) -> ResolutionTerminationReason:
-    wait: int | None
+    del ledger
+    wait: int | None = None
     if controller is not None:
         wait = controller.earliest_eligible_wait_ms(PHASE_RESOLUTION, list(live_candidates))
-    elif ledger is not None:
-        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(live_candidates))
-    else:
-        wait = None
     if wait is None:
         return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     if wait > 0:
@@ -757,15 +745,15 @@ def _agent_unavailability_reason(
     ledger: AgentFailureLedger | None,
     controller: RecoveryController | None,
 ) -> str:
-    if ledger is not None:
-        reason = ledger.failure_reason(PHASE_RESOLUTION, agent)
-        if reason:
-            return reason
+    del ledger
     if controller is not None:
         snap = controller.unavailability_store.snapshot()
         u_reasons = snap.get("unavailability_reasons", {})
         if isinstance(u_reasons, dict) and agent in u_reasons:
             return str(u_reasons[agent])
+        reason = controller.ledger.failure_reason(PHASE_RESOLUTION, agent)
+        if reason:
+            return reason
     return "spent"
 
 
@@ -785,7 +773,7 @@ def _handle_dead_candidate_chain(
     barred = skipped_candidates(session, tuple(candidates))
     live_candidates = [agent for agent in candidates if agent not in barred]
 
-    if (
+    if session.rounds_spent == 0 and (
         session.terminal_reason is None
         or session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
     ):
@@ -794,6 +782,8 @@ def _handle_dead_candidate_chain(
             controller,
             ledger,
         )
+    elif session.terminal_reason is None:
+        session.terminal_reason = ResolutionTerminationReason.ATTEMPT_FAILED
 
     if session.last_failure_cause == ResolutionFailureCause.NONE:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
@@ -812,6 +802,7 @@ def _handle_dead_candidate_chain(
         paths_str = ", ".join(paths)
         cmd = operator_command_for_paths(paths)
         msg = (
+            f"{ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value}: "
             f"all {len(candidates)} resolver agents are spent/unavailable ({reasons_str}); "
             f"conflict on {paths_str} needs operator action: {cmd}"
         )

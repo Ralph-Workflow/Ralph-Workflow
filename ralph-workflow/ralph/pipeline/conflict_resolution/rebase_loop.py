@@ -282,7 +282,7 @@ def _resolve_one_stop(
         if active_session is not None:
             if isinstance(outcome, ConfigFailureOutcome):
                 active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-                active_session.exhaustion_reason = outcome.parse_error
+                active_session.exhaustion_reason = str(outcome.parse_error)
             elif isinstance(outcome, UnknownOutcome):
                 active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
                 active_session.exhaustion_reason = str(outcome.error)
