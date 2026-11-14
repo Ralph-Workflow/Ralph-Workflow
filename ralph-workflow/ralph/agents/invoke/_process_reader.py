@@ -85,7 +85,6 @@ from ralph.agents.invoke.attempt_supervision import (
     ProviderErrorObserved,
     SilenceObserved,
     StartupFailureObserved,
-    resolve_teardown,
 )
 from ralph.agents.invoke.opencode_subagent_sessions import (
     OpenCodeSubagentSessionProbe,
@@ -93,6 +92,8 @@ from ralph.agents.invoke.opencode_subagent_sessions import (
     default_opencode_db_path,
 )
 from ralph.agents.invoke.termination_recorder import return_code_may_be_a_signal
+from ralph.agents.parsers import resolve_parser_key
+from ralph.agents.parsers.line_channel import line_channel
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.checked_accessors import optional_float
 from ralph.config.agent_config import AgentConfig
@@ -124,9 +125,6 @@ from ralph.process.manager import (
     SpawnOptions,
     get_process_manager,
 )
-from ralph.process.teardown import (
-    teardown_subtree,
-)
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.runtime_events import current_runtime_event
 from ralph.timeout_defaults import (
@@ -149,6 +147,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
+    from ralph.agents.parsers.content_channel import ContentChannel
     from ralph.mcp.server._activity_sink import ActivitySink
     from ralph.process.manager import ManagedPtyProcess
     from ralph.process.monitor import ProcessMonitor
@@ -429,11 +428,10 @@ def check_broken_agent_timer(
     if not watchdog.observed_output_is_structurally_small():
         return
     has_output = watchdog.has_any_output()
-    supervisor = AttemptSupervisor.for_recorder(termination_recorder, handle)
-    outcome = supervisor.act(
-        BrokenAgentTimeoutObserved(has_output),
-        teardown=resolve_teardown(process_teardown, teardown_subtree),
+    supervisor = AttemptSupervisor.for_recorder(
+        termination_recorder, handle, process_teardown=process_teardown
     )
+    outcome = supervisor.act(BrokenAgentTimeoutObserved(has_output))
     if outcome is None:
         return
     _record_watchdog_evidence(supervisor.recorder, watchdog)
@@ -553,10 +551,17 @@ class ProcessLineReader:
         self._handle = handle
         self._supervisor = supervisor
         self._config = ctx.config
+        self._parser_key = resolve_parser_key(
+            ctx.config.cmd,
+            ctx.config.json_parser,
+            cast("AgentTransport", ctx.config.transport),
+        )
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe = ctx.liveness_probe or DefaultLivenessProbe()
-        self._process_teardown = ctx.process_teardown
+        self._process_teardown = cast(
+            "ProcessTeardown | None", getattr(ctx, "process_teardown", None)
+        )
         self._waiting_listener = ctx.waiting_listener
         self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor
@@ -617,7 +622,7 @@ class ProcessLineReader:
         stored: object = getattr(self, "_supervisor", None)
         if isinstance(stored, AttemptSupervisor):
             return stored
-        supervisor = AttemptSupervisor(self._handle)
+        supervisor = AttemptSupervisor(self._handle, process_teardown=self._process_teardown)
         self._supervisor = supervisor
         return supervisor
 
@@ -850,11 +855,14 @@ class ProcessLineReader:
             captured_stderr = self._stderr_capture
         object.__setattr__(self._handle, "_ralph_bounded_stderr", captured_stderr)
 
+    def _quota_channel_for(self, line: str) -> ContentChannel:
+        return line_channel(self._parser_key, line)
+
     def _read_stderr_thread(self, stderr_pipe: IO[str]) -> None:
         try:
             for line in stderr_pipe:
                 self._append_stderr(line)
-                evidence = provider_quota_line_evidence(line)
+                evidence = provider_quota_line_evidence(line, channel=self._quota_channel_for(line))
                 if evidence is not None:
                     self._terminate_for_provider_quota(evidence.text)
                     break
@@ -897,7 +905,7 @@ class ProcessLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(line)
                     self._lines_event.set()
-                evidence = provider_quota_line_evidence(line)
+                evidence = provider_quota_line_evidence(line, channel=self._quota_channel_for(line))
                 if evidence is not None:
                     self._terminate_for_provider_quota(evidence.text)
                     break
@@ -943,10 +951,7 @@ class ProcessLineReader:
     def _terminate_for_provider_quota(self, detail: str) -> None:
         if not BROKEN_AGENT_OUTPUT_GRACE_SECONDS:
             return
-        outcome = self._attempt_supervisor().act(
-            ProviderErrorObserved(detail),
-            teardown=resolve_teardown(self._process_teardown, teardown_subtree),
-        )
+        outcome = self._attempt_supervisor().act(ProviderErrorObserved(detail))
         if outcome is None:
             return
         returncode = outcome.returncode
@@ -977,10 +982,7 @@ class ProcessLineReader:
     def _terminate_completed_process(self) -> None:
         if self._completion_is_terminal is None:
             return
-        self._attempt_supervisor().act(
-            CompletionObserved(),
-            teardown=resolve_teardown(self._process_teardown, teardown_subtree),
-        )
+        self._attempt_supervisor().act(CompletionObserved())
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -1039,10 +1041,7 @@ class ProcessLineReader:
         with self._lines_lock:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
-        outcome = self._attempt_supervisor().act(
-            SilenceObserved(fire_reason),
-            teardown=resolve_teardown(self._process_teardown, teardown_subtree),
-        )
+        outcome = self._attempt_supervisor().act(SilenceObserved(fire_reason))
         if outcome is None:
             return None
         _record_watchdog_evidence(self.termination_recorder, watchdog)
@@ -1264,10 +1263,7 @@ class ProcessLineReader:
         verdict = post_exit.wait_descendant_quiesce(classify_stream_state)
         if verdict != PostExitVerdict.FIRE_DESCENDANT_HANG:
             return False
-        self._attempt_supervisor().act(
-            PostExitHangObserved(verdict),
-            teardown=resolve_teardown(self._process_teardown, teardown_subtree),
-        )
+        self._attempt_supervisor().act(PostExitHangObserved(verdict))
         return True
 
     def _build_opencode_subagent_probe(
@@ -1449,11 +1445,10 @@ def _terminate_hung_process_exit(
 ) -> None:
     if verdict != PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
         return
-    supervisor = AttemptSupervisor.for_recorder(recorder, handle)
-    outcome = supervisor.act(
-        PostExitHangObserved(verdict),
-        teardown=resolve_teardown(ctx.process_teardown, teardown_subtree),
+    supervisor = AttemptSupervisor.for_recorder(
+        recorder, handle, process_teardown=ctx.process_teardown
     )
+    outcome = supervisor.act(PostExitHangObserved(verdict))
     if outcome is None:
         return
     raise _IdleStreamTimeoutError(
@@ -1492,17 +1487,14 @@ def _run_subprocess_and_read_lines(
         )
     )
     handle, agy_cli_log = _spawn_process_with_agy_log_offset(argv, spawn_options, ctx)
-    supervisor = AttemptSupervisor(handle)
+    supervisor = AttemptSupervisor(handle, process_teardown=ctx.process_teardown)
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
-            supervisor.act(
-                StartupFailureObserved(msg),
-                teardown=resolve_teardown(ctx.process_teardown, teardown_subtree),
-            )
+            supervisor.act(StartupFailureObserved(msg))
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)

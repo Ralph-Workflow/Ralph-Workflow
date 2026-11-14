@@ -130,7 +130,6 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.attempt_outcome import AttemptOutcome
     from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.dead_agent_verdict import TypedSignal
     from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
 
@@ -617,7 +616,7 @@ def _handle_recovery_attempt_failure(
                 attempt_failed=True,
                 exc=exc,
                 workspace_changed=workspace_changed,
-                typed_signal=_typed_signal_for_exception(exc),
+                typed_signal=attempt_facts_for_failure(exc).typed_signal,
                 retryable_reason=retryable_agent_failure_reason(exc, AgentInactivityTimeoutError),
             )
         )
@@ -752,23 +751,6 @@ def _fallback_attempt_finalizer(
         )
 
     return finalize
-
-
-def _typed_signal_for_exception(exc: BaseException) -> TypedSignal | None:
-    from ralph.recovery.controller import build_typed_agent_signal
-    from ralph.recovery.failure_classifier import (
-        typed_signal_name,
-        typed_signal_provider_originated,
-    )
-
-    signal_name = typed_signal_name(exc)
-    if signal_name is None:
-        return None
-    return build_typed_agent_signal(
-        signal_name,
-        typed_signal_provider_originated(exc),
-        None,
-    )
 
 
 def _demotion_after_finalization(

@@ -58,6 +58,21 @@ def test_unseen_wording_without_facts_keeps_the_prior_route_behavior() -> None:
     assert intent is None
 
 
+def test_same_named_plain_exception_does_not_take_the_typed_signal_route() -> None:
+    class QuotaExhaustedError(Exception):
+        pass
+
+    intent = resolve_retry_intent(
+        QuotaExhaustedError("boom"),
+        phase="development",
+        agent="claude",
+        session_id="sess-1",
+        inactivity_error_type=AgentInactivityTimeoutError,
+    )
+
+    assert intent is None
+
+
 def test_non_quota_typed_facts_do_not_suppress_retryable_reasons() -> None:
     exc = AgentInvocationError("claude", 1, "session not found: sess-9")
     exc.facts = AttemptFacts(termination=TerminationRecord.create(TerminationIssuer.AGENT_EXIT))

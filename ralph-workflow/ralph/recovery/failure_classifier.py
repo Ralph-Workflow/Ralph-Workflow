@@ -3,7 +3,8 @@ from __future__ import annotations
 import errno
 import socket
 import urllib.error
-from typing import TYPE_CHECKING, cast
+from importlib import import_module
+from typing import TYPE_CHECKING, Callable, cast
 
 from loguru import logger
 
@@ -16,23 +17,7 @@ from .unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
     from .attempt_facts import AttemptFacts
-
-TYPED_SIGNAL_NAMES: frozenset[str] = frozenset(
-    {
-        "QuotaExhaustedError",
-        "MissingCredentialsError",
-        "BrokenAgentExitError",
-    }
-)
-
-_PROVIDER_ORIGINATED_TYPED_SIGNALS: frozenset[str] = frozenset(
-    {
-        "QuotaExhaustedError",
-        "MissingCredentialsError",
-    }
-)
-
-_PROMPT_ECHO_BROKEN_AGENT_REASON = "prompt_echo"
+    from .typed_signal import TypedSignal
 
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
     {
@@ -320,50 +305,12 @@ def is_missing_artifact_message(raw_message: str) -> bool:
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
 
 
-def typed_signal_name(exc: BaseException | None) -> str | None:
-    if exc is None:
+def _typed_signal_unavailability_reason(signal: TypedSignal | None) -> UnavailabilityReason | None:
+    if signal is None or not signal.provider_originated:
         return None
-    name = type(exc).__name__
-    if name in TYPED_SIGNAL_NAMES:
-        return name
-    return None
-
-
-def typed_signal_provider_originated_for_reason(
-    signal_name: str | None,
-    reason: str | None,
-) -> bool:
-    if signal_name is None:
-        return False
-    if signal_name in _PROVIDER_ORIGINATED_TYPED_SIGNALS:
-        return True
-    if signal_name == "BrokenAgentExitError":
-        return reason == _PROMPT_ECHO_BROKEN_AGENT_REASON
-    return False
-
-
-def typed_signal_provider_originated(exc: BaseException | None) -> bool:
-    if exc is None:
-        return False
-    name = type(exc).__name__
-    if name not in TYPED_SIGNAL_NAMES:
-        return False
-    reason = cast("object", getattr(exc, "reason", None))
-    return typed_signal_provider_originated_for_reason(
-        name,
-        reason if isinstance(reason, str) else None,
-    )
-
-
-def _typed_signal_unavailability_reason(
-    signal_name: str | None,
-    signal_provider_originated: bool,
-) -> UnavailabilityReason | None:
-    if signal_name is None or not signal_provider_originated:
-        return None
-    if signal_name == "QuotaExhaustedError":
+    if signal.name == "QuotaExhaustedError":
         return UnavailabilityReason.OUT_OF_CREDITS
-    if signal_name == "MissingCredentialsError":
+    if signal.name == "MissingCredentialsError":
         return UnavailabilityReason.AUTH_CONFIG
     return None
 
@@ -657,17 +604,23 @@ class FailureClassifier:
             detail_parts = failure_detail_parts(exc)
 
         exc_obj = exc if isinstance(exc, BaseException) else None
-        signal_name = typed_signal_name(exc_obj)
-        signal_provider_originated = typed_signal_provider_originated(exc_obj)
-        typed_unavailability = _typed_signal_unavailability_reason(
-            signal_name,
-            signal_provider_originated,
-        )
+        signal = facts.typed_signal if facts is not None else None
+        if signal is None and exc_obj is not None:
+            module = import_module("ralph.agents.invoke._completion_termination")
+            facts_for_failure = cast(
+                "Callable[[BaseException], AttemptFacts]",
+                getattr(module, "attempt_facts_for_failure"),
+            )
+            signal = facts_for_failure(exc_obj).typed_signal
+        signal_name = signal.name if signal is not None else None
+        signal_provider_originated = signal.provider_originated if signal is not None else False
+        typed_unavailability = _typed_signal_unavailability_reason(signal)
         category, counts, reset_session = self._categorize(
             exc_obj,
             raw_message,
             detail_parts,
             connectivity_state=connectivity_state,
+            typed_signal_name=signal_name,
         )
         provider_unavailability = _terminal_process_unavailability_reason(
             exc_obj, detail_parts, connectivity_state
@@ -700,10 +653,8 @@ class FailureClassifier:
             if isinstance(exc_session_id, str) and exc_session_id:
                 resumable_session_id = exc_session_id
 
-        typed_quota_exhaustion = (
-            exc_obj is not None and type(exc_obj).__name__ == "QuotaExhaustedError"
-        )
-        broken_agent = exc_obj is not None and type(exc_obj).__name__ == "BrokenAgentExitError"
+        typed_quota_exhaustion = signal_name == "QuotaExhaustedError"
+        broken_agent = signal_name == "BrokenAgentExitError"
         base_unavailable = (
             provider_unavailability is not None
             or broken_agent
@@ -804,6 +755,7 @@ class FailureClassifier:
         detail_parts: list[str],
         *,
         connectivity_state: str | None,
+        typed_signal_name: str | None,
     ) -> tuple[FailureCategory, bool, bool] | None:
         if self._find_typed_watchdog_cause(exc) is not None or contains_casefolded_marker(
             detail_parts, _MODEL_PREFLIGHT_UNAVAILABLE_SUBSTRINGS
@@ -821,14 +773,18 @@ class FailureClassifier:
             if predicate:
                 return result
         type_name = type(exc).__name__
-        if type_name in {"AgentInactivityTimeoutError", "BrokenAgentExitError"}:
-            return FailureCategory.AGENT, True, type_name == "BrokenAgentExitError"
-        if type_name in {
-            "QuotaExhaustedError",
+        typed_result: tuple[FailureCategory, bool, bool] | None = None
+        if typed_signal_name == "BrokenAgentExitError":
+            typed_result = (FailureCategory.AGENT, True, True)
+        elif typed_signal_name == "QuotaExhaustedError":
+            typed_result = (FailureCategory.AGENT, False, False)
+        elif type_name == "AgentInactivityTimeoutError" or type_name in {
             "OpenCodeResumableExitError",
             "AgyIncompleteExitError",
         }:
-            return FailureCategory.AGENT, type_name != "QuotaExhaustedError", False
+            typed_result = (FailureCategory.AGENT, True, False)
+        if typed_result is not None:
+            return typed_result
         if type_name == "AgentInvocationError":
             return self._classify_agent_invocation_error(
                 exc,
@@ -976,6 +932,7 @@ class FailureClassifier:
         detail_parts: list[str],
         *,
         connectivity_state: str | None,
+        typed_signal_name: str | None = None,
     ) -> tuple[FailureCategory, bool, bool]:
         if exc is not None:
             result = self._categorize_exc(
@@ -983,6 +940,7 @@ class FailureClassifier:
                 raw_message,
                 detail_parts,
                 connectivity_state=connectivity_state,
+                typed_signal_name=typed_signal_name,
             )
             if result is not None:
                 return result

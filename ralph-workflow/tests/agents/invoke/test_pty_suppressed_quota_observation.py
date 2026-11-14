@@ -41,8 +41,15 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
-def _noop_teardown(pid: int, *, issuer: object) -> None:
-    del pid, issuer
+class _NoopProcessTeardown:
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del host_pid, issuer, owner_label
 
 
 class _DescriptorFedPtyHandle:
@@ -89,10 +96,10 @@ def _make_reader(
 def test_completion_winner_suppresses_later_quota_observation(tmp_path: Path) -> None:
     master_fd, slave_fd = pty.openpty()
     handle = _DescriptorFedPtyHandle(master_fd)
-    supervisor = AttemptSupervisor(handle)
+    supervisor = AttemptSupervisor(handle, process_teardown=_NoopProcessTeardown())
     reader = _make_reader(tmp_path, handle, supervisor)
     try:
-        outcome = supervisor.act(CompletionObserved(), teardown=_noop_teardown)
+        outcome = supervisor.act(CompletionObserved())
         assert outcome is not None
         facts_before = supervisor.recorder.termination()
         assert facts_before.issuer is TerminationIssuer.AGENT_EXIT
@@ -112,7 +119,7 @@ def test_completion_winner_suppresses_later_quota_observation(tmp_path: Path) ->
 def test_completion_winner_suppresses_terminal_startup_error(tmp_path: Path) -> None:
     master_fd, slave_fd = pty.openpty()
     handle = _DescriptorFedPtyHandle(master_fd)
-    supervisor = AttemptSupervisor(handle)
+    supervisor = AttemptSupervisor(handle, process_teardown=_NoopProcessTeardown())
     reader = _make_reader(
         tmp_path,
         handle,
@@ -121,7 +128,7 @@ def test_completion_winner_suppresses_terminal_startup_error(tmp_path: Path) -> 
         transport=AgentTransport.NANOCODER,
     )
     try:
-        outcome = supervisor.act(CompletionObserved(), teardown=_noop_teardown)
+        outcome = supervisor.act(CompletionObserved())
         assert outcome is not None
         facts_before = supervisor.recorder.termination()
         terminate_before = list(handle.terminate_issuers)

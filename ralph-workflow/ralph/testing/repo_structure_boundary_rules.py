@@ -27,6 +27,7 @@ RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
     ("B7", "U6"),
     ("B8", "AC4"),
     ("B9", "AC3/AC15"),
+    ("B9b", "AC3/AC15"),
     ("B10", "AC13"),
 )
 _PAIRING_BY_RULE: Final[Mapping[str, str]] = MappingProxyType(dict(RULE_PAIRINGS))
@@ -89,6 +90,9 @@ _B9_HANDLE_ATTRIBUTES: Final = frozenset({"terminate", "kill"})
 _B9_MODULE_RECEIVERS: Final = frozenset({"os", "signal"})
 _B9_SKIPPED_PREFIXES: Final = ("ralph/process/", "ralph/testing/")
 _B9_MANAGER_FACTORIES: Final = frozenset({"get_process_manager", "ProcessManager"})
+_B9B_SUPERVISION_PREFIX: Final = "ralph/agents/invoke/attempt_supervision/"
+_B9B_TEARDOWN_MODULE: Final = "ralph.process.teardown"
+_B9B_TEARDOWN_NAME: Final = "teardown_subtree"
 _B10_FACTS_ATTRIBUTE: Final = "attempt_facts"
 _B10_DELETED_NAMES: Final = frozenset({"attach_attempt_facts", "attempt_facts_from_exception"})
 
@@ -239,6 +243,92 @@ def _b9_violations(relative_path: str, nodes: list[ast.AST], tree: ast.Module) -
         handle_violation = _b9_handle_termination_violation(relative_path, node, manager_names)
         if handle_violation is not None:
             violations.append(handle_violation)
+    return violations
+
+
+def _b9b_in_scope(relative_path: str) -> bool:
+    return relative_path.startswith(_B9_INVOKE_PREFIXES) and not relative_path.startswith(
+        _B9B_SUPERVISION_PREFIX
+    )
+
+
+def _b9b_enclosing_parameter(node: ast.AST, parents: dict[int, ast.AST]) -> bool:
+    current = parents.get(id(node))
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            arguments = current.args
+            params = {
+                param.arg
+                for param in (
+                    *arguments.posonlyargs,
+                    *arguments.args,
+                    *arguments.kwonlyargs,
+                )
+            }
+            if arguments.vararg is not None:
+                params.add(arguments.vararg.arg)
+            if arguments.kwarg is not None:
+                params.add(arguments.kwarg.arg)
+            return _B9B_TEARDOWN_NAME in params
+        current = parents.get(id(current))
+    return False
+
+
+def _b9b_violations(
+    relative_path: str,
+    nodes: list[ast.AST],
+    tree: ast.Module,
+    parents: dict[int, ast.AST],
+) -> list[str]:
+    if not _b9b_in_scope(relative_path):
+        return []
+    guarded = _type_checking_nodes(tree)
+    violations: list[str] = []
+    for node in nodes:
+        if id(node) in guarded:
+            continue
+        if isinstance(node, ast.ImportFrom):
+            imports_teardown_module = node.module == _B9B_TEARDOWN_MODULE or (
+                node.module is not None and node.module.startswith(f"{_B9B_TEARDOWN_MODULE}.")
+            )
+            if imports_teardown_module and any(
+                alias.name == _B9B_TEARDOWN_NAME for alias in node.names
+            ):
+                violations.append(
+                    _violation(
+                        relative_path,
+                        node,
+                        "B9b",
+                        "runtime teardown_subtree import outside attempt supervision",
+                    )
+                )
+        elif isinstance(node, ast.Import):
+            if any(
+                alias.name == _B9B_TEARDOWN_MODULE
+                or alias.name.startswith(f"{_B9B_TEARDOWN_MODULE}.")
+                for alias in node.names
+            ):
+                violations.append(
+                    _violation(
+                        relative_path,
+                        node,
+                        "B9b",
+                        "runtime teardown_subtree import outside attempt supervision",
+                    )
+                )
+        elif (
+            isinstance(node, ast.Name)
+            and node.id == _B9B_TEARDOWN_NAME
+            and not _b9b_enclosing_parameter(node, parents)
+        ):
+            violations.append(
+                _violation(
+                    relative_path,
+                    node,
+                    "B9b",
+                    "teardown_subtree reference outside attempt supervision",
+                )
+            )
     return violations
 
 
@@ -781,5 +871,6 @@ def collect_boundary_violations(relative_path: str, source: str) -> list[str]:
         + _decision_violations(relative_path, tree, nodes)
         + _b8_violations(relative_path, nodes)
         + _b9_violations(relative_path, nodes, tree)
+        + _b9b_violations(relative_path, nodes, tree, parents)
         + _b10_violations(relative_path, nodes)
     )

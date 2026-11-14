@@ -6,12 +6,15 @@ from typing import Final, cast
 
 from ralph.recovery.attempt_facts import (
     AttemptFacts,
-    TerminationIssuer,
     TerminationRecord,
     has_return_code_discrepancy,
 )
-from ralph.recovery.attribution import Attribution, AttributionVerdict, liveness_observed
+from ralph.recovery.attribution import Attribution, AttributionVerdict
 from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.recovery.typed_signal import (
+    TypedSignal,
+    runtime_issued_termination_is_not_agent_fault,
+)
 
 __all__ = (
     "DeadAgentVerdict",
@@ -37,16 +40,6 @@ _REQUIRED_DEAD_AGENT_VERDICT_VALUES: Final[tuple[str, ...]] = (
     "unknown",
 )
 
-_RUNTIME_ISSUERS: Final[frozenset[TerminationIssuer]] = frozenset(
-    {
-        TerminationIssuer.QUOTA_DETECTOR,
-        TerminationIssuer.SUPERVISOR_IDLE,
-        TerminationIssuer.RECOVERY_TIMEOUT,
-        TerminationIssuer.POST_EXIT_WATCHDOG,
-        TerminationIssuer.OPERATOR,
-    }
-)
-
 
 class _DeadAgentVerdict(StrEnum):
     AGENT_DEAD = "agent_dead"
@@ -62,35 +55,18 @@ if tuple(verdict.value for verdict in _DeadAgentVerdict) != _REQUIRED_DEAD_AGENT
 
 
 @dataclass(frozen=True)
-class _TypedSignal:
-    name: str
-    provider_originated: bool = False
-    agent_initiated: bool = False
-
-
-@dataclass(frozen=True)
 class _PersistedVerdict:
     verdict: _DeadAgentVerdict
     facts: AttemptFacts
     attribution: AttributionVerdict
     probe_outcome: ProbeOutcome | None
     termination: TerminationRecord | None
-    typed_signal: _TypedSignal | None
+    typed_signal: TypedSignal | None
     return_code_discrepancy: bool
 
 
 DeadAgentVerdict = _DeadAgentVerdict
-TypedSignal = _TypedSignal
 PersistedVerdict = _PersistedVerdict
-
-
-def runtime_issued_termination_is_not_agent_fault(facts: AttemptFacts) -> bool:
-    termination = facts.termination
-    if termination is None:
-        return False
-    if termination.issuer is TerminationIssuer.QUOTA_DETECTOR and not liveness_observed(facts):
-        return False
-    return termination.issuer in _RUNTIME_ISSUERS
 
 
 def task_or_environment_attribution_is_not_agent_fault(
@@ -122,13 +98,14 @@ def decide_dead_agent_verdict(
     probe_outcome: ProbeOutcome | None,
     typed_signal: TypedSignal | None = None,
 ) -> PersistedVerdict:
+    effective_typed_signal = typed_signal if typed_signal is not None else facts.typed_signal
     return PersistedVerdict(
-        verdict=_decide_verdict(facts, attribution, probe_outcome, typed_signal),
+        verdict=_decide_verdict(facts, attribution, probe_outcome, effective_typed_signal),
         facts=facts,
         attribution=attribution,
         probe_outcome=probe_outcome,
         termination=facts.termination,
-        typed_signal=typed_signal,
+        typed_signal=effective_typed_signal,
         return_code_discrepancy=has_return_code_discrepancy(facts.termination),
     )
 

@@ -7,7 +7,6 @@ from ralph.agents.completion_signals import completion_signals_terminal, evaluat
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.invoke._completion_evidence import apply_sentinel_signal
 from ralph.agents.invoke._completion_options import CompletionCheckOptions, _completion_run_id
-from ralph.agents.invoke._completion_supervision import completion_teardown
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.invoke._implicit_completion import is_implicit_development_exit
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
@@ -29,14 +28,12 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._completion_termination import _TerminationRecorder
     from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
-    from ralph.process.teardown import ProcessTeardown
 
 
 def _raise_if_pi_reported_failed_exit(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
     output: list[str],
-    teardown: ProcessTeardown | None,
     *,
     supervisor: AttemptSupervisor,
 ) -> None:
@@ -45,10 +42,7 @@ def _raise_if_pi_reported_failed_exit(
     provider_failure = pi_provider_failure_reason(agent_name, output)
     if provider_failure is None:
         return
-    supervisor.cleanup(
-        ProcessTerminationIssuer.INVOKE_TEARDOWN,
-        teardown=completion_teardown(teardown),
-    )
+    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
     raise PiProviderFailureExitError(agent_name, provider_failure)
 
 
@@ -72,7 +66,6 @@ def _accepts_implicit_development_exit(
     output: list[str],
     opts: CompletionCheckOptions,
     exit_state: AgentExecutionState,
-    teardown: ProcessTeardown | None,
     *,
     supervisor: AttemptSupervisor,
     waited_on_child: bool = False,
@@ -84,7 +77,7 @@ def _accepts_implicit_development_exit(
     ):
         return False
     _raise_if_transport_reported_error(handle, agent_name, output)
-    _raise_if_pi_reported_failed_exit(handle, agent_name, output, teardown, supervisor=supervisor)
+    _raise_if_pi_reported_failed_exit(handle, agent_name, output, supervisor=supervisor)
     return True
 
 

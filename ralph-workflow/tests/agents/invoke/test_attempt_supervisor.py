@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -16,6 +17,7 @@ from ralph.agents.invoke.attempt_supervision import (
     ProviderErrorObserved,
     SilenceObserved,
     StartupFailureObserved,
+    TeardownFn,
     TerminalStartupErrorObserved,
 )
 from ralph.agents.invoke.termination_recorder import TerminationRecorder
@@ -25,8 +27,10 @@ from ralph.process.manager import (
     ProcessTerminationIssuer,
     SpawnOptions,
 )
-from ralph.process.teardown import teardown_subtree
 from ralph.recovery.attempt_facts import TerminationIssuer
+
+if TYPE_CHECKING:
+    from ralph.process.teardown import ProcessTeardown
 
 _QUOTA_DETAIL = "RESOURCE_EXHAUSTED (code 429)\n"
 
@@ -42,15 +46,11 @@ def _sleeping_child(manager: ProcessManager) -> ManagedProcess:
     return _spawn(manager, "import time; time.sleep(30)")
 
 
-def _noop_teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
-    return None
-
-
 def test_provider_error_observation_kills_with_quota_detector() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL), teardown=teardown_subtree)
+    outcome = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL))
     assert outcome is not None
     assert outcome.issuer is TerminationIssuer.QUOTA_DETECTOR
     assert manager.list_termination_outcomes()[child.pid] == [
@@ -80,7 +80,7 @@ def test_silence_observation_kills_with_fire_issuer(
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(SilenceObserved(fire_reason), teardown=teardown_subtree)
+    outcome = supervisor.act(SilenceObserved(fire_reason))
     assert outcome is not None
     assert manager.termination_issuer(child.pid) == process_issuer.value
     record = supervisor.recorder.termination()
@@ -94,9 +94,7 @@ def test_broken_agent_timeout_observation_kills_with_timer_issuer() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(
-        BrokenAgentTimeoutObserved(has_output=False), teardown=teardown_subtree
-    )
+    outcome = supervisor.act(BrokenAgentTimeoutObserved(has_output=False))
     assert outcome is not None
     assert outcome.issuer is TerminationIssuer.SUPERVISOR_IDLE
     assert (
@@ -112,7 +110,7 @@ def test_completion_observation_kills_with_invoke_teardown() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(CompletionObserved(), teardown=teardown_subtree)
+    outcome = supervisor.act(CompletionObserved())
     assert outcome is not None
     assert outcome.issuer is TerminationIssuer.AGENT_EXIT
     assert manager.termination_issuer(child.pid) == ProcessTerminationIssuer.INVOKE_TEARDOWN.value
@@ -126,7 +124,7 @@ def test_interactive_completion_exited_child_is_not_signalled() -> None:
     manager = ProcessManager()
     child = _spawn(manager, "import time; time.sleep(0.05)")
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(InteractiveCompletionObserved(grace_s=30.0), teardown=teardown_subtree)
+    outcome = supervisor.act(InteractiveCompletionObserved(grace_s=30.0))
     assert outcome is not None
     assert outcome.returncode == 0
     assert outcome.issuer is None
@@ -144,7 +142,7 @@ def test_interactive_completion_live_child_is_signalled() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(InteractiveCompletionObserved(grace_s=0.2), teardown=teardown_subtree)
+    outcome = supervisor.act(InteractiveCompletionObserved(grace_s=0.2))
     assert outcome is not None
     assert outcome.issuer is None
     assert manager.list_termination_outcomes()[child.pid] == [
@@ -161,9 +159,7 @@ def test_terminal_startup_error_observation_reaps_without_attempt_issuer() -> No
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(
-        TerminalStartupErrorObserved("menu never appeared"), teardown=teardown_subtree
-    )
+    outcome = supervisor.act(TerminalStartupErrorObserved("menu never appeared"))
     assert outcome is not None
     assert outcome.issuer is None
     assert manager.list_termination_outcomes()[child.pid] == [
@@ -177,9 +173,7 @@ def test_startup_failure_observation_reaps_and_appends_nothing() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(
-        StartupFailureObserved("Failed to capture stdout"), teardown=teardown_subtree
-    )
+    outcome = supervisor.act(StartupFailureObserved("Failed to capture stdout"))
     assert outcome is not None
     assert outcome.issuer is None
     assert manager.termination_issuer(child.pid) == ProcessTerminationIssuer.INVOKE_TEARDOWN.value
@@ -194,7 +188,7 @@ def test_operator_interrupt_observation_kills_with_operator_issuer() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(OperatorInterruptObserved(), teardown=teardown_subtree)
+    outcome = supervisor.act(OperatorInterruptObserved())
     assert outcome is not None
     assert outcome.issuer is None
     assert manager.list_termination_outcomes()[child.pid] == [
@@ -208,9 +202,7 @@ def test_post_exit_hang_observation_kills_with_watchdog_issuer() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(
-        PostExitHangObserved(PostExitVerdict.FIRE_DESCENDANT_HANG), teardown=teardown_subtree
-    )
+    outcome = supervisor.act(PostExitHangObserved(PostExitVerdict.FIRE_DESCENDANT_HANG))
     assert outcome is not None
     assert outcome.issuer is TerminationIssuer.POST_EXIT_WATCHDOG
     assert (
@@ -229,13 +221,11 @@ def test_first_acting_observation_wins_and_later_acts_are_noops() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    first = supervisor.act(CompletionObserved(), teardown=teardown_subtree)
+    first = supervisor.act(CompletionObserved())
     assert first is not None
     facts_after_first = supervisor.recorder.termination()
-    second = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL), teardown=teardown_subtree)
-    third = supervisor.act(
-        PostExitHangObserved(PostExitVerdict.FIRE_DESCENDANT_HANG), teardown=teardown_subtree
-    )
+    second = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL))
+    third = supervisor.act(PostExitHangObserved(PostExitVerdict.FIRE_DESCENDANT_HANG))
     assert second is None
     assert third is None
     assert supervisor.recorder.resolved_issuer() is TerminationIssuer.AGENT_EXIT
@@ -256,7 +246,6 @@ def test_non_evidence_provider_error_records_nothing_and_leaves_child_alive() ->
         supervisor = AttemptSupervisor(child)
         outcome = supervisor.act(
             ProviderErrorObserved('{"type":"message","role":"assistant","content":"hi"}'),
-            teardown=teardown_subtree,
         )
         assert outcome is None
         assert supervisor.observations == ()
@@ -290,7 +279,7 @@ def test_for_recorder_with_none_builds_a_fresh_recorder() -> None:
 def test_winner_is_none_until_an_observation_acts() -> None:
     supervisor = AttemptSupervisor(object())
     assert supervisor.winner is None
-    supervisor.act(CompletionObserved(), teardown=_noop_teardown)
+    supervisor.act(CompletionObserved())
     winner = supervisor.winner
     assert winner is not None
     assert winner.acted is True
@@ -311,26 +300,34 @@ def _dead_handle(terminate_error: type[BaseException]) -> SimpleNamespace:
     )
 
 
+def _process_teardown_wrapping(fn: TeardownFn) -> ProcessTeardown:
+    return cast("ProcessTeardown", SimpleNamespace(teardown_subtree=fn))
+
+
 def test_operator_interrupt_on_a_dead_handle_raises_nothing() -> None:
-    supervisor = AttemptSupervisor(_dead_handle(ProcessLookupError))
     calls: list[tuple[int, ProcessTerminationIssuer]] = []
 
     def _teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         calls.append((pid, issuer))
 
-    outcome = supervisor.act(OperatorInterruptObserved(), teardown=_teardown)
+    supervisor = AttemptSupervisor(
+        _dead_handle(ProcessLookupError), process_teardown=_process_teardown_wrapping(_teardown)
+    )
+    outcome = supervisor.act(OperatorInterruptObserved())
     assert outcome is not None
     assert calls == [(1234567, ProcessTerminationIssuer.OPERATOR)]
 
 
 def test_terminal_startup_error_on_a_dead_handle_raises_nothing() -> None:
-    supervisor = AttemptSupervisor(_dead_handle(ProcessLookupError))
     calls: list[tuple[int, ProcessTerminationIssuer]] = []
 
     def _teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         calls.append((pid, issuer))
 
-    outcome = supervisor.act(TerminalStartupErrorObserved("pty closed"), teardown=_teardown)
+    supervisor = AttemptSupervisor(
+        _dead_handle(ProcessLookupError), process_teardown=_process_teardown_wrapping(_teardown)
+    )
+    outcome = supervisor.act(TerminalStartupErrorObserved("pty closed"))
     assert outcome is not None
     assert calls == [(1234567, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
 
@@ -342,16 +339,18 @@ def test_terminal_startup_error_teardown_errors_propagate() -> None:
         record_terminal_reason=lambda reason: None,
         terminate=lambda **kwargs: None,
     )
-    supervisor = AttemptSupervisor(handle)
 
     def _raising_teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         raise RuntimeError("reap failed")
 
+    supervisor = AttemptSupervisor(
+        handle, process_teardown=_process_teardown_wrapping(_raising_teardown)
+    )
     with pytest.raises(RuntimeError, match="reap failed"):
-        supervisor.act(TerminalStartupErrorObserved("pty closed"), teardown=_raising_teardown)
+        supervisor.act(TerminalStartupErrorObserved("pty closed"))
 
 
 def test_provider_error_propagates_signal_errors() -> None:
     supervisor = AttemptSupervisor(_dead_handle(OSError))
     with pytest.raises(OSError, match="process is gone"):
-        supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL), teardown=_noop_teardown)
+        supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL))

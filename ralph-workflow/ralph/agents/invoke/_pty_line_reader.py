@@ -81,6 +81,11 @@ from ralph.agents.invoke._pty_transcript import (
     transcript_lines_from_events,
 )
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
+from ralph.agents.invoke._quota_line_channel import (
+    quota_evidence_channel,
+    reader_parser_key,
+    supervisor_process_teardown,
+)
 from ralph.agents.invoke._session import (
     TURN_BOUNDARY_MARKER,
     extract_visible_tui_transport_session_id,
@@ -122,9 +127,6 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
-from ralph.process.teardown import (
-    teardown_subtree,
-)
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.runtime_events import current_runtime_event
 
@@ -146,8 +148,10 @@ if TYPE_CHECKING:
         InteractiveTranscriptEvent,
     )
     from ralph.agents.timeout_clock import Clock
+    from ralph.config.models import AgentConfig
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import ProcessMonitor
+    from ralph.process.teardown import ProcessTeardown
 
 from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 
@@ -242,6 +246,10 @@ class PtyLineReader:
         _extras = extras or PtyExtras()
         self._handle = handle
         self._supervisor = supervisor
+        self._process_teardown = cast(
+            "ProcessTeardown | None", getattr(ctx, "process_teardown", None)
+        )
+        self._parser_key: str | None = reader_parser_key(ctx.config)
         self._agent_name = agent_name
         self._started_at_wall_clock = time.time()
         self._config = ctx.config
@@ -258,18 +266,7 @@ class PtyLineReader:
         self._strategy: BaseExecutionStrategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
         self._waiting_listener = ctx.waiting_listener
-        self._pre_output_listener = cast(
-            "Callable[[], None] | None",
-            getattr(ctx, "pre_output_listener", None),
-        )
-        self._connectivity_state_provider = cast(
-            "Callable[[], str | None] | None",
-            getattr(ctx, "connectivity_state_provider", None),
-        )
-        self._is_waiting_state_provider = cast(
-            "Callable[[], bool] | None",
-            getattr(ctx, "is_waiting_state_provider", None),
-        )
+        self._bind_optional_ctx_hooks(ctx)
         self._configure_runtime_hooks(ctx, _extras)
         self._completion_run_id = completion_run_id_from_extra_env(
             cast("dict[str, str] | None", getattr(ctx, "extra_env", None))
@@ -319,6 +316,20 @@ class PtyLineReader:
             self._transcript_session_ids.append(self._expected_session_id)
         self._subagent_tails: ClaudeSubagentTranscriptTails | None = None
 
+    def _bind_optional_ctx_hooks(self, ctx: AgentRunCtx) -> None:
+        self._pre_output_listener = cast(
+            "Callable[[], None] | None",
+            getattr(ctx, "pre_output_listener", None),
+        )
+        self._connectivity_state_provider = cast(
+            "Callable[[], str | None] | None",
+            getattr(ctx, "connectivity_state_provider", None),
+        )
+        self._is_waiting_state_provider = cast(
+            "Callable[[], bool] | None",
+            getattr(ctx, "is_waiting_state_provider", None),
+        )
+
     @staticmethod
     def _resolve_agy_cli_log(
         agy_cli_log: tuple[Path, int] | None,
@@ -351,7 +362,10 @@ class PtyLineReader:
     def _attempt_supervisor(self) -> AttemptSupervisor:
         supervisor = cast("object", getattr(self, "_supervisor", None))
         if not isinstance(supervisor, AttemptSupervisor):
-            supervisor = AttemptSupervisor(self._handle)
+            supervisor = supervisor_process_teardown(
+                self._handle,
+                cast("ProcessTeardown | None", getattr(self, "_process_teardown", None)),
+            )
             self._supervisor = supervisor
         return supervisor
 
@@ -851,9 +865,7 @@ class PtyLineReader:
             else _DEFAULT_INTERACTIVE_EXIT_GRACE_SECONDS
         )
         grace = min(grace, _MAX_INTERACTIVE_EXIT_GRACE_SECONDS)
-        self._attempt_supervisor().act(
-            InteractiveCompletionObserved(grace), teardown=teardown_subtree
-        )
+        self._attempt_supervisor().act(InteractiveCompletionObserved(grace))
 
     def _completion_evidence_enabled(self) -> bool:
         return (
@@ -896,9 +908,7 @@ class PtyLineReader:
                 terminal = self._durable_completion_is_terminal()
         if not terminal:
             return False
-        self._attempt_supervisor().cleanup(
-            ProcessTerminationIssuer.INVOKE_TEARDOWN, teardown=teardown_subtree
-        )
+        self._attempt_supervisor().cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
         return True
 
     def _classify_quiet(self) -> AgentExecutionState:
@@ -955,9 +965,7 @@ class PtyLineReader:
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
-        outcome = self._attempt_supervisor().act(
-            SilenceObserved(fire_reason), teardown=teardown_subtree
-        )
+        outcome = self._attempt_supervisor().act(SilenceObserved(fire_reason))
         if outcome is None:
             return None
         with self._lines_lock:
@@ -1140,7 +1148,7 @@ class PtyLineReader:
 
     def _on_interrupt(self) -> None:
         self._monitor_stop.set()
-        self._attempt_supervisor().act(OperatorInterruptObserved(), teardown=teardown_subtree)
+        self._attempt_supervisor().act(OperatorInterruptObserved())
 
     def _cleanup(
         self,
@@ -1172,9 +1180,7 @@ class PtyLineReader:
         self._terminate_for_provider_quota(detail)
 
     def _terminate_for_provider_quota(self, detail: str) -> None:
-        outcome = self._attempt_supervisor().act(
-            ProviderErrorObserved(detail), teardown=teardown_subtree
-        )
+        outcome = self._attempt_supervisor().act(ProviderErrorObserved(detail))
         if outcome is None:
             return
         returncode = outcome.returncode
@@ -1217,8 +1223,7 @@ class PtyLineReader:
         if terminal_startup_error is None:
             return
         outcome = self._attempt_supervisor().act(
-            TerminalStartupErrorObserved(terminal_startup_error),
-            teardown=teardown_subtree,
+            TerminalStartupErrorObserved(terminal_startup_error)
         )
         if outcome is None:
             return
@@ -1230,7 +1235,14 @@ class PtyLineReader:
         )
 
     def _handle_queued_line(self, queued_line: str, watchdog: IdleWatchdog) -> Iterator[str]:
-        evidence = provider_quota_line_evidence(queued_line)
+        evidence = provider_quota_line_evidence(
+            queued_line,
+            channel=quota_evidence_channel(
+                cast("AgentConfig", getattr(self, "_config", None)),
+                queued_line,
+                parser_key=cast("str | None", getattr(self, "_parser_key", None)),
+            ),
+        )
         if evidence is not None:
             if self._raw_overflow is not None:
                 self._raw_overflow.append(queued_line)

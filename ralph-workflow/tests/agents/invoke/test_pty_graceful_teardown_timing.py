@@ -10,8 +10,10 @@ from ralph.agents.invoke._pty_line_reader import (
     _MAX_INTERACTIVE_EXIT_GRACE_SECONDS,
     PtyLineReader,
 )
+from ralph.agents.invoke.attempt_supervision import attempt_supervisor
 
 _MODULE = sys.modules[PtyLineReader.__module__]
+_SUPERVISOR_MODULE = sys.modules[attempt_supervisor.__name__]
 
 
 class _Handle:
@@ -70,7 +72,7 @@ def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: Any) -> 
         lambda *_args, **_kwargs: calls.append("write:/exit"),
     )
     monkeypatch.setattr(
-        _MODULE,
+        _SUPERVISOR_MODULE,
         "teardown_subtree",
         lambda pid, *, issuer: calls.append(f"teardown:{pid}:{issuer}"),
     )
@@ -98,7 +100,7 @@ def test_natural_exit_uses_default_grace_without_termination(monkeypatch: Any) -
         lambda *_args, **_kwargs: calls.append("write:/exit"),
     )
     monkeypatch.setattr(
-        _MODULE,
+        _SUPERVISOR_MODULE,
         "teardown_subtree",
         lambda pid, *, issuer: calls.append(f"teardown:{pid}:{issuer}"),
     )

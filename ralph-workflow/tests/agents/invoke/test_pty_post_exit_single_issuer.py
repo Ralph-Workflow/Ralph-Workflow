@@ -68,6 +68,21 @@ def _fake_post_exit_watchdog(policy: object, clock: object) -> object:
     )
 
 
+class _RecordingProcessTeardown:
+    def __init__(self, calls: list[tuple[int, ProcessTerminationIssuer]]) -> None:
+        self._calls = calls
+
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del owner_label
+        self._calls.append((host_pid, issuer))
+
+
 def test_pty_post_exit_hang_records_watchdog_issuer_exactly_once(
     monkeypatch: pytest_mod.MonkeyPatch,
     tmp_path: Path,
@@ -86,7 +101,10 @@ def test_pty_post_exit_hang_records_watchdog_issuer_exactly_once(
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_runner.PostExitWatchdog", _fake_post_exit_watchdog
     )
-    monkeypatch.setattr("ralph.agents.invoke._pty_runner.teardown_subtree", _record_teardown)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.attempt_supervision.attempt_supervisor.teardown_subtree",
+        _record_teardown,
+    )
 
     ctx = SimpleNamespace(
         clock=FakeClock(),
@@ -132,10 +150,15 @@ def test_pty_post_exit_hang_after_prior_winner_publishes_nothing(
     def _record_teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         teardown_calls.append((pid, issuer))
 
-    def _supervisor_with_prior_winner(handle_obj: object) -> AttemptSupervisor:
-        supervisor = AttemptSupervisor(handle_obj)
+    recorder = _RecordingProcessTeardown(teardown_calls)
+
+    def _supervisor_with_prior_winner(
+        handle_obj: object, *, process_teardown: object = None
+    ) -> AttemptSupervisor:
+        del process_teardown
+        supervisor = AttemptSupervisor(handle_obj, process_teardown=recorder)
         supervisors.append(supervisor)
-        outcome = supervisor.act(CompletionObserved(), teardown=_record_teardown)
+        outcome = supervisor.act(CompletionObserved())
         assert outcome is not None
         return supervisor
 
@@ -147,7 +170,6 @@ def test_pty_post_exit_hang_after_prior_winner_publishes_nothing(
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_runner.PostExitWatchdog", _fake_post_exit_watchdog
     )
-    monkeypatch.setattr("ralph.agents.invoke._pty_runner.teardown_subtree", _record_teardown)
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_runner.AttemptSupervisor", _supervisor_with_prior_winner
     )

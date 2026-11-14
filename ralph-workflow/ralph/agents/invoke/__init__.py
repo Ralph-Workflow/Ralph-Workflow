@@ -724,8 +724,7 @@ def wait_for_descendants_then_recheck(
         opts_or_parsed_output,
         parsed_output,
         clock=clock,
-        teardown=teardown,
-        supervisor=AttemptSupervisor.for_recorder(None, handle),
+        supervisor=AttemptSupervisor.for_recorder(None, handle, process_teardown=teardown),
     )
 
 

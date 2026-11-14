@@ -14,15 +14,17 @@ from ralph.agents.invoke.attempt_supervision._wait_fn import _WaitFn
 from ralph.agents.invoke.attempt_supervision.observation_record import ObservationRecord
 from ralph.agents.invoke.attempt_supervision.post_exit_hang_observed import PostExitHangObserved
 from ralph.agents.invoke.attempt_supervision.provider_error_observed import ProviderErrorObserved
+from ralph.agents.invoke.attempt_supervision.teardown_fn import TeardownFn, resolve_teardown
 from ralph.agents.invoke.attempt_supervision.termination_outcome import TerminationOutcome
 from ralph.agents.invoke.termination_recorder import TerminationRecorder, observed_returncode
+from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.agents.invoke.attempt_supervision.attempt_observation import AttemptObservation
-    from ralph.agents.invoke.attempt_supervision.teardown_fn import TeardownFn
     from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
+    from ralph.process.teardown import ProcessTeardown
     from ralph.recovery.attempt_facts import TerminationIssuer
 
 _OWNERS_BY_RECORDER_ID: weakref.WeakValueDictionary[int, AttemptSupervisor] = (
@@ -62,9 +64,16 @@ def _recorded_returncode(handle: object) -> int | None:
 
 
 class AttemptSupervisor:
-    def __init__(self, handle: object, *, recorder: TerminationRecorder | None = None) -> None:
+    def __init__(
+        self,
+        handle: object,
+        *,
+        recorder: TerminationRecorder | None = None,
+        process_teardown: ProcessTeardown | None = None,
+    ) -> None:
         self._handle = handle
         self._recorder = recorder if recorder is not None else TerminationRecorder()
+        self._teardown: TeardownFn = resolve_teardown(process_teardown, teardown_subtree)
         self._lock = threading.Lock()
         self._winner: ObservationRecord | None = None
         self._observations: deque[ObservationRecord] = deque(maxlen=128)
@@ -72,13 +81,17 @@ class AttemptSupervisor:
 
     @classmethod
     def for_recorder(
-        cls, recorder: TerminationRecorder | None, handle: object
+        cls,
+        recorder: TerminationRecorder | None,
+        handle: object,
+        *,
+        process_teardown: ProcessTeardown | None = None,
     ) -> AttemptSupervisor:
         if recorder is not None:
             owner = _OWNERS_BY_RECORDER_ID.get(id(recorder))
             if owner is not None and owner.recorder is recorder:
                 return owner
-        return cls(handle, recorder=recorder)
+        return cls(handle, recorder=recorder, process_teardown=process_teardown)
 
     @property
     def recorder(self) -> TerminationRecorder:
@@ -92,9 +105,7 @@ class AttemptSupervisor:
     def observations(self) -> tuple[ObservationRecord, ...]:
         return tuple(self._observations)
 
-    def act(
-        self, observation: AttemptObservation, *, teardown: TeardownFn
-    ) -> TerminationOutcome | None:
+    def act(self, observation: AttemptObservation) -> TerminationOutcome | None:
         with self._lock:
             if self._claim_is_a_noop(observation):
                 return None
@@ -108,7 +119,7 @@ class AttemptSupervisor:
             process_issuer = _issuer_mapping.process_issuer_for(observation)
             self._close_if_declared(observation)
             signal_result = self._signal_if_alive(observation, process_issuer, reason)
-            self._teardown_if_pid(observation, teardown, process_issuer)
+            self._teardown_if_pid(observation, self._teardown, process_issuer)
             if signal_result is _RETURNCODE_NOT_POLLED:
                 returncode: int | None = observed_returncode(self._handle)
             elif signal_result is _POLLED_WITHOUT_RETURNCODE:
@@ -124,7 +135,6 @@ class AttemptSupervisor:
         self,
         issuer: ProcessTerminationIssuer,
         *,
-        teardown: TeardownFn,
         terminate: bool = False,
         reason: str | None = None,
         suppress: bool = True,
@@ -142,9 +152,9 @@ class AttemptSupervisor:
             if pid is not None:
                 if suppress:
                     with contextlib.suppress(Exception):
-                        teardown(pid, issuer=issuer)
+                        self._teardown(pid, issuer=issuer)
                 else:
-                    teardown(pid, issuer=issuer)
+                    self._teardown(pid, issuer=issuer)
 
     def _claim_is_a_noop(self, observation: AttemptObservation) -> bool:
         if isinstance(observation, ProviderErrorObserved) and not is_quota_kill_evidence(

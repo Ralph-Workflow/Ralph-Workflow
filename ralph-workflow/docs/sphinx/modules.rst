@@ -2516,6 +2516,13 @@ ralph.agents.parsers.kimi
    :members:
    :show-inheritance:
 
+ralph.agents.parsers.line_channel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.line_channel
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers.nanocoder
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

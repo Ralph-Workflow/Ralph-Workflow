@@ -65,7 +65,7 @@ def _no_teardown(
         calls.append(pid)
 
     monkeypatch.setattr(
-        "ralph.agents.invoke._pty_line_reader.teardown_subtree",
+        "ralph.agents.invoke.attempt_supervision.attempt_supervisor.teardown_subtree",
         _track,
     )
 

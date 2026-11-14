@@ -1,48 +1,54 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-import ralph.agents.invoke._pty_line_reader as _pty_module
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import teardown_subtree
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
-if TYPE_CHECKING:
-    import pytest
+class _TrackTeardown:
+    def __init__(self, teardown_calls: list[int]) -> None:
+        self._teardown_calls = teardown_calls
+
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del issuer, owner_label
+        self._teardown_calls.append(host_pid)
 
 
-def _make_reader_for_interrupt() -> PtyLineReader:
+class _BoomTeardown:
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del host_pid, issuer, owner_label
+        raise OSError("teardown boom")
+
+
+def _make_reader_for_interrupt(teardown_calls: list[int] | None = None) -> PtyLineReader:
     reader = object.__new__(PtyLineReader)
     reader._handle = MagicMock()
     reader._handle.pid = 4242
     reader._handle.terminate = MagicMock()
     reader._handle.close = MagicMock()
     reader._monitor_stop = threading.Event()
+    reader._process_teardown = None if teardown_calls is None else _TrackTeardown(teardown_calls)
     return reader
 
 
-def _track_teardown(teardown_calls: list[int]) -> Callable[..., None]:
-    def _record(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
-        del issuer
-        teardown_calls.append(pid)
-
-    return _record
-
-
-def test_on_interrupt_calls_close_terminate_and_teardown_subtree(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_on_interrupt_calls_close_terminate_and_teardown_subtree() -> None:
     teardown_calls: list[int] = []
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_line_reader.teardown_subtree",
-        _track_teardown(teardown_calls),
-    )
-    reader = _make_reader_for_interrupt()
+    reader = _make_reader_for_interrupt(teardown_calls)
     handle = reader._handle
 
     reader._on_interrupt()
@@ -59,14 +65,9 @@ def test_on_interrupt_calls_close_terminate_and_teardown_subtree(
     assert reader._monitor_stop.is_set(), "_on_interrupt must signal _monitor_stop"
 
 
-def test_on_interrupt_swallows_close_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_on_interrupt_swallows_close_error() -> None:
     teardown_calls: list[int] = []
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_line_reader.teardown_subtree",
-        _track_teardown(teardown_calls),
-    )
-
-    reader = _make_reader_for_interrupt()
+    reader = _make_reader_for_interrupt(teardown_calls)
     handle = reader._handle
     handle.close.side_effect = OSError("close boom")
 
@@ -78,14 +79,9 @@ def test_on_interrupt_swallows_close_error(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
 
-def test_on_interrupt_swallows_terminate_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_on_interrupt_swallows_terminate_error() -> None:
     teardown_calls: list[int] = []
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_line_reader.teardown_subtree",
-        _track_teardown(teardown_calls),
-    )
-
-    reader = _make_reader_for_interrupt()
+    reader = _make_reader_for_interrupt(teardown_calls)
     handle = reader._handle
     handle.terminate.side_effect = OSError("terminate boom")
 
@@ -99,25 +95,14 @@ def test_on_interrupt_swallows_terminate_error(monkeypatch: pytest.MonkeyPatch) 
 
 def test_on_interrupt_swallows_teardown_subtree_error() -> None:
     reader = _make_reader_for_interrupt()
+    reader._process_teardown = _BoomTeardown()
 
-    original = _pty_module.teardown_subtree
-    _pty_module.teardown_subtree = MagicMock(side_effect=OSError("teardown boom"))
-    try:
-        reader._on_interrupt()
-    finally:
-        _pty_module.teardown_subtree = original
+    reader._on_interrupt()
 
 
-def test_on_interrupt_skips_teardown_when_pid_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_on_interrupt_skips_teardown_when_pid_missing() -> None:
     teardown_calls: list[int] = []
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_line_reader.teardown_subtree",
-        _track_teardown(teardown_calls),
-    )
-
-    reader = _make_reader_for_interrupt()
+    reader = _make_reader_for_interrupt(teardown_calls)
     reader._handle.pid = None
 
     reader._on_interrupt()

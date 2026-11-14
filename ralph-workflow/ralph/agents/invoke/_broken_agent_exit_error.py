@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
+from ralph.recovery.typed_signal import TypedSignal
 
 _BrokenAgentReason = Literal["no_output", "prompt_echo", "no_llm_activity"]
 _VALID_REASONS = frozenset({"no_output", "prompt_echo", "no_llm_activity"})
@@ -36,6 +37,15 @@ class BrokenAgentExitError(AgentInvocationError):
             returncode,
             stderr
             or f"agent appears broken: {context}; check credentials or provider availability",
+        )
+
+    typed_signal_provider_originated: bool = False
+
+    @property
+    def typed_signal(self) -> TypedSignal:
+        return TypedSignal(
+            name=type(self).__name__,
+            provider_originated=self.reason == "prompt_echo",
         )
 
 

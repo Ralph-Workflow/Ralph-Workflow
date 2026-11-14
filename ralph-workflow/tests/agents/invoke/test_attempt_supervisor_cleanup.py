@@ -11,6 +11,7 @@ from ralph.agents.invoke.attempt_supervision import (
     AttemptSupervisor,
     ProviderErrorObserved,
     SilenceObserved,
+    TeardownFn,
     resolve_teardown,
 )
 from ralph.process.manager import (
@@ -36,7 +37,7 @@ def test_cleanup_reaps_the_tree_without_recording_facts() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, teardown=teardown_subtree)
+    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
     assert child.wait(timeout=15) is not None
     record = supervisor.recorder.termination()
     assert record.log == ()
@@ -51,7 +52,6 @@ def test_cleanup_with_terminate_signals_with_the_given_issuer() -> None:
     supervisor = AttemptSupervisor(child)
     supervisor.cleanup(
         ProcessTerminationIssuer.OPERATOR,
-        teardown=teardown_subtree,
         terminate=True,
         reason="operator_cancellation",
     )
@@ -65,14 +65,11 @@ def test_cleanup_after_an_act_still_reaps_and_keeps_the_issuer() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(
-        SilenceObserved(WatchdogFireReason.NO_OUTPUT_DEADLINE), teardown=teardown_subtree
-    )
+    outcome = supervisor.act(SilenceObserved(WatchdogFireReason.NO_OUTPUT_DEADLINE))
     assert outcome is not None
     facts_after_act = supervisor.recorder.termination()
     supervisor.cleanup(
         ProcessTerminationIssuer.INVOKE_TEARDOWN,
-        teardown=teardown_subtree,
         terminate=True,
     )
     assert child.wait(timeout=15) is not None
@@ -89,18 +86,14 @@ def test_cleanup_suppresses_teardown_errors_only_when_asked() -> None:
         record_terminal_reason=lambda reason: None,
         terminate=lambda **kwargs: None,
     )
-    supervisor = AttemptSupervisor(handle)
 
     def _raising_teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         raise ProcessLookupError("tree already gone")
 
-    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, teardown=_raising_teardown)
+    supervisor = AttemptSupervisor(handle, process_teardown=_raising_subtree(_raising_teardown))
+    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
     with pytest.raises(ProcessLookupError, match="tree already gone"):
-        supervisor.cleanup(
-            ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=_raising_teardown,
-            suppress=False,
-        )
+        supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, suppress=False)
 
 
 def test_cleanup_with_terminate_suppresses_signal_errors() -> None:
@@ -113,17 +106,13 @@ def test_cleanup_with_terminate_suppresses_signal_errors() -> None:
         record_terminal_reason=lambda reason: None,
         terminate=_raising_terminate,
     )
-    supervisor = AttemptSupervisor(handle)
     calls: list[tuple[int, ProcessTerminationIssuer]] = []
 
     def _teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         calls.append((pid, issuer))
 
-    supervisor.cleanup(
-        ProcessTerminationIssuer.INVOKE_TEARDOWN,
-        teardown=_teardown,
-        terminate=True,
-    )
+    supervisor = AttemptSupervisor(handle, process_teardown=_raising_subtree(_teardown))
+    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, terminate=True)
     assert calls == [(9876543, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
 
 
@@ -131,14 +120,15 @@ def test_cleanup_runs_even_when_an_act_already_won() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     supervisor = AttemptSupervisor(child)
-    outcome = supervisor.act(
-        ProviderErrorObserved(_QUOTA_DETAIL),
-        teardown=teardown_subtree,
-    )
+    outcome = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL))
     assert outcome is not None
-    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, teardown=teardown_subtree)
+    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
     assert child.wait(timeout=15) is not None
     assert len(supervisor.observations) == 1
+
+
+def _raising_subtree(fn: TeardownFn) -> ProcessTeardown:
+    return cast("ProcessTeardown", SimpleNamespace(teardown_subtree=fn))
 
 
 def test_resolve_teardown_uses_the_injected_process_teardown() -> None:
@@ -149,12 +139,9 @@ def test_resolve_teardown_uses_the_injected_process_teardown() -> None:
         "ProcessTeardown",
         SimpleNamespace(teardown_subtree=lambda pid, *, issuer: calls.append((pid, issuer))),
     )
-    supervisor = AttemptSupervisor(child)
+    supervisor = AttemptSupervisor(child, process_teardown=injected)
     try:
-        supervisor.cleanup(
-            ProcessTerminationIssuer.INVOKE_TEARDOWN,
-            teardown=resolve_teardown(injected, teardown_subtree),
-        )
+        supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
         assert calls == [(child.pid, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
     finally:
         child.kill(issuer=ProcessTerminationIssuer.OPERATOR)

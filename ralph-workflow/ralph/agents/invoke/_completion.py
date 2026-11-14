@@ -29,7 +29,6 @@ from ralph.agents.invoke._completion_options import CompletionCheckOptions, _com
 from ralph.agents.invoke._completion_supervision import (
     _wait_for_completion_grace,
     _wait_for_descendants_then_recheck,
-    completion_teardown,
 )
 from ralph.agents.invoke._completion_termination import (
     TerminationRecorder,
@@ -91,7 +90,9 @@ def check_process_result(
     process_teardown: ProcessTeardown | None = None,
     termination_recorder: TerminationRecorder | None = None,
 ) -> None:
-    supervisor = AttemptSupervisor.for_recorder(termination_recorder, handle)
+    supervisor = AttemptSupervisor.for_recorder(
+        termination_recorder, handle, process_teardown=process_teardown
+    )
     try:
         _check_process_result(
             handle,
@@ -99,7 +100,6 @@ def check_process_result(
             parsed_output,
             check_options,
             _clock=_clock,
-            process_teardown=process_teardown,
             supervisor=supervisor,
         )
     except BaseException as exc:
@@ -114,7 +114,6 @@ def _check_process_result(
     check_options: CompletionCheckOptions | None = None,
     *,
     _clock: Clock | None = None,
-    process_teardown: ProcessTeardown | None = None,
     supervisor: AttemptSupervisor,
 ) -> None:
     if _has_interactive_completion_bypass(handle, parsed_output, check_options):
@@ -134,7 +133,6 @@ def _check_process_result(
             returncode,
             stderr_text,
             stderr_available,
-            process_teardown,
             supervisor=supervisor,
         )
         return
@@ -158,7 +156,6 @@ def _check_process_result(
             handle,
             agent_name,
             bounded_output,
-            process_teardown,
             supervisor=supervisor,
         )
         return
@@ -201,7 +198,6 @@ def _check_process_result(
             bounded_output,
             opts,
             exit_state,
-            process_teardown,
             supervisor=supervisor,
         ):
             return
@@ -216,7 +212,6 @@ def _check_process_result(
                 opts,
                 bounded_output,
                 clock=_clock,
-                teardown=process_teardown,
                 supervisor=supervisor,
             )
 
@@ -230,7 +225,6 @@ def _check_process_result(
                 opts,
                 bounded_output,
                 clock=_clock,
-                teardown=process_teardown,
                 supervisor=supervisor,
             )
             descendants_still_active = (
@@ -249,7 +243,6 @@ def _check_process_result(
                 bounded_output,
                 opts,
                 exit_state,
-                process_teardown,
                 supervisor=supervisor,
                 waited_on_child=descendants_still_active,
             ):
@@ -260,7 +253,6 @@ def _check_process_result(
                 bounded_output,
                 opts,
                 stderr_text=stderr_text,
-                teardown=process_teardown,
                 supervisor=supervisor,
             )
             session_id = _resolved_session_id(opts, bounded_output)
@@ -268,7 +260,6 @@ def _check_process_result(
                 handle,
                 agent_name,
                 bounded_output,
-                process_teardown,
                 supervisor=supervisor,
             )
             raise OpenCodeResumableExitError(
@@ -319,14 +310,10 @@ def _check_process_result(
                 bounded_output,
                 opts,
                 exit_state,
-                process_teardown,
                 supervisor=supervisor,
             ):
                 return
-            supervisor.cleanup(
-                ProcessTerminationIssuer.INVOKE_TEARDOWN,
-                teardown=completion_teardown(process_teardown),
-            )
+            supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
             diagnostic_factory = lookup_empty_output_diagnostic_factory(agent_name)
             diagnostic = (
                 diagnostic_factory(bounded_output, opts.agy_cli_log_path)

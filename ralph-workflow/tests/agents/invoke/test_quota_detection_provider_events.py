@@ -27,6 +27,8 @@ from ralph.agents.invoke.attempt_supervision import (
     AttemptSupervisor,
     CompletionObserved,
 )
+from ralph.agents.parsers.content_channel import ContentChannel
+from ralph.agents.parsers.line_channel import line_channel
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
@@ -423,8 +425,11 @@ def test_json_provider_error_event_on_stderr_terminates_the_session(tmp_path: Pa
     assert handle.terminate_calls == [0.5]
 
 
-def _noop_teardown(pid: int, *, issuer: object) -> None:
-    del pid, issuer
+class _NoopTeardown:
+    def teardown_subtree(
+        self, host_pid: int, *, issuer: ProcessTerminationIssuer, owner_label: str = "invoke"
+    ) -> None:
+        del host_pid, issuer, owner_label
 
 
 class _PtyHandle:
@@ -514,10 +519,10 @@ def test_pty_tool_and_narrative_payloads_do_not_terminate_and_the_session_contin
 def test_pty_tool_result_payload_after_completion_never_terminates(tmp_path: Path) -> None:
     master_fd, slave_fd = pty.openpty()
     handle = _PtyHandle(master_fd)
-    supervisor = AttemptSupervisor(handle)
+    supervisor = AttemptSupervisor(handle, process_teardown=_NoopTeardown())
     reader = _pty_reader(tmp_path, handle, supervisor)
     try:
-        outcome = supervisor.act(CompletionObserved(), teardown=_noop_teardown)
+        outcome = supervisor.act(CompletionObserved())
         assert outcome is not None
         facts_before = supervisor.recorder.termination()
         terminate_before = list(handle.terminate_issuers)
@@ -531,3 +536,64 @@ def test_pty_tool_result_payload_after_completion_never_terminates(tmp_path: Pat
     finally:
         os.close(slave_fd)
         os.close(master_fd)
+
+
+_NON_PROVIDER_CHANNELS = (
+    ContentChannel.TOOL_CALL,
+    ContentChannel.TOOL_RESULT,
+    ContentChannel.REASONING,
+    ContentChannel.SUBAGENT,
+    ContentChannel.USER,
+)
+
+
+@pytest.mark.parametrize("line", _NON_PROVIDER_PAYLOAD_LINES)
+@pytest.mark.parametrize("channel", _NON_PROVIDER_CHANNELS)
+def test_typed_channel_rejects_non_provider_payloads(line: str, channel: ContentChannel) -> None:
+    assert provider_quota_line_evidence(line, channel=channel) is None
+
+
+@pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
+@pytest.mark.parametrize("channel", _NON_PROVIDER_CHANNELS)
+def test_non_provider_channel_rejects_provider_shaped_text_before_any_text_check(
+    line: str, channel: ContentChannel
+) -> None:
+    assert provider_quota_line_evidence(line, channel=channel) is None
+
+
+@pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
+def test_provider_channel_accepts_provider_error_events_and_plain_failures(line: str) -> None:
+    evidence = provider_quota_line_evidence(line, channel=ContentChannel.PROVIDER)
+    assert evidence is not None
+    assert evidence.text == line
+
+
+@pytest.mark.parametrize("line", _NON_PROVIDER_PAYLOAD_LINES)
+def test_provider_channel_still_requires_non_provider_payload_text_match(line: str) -> None:
+    assert provider_quota_line_evidence(line, channel=ContentChannel.PROVIDER) is None
+
+
+@pytest.mark.parametrize("line", _NON_PROVIDER_PAYLOAD_LINES)
+def test_none_channel_keeps_derivation_for_non_provider_payloads(line: str) -> None:
+    assert provider_quota_line_evidence(line, channel=None) is None
+
+
+@pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
+def test_none_channel_keeps_derivation_for_provider_lines(line: str) -> None:
+    evidence = provider_quota_line_evidence(line, channel=None)
+    assert evidence is not None
+    assert evidence.text == line
+
+
+@pytest.mark.parametrize("line", _TOOL_RESULT_QUOTA_LINES)
+def test_line_channel_tags_tool_result_payloads_for_quota_detection(line: str) -> None:
+    channel = line_channel("codex", line)
+    assert channel is ContentChannel.TOOL_RESULT
+    assert provider_quota_line_evidence(line, channel=channel) is None
+
+
+@pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
+def test_line_channel_tags_provider_errors_for_quota_detection(line: str) -> None:
+    channel = line_channel("codex", line)
+    assert channel is ContentChannel.PROVIDER
+    assert provider_quota_line_evidence(line, channel=channel) is not None

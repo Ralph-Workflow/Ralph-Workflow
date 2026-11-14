@@ -518,7 +518,10 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
         fake_get_process_manager,
     )
     monkeypatch.setattr("ralph.agents.invoke._pty_runner.PtyLineReader", _FakePtyLineReader)
-    monkeypatch.setattr("ralph.agents.invoke._pty_runner.teardown_subtree", fake_teardown_subtree)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.attempt_supervision.attempt_supervisor.teardown_subtree",
+        fake_teardown_subtree,
+    )
 
     ctx = SimpleNamespace(
         clock=FakeClock(),

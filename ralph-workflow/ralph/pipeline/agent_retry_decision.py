@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
+from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
 from ralph.pipeline import retryable_failure
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent, agent_retry_intent_for_failure
 from ralph.recovery.attempt_outcome import AttemptOutcome
@@ -84,13 +85,11 @@ def _intent_from_exception(
     inactivity_error_type: type[Exception],
 ) -> AgentRetryIntent | None:
     if (
-        type(exc).__name__
+        attempt_facts_for_failure(exc).typed_signal is not None
+        or type(exc).__name__
         in {
-            "BrokenAgentExitError",
-            "MissingCredentialsError",
             "PiContextExhaustedExitError",
             "PiProviderFailureExitError",
-            "QuotaExhaustedError",
         }
         or retryable_failure.quota_termination_observed(exc)
         or _is_subscription_limit_message(provider_message_parts(exc))

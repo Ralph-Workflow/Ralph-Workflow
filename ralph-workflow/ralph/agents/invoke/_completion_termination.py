@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
-from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._fire_reason_issuer import termination_issuer_for_fire_reason
 from ralph.agents.invoke.termination_recorder import (
     TerminationRecorder,
@@ -11,7 +11,12 @@ from ralph.agents.invoke.termination_recorder import (
     termination_issuer_for_exception,
     termination_issuer_for_teardown_issuer,
 )
+from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
+from ralph.recovery.typed_signal import (
+    TypedSignal,
+    runtime_issued_termination_is_not_agent_fault,
+)
 
 __all__ = [
     "AttemptEnded",
@@ -54,6 +59,25 @@ def _own_exit_status(exc: BaseException) -> str | None:
     return status if isinstance(status, str) and status else None
 
 
+def _own_typed_signal(exc: BaseException, facts: AttemptFacts) -> TypedSignal | None:
+    raw = cast("object", getattr(exc, "typed_signal", None))
+    if not isinstance(raw, TypedSignal):
+        return None
+    return replace(
+        raw,
+        agent_initiated=not runtime_issued_termination_is_not_agent_fault(facts),
+    )
+
+
+def _with_typed_signal(exc: BaseException, facts: AttemptFacts) -> AttemptFacts:
+    if facts.typed_signal is not None:
+        return facts
+    signal = _own_typed_signal(exc, facts)
+    if signal is None:
+        return facts
+    return replace(facts, typed_signal=signal)
+
+
 def _derived_attempt_facts(exc: BaseException) -> AttemptFacts:
     label = _own_issuer_label(exc)
     if label is not None:
@@ -66,11 +90,14 @@ def _derived_attempt_facts(exc: BaseException) -> AttemptFacts:
             issuer = TerminationIssuer.UNKNOWN
         else:
             issuer = TerminationIssuer.AGENT_EXIT
-    return AttemptFacts(
-        exit_status=_own_exit_status(exc),
-        termination=TerminationRecord.create(
-            issuer,
-            reported_returncode=_exception_returncode(exc),
+    return _with_typed_signal(
+        exc,
+        AttemptFacts(
+            exit_status=_own_exit_status(exc),
+            termination=TerminationRecord.create(
+                issuer,
+                reported_returncode=_exception_returncode(exc),
+            ),
         ),
     )
 
@@ -98,7 +125,7 @@ class AttemptEnded:
 
 def publish_attempt_facts(exc: BaseException, recorder: _TerminationRecorder) -> AttemptFacts:
     recorder.record_reported_returncode(_exception_returncode(exc))
-    facts = recorder.facts()
+    facts = _with_typed_signal(exc, recorder.facts())
     if isinstance(exc, AttemptEnded):
         exc.facts = facts
     return facts

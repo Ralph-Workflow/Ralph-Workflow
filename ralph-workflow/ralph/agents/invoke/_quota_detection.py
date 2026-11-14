@@ -60,21 +60,19 @@ def is_quota_kill_evidence(detail: str) -> bool:
     return text is not None and provider_quota_kill_evidence(text)
 
 
-def provider_quota_line_evidence(line: str) -> ProviderText | None:
+def provider_quota_line_evidence(
+    line: str, *, channel: ContentChannel | None = None
+) -> ProviderText | None:
+    if channel is not None and channel is not ContentChannel.PROVIDER:
+        return None
     event = _parse_json_event(line)
     if event:
-        if _event_kind(event) in _NON_PROVIDER_EVENT_KINDS:
-            return None
-        if not _is_provider_error_event(event):
+        if _event_kind(event) in _NON_PROVIDER_EVENT_KINDS or not _is_provider_error_event(event):
             return None
         parsed_text = ProviderText(text=line)
-        if provider_quota_line_matches(parsed_text):
-            return parsed_text
-        return None
+        return parsed_text if provider_quota_line_matches(parsed_text) else None
     text = provider_text(line)
-    if text is not None and provider_quota_line_matches(text):
-        return text
-    return None
+    return text if text is not None and provider_quota_line_matches(text) else None
 
 
 def is_provider_quota_output_line(line: str) -> bool:

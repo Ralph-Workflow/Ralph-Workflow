@@ -239,11 +239,13 @@ def test_rule_pairings_cover_every_boundary_rule() -> None:
         "B7",
         "B8",
         "B9",
+        "B9b",
         "B10",
     }
     assert rule_pairing("B2") == "AC16"
     assert rule_pairing("B8") == "AC4"
     assert rule_pairing("B9") == "AC3/AC15"
+    assert rule_pairing("B9b") == "AC3/AC15"
     assert rule_pairing("B10") == "AC13"
 
 
@@ -488,6 +490,89 @@ def test_b9_accepts_teardown_subtree_passed_as_a_reference() -> None:
         " B9 " in item
         for item in collect_boundary_violations("ralph/agents/invoke/_pty_line_reader.py", source)
     )
+
+
+_B9B_INVOKE_PATHS = [
+    "ralph/agents/invoke/_pty_line_reader.py",
+    "ralph/agents/idle_watchdog/_post_exit_watchdog.py",
+]
+
+
+@pytest.mark.parametrize("path", _B9B_INVOKE_PATHS)
+def test_b9b_rejects_runtime_teardown_subtree_imports_and_references(path: str) -> None:
+    for source in (
+        "from ralph.process.teardown import teardown_subtree",
+        "import ralph.process.teardown",
+        "teardown_subtree(pid, issuer=issuer)",
+    ):
+        assert any(" B9b " in item for item in collect_boundary_violations(path, source))
+
+
+def test_b9b_flags_the_reference_b9_accepts() -> None:
+    source = "supervisor.act(observation, teardown=teardown_subtree)"
+    assert any(
+        " B9b " in item
+        for item in collect_boundary_violations("ralph/agents/invoke/_pty_line_reader.py", source)
+    )
+
+
+def test_b9b_accepts_teardown_subtree_passed_as_a_parameter() -> None:
+    source = (
+        "def run(supervisor, observation, teardown_subtree):\n"
+        "    supervisor.act(observation, teardown=teardown_subtree)"
+    )
+    assert not any(
+        " B9b " in item
+        for item in collect_boundary_violations("ralph/agents/invoke/_pty_line_reader.py", source)
+    )
+
+
+def test_b9b_accepts_type_checking_only_process_teardown_imports() -> None:
+    source = (
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    from ralph.process.teardown import ProcessTeardown\n"
+    )
+    assert not any(
+        " B9b " in item
+        for item in collect_boundary_violations("ralph/agents/invoke/_pty_line_reader.py", source)
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "process_teardown.teardown_subtree(pid, issuer=issuer)",
+        "some_obj.teardown_subtree",
+    ],
+)
+def test_b9b_accepts_injected_seam_attribute_access(source: str) -> None:
+    assert not any(
+        " B9b " in item
+        for item in collect_boundary_violations("ralph/agents/invoke/_pty_line_reader.py", source)
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "ralph/agents/invoke/attempt_supervision/teardown_fn.py",
+        "ralph/agents/invoke/attempt_supervision/attempt_supervisor.py",
+        "ralph/process/teardown.py",
+        "ralph/agents/subprocess_executor.py",
+    ],
+)
+def test_b9b_leaves_out_of_scope_and_supervision_paths_untouched(path: str) -> None:
+    source = (
+        "from ralph.process.teardown import teardown_subtree\n"
+        "def run(pid):\n"
+        "    teardown_subtree(pid, issuer=issuer)"
+    )
+    assert not any(" B9b " in item for item in collect_boundary_violations(path, source))
+
+
+def test_b9b_pairs_with_matrix_ac3_ac15() -> None:
+    assert rule_pairing("B9b") == "AC3/AC15"
 
 
 @pytest.mark.parametrize("call", ["proc.terminate()", "proc.kill()"])

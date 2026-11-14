@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.recovery.attempt_facts import TerminationIssuer
+from ralph.recovery.typed_signal import TypedSignal
 
 _MAX_QUOTA_DETAIL_CHARS = 512
 
 
 class QuotaExhaustedError(AgentInvocationError):
+    typed_signal_provider_originated: bool = True
+
     def __init__(
         self,
         agent_name: str,
@@ -26,6 +29,13 @@ class QuotaExhaustedError(AgentInvocationError):
         if excerpt:
             message = f"{excerpt}; {message}"
         super().__init__(agent_name, returncode, message, issuer=issuer)
+
+    @property
+    def typed_signal(self) -> TypedSignal:
+        return TypedSignal(
+            name=type(self).__name__,
+            provider_originated=type(self).typed_signal_provider_originated,
+        )
 
 
 __all__ = ["QuotaExhaustedError"]

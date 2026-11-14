@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 from collections import deque
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
 
 from ralph.agents._agy_upstream_diagnostic import agy_cli_log_start_offset
 from ralph.agents._broker_secret import parent_broker_secret
@@ -54,7 +54,6 @@ from ralph.process.manager import (
     PtySpawnOptions,
     get_process_manager,
 )
-from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -62,6 +61,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
     from ralph.process.manager import ManagedPtyProcess
+    from ralph.process.teardown import ProcessTeardown
 
 
 class _CompletionExitSentReader(Protocol):
@@ -93,11 +93,7 @@ def _close_iterator(iterator: object) -> None:
 
 
 def _terminate_pty_tree(supervisor: AttemptSupervisor) -> None:
-    supervisor.cleanup(
-        ProcessTerminationIssuer.INVOKE_TEARDOWN,
-        terminate=True,
-        teardown=teardown_subtree,
-    )
+    supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, terminate=True)
 
 
 def _spawn_pty_with_agy_log_offset(
@@ -141,7 +137,10 @@ def run_pty_and_read_lines(
     handle, agy_cli_log = _spawn_pty_with_agy_log_offset(cmd, ctx)
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
-    supervisor = AttemptSupervisor(handle)
+    supervisor = AttemptSupervisor(
+        handle,
+        process_teardown=cast("ProcessTeardown | None", getattr(ctx, "process_teardown", None)),
+    )
     with handle:
         pty_reader = PtyLineReader(
             handle,
@@ -184,9 +183,7 @@ def run_pty_and_read_lines(
                 post_exit = PostExitWatchdog(ctx.policy, clock)
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
                 if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
-                    outcome = supervisor.act(
-                        PostExitHangObserved(verdict), teardown=teardown_subtree
-                    )
+                    outcome = supervisor.act(PostExitHangObserved(verdict))
                     if outcome is None:
                         return None
                     raise _IdleStreamTimeoutError(

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import pytest
 
@@ -20,7 +19,6 @@ from ralph.agents.invoke._workspace_change_classifier import (
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
-from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -80,6 +78,21 @@ class _FakeStderr:
         return self._text[:size]
 
 
+class _RecordingTeardown:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, ProcessTerminationIssuer]] = []
+
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del owner_label
+        self.calls.append((host_pid, issuer))
+
+
 class _CompletionEnforcingStrategy:
     def classify_exit(
         self,
@@ -102,20 +115,18 @@ class _CompletionEnforcingStrategy:
 
 def testcheck_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path) -> None:
     handle = _FakeHandle(returncode=1, pid=1234)
+    teardown = _RecordingTeardown()
 
-    with (
-        patch("ralph.agents.invoke._completion_supervision.teardown_subtree") as mock_teardown,
-        pytest.raises(AgentInvocationError),
-    ):
+    with pytest.raises(AgentInvocationError):
         check_process_result(
             handle,
             "test-agent",
             parsed_output=[],
             check_options=None,
+            process_teardown=teardown,
         )
 
-    mock_teardown.assert_called_once_with(1234, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
-    assert teardown_subtree is not None
+    assert teardown.calls == [(1234, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
 
 
 def testcheck_process_result_missing_completion_evidence_calls_teardown_subtree(
@@ -127,35 +138,32 @@ def testcheck_process_result_missing_completion_evidence_calls_teardown_subtree(
         workspace_path=tmp_path,
         policy=TimeoutPolicy(idle_timeout_seconds=None),
     )
+    teardown = _RecordingTeardown()
 
-    with (
-        patch("ralph.agents.invoke._completion_supervision.teardown_subtree") as mock_teardown,
-        pytest.raises(AgentInvocationError),
-    ):
+    with pytest.raises(AgentInvocationError):
         check_process_result(
             handle,
             "test-agent",
             parsed_output=[],
             check_options=options,
+            process_teardown=teardown,
         )
 
-    mock_teardown.assert_called_once_with(5678, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
+    assert teardown.calls == [(5678, ProcessTerminationIssuer.INVOKE_TEARDOWN)]
 
 
 def testcheck_process_result_error_path_does_not_mutate_clock() -> None:
     clock = FakeClock(start=0.0)
     handle = _FakeHandle(returncode=1, pid=9999)
 
-    with (
-        patch("ralph.agents.invoke._completion_supervision.teardown_subtree"),
-        pytest.raises(AgentInvocationError),
-    ):
+    with pytest.raises(AgentInvocationError):
         check_process_result(
             handle,
             "test-agent",
             parsed_output=[],
             check_options=None,
             _clock=clock,
+            process_teardown=_RecordingTeardown(),
         )
 
     assert clock.monotonic() == 0.0

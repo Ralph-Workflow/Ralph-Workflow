@@ -45,8 +45,9 @@ def retryable_agent_failure_reason(
     inactivity_error_type: type[Exception],
 ) -> str | None:
     detail_parts = failure_detail_parts(exc)
+    signal = attempt_facts_for_failure(exc).typed_signal
     if (
-        type(exc).__name__ == "QuotaExhaustedError"
+        (signal is not None and signal.name == "QuotaExhaustedError")
         or quota_termination_observed(exc)
         or _is_subscription_limit_message(provider_message_parts(exc))
     ):

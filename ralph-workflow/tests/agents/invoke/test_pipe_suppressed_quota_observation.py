@@ -33,8 +33,11 @@ def _line_stream(lines: list[str]) -> Iterator[str]:
     raise ValueError("closed")
 
 
-def _noop_teardown(pid: int, *, issuer: object) -> None:
-    del pid, issuer
+class _NoopTeardown:
+    def teardown_subtree(
+        self, host_pid: int, *, issuer: object, owner_label: str = "invoke"
+    ) -> None:
+        del host_pid, issuer, owner_label
 
 
 class _FreshStreamHandle:
@@ -91,11 +94,11 @@ def _reader(
 
 def test_completion_winner_suppresses_later_quota_observation(tmp_path: Path) -> None:
     handle = _FreshStreamHandle([[_PLAIN_LINE], [_QUOTA_LINE]])
-    supervisor = AttemptSupervisor(handle)
+    supervisor = AttemptSupervisor(handle, process_teardown=_NoopTeardown())
     reader = _reader(handle, supervisor, tmp_path)
     list(reader.read_lines())
 
-    supervisor.act(CompletionObserved(), teardown=_noop_teardown)
+    supervisor.act(CompletionObserved())
     facts_before = supervisor.recorder.termination()
     assert facts_before.issuer is TerminationIssuer.AGENT_EXIT
 
@@ -108,7 +111,7 @@ def test_completion_winner_suppresses_later_quota_observation(tmp_path: Path) ->
 
 def test_seeded_quota_error_is_reraised_unchanged(tmp_path: Path) -> None:
     handle = _FreshStreamHandle([[_QUOTA_LINE], [_QUOTA_LINE]])
-    supervisor = AttemptSupervisor(handle)
+    supervisor = AttemptSupervisor(handle, process_teardown=_NoopTeardown())
     reader = _reader(handle, supervisor, tmp_path)
 
     with pytest.raises(QuotaExhaustedError) as first:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.recovery.attempt_facts import TerminationIssuer
 
 _SUPERVISOR_IDLE_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(

@@ -4,7 +4,6 @@ from ralph.agents.invoke.attempt_supervision import (
     AttemptSupervisor,
     OperatorInterruptObserved,
     ProviderErrorObserved,
-    TeardownFn,
 )
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
@@ -35,70 +34,71 @@ class _OrderRecordingHandle:
         return None
 
 
-def _recording_teardown(calls: list[tuple[int, ProcessTerminationIssuer]]) -> TeardownFn:
-    def _teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
-        calls.append((pid, issuer))
+class _RecordingTeardown:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, ProcessTerminationIssuer]] = []
 
-    return _teardown
+    def teardown_subtree(
+        self, host_pid: int, *, issuer: ProcessTerminationIssuer, owner_label: str = "invoke"
+    ) -> None:
+        del owner_label
+        self.calls.append((host_pid, issuer))
 
 
 def test_operator_interrupt_orders_reason_close_terminate_then_teardown() -> None:
     handle = _OrderRecordingHandle()
-    supervisor = AttemptSupervisor(handle)
-    calls: list[tuple[int, ProcessTerminationIssuer]] = []
-    outcome = supervisor.act(OperatorInterruptObserved(), teardown=_recording_teardown(calls))
+    teardown = _RecordingTeardown()
+    supervisor = AttemptSupervisor(handle, process_teardown=teardown)
+    outcome = supervisor.act(OperatorInterruptObserved())
     assert outcome is not None
     assert handle.events == [
         ("reason", "operator_cancellation"),
         ("close",),
         ("terminate", "operator", "operator_cancellation"),
     ]
-    assert calls == [(handle.pid, ProcessTerminationIssuer.OPERATOR)]
+    assert teardown.calls == [(handle.pid, ProcessTerminationIssuer.OPERATOR)]
 
 
 def test_provider_error_orders_reason_before_terminate_without_close() -> None:
     handle = _OrderRecordingHandle()
-    supervisor = AttemptSupervisor(handle)
-    calls: list[tuple[int, ProcessTerminationIssuer]] = []
-    outcome = supervisor.act(
-        ProviderErrorObserved(_QUOTA_DETAIL), teardown=_recording_teardown(calls)
-    )
+    teardown = _RecordingTeardown()
+    supervisor = AttemptSupervisor(handle, process_teardown=teardown)
+    outcome = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL))
     assert outcome is not None
     assert handle.events == [
         ("reason", "quota_exhausted"),
         ("terminate", "quota_detector", "quota_exhausted"),
     ]
-    assert calls == [(handle.pid, ProcessTerminationIssuer.QUOTA_DETECTOR)]
+    assert teardown.calls == [(handle.pid, ProcessTerminationIssuer.QUOTA_DETECTOR)]
 
 
 def test_raising_close_still_terminates_and_reaps() -> None:
     handle = _OrderRecordingHandle(close_raises=True)
-    supervisor = AttemptSupervisor(handle)
-    calls: list[tuple[int, ProcessTerminationIssuer]] = []
-    outcome = supervisor.act(OperatorInterruptObserved(), teardown=_recording_teardown(calls))
+    teardown = _RecordingTeardown()
+    supervisor = AttemptSupervisor(handle, process_teardown=teardown)
+    outcome = supervisor.act(OperatorInterruptObserved())
     assert outcome is not None
     assert [event[0] for event in handle.events] == ["reason", "close", "terminate"]
-    assert calls == [(handle.pid, ProcessTerminationIssuer.OPERATOR)]
+    assert teardown.calls == [(handle.pid, ProcessTerminationIssuer.OPERATOR)]
 
 
 def test_raising_terminate_still_reaps() -> None:
     handle = _OrderRecordingHandle(terminate_raises=True)
-    supervisor = AttemptSupervisor(handle)
-    calls: list[tuple[int, ProcessTerminationIssuer]] = []
-    outcome = supervisor.act(OperatorInterruptObserved(), teardown=_recording_teardown(calls))
+    teardown = _RecordingTeardown()
+    supervisor = AttemptSupervisor(handle, process_teardown=teardown)
+    outcome = supervisor.act(OperatorInterruptObserved())
     assert outcome is not None
     assert [event[0] for event in handle.events] == ["reason", "close", "terminate"]
-    assert calls == [(handle.pid, ProcessTerminationIssuer.OPERATOR)]
+    assert teardown.calls == [(handle.pid, ProcessTerminationIssuer.OPERATOR)]
 
 
 def test_losing_observation_never_overwrites_reason_or_signals_again() -> None:
     handle = _OrderRecordingHandle()
-    supervisor = AttemptSupervisor(handle)
-    calls: list[tuple[int, ProcessTerminationIssuer]] = []
-    teardown = _recording_teardown(calls)
-    first = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL), teardown=teardown)
+    teardown = _RecordingTeardown()
+    supervisor = AttemptSupervisor(handle, process_teardown=teardown)
+    first = supervisor.act(ProviderErrorObserved(_QUOTA_DETAIL))
     assert first is not None
-    second = supervisor.act(OperatorInterruptObserved(), teardown=teardown)
+    second = supervisor.act(OperatorInterruptObserved())
     assert second is None
     reasons = [event for event in handle.events if event[0] == "reason"]
     assert reasons == [("reason", "quota_exhausted")]
@@ -106,5 +106,5 @@ def test_losing_observation_never_overwrites_reason_or_signals_again() -> None:
     assert closes == []
     terminates = [event for event in handle.events if event[0] == "terminate"]
     assert len(terminates) == 1
-    assert len(calls) == 1
+    assert len(teardown.calls) == 1
     assert [record.acted for record in supervisor.observations] == [True, False]

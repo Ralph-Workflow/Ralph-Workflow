@@ -90,10 +90,6 @@ from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.classifier import ClassifiedFailure, FailureContext
 from ralph.recovery.controller import build_typed_agent_signal
 from ralph.recovery.failure_category import FailureCategory
-from ralph.recovery.failure_classifier import (
-    TYPED_SIGNAL_NAMES,
-    typed_signal_provider_originated_for_reason,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -103,6 +99,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PhaseDefinition, PipelinePolicy
     from ralph.recovery.agent_selection import AgentSelection
     from ralph.recovery.controller import RecoveryController
+    from ralph.recovery.dead_agent_verdict import TypedSignal
 
 
 def _failure_reason(state: PipelineState, fallback: str) -> str:
@@ -994,13 +991,28 @@ def _handle_chain_exhausted(
     return _enter_failed_recovery(state, failure_reason, policy, failure_category=failure_category)
 
 
-def _typed_signal_from_retry_intent(intent: AgentRetryIntent) -> tuple[str | None, bool]:
-    name = intent.failure_reason if intent.failure_reason in TYPED_SIGNAL_NAMES else None
-    provider_originated = typed_signal_provider_originated_for_reason(
-        name,
-        intent.broken_agent_reason,
+def _typed_signal_from_retry_intent(
+    intent: AgentRetryIntent,
+    facts: AttemptFacts,
+) -> TypedSignal | None:
+    from ralph.agents.invoke import (
+        BrokenAgentExitError,
+        MissingCredentialsError,
+        QuotaExhaustedError,
     )
-    return name, provider_originated
+
+    for error_type in (QuotaExhaustedError, MissingCredentialsError, BrokenAgentExitError):
+        if error_type.__name__ != intent.failure_reason:
+            continue
+        provider_originated = error_type.typed_signal_provider_originated
+        if issubclass(error_type, BrokenAgentExitError):
+            provider_originated = intent.broken_agent_reason == "prompt_echo"
+        return build_typed_agent_signal(
+            error_type.__name__,
+            provider_originated,
+            facts,
+        )
+    return None
 
 
 def _route_attempt_facts(observation: AgentFailureEvent | None) -> AttemptFacts:
@@ -1033,14 +1045,9 @@ def _handle_skip_same_agent_retries(
         observation = observation_from_event(event)
         if current_agent is not None:
             facts = _route_attempt_facts(observation)
-            signal_name, provider_originated = _typed_signal_from_retry_intent(
-                state.agent_retry_intent
-            )
-            typed_signal = (
-                build_typed_agent_signal(signal_name, provider_originated, facts)
-                if signal_name is not None
-                else None
-            )
+            typed_signal = facts.typed_signal
+            if typed_signal is None:
+                typed_signal = _typed_signal_from_retry_intent(state.agent_retry_intent, facts)
             if observation is None or not observation.already_charged:
                 recovery.finalize_attempt(
                     state.phase,

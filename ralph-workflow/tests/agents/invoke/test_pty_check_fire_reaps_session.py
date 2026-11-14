@@ -66,7 +66,10 @@ def test_watchdog_fire_tears_down_the_session_after_terminate_reaped_the_leader(
     def _record_teardown(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         teardowns.append((pid, issuer))
 
-    monkeypatch.setattr("ralph.agents.invoke._pty_line_reader.teardown_subtree", _record_teardown)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.attempt_supervision.attempt_supervisor.teardown_subtree",
+        _record_teardown,
+    )
     policy = TimeoutPolicy(
         idle_timeout_seconds=60.0,
         no_output_at_start_seconds=10.0,

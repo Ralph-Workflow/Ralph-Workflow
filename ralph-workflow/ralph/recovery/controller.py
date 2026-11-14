@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -61,10 +62,6 @@ from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
-from ralph.recovery.failure_classifier import (
-    typed_signal_name,
-    typed_signal_provider_originated,
-)
 from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -818,18 +815,14 @@ class RecoveryController:
     ) -> tuple[AttemptOutcome, str | None, PersistedVerdict | None]:
         attempt_facts = facts if facts is not None else AttemptFacts()
         peer_failures_identical = self._peer_failures_identical(phase, agent, attempt_facts)
-        signal_name: str | None = None
-        signal_provider_originated = False
-        if exc is not None:
-            signal_name = typed_signal_name(exc)
-            signal_provider_originated = typed_signal_provider_originated(exc)
+        signal = attempt_facts.typed_signal
+        if signal is None and exc is not None:
+            signal = attempt_facts_for_failure(exc).typed_signal
+        signal_name = signal.name if signal is not None else None
+        signal_provider_originated = signal.provider_originated if signal is not None else False
         effective_signal = typed_signal
-        if effective_signal is None and signal_name is not None:
-            effective_signal = build_typed_agent_signal(
-                signal_name,
-                signal_provider_originated,
-                attempt_facts,
-            )
+        if effective_signal is None and signal is not None:
+            effective_signal = signal
         probe_outcome: ProbeOutcome | None = None
         resolved_verdict: PersistedVerdict | None = None
         if not probe_mode:
@@ -962,9 +955,15 @@ class RecoveryController:
         signal_name: str | None = None,
         signal_provider_originated: bool = False,
     ) -> PersistedVerdict | None:
-        if signal_name is None and exc is not None:
-            signal_name = typed_signal_name(exc)
-            signal_provider_originated = typed_signal_provider_originated(exc)
+        if signal_name is None:
+            signal = facts.typed_signal if facts is not None else None
+            if signal is None and failure is not None and failure.facts is not None:
+                signal = failure.facts.typed_signal
+            if signal is None and exc is not None:
+                signal = attempt_facts_for_failure(exc).typed_signal
+            if signal is not None:
+                signal_name = signal.name
+                signal_provider_originated = signal.provider_originated
         has_runner = (
             self._dead_agent_probe_runner is not None or self._dead_agent_verdict_runner is not None
         )

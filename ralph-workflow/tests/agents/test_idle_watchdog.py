@@ -10864,8 +10864,7 @@ class _FakeManagedProcess:
 
 
 class _FakeCheckFireSupervisor:
-    def act(self, _observation: object, *, teardown: object) -> TerminationOutcome:
-        del teardown
+    def act(self, _observation: object) -> TerminationOutcome:
         return TerminationOutcome(issuer=None, returncode=0)
 
 

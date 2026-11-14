@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from ralph.recovery.termination_log_entry import TerminationLogEntry
+
+if TYPE_CHECKING:
+    from ralph.recovery.dead_agent_verdict import TypedSignal
 
 __all__ = [
     "AttemptFacts",
@@ -116,6 +120,7 @@ class _AttemptFacts:
     liveness_observed: bool | None = None
     subagent_activity_observed: bool | None = None
     termination: _TerminationRecord | None = None
+    typed_signal: TypedSignal | None = None
 
 
 def has_return_code_discrepancy(termination: _TerminationRecord | None) -> bool:
