@@ -6,7 +6,7 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
@@ -66,7 +66,7 @@ class FakeAgentRunner:
     launches: int = 0
     launch_times: list[float] = field(default_factory=list)
     completed_stops: list[str] = field(default_factory=list)
-    clock: object | None = None
+    clock: FakeClock | None = None
     fail_at_launch: int | None = None
 
     def resolve_rebase(
@@ -83,8 +83,7 @@ class FakeAgentRunner:
 
     def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
         self.launches += 1
-        now = getattr(self.clock, "monotonic", None)
-        self.launch_times.append(cast("float", now()) if callable(now) else 0.0)
+        self.launch_times.append(self.clock.monotonic() if self.clock is not None else 0.0)
         stop_identity: str | None = None
         if self.fail_at_launch is not None:
             stop_identity = git(root, "rev-parse", "REBASE_HEAD")

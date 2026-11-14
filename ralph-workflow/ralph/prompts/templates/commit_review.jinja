@@ -10,17 +10,19 @@ Classify only the pending diff's unsafe or machine-local files, evaluate pending
 ## Role and Scope
 
 Commit review is a deterministic safety damage gate and housekeeping edit phase:
-1. **Safety damage gate** — verify the pending diff is not accidental damage (e.g. repository or large parts deleted, protected files removed or overwritten, staged secrets or oversized binaries, or out-of-scope modifications). If damaged, **reject**.
+1. **Safety damage gate** — verify the pending diff is not accidental damage (e.g. repository or large parts deleted, protected files removed or overwritten, staged secrets that cannot be removed, or a pending change that as a whole is not the work at all, such as nothing but a disk image where an application was requested). If damaged, **reject**.
 2. **Housekeeping edit phase** — classify pending changes and recommend safe cleanup actions (`delete_file`, `add_to_gitignore`, `add_to_git_exclude`) through the safety boundary.
 
 ### Explicit Non-Goal
 
 Commit review is **NOT** a code style, architecture, or design review. It does not judge whether the code is good, tests are adequate, or whether work meets the plan — `development_analysis` owns those judgements. Commit review answers one question only: **"Does this look like accidental damage or contain unsafe files?"**
 
+A change to source code is never rejection evidence, however large, off-plan, or wrong it looks: approve it and leave the judgement to `development_analysis`. When unrelated or unsafe files sit beside real work, remove them with `delete_file`, `add_to_gitignore`, or `add_to_git_exclude` and approve the rest. Reject only when nothing in the pending change is worth keeping.
+
 ### Default Rule: Approve-Unless-Citable-Damage
 
 The default rule is **approve-unless-citable-damage**:
-- When in doubt, **approve**.
+- When in doubt, **approve** and let `development_analysis` handle it.
 - **Reject** ONLY on clear, verifiable evidence of damage that you can cite (specific file paths or counts).
 
 ### Rejection Consequence

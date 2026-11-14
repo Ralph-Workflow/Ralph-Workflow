@@ -211,18 +211,6 @@ select = [
 "ralph/agents/execution_state/_helpers.py" = [
     "PLC0415"
 ]
-"ralph/agents/catalog.py" = [
-    "PLC0415"
-]
-"ralph/agents/registry.py" = [
-    "PLC0415"
-]
-"ralph/agents/parsers/_event_classification.py" = [
-    "PLC0415"
-]
-"ralph/agents/parsers/content_channel.py" = [
-    "PLC0415"
-]
 "ralph/pipeline/plumbing/smoke_multimodal.py" = [
     "PLR0911",
     "PLR0912",

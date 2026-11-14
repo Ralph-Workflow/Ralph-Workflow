@@ -1471,13 +1471,14 @@ def _reduce_commit_review_rejection(
         else:
             reason = (
                 f"Commit review rejection limit reached ({new_rejections}/{max_rejections}); "
-                f"the run fails at the limit without another rollback: {event.reason}"
+                f"the rejected changes are rolled back before recovery: {event.reason}"
             )
         failed_state = state.copy_with(
             commit_review_rejections=new_rejections,
             last_error=reason,
-            rollback_pending=False,
+            rollback_pending=True,
             rollback_ref=event.ref,
+            last_review_rejection_reason=event.reason,
         )
         target = (
             phase_def.transitions.on_failure
@@ -1555,6 +1556,7 @@ def _reduce_commit_review_event(
         updated_state = state.copy_with(
             approved_tree_sha=event.tree_sha,
             commit_approval_required=True,
+            commit_review_rejections=0,
         )
         if phase_def.loop_policy is not None:
             updated_state = updated_state.with_loop_iteration(

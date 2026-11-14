@@ -1493,7 +1493,7 @@ def _run_subprocess_and_read_lines(
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
-            supervisor.act(StartupFailureObserved(msg))
+            supervisor.teardown_observed_subtree(StartupFailureObserved(msg))
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)

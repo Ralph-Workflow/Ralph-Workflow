@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Protocol, TypeVar, overload, runtime_checkable
 
 from ralph.agents._contracts import StrategyFactory
 from ralph.agents.execution_state._strategy_builders import (
@@ -53,10 +53,13 @@ _T = TypeVar("_T")
 
 _ParserRegistryEntry = ParserRegistryEntry
 
+
+@runtime_checkable
 class _BuiltinModule(Protocol):
     def builtin_supports(self) -> tuple[AgentSupport, ...]: ...
 
 
+@runtime_checkable
 class _RegistryModule(Protocol):
     def _resolve_dynamic_agent(
         self,
@@ -68,8 +71,17 @@ class _RegistryModule(Protocol):
 
 
 def _builtin_supports() -> tuple[AgentSupport, ...]:
-    module = cast("_BuiltinModule", import_module("ralph.agents.builtin"))
+    module: object = import_module("ralph.agents.builtin")
+    if not isinstance(module, _BuiltinModule):
+        raise TypeError("ralph.agents.builtin does not expose builtin_supports")
     return module.builtin_supports()
+
+
+def _registry_module() -> _RegistryModule:
+    module: object = import_module("ralph.agents.registry")
+    if not isinstance(module, _RegistryModule):
+        raise TypeError("ralph.agents.registry does not expose _resolve_dynamic_agent")
+    return module
 
 
 class _FlexibleFactory:
@@ -356,8 +368,7 @@ def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "Ag
             return entry.config
         return None
 
-    registry = cast("_RegistryModule", import_module("ralph.agents.registry"))
-    config = registry._resolve_dynamic_agent(
+    config = _registry_module()._resolve_dynamic_agent(
         name_or_command,
         CcsConfig(),
         base_lookup=_catalog_base_lookup,

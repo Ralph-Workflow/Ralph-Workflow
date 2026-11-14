@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.phases.commit_review import CommitReviewGateFailed, CommitReviewRejected
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
@@ -136,3 +137,71 @@ def test_failed_route_does_not_treat_agent_cooldown_as_terminal_intervention() -
     )
 
     assert requires_intervention is False
+
+
+def test_refused_rollback_stops_the_run_even_while_a_reviewer_is_cooling_down() -> None:
+    from ralph.pipeline import run_loop
+
+    clock = FakeClock(start=0.0)
+    ledger = AgentFailureLedger(consecutive_limit=1, total_limit=10, clock=clock)
+    outcome = ledger.record(
+        AttemptFact(
+            phase="development_commit_review",
+            agent="claude",
+            artifact_valid=False,
+            workspace_changed=False,
+        )
+    )
+    assert isinstance(outcome.status, Cooldown)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, clock=clock, ledger=ledger)
+    )
+    policy = _minimal_policy()
+    rejected = PipelineState(
+        phase="development_commit_review",
+        rollback_ref="refs/ralph/proposals/run-1/1",
+        phase_chains={"development_commit_review": AgentChainState(agents=["claude", "codex"])},
+    )
+
+    refused, _effects = reduce(
+        rejected,
+        CommitReviewGateFailed(detail="Rollback preflight failed: damaged repository"),
+        policy,
+        recovery=controller,
+    )
+
+    assert refused.phase == policy.recovery.failed_route
+    assert run_loop.failed_route_is_recoverable(refused, controller) is False
+
+
+def test_rejection_at_the_ceiling_rolls_back_and_stays_recoverable() -> None:
+    from ralph.pipeline import run_loop
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, clock=FakeClock(start=0.0))
+    )
+    policy = _minimal_policy()
+    state = PipelineState(phase="development_commit_review", commit_review_rejections=1)
+
+    at_ceiling, _effects = reduce(
+        state,
+        CommitReviewRejected(reason="Repeated damage", ref="refs/ralph/proposals/run-1/1"),
+        policy,
+        recovery=controller,
+    )
+    rolled_back = at_ceiling.copy_with(rollback_pending=False, rollback_ref=None)
+
+    assert at_ceiling.phase == policy.recovery.failed_route
+    assert at_ceiling.rollback_pending is True
+    assert run_loop.failed_route_is_recoverable(rolled_back, controller) is True
+
+
+def test_failed_route_stays_recoverable_without_a_kept_rejected_proposal() -> None:
+    from ralph.pipeline import run_loop
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, clock=FakeClock(start=0.0))
+    )
+    state = PipelineState(phase="failed_terminal", previous_phase="planning")
+
+    assert run_loop.failed_route_is_recoverable(state, controller) is True

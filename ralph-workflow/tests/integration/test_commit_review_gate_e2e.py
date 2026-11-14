@@ -42,6 +42,14 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy, PolicyBundle
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "rollback_pending at the rejection ceiling and after the cycle timebox": (
+        "a rejection that skipped the rollback left the rejected tree in place, so "
+        "recovery re-entered commit review and rejected the same tree on every pass; "
+        "every rejection now requests the rollback and the assertion pins that"
+    ),
+}
+
 pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.required_auto_integrate_e2e]
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
@@ -321,7 +329,7 @@ def test_commit_review_gate_counter_exhaustion_routes_to_failure(
 
     assert next_state.phase == policy.recovery.failed_route
     assert next_state.commit_review_rejections == 3
-    assert next_state.rollback_pending is False
+    assert next_state.rollback_pending is True
     assert "limit exceeded" in (next_state.last_error or "")
 
     preflight(tmp_path, seal.ref)

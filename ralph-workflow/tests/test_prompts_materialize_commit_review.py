@@ -66,6 +66,8 @@ def test_commit_review_phase_renders_prompt_successfully(tmp_path: Path) -> None
     assert "ralph_submit_md_artifact" in rendered and "DIFF" in rendered
     assert rendered.startswith("Classify only the pending diff's unsafe or machine-local files")
     assert "Explicit Non-Goal" in rendered
+    assert "out-of-scope" not in rendered
+    assert "A change to source code is never rejection evidence" in rendered
     assert "approve-unless-citable-damage" in rendered
     assert "Rejection Consequence" in rendered
     assert "Stage 1 Evidence" in rendered

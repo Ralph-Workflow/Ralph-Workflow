@@ -3,25 +3,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import StrEnum
-from importlib import import_module
-from typing import Protocol, cast
 
 from ralph.recovery.failure_classifier import _SUBSCRIPTION_LIMIT_SUBSTRINGS
 
 from ._event_classification import is_user_prompt_event_line
-
-
-class _HarnessEchoModule(Protocol):
-    def is_user_prompt_event_line(self, line: str) -> bool: ...
-
-
-def _is_user_prompt_event_line(line: str) -> bool:
-    harness_echo = cast(
-        "_HarnessEchoModule",
-        import_module("ralph.agents.execution_state._harness_echo"),
-    )
-    return harness_echo.is_user_prompt_event_line(line)
-
 
 _PROVIDER_FAILURE_OUTPUT_MARKERS = (
     "retriableerror:",
@@ -105,7 +90,7 @@ def _event_kind(event: dict[str, object]) -> str:
 
 
 def channel_of(line: str) -> ContentChannel:
-    if _is_user_prompt_event_line(line):
+    if is_user_prompt_event_line(line):
         return ContentChannel.USER
     event = _parse_json_event(line)
     if event is None:
@@ -140,7 +125,7 @@ def provider_text(line: str) -> ProviderText | None:
 
 
 def provider_evidence_text(detail: str) -> ProviderText | None:
-    if _is_user_prompt_event_line(detail):
+    if is_user_prompt_event_line(detail):
         return None
     event = _parse_json_event(detail)
     if event is None or not event:

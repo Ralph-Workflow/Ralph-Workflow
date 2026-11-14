@@ -18,6 +18,14 @@ from ralph.policy.loader import load_policy
 if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "rollback_pending at the rejection ceiling and after the cycle timebox": (
+        "a rejection that skipped the rollback left the rejected tree in place, so "
+        "recovery re-entered commit review and rejected the same tree on every pass; "
+        "every rejection now requests the rollback and the assertion pins that"
+    ),
+}
+
 _DEFAULTS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
 
 
@@ -326,11 +334,11 @@ def test_rejection_loop_survives_the_resets_and_stops_at_the_default_limit() -> 
 
     assert second.phase == policy.recovery.failed_route
     assert second.commit_review_rejections == 2
-    assert second.rollback_pending is False
+    assert second.rollback_pending is True
     assert second.rollback_ref == "refs/ralph/proposals/test-run/1"
 
 
-def test_post_timebox_rejection_fails_without_a_rollback_and_keeps_the_proposal_ref() -> None:
+def test_post_timebox_rejection_rolls_back_and_keeps_the_proposal_ref() -> None:
     policy = _policy()
     assert policy.cycle_timebox is not None
     review_phase = _phase_before_dev_commit(policy)
@@ -353,6 +361,6 @@ def test_post_timebox_rejection_fails_without_a_rollback_and_keeps_the_proposal_
     )
 
     assert rejected.phase == policy.recovery.failed_route
-    assert rejected.rollback_pending is False
+    assert rejected.rollback_pending is True
     assert rejected.rollback_ref == ref
     assert rejected.commit_review_rejections == 1

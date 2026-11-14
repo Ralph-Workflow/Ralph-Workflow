@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 from loguru import logger
@@ -190,14 +190,17 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
+@runtime_checkable
 class _CatalogModule(Protocol):
     def default_catalog(self) -> AgentCatalog: ...
 
 
+@runtime_checkable
 class _RegistryModule(Protocol):
     AgentRegistry: type[AgentRegistry]
 
 
+@runtime_checkable
 class _ExecutionStateModule(Protocol):
     def strategy_for_command(
         self,
@@ -208,6 +211,40 @@ class _ExecutionStateModule(Protocol):
         registry: ChildLivenessRegistry,
         subagent_pid_source: object,
     ) -> BaseExecutionStrategy: ...
+
+
+def default_catalog() -> AgentCatalog:
+    module: object = import_module("ralph.agents.catalog")
+    if not isinstance(module, _CatalogModule):
+        raise TypeError("ralph.agents.catalog does not expose default_catalog")
+    return module.default_catalog()
+
+
+def _registry_module() -> _RegistryModule:
+    module: object = import_module("ralph.agents.registry")
+    if not isinstance(module, _RegistryModule):
+        raise TypeError("ralph.agents.registry does not expose AgentRegistry")
+    return module
+
+
+def strategy_for_command(
+    command: str,
+    transport: AgentTransport,
+    *,
+    label_scope: str | None,
+    registry: ChildLivenessRegistry,
+    subagent_pid_source: object,
+) -> BaseExecutionStrategy:
+    module: object = import_module("ralph.agents.execution_state")
+    if not isinstance(module, _ExecutionStateModule):
+        raise TypeError("ralph.agents.execution_state does not expose strategy_for_command")
+    return module.strategy_for_command(
+        command,
+        transport,
+        label_scope=label_scope,
+        registry=registry,
+        subagent_pid_source=subagent_pid_source,
+    )
 
 
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
@@ -504,13 +541,11 @@ def invoke_agent(
                 _subagent_pid_registry,
                 subagent_pid_source,
             ) = (
-                cast("_RegistryModule", import_module("ralph.agents.registry"))
+                _registry_module()
                 .AgentRegistry()
                 .build_subagent_pid_registry(transport_for_registry)
             )
-        execution_strategy = cast(
-            "_ExecutionStateModule", import_module("ralph.agents.execution_state")
-        ).strategy_for_command(
+        execution_strategy = strategy_for_command(
             config.cmd,
             transport_for_registry,
             label_scope=label_scope,
@@ -557,11 +592,7 @@ def invoke_agent(
         ctx = replace(ctx, expected_session_id=opts.session_id)
 
         transport = _agent_transport(config)
-        support = (
-            cast("_CatalogModule", import_module("ralph.agents.catalog"))
-            .default_catalog()
-            .get(config.cmd)
-        )
+        support = default_catalog().get(config.cmd)
         requires_pty = transport == AgentTransport.AGY
         if support is not None and isinstance(support.spec, AgentSpec):
             requires_pty = requires_pty or support.spec.requires_pty

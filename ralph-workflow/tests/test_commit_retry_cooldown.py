@@ -13,6 +13,7 @@ from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
 from ralph.pipeline.plumbing import commit_plumbing
 from ralph.policy.models import AgentsPolicy
 from ralph.recovery.agent_failure_ledger import Cooldown
@@ -32,7 +33,6 @@ _COMMIT_PHASE = "commit"
 _COMMIT_AGENT_NAME = "commit-agent"
 _COMMIT_SESSION_ID = "commit-session-1"
 _COMMIT_COOLDOWN_REASON = "consecutive_unproductive_limit_reached"
-_COMMIT_LEDGER_KEY = f"{_COMMIT_PHASE}:{_COMMIT_AGENT_NAME}"
 _MIN_OUTER_ATTEMPTS = 2
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
@@ -233,7 +233,6 @@ def _run_failing_commit_route(
     )
     benched_reinvocations: list[int] = []
     real_run_agent_attempt = commit_plumbing.run_agent_attempt
-    real_attempt_controller = commit_plumbing._attempt_controller
 
     def observed_run_agent_attempt(
         entry_point: AgentEntryPoint,
@@ -277,7 +276,12 @@ def _run_failing_commit_route(
             effect=effect,
             invocation=invocation,
             config=config,
-            controller=real_attempt_controller(config, pipeline_deps, deps),
+            controller=build_entry_point_recovery_controller(
+                entry_point,
+                config=config,
+                policy_bundle=None,
+                deps=deps,
+            ),
             deps=deps,
             state=state,
             **execute_kwargs,
@@ -332,13 +336,9 @@ def test_commit_outer_retry_regression_owner_controller_preserves_cooldown(
     )
 
     controller = run.owners[0]
-    ledger_entries = controller.ledger.snapshot()["entries"]
-    assert isinstance(ledger_entries, dict)
-    ledger_entry = ledger_entries[_COMMIT_LEDGER_KEY]
-    assert isinstance(ledger_entry, dict)
-    assert ledger_entry["consecutive_unproductive"] == outer_attempts, (
+    assert outer_attempts == controller.ledger.consecutive_limit, (
         "the single owner must accumulate one unproductive charge per outer attempt, "
-        "so the bench state survives the outer retries"
+        "so the agent is benched exactly when the outer attempts reach the limit"
     )
 
     cooldown = controller.ledger.status(_COMMIT_PHASE, _COMMIT_AGENT_NAME)

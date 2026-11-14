@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.phases.commit_review import CommitReviewGateFailed, CommitReviewRejected
+from ralph.phases.commit_review import (
+    CommitReviewApproved,
+    CommitReviewGateFailed,
+    CommitReviewRejected,
+)
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 from ralph.pipeline.events import (
@@ -29,6 +33,14 @@ from ralph.policy.models import (
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.classifier import FailureCategory
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "rollback_pending at the rejection ceiling and after the cycle timebox": (
+        "a rejection that skipped the rollback left the rejected tree in place, so "
+        "recovery re-entered commit review and rejected the same tree on every pass; "
+        "every rejection now requests the rollback and the assertion pins that"
+    ),
+}
 
 DEVELOPMENT_ANALYSIS_TWO_RUN_CAP = 2
 
@@ -742,7 +754,7 @@ class TestPhaseFailureEvent:
         assert "gate failed" in (new_state.last_error or "")
         assert effects == []
 
-    def test_commit_review_rejection_at_the_limit_fails_without_rollback(self) -> None:
+    def test_commit_review_rejection_at_the_limit_rolls_back_before_failing(self) -> None:
         state = PipelineState(
             phase="development_commit_review",
             commit_review_rejections=1,
@@ -756,7 +768,27 @@ class TestPhaseFailureEvent:
 
         assert new_state.phase == "failed_terminal"
         assert new_state.commit_review_rejections == 2
-        assert new_state.rollback_pending is False
+        assert new_state.rollback_pending is True
         assert new_state.rollback_ref == "refs/ralph/proposals/run-1/1"
         assert "limit reached" in (new_state.last_error or "")
         assert effects == []
+
+    def test_commit_review_approval_ends_the_consecutive_rejection_streak(self) -> None:
+        policy = _commit_review_policy()
+        rejected_once = PipelineState(
+            phase="development_commit_review",
+            commit_review_rejections=1,
+        )
+
+        approved, _ = _reduce(rejected_once, CommitReviewApproved(tree_sha="a" * 40), policy)
+        later_review = approved.copy_with(phase="development_commit_review")
+        rejected_again, _ = _reduce(
+            later_review,
+            CommitReviewRejected(reason="New damage", ref="refs/ralph/proposals/run-1/2"),
+            policy,
+        )
+
+        assert approved.commit_review_rejections == 0
+        assert rejected_again.phase == "development"
+        assert rejected_again.rollback_pending is True
+        assert rejected_again.commit_review_rejections == 1

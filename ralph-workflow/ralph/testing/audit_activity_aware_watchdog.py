@@ -65,7 +65,7 @@ def _iter_py_files(root: Path) -> list[Path]:
     return result
 
 
-_TEARDOWN_WIRED_NAMES: frozenset[str] = frozenset({"teardown_subtree"})
+_TEARDOWN_WIRED_NAMES: frozenset[str] = frozenset({"teardown_subtree", "teardown_observed_subtree"})
 
 
 def _function_wires_teardown(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

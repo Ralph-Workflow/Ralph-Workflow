@@ -295,7 +295,7 @@ Before invoking the review agent, the engine seals pending changes into an isola
 Policy knobs in the `[commit_review]` block of `pipeline.toml`:
 
 - **Proposal retention (`proposal_retention`, default: 10):** Limits how many historical proposal refs are retained before older ones are pruned.
-- **Rejection ceiling (`max_rejections`, default: 2):** The consecutive-rejection count at which the run fails to `failed_terminal`: with the default of 2, the second consecutive rejection is terminal, without another rollback. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of 2.
+- **Rejection ceiling (`max_rejections`, default: 2):** The consecutive-rejection count at which the run routes to `failed_terminal`: with the default of 2, the second consecutive rejection is rolled back and then routed there. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of 2.
 
 #### No plan-based bypass for intentional large deletions
 
@@ -306,8 +306,8 @@ The mass-deletion tripwires count the diff against `HEAD`; they do not consult t
 - **Rejection routing:** When a review artifact submits `verdict = "reject"`, or when a hard tripwire triggers, the run does not commit. The engine performs a preflight check, checkpoints `rollback_pending`, and restores the tree to `HEAD` (or the clean run-start baseline) with `git read-tree --reset -u HEAD`, removing files introduced in the proposal tree while keeping `.agent/` and ignored files intact.
 - **Rollback mechanism:** The rollback is driven by the sealed proposal ref. It uses **neither `git stash` nor a saved patch file** — the proposal diff tells the engine which added files to remove, and `git read-tree --reset -u` restores the tracked files.
 - **Continuation:** The rejection reason and proposal ref are carried to the next developer prompt, and routing returns to `development`.
-- **Rejection counter ceiling:** The `commit_review_rejections` counter tracks consecutive rejections (default limit: 2). Unlike iteration counters, it is not cleared by loop resets; reaching the ceiling routes to `failed_terminal`.
-- **Cycle-timebox exhaustion:** A rejection that arrives after the cycle timebox has elapsed does **not** loop back to `development`. It routes to `failed_terminal` (the phase's `on_failure` target, or the recovery `failed_route` when `on_failure` is unset) and performs no rollback.
+- **Rejection counter ceiling:** The `commit_review_rejections` counter tracks consecutive rejections (default limit: 2). Unlike iteration counters, it is not cleared by loop resets; an approved review resets it. Reaching the ceiling rolls the rejected changes back and routes to `failed_terminal`.
+- **Cycle-timebox exhaustion:** A rejection that arrives after the cycle timebox has elapsed does **not** loop back to `development`. It rolls the rejected changes back and routes to `failed_terminal` (the phase's `on_failure` target, or the recovery `failed_route` when `on_failure` is unset).
 - **Fail-closed gate:** Reviewer malfunctions (such as unparseable artifacts or unverifiable reason citations) fail closed with `on_failure = "failed_terminal"` rather than discarding code.
 - **Manual proposal recovery:** Proposals are preserved under `refs/ralph/proposals/<run>/<iteration>` and can be inspected or restored:
   ```bash

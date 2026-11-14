@@ -3354,6 +3354,11 @@ def ledger_requires_intervention(state: PipelineState, controller: RecoveryContr
     )
 
 
+def failed_route_is_recoverable(state: PipelineState, controller: RecoveryController) -> bool:
+    rollback_was_refused = bool(state.rollback_ref) and not state.rollback_pending
+    return not rollback_was_refused and not ledger_requires_intervention(state, controller)
+
+
 def _cycle_cap_exhausted(state: PipelineState, ctx: LoopContext) -> bool:
     count = state.recovery_cycle_count
     return isinstance(count, int) and count >= ctx.controller.cycle_cap
@@ -3387,7 +3392,7 @@ def _run_inner_loop_after_startup(
         )
         or (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
-            and not ledger_requires_intervention(state, ctx.controller)
+            and failed_route_is_recoverable(state, ctx.controller)
             and not _cycle_cap_exhausted(state, ctx)
         )
         or (
