@@ -7,7 +7,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.project_policy import markers as project_policy_markers
 from ralph.project_policy.instruction_surface import find_hidden_unicode
@@ -246,11 +246,11 @@ def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
         return []
     if not isinstance(parsed_obj, dict):
         return []
-    data = cast("dict[str, object]", parsed_obj)
+    data = parsed_obj
     servers = data.get(MCP_SERVERS_TABLE)
     if not isinstance(servers, dict):
         return []
-    servers_map = cast("dict[str, object]", servers)
+    servers_map = servers
 
     lines = text.splitlines()
     declarations: list[_McpServerDeclaration] = []
@@ -258,7 +258,7 @@ def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
     for name, entry in servers_map.items():
         if not isinstance(name, str) or not isinstance(entry, dict):
             continue
-        entry_map = cast("dict[str, object]", entry)
+        entry_map = entry
 
         line_number = _find_toml_table_location(lines, name)
 
@@ -292,21 +292,21 @@ def _toml_server_declarations(file_path: str, text: str) -> list[_McpServerDecla
 
 def _json_server_declarations(file_path: str, text: str) -> list[_McpServerDeclaration]:
     try:
-        payload: object = cast("object", json.loads(text))
+        payload: object = json.loads(text)
     except (json.JSONDecodeError, ValueError):
         return []
     if not isinstance(payload, dict):
         return []
-    payload_map = cast("dict[str, object]", payload)
+    payload_map = payload
     servers = payload_map.get("mcpServers")
     if not isinstance(servers, dict):
         return []
-    servers_map = cast("dict[str, object]", servers)
+    servers_map = servers
     declarations: list[_McpServerDeclaration] = []
     for name, entry in servers_map.items():
         if not isinstance(name, str) or not isinstance(entry, dict):
             continue
-        entry_map = cast("dict[str, object]", entry)
+        entry_map = entry
         raw_args = entry_map.get("args")
         args: tuple[str, ...] = ()
         if isinstance(raw_args, list):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final, cast
+from typing import Final
 
 from ralph.config._agent_overrides import agent_environment_value
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
@@ -55,7 +55,7 @@ def _normalize_kimi_server_entry(name: str, entry: object) -> tuple[str, object]
         return None
     if not isinstance(entry, Mapping):
         return None
-    return name, cast("dict[str, object]", entry)
+    return name, entry
 
 
 def load_existing_kimi_upstream_servers(

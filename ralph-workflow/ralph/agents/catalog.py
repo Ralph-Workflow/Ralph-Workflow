@@ -1,7 +1,6 @@
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from importlib import import_module
-from typing import TYPE_CHECKING, Final, Protocol, TypeVar, cast, overload, runtime_checkable
+from typing import TYPE_CHECKING, TypeVar, overload
 
 from ralph.agents._contracts import StrategyFactory
 from ralph.agents.execution_state._strategy_builders import (
@@ -53,36 +52,11 @@ _T = TypeVar("_T")
 
 _ParserRegistryEntry = ParserRegistryEntry
 
-_BUILTIN_MODULE: Final = "ralph.agents.builtin"
-_REGISTRY_MODULE: Final = "ralph.agents.registry"
-
-
-@runtime_checkable
-class _BuiltinSupportsProvider(Protocol):
-    def __call__(self) -> tuple[AgentSupport, ...]: ...
-
-
-@runtime_checkable
-class _DynamicAgentResolver(Protocol):
-    def __call__(
-        self,
-        name: str,
-        ccs_defaults: CcsConfig,
-        *,
-        base_lookup: Callable[[str], AgentConfig | None] | None = None,
-    ) -> AgentConfig | None: ...
-
-
-def _module_namespace(module_name: str) -> dict[str, object]:
-    return cast("dict[str, object]", import_module(module_name).__dict__)
-
 
 def _builtin_supports() -> tuple[AgentSupport, ...]:
-    provider = _module_namespace(_BUILTIN_MODULE).get("builtin_supports")
-    if not isinstance(provider, _BuiltinSupportsProvider):
-        msg = f"{_BUILTIN_MODULE}.builtin_supports is unavailable"
-        raise RuntimeError(msg)
-    return provider()
+    from ralph.agents.builtin import builtin_supports
+
+    return builtin_supports()
 
 
 def _resolve_dynamic_agent(
@@ -91,11 +65,9 @@ def _resolve_dynamic_agent(
     *,
     base_lookup: Callable[[str], AgentConfig | None] | None = None,
 ) -> AgentConfig | None:
-    resolver = _module_namespace(_REGISTRY_MODULE).get("_resolve_dynamic_agent")
-    if not isinstance(resolver, _DynamicAgentResolver):
-        msg = f"{_REGISTRY_MODULE}._resolve_dynamic_agent is unavailable"
-        raise RuntimeError(msg)
-    return resolver(name, ccs_defaults, base_lookup=base_lookup)
+    from ralph.agents.registry import _resolve_dynamic_agent
+
+    return _resolve_dynamic_agent(name, ccs_defaults, base_lookup=base_lookup)
 
 
 class _FlexibleFactory:

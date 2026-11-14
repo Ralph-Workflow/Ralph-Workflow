@@ -127,7 +127,6 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
-from ralph.process.teardown import ProcessTeardown
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.runtime_events import current_runtime_event
 
@@ -151,6 +150,7 @@ if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import ProcessMonitor
+    from ralph.process.teardown import ProcessTeardown
 
 from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 
@@ -230,6 +230,9 @@ def _resolve_pre_existing_transcript_names(
 
 
 class PtyLineReader:
+    _supervisor: AttemptSupervisor | None = None
+    _process_teardown: ProcessTeardown | None = None
+
     def __init__(
         self,
         handle: ManagedPtyProcess,
@@ -245,8 +248,8 @@ class PtyLineReader:
         _extras = extras or PtyExtras()
         self._handle = handle
         self._supervisor = supervisor
-        self._process_teardown = cast(
-            "ProcessTeardown | None", getattr(ctx, "process_teardown", None)
+        self._process_teardown: ProcessTeardown | None = (
+            ctx.process_teardown if hasattr(ctx, "process_teardown") else None
         )
         self._parser_key: str | None = reader_parser_key(ctx.config)
         self._agent_name = agent_name
@@ -359,17 +362,12 @@ class PtyLineReader:
         return self._completion_exit_sent
 
     def _attempt_supervisor(self) -> AttemptSupervisor:
-        supervisor = cast("object", getattr(self, "_supervisor", None))
-        if not isinstance(supervisor, AttemptSupervisor):
-            process_teardown_value: object = getattr(self, "_process_teardown", None)
-            supervisor = supervisor_process_teardown(
+        if self._supervisor is None:
+            self._supervisor = supervisor_process_teardown(
                 self._handle,
-                process_teardown_value
-                if isinstance(process_teardown_value, ProcessTeardown)
-                else None,
+                self._process_teardown,
             )
-            self._supervisor = supervisor
-        return supervisor
+        return self._supervisor
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
         thread = threading.Thread(target=target, daemon=True)

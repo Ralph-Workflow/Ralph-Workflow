@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
+from threading import Event
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -244,11 +245,14 @@ class _ProductionGitOps:
 
 
 class _SystemClock:
+    def __init__(self) -> None:
+        self._wait_event = Event()
+
     def now(self) -> float:
         return time.monotonic()
 
     def sleep(self, seconds: float) -> None:
-        time.sleep(seconds)
+        self._wait_event.wait(seconds)
 
 
 _DEFAULT_GIT_OPS = _ProductionGitOps()

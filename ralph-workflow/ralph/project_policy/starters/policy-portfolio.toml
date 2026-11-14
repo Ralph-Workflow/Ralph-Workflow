@@ -61,5 +61,39 @@ lifecycle = "review when the public contract or cheapest sufficient proof layer 
 disposition = "KEEP"
 enforcement = "deterministic: PROJECT-FACT-UNRESOLVED"
 
+[[controls]]
+id = "type-system-escape-hatch-ban"
+protected_outcome = "The per-language ban catalog has zero findings"
+fault_sensitivity = "Detects constructs and suppression mechanisms that prevent complete type-checker or linter verification"
+layer = "lint and typecheck gate"
+owner = "clean-code owner"
+trigger = "every maintained-language source change"
+lane = "default"
+marginal_cost_seconds = 0.0
+cost_basis = "estimate"
+evidence = "none"
+detects = "per-language ban catalog findings"
+retirement_trigger = "when every cataloged construct becomes structurally impossible"
+lifecycle = "review when a maintained language, checker, linter, or ban catalog changes"
+disposition = "KEEP"
+enforcement = "deterministic: PROJECT-FACT-UNRESOLVED"
+
+[[controls]]
+id = "strictest-lint-configuration"
+protected_outcome = "The lint configuration enables every rule and carries no banned-rule bypass"
+fault_sensitivity = "Detects a disabled rule that does not fire on common safe use, a banned per-file ignore, a banned extend-ignore, or an inline suppression marker"
+layer = "lint configuration audit"
+owner = "lint owner"
+trigger = "every lint configuration or maintained-language source change"
+lane = "default"
+marginal_cost_seconds = 0.0
+cost_basis = "estimate"
+evidence = "none"
+detects = "disabled-rule and banned-rule bypass findings"
+retirement_trigger = "when lint configuration bypasses become structurally impossible"
+lifecycle = "review when the linter, rule set, configuration, or suppression syntax changes"
+disposition = "KEEP"
+enforcement = "deterministic: PROJECT-FACT-UNRESOLVED"
+
 [local_tightening]
 controls = []

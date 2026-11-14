@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import time
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -31,6 +30,10 @@ from ralph.policy.models import (
 )
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.recovery.controller import RecoveryController
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "default sleep": "tests default event wait helper rather than banned time.sleep in production",
+}
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -928,9 +931,10 @@ class TestInjectionPrecedence:
     def test_recovery_sleep_defaults_to_time_sleep(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
+        run_loop_module = _load_run_loop()
         ctx, _ = _capture_run_ctx(monkeypatch, tmp_path)
 
-        assert ctx.sleep is time.sleep
+        assert ctx.sleep is run_loop_module._event_wait
 
     def test_pipeline_deps_recovery_sleep_wins_over_pro_hooks(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

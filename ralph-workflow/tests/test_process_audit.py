@@ -7,9 +7,8 @@ import pytest
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "TESTS_ALLOWLIST": (
-        "test_audit_sast.py subprocess-runs the SAST audit CLI as a black-box "
-        "warning-free regression, so it joins the allowlist by the same "
-        "basename convention as the other audit tests"
+        "test_audit_sast.py and test_audit_banned_constructs.py subprocess-run "
+        "their respective CLI audits as black-box regressions, so they join the allowlist"
     ),
     "test_no_direct_subprocess_calls_in_tests": (
         "test_repo_structure_boundary_rules.py carries os.killpg fixture strings "
@@ -100,9 +99,14 @@ ALLOWLIST: list[tuple[str, str]] = [
         "scan the tree; check=False, no shell, no user input, and the same "
         "bounded-git pattern as testing/_audit_baseline.py",
     ),
+    (
+        "testing/audit_banned_constructs.py",
+        "uses read-only git rev-parse and git ls-files to enumerate tracked files for banned constructs auditing",
+    ),
 ]
 
 TESTS_ALLOWLIST: set[str] = {
+    "test_audit_banned_constructs.py",
     "test_audit_secret_scan.py",
     "test_audit_sast.py",
     "test_repo_structure_boundary_rules.py",

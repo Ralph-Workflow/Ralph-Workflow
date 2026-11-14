@@ -6,7 +6,7 @@ import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.testing._audit_baseline import head_tree
 from ralph.testing._audit_content_set import read_manifests
@@ -138,7 +138,7 @@ def _parse_toml(text: str) -> dict[str, object] | None:
         return None
     if not isinstance(parsed_obj, dict):
         return None
-    return cast("dict[str, object]", parsed_obj)
+    return parsed_obj
 
 
 def _normalize_name(name: str) -> str:
@@ -171,7 +171,7 @@ def _nested_table(data: Mapping[str, object], *keys: str) -> Mapping[str, object
         value = current.get(key)
         if not isinstance(value, Mapping):
             return {}
-        current = cast("Mapping[str, object]", value)
+        current = value
     return current
 
 
@@ -183,11 +183,11 @@ def _collect_requirement_strings(data: Mapping[str, object]) -> list[str]:
             if not isinstance(node, Mapping):
                 node = None
                 break
-            node = cast("Mapping[str, object]", node).get(key)
+            node = node.get(key)
         if isinstance(node, list):
             requirements.extend(item for item in node if isinstance(item, str))
         elif isinstance(node, Mapping):
-            for value in cast("Mapping[str, object]", node).values():
+            for value in node.values():
                 if isinstance(value, list):
                     requirements.extend(item for item in value if isinstance(item, str))
     return requirements
@@ -198,7 +198,7 @@ def _iter_key_paths(data: Mapping[str, object], prefix: str = "") -> Iterable[tu
         path = f"{prefix}.{key}" if prefix else key
         yield path, key
         if isinstance(value, Mapping):
-            yield from _iter_key_paths(cast("Mapping[str, object]", value), path)
+            yield from _iter_key_paths(value, path)
 
 
 def _find_line(text: str, needle: str) -> int:
@@ -236,7 +236,7 @@ def _lock_packages(text: str) -> dict[tuple[str, str], Mapping[str, object]]:
     for raw_entry in raw_packages:
         if not isinstance(raw_entry, Mapping):
             continue
-        entry = cast("Mapping[str, object]", raw_entry)
+        entry = raw_entry
         name = entry.get("name")
         version = entry.get("version")
         if not isinstance(name, str) or not isinstance(version, str):
@@ -250,7 +250,7 @@ def _lock_source(entry: Mapping[str, object]) -> str | None:
     if not isinstance(source, Mapping):
         return None
     for key in RESOLVABLE_SOURCE_KEYS:
-        value = cast("Mapping[str, object]", source).get(key)
+        value = source.get(key)
         if isinstance(value, str) and value:
             return f"{key}={value}"
     return None
@@ -259,7 +259,7 @@ def _lock_source(entry: Mapping[str, object]) -> str | None:
 def _lock_entry_has_hash(entry: Mapping[str, object]) -> bool:
     sdist = entry.get("sdist")
     if isinstance(sdist, Mapping):
-        value = cast("Mapping[str, object]", sdist).get("hash")
+        value = sdist.get("hash")
         if isinstance(value, str) and value:
             return True
     wheels = entry.get("wheels")
@@ -267,7 +267,7 @@ def _lock_entry_has_hash(entry: Mapping[str, object]) -> bool:
         for wheel in wheels:
             if not isinstance(wheel, Mapping):
                 continue
-            value = cast("Mapping[str, object]", wheel).get("hash")
+            value = wheel.get("hash")
             if isinstance(value, str) and value:
                 return True
     return False
@@ -278,7 +278,7 @@ def _lock_entry_is_local(entry: Mapping[str, object]) -> bool:
     if not isinstance(source, Mapping):
         return False
     for key in LOCAL_SOURCE_KEYS:
-        value = cast("Mapping[str, object]", source).get(key)
+        value = source.get(key)
         if isinstance(value, str) and value:
             return True
     return False
@@ -294,7 +294,7 @@ def _lock_entry_publisher(
         return publisher
     source = entry.get("source")
     if isinstance(source, Mapping):
-        git_url = cast("Mapping[str, object]", source).get("git")
+        git_url = source.get("git")
         if isinstance(git_url, str) and git_url:
             return _publisher_from_url(git_url)
     return None
@@ -305,10 +305,10 @@ def _index_sources(data: Mapping[str, object]) -> dict[str, str]:
     uv_table = _nested_table(data, "tool", "uv")
     raw_index = uv_table.get("index")
     if isinstance(raw_index, list):
-        for item in cast("list[object]", raw_index):
+        for item in raw_index:
             if not isinstance(item, Mapping):
                 continue
-            entry = cast("Mapping[str, object]", item)
+            entry = item
             name = entry.get("name")
             url = entry.get("url")
             if isinstance(name, str) and isinstance(url, str) and name and url:
@@ -322,7 +322,7 @@ def _tool_source(data: Mapping[str, object], package: str) -> str | None:
     if not isinstance(entry, Mapping):
         return None
     for key in (*RESOLVABLE_SOURCE_KEYS, "index"):
-        value = cast("Mapping[str, object]", entry).get(key)
+        value = entry.get(key)
         if isinstance(value, str) and value:
             return f"{key}={value}"
     return None

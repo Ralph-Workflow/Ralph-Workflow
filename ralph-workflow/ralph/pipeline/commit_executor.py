@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
@@ -9,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 
 from ralph.checked_accessors import as_mapping
+from ralph.config import _env
 from ralph.config.enums import Verbosity
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -97,7 +97,7 @@ _SECRET_EXCLUDE_PATTERNS: tuple[str, ...] = (
 )
 
 type _EnvGetter = Callable[[str], str | None]
-_DEFAULT_ENV_GETTER: _EnvGetter = os.environ.get
+_DEFAULT_ENV_GETTER: _EnvGetter = _env.getenv
 
 _PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
 _REJECTED_PROPOSAL_REF_PREFIX = "refs/ralph/rejected-proposals/"

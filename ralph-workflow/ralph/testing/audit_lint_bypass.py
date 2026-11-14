@@ -4,7 +4,7 @@ import re
 import sys
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -17,7 +17,7 @@ def _load_toml_root(path: Path) -> dict[str, object] | None:
         return None
     if not isinstance(parsed_obj, dict):
         return None
-    return cast("dict[str, object]", parsed_obj)
+    return parsed_obj
 
 
 def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
@@ -25,20 +25,20 @@ def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
     for key in keys:
         if not isinstance(current, dict):
             return {}
-        mapping = cast("dict[str, object]", current)
+        mapping = current
         next_value = mapping.get(key)
         if next_value is None:
             return {}
         current = next_value
     if not isinstance(current, dict):
         return {}
-    return cast("dict[str, object]", current)
+    return current
 
 
 def _string_key_mapping(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         return {}
-    mapping = cast("dict[object, object]", value)
+    mapping = value
     return {
         raw_key: raw_value for raw_key, raw_value in mapping.items() if isinstance(raw_key, str)
     }

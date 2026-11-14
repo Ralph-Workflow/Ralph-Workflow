@@ -74,6 +74,40 @@ retirement_trigger = "when the Linux inotify probe is retired or replaced by a p
 enforcement = "advisory: platform probe run on Linux implementation changes; review: Linux watcher implementation change"
 
 [[controls]]
+id = "type-system-escape-hatch-ban"
+protected_outcome = "The per-language ban catalog has zero findings"
+fault_sensitivity = "Detects constructs and suppression mechanisms that prevent complete type-checker or linter verification"
+layer = "lint and typecheck gate"
+owner = "clean-code owner"
+trigger = "every maintained-language source change"
+lane = "default"
+marginal_cost_seconds = 0.0
+cost_basis = "estimate"
+evidence = "none"
+lifecycle = "review when a maintained language, checker, linter, or ban catalog changes"
+disposition = "KEEP"
+detects = "per-language ban catalog findings"
+retirement_trigger = "when every cataloged construct becomes structurally impossible"
+enforcement = "advisory: the Python ban gate is not registered as an authoritative verify step yet; review: once the banned-construct audit is registered and the tracked-source scan is clean"
+
+[[controls]]
+id = "strictest-lint-configuration"
+protected_outcome = "The lint configuration enables every rule and carries no banned-rule bypass"
+fault_sensitivity = "Detects a disabled rule that does not fire on common safe use, a banned per-file ignore, a banned extend-ignore, or an inline suppression marker"
+layer = "lint configuration audit"
+owner = "lint owner"
+trigger = "every lint configuration or maintained-language source change"
+lane = "default"
+marginal_cost_seconds = 0.0
+cost_basis = "estimate"
+evidence = "none"
+lifecycle = "review when the linter, rule set, configuration, or suppression syntax changes"
+disposition = "KEEP"
+detects = "disabled-rule and banned-rule bypass findings"
+retirement_trigger = "when lint configuration bypasses become structurally impossible"
+enforcement = "deterministic: lint bypass audit (audit_lint_bypass)"
+
+[[controls]]
 id = "retired-root-operational-doc-guards"
 protected_outcome = "Retired repo-root operational guides contain current guidance"
 fault_sensitivity = "The repo-root operational guide path is absent from a clean clone, so an assertion against it never executes"

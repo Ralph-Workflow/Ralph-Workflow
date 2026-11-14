@@ -4,7 +4,6 @@ import sys
 import tomllib
 from configparser import ConfigParser
 from pathlib import Path
-from typing import cast
 
 _WEAKENING_MYPY_KEYS: dict[str, str] = {
     "ignore_missing_imports": "ignore_missing_imports = true",
@@ -49,7 +48,7 @@ def _load_toml_root(path: Path) -> dict[str, object] | None:
         return None
     if not isinstance(parsed_obj, dict):
         return None
-    return cast("dict[str, object]", parsed_obj)
+    return parsed_obj
 
 
 def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
@@ -57,14 +56,14 @@ def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
     for key in keys:
         if not isinstance(current, dict):
             return {}
-        mapping = cast("dict[str, object]", current)
+        mapping = current
         next_value = mapping.get(key)
         if next_value is None:
             return {}
         current = next_value
     if not isinstance(current, dict):
         return {}
-    return cast("dict[str, object]", current)
+    return current
 
 
 def _ini_value(config: ConfigParser, section_name: str, key: str) -> str | None:

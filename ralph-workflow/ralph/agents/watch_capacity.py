@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import importlib
 import os
 import platform
 import threading
 from pathlib import Path
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol
+
+from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -25,20 +26,6 @@ __all__ = [
 
 class DirectoryCounter(Protocol):
     def __call__(self, workspace: Path, *, cap: int) -> int | None: ...
-
-
-@runtime_checkable
-class _DebugLogger(Protocol):
-    def opt(self, *, exception: bool) -> _DebugLogger: ...
-
-    def debug(self, message: str) -> object: ...
-
-
-def _debug_logger() -> _DebugLogger:
-    raw: object = cast("object", importlib.import_module("loguru").logger)
-    if not isinstance(raw, _DebugLogger):
-        raise TypeError("the loguru logger does not provide the debug logger interface")
-    return raw
 
 
 def _is_linux_host() -> bool:
@@ -101,7 +88,6 @@ def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: f
         try:
             publication.put(probe())
         except Exception:
-            logger = _debug_logger()
             logger.opt(exception=True).debug("workspace watch capacity probe failed")
             publication.put(_ProbeFailed())
 

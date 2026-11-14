@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import importlib
 import shlex
 from copy import deepcopy
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -127,12 +126,9 @@ def agy_alias_help() -> str:
 
 
 def builtin_supports() -> tuple[AgentSupport, ...]:
-    builtin = importlib.import_module("ralph.agents.builtin")
-    _builtin_supports_impl = cast(
-        "Callable[[], tuple[AgentSupport, ...]]",
-        builtin.builtin_supports,
-    )
-    return _builtin_supports_impl()
+    from ralph.agents.builtin import builtin_supports as builtin_supports_impl
+
+    return builtin_supports_impl()
 
 
 def _builtin_supports_lazy() -> tuple[AgentSupport, ...]:

@@ -9,6 +9,10 @@ from ralph import version
 from ralph.display import RunStartOrientation, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "flaky timestamp": "strip wall-clock timestamp prefix so stability test does not flake across second boundaries",
+}
+
 _BUILD_IDENTITY_PATTERN = re.compile(r"v(?P<version>[0-9][0-9A-Za-z.+-]*)\+(?P<commit>[0-9a-f]{8})")
 
 
@@ -29,7 +33,7 @@ def _render_run_start() -> str:
 def _run_start_header(output: str) -> str:
     headers = [line for line in output.splitlines() if "Ralph Workflow run start" in line]
     assert len(headers) == 1, f"expected exactly one run-start header line, got: {headers!r}"
-    return headers[0]
+    return re.sub(r"^\d{2}:\d{2}:\d{2}\s+", "", headers[0])
 
 
 def test_run_start_header_carries_package_version() -> None:

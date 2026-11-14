@@ -4,7 +4,7 @@ import json
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final, cast
+from typing import Final
 
 from loguru import logger
 
@@ -49,7 +49,7 @@ def _normalize_cursor_server_entry(name: str, entry: object) -> tuple[str, objec
         return None
     if not isinstance(entry, Mapping):
         return None
-    return name, cast("dict[str, object]", entry)
+    return name, entry
 
 
 _MIRROR_COPY_BYTE_BUDGET: Final[int] = 64 * 1024 * 1024

@@ -559,9 +559,7 @@ class ProcessLineReader:
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe = ctx.liveness_probe or DefaultLivenessProbe()
-        self._process_teardown = cast(
-            "ProcessTeardown | None", getattr(ctx, "process_teardown", None)
-        )
+        self._process_teardown = ctx.process_teardown
         self._waiting_listener = ctx.waiting_listener
         self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor

@@ -16,6 +16,10 @@ from ralph.skills import get_skill_content, upstream
 from ralph.skills.upstream import HttpClient, HttpResponse, UpdateOutcome
 from tests.test_skills_upstream_update import _SKILL_FILES, _client_for
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "universal upstreams": "UNIVERSAL_UPSTREAMS includes both superpowers and anti-slop, so both are fetched",
+}
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 

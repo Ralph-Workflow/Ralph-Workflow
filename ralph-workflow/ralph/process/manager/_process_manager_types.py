@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 _sync_cell: list[_SyncProcessFactory] = []
 _async_cell: list[_AsyncProcessFactory] = []
@@ -151,15 +151,14 @@ if TYPE_CHECKING:
             rows: int,
         ) -> _PtyProcessLike: ...
 else:
-    _PsutilProcessLike = Any
-    _PsutilModuleLike = Any
-    _SyncProcessLike = Any
-    _AsyncProcessLike = Any
-    _SyncProcessFactory = Any
-    _AsyncProcessFactory = Any
-    _PtyProcessLike = Any
-    _PtyProcessFactory = Any
-    Callable = Any
+    _PsutilProcessLike = object
+    _PsutilModuleLike = object
+    _SyncProcessLike = object
+    _AsyncProcessLike = object
+    _SyncProcessFactory = object
+    _AsyncProcessFactory = object
+    _PtyProcessLike = object
+    _PtyProcessFactory = object
 
 
 __all__ = [

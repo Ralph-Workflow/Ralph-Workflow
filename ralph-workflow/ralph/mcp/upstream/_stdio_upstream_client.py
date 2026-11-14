@@ -5,7 +5,7 @@ import json
 import os
 import subprocess
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol._startup_timeouts import upstream_call_timeout_seconds
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
@@ -71,7 +71,7 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
     for item in raw_tools:
         if not isinstance(item, Mapping):
             continue
-        item_map = cast("Mapping[str, object]", item)
+        item_map = item
         name = item_map.get("name")
         if not isinstance(name, str) or not name:
             continue
@@ -79,7 +79,7 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
         description = str(description_raw) if description_raw is not None else ""
         schema_raw = item_map.get("inputSchema") or item_map.get("input_schema")
         if isinstance(schema_raw, Mapping):
-            input_schema: dict[str, object] = dict(cast("Mapping[str, object]", schema_raw))
+            input_schema: dict[str, object] = dict(schema_raw)
         else:
             input_schema = {}
         tools.append(UpstreamTool(name=name, description=description, input_schema=input_schema))
@@ -181,13 +181,13 @@ def _make_stdio_caller(
 def _json_rpc_result(raw: object, context: str) -> JsonObject:
     if not isinstance(raw, Mapping):
         raise UpstreamCallError(f"unexpected response type from {context}")
-    raw_map = cast("Mapping[str, object]", raw)
+    raw_map = raw
     err = raw_map.get("error")
     if err is not None:
         raise UpstreamCallError(f"JSON-RPC error from {context}: {err}")
     result = raw_map.get("result")
     if isinstance(result, Mapping):
-        return dict(cast("Mapping[str, object]", result))
+        return dict(result)
     return {}
 
 

@@ -46,6 +46,34 @@ code.
 * Cross-component dependency direction, state ownership, and external I/O
   boundaries are governed by `architecture-policy.md`.
 
+## Verifiable constructs and banned escape hatches
+
+Code uses only constructs the type checker and linter can fully verify. The
+default is ban. The burden of proof is on allowing a construct, never on
+banning it: a construct remains allowed only when its common use is safe and
+fully verifiable by both tools. Occasional need, careful use, or restriction to
+one module does not justify allowance. There are no scoped exemptions, inline
+suppressions, per-file ignores of a banned rule, allowlists, or baselines. The
+only remedy for a finding is restructuring the code. When a banned construct
+appears unavoidable, the agent reports the finding and stops instead of
+suppressing it. This rule has evidence tag `none` and ships as
+`deterministic` because the project's ban gate enforces it.
+
+The catalog names the enforcing linter rule IDs. Uppercase hyphenated
+identifiers without a linter prefix are project-gate rule IDs; the remediation
+agent maps them to the rule IDs enforced by the project's own type checker and
+linter configuration.
+
+| Language | Banned constructs | Enforcing rule IDs |
+|---|---|---|
+| Python | `eval`; `exec`; `compile`; `__import__`; dynamic `importlib` loading; `globals`/`locals`/`vars`; non-literal `getattr`/`setattr`/`delattr`; `Any`; `typing.cast`; `# type: ignore`; `ctypes`/`cffi`; `pickle`/`marshal`; metaclasses; `__getattr__`/`__getattribute__`/`__setattr__` overrides; three-argument `type()`; `inspect` reflection in production; runtime monkeypatching; `global`/`nonlocal`; mutable default arguments; `assert` for runtime validation; bare and broad `except`; named `lambda`; pass-through `*args`/`**kwargs`; `isinstance`/`type` dispatch chains; dynamic attributes without `__slots__`; star imports; `os.environ` outside one config module; `subprocess` with `shell=True`; shared mutable state through `threading`; `sys.path` edits; `__del__`; `__all__` mutation; `print` in library code; `time.sleep` in production; inheritance across modules. | `S307`; `S102`; `BANNED-CALL`; `BANNED-CALL`; `DYNAMIC-IMPORT`; `BANNED-NAMESPACE`; `B009`, `B010`, `DYNAMIC-ATTRIBUTE`; `ANN401`; `TC006`, `TYPING-CAST`; `PGH003`, `TYPE-IGNORE`; `BANNED-IMPORT`; `S403`, `S301`, `S302`, `BANNED-IMPORT`; `METACLASS`; `DYNAMIC-METHOD`; `TYPE-FACTORY`; `INSPECT-REFLECTION`; `MONKEYPATCH`; `PLW0603`, `PLW0602`, `GLOBAL-STATE`; `B006`, `MUTABLE-DEFAULT`; `S101`, `RUNTIME-ASSERT`; `E722`, `BLE001`, `BROAD-EXCEPT`; `E731`, `ASSIGNED-LAMBDA`; `ANN002`, `ANN003`, `VARIADIC-PASSTHROUGH`; `PLR1701`, `TYPE-DISPATCH`; `DYNAMIC-INSTANCE-ATTRIBUTE`; `F403`, `F405`, `STAR-IMPORT`; `OS-ENVIRON`; `S602`, `S604`, `SHELL-TRUE`; `THREAD-STATE`; `SYS-PATH`; `FINALIZER`; `ALL-MUTATION`; `T201`, `PRINT`; `SLEEP`; `CROSS-MODULE-INHERITANCE`. |
+| Rust | `unsafe`; `transmute`; `static mut`; `Any`/`downcast`; `#[allow(...)]` on a banned lint; `unwrap`/`expect`/`panic!` outside tests; procedural macros generating untyped code. | `unsafe_code`; `unnecessary_transmutes`, `clippy::useless_transmute`, `BANNED-TRANSMUTE`; `static_mut_refs`; `clippy::downcast_ref`, `BANNED-DOWNCAST`; `BANNED-ALLOW`; `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`; `BANNED-UNTYPED-MACRO`. |
+| TypeScript/JavaScript | `any`; assertions to unrelated types; non-null `!`; `@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`; `eval`; `new Function`; `Proxy`/`Reflect`; `with`; `useEffect`; `dangerouslySetInnerHTML`; every `eslint-disable` form. | `@typescript-eslint/no-explicit-any`; `@typescript-eslint/consistent-type-assertions`; `@typescript-eslint/no-non-null-assertion`; `@typescript-eslint/ban-ts-comment`; `no-eval`; `no-new-func`; `BANNED-REFLECTION`; `no-with`; `BANNED-EFFECT`; `react/no-danger`; `eslint-comments/no-use`. |
+| C/C++ | `void *` data; C-style casts; `reinterpret_cast`; `const_cast`; type-punning unions; variadics; `setjmp`/`longjmp`; raw `new`/`delete`; function-like `#define` macros. | `BANNED-VOID-POINTER`, `cppcoreguidelines-pro-type-reinterpret-cast`; `google-readability-casting`, `cppcoreguidelines-pro-type-cstyle-cast`; `cppcoreguidelines-pro-type-reinterpret-cast`; `cppcoreguidelines-pro-type-const-cast`; `cppcoreguidelines-pro-type-union-access`; `cppcoreguidelines-pro-type-vararg`; `cert-err52-cpp`; `cppcoreguidelines-owning-memory`; `cppcoreguidelines-macro-usage`. |
+| Go | `unsafe`; `reflect`; `interface{}`/`any` outside a closed generic constraint; `//go:linkname`; `//nolint`. | `govet:unsafeptr`; `BANNED-REFLECT`; `BANNED-ANY`; `BANNED-LINKNAME`; `nolintlint`. |
+| Java/Kotlin/C# | Reflection APIs; `Unsafe`; raw types; unchecked casts; `dynamic`; `Object`/`Any` parameter types; `@SuppressWarnings`/`#pragma warning disable`. | `BANNED-REFLECTION`; `BANNED-UNSAFE`; `rawtypes`; `unchecked`; `BANNED-DYNAMIC`; `BANNED-OBJECT-PARAMETER`; `BANNED-SUPPRESSION`. |
+| Any other language | Equivalent bans derived by the remediation agent from the project's own type checker and linter documentation. | The remediation agent cites the enforcing rule IDs and leaves no cataloged feature able to disable checking silently. |
+
 ## Commenting policy
 
 Source code contains no comments. Intent, constraints, and invariants are
@@ -126,6 +154,13 @@ Then delete this comment. -->
 | Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | no private method is renamed to public solely to satisfy a private-call ratchet | deterministic: PROJECT-FACT-UNRESOLVED | when every private-call ratchet is retired |
 | Bounded premature abstraction | Clean-code owner | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops growing the abstraction target |
 | Comment and docstring absence | Clean-code owner | source carries no comments and no docstrings | the comment audit returns zero findings over the tracked tree | the comment audit returns zero findings over the tracked tree | deterministic: PROJECT-FACT-UNRESOLVED | when the comment gate is retired |
+| Python type-system escape-hatch ban | Clean-code owner | the Python ban catalog has zero findings | the declared Python gate reports every cataloged construct | the Python findings reported by the declared gate | deterministic: PROJECT-FACT-UNRESOLVED | when the cataloged constructs become structurally impossible |
+| Rust type-system escape-hatch ban | Clean-code owner | the Rust ban catalog has zero findings | the declared Rust gate reports every cataloged construct | the Rust findings reported by the declared gate | deterministic: PROJECT-FACT-UNRESOLVED | when the cataloged constructs become structurally impossible |
+| TypeScript/JavaScript type-system escape-hatch ban | Clean-code owner | the TypeScript/JavaScript ban catalog has zero findings | the declared TypeScript/JavaScript gate reports every cataloged construct | the TypeScript/JavaScript findings reported by the declared gate | deterministic: PROJECT-FACT-UNRESOLVED | when the cataloged constructs become structurally impossible |
+| C/C++ type-system escape-hatch ban | Clean-code owner | the C/C++ ban catalog has zero findings | the declared C/C++ gate reports every cataloged construct | the C/C++ findings reported by the declared gate | deterministic: PROJECT-FACT-UNRESOLVED | when the cataloged constructs become structurally impossible |
+| Go type-system escape-hatch ban | Clean-code owner | the Go ban catalog has zero findings | the declared Go gate reports every cataloged construct | the Go findings reported by the declared gate | deterministic: PROJECT-FACT-UNRESOLVED | when the cataloged constructs become structurally impossible |
+| Java/Kotlin/C# type-system escape-hatch ban | Clean-code owner | the Java/Kotlin/C# ban catalog has zero findings | the declared Java/Kotlin/C# gate reports every cataloged construct | the Java/Kotlin/C# findings reported by the declared gate | deterministic: PROJECT-FACT-UNRESOLVED | when the cataloged constructs become structurally impossible |
+| Other-language type-system escape-hatch ban | Clean-code owner | the derived language ban catalog has zero findings | the declared language gate reports every derived construct and silent checker disable | the findings reported by the derived language gate | deterministic: PROJECT-FACT-UNRESOLVED | when the cataloged constructs become structurally impossible |
 
 ## Project facts to resolve
 

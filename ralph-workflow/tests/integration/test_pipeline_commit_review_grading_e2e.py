@@ -4,7 +4,7 @@ import dataclasses
 from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import pytest
 from loguru import logger
@@ -101,6 +101,10 @@ COMMIT_PHASES: tuple[str, ...] = (
 
 REVIEWED_FILE = "src/feature.py"
 REVIEWED_CONTENT = "print('reviewed change')\n"
+
+RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
+    "_submit_commit_message": "reformat line length",
+}
 
 
 @lru_cache(maxsize=1)

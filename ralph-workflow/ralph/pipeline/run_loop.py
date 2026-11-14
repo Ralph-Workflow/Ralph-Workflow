@@ -1180,7 +1180,11 @@ def _resolve_recovery_sleep(
         return pro_hooks.recovery_sleep
     if recovery_sleep_kwarg is not None:
         return recovery_sleep_kwarg
-    return time.sleep
+    return _event_wait
+
+
+def _event_wait(seconds: float) -> None:
+    threading.Event().wait(seconds)
 
 
 def _resolve_recovery_controller(

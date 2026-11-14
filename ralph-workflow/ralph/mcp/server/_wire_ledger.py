@@ -13,7 +13,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -162,7 +162,7 @@ def _iter_ledger_rows(ledger_path: Path) -> list[dict[str, object]]:
         except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict):
-            rows.append(cast("dict[str, object]", parsed))
+            rows.append(parsed)
     return rows
 
 

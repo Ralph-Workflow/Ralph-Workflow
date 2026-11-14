@@ -4,7 +4,7 @@ import hmac
 import json
 import os
 import threading
-from typing import TYPE_CHECKING, BinaryIO, cast
+from typing import TYPE_CHECKING, BinaryIO
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -24,7 +24,7 @@ def parse_ledger_line(line: bytes) -> dict[str, object] | None:
     except ValueError:
         return None
     if isinstance(parsed, dict):
-        return cast("dict[str, object]", parsed)
+        return parsed
     return None
 
 

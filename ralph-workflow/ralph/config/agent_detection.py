@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from loguru import logger
 
 from ralph.agents.builtin import builtin_supports
+from ralph.config import _env
 from ralph.config._agent_overrides import opencode_binary_override
 from ralph.config.agents_file_writer import write_agents_toml
 from ralph.config.bootstrap import resolve_global_config_dir
@@ -139,7 +140,7 @@ def _binary_for(name: str, cmd: str) -> str:
     override = (
         opencode_binary_override()
         if name == "opencode"
-        else os.environ.get(override_name)
+        else _env.getenv(override_name)
         if override_name is not None
         else None
     )

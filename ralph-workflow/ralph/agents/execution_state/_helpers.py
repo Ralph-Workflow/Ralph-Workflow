@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
@@ -13,11 +12,6 @@ from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
-
-
-@runtime_checkable
-class _ParserBaseModule(Protocol):
-    def extract_error_message(self, obj: dict[str, object]) -> str: ...
 
 
 if TYPE_CHECKING:
@@ -51,10 +45,9 @@ def _non_blank_output_signal(line: str) -> AgentActivitySignal | None:
 
 
 def _error_message_from_error_field(obj: dict[str, object]) -> str:
-    parser_base: object = import_module("ralph.agents.parsers.base")
-    if not isinstance(parser_base, _ParserBaseModule):
-        raise TypeError("ralph.agents.parsers.base lacks extract_error_message")
-    return parser_base.extract_error_message(obj)
+    from ralph.agents.parsers.base import extract_error_message
+
+    return extract_error_message(obj)
 
 
 def _tool_state_error_message(obj: dict[str, object]) -> str | None:

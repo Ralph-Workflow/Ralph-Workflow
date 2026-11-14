@@ -3,19 +3,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import StrEnum
-from importlib import import_module
-from typing import cast
 
 from ralph.recovery.failure_classifier import _SUBSCRIPTION_LIMIT_SUBSTRINGS
 
 
 def _is_user_prompt_event_line(line: str) -> bool:
-    module = cast("object", import_module("ralph.agents.execution_state"))
-    checker = cast("dict[str, object]", module.__dict__).get("is_user_prompt_event_line")
-    if not callable(checker):
-        return False
-    result: object = checker(line)
-    return bool(result)
+    from ralph.agents.execution_state import is_user_prompt_event_line
+
+    return is_user_prompt_event_line(line)
 
 
 _PROVIDER_FAILURE_OUTPUT_MARKERS = (
@@ -51,10 +46,10 @@ def _parse_json_event(line: str) -> dict[str, object] | None:
     if not stripped.startswith("{"):
         return None
     try:
-        parsed = cast("object", json.loads(stripped))
+        parsed: object = json.loads(stripped)
     except ValueError:
         return {}
-    return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _is_provider_error_event(event: dict[str, object]) -> bool:
@@ -66,7 +61,7 @@ def _is_provider_error_event(event: dict[str, object]) -> bool:
         return True
     if declared.startswith("item."):
         item = event.get("item")
-        item_type = cast("dict[str, object]", item).get("type") if isinstance(item, dict) else None
+        item_type = item.get("type") if isinstance(item, dict) else None
         return isinstance(item_type, str) and item_type.casefold() == "error"
     return event.get("error") not in (None, "", {}, [])
 
@@ -94,7 +89,7 @@ def _event_kind(event: dict[str, object]) -> str:
     kind = event_type.casefold() if isinstance(event_type, str) else ""
     if kind.startswith("item."):
         item = event.get("item")
-        item_type = cast("dict[str, object]", item).get("type") if isinstance(item, dict) else None
+        item_type = item.get("type") if isinstance(item, dict) else None
         return item_type.casefold() if isinstance(item_type, str) else ""
     return kind
 

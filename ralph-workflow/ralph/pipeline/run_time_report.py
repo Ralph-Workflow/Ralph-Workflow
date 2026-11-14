@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.config import _env
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
@@ -150,7 +150,7 @@ def render_run_time_report(
     state: PipelineState,
     outcome: str,
     elapsed_seconds: float,
-    getenv: Callable[[str], str | None] = os.environ.get,
+    getenv: Callable[[str], str | None] = _env.getenv,
     cycle_timebox: CycleTimeboxPolicy | None = None,
     development_timebox: DevelopmentTimeboxPolicy | None = None,
 ) -> str:
@@ -486,7 +486,7 @@ def emit_run_time_report(
     state: PipelineState,
     outcome: str,
     elapsed_seconds: float,
-    getenv: Callable[[str], str | None] = os.environ.get,
+    getenv: Callable[[str], str | None] = _env.getenv,
     cycle_timebox: CycleTimeboxPolicy | None = None,
     development_timebox: DevelopmentTimeboxPolicy | None = None,
 ) -> None:
@@ -509,7 +509,7 @@ def emit_run_time_report_safely(
     state: PipelineState,
     outcome: str,
     elapsed_seconds: float,
-    getenv: Callable[[str], str | None] = os.environ.get,
+    getenv: Callable[[str], str | None] = _env.getenv,
     cycle_timebox: CycleTimeboxPolicy | None = None,
     development_timebox: DevelopmentTimeboxPolicy | None = None,
 ) -> None:

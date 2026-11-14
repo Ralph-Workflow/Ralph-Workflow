@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
@@ -220,6 +221,7 @@ def _take_lock(handle: object, deadline: float) -> bool:
         return True
     if not isinstance(handle, _HasFileno):
         return True
+    wait_event = Event()
     while True:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -227,7 +229,7 @@ def _take_lock(handle: object, deadline: float) -> bool:
         except OSError:
             if time.monotonic() >= deadline:
                 return False
-            time.sleep(_LOCK_POLL_SECONDS)
+            wait_event.wait(_LOCK_POLL_SECONDS)
 
 
 def _release_lock(handle: object) -> None:

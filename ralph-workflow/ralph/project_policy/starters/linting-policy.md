@@ -41,6 +41,10 @@ the project maintains and can lint them.
 * The authoritative configuration MUST identify file-level disables and broad
   exclusions with their reason; duplicating every entry in this policy is not
   required.
+* The lint configuration starts by enabling every rule and disables only a
+  rule that fires on common safe use. It contains no per-file ignore of a
+  banned rule, no `extend-ignore` that re-enables a banned rule, and no inline
+  suppression marker.
 
 ## Dead code — zero tolerance
 
@@ -75,6 +79,7 @@ Then delete this comment. -->
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
 | No lint bypass | Lint owner | no inline lint suppression lands in the tree, and every `per-file-ignores` entry matches the documented per-file configuration | audit_lint_bypass returns zero findings | audit_lint_bypass returns zero findings | deterministic: PROJECT-FACT-UNRESOLVED | when the rule is restated as a kernel-level constraint |
+| Strictest lint configuration | Lint owner | the lint configuration enables every rule and carries no per-file ignore of a banned rule | the lint-configuration audit reports no disabled rule outside common safe use and no banned-rule bypass | the disabled-rule and banned-rule bypass findings reported by the audit | deterministic: PROJECT-FACT-UNRESOLVED | when the lint configuration bypasses become structurally impossible |
 | Public / wrapper syntax-proxy | Lint owner | making a method public or adding a wrapper solely to satisfy a rule is a violation, not a fix | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to make a structural rule pass | no private method is renamed to public solely to satisfy a private-call ratchet | deterministic: PROJECT-FACT-UNRESOLVED | when every private-call ratchet is removed from the policy |
 
 ## Project facts to resolve

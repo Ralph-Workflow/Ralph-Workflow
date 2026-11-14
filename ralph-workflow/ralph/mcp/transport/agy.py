@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import _load_mcpservers_from_paths
@@ -36,7 +35,7 @@ def _normalize_agy_server_entry(name: str, entry: object) -> tuple[str, object] 
         return None
     if not isinstance(entry, Mapping):
         return None
-    casted = cast("dict[str, object]", entry)
+    casted = entry
     if "serverUrl" in casted and "url" not in casted:
         casted = {**casted, "url": casted["serverUrl"]}
     return name, casted

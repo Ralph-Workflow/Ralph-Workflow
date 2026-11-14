@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.explore.pipeline import (
     ReindexOptions,
@@ -276,7 +276,7 @@ def __getattr__(name: str) -> object:
 
 
 def __dir__() -> list[str]:
-    module_globals: dict[str, str] = cast("dict[str, str]", globals())
+    module_globals: dict[str, str] = globals()
     eagerly_defined_names: list[str] = list(module_globals)
     lazy_rexport_names: list[str] = list(_LAZY_REEXPORTS.keys())
     return sorted(set(eagerly_defined_names) | set(lazy_rexport_names))

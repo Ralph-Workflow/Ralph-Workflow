@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import Literal
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
@@ -30,7 +30,7 @@ class DevelopmentResult(RalphBaseModel):
             "failed",
         )
         if self.status not in allowed_statuses:
-            msg = f"status must be one of {list(cast('tuple[str, ...]', allowed_statuses))!r}"
+            msg = f"status must be one of {list(allowed_statuses)!r}"
             raise ValueError(msg)
         return self
 

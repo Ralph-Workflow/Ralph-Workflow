@@ -6,7 +6,6 @@ import tokenize
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from ralph.testing._repo_structure_allowlists import (
     _LEGACY_LARGE_FILE_ALLOWLIST,
@@ -241,7 +240,7 @@ def _load_toml_root(path: Path) -> dict[str, object] | None:
         return None
     if not isinstance(parsed, dict):
         return None
-    return cast("dict[str, object]", parsed)
+    return parsed
 
 
 def _nested_table(root: dict[str, object], *keys: str) -> dict[str, object]:
@@ -249,10 +248,10 @@ def _nested_table(root: dict[str, object], *keys: str) -> dict[str, object]:
     for key in keys:
         if not isinstance(current, dict):
             return {}
-        current = cast("dict[str, object]", current).get(key)
+        current = current.get(key)
     if not isinstance(current, dict):
         return {}
-    return cast("dict[str, object]", current)
+    return current
 
 
 def _sdist_include_entries(pyproject: dict[str, object]) -> list[str] | None:

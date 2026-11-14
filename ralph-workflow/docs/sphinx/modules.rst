@@ -2622,6 +2622,13 @@ ralph.agents.timeout_clock
    :members:
    :show-inheritance:
 
+ralph.agents.watchdog_fire_reason
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.watchdog_fire_reason
+   :members:
+   :show-inheritance:
+
 ----
 
 MCP
@@ -5696,9 +5703,23 @@ ralph.recovery.wait_kind
    :members:
    :show-inheritance:
 
+ralph.recovery.typed_signal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.typed_signal
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_integration_invariants
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_integration_invariants
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_banned_constructs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_banned_constructs
    :members:
    :show-inheritance:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from typing import cast
 
 from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
@@ -81,7 +80,7 @@ def git_exec_specs() -> list[ToolSpec]:
     if mod is not None:
         dict_obj: object = getattr(mod, "_HANDLER_CAPABILITY", None)
         if isinstance(dict_obj, dict):
-            typed_dict = cast("dict[object, str]", dict_obj)
+            typed_dict = dict_obj
             typed_dict.setdefault(EXEC_WAIT_TOOL, "ProcessExecBounded")
             typed_dict.setdefault(EXEC_CANCEL_TOOL, "ProcessExecBounded")
 

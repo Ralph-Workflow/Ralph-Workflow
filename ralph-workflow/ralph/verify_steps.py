@@ -203,6 +203,12 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "banned constructs audit (audit_banned_constructs)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_banned_constructs"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "workspace resource inventory audit (audit_workspace_resource_inventory)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),

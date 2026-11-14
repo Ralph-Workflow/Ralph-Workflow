@@ -3,7 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import time
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
@@ -24,8 +24,6 @@ from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.mcp.upstream.validation import UpstreamValidationError
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from ralph.workspace.protocol import Workspace
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
@@ -442,7 +440,7 @@ class UpstreamRegistry:
         workspace: Workspace | None,
     ) -> object:
         if isinstance(raw_result, (list, tuple)):
-            blocks: list[object] = list(cast("Sequence[object]", raw_result))
+            blocks: list[object] = list(raw_result)
             wrapper: JsonObject = {"content": blocks}
             normalize_upstream_content_blocks(
                 wrapper, proxied.server_name, proxied.tool.name, session, workspace

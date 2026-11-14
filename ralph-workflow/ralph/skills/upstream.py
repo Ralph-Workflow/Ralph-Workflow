@@ -450,24 +450,21 @@ def _transport_error_reason(exc: Exception, prefix: str) -> str:
     )
 
 
-def _release_tag_from_body(body: bytes) -> str | None:
+def _release_tag_from_body(body: bytes) -> tuple[str | None, str | None]:
     try:
         payload: object = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
-        return None
+        return (None, "release-api-malformed")
     tag = optional_str(_mapping(payload).get("tag_name"), field="tag_name")
     if tag is None or _TAG_PATTERN.fullmatch(tag) is None:
-        return None
-    return tag
+        return (None, "release-api-malformed")
+    return (tag, None)
 
 
 def _parse_release_tag(body: bytes) -> tuple[str | None, str | None]:
     if len(body) > MAX_RELEASE_BYTES:
         return (None, "release-api-too-large")
-    tag = _release_tag_from_body(body)
-    if tag is None:
-        return (None, "release-api-malformed")
-    return (tag, None)
+    return _release_tag_from_body(body)
 
 
 def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | None, str | None]:

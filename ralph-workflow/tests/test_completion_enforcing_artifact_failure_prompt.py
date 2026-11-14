@@ -31,6 +31,10 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._session_fake_mcp_bridge import _FakeMcpBridge
 from tests._session_registry_factory import _RegistryFactory
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "artifact contract": "prompt fixture must declare required development_result artifact",
+}
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 

@@ -43,6 +43,7 @@ ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
         "Premise-check retry line",
         "Policy follows reality",
         "Report failures honestly",
+        "Model or harness generation re-audit",
     }
 )
 

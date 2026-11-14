@@ -31,8 +31,6 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from sentry_sdk.types import Event
-
     from ralph.config.agent_config import AgentConfig
 
 _DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
@@ -392,7 +390,7 @@ def _build_extra_scrub_prefixes() -> tuple[str, ...]:
     return tuple(prefixes)
 
 
-def _before_send(event: Event, _hint: dict[str, object]) -> Event | None:
+def _before_send(event: dict[str, object], _hint: dict[str, object]) -> dict[str, object] | None:
     scrub_event(event)
     return event
 

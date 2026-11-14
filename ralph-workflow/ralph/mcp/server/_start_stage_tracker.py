@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
 
@@ -177,7 +177,7 @@ def read_overruns(root: Path, *, spawn_id: str | None = None) -> list[dict[str, 
         with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
             parsed: object = json.loads(stripped)
             if isinstance(parsed, dict):
-                records.append(cast("dict[str, object]", parsed))
+                records.append(parsed)
     return records
 
 
