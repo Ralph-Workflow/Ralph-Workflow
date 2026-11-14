@@ -1227,6 +1227,8 @@ class PtyLineReader:
         )
         if outcome is None:
             return
+        if self._process_teardown is not None:
+            self._process_teardown.teardown_subtree(self._handle)
         raise AgentInvocationError(
             self._agent_name,
             1,

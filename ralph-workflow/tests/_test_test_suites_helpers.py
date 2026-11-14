@@ -108,6 +108,17 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/recovery/test_canary_probe_pty_launch.py",
     "tests/recovery/test_canary_probe_seam_integration.py",
     "tests/agents/invoke/test_pending_subagents_turn_end.py",
+    "tests/scenarios/test_auto_integrate_symptom_matrix.py",
+    "tests/scenarios/test_lifecycle_relations.py",
+    "tests/scenarios/test_lifecycle_work_shapes.py",
+    "tests/scenarios/test_lifecycle_midflight.py",
+    "tests/scenarios/test_lifecycle_restart.py",
+    "tests/scenarios/test_lifecycle_operator_interleave.py",
+    "tests/scenarios/test_lifecycle_target_moves.py",
+    "tests/scenarios/test_lifecycle_conflict_kinds.py",
+    "tests/scenarios/test_lifecycle_publication_cleanup.py",
+    "tests/scenarios/test_lifecycle_content_equivalence.py",
+    "tests/scenarios/test_lifecycle_fault_injection.py",
 )
 
 EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (

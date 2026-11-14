@@ -113,6 +113,9 @@ def replay_stale_resolution(
             reintegrate_pending=True,
             owning_worktree=record.owning_worktree or str(root),
         )
+        replay_record = replay_record.model_copy(
+            update={"resolution_gate_key": None, "waiting_notification_key": None}
+        )
         write_record(root, replay_record)
     except Exception as exc:
         logger.error("auto_integrate: stale-resolution record transition failed: {}", exc)

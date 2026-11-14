@@ -281,6 +281,7 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
         "pre_target_sha": "y" * 40,
         "integrated_feature_sha": "z" * 40,
         "resolving_rebase": True,
+        "record_version": 99,
         "rebase_continue_pending": True,
         "rebase_continue_metadata": (("meta", "data"),),
         "rebase_restore_metadata": (("meta", "data"),),

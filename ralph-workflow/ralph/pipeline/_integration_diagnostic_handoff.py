@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph._build_identity import build_identity
 from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._integration_diagnostic_state import (
     DIAGNOSTIC_BUDGET_SPENT_REASON,
@@ -450,7 +451,7 @@ def escalate_record_fact_outcome(
             proof_failures=tuple(step.evidence.values()) or (step.reason,),
         )
         _write_terminal_marker(root, record)
-        terminal_emitter.critical(message)
+        logger.warning(terminal_emitter.terminal_message(message), build_identity())
         return terminal_step
     else:
         next_rung = decision.next_rung or rung

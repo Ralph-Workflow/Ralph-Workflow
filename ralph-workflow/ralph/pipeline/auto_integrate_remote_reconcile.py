@@ -203,10 +203,28 @@ def _resolve_owned_reconciliation(
             f"{CLEAN_ABORTED_RECONCILIATION_CONFLICT} {detail}",
             cleanly_aborted=True,
         )
+    current = read_record(repo_root)
+    if current is not None and current.resolution_gate_key is not None:
+        write_record(repo_root, current.with_resolution_gate_key(None))
     return ReconciliationOutcome(
         False,
         f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
     )
+
+
+def resolve_rebase_in_progress(
+    owner: Path,
+    target: str,
+    resolver: RebaseStopResolver,
+    *,
+    session: object | None = None,
+) -> bool:
+    from ralph.pipeline._stop_resolution_entry import production_rebase_runner
+
+    return production_rebase_runner().resolve_rebase(owner, target, resolver, session=session)
+
+
+_DEFAULT_RESOLVE_REBASE_IN_PROGRESS = resolve_rebase_in_progress
 
 
 def _resolve_rebase_stop(
@@ -216,6 +234,19 @@ def _resolve_rebase_stop(
     config: UnifiedConfig | None,
     record: IntegrationRecord,
 ) -> tuple[bool, str | None]:
+    if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
+        from ralph.pipeline.conflict_resolution.rebase_loop import (
+            resolution_session_from_config,
+        )
+
+        session = resolution_session_from_config(config) if config is not None else None
+        try:
+            return (
+                bool(resolve_rebase_in_progress(owner, target, resolver, session=session)),
+                None,
+            )
+        except TypeError:
+            return bool(resolve_rebase_in_progress(owner, target, resolver)), None
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked

@@ -135,6 +135,7 @@ def integrate_before_planning(
             config=config,
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
+            force_retry=True,
         )
         if recovery_retained_record(recovered) or (
             recovered is not None and recovered.fast_forwarded
@@ -206,6 +207,7 @@ def _finish_paused_rebase(
             resolver=resolver,
             record=read_record(root) or resolution_gate_record(root, target),
             conflict_config=config.conflict_resolution,
+            force_retry=True,
         ),
     )
     if isinstance(result, StopResolutionBlocked):

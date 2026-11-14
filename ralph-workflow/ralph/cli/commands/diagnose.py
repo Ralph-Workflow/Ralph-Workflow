@@ -236,7 +236,7 @@ def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
     return True
 
 
-def _integration_status_rows(status: IntegrationStatus) -> list[tuple[object, ...]]:
+def integration_status_rows(status: IntegrationStatus) -> list[tuple[object, ...]]:
     rows: list[tuple[object, ...]] = [
         ("Summary", status.summary),
         ("Cause", status.cause),
@@ -248,6 +248,9 @@ def _integration_status_rows(status: IntegrationStatus) -> list[tuple[object, ..
         ("Build", status.build_identity),
     ]
     return rows
+
+
+_integration_status_rows = integration_status_rows
 
 
 @dataclass(frozen=True)

@@ -233,7 +233,36 @@ def snapshot_uncommitted(root: Path, paths: Iterable[str]) -> dict[str, bytes]:
     return snapshot
 
 
-def content_equivalence(  # noqa: PLR0912
+def _find_missing_paths(
+    root: Path,
+    target: str,
+    feature: str,
+    resolved_base: str,
+    feature_paths: Sequence[str],
+    excluded: set[str],
+) -> list[str]:
+    missing: list[str] = []
+    for relative in feature_paths:
+        if relative in excluded:
+            continue
+        feature_blob = _blob_oid(root, feature, relative)
+        base_blob = _blob_oid(root, resolved_base, relative) if resolved_base else ""
+        target_blob = _blob_oid(root, target, relative)
+        if feature_blob == base_blob:
+            continue
+        if not feature_blob:
+            if target_blob:
+                missing.append(f"{relative} (the feature deleted it; the target kept it)")
+            continue
+        if not target_blob:
+            missing.append(f"{relative} (absent on the target)")
+            continue
+        if target_blob == base_blob:
+            missing.append(f"{relative} (the target still carries the pre-feature content)")
+    return missing
+
+
+def content_equivalence(
     root: Path,
     *,
     target: str = "main",
@@ -253,7 +282,6 @@ def content_equivalence(  # noqa: PLR0912
     """
     excluded = set(excluded_paths)
     resolved_base = base if base is not None else _merge_base(root, target, feature)
-    missing: list[str] = []
     unexpected: list[str] = []
     lost: list[str] = []
 
@@ -264,23 +292,9 @@ def content_equivalence(  # noqa: PLR0912
         feature_paths = _tree_paths(root, feature)
         base_paths = set()
 
-    for relative in feature_paths:
-        if relative in excluded:
-            continue
-        feature_blob = _blob_oid(root, feature, relative)
-        base_blob = _blob_oid(root, resolved_base, relative) if resolved_base else ""
-        target_blob = _blob_oid(root, target, relative)
-        if feature_blob == base_blob:
-            continue
-        if not feature_blob:
-            if target_blob:
-                missing.append(f"{relative} (the feature deleted it; the target kept it)")
-            continue
-        if not target_blob:
-            missing.append(f"{relative} (absent on the target)")
-            continue
-        if target_blob == base_blob:
-            missing.append(f"{relative} (the target still carries the pre-feature content)")
+    missing = _find_missing_paths(
+        root, target, feature, resolved_base, feature_paths, excluded
+    )
 
     allowed: set[str] = set()
     for ref in (*source_refs, feature):

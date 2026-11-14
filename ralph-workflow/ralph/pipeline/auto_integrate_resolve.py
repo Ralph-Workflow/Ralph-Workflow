@@ -71,6 +71,28 @@ def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
     record = read_record(root)
     if record is not None:
         return record
+    from ralph.git.rebase.rebase_continuation import (
+        RebaseContinuationError,
+        rebase_in_progress_at,
+    )
+    from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
+
+    try:
+        in_rebase = rebase_in_progress_at(root)
+    except (RebaseContinuationError, Exception):
+        in_rebase = False
+
+    if in_rebase:
+        try:
+            orig_head, onto = current_rebase_identity(root)
+            return IntegrationRecord(
+                phase="integrating",
+                target=target,
+                pre_feature_sha=orig_head,
+                pre_target_sha=onto,
+            )
+        except Exception:
+            pass
     return IntegrationRecord(
         phase="integrating",
         target=target,

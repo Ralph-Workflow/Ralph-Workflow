@@ -255,7 +255,7 @@ def test_a_non_ascii_path_is_not_reported_as_marker_free(
         return GitRunResult(
             args=("git", *args),
             returncode=0,
-            stdout=f"{named}\0",
+            stdout=f"100644 0000000000000000000000000000000000000000 1\t{named}\0",
             stderr="",
         )
 
@@ -273,7 +273,7 @@ def test_a_non_ascii_path_is_not_reported_as_marker_free(
 
     unmerged = merge_module.unmerged_paths(root)
 
-    assert git_calls == [("diff", "--name-only", "--diff-filter=U", "-z")]
+    assert git_calls == [("ls-files", "-u", "-z")]
     assert unmerged == [named], "the path must arrive openable, not git-quoted"
     assert merge_module.paths_with_conflict_markers(root, unmerged) == [named]
 

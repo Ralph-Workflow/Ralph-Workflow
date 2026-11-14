@@ -291,11 +291,9 @@ class _ProductionRebaseRunner:
         *,
         session: ResolutionSession,
     ) -> bool:
-        from ralph.pipeline.conflict_resolution import rebase_loop
+        from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
 
-        return bool(
-            rebase_loop._resolve_rebase_in_progress(root, target, resolver, session=session)
-        )
+        return bool(merge_mod.resolve_rebase_in_progress(root, target, resolver, session=session))
 
 
 _PRODUCTION_REBASE_RUNNER = _ProductionRebaseRunner()

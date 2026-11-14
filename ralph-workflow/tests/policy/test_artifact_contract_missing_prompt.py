@@ -9,7 +9,9 @@ from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.pipeline import effect_executor
+from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.policy.loader import cached_default_policy_bundle
 from ralph.policy.validation.artifact_contract import (
     ArtifactContractMismatchError,
     validate_artifact_contract,
@@ -135,3 +137,128 @@ def test_artifact_contract_regression_missing_rendered_prompt_does_not_preempt_t
 
     assert calls == 1
     assert result is not None
+
+
+def test_artifact_contract_absent_optional_non_artifact_prompt_is_compatible(
+    tmp_path: Path,
+) -> None:
+    calls = 0
+
+    def invoke(*_args: object, **_kwargs: object) -> list[str]:
+        nonlocal calls
+        calls += 1
+        return ["done"]
+
+    agent_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+
+    class _Registry:
+        def get(self, _name: str) -> AgentConfig:
+            return agent_config
+
+    class _Bridge:
+        def shutdown(self) -> None:
+            pass
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=_Bridge(),
+        master_prompt_materializer=lambda *_args, **_kwargs: str(tmp_path / "MASTER.md"),
+        registry_factory=lambda _config: _Registry(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="executor",
+        phase="development",
+        prompt_file=str(tmp_path / "non_artifact_absent_prompt.md"),
+        drain="development",
+    )
+
+    result = effect_executor.execute_agent_effect(
+        effect,
+        UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0)),
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=invoke,
+        agent_invocation_error=AgentInvocationError,
+        required_artifact=None,
+    )
+
+    assert calls == 1
+    assert result is not None
+
+
+def test_artifact_contract_none_prompt_fails_closed_before_invocation_and_accounting(
+    tmp_path: Path,
+) -> None:
+    calls = 0
+
+    def invoke(*_args: object, **_kwargs: object) -> list[str]:
+        nonlocal calls
+        calls += 1
+        return ["done"]
+
+    agent_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+
+    class _Registry:
+        def get(self, _name: str) -> AgentConfig:
+            return agent_config
+
+    class _Bridge:
+        def shutdown(self) -> None:
+            pass
+
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=_Bridge(),
+        master_prompt_materializer=lambda *_args, **_kwargs: str(tmp_path / "MASTER.md"),
+        registry_factory=lambda _config: _Registry(),
+    )
+    effect_kwargs: dict[str, object] = {
+        "agent_name": "reviewer",
+        "phase": PHASE,
+        "prompt_file": None,
+        "drain": "commit",
+    }
+    effect = InvokeAgentEffect(**effect_kwargs)
+
+    with pytest.raises(ArtifactContractMismatchError) as raised:
+        effect_executor.execute_agent_effect(
+            effect,
+            UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0)),
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            invoke_agent=invoke,
+            agent_invocation_error=AgentInvocationError,
+            required_artifact=_required_artifact(),
+        )
+
+    assert calls == 0, "agent must not be invoked when no prompt is provided for required artifact"
+    assert "no prompt was provided" in str(raised.value)
+
+
+def test_effect_router_invariants_make_unprompted_artifact_phase_unreachable(
+    tmp_path: Path,
+) -> None:
+    bundle = cached_default_policy_bundle()
+    scope = WorkspaceScope(tmp_path)
+    from ralph.pipeline.state import PipelineState
+
+    for phase_name, phase_def in bundle.pipeline.phases.items():
+        if phase_def.role in ("terminal",) or phase_def.skip_invocation:
+            continue
+        template = phase_def.prompt_template or f"{phase_name}.jinja"
+        assert template, f"phase '{phase_name}' must declare prompt_template in pipeline policy"
+
+        state = PipelineState(phase=phase_name)
+        effect = determine_effect_from_policy(
+            state,
+            bundle,
+            scope,
+            has_uncommitted_changes_fn=lambda _: True,
+        )
+        if isinstance(effect, InvokeAgentEffect):
+            assert effect.prompt_file, (
+                f"effect router must assign prompt_file for phase '{phase_name}'"
+            )
+            assert not effect.prompt_file.startswith("None")

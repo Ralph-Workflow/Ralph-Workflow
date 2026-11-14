@@ -165,6 +165,9 @@ def _resolve_rebase_in_progress(
         return False
 
 
+resolve_rebase_in_progress = _resolve_rebase_in_progress
+
+
 def _configured_stop_cap(session: ResolutionSession | None, fallback: int) -> int:
     raw: object = getattr(session, "max_rebase_conflict_stops", fallback)
     return raw if isinstance(raw, int) and raw > 0 else fallback
@@ -520,8 +523,22 @@ def _is_at_the_first_replay(root: Path) -> bool:
 
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
     _stage_observed_resolutions(root, stop.conflicted_files)
-    paths = [path for path in stop.conflicted_files if not (root / path).is_dir()]
-    if paths and not stage_paths(root, paths):
+    observed_before = unmerged_paths(root)
+    if "<unmerged-path-query-failed>" in observed_before:
+        return False
+    requested = set(stop.conflicted_files)
+    candidate_pool = observed_before if observed_before else stop.conflicted_files
+    paths = [
+        path
+        for path in candidate_pool
+        if path in requested
+        and (
+            not (root / path).exists()
+            or ((root / path).is_file() and (root / path).stat().st_size > 0)
+        )
+        and path not in paths_with_conflict_markers(root, (path,))
+    ]
+    if not stage_paths(root, paths):
         logger.warning(
             "conflict_resolution: failed to stage resolved paths for stop {}: {}",
             stop.stop_index,

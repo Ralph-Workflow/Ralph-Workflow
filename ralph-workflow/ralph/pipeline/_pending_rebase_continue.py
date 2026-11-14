@@ -233,7 +233,6 @@ def _retain_next_rebase_stop(root: Path) -> str:
                 resolving_rebase=True,
             ),
         )
-        prepare_pending_rebase(root, updated.target)
     return "rebase advanced to another conflict; retained for agent continuation"
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
 LEGACY_DEFAULT_AGENT: Final[str] = "claude"
 LEDGER_VERSION: Final[int] = 1
-_LEDGER_VERSION_DRIFT_NOTICES: set[str] = set()
+_LEDGER_VERSION_DRIFT_NOTICES: deque[str] = deque(maxlen=256)
 
 _LEGACY_MALFORMED_REASON: Final[str] = "legacy_guard_malformed"
 
@@ -618,7 +619,7 @@ class AgentFailureLedger:
             )
             notice_key = repr(raw_version)
             if notice_key not in _LEDGER_VERSION_DRIFT_NOTICES:
-                _LEDGER_VERSION_DRIFT_NOTICES.add(notice_key)
+                _LEDGER_VERSION_DRIFT_NOTICES.append(notice_key)
                 if notice is None:
                     logger.warning("{}", message)
                 else:

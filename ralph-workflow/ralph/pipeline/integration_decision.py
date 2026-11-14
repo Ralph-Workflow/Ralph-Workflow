@@ -66,7 +66,6 @@ class EscalationRung(Enum):
     DISPATCH_RESOLVER = "dispatch_resolver"
     REBUILD_ON_TARGET = "rebuild_on_target"
     CONTINUE_WITH_INTEGRATION_PENDING = "continue_with_integration_pending"
-    COMPLETION_IN_PLACE = "completion_in_place"
 
 
 LADDER_ORDER: tuple[EscalationRung, ...] = (
@@ -74,7 +73,6 @@ LADDER_ORDER: tuple[EscalationRung, ...] = (
     EscalationRung.DISPATCH_RESOLVER,
     EscalationRung.REBUILD_ON_TARGET,
     EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING,
-    EscalationRung.COMPLETION_IN_PLACE,
 )
 
 MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION: Final[int] = 2
@@ -227,7 +225,6 @@ _LADDER_ACTION_MAP: dict[EscalationRung, NextAction] = {
     EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING: (
         NextAction.CONTINUE_WITH_INTEGRATION_PENDING
     ),
-    EscalationRung.COMPLETION_IN_PLACE: NextAction.CONTINUE_WITH_INTEGRATION_PENDING,
 }
 
 

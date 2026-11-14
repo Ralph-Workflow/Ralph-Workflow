@@ -136,12 +136,14 @@ def classify_conflict_kinds(
             kinds[path] = ConflictKind.GITLINK
         elif path in append_only:
             kinds[path] = ConflictKind.APPEND_ONLY
-        elif _CONFLICT_STAGE_OURS not in stages or _CONFLICT_STAGE_THEIRS not in stages:
+        elif not stages or (
+            _CONFLICT_STAGE_OURS not in stages and _CONFLICT_STAGE_THEIRS not in stages
+        ):
+            kinds[path] = ConflictKind.TEXT
+        elif (_CONFLICT_STAGE_OURS in stages) != (_CONFLICT_STAGE_THEIRS in stages):
             kinds[path] = ConflictKind.DELETE_MODIFY
         elif _path_is_binary(root, path):
             kinds[path] = ConflictKind.BINARY
-        elif not stages:
-            kinds[path] = ConflictKind.OTHER
         elif stages[_CONFLICT_STAGE_OURS][0] != stages[_CONFLICT_STAGE_THEIRS][0]:
             kinds[path] = ConflictKind.DECLARED_DECISION
         else:
