@@ -64,9 +64,9 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
         (1, "1"),
         (2, "1"),
         (12, "10"),
-        (16, "8"),
-        (32, "8"),
-        (64, "8"),
+        (16, "16"),
+        (32, "16"),
+        (64, "16"),
     ),
 )
 def test_auto_worker_count_uses_verified_sixteen_shard_cap(

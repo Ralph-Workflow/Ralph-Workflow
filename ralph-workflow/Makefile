@@ -1,7 +1,7 @@
 .PHONY: help install stable dev install-dev rdev uv-preflight test test-fast test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e test-verification-smoke test-install-make-smoke test-multimodal-smoke test-visual-capture test-visual-verdict test-visual-smoke lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 MULTIMODAL_SMOKE_WORKERS ?= 8
-VERIFICATION_SMOKE_WORKERS ?= 2
+VERIFICATION_SMOKE_WORKERS ?= 8
 PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 PYTEST_XDIST_WORKERS_PER_SHARD ?= 0

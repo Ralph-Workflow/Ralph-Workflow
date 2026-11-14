@@ -111,7 +111,6 @@ SEAM_EXEMPT_CALL_SITES: frozenset[tuple[str, str]] = frozenset(
         ("ralph/agents/invoke/_pty_line_reader.py", "dict[str, str] | None"),
         ("ralph/agents/invoke/_pty_line_reader.py", "frozenset[str] | None"),
         ("ralph/agents/invoke/_pty_line_reader.py", "int | None"),
-        ("tests/agents/invoke/test_pending_subagents_turn_end.py", "ManagedPtyProcess"),
         ("tests/agents/test_subprocess_executor_terminate_await_order.py", "ManagedAsyncProcess"),
         ("tests/agents/test_subprocess_executor_terminate_await_order.py", "ProcessManager"),
         (

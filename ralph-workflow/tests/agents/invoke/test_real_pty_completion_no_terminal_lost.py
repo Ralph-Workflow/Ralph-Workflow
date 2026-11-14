@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 pytestmark = [
     pytest.mark.required_auto_integrate_e2e,
     pytest.mark.smoke,
+    pytest.mark.subprocess_e2e,
 ]
 
 

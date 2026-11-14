@@ -68,8 +68,8 @@ class _BoundedPresentedRounds(OrderedDict[Path, str]):
     ) -> None:
         if cap <= 0:
             raise ValueError(f"cap must be positive, got {cap}")
-        super().__init__(*args, **kwargs)
         self._cap = cap
+        super().__init__(*args, **kwargs)
         while len(self) > self._cap:
             self.popitem(last=False)
 

@@ -75,7 +75,7 @@ _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 
 
 def _max_pytest_workers_for_host() -> int:
-    return 8
+    return 16
 
 
 _MAX_PYTEST_WORKERS = _max_pytest_workers_for_host()

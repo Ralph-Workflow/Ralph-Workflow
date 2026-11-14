@@ -137,16 +137,16 @@ def test_retained_round_is_new_and_reset_presentation() -> None:
 def test_retained_round_eviction_at_module_cap() -> None:
     reset_stop_resolution_presentation()
     try:
-        paths = [Path(f"/virtual/workspace_{i}") for i in range(256)]
+        paths = [Path(f"/virtual/workspace_{i}") for i in range(1024)]
         for i, path in enumerate(paths):
             assert retained_round_is_new(path, f"fp-{i}") is True
 
-        assert retained_round_is_new(paths[0], "fp-0") is False
+        assert retained_round_is_new(paths[-1], f"fp-{len(paths) - 1}") is False
 
         overflow_path = Path("/virtual/workspace_overflow")
         assert retained_round_is_new(overflow_path, "fp-overflow") is True
 
-        assert retained_round_is_new(paths[1], "fp-1") is False
+        assert retained_round_is_new(paths[-1], f"fp-{len(paths) - 1}") is False
         assert retained_round_is_new(paths[0], "fp-0") is True
     finally:
         reset_stop_resolution_presentation()
