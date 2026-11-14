@@ -626,6 +626,7 @@ def _execute_round_loop(
                     attempt.agent_name,
                 )
                 unresolved_count = len(session.unresolved_paths)
+                made_progress = attempt.probe_changed or attempt.count_dropped
                 session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
                 session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
                 classify_failed_resolution_attempt(
@@ -635,9 +636,13 @@ def _execute_round_loop(
                     candidates=candidates,
                     failed_index=attempt.candidate_offset,
                     policy_bundle=policy_bundle,
-                    outcome=ConflictAttemptOutcome.UNRESOLVED_REMAINING,
+                    outcome=(
+                        ConflictAttemptOutcome.UNRESOLVED_REMAINING
+                        if made_progress
+                        else ConflictAttemptOutcome.STALLED
+                    ),
                     unresolved_count=unresolved_count,
-                    workspace_changed=attempt.probe_changed or attempt.count_dropped,
+                    workspace_changed=made_progress,
                 )
             action = _evaluate_round_attempt(
                 attempt,

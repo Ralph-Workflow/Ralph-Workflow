@@ -345,12 +345,25 @@ if TYPE_CHECKING:
     ]
 
 
+# Typed conflict attempts that produced no progress must reach the shared
+# cooldown system like every other unproductive agent attempt.
+_UNPRODUCTIVE_CONFLICT_OUTCOMES: dict[ConflictAttemptOutcome, UnavailabilityReason] = {
+    ConflictAttemptOutcome.STALLED: UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+    ConflictAttemptOutcome.NO_ACTIVITY: UnavailabilityReason.NO_OUTPUT_AT_START,
+}
+
+
 def _typed_conflict_attempt_reason(
     outcome: ConflictAttemptOutcome,
     unresolved_count: int,
 ) -> str:
     if outcome.value == "unresolved_remaining":
         return f"agent reported success but {unresolved_count} conflicted path(s) remain"
+    if outcome.value == "stalled":
+        return (
+            f"agent reported success but made no progress: {unresolved_count} "
+            "conflicted path(s) remain unchanged"
+        )
     if outcome.value == "no_activity":
         return "candidate produced no activity before it exited"
     return "conflict attempt failed"
@@ -1542,14 +1555,17 @@ class RecoveryController:
                 phase,
                 reason,
             )
+            unproductive = _UNPRODUCTIVE_CONFLICT_OUTCOMES.get(effective)
             return ClassifiedFailure(
                 category=FailureCategory.AGENT,
                 reason=reason,
                 attributed_agent=agent,
                 attributed_phase=phase,
-                counts_against_budget=False,
+                counts_against_budget=unproductive is not None,
                 original_exception=raw_failure if isinstance(raw_failure, BaseException) else None,
                 raw_message="" if raw_failure is None else str(raw_failure),
+                is_unavailable=unproductive is not None,
+                unavailability_reason=unproductive,
             )
         raw_text: BaseException | str = raw_failure if raw_failure is not None else ""
         return self._classifier.classify(

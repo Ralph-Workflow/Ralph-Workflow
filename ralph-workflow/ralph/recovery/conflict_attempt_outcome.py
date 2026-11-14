@@ -7,6 +7,7 @@ __all__ = ["ConflictAttemptOutcome"]
 
 class ConflictAttemptOutcome(StrEnum):
     UNRESOLVED_REMAINING = "unresolved_remaining"
+    STALLED = "stalled"
     NO_ACTIVITY = "no_activity"
     ATTEMPT_FAILED = "attempt_failed"
     RAW = "raw"
