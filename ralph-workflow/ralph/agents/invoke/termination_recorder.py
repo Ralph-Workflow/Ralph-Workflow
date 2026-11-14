@@ -5,11 +5,11 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.agents.invoke._fire_reason_issuer import (
     fire_reason_from_value,
     termination_issuer_for_fire_reason,
 )
+from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.termination_log_entry import TerminationLogEntry
 

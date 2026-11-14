@@ -31,6 +31,7 @@ from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, Termin
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.typed_signal import TypedSignal
 from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
@@ -79,8 +80,17 @@ def _skip_intent(reason: str = "QuotaExhaustedError") -> AgentRetryIntent:
     )
 
 
-def _facts(termination: TerminationRecord | None = None) -> AttemptFacts:
-    return AttemptFacts(artifact_valid=False, termination=termination)
+def _facts(
+    termination: TerminationRecord | None = None,
+    *,
+    typed_signal: TypedSignal | None = None,
+) -> AttemptFacts:
+    return AttemptFacts(artifact_valid=False, termination=termination, typed_signal=typed_signal)
+
+
+_TYPED_SIGNAL = TypedSignal(
+    name="QuotaExhaustedError", provider_originated=True, agent_initiated=True
+)
 
 
 def _failure_event(facts: AttemptFacts | None = None) -> AgentFailureEvent:
@@ -210,7 +220,7 @@ def test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner() -
 
     reduce(
         _state(agents=(AGENT, OTHER), intent=_skip_intent()),
-        _failure_event(),
+        _failure_event(_facts(typed_signal=_TYPED_SIGNAL)),
         _policy(),
         recovery=controller,
     )
@@ -329,7 +339,7 @@ def test_ac13_the_verdict_evidence_is_persisted_through_the_checkpoint(tmp_path:
 
     reduced, _effects = reduce(
         _state(agents=(AGENT, OTHER), intent=_skip_intent()),
-        _failure_event(_facts(termination)),
+        _failure_event(_facts(termination, typed_signal=_TYPED_SIGNAL)),
         _policy(),
         recovery=controller,
     )

@@ -23,6 +23,7 @@ from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_verdict import decide_dead_agent_verdict
 from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.typed_signal import TypedSignal
 from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PipelinePolicy
     from ralph.recovery.attribution import AttributionVerdict
-    from ralph.recovery.dead_agent_verdict import PersistedVerdict, TypedSignal
+    from ralph.recovery.dead_agent_verdict import PersistedVerdict
 
 PHASE = "development"
 AGENT = "claude"
@@ -274,7 +275,14 @@ def test_the_skip_same_agent_retries_route_records_the_attempt_and_benches_the_a
         agent=AGENT,
         artifact_valid=False,
         workspace_changed=False,
-        facts=_facts(),
+        facts=AttemptFacts(
+            artifact_valid=False,
+            typed_signal=TypedSignal(
+                name="QuotaExhaustedError",
+                provider_originated=True,
+                agent_initiated=True,
+            ),
+        ),
     )
 
     reduced_state, _effects = reduce(state, event, _policy(), recovery=controller)

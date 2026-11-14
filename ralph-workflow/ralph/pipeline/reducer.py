@@ -88,7 +88,6 @@ from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseLoopPolicy
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.classifier import ClassifiedFailure, FailureContext
-from ralph.recovery.controller import build_typed_agent_signal
 from ralph.recovery.failure_category import FailureCategory
 
 if TYPE_CHECKING:
@@ -99,7 +98,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import PhaseDefinition, PipelinePolicy
     from ralph.recovery.agent_selection import AgentSelection
     from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.dead_agent_verdict import TypedSignal
 
 
 def _failure_reason(state: PipelineState, fallback: str) -> str:
@@ -991,30 +989,6 @@ def _handle_chain_exhausted(
     return _enter_failed_recovery(state, failure_reason, policy, failure_category=failure_category)
 
 
-def _typed_signal_from_retry_intent(
-    intent: AgentRetryIntent,
-    facts: AttemptFacts,
-) -> TypedSignal | None:
-    from ralph.agents.invoke import (
-        BrokenAgentExitError,
-        MissingCredentialsError,
-        QuotaExhaustedError,
-    )
-
-    for error_type in (QuotaExhaustedError, MissingCredentialsError, BrokenAgentExitError):
-        if error_type.__name__ != intent.failure_reason:
-            continue
-        provider_originated = error_type.typed_signal_provider_originated
-        if issubclass(error_type, BrokenAgentExitError):
-            provider_originated = intent.broken_agent_reason == "prompt_echo"
-        return build_typed_agent_signal(
-            error_type.__name__,
-            provider_originated,
-            facts,
-        )
-    return None
-
-
 def _route_attempt_facts(observation: AgentFailureEvent | None) -> AttemptFacts:
     if observation is None:
         return AttemptFacts()
@@ -1045,16 +1019,13 @@ def _handle_skip_same_agent_retries(
         observation = observation_from_event(event)
         if current_agent is not None:
             facts = _route_attempt_facts(observation)
-            typed_signal = facts.typed_signal
-            if typed_signal is None:
-                typed_signal = _typed_signal_from_retry_intent(state.agent_retry_intent, facts)
             if observation is None or not observation.already_charged:
                 recovery.finalize_attempt(
                     state.phase,
                     current_agent,
                     facts=facts,
                     attempt_failed=True,
-                    typed_signal=typed_signal,
+                    typed_signal=facts.typed_signal,
                 )
             demoted_reason = recovery.last_demoted_reason
             if demoted_reason is not None and len(chain.agents) == 1:

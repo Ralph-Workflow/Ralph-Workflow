@@ -4,7 +4,7 @@ import errno
 import socket
 import urllib.error
 from importlib import import_module
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -16,6 +16,8 @@ from .failure_details import FailureDetailParts, contains_casefolded_marker, fai
 from .unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .attempt_facts import AttemptFacts
     from .typed_signal import TypedSignal
 
@@ -609,7 +611,7 @@ class FailureClassifier:
             module = import_module("ralph.agents.invoke._completion_termination")
             facts_for_failure = cast(
                 "Callable[[BaseException], AttemptFacts]",
-                getattr(module, "attempt_facts_for_failure"),
+                module.attempt_facts_for_failure,
             )
             signal = facts_for_failure(exc_obj).typed_signal
         signal_name = signal.name if signal is not None else None

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from ralph.agents.timeout_clock import FakeClock
@@ -18,6 +20,7 @@ from ralph.recovery.agent_failure_ledger import Eligible
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.typed_signal import TypedSignal
 
 PHASE = "development"
 AGENT = "agent_a"
@@ -109,10 +112,18 @@ def test_both_reducer_routes_finalize_identical_facts_identically() -> None:
 
 def test_typed_skip_route_benches_first_failure_and_persists_verdict_and_feedback() -> None:
     controller = _controller()
+    facts = replace(
+        _ordinary_failure_facts(),
+        typed_signal=TypedSignal(
+            name="QuotaExhaustedError",
+            provider_originated=True,
+            agent_initiated=True,
+        ),
+    )
 
     reduced, effects = reduce(
         _state(skip_same_agent_retries=True),
-        _event(_ordinary_failure_facts()),
+        _event(facts),
         _policy(),
         recovery=controller,
     )
@@ -127,6 +138,53 @@ def test_typed_skip_route_benches_first_failure_and_persists_verdict_and_feedbac
     assert feedback == controller.false_bench_feedback.snapshot()
     assert feedback is not None
     assert feedback["candidates"]
+
+
+def test_skip_route_with_an_explicit_typed_fact_takes_the_same_recovery_action() -> None:
+    controller = _controller()
+    facts = AttemptFacts(
+        workspace_changed=False,
+        typed_signal=TypedSignal(
+            name="QuotaExhaustedError",
+            provider_originated=True,
+            agent_initiated=True,
+        ),
+    )
+
+    reduced, effects = reduce(
+        _state(skip_same_agent_retries=True),
+        _event(facts),
+        _policy(),
+        recovery=controller,
+    )
+
+    assert effects == []
+    assert controller.last_attempt_outcome is not None
+    assert controller.last_attempt_outcome.kind is AttemptOutcomeKind.AGENT_DEAD
+    assert controller.unavailability_store.is_available(PHASE, AGENT) is False
+    record = reduced.dead_agent_verdict_record
+    assert record is not None
+    assert record["verdict"] == "agent_dead"
+    assert record["typed_signal"] == {
+        "name": "QuotaExhaustedError",
+        "provider_originated": True,
+        "agent_initiated": True,
+    }
+
+
+def test_skip_route_does_not_reconstruct_a_typed_fact_from_the_exception_name() -> None:
+    controller = _controller()
+
+    reduced, _effects = reduce(
+        _state(skip_same_agent_retries=True),
+        _event(_ordinary_failure_facts()),
+        _policy(),
+        recovery=controller,
+    )
+
+    record = reduced.dead_agent_verdict_record
+    assert record is not None
+    assert record["typed_signal"] is None
 
 
 @pytest.mark.parametrize("skip_same_agent_retries", [False, True])

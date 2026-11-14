@@ -19,6 +19,7 @@ from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.typed_signal import TypedSignal
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
@@ -133,7 +134,14 @@ def test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent() -> N
         agent=AGENT,
         artifact_valid=False,
         workspace_changed=False,
-        facts=AttemptFacts(artifact_valid=False),
+        facts=AttemptFacts(
+            artifact_valid=False,
+            typed_signal=TypedSignal(
+                name="QuotaExhaustedError",
+                provider_originated=True,
+                agent_initiated=True,
+            ),
+        ),
     )
 
     reduce(
