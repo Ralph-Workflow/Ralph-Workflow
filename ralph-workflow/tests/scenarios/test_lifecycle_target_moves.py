@@ -7,7 +7,11 @@ import pytest
 from tests._scenario_harness import AgentMode, FakeAgentRunner, commit_file, git, paused_text_rebase
 from tests.scenarios._content_equivalence import assert_content_equivalence, drive_integration
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.required_auto_integrate_e2e, pytest.mark.timeout_seconds(12)]
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(12),
+]
 
 
 def _move_target(root: Path, *, force: bool = False) -> str:
@@ -31,7 +35,12 @@ def test_target_motion_is_reobserved_before_landing(tmp_git_repo: Path, force: b
     assert "main" in git(tmp_git_repo, "branch", "--contains", moved, "main", check=False), (
         "landing must be guarded against and recomputed after target motion"
     )
-    assert_content_equivalence(tmp_git_repo, contract="the feature must land after target motion", feature=feature_sha, source_refs=(moved,))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="the feature must land after target motion",
+        feature=feature_sha,
+        source_refs=(moved,),
+    )
 
 
 def test_remote_rejection_keeps_local_landing_intact(tmp_git_repo: Path) -> None:
@@ -64,4 +73,9 @@ def test_sibling_worktrees_share_one_landing_goal(tmp_git_repo: Path, mode: str)
     run = drive_integration(tmp_git_repo)
 
     assert run.error is None, f"sibling landing must be observed as progress: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract="concurrent worktrees must converge on one landed result", feature=feature_sha, source_refs=(sibling_sha,))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="concurrent worktrees must converge on one landed result",
+        feature=feature_sha,
+        source_refs=(sibling_sha,),
+    )

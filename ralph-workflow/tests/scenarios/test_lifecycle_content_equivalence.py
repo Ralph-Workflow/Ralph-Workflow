@@ -12,7 +12,11 @@ from tests.scenarios._content_equivalence import (
     snapshot_uncommitted,
 )
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.required_auto_integrate_e2e, pytest.mark.timeout_seconds(10)]
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(10),
+]
 
 
 def test_final_landing_check_proves_content_and_uncommitted_work(tmp_git_repo: Path) -> None:
@@ -24,7 +28,13 @@ def test_final_landing_check_proves_content_and_uncommitted_work(tmp_git_repo: P
     target_before = git(tmp_git_repo, "rev-parse", "main")
     run = drive_integration(tmp_git_repo)
     assert run.error is None, f"the landing used by the final check must not crash: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract="every non-excluded feature change must be on target, with no unrelated or uncommitted loss", feature=feature_sha, source_refs=(target_before,), preserved=preserved)
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="every non-excluded feature change must be on target, with no unrelated or uncommitted loss",
+        feature=feature_sha,
+        source_refs=(target_before,),
+        preserved=preserved,
+    )
 
 
 def test_content_equivalence_helper_rejects_a_lost_feature_change(tmp_git_repo: Path) -> None:
@@ -32,7 +42,9 @@ def test_content_equivalence_helper_rejects_a_lost_feature_change(tmp_git_repo: 
     git(tmp_git_repo, "checkout", "-q", "-b", "feature")
     feature = commit_file(tmp_git_repo, "shared.txt", "feature\n", "feature")
     git(tmp_git_repo, "checkout", "-q", "main")
-    report = content_equivalence(tmp_git_repo, target="main", feature=feature, base=base, source_refs=("main",))
+    report = content_equivalence(
+        tmp_git_repo, target="main", feature=feature, base=base, source_refs=("main",)
+    )
     assert not report.satisfied and report.missing, (
         "the reusable content-equivalence oracle must reject a target that lost feature content"
     )

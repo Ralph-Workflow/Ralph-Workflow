@@ -354,9 +354,7 @@ class AgentFailureLedger:
         status = self.status(phase, agent)
         if isinstance(status, (Spent, Unavailable)):
             return status
-        if isinstance(status, Cooldown) and (
-            cooldown is None or status.until_ms <= cooldown[0]
-        ):
+        if isinstance(status, Cooldown) and (cooldown is None or status.until_ms <= cooldown[0]):
             return status
         if cooldown is not None and now_ms < cooldown[0]:
             return CoolingDown(until_ms=cooldown[0], reason=cooldown[1])

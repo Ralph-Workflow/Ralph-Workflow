@@ -5,11 +5,10 @@ from pathlib import Path
 
 from rich.console import Console
 
-from ralph.cli.commands.diagnose import _integration_status_rows
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBar, StatusBarModel, render_status_bar
-from ralph.pipeline._integration_status import build_integration_status
+from ralph.pipeline import build_integration_status
 from ralph.pipeline.conflict_resolution.status import push_conflict_status_bar
 
 
@@ -25,7 +24,10 @@ def _status(cause: str = "OUT_OF_REACH"):
         paths_with_reasons=(("vendor/Ralph-Workflow", "gitlink conflict"),),
         command="git add -- vendor/Ralph-Workflow",
         agents_can_finish=False,
-        agent_reasons=("claude: spent", "opencode: unavailable",),
+        agent_reasons=(
+            "claude: spent",
+            "opencode: unavailable",
+        ),
         done_count=3,
         remaining_count=1,
     )
@@ -83,15 +85,15 @@ def test_identical_model_emits_once_and_changed_content_emits_again() -> None:
     assert "CONFIG_FAILURE" in output.getvalue()
 
 
-def test_diagnose_rows_render_model_path_reasons_command_and_progress() -> None:
-    rows = {str(row[0]): row[1] for row in _integration_status_rows(_status())}
+def test_status_exposes_path_reasons_command_and_progress() -> None:
+    status = _status()
 
-    assert rows["Cause"] == "OUT_OF_REACH"
-    assert rows["Paths with reasons"] == "vendor/Ralph-Workflow: gitlink conflict"
-    assert rows["Operator command"] == "git add -- vendor/Ralph-Workflow"
-    assert rows["Agents can finish"] == "no"
-    assert rows["Progress"] == "done=3; remaining=1"
-    assert rows["Build"]
+    assert status.cause == "OUT_OF_REACH"
+    assert status.path_details == ("vendor/Ralph-Workflow: gitlink conflict",)
+    assert status.command == "git add -- vendor/Ralph-Workflow"
+    assert not status.agents_can_finish
+    assert status.progress == "done=3; remaining=1"
+    assert status.build_identity
 
 
 def test_partial_out_of_reach_status_is_present_on_conflict_entry() -> None:

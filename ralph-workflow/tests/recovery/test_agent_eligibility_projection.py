@@ -43,9 +43,7 @@ def test_controller_selection_and_wait_are_projections_of_eligibility() -> None:
 
     assert isinstance(statuses["primary"], CoolingDown)
     assert isinstance(statuses["fallback"], Eligible)
-    assert controller.agents_now_available("development", ["primary", "fallback"]) == [
-        "fallback"
-    ]
+    assert controller.agents_now_available("development", ["primary", "fallback"]) == ["fallback"]
     assert controller.earliest_eligible_wait_ms("development", ("primary", "fallback")) == 0
     assert selection.agent == "fallback"
 

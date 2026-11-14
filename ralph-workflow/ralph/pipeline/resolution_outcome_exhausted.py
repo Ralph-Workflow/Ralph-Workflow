@@ -1,10 +1,3 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome as Exhausted
 
 __all__ = ["Exhausted"]
-
-
-@dataclass(frozen=True)
-class Exhausted:
-    agents: tuple[str, ...]

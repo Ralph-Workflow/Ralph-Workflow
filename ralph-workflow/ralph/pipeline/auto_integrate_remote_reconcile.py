@@ -31,6 +31,7 @@ from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_pro
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
     current_rebase_identity,
+    resolve_rebase_in_progress,
 )
 from ralph.pipeline.integration_resolution import retained_integration_reason
 
@@ -184,14 +185,7 @@ def _resolve_owned_reconciliation(
     detail = "resolution interrupted"
     try:
         with bind_integration_record_root(owner, repo_root):
-            resolved, reason = _resolve_rebase_stop(
-                owner,
-                f"{remote}/{target}",
-                resolver,
-                conflict_resolution_config,
-                record,
-            )
-        detail = reason or detail
+            resolved = resolve_rebase_in_progress(owner, f"{remote}/{target}", resolver)
         if resolved and not rebase_in_progress(owner):
             return _clear_successful_reconciliation_record(repo_root, target, remote)
     except Exception as exc:

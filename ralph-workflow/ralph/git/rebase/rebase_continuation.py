@@ -9,7 +9,7 @@ from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import PINNED_CONFIG_ARGS, scrub_git_env
-from ralph.git.merge import UNMERGED_PATH_QUERY_FAILED, unmerged_paths
+from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
 from ralph.git.operations import find_repo_root
 from ralph.git.rebase._conflict_remaining_error import ConflictRemainingError
 from ralph.git.rebase._empty_replay_error import EmptyReplayError
@@ -87,18 +87,14 @@ def _repo_root_path(repo: Repo) -> Path:
 
 def _has_index_conflicts(repo: Repo) -> bool:
     repo_root = _repo_root_path(repo)
-    paths = unmerged_paths(repo_root)
-    if UNMERGED_PATH_QUERY_FAILED in paths:
+    snapshot = observe_operation_snapshot(repo_root)
+    if not snapshot.unmerged_query_ok:
         raise RebaseContinuationError("Unable to inspect git index")
-    return bool(paths)
+    return bool(snapshot.unmerged_paths)
 
 
 def rebase_in_progress_at(repo_root: Path | str) -> bool:
-    repo = open_repo(repo_root)
-    try:
-        return rebase_in_progress_impl(repo)
-    finally:
-        _close_repo(repo)
+    return observe_operation_snapshot(repo_root).operation_state is OperationState.REBASE_PAUSED
 
 
 def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
@@ -109,7 +105,7 @@ def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
 def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> bool:
     repo = open_repo(repo_root)
     try:
-        if rebase_in_progress_impl(repo):
+        if rebase_in_progress_at(repo_root):
             return False
 
         try:
@@ -139,7 +135,7 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
 def continue_rebase_at(repo_root: Path | str, *, skip_empty: bool = True) -> None:
     repo = open_repo(repo_root)
     try:
-        if not rebase_in_progress_impl(repo):
+        if not rebase_in_progress_at(repo_root):
             raise NoRebaseInProgressError("No rebase in progress")
 
         if has_index_conflicts(repo):

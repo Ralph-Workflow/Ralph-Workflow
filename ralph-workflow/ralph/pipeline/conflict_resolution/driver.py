@@ -417,9 +417,7 @@ def _declared_decision_reason(
 
 
 def _status_scope(status: IntegrationStatus) -> str:
-    details = "; ".join(
-        f"{path}: {reason}" for path, reason in status.paths_with_reasons
-    )
+    details = "; ".join(f"{path}: {reason}" for path, reason in status.paths_with_reasons)
     return f"{status.summary}; path reasons: {details}" if details else status.summary
 
 

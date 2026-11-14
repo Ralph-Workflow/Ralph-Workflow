@@ -15,6 +15,7 @@ from ralph.git.merge import (
     staged_conflict_marker_paths,
     unmerged_paths,
 )
+from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
 from ralph.git.rebase.rebase import get_conflicted_files
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
@@ -36,6 +37,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
+    resolve_completion_in_place,
     try_deterministic_resolution,
 )
 from ralph.pipeline.conflict_resolution.graph import (
@@ -52,6 +54,7 @@ from ralph.pipeline.conflict_resolution.progress import (
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
 from ralph.pipeline.conflict_resolution.stray_paths import (
     is_ralph_workspace_path,
     revert_unrequested_paths,
@@ -78,8 +81,10 @@ __all__ = [
     "_resolve_rebase_in_progress",
     "active_rebase_resolution_session",
     "bind_active_rebase_resolution_session",
+    "finish_resolved_rebase_stops",
     "record_landed_stop",
     "resolution_session_from_config",
+    "resolve_rebase_in_progress",
 ]
 
 
@@ -175,21 +180,29 @@ def _resolve_stops(
     entry_landed = frozenset(_landed_shas_at_entry(root))
     skipped_entry_shas: set[str] = set()
     stops_spent = 0
+    stops_seen = 0
+    resolved_shas: list[str] = []
     while rebase_in_progress_at(root):
         skipped_before = len(skipped_entry_shas)
+        stops_seen += 1
         if not _resolve_one_stop(
             root,
             target,
             resolver,
-            stops_spent + 1,
+            stops_seen,
             stop_cap,
             entry_landed,
             skipped_entry_shas,
+            resolved_shas,
         ):
             return False
         if len(skipped_entry_shas) > skipped_before:
             continue
-        stops_spent += 1
+        head_after = _rev_parse_rebase_head(root)
+        if head_after and resolved_shas and head_after != resolved_shas[-1]:
+            stops_spent = 0
+        else:
+            stops_spent += 1
         route = route_after_stop(stops_spent, not rebase_in_progress_at(root), stop_cap)
         if route == TERMINAL_RESOLVED:
             break
@@ -197,11 +210,14 @@ def _resolve_stops(
             logger.warning(
                 "conflict_resolution: rebase still conflicting after {} stop(s); "
                 "abandoning in favour of the endpoint merge",
-                stops_spent,
+                stops_seen,
             )
             return False
 
     return verify_rebase_completed_at(root, base)
+
+
+resolve_rebase_in_progress = _resolve_rebase_in_progress
 
 
 def _resolve_one_stop(
@@ -212,10 +228,13 @@ def _resolve_one_stop(
     stop_cap: int,
     entry_landed: frozenset[str],
     skipped_entry_shas: set[str],
+    resolved_shas: list[str] | None = None,
 ) -> bool:
     stop = _read_stop(root, stop_index, stop_cap)
     if stop is None:
         return _continue_already_staged_stop(root, stop_index)
+    if resolved_shas is not None:
+        resolved_shas.append(stop.sha)
     if stop.sha in entry_landed and stop.sha not in skipped_entry_shas:
         skipped_entry_shas.add(stop.sha)
         logger.info(
@@ -226,13 +245,7 @@ def _resolve_one_stop(
     before = _worktree_dirty_paths(root)
     if before is None:
         return False
-    deterministic = _try_deterministic_resolution(root, stop)
-    remaining_after_policy = tuple(
-        path
-        for path in unmerged_paths(root)
-        if path != "<unmerged-path-query-failed>" and path in stop.conflicted_files
-    )
-    if deterministic:
+    if _try_deterministic_resolution(root, stop):
         if _stage_and_prove(root, stop) and _continue_past(root, stop):
             return True
         logger.info(
@@ -240,16 +253,7 @@ def _resolve_one_stop(
             "handing the stop to the resolver",
             stop.stop_index,
         )
-    agent_stop = RebaseStop(
-        sha=stop.sha,
-        subject=stop.subject,
-        conflicted_files=remaining_after_policy,
-        stop_index=stop.stop_index,
-        stop_cap=stop.stop_cap,
-        replay_index=stop.replay_index,
-        replay_total=stop.replay_total,
-    )
-    outcome = resolver(root, target, agent_stop)
+    outcome = resolver(root, target, stop)
     if isinstance(outcome, ResolutionOutcome):
         active_session = active_rebase_resolution_session()
         if active_session is not None:
@@ -269,9 +273,9 @@ def _resolve_one_stop(
         )
         return False
     return (
-        _touched_nothing_unexpected(root, agent_stop, before)
-        and _stage_and_prove(root, agent_stop)
-        and _remove_ort_residue(root, agent_stop.conflicted_files)
+        _touched_nothing_unexpected(root, stop, before)
+        and _stage_and_prove(root, stop)
+        and _remove_ort_residue(root, stop.conflicted_files)
         and _continue_past(root, stop)
     )
 
@@ -515,19 +519,9 @@ def _is_at_the_first_replay(root: Path) -> bool:
 
 
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
-    observed_before = unmerged_paths(root)
-    if "<unmerged-path-query-failed>" in observed_before:
-        return False
-    requested = set(stop.conflicted_files)
-    paths = [
-        path
-        for path in observed_before
-        if path in requested
-        and (root / path).is_file()
-        and (root / path).stat().st_size > 0
-        and path not in paths_with_conflict_markers(root, (path,))
-    ]
-    if not stage_paths(root, paths):
+    _stage_observed_resolutions(root, stop.conflicted_files)
+    paths = [path for path in stop.conflicted_files if not (root / path).is_dir()]
+    if paths and not stage_paths(root, paths):
         logger.warning(
             "conflict_resolution: failed to stage resolved paths for stop {}: {}",
             stop.stop_index,
@@ -545,15 +539,66 @@ def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
             ", ".join(sorted(set(marked))),
         )
         return False
-    remaining = unmerged_paths(root)
-    if remaining:
+    observed_after = unmerged_paths(root)
+    if "<unmerged-path-query-failed>" in observed_after:
+        return False
+    if observed_after:
         logger.warning(
             "conflict_resolution: unmerged paths remain at stop {}: {}",
             stop.stop_index,
-            remaining,
+            observed_after,
         )
         return False
     return True
+
+
+def finish_resolved_rebase_stops(root: Path, target: str) -> bool:
+    snapshot = observe_operation_snapshot(root, target=target)
+    if snapshot.operation_state is not OperationState.REBASE_PAUSED:
+        return False
+    succeeded = False
+    while True:
+        if not snapshot.unmerged_query_ok:
+            break
+        if not _stage_observed_resolutions(root, snapshot.unmerged_paths):
+            break
+        if snapshot.unmerged_paths:
+            snapshot = observe_operation_snapshot(root, target=target)
+            if not snapshot.unmerged_query_ok or snapshot.unmerged_paths:
+                break
+        if snapshot.staged_conflict_marker_paths:
+            break
+        try:
+            continue_rebase_at(root, skip_empty=True)
+        except NoRebaseInProgressError:
+            succeeded = True
+            break
+        except (ConflictRemainingError, RebaseContinuationError):
+            snapshot = observe_operation_snapshot(root, target=target)
+            if snapshot.operation_state is OperationState.REBASE_PAUSED and snapshot.unmerged_paths:
+                continue
+            break
+        snapshot = observe_operation_snapshot(root, target=target)
+        if snapshot.operation_state is not OperationState.REBASE_PAUSED:
+            succeeded = True
+            break
+    return succeeded
+
+
+def _stage_observed_resolutions(root: Path, paths: tuple[str, ...]) -> bool:
+    if not paths:
+        return True
+    kinds = classify_conflict_kinds(root, paths)
+    resolve_completion_in_place(root, paths, kinds)
+    stageable = tuple(
+        path
+        for path in paths
+        if kinds.get(path) is ConflictKind.TEXT
+        and (root / path).is_file()
+        and (root / path).stat().st_size > 0
+        and path not in paths_with_conflict_markers(root, (path,))
+    )
+    return not stageable or stage_paths(root, stageable)
 
 
 def _continue_past(root: Path, stop: RebaseStop) -> bool:

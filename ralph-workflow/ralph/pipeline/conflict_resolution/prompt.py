@@ -98,7 +98,7 @@ def render_conflict_prompt(
     variables = {
         "repo_root": str(root),
         "target": target,
-        "conflicted_block": _conflicted_block(conflicted_paths),
+        "conflicted_block": _conflicted_block(root, conflicted_paths),
         "round_index": str(round_index),
         "round_cap": str(round_cap),
         "feedback_block": _feedback_block(surviving_marker_paths),
@@ -147,11 +147,25 @@ def _session_preamble_variables() -> dict[str, str]:
     return variables
 
 
-def _conflicted_block(conflicted_paths: Sequence[str]) -> str:
+def _conflicted_block(root: Path, conflicted_paths: Sequence[str]) -> str:
+    from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
+
     listed = [path for path in conflicted_paths if path.strip()]
     if not listed:
         return _UNKNOWN_PATHS_BODY
-    return "\n".join(f"- `{path}`" for path in listed)
+    try:
+        kinds = classify_conflict_kinds(root, tuple(listed)) if root.is_dir() else {}
+    except Exception:
+        kinds = {}
+    return "\n".join(
+        (
+            f"- `{path}`: choose delete or keep the modified content; "
+            "this path has no raw conflict markers"
+            if kinds.get(path) is ConflictKind.DELETE_MODIFY
+            else f"- `{path}`"
+        )
+        for path in listed
+    )
 
 
 def _feedback_block(surviving_marker_paths: Sequence[str]) -> str:

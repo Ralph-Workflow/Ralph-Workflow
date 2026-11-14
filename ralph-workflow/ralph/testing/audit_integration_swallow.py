@@ -25,32 +25,28 @@ def _is_broad(handler: ast.ExceptHandler) -> bool:
 
 def _normal_return(node: ast.Return) -> bool:
     value = node.value
-    if value is None:
-        return True
-    if isinstance(value, ast.Constant):
-        return value.value is None or value.value == ""
-    if isinstance(value, ast.Tuple):
-        return not value.elts
-    if isinstance(value, ast.List):
-        return not value.elts
-    if isinstance(value, ast.Set):
-        return not value.elts
-    if isinstance(value, ast.Dict):
-        return not value.keys
-    return False
+    empty_sequence = isinstance(value, (ast.Tuple, ast.List, ast.Set)) and not value.elts
+    empty_mapping = isinstance(value, ast.Dict) and not value.keys
+    default_constant = isinstance(value, ast.Constant) and value.value in {None, False, ""}
+    return value is None or empty_sequence or empty_mapping or default_constant
 
 
-def _has_loud_boundary(body: list[ast.stmt]) -> bool:
-    for node in ast.walk(ast.Module(body=body, type_ignores=[])):
+def _handler_returns(handler: ast.ExceptHandler) -> list[ast.Return]:
+    return [node for node in ast.walk(handler) if isinstance(node, ast.Return)]
+
+
+def _has_loud_boundary(handler: ast.ExceptHandler) -> bool:
+    for node in ast.walk(handler):
         if isinstance(node, ast.Raise):
             return True
-        if isinstance(node, ast.Call):
-            name = node.func.attr if isinstance(node.func, ast.Attribute) else ""
-            if name in {"error", "exception", "critical", "warning"}:
-                return True
-            called = node.func.id if isinstance(node.func, ast.Name) else name
-            if any(word in called.lower() for word in ("unknown", "failure", "error")):
-                return True
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func.attr if isinstance(node.func, ast.Attribute) else ""
+        if name in {"critical", "error", "exception", "warning"}:
+            return True
+        called = node.func.id if isinstance(node.func, ast.Name) else name
+        if any(word in called.lower() for word in ("error", "failure", "unknown")):
+            return True
     return False
 
 
@@ -74,12 +70,12 @@ def audit_tree(repo_root: Path) -> list[Violation]:
             for handler in (
                 node for node in ast.walk(function) if isinstance(node, ast.ExceptHandler)
             ):
-                if not _is_broad(handler) or _has_loud_boundary(handler.body):
+                if not _is_broad(handler) or _has_loud_boundary(handler):
                     continue
                 violations.extend(
                     Violation(rel, node.lineno, "broad handler returns an untyped normal value")
-                    for node in handler.body
-                    if isinstance(node, ast.Return) and _normal_return(node)
+                    for node in _handler_returns(handler)
+                    if _normal_return(node)
                 )
     return violations
 

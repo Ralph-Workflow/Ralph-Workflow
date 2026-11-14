@@ -288,8 +288,4 @@ def _append_only_paths(root: Path, paths: tuple[str, ...]) -> set[str]:
     if result.returncode != 0:
         return set()
     fields = result.stdout.split("\0")
-    return {
-        fields[index]
-        for index in range(0, len(fields) - 2, 3)
-        if fields[index + 2] == "union"
-    }
+    return {fields[index] for index in range(0, len(fields) - 2, 3) if fields[index + 2] == "union"}

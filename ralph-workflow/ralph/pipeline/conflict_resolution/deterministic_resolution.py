@@ -6,7 +6,7 @@ from loguru import logger
 
 from ralph.git.merge import conflict_stage_entries
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.pipeline.conflict_resolution.sight import escalate_on_sight
+from ralph.pipeline.conflict_resolution.sight import ConflictKind, escalate_on_sight
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -17,11 +17,53 @@ if TYPE_CHECKING:
 
 __all__ = [
     "escalate_gitlink_on_sight",
+    "resolve_completion_in_place",
     "try_deterministic_resolution",
 ]
 
 _CONFLICT_STAGE_OURS = 2
 _CONFLICT_STAGE_THEIRS = 3
+
+
+def resolve_completion_in_place(
+    root: Path,
+    paths: tuple[str, ...],
+    kinds: dict[str, ConflictKind],
+) -> tuple[str, ...]:
+    selected = tuple(
+        path
+        for path in paths
+        if kinds.get(path) in {ConflictKind.GITLINK, ConflictKind.BINARY, ConflictKind.OTHER}
+    )
+    if not selected:
+        return ()
+    entries = conflict_stage_entries(root, selected)
+    chosen: list[tuple[str, str, str]] = []
+    for path in selected:
+        stage = entries.get(path, {})
+        picked = stage.get(_CONFLICT_STAGE_OURS) or stage.get(_CONFLICT_STAGE_THEIRS)
+        if picked is None:
+            continue
+        mode, sha = picked
+        ancestor = stage.get(1)
+        logger.info(
+            "conflict_resolution: completion-in-place {} base={} ours={} theirs={} selected={}",
+            path,
+            ancestor[1] if ancestor is not None else "<absent>",
+            stage.get(_CONFLICT_STAGE_OURS, ("", "<absent>"))[1],
+            stage.get(_CONFLICT_STAGE_THEIRS, ("", "<absent>"))[1],
+            sha,
+        )
+        chosen.append((mode, sha, path))
+    if len(chosen) != len(selected):
+        return ()
+    if not _stage_deterministic_entries(
+        root,
+        chosen,
+        label="git-completion-in-place",
+    ):
+        return ()
+    return tuple(path for _mode, _sha, path in chosen)
 
 
 def escalate_gitlink_on_sight(
@@ -74,28 +116,19 @@ def _ensure_submodule_objects(
 def try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
     try:
         entries = conflict_stage_entries(root, stop.conflicted_files)
-        gitlink_paths = tuple(
-            path
+        if any(
+            _CONFLICT_STAGE_OURS not in entries.get(path, {})
+            or _CONFLICT_STAGE_THEIRS not in entries[path]
             for path in stop.conflicted_files
-            if _is_gitlink(entries.get(path, {}))
-        )
-        resolved_any = False
-        if gitlink_paths:
-            resolved_any = _resolve_gitlinks_in_place(
-                root,
-                gitlink_paths,
-                [entries[path] for path in gitlink_paths],
-            )
-        non_gitlink_paths = tuple(
-            path for path in stop.conflicted_files if path not in set(gitlink_paths)
-        )
-        if not non_gitlink_paths:
-            return resolved_any
-        stages = [entries.get(path, {}) for path in non_gitlink_paths]
-        if not stages or not all(
-            _CONFLICT_STAGE_OURS in stage
-            and _CONFLICT_STAGE_THEIRS in stage
-            and
+        ):
+            return False
+        stages = [entries[path] for path in stop.conflicted_files]
+        if all(
+            stage[_CONFLICT_STAGE_OURS][0] == stage[_CONFLICT_STAGE_THEIRS][0] == "160000"
+            for stage in stages
+        ):
+            return _resolve_gitlinks(root, stop.conflicted_files, stages)
+        if not all(
             stage[_CONFLICT_STAGE_OURS][1] == stage[_CONFLICT_STAGE_THEIRS][1]
             and {
                 stage[_CONFLICT_STAGE_OURS][0],
@@ -104,8 +137,8 @@ def try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
             == {"100644", "100755"}
             for stage in stages
         ):
-            return resolved_any
-        return _resolve_mode_only(root, non_gitlink_paths, stages) or resolved_any
+            return False
+        return _resolve_mode_only(root, stop.conflicted_files, stages)
     except Exception as exc:
         logger.warning("conflict_resolution: deterministic resolution declined: {}", exc)
         return False

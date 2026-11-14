@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING
 
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
@@ -11,20 +11,24 @@ from ralph.git.rebase.rebase import (
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+    assert_never,
+)
 from ralph.pipeline.resolution_outcome_producer import RETRY_LATER_REASON
-from ralph.pipeline.resolution_outcome_resolved import Resolved
-from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
-    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
+    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+        ResolutionTerminationReason,
+    )
 
 ACTION_SKIPPED = RebaseOutcomeKind.SKIPPED.value
 ACTION_REBASED = RebaseOutcomeKind.REBASED.value
@@ -87,62 +91,65 @@ def record_resolution_exhausted(
     )
 
 
-def _operator_reason(paths: tuple[str, ...], command: str) -> str:
-    joined = ", ".join(paths)
-    if command:
-        return f"conflict on {joined} needs operator action: {command}"
-    return f"conflict on {joined} needs operator action"
-
-
 def record_resolution_outcome(
-    outcome: ResolutionOutcomeType,
+    outcome: StopResolutionOutcome,
     *,
     target: str | None,
     retry_kind: RebaseOutcomeKind = RebaseOutcomeKind.CONFLICT,
 ) -> RebaseState:
+    result: RebaseState
     match outcome:
-        case Resolved():
-            return RebaseState(
+        case ResolvedOutcome():
+            result = RebaseState(
                 last_outcome=RebaseOutcomeKind.CONFLICT_RESOLUTION,
                 last_reason="conflict resolution completed",
                 last_failure_cause=ResolutionFailureCause.NONE,
                 last_target=target,
                 fast_forwarded=False,
             )
-        case NeedsOperator(cause=cause, paths=paths, command=command):
-            return record_conflict(
-                reason=_operator_reason(paths, command),
+        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+            result = record_conflict(
+                reason=f"waiting for {condition}; resumes when {resumes_when}",
                 target=target,
-                failure_cause=cause,
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-        case RetryLater(on_change=on_change):
-            message = on_change or RETRY_LATER_REASON
+        case RetryLaterOutcome(until=until, on_change=on_change):
+            message = on_change or (
+                f"retry after {until}" if until is not None else RETRY_LATER_REASON
+            )
             if retry_kind is RebaseOutcomeKind.SKIPPED:
-                return record_skip(
+                result = record_skip(
                     reason=message,
                     target=target,
                     failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
                 )
-            return record_conflict(
-                reason=message,
-                target=target,
-                failure_cause=ResolutionFailureCause.AGENT_FAILURE,
-            )
-        case Exhausted(agents=agents):
-            return record_resolution_exhausted(
-                reason=f"resolver agents exhausted: {', '.join(agents)}",
+            else:
+                result = record_conflict(
+                    reason=message,
+                    target=target,
+                    failure_cause=ResolutionFailureCause.AGENT_FAILURE,
+                )
+        case NextStrategyOutcome(strategy=strategy):
+            result = record_conflict(
+                reason=f"continuing with autonomous strategy: {strategy}",
                 target=target,
                 failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
-                terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
             )
-        case ConfigFailure(file=file):
-            return record_conflict(
+        case ConfigFailureOutcome(file=file):
+            result = record_conflict(
                 reason=f"fix {file} then run ralph --check-config",
                 target=target,
                 failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
             )
+        case UnknownOutcome(error=error):
+            result = record_conflict(
+                reason=f"unclassified resolution failure; advancing strategy: {error}",
+                target=target,
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+            )
         case _ as unreachable:
             assert_never(unreachable)
+    return result
 
 
 def record_rebase_outcome(

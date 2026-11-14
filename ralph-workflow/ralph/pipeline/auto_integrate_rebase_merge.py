@@ -230,6 +230,27 @@ def run_rebase_or_merge(
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseRunResult:
+    effective_conflict_resolver = conflict_resolver
+    if effective_conflict_resolver is None and rebase_stop_resolver is not None:
+
+        def _adapted_resolver(r: Path, t: str) -> bool:
+            from ralph.git.merge import unmerged_paths
+            from ralph.pipeline.conflict_resolution import RebaseStop
+
+            unmerged = tuple(unmerged_paths(r))
+            stop = RebaseStop(
+                sha="merge",
+                subject=f"merge into {t}",
+                conflicted_files=unmerged,
+                stop_index=1,
+                stop_cap=1,
+                replay_index=1,
+                replay_total=1,
+            )
+            return bool(rebase_stop_resolver(r, t, stop))
+
+        effective_conflict_resolver = _adapted_resolver
+
     if prefer_merge:
         retry_reason = skip_reason_text(SKIP_RETRY_AFTER_MERGE_COMMIT)
         return replace(
@@ -237,7 +258,7 @@ def run_rebase_or_merge(
                 root,
                 target,
                 RebaseNoOp(retry_reason),
-                conflict_resolver,
+                effective_conflict_resolver,
             ),
             skip_reason=retry_reason,
         )
@@ -289,7 +310,9 @@ def run_rebase_or_merge(
         if resolved is not None:
             return resolved
 
-    return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
+    return _fallback_to_endpoint_merge(
+        root, target, rebase_outcome, effective_conflict_resolver, git_ops
+    )
 
 
 run_rebase_or_merge.__doc__ = "Resolve rebase in place before endpoint merge on unresolved failure."

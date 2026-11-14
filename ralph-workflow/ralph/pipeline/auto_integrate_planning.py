@@ -184,7 +184,11 @@ def _finish_paused_rebase(
     target: str,
     resolver: RebaseStopResolver | None,
 ) -> RebaseState | None:
-    if resolver is None or not rebase_in_progress(root):
+    if not rebase_in_progress(root):
+        return None
+    from ralph.pipeline.conflict_resolution.rebase_loop import finish_resolved_rebase_stops
+
+    if finish_resolved_rebase_stops(root, target) or resolver is None:
         return None
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
     from ralph.pipeline.auto_integrate_record import read_record
@@ -208,10 +212,42 @@ def _finish_paused_rebase(
         return record_conflict(reason=result.reason, target=target)
     if isinstance(result, RebaseResolutionResult) and result.succeeded:
         return None
-    return record_conflict(
-        reason="rebase already in progress could not be resolved; the resolver is asked again",
-        target=target,
-    )
+    from ralph.git.merge import observe_branch_sha
+    from ralph.git.rebase.rebase import abort_rebase
+    from ralph.pipeline.auto_integrate_record import clear_record
+
+    saved_feature_tip: str | None = None
+    try:
+        tip, ok = observe_branch_sha(root, "feature")
+        if ok and tip:
+            saved_feature_tip = tip
+    except Exception:
+        pass
+
+    try:
+        abort_rebase(repo_root=root)
+        clear_record(root)
+        if saved_feature_tip is not None:
+            from ralph.git.subprocess_runner import run_git
+
+            run_git(
+                ("update-ref", "refs/heads/feature", saved_feature_tip),
+                cwd=root,
+                label="auto-integrate:update-feature-ref",
+            )
+        outcome, _retry = _integrate_once(
+            config,
+            root,
+            target,
+            conflict_resolver=None,
+            prefer_merge=True,
+            require_in_sync=True,
+            rebase_stop_resolver=resolver,
+        )
+        return outcome
+    except Exception as exc:
+        logger.warning("abort_rebase or merge fallback failed: {}", exc)
+    return None
 
 
 def _record_staged_block(

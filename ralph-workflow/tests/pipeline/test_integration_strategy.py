@@ -121,24 +121,12 @@ def _expected_strategy(
     if relation is IntegrationRelation.AHEAD:
         if policy.allow_fast_forward:
             return IntegrationStrategy.FAST_FORWARD
-        return (
-            IntegrationStrategy.MERGE
-            if merge_allowed
-            else IntegrationStrategy.COMPLETE_IN_PLACE
-        )
+        return IntegrationStrategy.MERGE if merge_allowed else IntegrationStrategy.COMPLETE_IN_PLACE
     if relation is IntegrationRelation.UNRELATED:
-        return (
-            IntegrationStrategy.MERGE
-            if merge_allowed
-            else IntegrationStrategy.COMPLETE_IN_PLACE
-        )
+        return IntegrationStrategy.MERGE if merge_allowed else IntegrationStrategy.COMPLETE_IN_PLACE
     if policy.allow_rebase and _rebase_is_safe(shape):
         return IntegrationStrategy.REBASE
-    return (
-        IntegrationStrategy.MERGE
-        if merge_allowed
-        else IntegrationStrategy.COMPLETE_IN_PLACE
-    )
+    return IntegrationStrategy.MERGE if merge_allowed else IntegrationStrategy.COMPLETE_IN_PLACE
 
 
 @pytest.mark.parametrize("relation", _RELATIONS)
@@ -156,9 +144,7 @@ def test_strategy_choice_is_deterministic_across_relation_shape_and_policy(
     assert decision.strategy is _expected_strategy(relation, shape, policy)
     assert decision.reason.strip()
     assert decision.alternatives == tuple(
-        strategy
-        for strategy in _expected_candidates(relation)
-        if strategy is not decision.strategy
+        strategy for strategy in _expected_candidates(relation) if strategy is not decision.strategy
     )
 
 
@@ -239,8 +225,7 @@ def test_new_work_transition_absorbs_work_without_discarding_progress(
     matching = [
         transition
         for transition in STRATEGY_TRANSITIONS
-        if transition.current_strategy is IntegrationStrategy.REBASE
-        and transition.guard is guard
+        if transition.current_strategy is IntegrationStrategy.REBASE and transition.guard is guard
     ]
 
     assert len(matching) == 1

@@ -74,9 +74,7 @@ def _rebase_signal_count(
     rebase_apply = gitdir / "rebase-apply"
     plan_present = (
         _marker_exists(rebase_merge, "onto") and _marker_exists(rebase_merge, "head-name")
-    ) or (
-        _marker_exists(rebase_apply, "onto") and _marker_exists(rebase_apply, "head-name")
-    )
+    ) or (_marker_exists(rebase_apply, "onto") and _marker_exists(rebase_apply, "head-name"))
     sequence_present = _marker_exists(rebase_merge, "git-rebase-todo") or (
         _marker_exists(rebase_apply, "next") and _marker_exists(rebase_apply, "last")
     )
@@ -101,15 +99,17 @@ def _operation_state(
 ) -> OperationState:
     if gitdir is None or detached is None:
         return OperationState.UNKNOWN
-    rebase_marker = _marker_exists(gitdir, "rebase-merge") or _marker_exists(
-        gitdir, "rebase-apply"
-    )
-    if rebase_marker and _rebase_signal_count(
-        gitdir,
-        detached=detached,
-        rebase_head=rebase_head,
-        has_unmerged=has_unmerged,
-    ) >= _MINIMUM_REBASE_SIGNALS:
+    rebase_marker = _marker_exists(gitdir, "rebase-merge") or _marker_exists(gitdir, "rebase-apply")
+    if (
+        rebase_marker
+        and _rebase_signal_count(
+            gitdir,
+            detached=detached,
+            rebase_head=rebase_head,
+            has_unmerged=has_unmerged,
+        )
+        >= _MINIMUM_REBASE_SIGNALS
+    ):
         return OperationState.REBASE_PAUSED
     merge_evidence = any(
         (

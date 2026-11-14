@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -16,6 +17,7 @@ __all__ = [
     "GitPlumbing",
     "LadderOutcome",
     "LandResult",
+    "NextStrategyOutcome",
     "RepointResult",
     "RungPostCondition",
 ]
@@ -24,12 +26,20 @@ __all__ = [
 type LadderOutcome = Literal["succeeded", "failed", "impossible", "waiting", "terminal"]
 
 
+@dataclass(frozen=True, slots=True)
+class NextStrategyOutcome:
+    strategy: Literal["complete_in_place"]
+    reason: str
+    alternatives_considered: tuple[str, ...]
+
+
 class RungPostCondition(StrEnum):
     BLOCKING_OBSERVATION_CHANGED = "blocking_observation_changed"
     DURABLE_COPY_CREATED = "durable_copy_created"
     STOP_GONE = "stop_gone"
     TIP_MOVED = "tip_moved"
     BRANCH_LANDED = "branch_landed"
+
 
 type LandResult = Literal[
     "landed",

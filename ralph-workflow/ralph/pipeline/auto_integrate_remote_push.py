@@ -417,8 +417,7 @@ def _reconcile_in_progress_rebase(
         if not result.succeeded:
             return _PushOutcome(
                 success=False,
-                summary=result.reason
-                or f"rebase in progress on {target} could not be resolved",
+                summary=result.reason or f"rebase in progress on {target} could not be resolved",
                 pushed=False,
             )
         return None

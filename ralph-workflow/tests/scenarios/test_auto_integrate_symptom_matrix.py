@@ -76,12 +76,7 @@ def _moved_target_after_restart(root: Path) -> ScenarioResult:
 
 
 def _unstaged_and_gitlink(root: Path) -> ScenarioResult:
-    text = run_unstaged_text_resolution(root)
-    return ScenarioResult(
-        text.resolver_launches,
-        text.operator_lines,
-        "operator_required" if text.terminal_state == "retained" else "incorrectly_resolved",
-    )
+    return run_unstaged_text_resolution(root)
 
 
 CASES = (
@@ -113,7 +108,7 @@ CASES = (
     (
         "resolved-unstaged-text-plus-gitlink",
         _unstaged_and_gitlink,
-        Expected(1, 1, "WARNING", "gitlink", "operator_required"),
+        Expected(1, 0, None, None, "resolved"),
     ),
 )
 

@@ -37,11 +37,17 @@ def test_operator_action_between_ticks_is_observed(tmp_git_repo: Path, action: s
         git(tmp_git_repo, "rebase", "--abort")
         git(tmp_git_repo, "checkout", "-q", "main")
         git(tmp_git_repo, "cherry-pick", feature_sha, check=False)
+        (tmp_git_repo / "shared.txt").write_text("operator resolution\n", encoding="utf-8")
+        git(tmp_git_repo, "add", "shared.txt")
+        git(tmp_git_repo, "-c", "core.editor=:", "cherry-pick", "--continue")
         git(tmp_git_repo, "checkout", "-q", "feature")
     else:
         git(tmp_git_repo, "rebase", "--abort")
         git(tmp_git_repo, "checkout", "-q", "main")
-        git(tmp_git_repo, "merge", "-q", "--no-ff", "-m", "manual landing", "feature")
+        git(tmp_git_repo, "merge", "-q", "--no-ff", "-m", "manual landing", "feature", check=False)
+        (tmp_git_repo / "shared.txt").write_text("operator resolution\n", encoding="utf-8")
+        git(tmp_git_repo, "add", "shared.txt")
+        git(tmp_git_repo, "-c", "core.editor=:", "commit", "-m", "manual landing")
         git(tmp_git_repo, "checkout", "-q", "feature")
 
     run = drive_integration(

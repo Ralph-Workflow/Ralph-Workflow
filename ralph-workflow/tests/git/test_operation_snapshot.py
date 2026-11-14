@@ -13,6 +13,8 @@ from ralph.git.operation_snapshot import (
 from ralph.git.operations import get_head_sha
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 
+pytestmark = pytest.mark.subprocess_e2e
+
 
 def _assign_head_sha(snapshot: OperationSnapshot, value: str | None) -> None:
     snapshot.__setattr__("head_sha", value)
@@ -120,7 +122,7 @@ def test_stale_rebase_directory_without_matching_facts_is_none(tmp_git_repo: Pat
     finally:
         repo.close()
 
-    assert rebase_in_progress_at(tmp_git_repo)
+    assert (gitdir / "rebase-merge").is_dir()
     assert snapshot.operation_state is OperationState.NONE
     assert snapshot.unmerged_paths == ()
     assert snapshot.rebase_head is None

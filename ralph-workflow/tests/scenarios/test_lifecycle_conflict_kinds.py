@@ -18,7 +18,11 @@ from tests.scenarios._content_equivalence import (
     snapshot_uncommitted,
 )
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.required_auto_integrate_e2e, pytest.mark.timeout_seconds(12)]
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(12),
+]
 
 
 def test_resolved_but_unstaged_file_is_finished_without_an_agent(tmp_git_repo: Path) -> None:
@@ -26,8 +30,15 @@ def test_resolved_but_unstaged_file_is_finished_without_an_agent(tmp_git_repo: P
     feature_sha = git(tmp_git_repo, "rev-parse", "feature")
     (tmp_git_repo / "shared.txt").write_text("resolved by operator\n", encoding="utf-8")
     run = drive_integration(tmp_git_repo)
-    assert run.resolver_launches == 0, "resolved-but-unstaged content must be staged mechanically before launching an agent"
-    assert_content_equivalence(tmp_git_repo, contract="resolved-but-unstaged content must land", feature=feature_sha, source_refs=("main",))
+    assert run.resolver_launches == 0, (
+        "resolved-but-unstaged content must be staged mechanically before launching an agent"
+    )
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="resolved-but-unstaged content must land",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
 
 
 def test_gitlink_vendor_conflict_uses_a_policy_pointer_and_lands(tmp_git_repo: Path) -> None:
@@ -35,7 +46,12 @@ def test_gitlink_vendor_conflict_uses_a_policy_pointer_and_lands(tmp_git_repo: P
     feature_sha = git(tmp_git_repo, "rev-parse", "feature")
     run = drive_integration(tmp_git_repo, resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES))
     assert run.error is None, f"gitlink policy handling must not crash: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract="a gitlink conflict must land with the policy-selected pointer", feature=feature_sha, source_refs=("main",))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="a gitlink conflict must land with the policy-selected pointer",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
 
 
 @pytest.mark.parametrize("kind", ["append-only", "delete-modify", "binary"])
@@ -55,7 +71,12 @@ def test_conflict_kind_lands_without_corruption(tmp_git_repo: Path, kind: str) -
     git(tmp_git_repo, "checkout", "-q", "feature")
     run = drive_integration(tmp_git_repo, resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES))
     assert run.error is None, f"{kind} conflict handling must not crash: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract=f"a {kind} conflict must land without losing feature content", feature=feature_sha, source_refs=(target_before,))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract=f"a {kind} conflict must land without losing feature content",
+        feature=feature_sha,
+        source_refs=(target_before,),
+    )
 
 
 def test_empty_after_replay_commit_is_preserved_or_explicitly_excluded(tmp_git_repo: Path) -> None:
@@ -72,7 +93,9 @@ def test_empty_after_replay_commit_is_preserved_or_explicitly_excluded(tmp_git_r
 
 
 @pytest.mark.parametrize("dirty_kind", ["tracked", "untracked"])
-def test_dirty_worktree_content_is_preserved_while_feature_lands(tmp_git_repo: Path, dirty_kind: str) -> None:
+def test_dirty_worktree_content_is_preserved_while_feature_lands(
+    tmp_git_repo: Path, dirty_kind: str
+) -> None:
     commit_file(tmp_git_repo, "base.txt", "base\n", "base")
     git(tmp_git_repo, "checkout", "-q", "-b", "feature")
     feature_sha = commit_file(tmp_git_repo, "feature.txt", "feature\n", "feature")
@@ -81,7 +104,13 @@ def test_dirty_worktree_content_is_preserved_while_feature_lands(tmp_git_repo: P
     preserved = snapshot_uncommitted(tmp_git_repo, (relative,))
     run = drive_integration(tmp_git_repo)
     assert run.error is None, f"dirty {dirty_kind} work must not crash integration: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract=f"dirty {dirty_kind} work must survive while feature content lands", feature=feature_sha, source_refs=("main",), preserved=preserved)
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract=f"dirty {dirty_kind} work must survive while feature content lands",
+        feature=feature_sha,
+        source_refs=("main",),
+        preserved=preserved,
+    )
 
 
 def test_failing_hook_does_not_block_landing(tmp_git_repo: Path) -> None:
@@ -93,4 +122,9 @@ def test_failing_hook_does_not_block_landing(tmp_git_repo: Path) -> None:
     hook.chmod(0o755)
     run = drive_integration(tmp_git_repo)
     assert run.error is None, f"a failing hook must route to a defined autonomous path: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract="a failing hook must not prevent committed feature work from landing", feature=feature_sha, source_refs=("main",))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="a failing hook must not prevent committed feature work from landing",
+        feature=feature_sha,
+        source_refs=("main",),
+    )

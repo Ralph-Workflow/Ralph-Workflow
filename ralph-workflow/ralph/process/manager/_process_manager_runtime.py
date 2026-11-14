@@ -44,6 +44,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "integration_diagnostic:head_parents": frozenset({1}),
     "operation_evidence:merge_object_resolvable": frozenset({1}),
     "operation_evidence:rebase_object_resolvable": frozenset({1}),
+    "pending-merge:identity": frozenset({128}),
     "planning-residue:ref-exists": frozenset({1}),
     "recovery:head-symbolic-ref": frozenset({1}),
     "repair:commit-controls": frozenset({1}),

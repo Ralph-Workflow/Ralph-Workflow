@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from ralph.pipeline._integration_ladder_seams import RungPostCondition
 from ralph.pipeline.integration_decision import CleanupLadderRung
-from ralph.pipeline.integration_ladder import run_ladder_rung
+from ralph.pipeline.integration_ladder import RungPostCondition, run_ladder_rung
 from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs, _ledger
 

@@ -189,7 +189,9 @@ def record_integration_step(root: Path, step: str) -> None:
     facts = _read_operation(marker)
     if facts is None:
         raise RuntimeError("integration operation marker is absent or invalid")
-    steps = facts.completed_steps if step in facts.completed_steps else (*facts.completed_steps, step)
+    steps = (
+        facts.completed_steps if step in facts.completed_steps else (*facts.completed_steps, step)
+    )
     _write_operation(marker, facts, steps)
 
 

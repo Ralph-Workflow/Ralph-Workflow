@@ -5,7 +5,18 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-_LEGACY_UNPACK_SIZE = 2
+_RESOLUTION_CALLS = frozenset(
+    {
+        "RebaseResolutionResult",
+        "attempt_stop_resolution",
+        "resolve_conflicted_rebase",
+        "resolve_rebase_in_progress",
+        "resolve_rebase_with_config",
+        "_resolve_rebase_in_progress",
+        "_resolve_rebase_with_config",
+    }
+)
+_CAUSE_NAMES = frozenset({"cause", "failure_cause", "failure_reason", "reason", "terminal_reason"})
 
 
 @dataclass(frozen=True)
@@ -21,33 +32,47 @@ class Violation:
 def _resolution_call(node: ast.expr) -> bool:
     if not isinstance(node, ast.Call):
         return False
-    name = node.func.id if isinstance(node.func, ast.Name) else (
-        node.func.attr if isinstance(node.func, ast.Attribute) else ""
+    name = (
+        node.func.id
+        if isinstance(node.func, ast.Name)
+        else (node.func.attr if isinstance(node.func, ast.Attribute) else "")
     )
-    return name in {
-        "resolve_rebase_with_config",
-        "_resolve_rebase_with_config",
-        "resolve_rebase_in_progress",
-        "_resolve_rebase_in_progress",
-    }
+    return name in _RESOLUTION_CALLS
 
 
-def _textifies_cause(node: ast.Compare) -> bool:
+def _cause_expression(node: ast.AST) -> bool:
     for part in ast.walk(node):
         if not isinstance(part, ast.Call) or not isinstance(part.func, ast.Name):
             continue
         if part.func.id != "str" or not part.args:
             continue
-        arg = part.args[0]
-        if isinstance(arg, ast.Name) and arg.id.lower() in {"cause", "failure_cause", "reason"}:
+        argument = part.args[0]
+        if isinstance(argument, ast.Name) and argument.id.lower() in _CAUSE_NAMES:
             return True
-        if isinstance(arg, ast.Attribute) and arg.attr.lower() in {
-            "cause",
-            "failure_cause",
-            "reason",
-        }:
+        if isinstance(argument, ast.Attribute) and argument.attr.lower() in _CAUSE_NAMES:
             return True
     return False
+
+
+def _string_cause_match(node: ast.Compare) -> bool:
+    expressions: list[ast.AST] = [node.left, *node.comparators]
+    return any(
+        isinstance(part, ast.Constant) and isinstance(part.value, str)
+        for expression in expressions
+        for part in ast.walk(expression)
+    ) and any(_cause_expression(expression) for expression in expressions)
+
+
+def _tuple_subclass(node: ast.ClassDef) -> bool:
+    return any(
+        (isinstance(base, ast.Name) and base.id == "tuple")
+        or (
+            isinstance(base, ast.Subscript)
+            and isinstance(base.value, ast.Name)
+            and base.value.id == "tuple"
+        )
+        for base in node.bases
+    )
 
 
 def audit_tree(repo_root: Path) -> list[Violation]:
@@ -61,28 +86,20 @@ def audit_tree(repo_root: Path) -> list[Violation]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign) and _resolution_call(node.value):
                 violations.extend(
-                    Violation(rel, node.lineno, "two-value resolution unpack")
+                    Violation(rel, node.lineno, "tuple-shaped resolution result unpack")
                     for target in node.targets
                     if isinstance(target, ast.Tuple)
-                    and len(target.elts) == _LEGACY_UNPACK_SIZE
                 )
             if (
                 isinstance(node, ast.ClassDef)
-                and node.name == "ExhaustedResolutionFailure"
-                and any(isinstance(base, ast.Name) and base.id == "str" for base in node.bases)
+                and node.name == "RebaseResolutionResult"
+                and _tuple_subclass(node)
             ):
                 violations.append(
-                    Violation(rel, node.lineno, "terminal reason smuggled in str subclass")
+                    Violation(rel, node.lineno, "resolution result retains legacy tuple vocabulary")
                 )
-            if isinstance(node, ast.Compare) and any(
-                isinstance(op, (ast.In, ast.NotIn)) for op in node.ops
-            ):
-                has_text = any(
-                    isinstance(part, ast.Constant) and isinstance(part.value, str)
-                    for part in ast.walk(node)
-                )
-                if has_text and _textifies_cause(node):
-                    violations.append(Violation(rel, node.lineno, "string matching on failure cause"))
+            if isinstance(node, ast.Compare) and _string_cause_match(node):
+                violations.append(Violation(rel, node.lineno, "string matching on failure cause"))
     return violations
 
 

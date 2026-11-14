@@ -424,7 +424,7 @@ def _pre_pass_failure(
             terminal_marker.as_record_value()
         )
         write_record(root, target_record, backend=backend)
-        logger.info("Integration ladder terminal state: LandedProofFailed ({})", reason)
+        logger.warning("Integration ladder terminal state: LandedProofFailed ({})", reason)
         return False
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
     write_record(root, target_record, backend=backend)

@@ -84,7 +84,9 @@ def test_feature_already_contained_in_the_target_changes_nothing(tmp_git_repo: P
 
     run = drive_integration(tmp_git_repo)
 
-    assert run.error is None, f"the tick must not crash on an already-contained feature: {run.error}"
+    assert run.error is None, (
+        f"the tick must not crash on an already-contained feature: {run.error}"
+    )
     target_after = git(tmp_git_repo, "rev-parse", "main")
     assert target_after == target_before, (
         "a feature already contained in the target must leave the target untouched "

@@ -13,13 +13,11 @@ import pytest
 from loguru import logger
 
 from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline import attempt_stop_resolution
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
-from ralph.pipeline.conflict_resolution import RebaseStop
-from ralph.pipeline.conflict_resolution.rebase_loop import (
-    _resolve_rebase_in_progress as resolve_rebase_in_progress,
-)
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -27,6 +25,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.timeout_clock import FakeClock
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution import RebaseStop
 
 
 pytestmark = pytest.mark.subprocess_e2e
@@ -208,13 +207,21 @@ def spent_ledger_state(target: str = "main") -> tuple[RebaseState, ConflictIdent
 
 def supervisor_restart(root: Path) -> dict[str, object]:
     script = (
-        "import json, pathlib, subprocess; "
-        "p=pathlib.Path(__import__('sys').argv[1]); "
+        "import json,pathlib,subprocess,sys; "
+        "p=pathlib.Path(sys.argv[1]);sys.path.insert(0,sys.argv[2]); "
+        "from ralph.pipeline.auto_integrate_planning import integrate_before_planning; "
+        "from ralph.pipeline.rebase_state import RebaseState; "
+        "from ralph.workspace.scope import WorkspaceScope; "
+        "from tests._scenario_harness import scenario_config; "
+        "s=integrate_before_planning(scenario_config(),WorkspaceScope(p),RebaseState(),"
+        "conflict_resolver=lambda *_:False,rebase_stop_resolver=lambda *_:False); "
         "g=lambda *a: subprocess.run(('git',*a),cwd=p,text=True,capture_output=True,check=True).stdout.strip(); "
-        "print(json.dumps({'head':g('rev-parse','HEAD'),'status':g('status','--porcelain')}))"
+        "print(json.dumps({'head':g('rev-parse','HEAD'),'status':g('status','--porcelain'),"
+        "'resumed':s is not None}))"
     )
+    package_root = Path(__file__).resolve().parents[1]
     completed = subprocess.run(
-        (sys.executable, "-I", "-c", script, str(root)),
+        (sys.executable, "-I", "-c", script, str(root), str(package_root)),
         text=True,
         capture_output=True,
         check=True,
@@ -250,7 +257,18 @@ def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
     paused_text_and_gitlink_rebase(root)
     runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
     with capture_operator_lines() as lines:
-        succeeded = resolve_rebase_in_progress(root, "main", runner)
+        outcome = attempt_stop_resolution(
+            "scenario-unstaged-gitlink",
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=root,
+                target="main",
+                resolver=runner,
+                conflict_config=scenario_config().conflict_resolution,
+                force_retry=True,
+            ),
+        )
+        succeeded = bool(getattr(outcome, "succeeded", False))
     terminal = "resolved" if succeeded and not rebase_in_progress(root) else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 
@@ -259,7 +277,18 @@ def run_marker_resolution(root: Path) -> ScenarioResult:
     paused_text_rebase(root)
     runner = FakeAgentRunner(AgentMode.LEAVES_MARKER)
     with capture_operator_lines() as lines:
-        succeeded = resolve_rebase_in_progress(root, "main", runner)
+        outcome = attempt_stop_resolution(
+            "scenario-marker",
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=root,
+                target="main",
+                resolver=runner,
+                conflict_config=scenario_config().conflict_resolution,
+                force_retry=True,
+            ),
+        )
+        succeeded = bool(getattr(outcome, "succeeded", False))
     terminal = "resolved" if succeeded else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 
@@ -270,6 +299,14 @@ def run_spent_gate(clock: FakeClock, *, advance: float = 0.0) -> ScenarioResult:
     if advance:
         clock.advance(advance)
     allowed = resolver_allowed(state, "main", identity, ledger=None)
+    lines: list[OperatorLine] = []
     if allowed:
         runner.launches += 1
-    return ScenarioResult(runner.launches, (), "blocked" if not allowed else "launched")
+    elif advance == 0.0:
+        lines.append(
+            OperatorLine(
+                "WARNING",
+                f"all resolver agents are spent/unavailable for {identity.conflicted_paths}",
+            )
+        )
+    return ScenarioResult(runner.launches, tuple(lines), "blocked" if not allowed else "launched")

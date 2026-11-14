@@ -23,12 +23,16 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
 from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.rebase_state import StartupRetentionReason
-from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+)
 from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
-from ralph.pipeline.resolution_outcome_resolved import Resolved
-from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,7 +44,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.rebase_state import RebaseState
-    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
@@ -214,9 +217,9 @@ def _continue_rebase_resolution(
 def _rebase_failure_outcome(
     result: RebaseResolutionResult,
     chain_agents: tuple[str, ...],
-) -> ResolutionOutcomeType:
+) -> StopResolutionOutcome:
     if result.succeeded:
-        return Resolved()
+        return ResolvedOutcome()
     return classify_resolution_failure(
         terminal_reason=result.terminal_reason,
         failure_cause=result.failure_cause,
@@ -238,13 +241,11 @@ def _rebase_failure_transport(
     )
     outcome = _rebase_failure_outcome(result, chain_agents)
     match outcome:
-        case Resolved():
+        case ResolvedOutcome():
             return None
-        case NeedsOperator():
+        case WaitingOutcome() | RetryLaterOutcome():
             return failure_reason
-        case RetryLater():
-            return failure_reason
-        case Exhausted():
+        case NextStrategyOutcome():
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha,
@@ -254,7 +255,7 @@ def _rebase_failure_transport(
                 NextAction.LAST_RESORT_RECOVERY.value,
             )
             return failure_reason
-        case ConfigFailure():
+        case ConfigFailureOutcome() | UnknownOutcome():
             return failure_reason
         case _ as unreachable:
             assert_never(unreachable)

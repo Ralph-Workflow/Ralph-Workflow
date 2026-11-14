@@ -1,10 +1,3 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
+from ralph.pipeline.resolution_outcome import ResolvedOutcome as Resolved
 
 __all__ = ["Resolved"]
-
-
-@dataclass(frozen=True)
-class Resolved:
-    pass

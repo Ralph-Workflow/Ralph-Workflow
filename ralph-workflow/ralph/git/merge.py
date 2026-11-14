@@ -331,6 +331,8 @@ def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> 
     sizes = conflict_marker_sizes(repo_root_path, list(paths))
     reported: list[str] = []
     for path in paths:
+        if (repo_root_path / path).is_dir():
+            continue
         content = _readable_text(repo_root_path / path)
         if content is None:
             if (repo_root_path / path).exists():

@@ -548,9 +548,7 @@ class AttemptLedger:
             saturated_repeats=saturated,
             global_actions_charged=max(state.global_actions_charged, disk.global_actions_charged),
             ladder_evidence=dict(list(merged_evidence.items())[:_LADDER_EVIDENCE_CAP]),
-            shared_rung_results=dict(
-                list(merged_results.items())[-_SHARED_RUNG_RESULTS_CAP:]
-            ),
+            shared_rung_results=dict(list(merged_results.items())[-_SHARED_RUNG_RESULTS_CAP:]),
         )
 
     @staticmethod

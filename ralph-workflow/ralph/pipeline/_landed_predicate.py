@@ -155,7 +155,9 @@ def _range_pair_failure(
                 continue
         if old_patch is not None and old_patch in upstream_patch_ids:
             continue
-        return f"commit {index + 1} of the recorded range was neither replayed nor upstream-equivalent"
+        return (
+            f"commit {index + 1} of the recorded range was neither replayed nor upstream-equivalent"
+        )
     if replay_index != len(rebased):
         return "the rebased range contains a commit outside the recorded operation"
     return None

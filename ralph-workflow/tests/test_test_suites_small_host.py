@@ -6,9 +6,26 @@ import pytest
 
 from ralph import test_suites as test_suites_module
 from tests._test_test_suites_helpers import (
-    EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+    EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES as BASE_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+)
+from tests._test_test_suites_helpers import (
     _FakeShardProcess,
     _StubSpawner,
+)
+
+EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
+    *BASE_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+    "tests/scenarios/test_auto_integrate_symptom_matrix.py",
+    "tests/scenarios/test_lifecycle_relations.py",
+    "tests/scenarios/test_lifecycle_work_shapes.py",
+    "tests/scenarios/test_lifecycle_midflight.py",
+    "tests/scenarios/test_lifecycle_restart.py",
+    "tests/scenarios/test_lifecycle_operator_interleave.py",
+    "tests/scenarios/test_lifecycle_target_moves.py",
+    "tests/scenarios/test_lifecycle_conflict_kinds.py",
+    "tests/scenarios/test_lifecycle_publication_cleanup.py",
+    "tests/scenarios/test_lifecycle_content_equivalence.py",
+    "tests/scenarios/test_lifecycle_fault_injection.py",
 )
 
 if TYPE_CHECKING:

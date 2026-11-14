@@ -327,7 +327,7 @@ def _write_terminal_marker(root: Path, record: IntegrationRecord) -> None:
     current = read_record(root) or record
     marker = ResolutionTerminalMarker(
         current.resolution_gate_key,
-        "NeedsOperator",
+        "NextStrategy",
         RESUME_COMMAND,
     )
     write_record(root, current.with_resolution_terminal_marker(marker.as_record_value()))
@@ -360,7 +360,7 @@ def escalate_record_fact_outcome(
     if terminal_marker_blocks_attempt(record, record.resolution_gate_key):
         marker = ResolutionTerminalMarker(
             record.resolution_gate_key,
-            "NeedsOperator",
+            "NextStrategy",
             RESUME_COMMAND,
         )
         return LadderStepResult(

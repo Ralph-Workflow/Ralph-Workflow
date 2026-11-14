@@ -27,7 +27,6 @@ from ralph.pipeline._pending_merge_commit import (
 )
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
-from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -35,12 +34,15 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
-from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+)
 from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
-from ralph.pipeline.resolution_outcome_resolved import Resolved
-from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 _UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
 _RETAINED_RESOLUTION_REASON = "conflict resolution incomplete; progress retained"
@@ -240,13 +242,19 @@ def _resolver_exception_result(
         config_error=resolver_exc,
     )
     match outcome:
-        case ConfigFailure(file=file):
+        case ConfigFailureOutcome(file=file):
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
                 reason=f"fix {file} then run ralph --check-config",
                 failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
             )
-        case Resolved() | NeedsOperator() | RetryLater() | Exhausted():
+        case (
+            ResolvedOutcome()
+            | WaitingOutcome()
+            | RetryLaterOutcome()
+            | NextStrategyOutcome()
+            | UnknownOutcome()
+        ):
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
                 reason=reason,
@@ -254,13 +262,6 @@ def _resolver_exception_result(
             )
         case _ as unreachable:
             assert_never(unreachable)
-
-
-def _operator_action_reason(prefix: str, paths: tuple[str, ...], command: str) -> str:
-    joined = ", ".join(paths)
-    if command:
-        return f"{prefix}conflict on {joined} needs operator action: {command}"
-    return f"{prefix}conflict on {joined} needs operator action"
 
 
 def _terminal_reason(
@@ -323,35 +324,37 @@ def handle_unsuccessful_resolution(
         paths=paths,
     )
     match outcome:
-        case Resolved():
+        case ResolvedOutcome():
             return MergeResult("success", failure_cause=ResolutionFailureCause.NONE)
-        case NeedsOperator(cause=cause, paths=operator_paths, command=command):
+        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
-                reason=_operator_action_reason("", operator_paths, command),
-                failure_cause=cause,
+                reason=f"waiting for {condition}; resumes when {resumes_when}",
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-        case RetryLater(on_change=on_change):
+        case RetryLaterOutcome(until=until, on_change=on_change):
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
-                reason=on_change or _RETAINED_RESOLUTION_REASON,
+                reason=on_change or f"retry after {until}",
                 failure_cause=failure_cause,
             )
-        case Exhausted():
+        case NextStrategyOutcome(strategy=strategy):
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
-                reason=_operator_action_reason(
-                    _SPENT_RESOLVERS_PREFIX,
-                    paths,
-                    operator_command_for_paths(paths),
-                ),
+                reason=f"continuing with autonomous strategy: {strategy}",
                 failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
             )
-        case ConfigFailure(file=file):
+        case ConfigFailureOutcome(file=file):
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
                 reason=f"fix {file} then run ralph --check-config",
                 failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+            )
+        case UnknownOutcome(error=error):
+            return MergeResult(
+                outcome=MERGE_COMMIT_PENDING,
+                reason=f"unclassified resolution failure; advancing strategy: {error}",
+                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case _ as unreachable:
             assert_never(unreachable)

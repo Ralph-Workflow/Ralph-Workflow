@@ -105,7 +105,9 @@ def test_crash_marker_resumes_completed_steps_and_sibling_landing(tmp_git_repo: 
     assert not marker.exists()
 
 
-def test_two_worktrees_publish_shared_results_without_loss(tmp_git_repo: Path, tmp_path: Path) -> None:
+def test_two_worktrees_publish_shared_results_without_loss(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
     _git(tmp_git_repo, "branch", "worker-a")
     _git(tmp_git_repo, "branch", "worker-b")
     worktree_a = tmp_path / "worktree-a"

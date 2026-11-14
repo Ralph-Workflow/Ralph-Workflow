@@ -89,10 +89,10 @@ def _range_with_merge_commit(root: Path) -> str:
     _seed_base(root)
     git(root, "checkout", "-q", "-b", "side")
     commit_file(root, "side.txt", "side\n", "side work")
-    git(root, "checkout", "-q", "feature")
+    git(root, "checkout", "-q", "-b", "feature", "main")
     commit_file(root, "feature.txt", "feature\n", "feature work")
     git(root, "merge", "-q", "--no-ff", "-m", "merge side", "side")
-    git(root, "checkout", "-q", "main")
+    git(root, "checkout", "-q", "feature")
     return git(root, "rev-parse", "HEAD")
 
 
@@ -189,10 +189,12 @@ def test_range_containing_published_commits_lands_without_rewriting_them(
 
     run = drive_integration(tmp_git_repo)
 
-    assert run.error is None, f"the tick must not crash on a published commit in the range: {run.error}"
-    assert "main" in git(tmp_git_repo, "branch", "--contains", published_sha, "main", check=False), (
-        "an already-published commit must stay reachable from the target, never rewritten"
+    assert run.error is None, (
+        f"the tick must not crash on a published commit in the range: {run.error}"
     )
+    assert "main" in git(
+        tmp_git_repo, "branch", "--contains", published_sha, "main", check=False
+    ), "an already-published commit must stay reachable from the target, never rewritten"
     assert_content_equivalence(
         tmp_git_repo,
         contract=LANDED,

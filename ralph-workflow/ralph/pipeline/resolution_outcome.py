@@ -34,7 +34,7 @@ class WaitingOutcome:
 
 @dataclass(frozen=True, slots=True)
 class RetryLaterOutcome:
-    until: int | None = None
+    until: float | None = None
     on_change: str | None = None
 
     def __post_init__(self) -> None:

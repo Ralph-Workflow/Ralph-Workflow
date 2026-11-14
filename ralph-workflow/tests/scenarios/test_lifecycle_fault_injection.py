@@ -21,7 +21,11 @@ from tests.scenarios._content_equivalence import (
     fast_import_commits,
 )
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.required_auto_integrate_e2e, pytest.mark.timeout_seconds(30)]
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(30),
+]
 
 
 def _large_conflicted_range(root: Path, commits: int = 50, conflicts: int = 20) -> str:
@@ -29,7 +33,15 @@ def _large_conflicted_range(root: Path, commits: int = 50, conflicts: int = 20) 
     sequence: list[FastImportCommit] = []
     for index in range(commits):
         relative = "shared.txt" if index < conflicts else f"clean-{index}.txt"
-        sequence.append(FastImportCommit(ref="refs/heads/feature", message=f"feature {index}", files=((relative, f"feature {index}\n".encode()),), parent_sha=base if index == 0 else None, parent_index=index - 1 if index else None))
+        sequence.append(
+            FastImportCommit(
+                ref="refs/heads/feature",
+                message=f"feature {index}",
+                files=((relative, f"feature {index}\n".encode()),),
+                parent_sha=base if index == 0 else None,
+                parent_index=index - 1 if index else None,
+            )
+        )
     fast_import_commits(root, sequence)
     git(root, "checkout", "-q", "main")
     commit_file(root, "shared.txt", "target\n", "target change")
@@ -40,18 +52,26 @@ def _large_conflicted_range(root: Path, commits: int = 50, conflicts: int = 20) 
 def test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget(tmp_git_repo: Path) -> None:
     feature_sha = _large_conflicted_range(tmp_git_repo)
     target_before = git(tmp_git_repo, "rev-parse", "main")
-    run = drive_integration(tmp_git_repo, config=scenario_config(), resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES))
+    run = drive_integration(
+        tmp_git_repo, config=scenario_config(), resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    )
     assert run.error is None, f"large finite work must not crash: {run.error}"
     assert run.resolver_launches >= 20, (
         "a 50-commit rebase with 20 progressing conflicts must not hit a stop, round, attempt or time cap"
     )
-    assert_content_equivalence(tmp_git_repo, contract="large finite work must reach the target with the same configuration as two commits", feature=feature_sha, source_refs=(target_before,))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="large finite work must reach the target with the same configuration as two commits",
+        feature=feature_sha,
+        source_refs=(target_before,),
+    )
 
 
 def test_one_no_progress_step_switches_strategy_and_completes(tmp_git_repo: Path) -> None:
     paused_text_rebase(tmp_git_repo)
     feature_sha = git(tmp_git_repo, "rev-parse", "feature")
     calls = 0
+
     def resolver(root: Path, _target: str, stop: object) -> bool:
         nonlocal calls
         calls += 1
@@ -62,9 +82,15 @@ def test_one_no_progress_step_switches_strategy_and_completes(tmp_git_repo: Path
             (root / relative).write_text("resolved after strategy switch\n", encoding="utf-8")
         git(root, "add", "--", *conflicted)
         return True
+
     run = drive_integration(tmp_git_repo, resolver=resolver)
     assert run.error is None, f"a no-progress action must route to the next strategy: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract="one no-progress step must not abandon finite work", feature=feature_sha, source_refs=("main",))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="one no-progress step must not abandon finite work",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
 
 
 def _stale_marker(root: Path) -> str:
@@ -83,11 +109,34 @@ def _old_record(root: Path) -> str:
     feature = commit_file(root, "feature.txt", "feature\n", "feature")
     path = record_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"record_version": 0, "phase": "integrating", "target": "main", "pre_feature_sha": feature, "pre_target_sha": git(root, "rev-parse", "main")}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "record_version": 0,
+                "phase": "integrating",
+                "target": "main",
+                "pre_feature_sha": feature,
+                "pre_target_sha": git(root, "rev-parse", "main"),
+            }
+        ),
+        encoding="utf-8",
+    )
     return feature
 
 
-@pytest.mark.parametrize("perturbation", ["stale-marker", "older-record", "wrong-version-ledger", "target-moved", "sibling-vendor", "agent-stages-nothing", "dirty-untracked", "failing-hook"])
+@pytest.mark.parametrize(
+    "perturbation",
+    [
+        "stale-marker",
+        "older-record",
+        "wrong-version-ledger",
+        "target-moved",
+        "sibling-vendor",
+        "agent-stages-nothing",
+        "dirty-untracked",
+        "failing-hook",
+    ],
+)
 def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbation: str) -> None:
     if perturbation == "stale-marker":
         feature_sha = _stale_marker(tmp_git_repo)
@@ -114,7 +163,16 @@ def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbatio
             hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
             hook.chmod(0o755)
         git(tmp_git_repo, "checkout", "-q", "feature")
-    resolver = (lambda _root, _target, _stop: True) if perturbation == "agent-stages-nothing" else FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    resolver = (
+        (lambda _root, _target, _stop: True)
+        if perturbation == "agent-stages-nothing"
+        else FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    )
     run = drive_integration(tmp_git_repo, resolver=resolver)
     assert run.error is None, f"fault injection {perturbation} must not crash: {run.error}"
-    assert_content_equivalence(tmp_git_repo, contract=f"fault injection {perturbation} must still land autonomously", feature=feature_sha, source_refs=("main",))
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract=f"fault injection {perturbation} must still land autonomously",
+        feature=feature_sha,
+        source_refs=("main",),
+    )

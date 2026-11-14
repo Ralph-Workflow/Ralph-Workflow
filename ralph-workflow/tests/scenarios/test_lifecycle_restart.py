@@ -39,9 +39,11 @@ def test_restart_resumes_from_git_facts_without_redo_or_loss(
     assert first.error is None and second.error is None, (
         f"the next tick must resume from git facts after {interruption}"
     )
-    assert git(tmp_git_repo, "rev-list", "--count", "main") == git(
-        tmp_git_repo, "rev-list", "--count", "--all", "--ancestry-path", f"{before}..main"
-    ) or runner.launches <= 1, "resuming must not replay a completed stop twice"
+    assert (
+        git(tmp_git_repo, "rev-list", "--count", "main")
+        == git(tmp_git_repo, "rev-list", "--count", "--all", "--ancestry-path", f"{before}..main")
+        or runner.launches <= 1
+    ), "resuming must not replay a completed stop twice"
     assert_content_equivalence(
         tmp_git_repo,
         contract=f"{interruption} recovery must land without losing work",
