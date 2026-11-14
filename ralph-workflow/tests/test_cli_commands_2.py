@@ -48,6 +48,11 @@ def _write_commit_message_doc(repo_root: Path, message: str) -> None:
     path.write_text(document, encoding="utf-8")
 
 
+def _write_prompt_file(repo_root: Path, prompt: str) -> str:
+    (repo_root / "PROMPT.md").write_text(prompt, encoding="utf-8")
+    return "PROMPT.md"
+
+
 def _stub_baseline_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         init_module,
@@ -167,9 +172,7 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
         "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
-    )
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", _write_prompt_file)
     monkeypatch.setattr(commit_module, "stage_commit_changes_safely", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
 
@@ -259,9 +262,7 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
         "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
-    )
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", _write_prompt_file)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
@@ -302,9 +303,7 @@ def test_generate_commit_msg_surfaces_parsed_agent_output_when_artifact_missing(
         "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
-    )
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", _write_prompt_file)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
@@ -352,9 +351,13 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     prompt_path = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: str(prompt_path)
-    )
+
+    def _write_prompt_file(_root: Path, prompt: str) -> str:
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_path.write_text(prompt, encoding="utf-8")
+        return str(prompt_path)
+
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", _write_prompt_file)
     _stub_commit_bridge(monkeypatch)
     _stub_canary_probe_boundary(monkeypatch)
 
@@ -420,9 +423,7 @@ def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(
         "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
-    )
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", _write_prompt_file)
     _stub_commit_bridge(monkeypatch)
     _stub_canary_probe_boundary(monkeypatch)
 
@@ -470,9 +471,7 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
         "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
-    )
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", _write_prompt_file)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:

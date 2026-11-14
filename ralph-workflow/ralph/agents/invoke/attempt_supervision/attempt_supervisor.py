@@ -98,6 +98,10 @@ class AttemptSupervisor:
         return self._recorder
 
     @property
+    def teardown_subtree(self) -> TeardownFn:
+        return self._teardown
+
+    @property
     def winner(self) -> ObservationRecord | None:
         return self._winner
 

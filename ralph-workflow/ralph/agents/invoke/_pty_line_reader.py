@@ -1229,8 +1229,11 @@ class PtyLineReader:
         )
         if outcome is None:
             return
-        if self._process_teardown is not None:
-            self._process_teardown.teardown_subtree(self._handle)
+        teardown = self._attempt_supervisor().teardown_subtree
+        pid = self._handle.pid
+        if pid is not None:
+            with contextlib.suppress(Exception):
+                teardown(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
         raise AgentInvocationError(
             self._agent_name,
             1,

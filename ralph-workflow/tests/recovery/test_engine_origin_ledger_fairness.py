@@ -5,9 +5,29 @@ import pytest
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.effect_executor import demotion_after_finalization
 from ralph.policy.validation.artifact_contract import ArtifactContractMismatchError
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_controller_regression_engine_origin_does_not_charge_ledger": (
+        "the ledger exposes a status projection, so the check asserts the agent is "
+        "eligible instead of reading the private snapshot counters"
+    ),
+    "test_controller_regression_agent_text_does_charge_ledger": (
+        "the ledger exposes a status projection, so the check asserts the cooldown "
+        "status instead of reading the private snapshot counters"
+    ),
+    "test_ledger_fallback_regression_engine_origin_does_not_charge_ledger": (
+        "the ledger exposes a status projection, so the check asserts the agent is "
+        "eligible instead of reading the private snapshot counters"
+    ),
+    "test_ledger_fallback_regression_agent_text_does_charge_ledger": (
+        "the ledger exposes a status projection, so the check asserts the cooldown "
+        "status instead of reading the private snapshot counters"
+    ),
+}
+
 
 PHASE = "development"
 AGENT = "worker"
@@ -16,18 +36,6 @@ AGENT_FAILURE_TEXTS = (
     "agent produced nothing after checkpoint instructions",
     "agent produced nothing while reading policy",
 )
-
-
-def _counts(ledger: AgentFailureLedger) -> tuple[int, int]:
-    entries = ledger.snapshot()["entries"]
-    assert isinstance(entries, dict)
-    entry = entries.get(f"{PHASE}:{AGENT}")
-    if not isinstance(entry, dict):
-        return (0, 0)
-    return (
-        int(entry["consecutive_unproductive"]),
-        int(entry["total_unproductive"]),
-    )
 
 
 def _configuration_failure() -> ArtifactContractMismatchError:
@@ -39,7 +47,12 @@ def _configuration_failure() -> ArtifactContractMismatchError:
 
 
 def test_controller_regression_engine_origin_does_not_charge_ledger() -> None:
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=FakeClock(start=0.0),
+            agent_max_consecutive_unproductive=1,
+        )
+    )
 
     controller.finalize_attempt(
         PHASE,
@@ -50,12 +63,17 @@ def test_controller_regression_engine_origin_does_not_charge_ledger() -> None:
         retryable_reason="configuration fault",
     )
 
-    assert _counts(controller.ledger) == (0, 0)
+    assert controller.ledger.status(PHASE, AGENT).is_eligible
 
 
 @pytest.mark.parametrize("failure_text", AGENT_FAILURE_TEXTS)
 def test_controller_regression_agent_text_does_charge_ledger(failure_text: str) -> None:
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=FakeClock(start=0.0),
+            agent_max_consecutive_unproductive=1,
+        )
+    )
 
     controller.finalize_attempt(
         PHASE,
@@ -66,11 +84,11 @@ def test_controller_regression_agent_text_does_charge_ledger(failure_text: str) 
         retryable_reason=failure_text,
     )
 
-    assert _counts(controller.ledger) == (1, 1)
+    assert isinstance(controller.ledger.status(PHASE, AGENT), Cooldown)
 
 
 def test_ledger_fallback_regression_engine_origin_does_not_charge_ledger() -> None:
-    ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
+    ledger = AgentFailureLedger(clock=FakeClock(start=0.0), consecutive_limit=1)
 
     demotion_after_finalization(
         None,
@@ -81,12 +99,12 @@ def test_ledger_fallback_regression_engine_origin_does_not_charge_ledger() -> No
         exc=_configuration_failure(),
     )
 
-    assert _counts(ledger) == (0, 0)
+    assert ledger.status(PHASE, AGENT).is_eligible
 
 
 @pytest.mark.parametrize("failure_text", AGENT_FAILURE_TEXTS)
 def test_ledger_fallback_regression_agent_text_does_charge_ledger(failure_text: str) -> None:
-    ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
+    ledger = AgentFailureLedger(clock=FakeClock(start=0.0), consecutive_limit=1)
 
     demotion_after_finalization(
         None,
@@ -97,4 +115,4 @@ def test_ledger_fallback_regression_agent_text_does_charge_ledger(failure_text: 
         exc=RuntimeError(failure_text),
     )
 
-    assert _counts(ledger) == (1, 1)
+    assert isinstance(ledger.status(PHASE, AGENT), Cooldown)

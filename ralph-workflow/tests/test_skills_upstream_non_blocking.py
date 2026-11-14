@@ -19,8 +19,11 @@ RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
         "the production registry contains two release-tagged upstreams and checks every entry; "
         "the replacement remains exact ordered equality against every configured release API"
     ),
+    "test_the_run_start_path_returns_while_the_upstream_check_is_still_outstanding": (
+        "the deferred check now queries every configured universal upstream release "
+        "API, so the assertion is derived from upstream.UNIVERSAL_UPSTREAMS"
+    ),
 }
-
 if TYPE_CHECKING:
     from ralph.skills.upstream import HttpClient, HttpResponse
 
@@ -182,9 +185,10 @@ def test_the_run_start_path_returns_while_the_upstream_check_is_still_outstandin
         assert probe.reported.wait(timeout=_EVENT_WAIT_SECONDS), (
             f"the deferred upstream check never reported; got {probe.messages!r}"
         )
-        assert probe.calls == [source.api_url for source in upstream.UNIVERSAL_UPSTREAMS], (
-            "the upstream check must query every configured release API and nothing else; "
-            f"got {probe.calls!r}"
+        expected_calls = [source.api_url for source in upstream.UNIVERSAL_UPSTREAMS]
+        assert probe.calls == expected_calls, (
+            f"the upstream check must query every configured release API "
+            f"{expected_calls!r}; got {probe.calls!r}"
         )
         assert any("up to date" in message for message in probe.messages), (
             f"the deferred upstream check must succeed; got {probe.messages!r}"

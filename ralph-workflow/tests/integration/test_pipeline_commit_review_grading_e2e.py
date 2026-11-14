@@ -60,6 +60,14 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._tool_artifact_helpers import MockSession
 from tests.plan_fixtures import commit_review_markdown
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit": (
+        "the check now reads the public ledger status projection instead of the "
+        "private snapshot counters"
+    ),
+}
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
@@ -326,18 +334,6 @@ def _build_pipeline_deps(
     )
 
 
-def _ledger_counts(ledger: AgentFailureLedger, phase: str, agent: str) -> tuple[int, int]:
-    entries = ledger.snapshot()["entries"]
-    assert isinstance(entries, dict)
-    entry = entries.get(f"{phase}:{agent}")
-    if not isinstance(entry, dict):
-        return (0, 0)
-    return (
-        int(entry["consecutive_unproductive"]),
-        int(entry["total_unproductive"]),
-    )
-
-
 @pytest.mark.parametrize(
     ("review_phase", "commit_phase"),
     [
@@ -465,7 +461,7 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
     )
     assert ledger.is_available(review_phase, selected_agent)
     assert not isinstance(ledger.status(review_phase, selected_agent), (Cooldown, Spent))
-    assert _ledger_counts(ledger, review_phase, selected_agent) == (0, 0), (
+    assert ledger.status(review_phase, selected_agent).is_eligible, (
         "a graded PASS must not charge the agent failure ledger"
     )
 

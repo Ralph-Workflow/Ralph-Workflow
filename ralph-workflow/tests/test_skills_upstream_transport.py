@@ -225,21 +225,7 @@ def _assert_loopback_url(url: str) -> None:
     assert urlsplit(url).hostname in _LOOPBACK_HOSTS, url
 
 
-def _point_sources_at(releases: str, archive: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    _assert_loopback_url(releases)
-    _assert_loopback_url(archive)
-    monkeypatch.setattr(
-        upstream,
-        "UNIVERSAL_UPSTREAMS",
-        tuple(
-            replace(source, api_url=releases, archive_url_template=archive)
-            for source in upstream.UNIVERSAL_UPSTREAMS
-        ),
-    )
-
-
-def _point_at_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
-    releases = _unreachable_loopback_url()
+def _point_sources_at(releases: str, monkeypatch: pytest.MonkeyPatch) -> None:
     archive = releases.replace("/releases/latest.json", "/archive/{tag}.tar.gz")
     _assert_loopback_url(releases)
     _assert_loopback_url(archive)
@@ -254,11 +240,19 @@ def _point_at_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _point_at(server: _TestServer, monkeypatch: pytest.MonkeyPatch) -> None:
-    _point_sources_at(
-        f"{server.base_url}/releases/latest.json",
-        f"{server.base_url}/archive/{{tag}}.tar.gz",
-        monkeypatch,
-    )
+    _point_sources_at(f"{server.base_url}/releases/latest.json", monkeypatch)
+
+
+def _recording_default_client() -> tuple[HttpClient, list[str]]:
+    requests: list[str] = []
+    client = default_http_client()
+
+    def _get(url: str, timeout: float) -> HttpResponse:
+        requests.append(url)
+        _assert_loopback_url(url)
+        return client(url, timeout)
+
+    return (_get, requests)
 
 
 def _release_body(tag: str) -> bytes:
@@ -368,10 +362,13 @@ def test_a_failing_upstream_keeps_the_installed_skills_byte_identical(
     before = _tree_snapshot(root)
 
     if failure == "offline":
-        _point_at_unreachable(monkeypatch)
+        releases = _unreachable_loopback_url()
+        _point_sources_at(releases, monkeypatch)
+        client, requests = _recording_default_client()
         outcome = upstream.maybe_update_universal_skills(
-            enabled=True, now=_NOW + timedelta(hours=25), http=default_http_client()
+            enabled=True, now=_NOW + timedelta(hours=25), http=client
         )
+        assert requests == [releases] * len(upstream.UNIVERSAL_UPSTREAMS)
     else:
         with _serving(_routes(_failing_replies(failure))) as server:
             _point_at(server, monkeypatch)
@@ -585,9 +582,12 @@ def test_two_racing_processes_make_exactly_one_upstream_request(
 def test_the_updater_never_raises_on_a_transport_failure(
     sandbox: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _point_at_unreachable(monkeypatch)
+    releases = _unreachable_loopback_url()
+    _point_sources_at(releases, monkeypatch)
+    client, requests = _recording_default_client()
     outcome: UpdateOutcome = upstream.maybe_update_universal_skills(
-        enabled=True, now=_NOW, http=default_http_client()
+        enabled=True, now=_NOW, http=client
     )
+    assert requests == [releases] * len(upstream.UNIVERSAL_UPSTREAMS)
     assert outcome.status == "failed"
     assert outcome.error == "release-api-error:ConnectError"

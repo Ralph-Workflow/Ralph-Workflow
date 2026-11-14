@@ -101,6 +101,15 @@ def _terminate_pty_tree(supervisor: AttemptSupervisor) -> None:
     supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, terminate=True)
 
 
+def _process_teardown(ctx: object) -> ProcessTeardown | None:
+    candidate: object = getattr(ctx, "process_teardown", None)
+    if candidate is None:
+        return None
+    if not isinstance(candidate, ProcessTeardown):
+        raise TypeError("process_teardown must implement ProcessTeardown")
+    return candidate
+
+
 def _spawn_pty_with_agy_log_offset(
     cmd: list[str],
     ctx: AgentRunCtx,

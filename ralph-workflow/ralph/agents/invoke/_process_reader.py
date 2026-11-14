@@ -122,6 +122,7 @@ from ralph.process.manager import (
     ManagedProcess,
     ProcessEvent,
     ProcessStatus,
+    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
 )
@@ -551,10 +552,11 @@ class ProcessLineReader:
         self._handle = handle
         self._supervisor = supervisor
         self._config = ctx.config
+        transport = ctx.config.transport or AgentTransport.GENERIC
         self._parser_key = resolve_parser_key(
             ctx.config.cmd,
             ctx.config.json_parser,
-            ctx.config.transport,
+            transport,
         )
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
@@ -1495,8 +1497,11 @@ def _run_subprocess_and_read_lines(
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
             supervisor.act(StartupFailureObserved(msg))
-            if ctx.process_teardown is not None:
-                ctx.process_teardown.teardown_subtree(handle)
+            if handle.pid is not None:
+                with contextlib.suppress(Exception):
+                    supervisor.teardown_subtree(
+                        handle.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
+                    )
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)

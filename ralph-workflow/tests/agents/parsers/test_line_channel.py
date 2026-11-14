@@ -19,7 +19,6 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "assert is_provider_quota_output_line replaces private provider_quota_line_evidence helper"
     ),
 }
-
 _QUOTA_WORDS = "Your account has credits exhausted for this period."
 
 _CODEX_PARSER_KEY = "codex"
@@ -66,6 +65,8 @@ def test_parser_tagged_provider_error_line_maps_to_provider_channel(line: str) -
 
 @pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
 def test_parser_tagged_provider_error_line_yields_quota_evidence(line: str) -> None:
+    channel = line_channel(_CODEX_PARSER_KEY, line)
+    assert channel is ContentChannel.PROVIDER
     assert is_provider_quota_output_line(line) is True
 
 

@@ -8,7 +8,7 @@ import shutil
 import tarfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import pytest
 
@@ -20,9 +20,12 @@ if TYPE_CHECKING:
 
     from ralph.skills.upstream import HttpClient, HttpResponse
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
     "RALPH_TEST_CHANGE_REASONS upstream install size split": (
         "assertions moved into tests/test_skills_upstream_install_payloads.py during the repo-structure size split; no assertion was dropped"
+    ),
+    "test_an_unrecognized_suffix_link_destination_is_refused": (
+        "the reference-completeness checks moved verbatim into tests/test_skills_upstream_references.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
     ),
     "test_a_payload_without_a_skill_file_is_refused_and_keeps_the_install": (
         "the payload-admission and reference-completeness checks moved into tests/test_skills_upstream_install_payloads.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
@@ -80,6 +83,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_preexisting_copy_in_alternate_agent_root_suppresses_install": (
         "the alternate-agent-root checks now run through the public update seam ralph.skills.upstream.maybe_update_universal_skills instead of the private presence-detection helpers, so this module asserts that a pre-existing copy in an alternate agent root suppresses the install"
+    ),
+    "test_a_sibling_symlink_pointing_elsewhere_is_preserved_and_reported": (
+        "the sibling-symlink checks moved verbatim into tests/test_skills_upstream_install_siblings.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
+    ),
+    "test_a_sibling_symlink_that_points_at_the_canonical_skill_is_left_alone": (
+        "the sibling-symlink checks moved verbatim into tests/test_skills_upstream_install_siblings.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
     ),
 }
 
@@ -543,48 +552,6 @@ def test_a_successful_install_leaves_no_staging_directory_behind(sandbox: Path) 
     root = upstream.canonical_skills_root()
 
     assert _root_entries(root) == sorted(upstream.UNIVERSAL_SKILL_NAMES)
-
-
-def test_a_sibling_symlink_pointing_elsewhere_is_preserved_and_reported(sandbox: Path) -> None:
-    sibling_root = upstream.sibling_skills_roots()[0]
-    elsewhere = sibling_root / "elsewhere"
-    elsewhere.mkdir(parents=True)
-    (elsewhere / "notes.md").write_text("# my own notes\n", encoding="utf-8")
-    sibling_dir = sibling_root / "test-driven-development"
-    sibling_dir.symlink_to(elsewhere, target_is_directory=True)
-    client, _calls = _client_for("v-test-1", _SKILL_FILES)
-
-    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert outcome.status == "updated"
-    assert sibling_dir.is_symlink()
-    assert sibling_dir.resolve() == elsewhere.resolve()
-    assert any(
-        "test-driven-development" in message and "preserved" in message
-        for message in outcome.messages
-    )
-
-
-def test_a_sibling_symlink_that_points_at_the_canonical_skill_is_left_alone(
-    sandbox: Path,
-) -> None:
-    root = _install_fixture_release()
-    sibling_root = upstream.sibling_skills_roots()[0]
-    sibling_dir = sibling_root / "test-driven-development"
-    canonical = root / "test-driven-development"
-    assert sibling_dir.is_symlink()
-    assert sibling_dir.resolve() == canonical.resolve()
-    before = _tree_snapshot(root)
-    client, _calls = _client_for("v-test-2", _SKILL_FILES)
-
-    outcome = upstream.maybe_update_universal_skills(
-        enabled=True, now=_NOW + timedelta(hours=25), http=client
-    )
-
-    assert outcome.status == "updated"
-    assert sibling_dir.is_symlink()
-    assert sibling_dir.resolve() == canonical.resolve()
-    assert _tree_snapshot(root) != before
 
 
 def test_preexisting_copy_in_alternate_agent_root_suppresses_install(sandbox: Path) -> None:

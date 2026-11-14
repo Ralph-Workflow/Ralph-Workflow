@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import os
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -46,48 +45,11 @@ from tests._support.typed_accessors import (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "artifact contract": "commit prompts must name the required commit_message artifact",
+    "test_working_tree_diff_strips_lone_surrogates_from_git_output": (
+        "the test moved verbatim to tests/test_cli_commit_command_extra.py so the "
+        "module stays under the 1000-line file limit; the assertions are unchanged"
+    ),
 }
-
-
-@pytest.mark.subprocess_e2e
-@pytest.mark.timeout_seconds(5)
-@pytest.mark.parametrize("head_valid", [True, False])
-def test_working_tree_diff_strips_lone_surrogates_from_git_output(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    *,
-    head_valid: bool,
-) -> None:
-    (tmp_path / ".git").mkdir()
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    fake_git = bin_dir / "git"
-    fake_git.write_text(
-        """#!/bin/sh
-if [ "$1" = "rev-parse" ]; then
-  [ "$FAKE_HEAD_VALID" = "1" ]
-  exit $?
-fi
-if [ "$1" = "diff" ]; then
-  printf 'diff\\n+\\244\\n'
-  exit 0
-fi
-if [ "$1" = "ls-files" ]; then
-  exit 0
-fi
-exit 2
-""",
-        encoding="utf-8",
-    )
-    fake_git.chmod(0o755)
-    monkeypatch.setenv("FAKE_HEAD_VALID", "1" if head_valid else "0")
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
-
-    diff = commit_module.working_tree_diff(tmp_path)
-
-    assert "diff" in diff
-    assert "\udca4" not in diff
-    diff.encode("utf-8")
 
 
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
@@ -251,7 +213,10 @@ def test_commit_invocation_passes_default_product_criteria_to_materialize_master
 ) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("## Submit a `commit_message` artifact\nGenerate a commit message.", encoding="utf-8")
+    prompt_file.write_text(
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n",
+        encoding="utf-8",
+    )
 
     display_context = make_display_context()
 
@@ -352,7 +317,10 @@ def test_build_invoke_options_from_config_maps_all_timeout_fields() -> None:
 def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("## Submit a `commit_message` artifact\nGenerate a commit message.", encoding="utf-8")
+    prompt_file.write_text(
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n",
+        encoding="utf-8",
+    )
 
     general_config = GeneralConfig(
         agent_idle_timeout_seconds=99.0,
@@ -398,7 +366,10 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
 def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("## Submit a `commit_message` artifact\nGenerate a commit message.", encoding="utf-8")
+    prompt_file.write_text(
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n",
+        encoding="utf-8",
+    )
 
     attempt_context = CommitAttemptContext(
         repo_root=tmp_path,
@@ -461,7 +432,8 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
-        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n", encoding="utf-8"
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n",
+        encoding="utf-8",
     )
     display_context = make_display_context()
 
@@ -533,7 +505,8 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
-        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n", encoding="utf-8"
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n",
+        encoding="utf-8",
     )
     display_context = make_display_context()
 
@@ -605,7 +578,8 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
-        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n", encoding="utf-8"
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n",
+        encoding="utf-8",
     )
     display_context = make_display_context()
 

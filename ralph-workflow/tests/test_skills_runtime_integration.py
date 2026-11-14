@@ -18,8 +18,15 @@ from tests.test_skills_upstream_update import _SKILL_FILES, _client_for
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "universal upstreams": "UNIVERSAL_UPSTREAMS includes both superpowers and anti-slop, so both are fetched",
+    "test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tree": (
+        "the updater now queries every configured universal upstream source, so the "
+        "expected request list is derived from upstream.UNIVERSAL_UPSTREAMS"
+    ),
+    "test_the_injected_http_client_is_reached_when_no_switch_is_set": (
+        "the updater now queries every configured universal upstream source, so the "
+        "expected request list is derived from upstream.UNIVERSAL_UPSTREAMS"
+    ),
 }
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -421,12 +428,12 @@ def _assert_every_companion_is_readable(files: dict[str, dict[str, bytes]]) -> N
                 )
 
 
-def _expected_upstream_calls(tag: str) -> list[str]:
-    calls: list[str] = []
-    for source in upstream.UNIVERSAL_UPSTREAMS:
-        calls.append(source.api_url)
-        calls.append(source.archive_url_template.format(tag=tag))
-    return calls
+def _expected_release_calls(tag: str) -> list[str]:
+    return [
+        url
+        for source in upstream.UNIVERSAL_UPSTREAMS
+        for url in (source.api_url, source.archive_url_template.format(tag=tag))
+    ]
 
 
 def _make_the_next_attempt_due() -> None:
@@ -460,7 +467,9 @@ def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tre
     _run_seam(tmp_path, _build_dependencies(warnings), workspace_root=tmp_git_repo)
 
     assert update_done.wait(timeout=5), "the universal-skill updater never ran"
-    assert first_calls == _expected_upstream_calls("v-test-1")
+    assert first_calls == _expected_release_calls("v-test-1"), (
+        f"the updater must query every configured release API; got {first_calls!r}"
+    )
     _assert_every_companion_is_readable(_SKILL_FILES)
     assert get_head_sha(tmp_git_repo) != head_before, (
         "the seam must commit its own project writes instead of leaving them uncommitted"
@@ -479,7 +488,9 @@ def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tre
     _run_seam(tmp_path, _build_dependencies(warnings), workspace_root=tmp_git_repo)
 
     assert update_done.wait(timeout=5), "the universal-skill updater never ran for the new release"
-    assert second_calls == _expected_upstream_calls("v-test-2")
+    assert second_calls == _expected_release_calls("v-test-2"), (
+        f"the updater must query every configured release API; got {second_calls!r}"
+    )
     _assert_every_companion_is_readable(changed)
     assert has_uncommitted_changes(tmp_git_repo) is False, (
         "the run that installs the newer release must leave the user's git tree clean"
@@ -559,4 +570,6 @@ def test_the_injected_http_client_is_reached_when_no_switch_is_set(
 
     assert reached.wait(timeout=5), "the injected HTTP client must be reached when no switch is set"
     assert finished.wait(timeout=5), "the universal-skill update never finished"
-    assert calls == _expected_upstream_calls("v-test-1")
+    assert calls == _expected_release_calls("v-test-1"), (
+        f"the updater must query every configured release API; got {calls!r}"
+    )

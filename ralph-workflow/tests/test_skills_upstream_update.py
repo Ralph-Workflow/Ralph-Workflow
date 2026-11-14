@@ -3,12 +3,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import shutil
 import tarfile
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import pytest
 
@@ -32,7 +31,7 @@ from ralph.skills.upstream import (
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
     "RALPH_TEST_CHANGE_REASONS upstream update size split": (
         "assertions moved into tests/test_skills_upstream_update_failures.py during the repo-structure size split; no assertion was dropped"
     ),
@@ -75,11 +74,29 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_member_path_that_escapes_the_skill_directory_is_refused": (
         "the hostile-release and hostile-archive checks moved into tests/test_skills_upstream_update_failures.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
     ),
+    "test_a_transient_publication_failure_is_repaired_by_a_later_run": (
+        "the repair and hostile-archive checks moved verbatim into "
+        "tests/test_skills_upstream_update_repair.py so this module stays under the "
+        "repository's 1000-line file limit; every assertion is unchanged and the moved "
+        "module asserts the same behavior"
+    ),
+    "test_a_user_owned_sibling_entry_is_preserved_by_the_repair": (
+        "the repair and hostile-archive checks moved verbatim into "
+        "tests/test_skills_upstream_update_repair.py so this module stays under the "
+        "repository's 1000-line file limit; every assertion is unchanged and the moved "
+        "module asserts the same behavior"
+    ),
     "test_a_member_with_an_absolute_path_is_refused": (
-        "the hostile-release and hostile-archive checks moved into tests/test_skills_upstream_update_failures.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
+        "the repair and hostile-archive checks moved verbatim into "
+        "tests/test_skills_upstream_update_repair.py so this module stays under the "
+        "repository's 1000-line file limit; every assertion is unchanged and the moved "
+        "module asserts the same behavior"
     ),
     "test_a_file_above_the_size_cap_is_refused": (
-        "the hostile-release and hostile-archive checks moved into tests/test_skills_upstream_update_failures.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
+        "the repair and hostile-archive checks moved verbatim into "
+        "tests/test_skills_upstream_update_repair.py so this module stays under the "
+        "repository's 1000-line file limit; every assertion is unchanged and the moved "
+        "module asserts the same behavior"
     ),
     "test_single_source_state_file_is_migrated_in_place_without_reinstall": (
         "the migrated-state update decision is now observed through the public update seam ralph.skills.upstream.maybe_update_universal_skills instead of the private ralph.skills.upstream._needs_update helper"
@@ -257,28 +274,6 @@ def _failing_client(failure: str) -> HttpClient:
         (_member("superpowers-test-2/skills/test-driven-development/diagram.png", b"x"), b"x")
     )
     return _fake_client({RELEASES_API_URL: rel, url: (200, _archive_bytes(members))}, calls)
-
-
-def _block_root(root: Path) -> None:
-    if root.is_dir():
-        shutil.rmtree(root)
-    root.parent.mkdir(parents=True, exist_ok=True)
-    root.write_text("the root cannot hold a skill\n", encoding="utf-8")
-
-
-def _unblock_root(root: Path) -> None:
-    root.unlink()
-
-
-def _assert_every_root_carries_every_skill() -> None:
-    for root in (_canonical_root(), *_sibling_roots()):
-        for skill in UNIVERSAL_SKILL_NAMES:
-            assert (root / skill / "SKILL.md").is_file(), f"{root}: {skill} is missing"
-        for skill, files in _SKILL_FILES.items():
-            for relative, data in files.items():
-                assert (root / skill / relative).read_bytes() == data, (
-                    f"{root}: the companion {relative} of {skill} must be readable"
-                )
 
 
 def test_fresh_install_materializes_every_companion_file(sandbox: Path) -> None:
@@ -629,92 +624,6 @@ def test_a_skill_missing_from_the_archive_is_left_unchanged_and_reported(
     assert missing not in outcome.installed
     assert any(missing in message for message in outcome.messages)
     assert (root / missing / "SKILL.md").read_bytes() == installed
-
-
-def test_a_transient_publication_failure_is_repaired_by_a_later_run(
-    sandbox: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = tmp_path / "project"
-    project.mkdir()
-    (project / "keep.txt").write_text("keep\n", encoding="utf-8")
-    monkeypatch.chdir(project)
-    before = _tree_snapshot(project)
-    blocked_root = _sibling_roots()[-1]
-    _block_root(blocked_root)
-    client, _first_calls = _client_for("v-test-1", _SKILL_FILES)
-
-    first = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert first.status == "incomplete"
-    assert first.error is None
-    assert any("failed" in message for message in first.messages), first.messages
-    for root in _sibling_roots()[:-1]:
-        for skill in UNIVERSAL_SKILL_NAMES:
-            assert (root / skill / "SKILL.md").is_file(), f"{root}: {skill} is missing"
-    for skill in UNIVERSAL_SKILL_NAMES:
-        assert not (blocked_root / skill).exists()
-
-    _unblock_root(blocked_root)
-    repair_client, repair_calls = _client_for("v-test-1", _SKILL_FILES)
-
-    repaired = maybe_update_universal_skills(
-        enabled=True, now=_NOW + timedelta(hours=25), http=repair_client
-    )
-
-    assert repaired.status != "up-to-date"
-    assert repaired.tag == "v-test-1"
-    assert repair_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url], (
-        "the repair must not fetch the archive again"
-    )
-    _assert_every_root_carries_every_skill()
-    assert _tree_snapshot(project) == before, "the repair must not write into the project"
-
-    settled_client, settled_calls = _client_for("v-test-1", _SKILL_FILES)
-
-    settled = maybe_update_universal_skills(
-        enabled=True, now=_NOW + timedelta(hours=49), http=settled_client
-    )
-
-    assert settled.status == "up-to-date"
-    assert settled_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
-
-
-def test_a_user_owned_sibling_entry_is_preserved_by_the_repair(
-    sandbox: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    sibling_root = _sibling_roots()[0]
-    own = sibling_root / "test-driven-development"
-    own.mkdir(parents=True)
-    (own / "SKILL.md").write_text("# my own skill\n", encoding="utf-8")
-    client, _calls = _client_for("v-test-1", _SKILL_FILES)
-
-    first = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
-
-    assert first.status == "updated"
-    assert (own / "SKILL.md").read_text(encoding="utf-8") == "# my own skill\n"
-    assert any(
-        "test-driven-development" in message and "preserved" in message
-        for message in first.messages
-    ), first.messages
-    repair_client, repair_calls = _client_for("v-test-1", _SKILL_FILES)
-
-    repaired = maybe_update_universal_skills(
-        enabled=True, now=_NOW + timedelta(hours=25), http=repair_client
-    )
-
-    assert (own / "SKILL.md").read_text(encoding="utf-8") == "# my own skill\n"
-    assert repair_calls == [
-        RELEASES_API_URL,
-        _archive_url("v-test-1"),
-        _ANTI_SLOP.api_url,
-    ]
-    assert any(
-        "test-driven-development" in message and "preserved" in message
-        for message in repaired.messages
-    ), repaired.messages
 
 
 def test_single_source_state_file_is_migrated_in_place_without_reinstall(sandbox: Path) -> None:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -28,9 +27,6 @@ from ralph.process.manager import (
     SpawnOptions,
 )
 from ralph.recovery.attempt_facts import TerminationIssuer
-
-if TYPE_CHECKING:
-    from ralph.process.teardown import ProcessTeardown
 
 _QUOTA_DETAIL = "RESOURCE_EXHAUSTED (code 429)\n"
 
@@ -315,7 +311,7 @@ class _ProcessTeardownStub:
         self._fn(host_pid, issuer=issuer)
 
 
-def _process_teardown_wrapping(fn: TeardownFn) -> ProcessTeardown:
+def _process_teardown_wrapping(fn: TeardownFn) -> _ProcessTeardownStub:
     return _ProcessTeardownStub(fn)
 
 
