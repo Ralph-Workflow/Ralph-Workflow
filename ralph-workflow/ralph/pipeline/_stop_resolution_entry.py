@@ -67,10 +67,6 @@ class _BoundedPresentedRounds(OrderedDict[Path, str]):
         while len(self) > self._cap:
             self.popitem(last=False)
 
-    @property
-    def cap(self) -> int:
-        return self._cap
-
     def __setitem__(self, key: Path, value: str) -> None:
         super().__setitem__(key, value)
         self.move_to_end(key)

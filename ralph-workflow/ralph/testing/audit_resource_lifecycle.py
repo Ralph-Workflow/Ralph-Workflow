@@ -217,11 +217,6 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
             "unbounded_accumulator",
         ),
         (
-            "ralph/pipeline/_stop_resolution_entry.py",
-            "<module>",
-            "unbounded_accumulator",
-        ),
-        (
             "ralph/pipeline/auto_integrate_boundary_refresh.py",
             "BoundaryRefreshThrottle.__init__",
             "unbounded_accumulator",

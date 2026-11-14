@@ -240,8 +240,6 @@ SEAM_EXEMPT_CALL_SITES: frozenset[tuple[str, str]] = frozenset(
         ("ralph/pipeline/_runner_interrupt.py", "SignalGetter"),
         ("ralph/pipeline/_runner_interrupt.py", "SignalSetter"),
         ("ralph/pipeline/_runner_session.py", "_EffectExecutorModule"),
-        ("ralph/pipeline/_stop_resolution_entry.py", "ConflictResolver"),
-        ("ralph/pipeline/_stop_resolution_entry.py", "RebaseStopResolver"),
         ("ralph/pipeline/activity_stream.py", "AgentTransport"),
         ("ralph/pipeline/activity_stream.py", "AgentTransport | None"),
         ("ralph/pipeline/activity_stream.py", "DisplayContext | None"),
