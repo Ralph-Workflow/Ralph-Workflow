@@ -6,8 +6,10 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+from ralph.skills._skill_resolver import skill_template_variables
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
     from pathlib import Path
 
 
@@ -70,8 +72,16 @@ def product_criteria_variables(
     return {"PRODUCT_CRITERIA": "", "PRODUCT_CRITERIA_PATH": product_criteria_path}
 
 
-def merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
+def merged_variables(
+    base: dict[str, str],
+    session_caps: SessionCapabilities,
+    *,
+    installed_skills: Iterable[str] | None = None,
+    skill_variables: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    skills = dict(skill_variables or skill_template_variables(installed_skills))
     return {
+        **skills,
         **base,
         **capability_template_variables(
             session_caps.capabilities,

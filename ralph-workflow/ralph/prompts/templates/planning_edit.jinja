@@ -12,6 +12,8 @@ not edit workspace files, install dependencies, or run state-changing commands.
 {% include 'shared/_session_capabilities.j2' %}
 {% set HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true %}
 {% include 'shared/_mcp_tools.j2' %}
+{% set shipped_skills_mode = 'planning' %}
+{% include 'shared/_shipped_skills.j2' %}
 {% set DOCS_LOOKUP_PHASE = 'planning' %}
 {% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}

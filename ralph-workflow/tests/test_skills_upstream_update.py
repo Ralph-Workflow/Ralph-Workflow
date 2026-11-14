@@ -20,6 +20,7 @@ from ralph.skills.upstream import (
     MAX_FILE_BYTES,
     RELEASES_API_URL,
     UNIVERSAL_SKILL_NAMES,
+    UNIVERSAL_UPSTREAMS,
     HttpClient,
     HttpResponse,
     UpdateOutcome,
@@ -34,6 +35,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 _NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+
+_SUPERPOWERS = UNIVERSAL_UPSTREAMS[0]
+
+_ANTI_SLOP = UNIVERSAL_UPSTREAMS[1]
+
+_ANTI_SLOP_TAG = "v3.2.30"
 
 _SKILL_FILES: dict[str, dict[str, bytes]] = {
     "test-driven-development": {
@@ -54,6 +61,7 @@ _SKILL_FILES: dict[str, dict[str, bytes]] = {
         "SKILL.md": b"# Verification before completion\n",
         "evidence-checklist.md": b"# Evidence checklist\n",
     },
+    "antislop": {"SKILL.md": b"# Antislop\n\nFilter AI slop.\n", "VERSION": b"3.2.30\n"},
 }
 
 
@@ -106,8 +114,10 @@ def _archive_bytes(members: Sequence[tuple[tarfile.TarInfo, bytes | None]]) -> b
     return buffer.getvalue()
 
 
-def _release_archive(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes:
-    return _archive_bytes(_skill_members(tag, skills))
+def _release_archive(
+    tag: str, skills: Mapping[str, Mapping[str, bytes]], *, top_dir: str | None = None
+) -> bytes:
+    return _archive_bytes(_skill_members(tag, skills, top_dir=top_dir))
 
 
 def _bulk_members(tag: str, count: int, size: int) -> list[tuple[tarfile.TarInfo, bytes | None]]:
@@ -125,12 +135,8 @@ def _bulk_members(tag: str, count: int, size: int) -> list[tuple[tarfile.TarInfo
 
 
 def _fake_client(
-    responses: Mapping[str, HttpResponse],
-    calls: list[str],
-    *,
-    error: Exception | None = None,
+    responses: Mapping[str, HttpResponse], calls: list[str], *, error: Exception | None = None
 ) -> HttpClient:
-
     def _get(url: str, timeout: float) -> HttpResponse:
         calls.append(url)
         if error is not None:
@@ -140,26 +146,48 @@ def _fake_client(
     return _get
 
 
+def _source_skills(
+    skills: Mapping[str, Mapping[str, bytes]], source: upstream.UpstreamSource
+) -> dict[str, Mapping[str, bytes]]:
+    return {name: files for name, files in skills.items() if name in source.skill_names}
+
+
 def _client_for(
-    tag: str, skills: Mapping[str, Mapping[str, bytes]]
+    tag: str,
+    skills: Mapping[str, Mapping[str, bytes]],
+    *,
+    anti_slop_tag: str | None = None,
 ) -> tuple[HttpClient, list[str]]:
+    anti_tag = tag if anti_slop_tag is None else anti_slop_tag
     calls: list[str] = []
     responses = {
         RELEASES_API_URL: (200, _release_body(tag)),
-        _archive_url(tag): (200, _release_archive(tag, skills)),
+        _archive_url(tag): (200, _release_archive(tag, _source_skills(skills, _SUPERPOWERS))),
+        _ANTI_SLOP.api_url: (200, _release_body(anti_tag)),
+        _ANTI_SLOP.archive_url_template.format(tag=anti_tag): (
+            200,
+            _release_archive(
+                anti_tag,
+                _source_skills(skills, _ANTI_SLOP),
+                top_dir=f"anti-slop-{anti_tag.lstrip('v')}",
+            ),
+        ),
     }
     return (_fake_client(responses, calls), calls)
+
+
+def _anti_slop_archive_url(tag: str) -> str:
+    return _ANTI_SLOP.archive_url_template.format(tag=tag)
 
 
 def _tree_snapshot(root: Path) -> dict[str, str]:
     snapshot: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
-        relative = path.relative_to(root).as_posix()
+        rel = path.relative_to(root).as_posix()
         if path.is_symlink():
-            snapshot[relative] = "symlink:" + path.readlink().as_posix()
-            continue
-        if path.is_file():
-            snapshot[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+            snapshot[rel] = "symlink:" + path.readlink().as_posix()
+        elif path.is_file():
+            snapshot[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
     return snapshot
 
 
@@ -182,7 +210,12 @@ def test_fresh_install_materializes_every_companion_file(sandbox: Path) -> None:
     assert outcome.preserved == ()
     assert outcome.attempted is True
     assert outcome.tag == "v-test-1"
-    assert calls == [RELEASES_API_URL, _archive_url("v-test-1")]
+    assert calls == [
+        RELEASES_API_URL,
+        _archive_url("v-test-1"),
+        _ANTI_SLOP.api_url,
+        _anti_slop_archive_url("v-test-1"),
+    ]
     root = _canonical_root()
     for skill, files in _SKILL_FILES.items():
         for relative, data in files.items():
@@ -215,13 +248,7 @@ def test_the_marker_matches_the_frozen_shape(sandbox: Path) -> None:
 
     skill_dir = _canonical_root() / "test-driven-development"
     marker = json.loads((skill_dir / ".ralph-managed.json").read_text(encoding="utf-8"))
-    assert set(marker) == {
-        "managed_by",
-        "source",
-        "source_tag",
-        "installed_sha256",
-        "files",
-    }
+    assert set(marker) == {"files", "installed_sha256", "managed_by", "source", "source_tag"}
     assert marker["managed_by"] == "ralph-universal"
     assert marker["source"] == "obra/superpowers"
     assert marker["source_tag"] == "v-test-1"
@@ -273,7 +300,7 @@ def test_the_upgrade_installs_the_changed_companion_set(
 
     assert outcome.status == "updated"
     assert outcome.tag == "v-test-2"
-    assert len(calls) == 2
+    assert len(calls) == 4
     assert _tree_snapshot(project) == before
     root = _canonical_root()
     assert not (root / "systematic-debugging" / "root-cause-tracing.md").exists()
@@ -338,34 +365,19 @@ def _failing_client(failure: str) -> HttpClient:
         return _fake_client({RELEASES_API_URL: (500, b"upstream failure")}, calls)
     if failure == "release-timeout":
         return _fake_client({}, calls, error=TimeoutError("the upstream did not answer"))
+    rel = (200, _release_body("v-test-2"))
+    url = _archive_url("v-test-2")
     if failure == "garbage-archive":
-        return _fake_client(
-            {
-                RELEASES_API_URL: (200, _release_body("v-test-2")),
-                _archive_url("v-test-2"): (200, b"this is not a tarball"),
-            },
-            calls,
-        )
+        return _fake_client({RELEASES_API_URL: rel, url: (200, b"this is not a tarball")}, calls)
     if failure == "oversize-archive":
-        oversized = b"\0" * (MAX_ARCHIVE_BYTES + 1)
         return _fake_client(
-            {
-                RELEASES_API_URL: (200, _release_body("v-test-2")),
-                _archive_url("v-test-2"): (200, oversized),
-            },
-            calls,
+            {RELEASES_API_URL: rel, url: (200, b"\0" * (MAX_ARCHIVE_BYTES + 1))}, calls
         )
     members = _skill_members("v-test-2", _SKILL_FILES)
     members.append(
         (_member("superpowers-test-2/skills/test-driven-development/diagram.png", b"x"), b"x")
     )
-    return _fake_client(
-        {
-            RELEASES_API_URL: (200, _release_body("v-test-2")),
-            _archive_url("v-test-2"): (200, _archive_bytes(members)),
-        },
-        calls,
-    )
+    return _fake_client({RELEASES_API_URL: rel, url: (200, _archive_bytes(members))}, calls)
 
 
 def test_the_disabled_switch_makes_no_request_and_writes_nothing(
@@ -411,7 +423,7 @@ def test_two_invocations_within_a_day_make_one_attempt(sandbox: Path) -> None:
     assert first.status == "updated"
     assert second.status == "skipped"
     assert second.attempted is False
-    assert len(calls) == 2
+    assert len(calls) == 4
     assert _tree_snapshot(_canonical_root()) == snapshot
 
 
@@ -449,7 +461,12 @@ def test_a_failed_attempt_keeps_the_skills_and_schedules_a_retry(
     )
 
     assert retried.status == "updated"
-    assert later_calls == [RELEASES_API_URL, _archive_url("v-test-2")]
+    assert later_calls == [
+        RELEASES_API_URL,
+        _archive_url("v-test-2"),
+        _ANTI_SLOP.api_url,
+        _anti_slop_archive_url("v-test-2"),
+    ]
 
 
 def test_concurrent_starts_make_one_attempt_and_keep_the_cache_parseable(
@@ -469,7 +486,7 @@ def test_concurrent_starts_make_one_attempt_and_keep_the_cache_parseable(
     for thread in threads:
         thread.join()
 
-    assert len(calls) == 2
+    assert len(calls) == 4
     assert sum(1 for outcome in outcomes if outcome.attempted) == 1
     document = json.loads(attempt_cache_path().read_text(encoding="utf-8"))
     assert "last_attempt" in document
@@ -487,7 +504,7 @@ def test_an_invalid_cache_and_a_malformed_state_are_treated_as_absent(sandbox: P
     outcome = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
     assert outcome.status == "updated"
-    assert len(calls) == 2
+    assert len(calls) == 4
 
 
 def test_a_skill_referencing_a_missing_companion_is_not_installed(sandbox: Path) -> None:
@@ -520,7 +537,7 @@ def test_a_traversal_tag_is_refused_before_any_archive_request(sandbox: Path) ->
 
     assert outcome.status == "failed"
     assert outcome.error == "release-api-malformed"
-    assert calls == [RELEASES_API_URL]
+    assert calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
     root = _canonical_root()
     for skill in UNIVERSAL_SKILL_NAMES:
         assert not (root / skill).exists()
@@ -537,7 +554,7 @@ def test_a_hostile_tag_shape_is_refused_before_any_archive_request(sandbox: Path
 
     assert outcome.status == "failed"
     assert outcome.error == "release-api-malformed"
-    assert calls == [RELEASES_API_URL]
+    assert calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
     root = _canonical_root()
     for skill in UNIVERSAL_SKILL_NAMES:
         assert not (root / skill).exists()
@@ -551,7 +568,12 @@ def test_a_realistic_release_tag_is_still_accepted(sandbox: Path) -> None:
 
     assert outcome.status == "updated"
     assert outcome.tag == tag
-    assert calls == [RELEASES_API_URL, _archive_url(tag)]
+    assert calls == [
+        RELEASES_API_URL,
+        _archive_url(tag),
+        _ANTI_SLOP.api_url,
+        _anti_slop_archive_url(tag),
+    ]
     expected = "https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v1.2.3-rc.1"
     assert calls[1] == expected
     assert outcome.installed == UNIVERSAL_SKILL_NAMES
@@ -567,7 +589,7 @@ def test_a_malformed_tag_name_is_refused_before_any_archive_request(
 
     assert outcome.status == "failed"
     assert outcome.error == "release-api-malformed"
-    assert calls == [RELEASES_API_URL]
+    assert calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
     root = _canonical_root()
     for skill in UNIVERSAL_SKILL_NAMES:
         assert not (root / skill).exists()
@@ -586,7 +608,7 @@ def test_a_refused_tag_keeps_the_installed_skills_byte_identical(sandbox: Path) 
 
     assert outcome.status == "failed"
     assert outcome.error == "release-api-malformed"
-    assert calls == [RELEASES_API_URL]
+    assert calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
     assert _tree_snapshot(root) == before
 
 
@@ -644,7 +666,12 @@ def test_only_the_release_api_and_the_tag_archive_are_fetched(sandbox: Path) -> 
 
     maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
-    assert calls == [RELEASES_API_URL, _archive_url("v-test-1")]
+    assert calls == [
+        RELEASES_API_URL,
+        _archive_url("v-test-1"),
+        _ANTI_SLOP.api_url,
+        _anti_slop_archive_url("v-test-1"),
+    ]
     assert calls[0] == "https://api.github.com/repos/obra/superpowers/releases/latest"
     assert calls[1].startswith("https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/")
     for url in calls:
@@ -726,7 +753,7 @@ def test_a_refused_release_api_keeps_the_installed_skills(sandbox: Path, status:
 
     assert outcome.status == "failed"
     assert outcome.error == f"release-api-status-{status}"
-    assert calls == [RELEASES_API_URL]
+    assert calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
     assert _tree_snapshot(root) == before
 
 
@@ -889,7 +916,7 @@ def test_a_transient_publication_failure_is_repaired_by_a_later_run(
 
     assert repaired.status != "up-to-date"
     assert repaired.tag == "v-test-1"
-    assert repair_calls == [RELEASES_API_URL], "the repair must not fetch the archive again"
+    assert repair_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url], "the repair must not fetch the archive again"
     _assert_every_root_carries_every_skill()
     assert _tree_snapshot(project) == before, "the repair must not write into the project"
 
@@ -900,7 +927,7 @@ def test_a_transient_publication_failure_is_repaired_by_a_later_run(
     )
 
     assert settled.status == "up-to-date"
-    assert settled_calls == [RELEASES_API_URL]
+    assert settled_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
 
 
 def test_a_user_owned_sibling_entry_is_preserved_by_the_repair(
@@ -930,7 +957,11 @@ def test_a_user_owned_sibling_entry_is_preserved_by_the_repair(
     )
 
     assert (own / "SKILL.md").read_text(encoding="utf-8") == "# my own skill\n"
-    assert repair_calls == [RELEASES_API_URL]
+    assert repair_calls == [
+        RELEASES_API_URL,
+        _archive_url("v-test-1"),
+        _ANTI_SLOP.api_url,
+    ]
     assert any(
         "test-driven-development" in message and "preserved" in message
         for message in repaired.messages
@@ -984,3 +1015,31 @@ def test_a_file_above_the_size_cap_is_refused(sandbox: Path) -> None:
     assert outcome.error == "the archive carries a file above the size cap"
     assert _tree_snapshot(_canonical_root()) == before
     assert not (_canonical_root() / "test-driven-development" / "oversize.md").exists()
+
+
+def test_single_source_state_file_is_migrated_in_place_without_reinstall(sandbox: Path) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
+    state_path = universal_state_path()
+    old_skills = {
+        n: {"source_tag": "v-test-1", "installed_sha256": "0" * 64} for n in UNIVERSAL_SKILL_NAMES
+    }
+    state_path.write_text(
+        json.dumps(
+            {"source": "obra/superpowers", "installed_tag": "v-test-1", "skills": old_skills}
+        ),
+        encoding="utf-8",
+    )
+    check_client, check_calls = _client_for("v-test-1", _SKILL_FILES)
+    second = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=check_client
+    )
+    assert second.status == "up-to-date"
+    assert check_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
+    migrated = json.loads(state_path.read_text(encoding="utf-8"))
+    assert "source" not in migrated and "installed_tag" not in migrated
+    assert (
+        migrated.get("sources", {}).get("obra/superpowers", {}).get("installed_tag") == "v-test-1"
+    )
+    assert upstream._needs_update("v-test-1", migrated) is False
+    assert upstream._needs_update("v-test-2", migrated) is True

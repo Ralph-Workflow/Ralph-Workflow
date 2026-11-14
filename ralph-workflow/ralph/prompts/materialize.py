@@ -81,7 +81,11 @@ from ralph.prompts.payload_refs import (
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.recovery.retry_prompt import build_validation_retry_footer
-from ralph.skills._skill_resolver import get_inline_skill_content
+from ralph.skills._skill_resolver import (
+    get_inline_skill_content,
+    resolve_installed_skills_for_agent,
+    skill_template_variables,
+)
 from ralph.skills.manager import SkillManager
 
 PLAN_MD_DRAFT_PATH = ".agent/artifacts/.plan.draft.md"
@@ -100,7 +104,7 @@ __all__ = [
     "tool_name_prefix_for_transport",
 ]
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.work_units import WorkUnit
@@ -114,6 +118,19 @@ class _RepoGitProtocol(typing.Protocol):
     def diff(self, *_args: object, **_kwargs: object) -> str: ...
 
     def ls_files(self, *_args: object, **_kwargs: object) -> str: ...
+
+
+@typing.runtime_checkable
+class _NamedAgent(typing.Protocol):
+    name: str
+
+
+def _extract_agent_name(agent_val: object) -> str | None:
+    if isinstance(agent_val, str):
+        return agent_val
+    if isinstance(agent_val, _NamedAgent):
+        return agent_val.name
+    return None
 
 
 class _RepoProtocol(typing.Protocol):
@@ -163,13 +180,28 @@ def materialize_prompt_for_phase(
     **kwargs: object,
 ) -> str:
     if context is None:
+        agent_raw = kwargs.get("agent") or kwargs.get("agent_name")
+        agent_name_str = _extract_agent_name(agent_raw)
         context = PromptPhaseContext(
             phase=cast("str", kwargs["phase"]),
             workspace=cast("Workspace", kwargs["workspace"]),
             pipeline_policy=cast("PipelinePolicy", kwargs["pipeline_policy"]),
             session_caps=cast("SessionCapabilities", kwargs["session_caps"]),
             workspace_root=cast("Path", kwargs["workspace_root"]),
+            agent=agent_name_str,
         )
+    elif context.agent is None and ("agent" in kwargs or "agent_name" in kwargs):
+        agent_raw = kwargs.get("agent") or kwargs.get("agent_name")
+        agent_name_str = _extract_agent_name(agent_raw)
+        if agent_name_str is not None:
+            context = PromptPhaseContext(
+                phase=context.phase,
+                workspace=context.workspace,
+                pipeline_policy=context.pipeline_policy,
+                session_caps=context.session_caps,
+                workspace_root=context.workspace_root,
+                agent=agent_name_str,
+            )
     if options is None:
         opts = PromptPhaseOptions(
             artifacts_policy=cast("ArtifactsPolicy | None", kwargs.get("artifacts_policy")),
@@ -317,6 +349,11 @@ def _render_prompt_for_phase(
         prompt_content,
         worker_namespace=worker_namespace,
     )
+    installed_skills = resolve_installed_skills_for_agent(
+        context.agent,
+        workspace_root=workspace_root,
+    )
+    skill_vars = skill_template_variables(installed_skills)
     phase_def = pipeline_policy.phases.get(phase)
     phase_role = phase_def.role if phase_def is not None else None
     drain = phase_def.drain if phase_def is not None else phase
@@ -360,6 +397,7 @@ def _render_prompt_for_phase(
             workspace_root=workspace_root,
             optional_context_paths=optional_context_paths,
             allow_empty_diff=True,
+            skill_variables=skill_vars,
         )
     if phase_role == "commit_review":
         _snapshot_partial_execution_result(
@@ -381,6 +419,7 @@ def _render_prompt_for_phase(
             proposal_ref=options.proposal_ref,
             tree_sha=options.tree_sha,
             soft_tripwires=options.soft_tripwires,
+            skill_variables=skill_vars,
         )
     plan_content, plan_path = _resolve_required_plan_handoff(
         workspace,
@@ -419,6 +458,7 @@ def _render_prompt_for_phase(
             artifacts_policy=artifacts_policy,
             product_criteria_path=product_criteria_path,
             options=options,
+            skill_variables=skill_vars,
         )
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
@@ -474,6 +514,11 @@ def _render_planning_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
+    installed_skills = resolve_installed_skills_for_agent(
+        context.agent,
+        workspace_root=workspace_root,
+    )
+    skill_vars = skill_template_variables(installed_skills)
     development_budget_minutes, development_worker_cap = _development_execution_envelope(
         context.pipeline_policy
     )
@@ -501,6 +546,8 @@ def _render_planning_prompt(
             has_docs_mcp=has_docs_mcp,
             development_budget_minutes=development_budget_minutes,
             development_max_parallel_workers=development_worker_cap,
+            installed_skills=tuple(installed_skills),
+            skill_variables=skill_vars,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -566,6 +613,11 @@ def _render_developer_prompt(
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
+    installed_skills = resolve_installed_skills_for_agent(
+        context.agent,
+        workspace_root=workspace_root,
+    )
+    skill_vars = skill_template_variables(installed_skills)
     dev_warn_epoch = read_published_epoch(DEV_WARN_EPOCH_ENV)
     dev_deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV)
     rejection_reason = options.last_review_rejection_reason or ""
@@ -610,6 +662,8 @@ def _render_developer_prompt(
             is_continuation=is_continuation,
             dev_warn_epoch=dev_warn_epoch,
             dev_deadline_epoch=dev_deadline_epoch,
+            installed_skills=tuple(installed_skills),
+            skill_variables=skill_vars,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -634,6 +688,7 @@ def _render_template_based_prompt(
     artifacts_policy: ArtifactsPolicy | None,
     product_criteria_path: str | Path,
     options: PromptPhaseOptions | None = None,
+    skill_variables: Mapping[str, str] | None = None,
 ) -> str:
     template = tmpl_ctx.registry.get_template(template_name)
     diff_content = ""
@@ -700,9 +755,11 @@ def _render_template_based_prompt(
     )
     variables["DEVELOPMENT_BUDGET_MINUTES"] = development_budget_minutes
     variables["DEVELOPMENT_MAX_PARALLEL_WORKERS"] = development_worker_cap
+    skills = dict(skill_variables or skill_template_variables())
+    variables.update(skills)
     rendered = render_template(
         template,
-        _merged_variables(variables, session_caps),
+        _merged_variables(variables, session_caps, skill_variables=skills),
         tmpl_ctx.partials,
     )
     return _append_retry_footer(rendered, last_retry_error)

@@ -622,29 +622,97 @@ Ralph Workflow installs two kinds of skills, and they have different owners.
   skill list to keep in parity. Adding an artifact type adds its skill, and
   each artifact type carries at most one skill, so adding a skill means
   adding an artifact type.
-- **Universal skills** are exactly three — `test-driven-development`,
-  `systematic-debugging`, and `verification-before-completion` — and are
-  **not vendored in this repository**. They are fetched at runtime from the
-  single upstream `obra/superpowers` at release versions (never a moving
-  branch) and installed user-global, so upstream changes never dirty a user's
-  git tree. Do not add copies of them to the tree, do not add a second
-  upstream, and do not add a new fetch path: the updater keeps exactly one
-  hard-coded allowed origin, fetches release tags only, applies size limits
-  and a file-type allowlist, and never writes outside the skill directory.
+- **Universal skills** are four skills — `test-driven-development`,
+  `systematic-debugging`, and `verification-before-completion` from
+  `obra/superpowers`, and `antislop` from `miqdadbadjuber/anti-slop` — and are
+  **not vendored in this repository**. They are fetched at runtime from those
+  two pinned upstreams at release versions (never a moving branch) and
+  installed user-global, so upstream changes never dirty a user's git tree.
+  Do not add copies of them to the tree, and do not add arbitrary fetch paths:
+  the updater validates pinned allowed origins, fetches release tags only,
+  tracks source-keyed state, applies archive size/count limits, and enforces
+  both an extension allowlist (`ALLOWED_FILE_SUFFIXES`) and an allowlist of
+  extensionless companion files (`ALLOWED_EXTENSIONLESS_COMPANIONS`, such as
+  `VERSION`). In-tree references to companion documents are resolved and
+  preserved upon installation, duplicate sibling entries across user roots
+  are suppressed, and the updater never writes outside the skill directory.
 
 Policy states the rules, skills hold the technique, and policy wins on
-conflict — a skill change never overrides the shipped policy pack.
+conflict — a skill change never overrides the shipped policy pack. Stated
+centrally in `_shipped_skills.j2` and project policy (`execution-kernel.md`).
 
-The default skill set is therefore the three universal skills named above
+The default skill set is therefore the four universal skills named above
 plus the artifact skills derived from the pipeline's artifact types.
+
+### Prompt-cue point-of-use contract
+
+Universal skills are cued at their point of use in phase prompt templates
+(and shared fragments) rather than in disconnected catalogs.
+
+- **Point of use**: Prompts cue skills within the specific operational
+  instruction where the model acts (e.g. `test-driven-development` when
+  writing code, `systematic-debugging` upon test or gate failures,
+  `verification-before-completion` prior to submitting results, and
+  `antislop` when authoring user-facing text or code comments).
+- **Plain rationale**: Every cue states why the skill is invoked in plain
+  words, keeping procedural technique inside the skill itself.
+- **Conditional gating**: Skill cues are conditionally gated on installation
+  via dynamically resolved `SKILL_INSTALLED_<NAME>` boolean variables. When a
+  skill is not installed for the active agent, the prompt degrades cleanly to
+  standard imperative instruction without naming missing skills.
+- **Unattended execution**: Interactive prompt patterns in skills are
+  neutralized for unattended pipeline runs. For example, `_unattended_mode.jinja`
+  renders the explicit session mode cue `Use antislop during for this session.`
+  whenever `antislop` is installed.
+
+### Universal-skill audit verdicts
+
+Every shipped universal skill was read at its pinned release before it was
+admitted to the default set. A skill that blocks on a user question or assumes
+a UI task is not shipped as it is.
+
+| Skill | Upstream and release tag | Companion files | Unattended verdict |
+|---|---|---|---|
+| `test-driven-development` | `obra/superpowers` v7.0.2 | `writing-good-tests.md` | Runs unattended. Its "ask your human partner" advice covers exceptions a Ralph run never takes. |
+| `systematic-debugging` | `obra/superpowers` v7.0.2 | `root-cause-tracing.md`, `defense-in-depth.md`, `condition-based-waiting.md`, `find-polluter.sh`, `condition-based-waiting-example.ts` | Runs unattended. Its "discuss with your human partner" advice after three failed fixes is advisory; the pipeline's iteration budget is the bound. |
+| `verification-before-completion` | `obra/superpowers` v7.0.2 | none | Runs unattended. No interactive step. |
+| `antislop` | `miqdadbadjuber/anti-slop` v3.2.30 | `VERSION` | Runs unattended only with the session mode line. Without it, the skill's "Two Usage Modes" step asks the user a question and waits, which stalls an unattended run. `shared/_unattended_mode.jinja` renders `Use antislop during for this session.` whenever `antislop` is installed. |
+
+### Template and phase skill mapping
+
+The following table records the prompt-template audit: for every phase
+template, the universal skills that template names, and the evidence for the
+decision. `shared/_unattended_mode.jinja` is included by every phase template
+and carries the `antislop` mode-resolution line; that line pre-resolves the
+skill's mode, it is not a cue to apply the skill to the phase's work.
+
+| Template or fragment | Phase | Skills named | Evidence |
+|---|---|---|---|
+| `developer_iteration.jinja` via `shared/_developer_iteration_guidance.j2` | Development | `test-driven-development` (implementing a behavior change), `systematic-debugging` (a failing test or gate), `antislop` (user-facing copy, interfaces, code comments) | `_developer_iteration_guidance.j2:32,37,45` gate each cue on `SKILL_INSTALLED_<NAME>`; `tests/test_prompts_skills_cues.py::test_developer_iteration_prompts_cue_universal_skills` |
+| `developer_iteration.jinja` via `shared/_verification_commitments.j2` | Development | `verification-before-completion` (before claiming completion or submitting results) | `_verification_commitments.j2:9`; same test |
+| `developer_iteration_continuation.jinja` | Development | the same four, through the same shared fragments | includes `_development_skills.j2`, `_verification_commitments.j2`, `_developer_iteration_guidance.j2` |
+| `developer_iteration_fallback.jinja` | Development | the same four, through the same shared fragments | same includes, so a fallback run behaves like the primary one |
+| `development_analysis.jinja` | Development analysis | `verification-before-completion` (judging the developer's evidence), `systematic-debugging` (judging a failing check) | `development_analysis.jinja:27,48`; `tests/test_prompts_skills_cues.py::test_development_analysis_cues` |
+| `planning.jinja` via `shared/_shipped_skills.j2` | Planning | `test-driven-development`, `systematic-debugging`, `verification-before-completion` — named as the executor skills for the plan's own steps | `_shipped_skills.j2:23-25`; `tests/test_prompts_skills_cues.py::test_planning_and_planning_edit_cues_executor_skills` |
+| `planning_edit.jinja` via `shared/_shipped_skills.j2` | Planning edit | the same three executor skills | `planning_edit.jinja:15-16`; same test |
+| `planning_fallback.jinja` via `shared/_shipped_skills.j2` | Planning fallback | the same three executor skills | `planning_fallback.jinja:7-8` |
+| `planning_edit_fallback.jinja` via `shared/_shipped_skills.j2` | Planning edit fallback | the same three executor skills | `planning_edit_fallback.jinja:7-8` |
+| `planning_analysis.jinja` | Planning analysis | none, because the phase grades the submitted plan against the six plan criteria and reads no command, marker, or gate result; the template's own review contract carries that judgement | the template carries no `SKILL_INSTALLED_*` gate |
+| `policy_remediation.jinja` | Policy remediation | `verification-before-completion` (probing declared markers and gates), `systematic-debugging` (diagnosing a failing check) | `policy_remediation.jinja:26,31`; `tests/test_prompts_skills_cues.py::test_policy_remediation_and_analysis_cues` |
+| `policy_remediation_analysis.jinja` | Policy remediation analysis | `verification-before-completion` (collecting execution evidence), `systematic-debugging` (investigating a failing gate) | `policy_remediation_analysis.jinja:26,31`; same test |
+| `conflict_resolution.jinja` | Conflict resolution | `systematic-debugging` (diagnosing the conflicting changes), `verification-before-completion` (before declaring the resolution) | `conflict_resolution.jinja:51,94`; `tests/test_prompts_skills_cues.py::test_conflict_resolution_cues` |
+| `commit_message.jinja` | Commit | none, because the phase only authors the commit-message artifact from the recorded diff and verification facts; no shipped skill teaches that | the template carries no `SKILL_INSTALLED_*` gate |
+| `commit_simplified.jinja` | Commit | none, because the phase only authors the compact commit-message artifact | the template carries no `SKILL_INSTALLED_*` gate |
+| `commit_review.jinja` | Commit review | none, because the phase classifies the pending diff against the safety tripwires and performs its own housekeeping edits; the `commit_review` artifact pointer already carries that format | the template carries no `SKILL_INSTALLED_*` gate |
 
 ### Choosing a universal skill
 
 A universal skill must be **language- and framework-agnostic**, must **work
-unattended**, must **not conflict with Ralph Workflow's own phases**, must be
-**actively maintained**, and must be **redistributable**. Everything else is
-out of the default set. Keep the set at three unless a new skill clearly
-passes the rule.
+unattended** (or be cleanly neutralizable for unattended pipelines), must **not
+conflict with Ralph Workflow's own phases**, must be **actively maintained**,
+and must be **redistributable** (permissive open-source license, release-tagged).
+Everything else is out of the default set. Keep the set minimal unless a new
+skill clearly passes the rule.
 
 - Update `docs/sphinx/modules.rst` whenever you add a new public module
   under `ralph/skills/`; `tests/test_sphinx_modules_coverage.py` enforces

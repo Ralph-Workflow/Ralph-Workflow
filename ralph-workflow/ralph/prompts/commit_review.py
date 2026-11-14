@@ -22,6 +22,7 @@ from ralph.prompts.template_engine import render_template
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from ralph.policy.models import PipelinePolicy
@@ -61,6 +62,7 @@ def render_commit_review_prompt(
     proposal_ref: str | None = None,
     tree_sha: str | None = None,
     soft_tripwires: list[dict[str, object]] | str | None = None,
+    skill_variables: Mapping[str, str] | None = None,
 ) -> str:
     if proposal_ref is None or tree_sha is None or soft_tripwires is None:
         context_file = (
@@ -124,7 +126,7 @@ def render_commit_review_prompt(
     }
     rendered = render_template(
         tmpl_ctx.registry.get_template(template_name),
-        _merged_variables(bv, session_caps),
+        _merged_variables(bv, session_caps, skill_variables=skill_variables),
         tmpl_ctx.partials,
     )
     if not last_retry_error.startswith("VALIDATION FAILURE"):

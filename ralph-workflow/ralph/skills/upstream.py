@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
-from urllib.parse import unquote
 
 if sys.platform != "win32":
     import fcntl
@@ -21,7 +20,9 @@ if sys.platform != "win32":
 from ralph.checked_accessors import as_mapping, as_str_dict, optional_str
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.skills._agent_paths import (
+    agent_skill_roots,
     canonical_agent_skill_root,
+    is_skill_present_for_agent,
     sibling_agent_skill_roots,
 )
 from ralph.skills._ownership import (
@@ -32,7 +33,9 @@ from ralph.skills._ownership import (
     verified_recorded_files,
 )
 from ralph.skills._upstream_install import (
+    ALLOWED_EXTENSIONLESS_COMPANIONS,
     BACKUP_SUFFIX,
+    SKILL_FILE_NAME,
     STAGING_PREFIX,
     _ArchiveLimits,
     _SkillPayload,
@@ -40,6 +43,7 @@ from ralph.skills._upstream_install import (
     discard_staged,
     discard_tree,
     extract_archive,
+    payload_refusal,
     publish_sibling_mirrors,
     publish_staged,
     recover_publication,
@@ -63,54 +67,71 @@ from ralph.skills._upstream_transport import (
 
 UPSTREAM_REPO = "obra/superpowers"
 
+ANTI_SLOP_REPO = "miqdadbadjuber/anti-slop"
+
 RELEASES_API_URL = "https://api.github.com/repos/obra/superpowers/releases/latest"
 
 ARCHIVE_URL_TEMPLATE = "https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/{tag}"
 
-UNIVERSAL_SKILL_NAMES: tuple[str, ...] = (
-    "test-driven-development",
-    "systematic-debugging",
-    "verification-before-completion",
+ANTI_SLOP_RELEASES_API_URL = "https://api.github.com/repos/miqdadbadjuber/anti-slop/releases/latest"
+
+ANTI_SLOP_ARCHIVE_URL_TEMPLATE = (
+    "https://codeload.github.com/miqdadbadjuber/anti-slop/tar.gz/refs/tags/{tag}"
 )
 
-SKILL_FILE_NAME = "SKILL.md"
+
+@dataclass(frozen=True)
+class _UpstreamSource:
+    slug: str
+    repo: str
+    api_url: str
+    archive_url_template: str
+    skill_names: tuple[str, ...]
+
+
+UpstreamSource = _UpstreamSource
+
+
+UNIVERSAL_UPSTREAMS: tuple[UpstreamSource, ...] = (
+    UpstreamSource(
+        UPSTREAM_REPO,
+        UPSTREAM_REPO,
+        RELEASES_API_URL,
+        ARCHIVE_URL_TEMPLATE,
+        ("test-driven-development", "systematic-debugging", "verification-before-completion"),
+    ),
+    UpstreamSource(
+        ANTI_SLOP_REPO,
+        ANTI_SLOP_REPO,
+        ANTI_SLOP_RELEASES_API_URL,
+        ANTI_SLOP_ARCHIVE_URL_TEMPLATE,
+        ("antislop",),
+    ),
+)
+
+UNIVERSAL_SKILL_NAMES: tuple[str, ...] = tuple(
+    name for upstream in UNIVERSAL_UPSTREAMS for name in upstream.skill_names
+)
 
 MANAGED_BY = UNIVERSAL_MANAGED_BY
-
 MAX_ARCHIVE_BYTES = 10 * 1024 * 1024
-
 MAX_RELEASE_BYTES = 1024 * 1024
-
 MAX_FILE_BYTES = 1024 * 1024
-
 MAX_ARCHIVE_MEMBERS = 2048
-
 MAX_EXTRACTED_BYTES = 32 * 1024 * 1024
-
 MAX_SKILL_FILES = 512
-
 ALLOWED_FILE_SUFFIXES: frozenset[str] = frozenset(
     {".json", ".md", ".py", ".sh", ".toml", ".ts", ".txt", ".yaml", ".yml"}
 )
-
 REQUEST_TIMEOUT_SECONDS = 5.0
-
 ATTEMPT_WINDOW = timedelta(hours=24)
-
 LOCK_WAIT_SECONDS = 30.0
-
 LOCK_POLL_SECONDS = 0.05
-
 LOCK_STALE_SECONDS = 120.0
-
 LOCK_CLAIM_SUFFIX = ".claim"
-
 CACHE_FILE_NAME = "skill-updates.json"
-
 ATTEMPT_LOCK_SUFFIX = ".lock"
-
 PUBLICATION_LOCK_NAME = "skill-publish.lock"
-
 STATE_FILE_NAME = "ralph-workflow-universal-skills.json"
 
 type HttpResponse = tuple[int, bytes]
@@ -119,60 +140,19 @@ type HttpClient = Callable[[str, float], HttpResponse]
 
 HTTP_OK = 200
 
-try:
-    _NOFOLLOW_FLAG: int = os.O_NOFOLLOW
-except AttributeError:
-    _NOFOLLOW_FLAG = 0
+HTTP_NOT_FOUND = 404
+
+NO_RELEASE_ERROR = "release-api-no-release"
+
+_NOFOLLOW_FLAG: int = getattr(os, "O_NOFOLLOW", 0)
 
 _ATTEMPT_LOCK = threading.Lock()
-
-_REFERENCE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"`([^`\n]+)"
-    r"|\]\((<[^>\n]*>)\)"
-    r"|\]\(((?:[^()\n]|\([^()\n]*\))*)\)"
-    r"|\]\(([^)\n]+)\)"
-    r"|^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(<[^>\n]*>|\S+)",
-    re.MULTILINE,
-)
-
-_HTML_ATTRIBUTE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"""\b(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'<>`\n]+))""",
-    re.IGNORECASE,
-)
-
-
-_FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*\.[A-Za-z]+$")
 
 _CARRIED_SUFFIXES: Final[frozenset[str]] = frozenset(
     suffix.lower() for suffix in ALLOWED_FILE_SUFFIXES
 )
-
-_URL_SCHEME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
-
 _TAG_NUMBER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+")
-
 _TAG_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
-
-_CUE_VERBS: Final[tuple[str, ...]] = (
-    "see",
-    "read",
-    "open",
-    "consult",
-    "check",
-    "refer to",
-)
-
-_CUE_ADVERBS: Final[tuple[str, ...]] = ("please", "then", "also", "first", "now")
-
-_CLAUSE_BOUNDARIES: Final[str] = ".!?:;(—"
-
-_LIST_MARKERS: Final[frozenset[str]] = frozenset({"-", "*", "+"})
-
-_NUMBERED_MARKER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+[.)]")
-
-_EMPHASIS_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(r"(?:\*{2,}|_{2,})$")
-
-_LOCATION_CUE: Final[str] = "in this directory"
 
 
 @dataclass(frozen=True)
@@ -192,14 +172,6 @@ class _InstallPlan:
     skills: tuple[tuple[str, _SkillPayload], ...]
     preserved: tuple[str, ...]
     messages: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class _CompanionReference:
-    raw: str
-    resolved: str
-    escapes: bool
-    directory: bool
 
 
 def maybe_update_universal_skills(
@@ -229,13 +201,11 @@ def sibling_skills_roots() -> tuple[Path, ...]:
 
 def attempt_cache_path() -> Path:
     xdg = os.environ.get("XDG_CACHE_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".cache"
-    return base / "ralph-workflow" / CACHE_FILE_NAME
+    return (Path(xdg) if xdg else Path.home() / ".cache") / "ralph-workflow" / CACHE_FILE_NAME
 
 
 def attempt_lock_path() -> Path:
-    cache = attempt_cache_path()
-    return cache.with_name(cache.name + ATTEMPT_LOCK_SUFFIX)
+    return attempt_cache_path().with_name(attempt_cache_path().name + ATTEMPT_LOCK_SUFFIX)
 
 
 def publication_lock_path() -> Path:
@@ -247,50 +217,97 @@ def universal_state_path() -> Path:
 
 
 def _response_byte_cap(url: str) -> int:
-    if url == RELEASES_API_URL:
-        return MAX_RELEASE_BYTES
-    prefix = ARCHIVE_URL_TEMPLATE.split("{", 1)[0]
-    if prefix and url.startswith(prefix):
-        return MAX_ARCHIVE_BYTES
+    for source in UNIVERSAL_UPSTREAMS:
+        prefix = source.archive_url_template.split("{", 1)[0]
+        if prefix and url.startswith(prefix):
+            return MAX_ARCHIVE_BYTES
     return MAX_RELEASE_BYTES
 
 
 def _run_update(*, enabled: bool, now: datetime, http: HttpClient) -> UpdateOutcome:
     if not enabled:
         return UpdateOutcome(status="disabled")
-    instant = _utc(now)
+    instant = now.replace(tzinfo=UTC) if now.tzinfo is None else now.astimezone(UTC)
     _repair_publications(canonical_skills_root())
     if not _reserve_attempt(attempt_cache_path(), instant):
         return UpdateOutcome(
             status="skipped",
             messages=("the universal skill update was attempted within the last 24 h",),
         )
-    tag, error = _fetch_release_tag(http)
+    state = _read_state()
+    outcomes = tuple(_update_source(source, state, http) for source in UNIVERSAL_UPSTREAMS)
+    return _aggregate_outcomes(outcomes)
+
+
+def _update_source(
+    source: UpstreamSource, state: Mapping[str, object], http: HttpClient
+) -> UpdateOutcome:
+    tag, error = _fetch_release_tag(http, source)
     if tag is None:
+        if error == NO_RELEASE_ERROR:
+            return UpdateOutcome(
+                status="no-release",
+                attempted=True,
+                messages=(f"{source.slug}: no release is published yet",),
+            )
         return UpdateOutcome(
             status="failed",
             attempted=True,
             error=error,
-            messages=("the upstream release could not be read",),
+            messages=(f"{source.slug}: the upstream release could not be read",),
         )
-    if not _needs_update(tag, _read_state()):
-        return _settle_mirrors(tag)
-    payload, error = _load_release_payload(http, tag)
+    if not _needs_update(tag, state, source):
+        return _settle_mirrors(source, tag)
+    payload, error = _load_release_payload(http, source, tag)
     if payload is None:
         return UpdateOutcome(
             status="failed",
             attempted=True,
             tag=tag,
             error=error,
-            messages=("the upstream skill archive could not be installed",),
+            messages=(f"{source.slug}: the upstream skill archive could not be installed",),
         )
-    return _install_release(tag, payload)
+    return _install_release(source, tag, payload)
 
 
-def _utc(now: datetime) -> datetime:
-    if now.tzinfo is None:
-        return now.replace(tzinfo=UTC)
-    return now.astimezone(UTC)
+def _aggregate_outcomes(outcomes: tuple[UpdateOutcome, ...]) -> UpdateOutcome:
+    statuses = {outcome.status for outcome in outcomes}
+    error = next((outcome.error for outcome in outcomes if outcome.error is not None), None)
+    if "failed" in statuses:
+        return UpdateOutcome(
+            status="failed",
+            attempted=True,
+            error=error,
+            messages=_joined_messages(outcomes),
+        )
+    status = "no-release"
+    for candidate in ("incomplete", "updated", "repaired", "up-to-date", "preserved"):
+        if candidate in statuses:
+            status = candidate
+            break
+    return UpdateOutcome(
+        status=status,
+        attempted=True,
+        tag=next((outcome.tag for outcome in outcomes if outcome.tag is not None), None),
+        installed=_joined_names(outcome.installed for outcome in outcomes),
+        preserved=_joined_names(outcome.preserved for outcome in outcomes),
+        messages=_joined_messages(outcomes),
+    )
+
+
+def _joined_names(groups: Iterator[tuple[str, ...]]) -> tuple[str, ...]:
+    names: dict[str, None] = {}
+    for group in groups:
+        for name in group:
+            names.setdefault(name, None)
+    return tuple(names)
+
+
+def _joined_messages(outcomes: tuple[UpdateOutcome, ...]) -> tuple[str, ...]:
+    messages: list[str] = []
+    for outcome in outcomes:
+        messages.extend(outcome.messages)
+    return tuple(messages)
 
 
 def _reserve_attempt(cache_path: Path, now: datetime) -> bool:
@@ -307,7 +324,7 @@ def _reserve_attempt(cache_path: Path, now: datetime) -> bool:
 
 @contextmanager
 def _advisory_lock(lock_path: Path) -> Iterator[None]:
-    _ensure_dir(lock_path.parent)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = _open_lock_descriptor(lock_path, os.O_CREAT | os.O_RDWR | _NOFOLLOW_FLAG)
     try:
         release = _acquire_platform_lock(descriptor)
@@ -330,10 +347,6 @@ def _open_lock_descriptor(path: Path, flags: int) -> int:
 def _acquire_platform_lock(descriptor: int) -> Callable[[], None] | None:
     if sys.platform == "win32":
         return None
-    return _acquire_posix_lock(descriptor)
-
-
-def _acquire_posix_lock(descriptor: int) -> Callable[[], None] | None:
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX)
     except OSError:
@@ -369,10 +382,9 @@ def _claim_lock(lock_path: Path) -> Iterator[None]:
 
 def _claim_is_stale(claim_path: Path) -> bool:
     try:
-        age = time.time() - claim_path.stat().st_mtime
+        return (time.time() - claim_path.stat().st_mtime) > LOCK_STALE_SECONDS
     except OSError:
         return False
-    return age > LOCK_STALE_SECONDS
 
 
 def _read_attempt(cache_path: Path) -> datetime | None:
@@ -384,25 +396,17 @@ def _read_attempt(cache_path: Path) -> datetime | None:
         return None
     try:
         parsed = datetime.fromisoformat(stamp)
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
     except ValueError:
         return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
 def _read_json_mapping(path: Path) -> Mapping[str, object] | None:
     try:
         raw = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    try:
-        payload: object = json.loads(raw)
-    except ValueError:
-        return None
-    try:
-        return as_mapping(payload, field=path.name)
-    except TypeError:
+        parsed: object = json.loads(raw)
+        return as_mapping(parsed, field=path.name)
+    except (OSError, UnicodeDecodeError, ValueError, TypeError):
         return None
 
 
@@ -421,7 +425,7 @@ def _string_map(value: object) -> dict[str, str]:
 
 
 def _write_json_atomic(path: Path, document: Mapping[str, object]) -> None:
-    _ensure_dir(path.parent)
+    path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(document, indent=2) + "\n"
     handle, temp_name = tempfile.mkstemp(
         dir=str(path.parent), prefix=f"{path.name}.", suffix=".tmp"
@@ -436,23 +440,23 @@ def _write_json_atomic(path: Path, document: Mapping[str, object]) -> None:
         raise
 
 
-def _ensure_dir(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-
-
 def _transport_error_reason(exc: Exception, prefix: str) -> str:
     if isinstance(exc, UpstreamResponseTooLargeError):
         return f"{prefix}-too-large"
-    if isinstance(exc, UpstreamRedirectRefusedError):
-        return f"{prefix}-redirect"
-    return f"{prefix}-error:{type(exc).__name__}"
+    return (
+        f"{prefix}-redirect"
+        if isinstance(exc, UpstreamRedirectRefusedError)
+        else f"{prefix}-error:{type(exc).__name__}"
+    )
 
 
-def _fetch_release_tag(http: HttpClient) -> tuple[str | None, str | None]:
+def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | None, str | None]:
     try:
-        status, body = http(RELEASES_API_URL, REQUEST_TIMEOUT_SECONDS)
+        status, body = http(source.api_url, REQUEST_TIMEOUT_SECONDS)
     except Exception as exc:
         return (None, _transport_error_reason(exc, "release-api"))
+    if status == HTTP_NOT_FOUND:
+        return (None, NO_RELEASE_ERROR)
     if status != HTTP_OK:
         return (None, f"release-api-status-{status}")
     if len(body) > MAX_RELEASE_BYTES:
@@ -468,9 +472,9 @@ def _fetch_release_tag(http: HttpClient) -> tuple[str | None, str | None]:
 
 
 def _load_release_payload(
-    http: HttpClient, tag: str
+    http: HttpClient, source: UpstreamSource, tag: str
 ) -> tuple[dict[str, _SkillPayload] | None, str | None]:
-    archive_url = ARCHIVE_URL_TEMPLATE.format(tag=tag)
+    archive_url = source.archive_url_template.format(tag=tag)
     try:
         status, body = http(archive_url, REQUEST_TIMEOUT_SECONDS)
     except Exception as exc:
@@ -480,31 +484,68 @@ def _load_release_payload(
     if len(body) > MAX_ARCHIVE_BYTES:
         return (None, "archive-too-large")
     try:
-        payload = extract_archive(body, _archive_limits())
+        payload = extract_archive(body, _archive_limits(source))
     except Exception as exc:
         return (None, str(exc))
     return (payload, None)
 
 
-def _archive_limits() -> _ArchiveLimits:
+def _archive_limits(source: UpstreamSource | None = None) -> _ArchiveLimits:
+    skill_names = UNIVERSAL_SKILL_NAMES if source is None else source.skill_names
     return _ArchiveLimits(
-        skill_names=UNIVERSAL_SKILL_NAMES,
+        skill_names=skill_names,
         allowed_suffixes=ALLOWED_FILE_SUFFIXES,
         max_file_bytes=MAX_FILE_BYTES,
         max_members=MAX_ARCHIVE_MEMBERS,
         max_extracted_bytes=MAX_EXTRACTED_BYTES,
         max_skill_files=MAX_SKILL_FILES,
+        allowed_extensionless_names=ALLOWED_EXTENSIONLESS_COMPANIONS,
     )
 
 
-def _needs_update(tag: str, state: Mapping[str, object]) -> bool:
-    skills = _mapping(state.get("skills"))
-    for name in UNIVERSAL_SKILL_NAMES:
-        entry = _mapping(skills.get(name))
-        source_tag = entry.get("source_tag")
-        if not isinstance(source_tag, str) or not source_tag:
-            return True
-        if _is_newer_tag(tag, source_tag):
+def _source_slug(source: str | UpstreamSource) -> str:
+    return source.slug if isinstance(source, UpstreamSource) else source
+
+
+def _source_skills(source: str | UpstreamSource) -> tuple[str, ...]:
+    slug = _source_slug(source)
+    return next((s.skill_names for s in UNIVERSAL_UPSTREAMS if slug in (s.slug, s.repo)), ())
+
+
+def _source_for_skill(skill_name: str) -> str:
+    return next((s.slug for s in UNIVERSAL_UPSTREAMS if skill_name in s.skill_names), UPSTREAM_REPO)
+
+
+def _migrate_state(state: Mapping[str, object]) -> dict[str, object]:
+    if "sources" in state:
+        return dict(state)
+    migrated = {k: v for k, v in state.items() if k not in ("source", "installed_tag")}
+    source = str(state.get("source") or UPSTREAM_REPO)
+    tag = state.get("installed_tag")
+    installed_tag = tag if isinstance(tag, str) else ""
+    sources: dict[str, object] = {}
+    for name in _mapping(state.get("skills")):
+        sources[_source_for_skill(str(name))] = {"installed_tag": installed_tag}
+    sources.setdefault(source, {"installed_tag": installed_tag})
+    migrated["sources"] = sources
+    return migrated
+
+
+
+def _needs_update(
+    tag: str,
+    state: Mapping[str, object],
+    source: str | UpstreamSource = UPSTREAM_REPO,
+) -> bool:
+    migrated = _migrate_state(state)
+    source_entry = _mapping(_mapping(migrated.get("sources")).get(_source_slug(source)))
+    installed_tag = source_entry.get("installed_tag")
+    if not isinstance(installed_tag, str) or not installed_tag or _is_newer_tag(tag, installed_tag):
+        return True
+    skills = _mapping(migrated.get("skills"))
+    for name in _source_skills(source):
+        stag = _mapping(skills.get(name)).get("source_tag")
+        if not isinstance(stag, str) or not stag or _is_newer_tag(tag, stag):
             return True
     return False
 
@@ -512,32 +553,46 @@ def _needs_update(tag: str, state: Mapping[str, object]) -> bool:
 def _is_newer_tag(candidate: str, installed: str) -> bool:
     if candidate == installed:
         return False
-    candidate_parts: list[str] = _TAG_NUMBER_PATTERN.findall(candidate)
-    installed_parts: list[str] = _TAG_NUMBER_PATTERN.findall(installed)
-    candidate_numbers = tuple(int(part) for part in candidate_parts)
-    installed_numbers = tuple(int(part) for part in installed_parts)
-    if candidate_numbers and installed_numbers:
-        return candidate_numbers > installed_numbers
-    return candidate != installed
+    cand_parts: list[str] = _TAG_NUMBER_PATTERN.findall(candidate)
+    inst_parts: list[str] = _TAG_NUMBER_PATTERN.findall(installed)
+    cand_nums = tuple(int(p) for p in cand_parts)
+    inst_nums = tuple(int(p) for p in inst_parts)
+    return cand_nums > inst_nums if cand_nums and inst_nums else candidate != installed
 
 
 def _read_state() -> Mapping[str, object]:
-    document = _read_json_mapping(universal_state_path())
-    return document if document is not None else {}
+    path = universal_state_path()
+    document = _read_json_mapping(path)
+    if document is None:
+        return {}
+    if "sources" not in document and ("source" in document or "installed_tag" in document):
+        migrated = _migrate_state(document)
+        with suppress(OSError):
+            _write_json_atomic(path, migrated)
+        return migrated
+    return document
 
 
-def _write_state(tag: str, installed: Mapping[str, str]) -> None:
-    state = _read_state()
+def _write_state(
+    source: UpstreamSource,
+    tag: str,
+    installed: Mapping[str, str],
+) -> None:
+    state = dict(_read_state())
+    sources = dict(_mapping(state.get("sources")))
     skills = dict(_mapping(state.get("skills")))
+    slug = _source_slug(source)
+    sources[slug] = {"installed_tag": tag}
     for name, digest in installed.items():
-        skills[name] = {"source_tag": tag, "installed_sha256": digest}
-    document: dict[str, object] = {
-        "source": UPSTREAM_REPO,
-        "installed_tag": tag,
-        "skills": skills,
-        "updated_at": datetime.now(tz=UTC).isoformat(),
-    }
-    _write_json_atomic(universal_state_path(), document)
+        skills[name] = {
+            "source": slug,
+            "source_tag": tag,
+            "installed_sha256": digest,
+        }
+    _write_json_atomic(
+        universal_state_path(),
+        {"sources": sources, "skills": skills, "updated_at": datetime.now(tz=UTC).isoformat()},
+    )
 
 
 def _repair_publications(canonical_root: Path) -> None:
@@ -547,11 +602,22 @@ def _repair_publications(canonical_root: Path) -> None:
         sweep_staging(canonical_root)
 
 
-def _install_release(tag: str, payload: Mapping[str, _SkillPayload]) -> UpdateOutcome:
+def _user_owned_skills() -> frozenset[str]:
+    return frozenset(
+        name
+        for name in UNIVERSAL_SKILL_NAMES
+        if any(is_skill_present_for_agent(name, entry.agent) for entry in agent_skill_roots())
+    )
+
+
+def _install_release(
+    source: UpstreamSource, tag: str, payload: Mapping[str, _SkillPayload]
+) -> UpdateOutcome:
     canonical_root = canonical_skills_root()
+    user_owned = _user_owned_skills()
     with _advisory_lock(publication_lock_path()):
         sweep_staging(canonical_root)
-        plan = _plan_install(canonical_root, tag, payload)
+        plan = _plan_install(canonical_root, source, tag, payload, user_owned)
         if not plan.skills:
             return UpdateOutcome(
                 status="preserved",
@@ -575,7 +641,7 @@ def _install_release(tag: str, payload: Mapping[str, _SkillPayload]) -> UpdateOu
         canonical_root, tuple(installed), sibling_skills_roots()
     )
     messages.extend(mirror_messages)
-    _write_state(tag, digests)
+    _write_state(source, tag, digests)
     return UpdateOutcome(
         status="incomplete" if failed_skills else "updated",
         attempted=True,
@@ -587,40 +653,42 @@ def _install_release(tag: str, payload: Mapping[str, _SkillPayload]) -> UpdateOu
 
 
 def _plan_install(
-    canonical_root: Path, tag: str, payload: Mapping[str, _SkillPayload]
+    canonical_root: Path,
+    source: UpstreamSource,
+    tag: str,
+    payload: Mapping[str, _SkillPayload],
+    user_owned: frozenset[str],
 ) -> _InstallPlan:
     skills: list[tuple[str, _SkillPayload]] = []
     preserved: list[str] = []
     messages: list[str] = []
-    for name in UNIVERSAL_SKILL_NAMES:
+    for name in source.skill_names:
         content = payload.get(name)
-        if content is None:
+        if name in user_owned:
+            preserved.append(name)
+            messages.append(
+                f"{name}: preserved; the user already has this skill in an agent skill root"
+            )
+        elif content is None:
             preserved.append(name)
             messages.append(f"{name}: absent from the {tag} archive; left unchanged")
-            continue
-        refusal = _payload_refusal(content)
-        if refusal is not None:
+        elif (refusal := payload_refusal(content, _carried_suffix)) is not None:
             preserved.append(name)
             messages.append(f"{name}: not installed; {refusal}")
-            continue
-        reason = _preservation_reason(canonical_root / name)
-        if reason is not None:
+        elif (reason := _preservation_reason(canonical_root / name)) is not None:
             preserved.append(name)
             messages.append(f"{name}: preserved; {reason}")
-            continue
-        skills.append((name, content))
+        else:
+            skills.append((name, content))
     return _InstallPlan(
-        tag=tag,
-        skills=tuple(skills),
-        preserved=tuple(preserved),
-        messages=tuple(messages),
+        tag=tag, skills=tuple(skills), preserved=tuple(preserved), messages=tuple(messages)
     )
 
 
-def _payload_refusal(content: _SkillPayload) -> str | None:
-    if SKILL_FILE_NAME not in content.files:
-        return f"the payload carries no {SKILL_FILE_NAME}"
-    return _missing_reference(content)
+def _carried_suffix(path: str) -> str | None:
+    _, dot, extension = path.rpartition(".")
+    suffix = f".{extension.lower()}"
+    return suffix if dot and suffix in _CARRIED_SUFFIXES else None
 
 
 def _publish_plan(
@@ -632,7 +700,7 @@ def _publish_plan(
     try:
         for name, content in plan.skills:
             staged.append(
-                stage_skill(canonical_root, name, content, plan.tag, source=UPSTREAM_REPO)
+                stage_skill(canonical_root, name, content, plan.tag, source=_source_for_skill(name))
             )
         for entry in staged:
             backup = publish_staged(entry, canonical_root / entry.name)
@@ -663,8 +731,7 @@ def _preservation_reason(skill_dir: Path) -> str | None:
     marker = read_managed_marker(skill_dir)
     if marker is None:
         return "the Ralph managed marker cannot be read"
-    recorded = verified_recorded_files(marker)
-    if recorded is None:
+    if (recorded := verified_recorded_files(marker)) is None:
         return "the Ralph managed marker carries no usable file manifest"
     if marker.get("managed_by") != MANAGED_BY:
         return "the directory is managed by another component"
@@ -673,279 +740,25 @@ def _preservation_reason(skill_dir: Path) -> str | None:
     return None
 
 
-def _missing_reference(content: _SkillPayload) -> str | None:
-    for relative in sorted(content.files):
-        if Path(relative).suffix.lower() != ".md":
-            continue
-        data = content.files[relative][0]
-        text = data.decode("utf-8", errors="replace")
-        for reference in _iter_references(text, relative):
-            if reference.escapes:
-                return f"it references {reference.raw}, which is outside the skill directory"
-            if _is_carried(content, reference):
-                continue
-            return _missing_reference_reason(reference)
-    return None
-
-
-def _is_carried(content: _SkillPayload, reference: _CompanionReference) -> bool:
-    if reference.resolved in content.files:
-        return True
-    if not (reference.directory or _is_extensionless(reference.resolved)):
-        return False
-    prefix = f"{reference.resolved}/"
-    return any(carried.startswith(prefix) for carried in content.files)
-
-
-def _is_extensionless(path: str) -> bool:
-    return "." not in path.rsplit("/", 1)[-1]
-
-
-def _missing_reference_reason(reference: _CompanionReference) -> str:
-    target = reference.resolved or reference.raw
-    if reference.directory:
-        return f"it references {target}/, which the archive does not carry"
-    if _is_extensionless(target) or _carried_suffix(target) is not None:
-        return f"it references {target}, which the archive does not carry"
-    return f"it references {target}, whose extension the installer does not carry"
-
-
-def _resolve_companion(relative: str, reference: str) -> tuple[str, bool]:
-    base = relative.rsplit("/", 1)[0] if "/" in relative else ""
-    parts = [part for part in base.split("/") if part]
-    for segment in reference.split("/"):
-        if not segment or segment == ".":
-            continue
-        if segment == "..":
-            if not parts:
-                return "", True
-            parts.pop()
-            continue
-        parts.append(segment)
-    return "/".join(parts), False
-
-
-def _carried_suffix(path: str) -> str | None:
-    _, dot, extension = path.rpartition(".")
-    if not dot:
-        return None
-    suffix = f".{extension.lower()}"
-    if suffix in _CARRIED_SUFFIXES:
-        return suffix
-    return None
-
-
-def _reference_offset(item: tuple[int, _CompanionReference]) -> int:
-    return item[0]
-
-
-def _iter_references(text: str, relative: str) -> Iterator[_CompanionReference]:
-    found: list[tuple[int, _CompanionReference]] = []
-    for match in _REFERENCE_PATTERN.finditer(text):
-        raw_code: object = match.group(1)
-        raw_angle: object = match.group(2)
-        raw_balanced: object = match.group(3)
-        raw_plain: object = match.group(4)
-        raw_definition: object = match.group(5)
-        reference: _CompanionReference | None
-        if isinstance(raw_code, str):
-            reference = _code_reference(text, match, raw_code, relative)
-        elif isinstance(raw_angle, str):
-            reference = _destination_reference(raw_angle, relative)
-        elif isinstance(raw_balanced, str):
-            reference = _destination_reference(raw_balanced, relative)
-        elif isinstance(raw_plain, str):
-            reference = _destination_reference(raw_plain, relative)
-        elif isinstance(raw_definition, str):
-            reference = _destination_reference(raw_definition, relative)
-        else:
-            continue
-        if reference is not None:
-            found.append((match.start(), reference))
-    for match in _HTML_ATTRIBUTE_PATTERN.finditer(text):
-        raw: object = match.group(1)
-        if raw is None:
-            raw = match.group(2)
-        if raw is None:
-            raw = match.group(3)
-        if not isinstance(raw, str):
-            continue
-        reference = _destination_reference(raw, relative)
-        if reference is not None:
-            found.append((match.start(), reference))
-    for _position, reference in sorted(found, key=_reference_offset):
-        yield reference
-
-
-def _code_reference(
-    text: str, match: re.Match[str], raw: str, relative: str
-) -> _CompanionReference | None:
-    directed = _is_directed_code_span(text, match)
-    candidate = _code_candidate(raw)
-    if candidate is None:
-        if not directed:
-            return None
-        candidate = unquote(raw.strip())
-        if not candidate:
-            return None
-    if _is_external_reference(candidate):
-        return None
-    directory = candidate.endswith("/")
-    file_shaped = _is_file_reference(candidate)
-    resolved, escapes = _resolve_companion(relative, candidate)
-    escaping = candidate.startswith("../") and escapes and directory
-    if not (directed or file_shaped or escaping):
-        return None
-    return _CompanionReference(
-        raw=candidate, resolved=resolved, escapes=escapes, directory=directory
-    )
-
-
-def _destination_reference(raw: str, relative: str) -> _CompanionReference | None:
-    candidate = _destination_candidate(raw)
-    if candidate is None:
-        return None
-    if _is_external_reference(candidate):
-        return None
-    directory = candidate.endswith("/")
-    resolved, escapes = _resolve_companion(relative, candidate)
-    return _CompanionReference(
-        raw=candidate, resolved=resolved, escapes=escapes, directory=directory
-    )
-
-
-def _is_directed_code_span(text: str, match: re.Match[str]) -> bool:
-    span_end = _closed_code_span_end(text, match)
-    if span_end is not None and _has_location_cue(text, span_end):
-        return True
-    return _has_imperative_cue(_line_prefix(text, match.start()))
-
-
-def _closed_code_span_end(text: str, match: re.Match[str]) -> int | None:
-    end = match.end()
-    if end >= len(text) or text[end] != "`":
-        return None
-    end += 1
-    while end < len(text) and text[end] == "`":
-        end += 1
-    return end
-
-
-def _has_location_cue(text: str, end: int) -> bool:
-    line_end = text.find("\n", end)
-    if line_end == -1:
-        line_end = len(text)
-    return text[end:line_end].strip().lower().startswith(_LOCATION_CUE)
-
-
-def _line_prefix(text: str, start: int) -> str:
-    return text[text.rfind("\n", 0, start) + 1 : start]
-
-
-def _has_imperative_cue(prefix: str) -> bool:
-    text = prefix.rstrip()
-    lowered = text.lower()
-    for verb in _CUE_VERBS:
-        for cue in (verb, f"{verb} the"):
-            if not lowered.endswith(cue):
-                continue
-            begin = len(text) - len(cue)
-            if begin > 0 and (text[begin - 1].isalnum() or text[begin - 1] in "-_"):
-                continue
-            return _is_clause_initial(text[:begin].rstrip())
-    return False
-
-
-def _is_clause_initial(before: str) -> bool:
-    if not before:
-        return True
-    return not _strip_leading_adverb(_clause_tail(before).strip())
-
-
-def _clause_tail(before: str) -> str:
-    boundary = -1
-    for character in _CLAUSE_BOUNDARIES:
-        boundary = max(boundary, before.rfind(character))
-    if boundary != -1:
-        return _EMPHASIS_RUN_PATTERN.sub("", before[boundary + 1 :])
-    if _EMPHASIS_RUN_PATTERN.search(before):
-        return ""
-    tokens = before.split()
-    if tokens and _is_list_marker(tokens[-1]):
-        return ""
-    return before
-
-
-def _is_list_marker(token: str) -> bool:
-    if token in _LIST_MARKERS:
-        return True
-    return _NUMBERED_MARKER_PATTERN.fullmatch(token) is not None
-
-
-def _strip_leading_adverb(segment: str) -> str:
-    lowered = segment.lower()
-    for adverb in _CUE_ADVERBS:
-        if lowered == adverb:
-            return ""
-        if lowered.startswith(f"{adverb} "):
-            return segment[len(adverb) + 1 :]
-    return segment
-
-
-def _code_candidate(raw: str) -> str | None:
-    candidate = raw.strip()
-    if not candidate or any(character.isspace() for character in candidate):
-        return None
-    return unquote(candidate)
-
-
-def _destination_candidate(raw: str) -> str | None:
-    destination = _destination_text(raw)
-    if destination is None:
-        return None
-    path, _, _ = unquote(destination).partition("#")
-    path = path.strip()
-    if not path:
-        return None
-    return path
-
-
-def _destination_text(raw: str) -> str | None:
-    text = raw.strip()
-    if not text:
-        return None
-    if text.startswith("<"):
-        end = text.find(">")
-        if end == -1:
-            return None
-        return text[1:end]
-    return text.split(None, 1)[0]
-
-
-def _is_file_reference(candidate: str) -> bool:
-    segment = candidate.rsplit("/", 1)[-1]
-    _, dot, extension = segment.rpartition(".")
-    if not dot or not _FILE_NAME_PATTERN.match(segment):
-        return False
-    if extension.islower() or extension.isupper():
-        return True
-    return f".{extension.lower()}" in _CARRIED_SUFFIXES
-
-
-def _is_external_reference(candidate: str) -> bool:
-    if candidate.startswith(("/", "~", "#")):
-        return True
-    return _URL_SCHEME_PATTERN.match(candidate) is not None
-
-
-def _settle_mirrors(tag: str) -> UpdateOutcome:
+def _settle_mirrors(source: UpstreamSource, tag: str) -> UpdateOutcome:
+    state = _read_state()
+    sources = _mapping(state.get("sources"))
+    source_entry = _mapping(sources.get(source.slug))
+    source_tag = source_entry.get("installed_tag")
+    effective_tag = str(source_tag) if isinstance(source_tag, str) and source_tag else tag
+    if not effective_tag:
+        return UpdateOutcome(status="up-to-date", attempted=True, tag=tag or None)
+    canonical_root = canonical_skills_root()
+    has_canonical = any((canonical_root / name).exists() for name in source.skill_names)
+    if not has_canonical and not source_tag and source.slug != UPSTREAM_REPO:
+        return UpdateOutcome(status="up-to-date", attempted=True, tag=tag or None)
     settlement = settle_mirrors(
-        canonical_skills_root(), UNIVERSAL_SKILL_NAMES, sibling_skills_roots(), tag
+        canonical_root, source.skill_names, sibling_skills_roots(), effective_tag
     )
     return UpdateOutcome(
         status=settlement.status,
         attempted=True,
-        tag=tag,
+        tag=tag or None,
         installed=settlement.repaired,
         preserved=settlement.preserved,
         messages=settlement.messages,
@@ -953,7 +766,11 @@ def _settle_mirrors(tag: str) -> UpdateOutcome:
 
 
 __all__ = [
+    "ALLOWED_EXTENSIONLESS_COMPANIONS",
     "ALLOWED_FILE_SUFFIXES",
+    "ANTI_SLOP_ARCHIVE_URL_TEMPLATE",
+    "ANTI_SLOP_RELEASES_API_URL",
+    "ANTI_SLOP_REPO",
     "ARCHIVE_URL_TEMPLATE",
     "ATTEMPT_LOCK_SUFFIX",
     "ATTEMPT_WINDOW",
@@ -974,12 +791,14 @@ __all__ = [
     "STAGING_PREFIX",
     "STATE_FILE_NAME",
     "UNIVERSAL_SKILL_NAMES",
+    "UNIVERSAL_UPSTREAMS",
     "UPSTREAM_REPO",
     "HttpClient",
     "HttpResponse",
     "UpdateOutcome",
     "UpstreamRedirectRefusedError",
     "UpstreamResponseTooLargeError",
+    "UpstreamSource",
     "UpstreamTransportError",
     "attempt_cache_path",
     "attempt_lock_path",

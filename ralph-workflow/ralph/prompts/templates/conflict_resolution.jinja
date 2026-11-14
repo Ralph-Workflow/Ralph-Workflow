@@ -48,6 +48,12 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
 {{ strategy_history }}
 {% endif %}## How to resolve
 
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+Use systematic-debugging when diagnosing conflicting changes, so resolution preserves the intended root behavior of both branches.
+{% else %}
+Analyze the root intent of conflicting changes on both branches before editing conflict regions.
+{% endif %}
+
 1. Open each conflicted file listed above.
 2. Resolve every conflict-marker region thoughtfully. {% if replaying_commit_sha %}Preserve the replayed commit's intent on top of `{{ target }}` without anticipating later commits.{% else %}Preserve the intent of both merge heads.{% endif %}
 3. Remove every `<<<<<<<`, `=======` and `>>>>>>>` marker line, so each file is
@@ -84,6 +90,12 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
   landed exactly as you left it.
 
 ## Completion contract
+
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion before declaring resolution, so resolved files are confirmed to build and pass checks cleanly.
+{% else %}
+Confirm resolved files build and pass checks cleanly before declaring resolution.
+{% endif %}
 
 When every listed file is resolved and marker-free, call the
 {{ DECLARE_COMPLETE_TOOL_REFERENCE }} MCP tool with a short

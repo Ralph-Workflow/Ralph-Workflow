@@ -1,3 +1,9 @@
+{% macro render_antislop_unattended_mode() -%}
+{% if SKILL_INSTALLED_ANTISLOP|default('') == "true" %}
+Use antislop during this session, with its mode pre-resolved for unattended work so it does not pause for input.
+{% endif %}
+{%- endmacro %}
+
 *** UNATTENDED MODE ***
 
 This run is unattended. Proceed from available evidence, make and record

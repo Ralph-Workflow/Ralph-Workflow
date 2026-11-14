@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -41,13 +41,18 @@ _RUNNER = '''"""Make one upstream attempt against the loopback test server."""
 
 import os
 import time
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
 from ralph.skills import upstream
 
-upstream.RELEASES_API_URL = os.environ["RALPH_TEST_RELEASES_URL"]
-upstream.ARCHIVE_URL_TEMPLATE = os.environ["RALPH_TEST_ARCHIVE_TEMPLATE"]
+releases = os.environ["RALPH_TEST_RELEASES_URL"]
+archive = os.environ["RALPH_TEST_ARCHIVE_TEMPLATE"]
+upstream.UNIVERSAL_UPSTREAMS = tuple(
+    replace(source, api_url=releases, archive_url_template=archive)
+    for source in upstream.UNIVERSAL_UPSTREAMS
+)
 
 gate = Path(os.environ["RALPH_TEST_GATE"])
 (gate / f"ready-{os.getpid()}").write_text("ready", encoding="utf-8")
@@ -77,6 +82,10 @@ _SKILL_FILES: dict[str, dict[str, bytes]] = {
     },
     "verification-before-completion": {
         "SKILL.md": b"# Verification before completion\n",
+    },
+    "antislop": {
+        "SKILL.md": b"# Antislop\n",
+        "VERSION": b"3.2.30\n",
     },
 }
 
@@ -201,8 +210,14 @@ def _point_at(server: _TestServer, monkeypatch: pytest.MonkeyPatch) -> None:
     archive = f"{server.base_url}/archive/{{tag}}.tar.gz"
     _assert_loopback_url(releases)
     _assert_loopback_url(archive)
-    monkeypatch.setattr(upstream, "RELEASES_API_URL", releases)
-    monkeypatch.setattr(upstream, "ARCHIVE_URL_TEMPLATE", archive)
+    monkeypatch.setattr(
+        upstream,
+        "UNIVERSAL_UPSTREAMS",
+        tuple(
+            replace(source, api_url=releases, archive_url_template=archive)
+            for source in upstream.UNIVERSAL_UPSTREAMS
+        ),
+    )
 
 
 def _release_body(tag: str) -> bytes:
@@ -227,8 +242,8 @@ def _client_for(
 ) -> tuple[HttpClient, list[str]]:
     calls: list[str] = []
     responses = {
-        upstream.RELEASES_API_URL: (200, _release_body(tag)),
-        upstream.ARCHIVE_URL_TEMPLATE.format(tag=tag): (
+        upstream.UNIVERSAL_UPSTREAMS[0].api_url: (200, _release_body(tag)),
+        upstream.UNIVERSAL_UPSTREAMS[0].archive_url_template.format(tag=tag): (
             200,
             _archive_bytes(tag, skills),
         ),

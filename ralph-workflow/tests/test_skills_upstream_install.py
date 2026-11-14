@@ -14,11 +14,17 @@ import pytest
 
 from ralph.mcp.artifacts.file_backend import PathFileBackend
 from ralph.skills import upstream
+from ralph.skills._agent_paths import (
+    agent_skill_presence_set,
+    is_skill_present_for_agent,
+    is_skill_present_in_alternate_root,
+)
 from ralph.skills._ownership import (
     managed_content_matches,
     read_managed_marker,
     verified_recorded_files,
 )
+from ralph.skills._upstream_install import extract_archive
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -173,6 +179,7 @@ _SKILL_FILES: dict[str, dict[str, bytes]] = {
         "SKILL.md": b"# Verification before completion\n",
         "evidence-checklist.md": b"# Evidence checklist\n",
     },
+    "antislop": {"SKILL.md": b"# Antislop\n\nFilter AI slop.\n", "VERSION": b"3.2.30\n"},
 }
 
 
@@ -180,28 +187,52 @@ def _release_body(tag: str) -> bytes:
     return json.dumps({"tag_name": tag}).encode("utf-8")
 
 
-def _archive_bytes(tag: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes:
-    root = f"superpowers-{tag.lstrip('v')}"
+def _archive_bytes(
+    tag: str, skills: Mapping[str, Mapping[str, bytes]], *, root: str | None = None
+) -> bytes:
+    top = root if root is not None else f"superpowers-{tag.lstrip('v')}"
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for skill, files in skills.items():
             for relative, data in files.items():
-                info = tarfile.TarInfo(f"{root}/skills/{skill}/{relative}")
+                info = tarfile.TarInfo(f"{top}/skills/{skill}/{relative}")
                 info.size = len(data)
                 info.mode = 0o755 if relative.endswith(".sh") else 0o644
                 archive.addfile(info, io.BytesIO(data))
     return buffer.getvalue()
 
 
+def _source_skills(
+    skills: Mapping[str, Mapping[str, bytes]], source: upstream.UpstreamSource
+) -> dict[str, Mapping[str, bytes]]:
+    return {name: files for name, files in skills.items() if name in source.skill_names}
+
+
+_ANTI_SLOP_TAG = "v3.2.30"
+
+
 def _client_for(
     tag: str, skills: Mapping[str, Mapping[str, bytes]]
 ) -> tuple[HttpClient, list[str]]:
     calls: list[str] = []
+    superpowers = upstream.UNIVERSAL_UPSTREAMS[0]
+    anti_slop = upstream.UNIVERSAL_UPSTREAMS[1]
     responses = {
         upstream.RELEASES_API_URL: (200, _release_body(tag)),
         upstream.ARCHIVE_URL_TEMPLATE.format(tag=tag): (
             200,
-            _archive_bytes(tag, skills),
+            _archive_bytes(
+                tag, _source_skills(skills, superpowers), root=f"superpowers-{tag.lstrip('v')}"
+            ),
+        ),
+        anti_slop.api_url: (200, _release_body(_ANTI_SLOP_TAG)),
+        anti_slop.archive_url_template.format(tag=_ANTI_SLOP_TAG): (
+            200,
+            _archive_bytes(
+                _ANTI_SLOP_TAG,
+                _source_skills(skills, anti_slop),
+                root=f"anti-slop-{_ANTI_SLOP_TAG.lstrip('v')}",
+            ),
         ),
     }
 
@@ -252,9 +283,7 @@ def _install_fixture_release(tag: str = "v-test-1") -> Path:
     return upstream.canonical_skills_root()
 
 
-def test_a_publication_a_killed_process_left_half_finished_is_restored(
-    sandbox: Path,
-) -> None:
+def test_a_publication_a_killed_process_left_half_finished_is_restored(sandbox: Path) -> None:
     root = _install_fixture_release()
     live = root / "test-driven-development"
     backup = live.with_name(f".{live.name}.ralph-backup")
@@ -272,9 +301,7 @@ def test_a_publication_a_killed_process_left_half_finished_is_restored(
     assert (live / "SKILL.md").read_bytes() == _SKILL_FILES["test-driven-development"]["SKILL.md"]
 
 
-def test_an_orphan_staging_directory_is_reclaimed_by_the_next_update(
-    sandbox: Path,
-) -> None:
+def test_an_orphan_staging_directory_is_reclaimed_by_the_next_update(sandbox: Path) -> None:
     root = _install_fixture_release()
     orphan = root / f"{upstream.STAGING_PREFIX}systematic-debugging-deadbeef"
     orphan.mkdir()
@@ -345,7 +372,7 @@ def test_a_missing_canonical_skill_is_reported_as_incomplete(sandbox: Path) -> N
     )
 
     assert outcome.status == "incomplete"
-    assert calls == [upstream.RELEASES_API_URL]
+    assert calls == [upstream.RELEASES_API_URL, upstream.UNIVERSAL_UPSTREAMS[1].api_url]
     assert any(
         "test-driven-development" in message and "missing" in message
         for message in outcome.messages
@@ -369,16 +396,14 @@ def test_a_user_edited_sibling_entry_is_preserved_by_the_repair(sandbox: Path) -
     assert any("preserved" in message for message in outcome.messages), outcome.messages
 
 
-def test_a_valid_release_installs_every_skill_and_mirrors_the_siblings(
-    sandbox: Path,
-) -> None:
+def test_a_valid_release_installs_every_skill_and_mirrors_the_siblings(sandbox: Path) -> None:
     client, calls = _client_for("v-test-1", _SKILL_FILES)
 
     outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
 
     assert outcome.status == "updated"
     assert outcome.installed == upstream.UNIVERSAL_SKILL_NAMES
-    assert len(calls) == 2
+    assert len(calls) == 4
     root = upstream.canonical_skills_root()
     for skill, files in _SKILL_FILES.items():
         for relative, data in files.items():
@@ -423,9 +448,7 @@ def test_upstream_mirror_regression_failed_early_root_does_not_skip_later_roots(
     )
 
 
-def test_a_payload_without_a_skill_file_is_refused_and_keeps_the_install(
-    sandbox: Path,
-) -> None:
+def test_a_payload_without_a_skill_file_is_refused_and_keeps_the_install(sandbox: Path) -> None:
     root = _install_fixture_release()
     refused = root / "systematic-debugging"
     before = _tree_snapshot(refused)
@@ -443,9 +466,7 @@ def test_a_payload_without_a_skill_file_is_refused_and_keeps_the_install(
     assert _tree_snapshot(refused) == before
 
 
-def test_a_reference_that_matches_no_installed_relative_path_is_refused(
-    sandbox: Path,
-) -> None:
+def test_a_reference_that_matches_no_installed_relative_path_is_refused(sandbox: Path) -> None:
     mismatched = {name: dict(files) for name, files in _SKILL_FILES.items()}
     mismatched["systematic-debugging"] = {
         "SKILL.md": b"# Systematic debugging\n\nSee `docs/example.ts`.\n",
@@ -462,9 +483,7 @@ def test_a_reference_that_matches_no_installed_relative_path_is_refused(
     assert not (root / "systematic-debugging" / "SKILL.md").exists()
 
 
-def test_a_reference_that_matches_the_exact_relative_path_is_accepted(
-    sandbox: Path,
-) -> None:
+def test_a_reference_that_matches_the_exact_relative_path_is_accepted(sandbox: Path) -> None:
     exact = {name: dict(files) for name, files in _SKILL_FILES.items()}
     exact["systematic-debugging"] = {
         "SKILL.md": b"# Systematic debugging\n\nSee `docs/example.ts`.\n",
@@ -645,9 +664,7 @@ def test_a_successful_install_leaves_no_staging_directory_behind(sandbox: Path) 
     assert _root_entries(root) == sorted(upstream.UNIVERSAL_SKILL_NAMES)
 
 
-def test_a_sibling_symlink_pointing_elsewhere_is_preserved_and_reported(
-    sandbox: Path,
-) -> None:
+def test_a_sibling_symlink_pointing_elsewhere_is_preserved_and_reported(sandbox: Path) -> None:
     sibling_root = upstream.sibling_skills_roots()[0]
     elsewhere = sibling_root / "elsewhere"
     elsewhere.mkdir(parents=True)
@@ -971,3 +988,31 @@ def test_a_directed_code_span_with_a_literal_space_that_is_carried_is_accepted(
     assert (root / "systematic-debugging" / "docs" / "missing file.md").read_bytes() == (
         b"# Companion\n"
     )
+
+
+def test_version_companion_is_admitted_and_other_extensionless_members_rejected() -> None:
+    valid_skills = {"antislop": {"SKILL.md": b"# Antislop\n", "VERSION": b"3.2.30\n"}}
+    payloads = extract_archive(_archive_bytes("v1", valid_skills), upstream._archive_limits())
+    assert payloads["antislop"].files["VERSION"][0] == b"3.2.30\n"
+
+    hostile_skills = {"antislop": {"SKILL.md": b"# Antislop\n", "LICENSE": b"MIT\n"}}
+    with pytest.raises(Exception, match="refused extension"):
+        extract_archive(_archive_bytes("v1", hostile_skills), upstream._archive_limits())
+
+
+def test_preexisting_copy_in_alternate_agent_root_suppresses_install(sandbox: Path) -> None:
+    alt_codex = sandbox / ".agents" / "skills" / "antislop"
+    alt_codex.mkdir(parents=True)
+    (alt_codex / "SKILL.md").write_text("# Pre-existing\n", encoding="utf-8")
+    assert "antislop" in agent_skill_presence_set("codex", home=sandbox)
+    assert is_skill_present_for_agent("antislop", "codex", home=sandbox) is True
+    assert is_skill_present_for_agent("antislop", "codex-agents", home=sandbox) is True
+    assert is_skill_present_in_alternate_root("antislop", sandbox / ".codex" / "skills") is True
+    assert is_skill_present_in_alternate_root("antislop", sandbox / ".claude" / "skills") is False
+
+    alt_agy = sandbox / ".gemini" / "config" / "skills" / "antislop"
+    alt_agy.mkdir(parents=True)
+    (alt_agy / "SKILL.md").write_text("# Pre-existing\n", encoding="utf-8")
+    assert is_skill_present_for_agent("antislop", "agy", home=sandbox) is True
+    agy_root = sandbox / ".gemini" / "antigravity-cli" / "skills"
+    assert is_skill_present_in_alternate_root("antislop", agy_root) is True

@@ -299,11 +299,13 @@ scope**, and follow the pipeline's artifact types automatically: adding an
 artifact type adds its skill, and each artifact type carries at most one
 skill.
 
-**Universal skills** are exactly three — `test-driven-development`,
-`systematic-debugging`, and `verification-before-completion` — fetched from
-the single upstream `obra/superpowers` at **release versions** (never a moving
-branch) and installed **user-global**. They are never committed into your
-project, so upstream changes never dirty your git tree.
+**Universal skills** are four — `test-driven-development`,
+`systematic-debugging`, and `verification-before-completion` (from
+`obra/superpowers`), and `antislop` (from `miqdadbadjuber/anti-slop`) — fetched
+from their respective upstreams at **release versions** (never a moving branch)
+and installed **user-global**. They are never committed into your project, so
+upstream changes never dirty your git tree. The two upstreams and why Ralph
+Workflow trusts them are stated in [Trust](#trust).
 
 ### User-global skill roots
 
@@ -312,14 +314,14 @@ directory each supported agent documents. The canonical install is
 `~/.claude/skills`; every other root holds a link to the canonical copy, or a
 copy of it on filesystems without symlinks.
 
-| Root id | User-global skill root | Source |
-|---|---|---|
-| `claude` (canonical) | `~/.claude/skills` | <https://code.claude.com/docs/en/skills> |
-| `codex` | `~/.codex/skills` | <https://github.com/openai/codex/blob/main/codex-rs/skills/src/assets/samples/skill-installer/SKILL.md> |
-| `opencode` | `~/.config/opencode/skills` | <https://opencode.ai/docs/skills/> |
-| `agy` | `~/.gemini/antigravity-cli/skills` | <https://antigravity.google/docs/skills/> |
-| `codex-agents` | `~/.agents/skills` | <https://learn.chatgpt.com/docs/build-skills> |
-| `agy-config` | `~/.gemini/config/skills` | <https://antigravity.google/docs/skills/> |
+| Agent | Root id | User-global skill root | How the agent reads it | Source |
+|---|---|---|---|---|
+| Claude Code | `claude` (canonical) | `~/.claude/skills` | reads it directly; this is where Ralph installs | <https://code.claude.com/docs/en/skills> |
+| OpenAI Codex | `codex` | `~/.codex/skills` | reads it directly | <https://github.com/openai/codex/blob/main/codex-rs/skills/src/assets/samples/skill-installer/SKILL.md> |
+| OpenAI Codex | `codex-agents` | `~/.agents/skills` | the shared agent-skills directory Codex also reads | <https://learn.chatgpt.com/docs/build-skills> |
+| OpenCode | `opencode` | `~/.config/opencode/skills` | reads it directly | <https://opencode.ai/docs/skills/> |
+| Antigravity | `agy` | `~/.gemini/antigravity-cli/skills` | reads it through the private `HOME` an `agy` invocation runs with | <https://antigravity.google/docs/skills/> |
+| Antigravity | `agy-config` | `~/.gemini/config/skills` | reads it through the private `HOME` an `agy` invocation runs with | <https://antigravity.google/docs/skills/> |
 
 The source column names the page each path was taken from; the paths were
 last verified on 2026-11-11. A root id names a skill directory, not an agent.
@@ -329,6 +331,13 @@ Ralph-managed Antigravity roots — `.gemini/antigravity-cli/skills` and
 home. The installed universal skills and their companion files therefore stay
 on the invocation's skill path while the operator's own configuration stays
 isolated — see [Agent Compatibility](agent-compatibility.md#agy).
+
+Pi is the one supported agent with no user-global skill location: pi.dev
+documents no skill-discovery directory per
+<https://pi.dev/docs/latest/usage>, so Ralph Workflow creates no user-global
+install target for it and writes no `.pi/skills/` directory. Pi sessions
+receive skills through the per-invocation `--skill <path>` flag, and the
+project scope still gets the shared `.agents/skills` root.
 
 ### `[skills]`
 
@@ -374,23 +383,43 @@ side fails open, so the updates stay enabled unless the key is explicitly
 
 ### Update safety
 
-The updater has exactly one hard-coded allowed origin and fetches release
-tags only:
+The updater has hard-coded allowed origins and fetches release tags only:
 
-| Purpose | URL |
-|---------|-----|
-| Release check | `https://api.github.com/repos/obra/superpowers/releases/latest` |
-| Archive | `https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/<tag>` |
+| Upstream | Purpose | URL |
+|---|---|---|
+| `obra/superpowers` | Release check | `https://api.github.com/repos/obra/superpowers/releases/latest` |
+| `obra/superpowers` | Archive | `https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/<tag>` |
+| `miqdadbadjuber/anti-slop` | Release check | `https://api.github.com/repos/miqdadbadjuber/anti-slop/releases/latest` |
+| `miqdadbadjuber/anti-slop` | Archive | `https://codeload.github.com/miqdadbadjuber/anti-slop/tar.gz/refs/tags/<tag>` |
 
-The bounds on what those two requests may deliver are listed in
+The bounds on what those requests may deliver are listed in
 [Trust](#trust).
 
 ### Trust
 
-The upstream's skill text enters the agent's context, so Ralph Workflow
-fetches from exactly one reputable, actively maintained, MIT-licensed
-upstream — `obra/superpowers` — and never from arbitrary sources. It reads
-that upstream inside fixed bounds:
+The upstream skill text enters the agent's context, so Ralph Workflow fetches
+from two reputable, actively maintained, MIT-licensed upstreams at release
+tags only, and never from arbitrary sources:
+
+- **`obra/superpowers`** (MIT license, release-tagged): the upstream for three
+  of the four universal skills (`test-driven-development`,
+  `systematic-debugging`, and `verification-before-completion`).
+- **`miqdadbadjuber/anti-slop`** (MIT license, release-tagged): the upstream for
+  the fourth, the core `antislop` skill. A second upstream is a deliberate,
+  named exception to the single-upstream rule, so it gets the same bounds as
+  the first — not looser ones — and the same once-daily release check and the
+  same kill switches.
+
+Both upstreams are trusted for one reason: their release-tagged skill text
+reaches your agent as prompt context. The anti-slop skill is installed by
+default, user-global, with its companion files, on the first online run. The
+anti-slop project also ships an npm installer; Ralph Workflow never runs
+`npx antislop-ai`, `npx skills`, or any other package-manager command, installs
+no agent plugin, and never edits an agent entry file such as `CLAUDE.md` or
+`AGENTS.md`. The skills arrive as files in the user-global skill roots, like
+the other three.
+
+Ralph Workflow reads both upstreams inside fixed bounds:
 
 - Release versions only. The updater resolves a release tag and fetches
   that tag's archive, never the moving `main` branch.

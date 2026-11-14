@@ -6,3 +6,8 @@ claim completion without reproducible proof. If verification cannot finish,
 keep diagnosing or repairing it. The rule on when a partial result is
 permitted lives in `shared/_no_exemption_for_failures.j2` — refer to it
 before reporting a partial.
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion before claiming work is complete or submitting results, so claims are backed by fresh command evidence.
+{% else %}
+Run fresh verification commands before claiming work is complete or submitting results, so claims are backed by fresh evidence.
+{% endif %}

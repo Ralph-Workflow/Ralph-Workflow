@@ -24,6 +24,11 @@ Retrieve PROMPT and PLAN, then inspect the current worktree with fresh source, c
 Fan out read-only verification across independent criterion groups, one subagent per group. Examples of groups are: **build** (compilation, packaging, install), **lint** (style and lint gates), **types** (static type checks), and **focused tests** (the per-step `Verify` commands, parametrized to a tight scope). These examples are not size prerequisites for delegation. Each subagent returns the four-field shape (`Expected`, `Observed`, `Evidence`, `Location`) defined in the shared subagent guidance above.
 
 Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any verdict is written.
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion when evaluating developer claims against evidence, so verdicts rely on fresh command execution rather than reported claims.
+{% else %}
+Verify claims independently with fresh command execution rather than trusting reported developer claims.
+{% endif %}
 
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion.
 
@@ -40,6 +45,11 @@ Choose the outcome from fresh evidence, not the developer's status:
 The validator only checks the frontmatter ``status`` enum. The body is the next agent's reading matter; write it in your own words.
 
 When the status is not ``completed`` (both ``request_changes`` and ``failed``):
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+- Use systematic-debugging when judging failing checks, so feedback identifies the underlying defect instead of surface symptoms.
+{% else %}
+- Trace failing checks to their root causes, so feedback identifies the underlying defect instead of surface symptoms.
+{% endif %}
 - Describe what fell short and how you know (commands run, what was observed, concrete evidence).
 - Provide an executor-ready continuation plan for the remaining requested outcomes,
   grounded in current repository evidence rather than the prior developer's account.

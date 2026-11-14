@@ -22,6 +22,11 @@ against fresh evidence. Do not grade formatting, headings, field presence, or
 unit syntax; do not grade document shape or IDs. Worker capacity, ownership
 conflicts, dependency waves, and execution fit are substantive and must be
 graded. The planner's account is not proof.
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion when checking the plan's claims against fresh evidence, so the verdict does not rely on the planner's account.
+{% else %}
+Check the plan's claims against fresh evidence rather than the planner's account.
+{% endif %}
 
 ## Review contract
 
@@ -40,7 +45,9 @@ Return criterion-level verdicts, not a holistic quality score. Review coverage, 
    subplans, unsupported assumptions, generic verification, or missing integration
    behavior. Check applicable compatibility, migration, rollback, failure, security,
    performance, and scope-boundary consequences without requiring irrelevant
-   boilerplate. Require explicit replanning triggers for discoveries that invalidate
+   boilerplate. Check that behavior-change, bug-fix, and final-verification steps
+   name the applicable installed executor skills. Require explicit replanning
+   triggers for discoveries that invalidate
    an assumption, contract, dependency, ownership boundary, or acceptance check.
 4. **parallel decomposition** — Independent work can run concurrently. This is
    not met when invented dependencies, list order, or a single chain without

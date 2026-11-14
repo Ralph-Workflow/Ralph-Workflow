@@ -23,6 +23,16 @@ changes. Treat a green gate only as absence of a counterexample.
 ## Criteria and verdicts
 
 {% include 'shared/_criterion_verification_procedure.j2' %}
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion when probing declared markers and gates, so criterion verdicts and execution evidence reflect verified command runs.
+{% else %}
+Probe declared markers and gates with fresh command runs before recording criterion verdicts or execution evidence.
+{% endif %}
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+Use systematic-debugging when investigating failing policy gates or validator discrepancies, so findings isolate the root cause.
+{% else %}
+Isolate the root cause of failing policy gates or validator discrepancies before drafting remediation feedback.
+{% endif %}
 
 For every declared fact, command, marker, and script, use one stable `PR-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Verdicts are exactly `met`, `not met`, or `not evaluable`; cite command output or named file location. `completed` requires every criterion to be `met` with evidence and no counterexample found. For each `deterministic` Enforcement entry in the guard inventory: add one `PR-###` verdict. Run the enforcer, and where feasible demonstrate it fails on a minimal violating input (the gate-script policy requires demonstrated pass and fail behavior). An enforcer that cannot fail is reported as `not met`. For `request_changes` or `failed`, mirror each attributable localized non-met verdict in `## What Came Up Short`; `not evaluable` requires `failed`.
 

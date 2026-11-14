@@ -4,16 +4,20 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Final
+from urllib.parse import unquote
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import (
     write_bytes_if_changed,
     write_text_if_changed,
 )
+from ralph.skills._agent_paths import is_skill_present_in_alternate_root
 from ralph.skills._ownership import (
     MANAGED_MARKER_NAME,
     UNIVERSAL_MANAGED_BY,
@@ -24,9 +28,38 @@ from ralph.skills._ownership import (
     verified_recorded_files,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
 STAGING_PREFIX = ".ralph-staging-"
 
 BACKUP_SUFFIX = ".ralph-backup"
+
+SKILL_FILE_NAME = "SKILL.md"
+
+ALLOWED_EXTENSIONLESS_COMPANIONS: frozenset[str] = frozenset({"VERSION"})
+EXTENSIONLESS_COMPANION_ALLOWLIST = ALLOWED_EXTENSIONLESS_COMPANIONS
+
+_REFERENCE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"`([^`\n]+)|\]\((<[^>\n]*>)\)|\]\(((?:[^()\n]|\([^()\n]*\))*)\)|\]\(([^)\n]+)\)|^"
+    r"[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(<[^>\n]*>|\S+)",
+    re.MULTILINE,
+)
+
+_HTML_ATTRIBUTE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"""\b(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'<>`\n]+))""",
+    re.IGNORECASE,
+)
+
+_FILE_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*\.[A-Za-z]+$")
+_URL_SCHEME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+_CUE_VERBS: Final[tuple[str, ...]] = ("see", "read", "open", "consult", "check", "refer to")
+_CUE_ADVERBS: Final[tuple[str, ...]] = ("please", "then", "also", "first", "now")
+_CLAUSE_BOUNDARIES: Final[str] = ".!?;,(—"
+_LIST_MARKERS: Final[frozenset[str]] = frozenset({"-", "*", "+"})
+_NUMBERED_MARKER_PATTERN: Final[re.Pattern[str]] = re.compile(r"(?:\d+[.)])")
+_EMPHASIS_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(r"(?:\*\*|__)\S")
+_LOCATION_CUE: Final[str] = "in this directory"
 
 
 class _ArchiveRejectedError(Exception):
@@ -38,6 +71,14 @@ class _StagingError(OSError):
 
 
 @dataclass(frozen=True)
+class _CompanionReference:
+    raw: str
+    resolved: str
+    escapes: bool
+    directory: bool
+
+
+@dataclass(frozen=True)
 class _ArchiveLimits:
     skill_names: tuple[str, ...]
     allowed_suffixes: frozenset[str]
@@ -45,6 +86,7 @@ class _ArchiveLimits:
     max_members: int
     max_extracted_bytes: int
     max_skill_files: int
+    allowed_extensionless_names: frozenset[str] = ALLOWED_EXTENSIONLESS_COMPANIONS
 
 
 @dataclass(frozen=True)
@@ -124,7 +166,12 @@ def _locate_member(member: tarfile.TarInfo, limits: _ArchiveLimits) -> tuple[str
     relative = "/".join(segments[index + 2 :])
     if _escapes_skill_dir(relative):
         raise _ArchiveRejectedError("the archive carries a member path that escapes its directory")
-    if Path(relative).suffix.lower() not in limits.allowed_suffixes:
+    path = Path(relative)
+    suffix = path.suffix.lower()
+    if (
+        suffix not in limits.allowed_suffixes
+        and path.name not in limits.allowed_extensionless_names
+    ):
         raise _ArchiveRejectedError(f"the archive carries {relative} with a refused extension")
     return (skill, relative)
 
@@ -166,6 +213,256 @@ def _read_member(
     if len(data) > limits.max_file_bytes:
         raise _ArchiveRejectedError("the archive carries a file above the size cap")
     return data
+
+
+def payload_refusal(
+    content: _SkillPayload, carried_suffix: Callable[[str], str | None]
+) -> str | None:
+    if SKILL_FILE_NAME not in content.files:
+        return f"the payload carries no {SKILL_FILE_NAME}"
+    return _missing_reference(content, carried_suffix)
+
+
+def _missing_reference(
+    content: _SkillPayload, carried_suffix: Callable[[str], str | None]
+) -> str | None:
+    for relative in sorted(content.files):
+        if Path(relative).suffix.lower() != ".md":
+            continue
+        data = content.files[relative][0]
+        text = data.decode("utf-8", errors="replace")
+        for reference in _iter_references(text, relative, carried_suffix):
+            if reference.escapes:
+                return f"it references {reference.raw}, which is outside the skill directory"
+            if _is_carried(content, reference):
+                continue
+            return _missing_reference_reason(reference, carried_suffix)
+    return None
+
+
+def _is_carried(content: _SkillPayload, reference: _CompanionReference) -> bool:
+    if reference.resolved in content.files:
+        return True
+    if not (reference.directory or _is_extensionless(reference.resolved)):
+        return False
+    prefix = f"{reference.resolved}/"
+    return any(carried.startswith(prefix) for carried in content.files)
+
+
+def _is_extensionless(path: str) -> bool:
+    return "." not in path.rsplit("/", 1)[-1]
+
+
+def _missing_reference_reason(
+    reference: _CompanionReference, carried_suffix: Callable[[str], str | None]
+) -> str:
+    target = reference.resolved or reference.raw
+    if reference.directory:
+        return f"it references {target}/, which the archive does not carry"
+    if _is_extensionless(target) or carried_suffix(target) is not None:
+        return f"it references {target}, which the archive does not carry"
+    return f"it references {target}, whose extension the installer does not carry"
+
+
+def _resolve_companion(relative: str, reference: str) -> tuple[str, bool]:
+    base = relative.rsplit("/", 1)[0] if "/" in relative else ""
+    parts = [part for part in base.split("/") if part]
+    for segment in reference.split("/"):
+        if not segment or segment == ".":
+            continue
+        if segment == "..":
+            if not parts:
+                return "", True
+            parts.pop()
+            continue
+        parts.append(segment)
+    return "/".join(parts), False
+
+
+def _reference_offset(item: tuple[int, _CompanionReference]) -> int:
+    return item[0]
+
+
+def _iter_references(
+    text: str, relative: str, carried_suffix: Callable[[str], str | None]
+) -> Iterator[_CompanionReference]:
+    found: list[tuple[int, _CompanionReference]] = []
+    for match in _REFERENCE_PATTERN.finditer(text):
+        raw_code = match.group(1)
+        if isinstance(raw_code, str):
+            reference = _code_reference(text, match, raw_code, relative, carried_suffix)
+        else:
+            dest = match.group(2) or match.group(3) or match.group(4) or match.group(5)
+            reference = (
+                _destination_reference(dest, relative, carried_suffix) if isinstance(dest, str) else None
+            )
+        if reference is not None:
+            found.append((match.start(), reference))
+    for match in _HTML_ATTRIBUTE_PATTERN.finditer(text):
+        raw = match.group(1) or match.group(2) or match.group(3)
+        if isinstance(raw, str):
+            reference = _destination_reference(raw, relative, carried_suffix)
+            if reference is not None:
+                found.append((match.start(), reference))
+    for _position, reference in sorted(found, key=_reference_offset):
+        yield reference
+
+
+def _code_reference(
+    text: str,
+    match: re.Match[str],
+    raw: str,
+    relative: str,
+    carried_suffix: Callable[[str], str | None],
+) -> _CompanionReference | None:
+    directed = _is_directed_code_span(text, match)
+    candidate = _code_candidate(raw)
+    if candidate is None:
+        if not directed:
+            return None
+        candidate = unquote(raw.strip())
+        if not candidate:
+            return None
+    if _is_external_reference(candidate):
+        return None
+    directory = candidate.endswith("/")
+    file_shaped = _is_file_reference(candidate, carried_suffix)
+    resolved, escapes = _resolve_companion(relative, candidate)
+    escaping = candidate.startswith("../") and escapes and directory
+    if not (directed or file_shaped or escaping):
+        return None
+    return _CompanionReference(
+        raw=candidate, resolved=resolved, escapes=escapes, directory=directory
+    )
+
+
+def _destination_reference(
+    raw: str, relative: str, carried_suffix: Callable[[str], str | None]
+) -> _CompanionReference | None:
+    candidate = _destination_candidate(raw)
+    if candidate is None:
+        return None
+    if _is_external_reference(candidate):
+        return None
+    directory = candidate.endswith("/")
+    resolved, escapes = _resolve_companion(relative, candidate)
+    return _CompanionReference(
+        raw=candidate, resolved=resolved, escapes=escapes, directory=directory
+    )
+
+
+def _is_directed_code_span(text: str, match: re.Match[str]) -> bool:
+    span_end = _closed_code_span_end(text, match)
+    if span_end is None:
+        return False
+    return _has_location_cue(text, span_end) or _has_imperative_cue(
+        _line_prefix(text, match.start())
+    )
+
+
+def _closed_code_span_end(text: str, match: re.Match[str]) -> int | None:
+    span_end = match.end()
+    if span_end >= len(text) or text[span_end] != "`":
+        return None
+    span_end += 1
+    while span_end < len(text) and text[span_end] == "`":
+        span_end += 1
+    return span_end
+
+
+def _has_location_cue(text: str, end: int) -> bool:
+    line_end = text.find("\n", end)
+    line = text[end:] if line_end == -1 else text[end:line_end]
+    return line.strip().lower().startswith(_LOCATION_CUE)
+
+
+def _line_prefix(text: str, start: int) -> str:
+    return text[text.rfind("\n", 0, start) + 1 : start]
+
+
+def _has_imperative_cue(prefix: str) -> bool:
+    text = prefix.rstrip()
+    lowered = text.lower()
+    for verb in _CUE_VERBS:
+        for cue in (verb, f"{verb} the"):
+            if not lowered.endswith(cue):
+                continue
+            begin = len(text) - len(cue)
+            if begin > 0 and (text[begin - 1].isalnum() or text[begin - 1] in "-_"):
+                continue
+            if _is_clause_initial(text[:begin].rstrip()):
+                return True
+    return False
+
+
+def _is_clause_initial(before: str) -> bool:
+    return not before or not _strip_leading_adverb(_clause_tail(before).strip())
+
+
+def _clause_tail(before: str) -> str:
+    boundary = max((before.rfind(c) for c in _CLAUSE_BOUNDARIES), default=-1)
+    if boundary != -1:
+        return _EMPHASIS_RUN_PATTERN.sub("", before[boundary + 1 :])
+    if _EMPHASIS_RUN_PATTERN.search(before):
+        return ""
+    tokens = before.split()
+    return "" if tokens and _is_list_marker(tokens[-1]) else before
+
+
+def _is_list_marker(token: str) -> bool:
+    if token in _LIST_MARKERS:
+        return True
+    return _NUMBERED_MARKER_PATTERN.fullmatch(token) is not None
+
+
+def _strip_leading_adverb(segment: str) -> str:
+    lowered = segment.lower()
+    for adverb in _CUE_ADVERBS:
+        if lowered == adverb:
+            return ""
+        if lowered.startswith(f"{adverb} "):
+            return segment[len(adverb) + 1 :]
+    return segment
+
+
+def _code_candidate(raw: str) -> str | None:
+    candidate = raw.strip()
+    return unquote(candidate) if candidate and not any(c.isspace() for c in candidate) else None
+
+
+def _destination_candidate(raw: str) -> str | None:
+    dest = _destination_text(raw)
+    return unquote(dest).partition("#")[0].strip() or None if dest is not None else None
+
+
+def _destination_text(raw: str) -> str | None:
+    text = raw.strip()
+    if not text:
+        return None
+    if text.startswith("<"):
+        end = text.find(">")
+        if end == -1:
+            return None
+        return text[1:end]
+    return text.split(None, 1)[0]
+
+
+def _is_file_reference(candidate: str, carried_suffix: Callable[[str], str | None]) -> bool:
+    segment = candidate.rsplit("/", 1)[-1]
+    if segment in ALLOWED_EXTENSIONLESS_COMPANIONS:
+        return True
+    _, dot, extension = segment.rpartition(".")
+    if not dot or not _FILE_NAME_PATTERN.match(segment):
+        return False
+    return (
+        extension.islower() or extension.isupper() or carried_suffix(segment) is not None
+    )
+
+
+def _is_external_reference(candidate: str) -> bool:
+    if candidate.startswith(("/", "~", "#")):
+        return True
+    return _URL_SCHEME_PATTERN.match(candidate) is not None
 
 
 def stage_skill(
@@ -327,6 +624,12 @@ def mirror_skill_into(canonical_root: Path, skill_name: str, sibling_root: Path)
         return messages
     sibling_dir = sibling_root / skill_name
     if sibling_dir.is_symlink() and _resolved(sibling_dir) == canonical_target:
+        return messages
+    if is_skill_present_in_alternate_root(skill_name, sibling_root):
+        messages.append(
+            f"{skill_name}: the sibling entry in {sibling_root} is preserved; "
+            "the agent already has its own copy in another root of the same family"
+        )
         return messages
     if sibling_dir.exists() or sibling_dir.is_symlink():
         if not _may_replace_sibling(sibling_dir):

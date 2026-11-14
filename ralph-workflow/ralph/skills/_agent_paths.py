@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
+from ralph.skills._ownership import UNIVERSAL_MANAGED_BY, read_managed_marker
 from ralph.skills._project_paths import ProjectAgentSkillRoot
 
 
@@ -85,6 +87,90 @@ def sibling_agent_skill_roots() -> tuple[AgentSkillRoot, ...]:
     return tuple(entry for entry in AGENT_SKILL_ROOTS if not entry.is_canonical)
 
 
+AGENT_FAMILIES: Final[dict[str, str]] = {
+    "claude": "claude",
+    "codex": "codex",
+    "codex-agents": "codex",
+    "opencode": "opencode",
+    "agy": "agy",
+    "agy-config": "agy",
+}
+
+
+def agent_family_roots(agent: str) -> tuple[AgentSkillRoot, ...]:
+    family = AGENT_FAMILIES.get(agent, agent)
+    return tuple(
+        entry
+        for entry in AGENT_SKILL_ROOTS
+        if AGENT_FAMILIES.get(entry.agent, entry.agent) == family
+    )
+
+
+def alternate_agent_roots(agent: str) -> tuple[AgentSkillRoot, ...]:
+    return tuple(entry for entry in agent_family_roots(agent) if entry.agent != agent)
+
+
+def agent_skill_entries(agent: str, *, home: Path | None = None) -> tuple[Path, ...]:
+    base = home if home is not None else Path.home()
+    entries: list[Path] = []
+    for entry in agent_family_roots(agent):
+        root = base.joinpath(*entry.path_segments)
+        if not root.is_dir():
+            continue
+        try:
+            for child in sorted(root.iterdir()):
+                if (child.is_dir() or child.is_symlink()) and not child.name.startswith("."):
+                    entries.append(child)
+        except OSError:
+            continue
+    return tuple(entries)
+
+
+def agent_skill_presence_set(agent: str, *, home: Path | None = None) -> frozenset[str]:
+    return frozenset(
+        entry.name
+        for entry in agent_skill_entries(agent, home=home)
+        if not is_ralph_managed_skill(entry)
+    )
+
+
+def is_ralph_managed_skill(skill_dir: Path) -> bool:
+    marker = read_managed_marker(skill_dir)
+    return marker is not None and marker.get("managed_by") == UNIVERSAL_MANAGED_BY
+
+
+def is_skill_present_for_agent(skill_name: str, agent: str, *, home: Path | None = None) -> bool:
+    return skill_name in agent_skill_presence_set(agent, home=home)
+
+
+def is_skill_present_in_alternate_root(skill_name: str, target_root: Path) -> bool:
+    parts = target_root.parts
+    matched_entry: AgentSkillRoot | None = None
+    for entry in AGENT_SKILL_ROOTS:
+        n = len(entry.path_segments)
+        if len(parts) >= n and parts[-n:] == entry.path_segments:
+            matched_entry = entry
+            break
+    if matched_entry is None:
+        resolved_target = target_root.resolve()
+        for entry in AGENT_SKILL_ROOTS:
+            if entry.resolve().resolve() == resolved_target:
+                matched_entry = entry
+                break
+    if matched_entry is None:
+        return False
+    n = len(matched_entry.path_segments)
+    base = target_root.parents[n - 1] if len(parts) >= n else Path.home()
+    for alt in alternate_agent_roots(matched_entry.agent):
+        alt_root = base.joinpath(*alt.path_segments)
+        candidate = alt_root / skill_name
+        if not (candidate.exists() or candidate.is_symlink()):
+            continue
+        if not is_ralph_managed_skill(candidate):
+            return True
+    return False
+
+
 _PROJECT_CANONICAL_DIR_SEGMENTS: tuple[str, ...] = (".opencode", "skills")
 
 _SKILL_ROOT_PREFIXES: frozenset[str] = frozenset(
@@ -143,12 +229,20 @@ def project_sibling_skill_roots(
 
 
 __all__ = [
+    "AGENT_FAMILIES",
     "AGENT_SKILL_ROOTS",
     "_SKILL_ROOT_PREFIXES",
     "AgentSkillRoot",
     "ProjectAgentSkillRoot",
+    "agent_family_roots",
+    "agent_skill_entries",
+    "agent_skill_presence_set",
     "agent_skill_roots",
+    "alternate_agent_roots",
     "canonical_agent_skill_root",
+    "is_ralph_managed_skill",
+    "is_skill_present_for_agent",
+    "is_skill_present_in_alternate_root",
     "project_sibling_skill_roots",
     "project_skill_root",
     "sibling_agent_skill_roots",

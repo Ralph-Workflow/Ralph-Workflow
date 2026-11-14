@@ -168,10 +168,10 @@ user-global `ralph-workflow-pipeline.toml`, `ralph-workflow-mcp.toml`, and
 Ralph Workflow installs its skills through the built-in update mechanism:
 artifact skills install into the project scope and are bound to the
 pipeline's artifact types: each artifact type carries at most one skill.
-Three universal skills
+Four universal skills
 (`test-driven-development`, `systematic-debugging`,
-`verification-before-completion`) install user-global and can be turned off.
-See the
+`verification-before-completion`, `antislop`) install user-global and can be
+turned off. See the
 [configuration reference](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#skills)
 for update cadence and the trust statement.
 

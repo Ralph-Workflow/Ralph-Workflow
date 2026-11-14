@@ -18,6 +18,7 @@ from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.template_variables import timebox_template_variables
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+from ralph.skills._skill_resolver import skill_template_variables
 
 DEFAULT_DOCS_MCP_PORT = "localhost:6280"
 
@@ -43,6 +44,8 @@ class PlanningPromptInputs:
     has_docs_mcp: bool = False
     development_budget_minutes: str = "unknown"
     development_max_parallel_workers: str = "unknown"
+    installed_skills: tuple[str, ...] = ()
+    skill_variables: Mapping[str, str] | None = None
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -62,7 +65,9 @@ def prompt_developer_iteration_xml_with_context(
         template_name == "developer_iteration_continuation.jinja"
     )
 
+    skill_vars = dict(inputs.skill_variables or skill_template_variables(inputs.installed_skills))
     base_vars: dict[str, str] = {
+        **skill_vars,
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "PRIOR_RESULT_STATUS": inputs.prior_result_status,
@@ -145,7 +150,9 @@ def prompt_planning_xml_with_context(
     )
     payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
 
+    skill_vars = dict(inputs.skill_variables or skill_template_variables(inputs.installed_skills))
     base_vars: dict[str, str] = {
+        **skill_vars,
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
         "ANALYSIS_FEEDBACK_STATUS": inputs.analysis_feedback_status,
@@ -193,6 +200,7 @@ def prompt_planning_xml_with_context(
             else "planning_fallback.jinja"
         )
         fallback_vars: dict[str, str] = {
+            **skill_vars,
             **capability_vars,
             "PRODUCT_CRITERIA": inputs.prompt_content or "No requirements provided",
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",

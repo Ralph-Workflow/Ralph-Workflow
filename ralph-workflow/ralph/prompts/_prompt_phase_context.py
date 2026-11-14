@@ -18,3 +18,4 @@ class PromptPhaseContext:
     pipeline_policy: PipelinePolicy
     session_caps: SessionCapabilities
     workspace_root: Path
+    agent: str | None = None

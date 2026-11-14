@@ -14,6 +14,7 @@ Units` when that helps the executor. A unit can name `Directories:` and/or
 exact `Paths:`; use dependencies only for real prerequisites, put shared
 contracts before consumers, and include integration after fan-in. A wholly
 linear plan states its real coupling.
+Name executor skills (`test-driven-development`, `systematic-debugging`, `verification-before-completion`) for appropriate plan steps; the executor tolerates uninstalled skills.
 
 ## Submit
 

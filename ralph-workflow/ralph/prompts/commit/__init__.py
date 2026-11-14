@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL, WRITE_FILE_TOOL
 from ralph.phases.required_artifacts import read_validation_retry_hint
+from ralph.skills._skill_resolver import skill_template_variables
 
 from ..commit_evidence import CommitEvidenceBundle
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory
@@ -42,6 +43,7 @@ def prompt_commit_message(
     workspace_root: Path | None = None,
     optional_context_paths: Sequence[str] = (),
     allow_empty_diff: bool = False,
+    skill_variables: Mapping[str, str] | None = None,
 ) -> str:
 
     diff_content, evidence = _diff_and_evidence(diff)
@@ -54,7 +56,9 @@ def prompt_commit_message(
     declare_complete_tool_name = DECLARE_COMPLETE_TOOL.with_prefix(
         tool_name_prefix=tool_name_prefix
     )
+    skills = dict(skill_variables or skill_template_variables())
     variables = {
+        **skills,
         "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
             submit_artifact_tool_names
         ),

@@ -234,6 +234,7 @@ def _materialize_prepared_prompt(
         work_unit = state.work_units[0]
     phase_drain = effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase
     agent = None
+    agent_name: str | None = None
     if registry is not None and config is not None:
         agent_names = agents_for_phase(
             config,
@@ -242,7 +243,8 @@ def _materialize_prepared_prompt(
             pipeline_policy=pipeline_policy,
         )
         if agent_names:
-            agent = registry.get(agent_names[0])
+            agent_name = agent_names[0]
+            agent = registry.get(agent_name)
     media_entries = (
         collect_media_entries_for_phase(workspace, effect.phase, drain=phase_drain) or None
     )
@@ -274,6 +276,7 @@ def _materialize_prepared_prompt(
             )
         ),
         multimodal_entries=media_entries,
+        agent=agent_name,
     )
 
 
@@ -428,6 +431,7 @@ def _materialize_agent_prompt_if_needed(
             )
         ),
         multimodal_entries=media_entries,
+        agent=effect.agent_name,
     )
 
 

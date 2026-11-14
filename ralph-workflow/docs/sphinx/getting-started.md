@@ -138,17 +138,17 @@ leaves a short summary of what changed, which checks ran, and what to
 review. Durable run records also land under `.agent/` — see
 [Artifacts reference](artifacts.md) if you need the full layout.
 
-At the start of the run, Ralph Workflow also checks whether the three
-universal skills — `test-driven-development`, `systematic-debugging`, and
-`verification-before-completion` — have a newer release upstream. They are
-fetched from the single upstream `obra/superpowers` at release versions and
-installed user-global, never inside your project. The check runs at most once
-per day, in the background, and fails soft: a machine that is never online
-simply has no universal skills while the artifact skills still work. Set
-`RALPH_DISABLE_SKILL_UPDATES=1` — or `universal_updates_enabled = false`
-under `[skills]` in `~/.config/ralph-workflow.toml` — to turn every
-skill-update network request off; see
-[Configuration Reference → Skills](configuration.md#skills).
+At the start of the run, Ralph Workflow also checks whether the four
+universal skills — `test-driven-development`, `systematic-debugging`,
+`verification-before-completion`, and `antislop` — have a newer release upstream.
+They are fetched from their release versions (`obra/superpowers` and
+`miqdadbadjuber/anti-slop`) and installed user-global, never inside your project.
+The check runs at most once per day, in the background, and fails soft: a machine
+that is never online simply has no universal skills while the artifact skills
+still work. Set `RALPH_DISABLE_SKILL_UPDATES=1` — or
+`universal_updates_enabled = false` under `[skills]` in
+`~/.config/ralph-workflow.toml` — to turn every skill-update network request off;
+see [Configuration Reference → Skills](configuration.md#skills).
 
 For deeper operator configuration, open
 [Configuration Reference](configuration.md). For per-agent CLI, transport,

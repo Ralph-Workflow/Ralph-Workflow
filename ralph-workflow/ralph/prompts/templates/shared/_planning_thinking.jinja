@@ -18,6 +18,14 @@ Plan in this order:
 4. **Change** — map every requested outcome to concrete edits, an acceptance
    observation, and runnable proof. This requirement-to-work-to-proof traceability
    must expose omitted requirements and generic verification such as "run tests."
+   Mention task-relevant available skills when they help the executor; do not
+   invent unavailable skills.
+{% if SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT|default('') == "true" %}
+   Name test-driven-development for behavior-change steps, so the executor proves the behavior before implementation.
+{% endif %}
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+   Name systematic-debugging for bug-fix steps, so the executor diagnoses the cause before changing code.
+{% endif %}
 5. **Risk** — cover compatibility, migration, rollback, failure handling, security,
    and performance only when the request or repository evidence implicates them.
    State scope boundaries and the relevant edge cases; do not add ceremonial
@@ -29,6 +37,9 @@ Plan in this order:
    State each replanning trigger: new evidence that invalidates an assumption,
    interface, dependency, ownership boundary, or acceptance check updates the
    affected units and schedule without dropping the original outcome.
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+   Name verification-before-completion for final verification steps, so the executor bases its completion claim on fresh evidence.
+{% endif %}
 
 The recommended convention is `## Work Units`: each unit is a self-contained
 executor handoff naming its outcome, relevant current behavior, owned

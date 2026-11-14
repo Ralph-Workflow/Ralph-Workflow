@@ -1,10 +1,14 @@
-{% if SKILLS_INLINE_CONTENT %}
+{% if SKILLS_INLINE_CONTENT|default('') %}
 ## AVAILABLE SKILLS
+{% else %}
+## SHIPPED SKILLS
+{% endif %}
+
+Shipped skills provide implementation technique; project policy and workflow instructions remain authoritative on any conflict.
+{% if SKILLS_INLINE_CONTENT|default('') %}
 
 {{ SKILLS_INLINE_CONTENT }}
 {% else %}
-## SHIPPED SKILLS
-
 Use only task-relevant skills the runtime lists as available, through its
 documented mechanism. If none are available, continue from this prompt and the
 canonical artifact-format docs; do not search unrelated skill directories or
@@ -13,9 +17,4 @@ invent skills.
 
 Invoke each plan-named skill that is available; continue without unavailable skills.
 {% endif %}
-{% endif %}
-{% if shipped_skills_mode|default('') == 'planning' %}
-
-Mention task-relevant available skills when they help the executor; do not
-invent unavailable skills.
 {% endif %}

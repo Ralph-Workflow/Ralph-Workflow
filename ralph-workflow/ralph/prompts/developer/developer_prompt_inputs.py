@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -28,3 +32,5 @@ class DeveloperPromptInputs:
     last_review_rejection_reason: str = ""
     rollback_ref: str = ""
     last_proposal_ref: str = ""
+    installed_skills: tuple[str, ...] = ()
+    skill_variables: Mapping[str, str] | None = None

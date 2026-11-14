@@ -26,6 +26,11 @@ from ralph.prompts.template_variables import (
 from ralph.prompts.template_variables import (
     capability_template_variables as _capability_template_variables,
 )
+from ralph.skills._skill_resolver import (
+    FROZEN_UNIVERSAL_SKILLS,
+    skill_template_variables,
+    skill_variable_name,
+)
 
 
 @dataclass(frozen=True)
@@ -65,6 +70,7 @@ def bool_to_template_value(value: bool) -> str:
 __all__ = [
     "ARTIFACT_TOOLS",
     "ENV_READ_TOOLS",
+    "FROZEN_UNIVERSAL_SKILLS",
     "GIT_DIFF_READ_TOOLS",
     "GIT_STATUS_READ_TOOLS",
     "PLANNING_DRAFT_TOOLS",
@@ -81,5 +87,7 @@ __all__ = [
     "capability_template_variables",
     "format_capability_summary",
     "format_mcp_tools_list",
+    "skill_template_variables",
+    "skill_variable_name",
     "visible_mcp_tool_names",
 ]
