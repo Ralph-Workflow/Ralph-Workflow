@@ -9,6 +9,7 @@ from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import PINNED_CONFIG_ARGS, scrub_git_env
+from ralph.git.merge import UNMERGED_PATH_QUERY_FAILED, unmerged_paths
 from ralph.git.operations import find_repo_root
 from ralph.git.rebase._conflict_remaining_error import ConflictRemainingError
 from ralph.git.rebase._empty_replay_error import EmptyReplayError
@@ -86,16 +87,10 @@ def _repo_root_path(repo: Repo) -> Path:
 
 def _has_index_conflicts(repo: Repo) -> bool:
     repo_root = _repo_root_path(repo)
-    try:
-        result = run_git(
-            ["diff", "--name-only", "--diff-filter=U"],
-            cwd=repo_root,
-            label="git-rebase:diff",
-            options=GitRunOptions(env=_git_env(), check=True),
-        )
-        return bool(result.stdout.strip())
-    except subprocess.CalledProcessError as exc:
-        raise RebaseContinuationError("Unable to inspect git index") from exc
+    paths = unmerged_paths(repo_root)
+    if UNMERGED_PATH_QUERY_FAILED in paths:
+        raise RebaseContinuationError("Unable to inspect git index")
+    return bool(paths)
 
 
 def rebase_in_progress_at(repo_root: Path | str) -> bool:

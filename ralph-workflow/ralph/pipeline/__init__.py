@@ -25,15 +25,32 @@ if TYPE_CHECKING:
         retained_round_is_new,
     )
     from ralph.pipeline.events import Event, PipelineEvent
+    from ralph.pipeline.integration_strategy import (
+        IntegrationPolicy,
+        IntegrationRelation,
+        IntegrationStrategy,
+        IntegrationWorkShape,
+        ObservedIntegration,
+        StrategyDecision,
+        StrategyTransition,
+        StrategyTransitionGuard,
+    )
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.reducer import reduce
     from ralph.pipeline.state import PipelineState
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
 __all__ = [
+    "STRATEGY_ORDER",
+    "STRATEGY_TRANSITIONS",
     "Event",
     "IntegrationAction",
+    "IntegrationPolicy",
+    "IntegrationRelation",
     "IntegrationStatus",
+    "IntegrationStrategy",
+    "IntegrationWorkShape",
+    "ObservedIntegration",
     "PipelineEvent",
     "PipelinePhase",
     "PipelineState",
@@ -41,9 +58,13 @@ __all__ = [
     "RebaseOutcomeKind",
     "RebaseResolutionResult",
     "StopResolutionTrigger",
+    "StrategyDecision",
+    "StrategyTransition",
+    "StrategyTransitionGuard",
     "apply_session_capture",
     "attempt_stop_resolution",
     "build_integration_status",
+    "choose_integration_strategy",
     "decide_seam_action",
     "escalate_record_fact_outcome",
     "integration_action",
@@ -57,7 +78,12 @@ __all__ = [
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "Event": ("ralph.pipeline.events", "Event"),
     "IntegrationAction": ("ralph.pipeline._integration_action", "IntegrationAction"),
+    "IntegrationPolicy": ("ralph.pipeline.integration_strategy", "IntegrationPolicy"),
+    "IntegrationRelation": ("ralph.pipeline.integration_strategy", "IntegrationRelation"),
     "IntegrationStatus": ("ralph.pipeline._integration_status", "IntegrationStatus"),
+    "IntegrationStrategy": ("ralph.pipeline.integration_strategy", "IntegrationStrategy"),
+    "IntegrationWorkShape": ("ralph.pipeline.integration_strategy", "IntegrationWorkShape"),
+    "ObservedIntegration": ("ralph.pipeline.integration_strategy", "ObservedIntegration"),
     "PipelineEvent": ("ralph.pipeline.events", "PipelineEvent"),
     "PipelinePhase": ("ralph.config.enums", "PipelinePhase"),
     "PipelineState": ("ralph.pipeline.state", "PipelineState"),
@@ -70,9 +96,17 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "ralph.pipeline.rebase_resolution_result",
         "RebaseResolutionResult",
     ),
+    "STRATEGY_ORDER": ("ralph.pipeline.integration_strategy", "STRATEGY_ORDER"),
+    "STRATEGY_TRANSITIONS": ("ralph.pipeline.integration_strategy", "STRATEGY_TRANSITIONS"),
     "StopResolutionTrigger": (
         "ralph.pipeline.stop_resolution_trigger",
         "StopResolutionTrigger",
+    ),
+    "StrategyDecision": ("ralph.pipeline.integration_strategy", "StrategyDecision"),
+    "StrategyTransition": ("ralph.pipeline.integration_strategy", "StrategyTransition"),
+    "StrategyTransitionGuard": (
+        "ralph.pipeline.integration_strategy",
+        "StrategyTransitionGuard",
     ),
     "apply_session_capture": ("ralph.pipeline._runner_session", "apply_session_capture"),
     "attempt_stop_resolution": (
@@ -82,6 +116,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "build_integration_status": (
         "ralph.pipeline._integration_status",
         "build_integration_status",
+    ),
+    "choose_integration_strategy": (
+        "ralph.pipeline.integration_strategy",
+        "choose_integration_strategy",
     ),
     "decide_seam_action": ("ralph.pipeline._integration_owner_seam", "decide_seam_action"),
     "escalate_record_fact_outcome": (

@@ -160,8 +160,7 @@ def _bump_attempt(
 
 
 def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
-    from ralph.git.merge import MERGE_STATE_NONE, MERGE_STATE_UNKNOWN, merge_state, unmerged_paths
-    from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+    from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
     from ralph.pipeline._retained_resolution_scope import original_conflict_paths
 
     if record.diagnostic_evidence:
@@ -176,16 +175,18 @@ def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
             from ralph.pipeline._pending_merge_commit import pending_merge_identity_matches
 
             return not pending_merge_identity_matches(operation_root, record)
-        unmerged = unmerged_paths(operation_root)
-        unreadable = "<unmerged-path-query-failed>" in unmerged
+        snapshot = observe_operation_snapshot(operation_root, target=record.target)
+        unmerged = snapshot.unmerged_paths
+        unreadable = not snapshot.unmerged_query_ok
         missing_scope = (record.resolving_merge or record.resolving_rebase) and not (
             record.resolving_paths or unmerged or original_conflict_paths(operation_root)
         )
         if unreadable or missing_scope:
             return True
-        merge = merge_state(operation_root)
-        return merge == MERGE_STATE_UNKNOWN or (
-            merge == MERGE_STATE_NONE and not rebase_in_progress_at(operation_root)
+        return snapshot.operation_state in (
+            OperationState.UNKNOWN,
+            OperationState.NONE,
+            OperationState.DETACHED,
         )
     except Exception:
         return True
@@ -395,12 +396,35 @@ def _pre_pass_failure(
     fs: FileQuarantine | None = None,
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
+    terminal_for_now: bool = False,
 ) -> bool:
     if ladder_terminal_state(root, record, ledger=ledger, git=git) is not None:
         logger.info(
             "Integration diagnostic: the cleanup ladder already ended in a state that "
             "needs an operator; the retained integration starts no new diagnostic round"
         )
+        return False
+    if terminal_for_now:
+        from ralph.pipeline.auto_integrate_recovery_terminal import (
+            RESUME_COMMAND,
+            ResolutionTerminalMarker,
+            resolution_terminal_marker,
+        )
+
+        marker = resolution_terminal_marker(record)
+        if marker is not None and record.repair_last_error == reason:
+            return False
+        target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
+        terminal_marker = ResolutionTerminalMarker(
+            record.resolution_gate_key,
+            "LandedProofFailed",
+            RESUME_COMMAND,
+        )
+        target_record = target_record.with_resolution_terminal_marker(
+            terminal_marker.as_record_value()
+        )
+        write_record(root, target_record, backend=backend)
+        logger.info("Integration ladder terminal state: LandedProofFailed ({})", reason)
         return False
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
     write_record(root, target_record, backend=backend)
@@ -564,6 +588,7 @@ def _complete_or_intervene(
             fs=fs,
             env=env,
             clock=clock,
+            terminal_for_now=True,
         )
     try:
         apply_record_transition(

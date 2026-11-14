@@ -108,6 +108,7 @@ def resolve_conflicted_rebase(
         from ralph.pipeline._stop_resolution_entry import (
             DeferredStopResolution,
             attempt_stop_resolution,
+            production_rebase_runner,
         )
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
@@ -122,7 +123,7 @@ def resolve_conflicted_rebase(
                 resolver=rebase_stop_resolver,
                 record=resolution_gate_record(root, target),
                 conflict_config=conflict_resolution_config,
-                agent_runner=agent_runner,
+                agent_runner=agent_runner or production_rebase_runner(),
             ),
         )
         res: RebaseResolutionResult

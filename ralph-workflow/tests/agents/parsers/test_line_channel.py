@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ralph.agents.invoke._quota_detection import provider_quota_line_evidence
+from ralph.agents.invoke import is_provider_quota_output_line
 from ralph.agents.parsers.content_channel import ContentChannel, channel_of
 from ralph.agents.parsers.line_channel import line_channel
 
@@ -44,7 +44,7 @@ def test_parser_tagged_tool_result_line_maps_to_tool_result_channel(line: str) -
 def test_parser_tagged_tool_result_line_yields_no_quota_evidence(line: str) -> None:
     channel = line_channel(_CODEX_PARSER_KEY, line)
     assert channel is not ContentChannel.PROVIDER
-    assert provider_quota_line_evidence(line, channel=channel) is None
+    assert not is_provider_quota_output_line(line)
 
 
 @pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
@@ -54,10 +54,7 @@ def test_parser_tagged_provider_error_line_maps_to_provider_channel(line: str) -
 
 @pytest.mark.parametrize("line", _PROVIDER_ERROR_LINES)
 def test_parser_tagged_provider_error_line_yields_quota_evidence(line: str) -> None:
-    channel = line_channel(_CODEX_PARSER_KEY, line)
-    evidence = provider_quota_line_evidence(line, channel=channel)
-    assert evidence is not None
-    assert evidence.text == line
+    assert is_provider_quota_output_line(line)
 
 
 @pytest.mark.parametrize("line", _CODEX_UNPARSED_LINES)
@@ -83,4 +80,4 @@ def test_unparsed_quota_text_still_detected_via_channel_of_fallback() -> None:
     line = "RESOURCE_EXHAUSTED (code 429)"
     channel = line_channel(None, line)
     assert channel is ContentChannel.PROVIDER
-    assert provider_quota_line_evidence(line, channel=channel) is not None
+    assert is_provider_quota_output_line(line)

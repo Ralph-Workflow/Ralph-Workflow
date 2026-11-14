@@ -74,19 +74,28 @@ def _ensure_submodule_objects(
 def try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
     try:
         entries = conflict_stage_entries(root, stop.conflicted_files)
-        if any(
-            _CONFLICT_STAGE_OURS not in entries.get(path, {})
-            or _CONFLICT_STAGE_THEIRS not in entries[path]
+        gitlink_paths = tuple(
+            path
             for path in stop.conflicted_files
-        ):
-            return False
-        stages = [entries[path] for path in stop.conflicted_files]
-        if all(
-            stage[_CONFLICT_STAGE_OURS][0] == stage[_CONFLICT_STAGE_THEIRS][0] == "160000"
-            for stage in stages
-        ):
-            return _resolve_gitlinks(root, stop.conflicted_files, stages)
-        if not all(
+            if _is_gitlink(entries.get(path, {}))
+        )
+        resolved_any = False
+        if gitlink_paths:
+            resolved_any = _resolve_gitlinks_in_place(
+                root,
+                gitlink_paths,
+                [entries[path] for path in gitlink_paths],
+            )
+        non_gitlink_paths = tuple(
+            path for path in stop.conflicted_files if path not in set(gitlink_paths)
+        )
+        if not non_gitlink_paths:
+            return resolved_any
+        stages = [entries.get(path, {}) for path in non_gitlink_paths]
+        if not stages or not all(
+            _CONFLICT_STAGE_OURS in stage
+            and _CONFLICT_STAGE_THEIRS in stage
+            and
             stage[_CONFLICT_STAGE_OURS][1] == stage[_CONFLICT_STAGE_THEIRS][1]
             and {
                 stage[_CONFLICT_STAGE_OURS][0],
@@ -95,8 +104,8 @@ def try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
             == {"100644", "100755"}
             for stage in stages
         ):
-            return False
-        return _resolve_mode_only(root, stop.conflicted_files, stages)
+            return resolved_any
+        return _resolve_mode_only(root, non_gitlink_paths, stages) or resolved_any
     except Exception as exc:
         logger.warning("conflict_resolution: deterministic resolution declined: {}", exc)
         return False
@@ -153,6 +162,42 @@ def _resolve_gitlinks(
         (("160000", sha, path) for path, sha in chosen),
         label="git-gitlink-resolve",
         restore_info=restore_info,
+    )
+
+
+def _is_gitlink(stages: dict[int, tuple[str, str]]) -> bool:
+    return any(mode == "160000" for mode, _sha in stages.values())
+
+
+def _resolve_gitlinks_in_place(
+    root: Path,
+    paths: tuple[str, ...],
+    stages: list[dict[int, tuple[str, str]]],
+) -> bool:
+    chosen: list[tuple[str, str, str]] = []
+    restore_lines: list[str] = []
+    for path, stage in zip(paths, stages, strict=True):
+        ours = stage.get(_CONFLICT_STAGE_OURS)
+        theirs = stage.get(_CONFLICT_STAGE_THEIRS)
+        if ours is None or theirs is None:
+            return False
+        ancestor = stage.get(1)
+        logger.info(
+            "conflict_resolution: gitlink {} stages base={} ours={} theirs={}; "
+            "completion-in-place keeps the upstream pointer",
+            path,
+            ancestor[1] if ancestor is not None else "<absent>",
+            ours[1],
+            theirs[1],
+        )
+        chosen.append(("160000", ours[1], path))
+        for stage_number, (mode, sha) in stage.items():
+            restore_lines.append(f"{mode} {sha} {stage_number}\t{path}\n")
+    return _stage_deterministic_entries(
+        root,
+        chosen,
+        label="git-gitlink-complete-in-place",
+        restore_info="".join(restore_lines),
     )
 
 

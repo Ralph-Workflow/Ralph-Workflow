@@ -384,21 +384,41 @@ def _reconcile_in_progress_rebase(
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> _PushOutcome | None:
     if rebase_stop_resolver is not None:
-        from ralph.pipeline.conflict_resolution import (
-            resolution_session_from_config,
-            resolve_rebase_in_progress,
-        )
+        from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+        from ralph.pipeline.auto_integrate_record import read_record
+        from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+        from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
+        from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
-        session = resolution_session_from_config(config) if config is not None else None
-        resolved = (
-            resolve_rebase_in_progress(repo_root, target, rebase_stop_resolver, session=session)
-            if session is not None
-            else resolve_rebase_in_progress(repo_root, target, rebase_stop_resolver)
+        result = attempt_stop_resolution(
+            None,
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=repo_root,
+                target=target,
+                resolver=rebase_stop_resolver,
+                record=read_record(repo_root) or resolution_gate_record(repo_root, target),
+                conflict_config=None if config is None else config.conflict_resolution,
+            ),
         )
-        if not resolved:
+        if isinstance(result, StopResolutionBlocked):
+            return _PushOutcome(
+                success=False,
+                summary=result.reason,
+                pushed=False,
+            )
+        if not isinstance(result, RebaseResolutionResult):
             return _PushOutcome(
                 success=False,
                 summary=f"rebase in progress on {target} could not be resolved",
+                pushed=False,
+            )
+        if not result.succeeded:
+            return _PushOutcome(
+                success=False,
+                summary=result.reason
+                or f"rebase in progress on {target} could not be resolved",
                 pushed=False,
             )
         return None

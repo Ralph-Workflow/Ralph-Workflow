@@ -1369,22 +1369,18 @@ class RecoveryController:
         *,
         now_ms: int,
     ) -> AgentStatus:
-        if agent in spent:
-            return self._ledger.spent_status(_SPENT_RETRY_EXHAUSTED_REASON)
-        ledger_status = self._ledger.status(phase, agent)
-        if ledger_status.is_spent or ledger_status.is_unavailable:
-            return ledger_status
         window = windows.get(agent)
-        if isinstance(ledger_status, Cooldown):
-            earlier = window is not None and window[0] < ledger_status.until_ms
-            until_ms = window[0] if earlier and window is not None else ledger_status.until_ms
-            reason = window[1] if earlier and window is not None else ledger_status.reason
-            return Cooldown(until_ms=until_ms, reason=reason)
-        if window is not None:
-            return Cooldown(until_ms=window[0], reason=window[1])
-        if self._unavailability_tracker.is_available(phase, agent):
-            return ledger_status
-        return Unavailable(reason=_STORE_BENCHED_REASON)
+        return self._ledger.agent_eligibility(
+            phase,
+            agent,
+            cooldown=window,
+            spent_reason=_SPENT_RETRY_EXHAUSTED_REASON if agent in spent else None,
+            unavailable_reason=(
+                None
+                if self._unavailability_tracker.is_available(phase, agent)
+                else _STORE_BENCHED_REASON
+            ),
+        )
 
     def chain_eligibility(
         self,
@@ -1405,14 +1401,13 @@ class RecoveryController:
     def agent_eligibility(self, phase: str, agent: str) -> AgentStatus:
         return self.chain_eligibility(phase, [agent])[0][1]
 
+    def agents_for_phase(self, phase: str) -> tuple[str, ...]:
+        chain = self._get_chain_agents(phase)
+        return () if chain is None else chain
+
     def eligibility_wait(self, phase: str, agents: Sequence[str]) -> EligibilityWait:
         now_ms = self._now_ms()
-        windows = self._tracker_windows(now_ms=now_ms)
-        spent = self._spent_agents.get(phase, set())
-        statuses = [
-            self._resolve_eligibility(phase, agent, windows, spent, now_ms=now_ms)
-            for agent in agents
-        ]
+        statuses = [status for _agent, status in self.chain_eligibility(phase, agents)]
         return eligibility_wait_from_statuses(statuses, now_ms=now_ms)
 
     def mark_agent_unavailable(self, phase: str, agent: str, *, reason: str) -> None:

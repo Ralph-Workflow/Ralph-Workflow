@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -24,6 +25,7 @@ from ralph.pipeline._integration_ladder_seams import (
     LadderOutcome,
     LandResult,
     RepointResult,
+    RungPostCondition,
 )
 from ralph.pipeline.integration_actions import Clock, current_clock
 from ralph.pipeline.integration_decision import (
@@ -70,6 +72,7 @@ __all__ = [
     "LandResult",
     "LandedVerdict",
     "RepointResult",
+    "RungPostCondition",
     "adapt_environment_and_retry",
     "decide_ladder_transition",
     "ensure_preserved_copy",
@@ -136,6 +139,16 @@ _RUNG_STATES: Final[dict[CleanupLadderRung, LadderState]] = {
     CleanupLadderRung.FRESH_WORKTREE: LadderState.FRESH_WORKTREE,
     CleanupLadderRung.ENVIRONMENT_DEGRADE: LadderState.ENVIRONMENT_DEGRADE,
     CleanupLadderRung.LAST_RESORT: LadderState.LAST_RESORT,
+}
+
+
+_RUNG_POST_CONDITIONS: Final[dict[CleanupLadderRung, RungPostCondition]] = {
+    CleanupLadderRung.NORMAL_CLEANUP: RungPostCondition.STOP_GONE,
+    CleanupLadderRung.ALTERNATE_PRESERVATION: RungPostCondition.BLOCKING_OBSERVATION_CHANGED,
+    CleanupLadderRung.QUARANTINE: RungPostCondition.BLOCKING_OBSERVATION_CHANGED,
+    CleanupLadderRung.FRESH_WORKTREE: RungPostCondition.BRANCH_LANDED,
+    CleanupLadderRung.ENVIRONMENT_DEGRADE: RungPostCondition.BLOCKING_OBSERVATION_CHANGED,
+    CleanupLadderRung.LAST_RESORT: RungPostCondition.TIP_MOVED,
 }
 
 
@@ -779,6 +792,7 @@ def run_ladder_rung(
     budget: int = LADDER_ATTEMPT_BUDGET,
     expected_target_sha: str | None = None,
     terminal_when_disabled: bool = False,
+    verify_post_condition: Callable[[RungPostCondition], bool] | None = None,
 ) -> LadderStepResult:
     plumbing = git if git is not None else default_git_plumbing()
     quarantine = fs if fs is not None else default_file_quarantine()
@@ -901,7 +915,26 @@ def run_ladder_rung(
                 budget=budget,
                 terminal_when_disabled=terminal_when_disabled,
             )
-    return result
+    condition = _RUNG_POST_CONDITIONS[rung]
+    if result.outcome != "succeeded":
+        return replace(result, post_condition=condition)
+    verified = verify_post_condition is None or verify_post_condition(condition)
+    if verified:
+        return replace(result, post_condition=condition, post_condition_verified=True)
+    value = f"failed:post-condition:{condition.value}"
+    _record_evidence(ledger, _rung_key(rung), value)
+    return LadderStepResult(
+        rung,
+        "failed",
+        value,
+        preserved_ref=result.preserved_ref,
+        preserved_sidecar=result.preserved_sidecar,
+        quarantined_paths=result.quarantined_paths,
+        next_rung=_next_enabled_rung(rung, frozenset(CLEANUP_LADDER_ORDER)),
+        evidence={**result.evidence, _rung_key(rung): value},
+        post_condition=condition,
+        post_condition_verified=False,
+    )
 
 
 def default_git_plumbing() -> GitPlumbing:

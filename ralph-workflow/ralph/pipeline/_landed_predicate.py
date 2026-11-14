@@ -13,13 +13,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
 __all__ = [
-    "LANDING_WITHHELD_REASON",
     "LandedDecision",
     "expected_landed_facts",
     "operation_landed",
 ]
-
-LANDING_WITHHELD_REASON = "completed rebase does not prove the verified stop landed"
 
 _READ_LABEL = "landed-predicate:read"
 _PATCH_ID_LABEL = "landed-predicate:patch-id"
@@ -111,16 +108,22 @@ def _rebased_range_proof(
         return False, range_failure
     original_ids = _patch_ids(root, original)
     rebased_ids = _patch_ids(root, rebased)
-    failure = _range_pair_failure(record, original, rebased, original_ids, rebased_ids, root)
+    failure = _range_pair_failure(
+        record,
+        original,
+        rebased,
+        original_ids,
+        rebased_ids,
+        root,
+        target_tip,
+    )
     return (failure is None, failure or "")
 
 
 def _range_shape_failure(original: tuple[str, ...], rebased: tuple[str, ...]) -> str | None:
     if not original:
         return "the recorded operation range is empty"
-    if not rebased:
-        return "the rebased range is empty"
-    if len(original) != len(rebased):
+    if len(rebased) > len(original):
         return (
             f"the rebased range holds {len(rebased)} commit(s) while the recorded operation "
             f"holds {len(original)}"
@@ -135,15 +138,26 @@ def _range_pair_failure(
     original_ids: dict[str, str],
     rebased_ids: dict[str, str],
     root: Path,
+    target_tip: str,
 ) -> str | None:
-    for index, (old, new) in enumerate(zip(original, rebased, strict=True)):
+    upstream = _range_commits(root, target_tip)
+    upstream_patch_ids = frozenset(_patch_ids(root, upstream).values())
+    replay_index = 0
+    for index, old in enumerate(original):
         old_patch = original_ids.get(old)
-        if old_patch is not None and old_patch == rebased_ids.get(new):
+        if replay_index < len(rebased):
+            new = rebased[replay_index]
+            if old_patch is not None and old_patch == rebased_ids.get(new):
+                replay_index += 1
+                continue
+            if old == record.rebase_continue_stop and _is_replay_of(root, old, new):
+                replay_index += 1
+                continue
+        if old_patch is not None and old_patch in upstream_patch_ids:
             continue
-        if old != record.rebase_continue_stop:
-            return f"commit {index + 1} of the rebased range is not patch-equivalent to {old}"
-        if not _is_replay_of(root, old, new):
-            return f"the replay of the recorded stop {old} is not {new}"
+        return f"commit {index + 1} of the recorded range was neither replayed nor upstream-equivalent"
+    if replay_index != len(rebased):
+        return "the rebased range contains a commit outside the recorded operation"
     return None
 
 

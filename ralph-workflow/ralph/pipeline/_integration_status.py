@@ -16,6 +16,9 @@ class IntegrationStatus:
     command: str
     agents_can_finish: bool
     build_identity: str = field(default_factory=build_identity)
+    agent_reasons: tuple[str, ...] = ()
+    done_count: int | None = None
+    remaining_count: int | None = None
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -35,8 +38,31 @@ class IntegrationStatus:
         if self.command:
             parts.append(self.command)
         if not self.agents_can_finish:
-            parts.append("agents cannot finish this")
+            if self.agent_reasons:
+                count = len(self.agent_reasons)
+                parts.append(
+                    f"all {count} resolver {'agent is' if count == 1 else 'agents are'} "
+                    f"spent/unavailable ({'; '.join(self.agent_reasons)})"
+                )
+            else:
+                parts.append("agents cannot finish this")
+        if self.done_count is not None or self.remaining_count is not None:
+            done = self.done_count if self.done_count is not None else "unknown"
+            remaining = self.remaining_count if self.remaining_count is not None else "unknown"
+            parts.append(f"done={done}; remaining={remaining}")
         return " — ".join(parts)
+
+    @property
+    def path_details(self) -> tuple[str, ...]:
+        return tuple(f"{path}: {reason}" for path, reason in self.paths_with_reasons)
+
+    @property
+    def progress(self) -> str:
+        if self.done_count is None and self.remaining_count is None:
+            return "(unknown)"
+        done = self.done_count if self.done_count is not None else "unknown"
+        remaining = self.remaining_count if self.remaining_count is not None else "unknown"
+        return f"done={done}; remaining={remaining}"
 
 
 def build_integration_status(
@@ -45,6 +71,9 @@ def build_integration_status(
     paths_with_reasons: Sequence[tuple[str, str]] = (),
     command: str = "",
     agents_can_finish: bool = True,
+    agent_reasons: Sequence[str] = (),
+    done_count: int | None = None,
+    remaining_count: int | None = None,
 ) -> IntegrationStatus:
     facts = tuple(paths_with_reasons)
     return IntegrationStatus(
@@ -52,6 +81,9 @@ def build_integration_status(
         paths_with_reasons=facts,
         command=command,
         agents_can_finish=agents_can_finish,
+        agent_reasons=tuple(agent_reasons),
+        done_count=done_count,
+        remaining_count=remaining_count,
     )
 
 

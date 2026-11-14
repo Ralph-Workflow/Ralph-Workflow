@@ -4,8 +4,8 @@ from ralph.agents.invoke import (
     BrokenAgentExitError,
     MissingCredentialsError,
     QuotaExhaustedError,
+    attempt_facts_for_failure,
 )
-from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
 
 
 def test_quota_exhausted_error_carries_typed_signal_fact() -> None:

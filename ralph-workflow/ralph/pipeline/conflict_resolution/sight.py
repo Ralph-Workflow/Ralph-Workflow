@@ -15,12 +15,15 @@ from ralph.git.merge import (
     paths_with_conflict_markers,
     stage_paths,
 )
+from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.conflict_resolution._conflict_classification import ConflictClassification
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
 __all__ = [
     "ConflictClassification",
+    "ConflictKind",
     "ConflictSight",
+    "classify_conflict_kinds",
     "classify_stage_map",
     "classify_unmerged_conflicts",
     "declared_decision_paths",
@@ -35,6 +38,8 @@ __all__ = [
 
 _GITLINK_MODE = "160000"
 _TREE_MODE_PREFIX = "040000"
+_CONFLICT_STAGE_OURS = 2
+_CONFLICT_STAGE_THEIRS = 3
 
 
 def gitlink_escalation_message(paths: Sequence[str]) -> str:
@@ -104,6 +109,44 @@ class ConflictSight(StrEnum):
     AGENT = "agent"
     AGENT_DECISION = "agent_decision"
     OUT_OF_REACH = "out_of_reach"
+
+
+class ConflictKind(StrEnum):
+    TEXT = "Text"
+    GITLINK = "Gitlink"
+    DECLARED_DECISION = "DeclaredDecision"
+    DELETE_MODIFY = "DeleteModify"
+    BINARY = "Binary"
+    APPEND_ONLY = "AppendOnly"
+    OTHER = "Other"
+
+
+def classify_conflict_kinds(
+    root: Path,
+    paths: tuple[str, ...],
+    entries: ConflictStageEntries | None = None,
+) -> dict[str, ConflictKind]:
+    stage_entries = conflict_stage_entries(root, paths) if entries is None else entries
+    append_only = _append_only_paths(root, paths)
+    kinds: dict[str, ConflictKind] = {}
+    for path in paths:
+        stages = stage_entries.get(path, {})
+        modes = {mode for mode, _sha in stages.values()}
+        if "160000" in modes:
+            kinds[path] = ConflictKind.GITLINK
+        elif path in append_only:
+            kinds[path] = ConflictKind.APPEND_ONLY
+        elif _CONFLICT_STAGE_OURS not in stages or _CONFLICT_STAGE_THEIRS not in stages:
+            kinds[path] = ConflictKind.DELETE_MODIFY
+        elif _path_is_binary(root, path):
+            kinds[path] = ConflictKind.BINARY
+        elif not stages:
+            kinds[path] = ConflictKind.OTHER
+        elif stages[_CONFLICT_STAGE_OURS][0] != stages[_CONFLICT_STAGE_THEIRS][0]:
+            kinds[path] = ConflictKind.DECLARED_DECISION
+        else:
+            kinds[path] = ConflictKind.TEXT
+    return kinds
 
 
 def out_of_reach_reasons(kinds: dict[str, ConflictSight]) -> dict[str, str]:
@@ -182,6 +225,7 @@ def _classify_gitlink(
 
 def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> ConflictClassification:
     entries = conflict_stage_entries(root, paths)
+    typed_kinds = classify_conflict_kinds(root, paths, entries)
     marked = set(paths_with_conflict_markers(root, paths))
     kinds: dict[str, ConflictSight] = {}
     reasons: dict[str, str] = {}
@@ -192,6 +236,17 @@ def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> ConflictC
         if path in entry_failures:
             kinds[path] = ConflictSight.OUT_OF_REACH
             reasons[path] = entry_failures[path]
+        elif typed_kinds[path] in {ConflictKind.GITLINK, ConflictKind.BINARY, ConflictKind.OTHER}:
+            kinds[path] = ConflictSight.OUT_OF_REACH
+            reasons[path] = (
+                f"gitlink conflict on {path} requires pipeline completion-in-place"
+                if typed_kinds[path] is ConflictKind.GITLINK
+                else f"{typed_kinds[path].value} conflict on {path} requires pipeline completion-in-place"
+            )
+        elif typed_kinds[path] is ConflictKind.APPEND_ONLY:
+            kinds[path] = ConflictSight.MECHANICAL
+        elif typed_kinds[path] is ConflictKind.DELETE_MODIFY:
+            kinds[path] = ConflictSight.AGENT_DECISION
         else:
             kinds[path] = classify_stage_map(
                 entries.get(path, {}),
@@ -220,3 +275,21 @@ def _path_is_binary(root: Path, relative: str) -> bool:
     except OSError:
         return False
     return b"\0" in payload
+
+
+def _append_only_paths(root: Path, paths: tuple[str, ...]) -> set[str]:
+    if not paths:
+        return set()
+    result = run_git(
+        ("check-attr", "-z", "merge", "--", *paths),
+        cwd=root,
+        label="git-append-only-attributes",
+    )
+    if result.returncode != 0:
+        return set()
+    fields = result.stdout.split("\0")
+    return {
+        fields[index]
+        for index in range(0, len(fields) - 2, 3)
+        if fields[index + 2] == "union"
+    }

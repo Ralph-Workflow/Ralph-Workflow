@@ -25,7 +25,6 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
     active_rebase_resolution_session,
     bind_active_rebase_resolution_session,
     resolution_session_from_config,
-    resolve_rebase_in_progress,
 )
 
 __all__ = [
@@ -40,7 +39,6 @@ __all__ = [
     "classify_attempt_fault",
     "operator_command_for_paths",
     "resolution_session_from_config",
-    "resolve_rebase_in_progress",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_outcome",

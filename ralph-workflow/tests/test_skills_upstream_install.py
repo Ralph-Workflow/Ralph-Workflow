@@ -14,17 +14,6 @@ import pytest
 
 from ralph.mcp.artifacts.file_backend import PathFileBackend
 from ralph.skills import upstream
-from ralph.skills._agent_paths import (
-    agent_skill_presence_set,
-    is_skill_present_for_agent,
-    is_skill_present_in_alternate_root,
-)
-from ralph.skills._ownership import (
-    managed_content_matches,
-    read_managed_marker,
-    verified_recorded_files,
-)
-from ralph.skills._upstream_install import extract_archive
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -212,7 +201,10 @@ _ANTI_SLOP_TAG = "v3.2.30"
 
 
 def _client_for(
-    tag: str, skills: Mapping[str, Mapping[str, bytes]]
+    tag: str,
+    skills: Mapping[str, Mapping[str, bytes]],
+    *,
+    anti_slop_tag: str = _ANTI_SLOP_TAG,
 ) -> tuple[HttpClient, list[str]]:
     calls: list[str] = []
     superpowers = upstream.UNIVERSAL_UPSTREAMS[0]
@@ -225,13 +217,13 @@ def _client_for(
                 tag, _source_skills(skills, superpowers), root=f"superpowers-{tag.lstrip('v')}"
             ),
         ),
-        anti_slop.api_url: (200, _release_body(_ANTI_SLOP_TAG)),
-        anti_slop.archive_url_template.format(tag=_ANTI_SLOP_TAG): (
+        anti_slop.api_url: (200, _release_body(anti_slop_tag)),
+        anti_slop.archive_url_template.format(tag=anti_slop_tag): (
             200,
             _archive_bytes(
-                _ANTI_SLOP_TAG,
+                anti_slop_tag,
                 _source_skills(skills, anti_slop),
-                root=f"anti-slop-{_ANTI_SLOP_TAG.lstrip('v')}",
+                root=f"anti-slop-{anti_slop_tag.lstrip('v')}",
             ),
         ),
     }
@@ -260,11 +252,19 @@ def _root_entries(root: Path) -> list[str]:
 
 
 def _managed_manifest(skill_dir: Path) -> dict[str, str]:
-    marker = read_managed_marker(skill_dir)
-    assert marker is not None
-    recorded = verified_recorded_files(marker)
-    assert recorded is not None
-    return recorded
+    marker = json.loads((skill_dir / upstream.MANAGED_MARKER_NAME).read_text(encoding="utf-8"))
+    recorded = marker["files"]
+    assert isinstance(recorded, dict)
+    return {str(path): str(digest) for path, digest in recorded.items()}
+
+
+def _managed_content_matches(skill_dir: Path, recorded: Mapping[str, str]) -> bool:
+    actual = {
+        path.relative_to(skill_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in skill_dir.rglob("*")
+        if path.is_file() and path.name != upstream.MANAGED_MARKER_NAME
+    }
+    return actual == recorded
 
 
 @pytest.fixture
@@ -592,7 +592,7 @@ def test_a_rollback_restores_the_skill_published_before_the_failure(
     assert outcome.status == "failed"
     assert _tree_snapshot(published) == published_before
     assert not (published / "new-companion.md").exists()
-    assert managed_content_matches(published, _managed_manifest(published))
+    assert _managed_content_matches(published, _managed_manifest(published))
     assert _tree_snapshot(failing) == failing_before
     assert _tree_snapshot(untouched) == untouched_before
     for sibling, snapshot in siblings_before.items():
@@ -990,29 +990,35 @@ def test_a_directed_code_span_with_a_literal_space_that_is_carried_is_accepted(
     )
 
 
-def test_version_companion_is_admitted_and_other_extensionless_members_rejected() -> None:
-    valid_skills = {"antislop": {"SKILL.md": b"# Antislop\n", "VERSION": b"3.2.30\n"}}
-    payloads = extract_archive(_archive_bytes("v1", valid_skills), upstream._archive_limits())
-    assert payloads["antislop"].files["VERSION"][0] == b"3.2.30\n"
+def test_version_companion_is_admitted_and_other_extensionless_members_rejected(
+    sandbox: Path,
+) -> None:
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    installed = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+    antislop = upstream.canonical_skills_root() / "antislop"
+    assert installed.status == "updated"
+    assert (antislop / "VERSION").read_bytes() == b"3.2.30\n"
 
-    hostile_skills = {"antislop": {"SKILL.md": b"# Antislop\n", "LICENSE": b"MIT\n"}}
-    with pytest.raises(Exception, match="refused extension"):
-        extract_archive(_archive_bytes("v1", hostile_skills), upstream._archive_limits())
+    hostile = {name: dict(files) for name, files in _SKILL_FILES.items()}
+    hostile["antislop"] = {"SKILL.md": b"# Antislop\n", "LICENSE": b"MIT\n"}
+    hostile_client, _calls = _client_for("v-test-2", hostile, anti_slop_tag="v3.2.31")
+    refused = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=hostile_client
+    )
+    assert refused.status == "failed"
+    assert refused.error is not None
+    assert not (antislop / "LICENSE").exists()
 
 
 def test_preexisting_copy_in_alternate_agent_root_suppresses_install(sandbox: Path) -> None:
     alt_codex = sandbox / ".agents" / "skills" / "antislop"
     alt_codex.mkdir(parents=True)
     (alt_codex / "SKILL.md").write_text("# Pre-existing\n", encoding="utf-8")
-    assert "antislop" in agent_skill_presence_set("codex", home=sandbox)
-    assert is_skill_present_for_agent("antislop", "codex", home=sandbox) is True
-    assert is_skill_present_for_agent("antislop", "codex-agents", home=sandbox) is True
-    assert is_skill_present_in_alternate_root("antislop", sandbox / ".codex" / "skills") is True
-    assert is_skill_present_in_alternate_root("antislop", sandbox / ".claude" / "skills") is False
-
     alt_agy = sandbox / ".gemini" / "config" / "skills" / "antislop"
     alt_agy.mkdir(parents=True)
     (alt_agy / "SKILL.md").write_text("# Pre-existing\n", encoding="utf-8")
-    assert is_skill_present_for_agent("antislop", "agy", home=sandbox) is True
-    agy_root = sandbox / ".gemini" / "antigravity-cli" / "skills"
-    assert is_skill_present_in_alternate_root("antislop", agy_root) is True
+    client, _calls = _client_for("v-test-1", _SKILL_FILES)
+    outcome = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+    assert outcome.status == "updated"
+    assert (alt_codex / "SKILL.md").read_text(encoding="utf-8") == "# Pre-existing\n"
+    assert (alt_agy / "SKILL.md").read_text(encoding="utf-8") == "# Pre-existing\n"

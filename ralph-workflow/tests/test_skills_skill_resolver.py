@@ -9,7 +9,7 @@ import pytest
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.mcp.protocol._session_drain import SessionDrain
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.prompt_prep import (
     materialize_agent_prompt_if_needed,
@@ -27,8 +27,6 @@ from ralph.prompts.developer import (
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities
-from ralph.skills._agent_paths import AgentSkillRoot
-from ralph.skills._ownership import manifest_digest
 from ralph.skills._skill_resolver import (
     FROZEN_UNIVERSAL_SKILLS,
     get_inline_skill_content,
@@ -55,7 +53,9 @@ def _install_skill_in_root(root: Path, skill_name: str, content: str = "Test ski
     files = {"SKILL.md": digest}
     marker = {
         "managed_by": "ralph-universal",
-        "installed_sha256": manifest_digest(files),
+        "installed_sha256": hashlib.sha256(
+            json.dumps(files, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).hexdigest(),
         "files": files,
     }
     (skill_dir / ".ralph-managed.json").write_text(
@@ -86,36 +86,16 @@ def _setup_two_agent_roots(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> tuple[Path, Path]:
-    root_a = tmp_path / "claude_skills"
-    root_b = tmp_path / "codex_skills"
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    root_a = home / ".claude" / "skills"
+    root_b = home / ".codex" / "skills"
     root_a.mkdir(parents=True, exist_ok=True)
     root_b.mkdir(parents=True, exist_ok=True)
 
     _install_skill_in_root(root_a, "test-driven-development")
     _install_skill_in_root(root_a, "verification-before-completion")
 
-    fake_roots = (
-        AgentSkillRoot(
-            agent="agent_a",
-            path_segments=("claude_skills",),
-            source_url="https://example.com/a",
-            is_canonical=True,
-        ),
-        AgentSkillRoot(
-            agent="agent_b",
-            path_segments=("codex_skills",),
-            source_url="https://example.com/b",
-            is_canonical=False,
-        ),
-    )
-    monkeypatch.setattr("ralph.skills._skill_resolver.agent_skill_roots", lambda: fake_roots)
-    monkeypatch.setattr("ralph.skills._agent_paths.agent_skill_roots", lambda: fake_roots)
-    roots_by_agent: dict[str, Path] = {"agent_a": root_a, "agent_b": root_b}
-
-    def _mock_resolve(root_obj: AgentSkillRoot) -> Path:
-        return roots_by_agent.get(root_obj.agent, root_a)
-
-    monkeypatch.setattr(AgentSkillRoot, "resolve", _mock_resolve)
     return root_a, root_b
 
 
@@ -306,10 +286,10 @@ def test_integrated_materialize_prepared_prompt_two_agents_no_leak(
     monkeypatch.setattr("ralph.prompts.materialize.render_template", _render_spy)
 
     def _agent_a_list(*_a: object, **_kw: object) -> list[str]:
-        return ["agent_a"]
+        return ["claude"]
 
     def _agent_b_list(*_a: object, **_kw: object) -> list[str]:
-        return ["agent_b"]
+        return ["codex"]
 
     state = PipelineState(phase="planning", previous_phase=None)
     test_config = UnifiedConfig.model_construct()
@@ -411,7 +391,7 @@ def test_integrated_materialize_agent_prompt_if_needed_two_agents(
     captured_renders.clear()
     materialize_agent_prompt_if_needed(
         effect=InvokeAgentEffect(
-            agent_name="agent_a",
+            agent_name="claude",
             phase="development",
             prompt_file=str(workspace_dir / ".agent" / "tmp" / "development_prompt.md"),
         ),
@@ -429,7 +409,7 @@ def test_integrated_materialize_agent_prompt_if_needed_two_agents(
     captured_renders.clear()
     materialize_agent_prompt_if_needed(
         effect=InvokeAgentEffect(
-            agent_name="agent_b",
+            agent_name="codex",
             phase="development",
             prompt_file=str(workspace_dir / ".agent" / "tmp" / "development_prompt.md"),
         ),
@@ -452,24 +432,23 @@ def test_integrated_fallback_renders_carry_skill_variables(
     workspace_dir.mkdir(parents=True)
     captured_fallbacks: list[Mapping[str, str]] = []
 
-    def _fallback_spy(
-        context: TemplateContext,
-        template_name: str,
+    render_attempts = 0
+
+    def _render_spy(
+        template: str,
         variables: Mapping[str, str],
+        partials: Mapping[str, str],
     ) -> str:
+        nonlocal render_attempts
+        del template, partials
+        render_attempts += 1
+        if render_attempts % 2:
+            raise TemplateRenderingError("Forced template rendering failure for fallback test")
         captured_fallbacks.append(dict(variables))
         return "fallback rendered"
 
-    def _failing_render(*args: object, **kwargs: object) -> str:
-        msg = "Forced template rendering failure for fallback test"
-        raise TemplateRenderingError(msg)
-
-    monkeypatch.setattr(
-        "ralph.prompts.developer._render_static_fallback",
-        _fallback_spy,
-    )
-    monkeypatch.setattr(template_engine, "render_template", _failing_render)
-    monkeypatch.setattr("ralph.prompts.developer.render_template", _failing_render)
+    monkeypatch.setattr(template_engine, "render_template", _render_spy)
+    monkeypatch.setattr("ralph.prompts.developer.render_template", _render_spy)
 
     tmpl_ctx = TemplateContext.default(workspace_dir)
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)

@@ -41,7 +41,7 @@ tests/agents/invoke/test_pty_check_fire_resume_metadata.py|0,3,3
 tests/agents/invoke/test_pty_drain_after_handle_close.py|0,1,2
 tests/agents/invoke/test_pty_graceful_teardown.py|0,3,2
 tests/agents/invoke/test_pty_graceful_teardown_timing.py|2,3,0
-tests/agents/invoke/test_pty_line_reader_interrupt_teardown.py|0,2,1
+tests/agents/invoke/test_pty_line_reader_interrupt_teardown.py|0,1,1
 tests/agents/invoke/test_pty_line_reader_transcript_handle.py|0,2,0
 tests/agents/invoke/test_pty_post_exit_single_issuer.py|0,2,0
 tests/agents/invoke/test_pty_subagent_pid_source_wiring.py|0,1,4
@@ -793,7 +793,6 @@ tests/test_skills_recheck_policy_config.py|0,1,0
 tests/test_skills_skill_resolver.py|0,1,0
 tests/test_skills_state.py|0,3,0
 tests/test_skills_state_store.py|0,4,0
-tests/test_skills_upstream_install.py|0,1,0
 tests/test_skills_upstream_references.py|0,0,4
 tests/test_skills_user_global_root_migration.py|0,1,0
 tests/test_smoke_agy_end_to_end.py|0,1,0
@@ -846,6 +845,7 @@ tests/test_tool_unsafe_exec_handle.py|0,3,0
 tests/test_tool_workspace_handle_read_media.py|0,1,1
 tests/test_transport_breaker_false_positives.py|0,6,0
 tests/test_transport_multimodal_status.py|0,3,0
+tests/test_u4_rendering_and_severity.py|1,2,1
 tests/test_unreadable_record_entry_points.py|0,4,17
 tests/test_unsafe_exec_stderr_and_timeout_consistency.py|0,1,5
 tests/test_upstream_result_shapes_are_all_normalised.py|0,1,0

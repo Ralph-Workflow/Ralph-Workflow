@@ -9,12 +9,12 @@ if TYPE_CHECKING:
 
 from ralph.git import subprocess_runner
 from ralph.git.merge import (
-    MERGE_STATE_IN_PROGRESS,
-    MERGE_STATE_NONE,
     commit_merge_in_progress,
-    merge_state,
-    staged_conflict_marker_paths,
-    unmerged_paths,
+)
+from ralph.git.operation_snapshot import (
+    OperationSnapshot,
+    OperationState,
+    observe_operation_snapshot,
 )
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline.auto_integrate_record import (
@@ -75,17 +75,16 @@ def _git_value(root: Path, *args: str) -> str | None:
 
 
 def mark_pending_merge(root: Path, target: str, *, resolving: bool = False) -> None:
+    snapshot = observe_operation_snapshot(root, target=target)
     record = read_record(root) or IntegrationRecord(
         phase="integrating",
         target=target,
-        pre_feature_sha=_git_value(root, "rev-parse", "--verify", "HEAD") or "",
-        pre_target_sha=_git_value(root, "rev-parse", "--verify", "MERGE_HEAD"),
+        pre_feature_sha=snapshot.head_sha or "",
+        pre_target_sha=snapshot.merge_head,
     )
     paths = record.resolving_paths
-    if resolving:
-        current = unmerged_paths(root)
-        if "<unmerged-path-query-failed>" not in current:
-            paths = tuple(sorted(set(paths) | set(current)))
+    if resolving and snapshot.unmerged_query_ok:
+        paths = tuple(sorted(set(paths) | set(snapshot.unmerged_paths)))
     write_record(
         root,
         record.with_transition(
@@ -101,9 +100,10 @@ def mark_pending_merge(root: Path, target: str, *, resolving: bool = False) -> N
 
 def prepare_pending_merge(root: Path, target: str) -> str | None:
     mark_pending_merge(root, target)
-    head = _git_value(root, "rev-parse", "--verify", "HEAD")
-    parent = _git_value(root, "rev-parse", "--verify", "MERGE_HEAD")
-    tree = _git_value(root, "write-tree")
+    snapshot = observe_operation_snapshot(root, target=target)
+    head = snapshot.head_sha
+    parent = snapshot.merge_head
+    tree = snapshot.index_tree
     if head is None or parent is None or tree is None:
         return "cannot identify verified merge index and parents; resolved merge retained"
     record = read_record(root) or IntegrationRecord(
@@ -125,27 +125,38 @@ def prepare_pending_merge(root: Path, target: str) -> str | None:
 
 
 def pending_merge_identity_matches(root: Path, record: IntegrationRecord) -> bool:
+    snapshot = observe_operation_snapshot(root, target=record.target)
+    return _pending_merge_identity_matches(record, snapshot)
+
+
+def _pending_merge_identity_matches(
+    record: IntegrationRecord,
+    snapshot: OperationSnapshot,
+) -> bool:
     return (
         bool(record.merge_commit_head and record.merge_commit_parent and record.merge_commit_tree)
-        and merge_state(root) == MERGE_STATE_IN_PROGRESS
-        and _git_value(root, "rev-parse", "--verify", "HEAD") == record.merge_commit_head
-        and _git_value(root, "rev-parse", "--verify", "MERGE_HEAD") == record.merge_commit_parent
-        and _git_value(root, "write-tree") == record.merge_commit_tree
-        and not unmerged_paths(root)
-        and not staged_conflict_marker_paths(root)
+        and snapshot.operation_state is OperationState.MERGE_PAUSED
+        and snapshot.head_sha == record.merge_commit_head
+        and snapshot.merge_head == record.merge_commit_parent
+        and snapshot.index_tree == record.merge_commit_tree
+        and snapshot.unmerged_query_ok
+        and not snapshot.unmerged_paths
+        and not snapshot.staged_conflict_marker_paths
     )
 
 
 def _complete_pending_snapshot(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
+    snapshot = observe_operation_snapshot(root, target=record.target)
     if (
         any((record.merge_commit_head, record.merge_commit_parent, record.merge_commit_tree))
         or not record.pre_feature_sha
         or not record.pre_target_sha
-        or merge_state(root) != MERGE_STATE_IN_PROGRESS
-        or _git_value(root, "rev-parse", "--verify", "HEAD") != record.pre_feature_sha
-        or _git_value(root, "rev-parse", "--verify", "MERGE_HEAD") != record.pre_target_sha
-        or unmerged_paths(root)
-        or staged_conflict_marker_paths(root)
+        or snapshot.operation_state is not OperationState.MERGE_PAUSED
+        or snapshot.head_sha != record.pre_feature_sha
+        or snapshot.merge_head != record.pre_target_sha
+        or not snapshot.unmerged_query_ok
+        or snapshot.unmerged_paths
+        or snapshot.staged_conflict_marker_paths
     ):
         return "pending merge snapshot incomplete or resolution unfinished; merge retained"
     failure = prepare_pending_merge(root, record.target)
@@ -178,14 +189,14 @@ def _resume_prepared_merge(root: Path, record: IntegrationRecord) -> Integration
         if isinstance(repaired, str):
             return repaired
         record = repaired
-    state = merge_state(root)
-    if state == MERGE_STATE_IN_PROGRESS:
-        if not pending_merge_identity_matches(root, record):
+    snapshot = observe_operation_snapshot(root, target=record.target)
+    if snapshot.operation_state is OperationState.MERGE_PAUSED:
+        if not _pending_merge_identity_matches(record, snapshot):
             return "pending merge identity changed or conflict evidence remains; commit not retried"
         reasons: list[str] = []
         if not commit_merge_in_progress(root, on_failure=reasons.append):
             return reasons[0] if reasons else "verified merge commit remains pending"
-    elif state != MERGE_STATE_NONE:
+    elif snapshot.operation_state is OperationState.UNKNOWN:
         return "pending merge state unreadable; commit not retried"
     completion = _promote_completed_merge(root, record)
     if isinstance(completion, str):

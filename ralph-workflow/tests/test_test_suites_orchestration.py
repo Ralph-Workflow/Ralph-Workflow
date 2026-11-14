@@ -64,12 +64,12 @@ def test_default_spawner_inherits_parent_streams_for_verifier_log_drain(
         (1, "1"),
         (2, "1"),
         (12, "10"),
-        (16, "16"),
-        (32, "16"),
-        (64, "16"),
+        (16, "10"),
+        (32, "10"),
+        (64, "10"),
     ),
 )
-def test_auto_worker_count_uses_verified_sixteen_shard_cap(
+def test_auto_worker_count_uses_verified_ten_shard_cap(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,
@@ -116,9 +116,9 @@ def test_explicit_worker_count_capped_at_cores_minus_two(
         (None, "1"),
         (1, "1"),
         (2, "1"),
-        (16, "15"),
-        (32, "16"),
-        (64, "16"),
+        (16, "10"),
+        (32, "10"),
+        (64, "10"),
     ),
 )
 def test_default_xdist_workers_per_shard_is_zero(
@@ -400,7 +400,7 @@ def test_real_child_startup_and_catalog_fail_closed_files_are_selected() -> None
         auto_integrate_e2e_only=False,
         subprocess_e2e_only=False,
     )
-    assert shard_count == 10
+    assert shard_count == 6
     for path in target_files:
         assert path in required_files
 
@@ -613,7 +613,7 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_splits_required_e2e_lane_into_ten_plain_shards(
+def test_default_profile_splits_required_e2e_lane_into_six_plain_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

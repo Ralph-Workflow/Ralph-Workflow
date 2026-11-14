@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import errno
 import json
-from contextlib import contextmanager
+from collections.abc import Callable
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
 
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
+INTEGRATION_RECORD_VERSION = 1
 
 IntegrationPhase = Literal["integrating", "integrated"]
 IntegrationOperation = Literal["feature_integrate", "target_reconcile"]
@@ -63,6 +65,7 @@ _VALID_PHASES: frozenset[str] = frozenset({"integrating", "integrated"})
 class IntegrationRecord(RalphBaseModel):
     model_config = ConfigDict(frozen=True)
 
+    record_version: int = INTEGRATION_RECORD_VERSION
     phase: IntegrationPhase
     target: str
     pre_feature_sha: str
@@ -284,6 +287,27 @@ class RecordReadOutcomeDisposition(StrEnum):
     UNREADABLE = "unreadable"
 
 
+class RecordLoadDisposition(StrEnum):
+    OK = "ok"
+    MIGRATED = "migrated"
+    REBUILT = "rebuilt"
+    DISCARDED = "discarded"
+
+
+class RecordLoadResult(RalphBaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    disposition: RecordLoadDisposition
+    record: IntegrationRecord | None = None
+
+    @property
+    def usable(self) -> bool:
+        return self.record is not None
+
+
+RecordRebuilder = Callable[["Path"], IntegrationRecord | None]
+
+
 RecordUnreadableReason = Literal["corrupt_json", "unsupported_schema", "backend_read_failure"]
 
 
@@ -381,6 +405,69 @@ def read_record(
     return parse_record_payload(raw)
 
 
+def load_record(
+    workspace_root: Path,
+    *,
+    rebuild_from_git: RecordRebuilder | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> RecordLoadResult:
+    record_file = record_path(workspace_root)
+    try:
+        exists = backend.exists(record_file)
+    except OSError:
+        exists = True
+    raw = _read_record_raw(record_file, backend=backend) if exists else None
+    if raw is not None:
+        version = _record_payload_version(raw)
+        if version is not None and version <= INTEGRATION_RECORD_VERSION:
+            record = parse_record_payload(raw)
+            if record is not None:
+                disposition = (
+                    RecordLoadDisposition.OK
+                    if version == INTEGRATION_RECORD_VERSION
+                    else RecordLoadDisposition.MIGRATED
+                )
+                if disposition is RecordLoadDisposition.MIGRATED:
+                    write_record(workspace_root, record, backend=backend)
+                    _notice_record_repair(record_file, disposition)
+                return RecordLoadResult(disposition=disposition, record=record)
+
+    try:
+        rebuilt = rebuild_from_git(workspace_root) if rebuild_from_git is not None else None
+    except Exception:
+        rebuilt = None
+    if rebuilt is not None:
+        write_record(workspace_root, rebuilt, backend=backend)
+        disposition = RecordLoadDisposition.REBUILT
+        _notice_record_repair(record_file, disposition)
+        return RecordLoadResult(disposition=disposition, record=rebuilt)
+
+    with suppress(OSError, KeyError):
+        backend.unlink(record_file, missing_ok=True)
+    disposition = RecordLoadDisposition.DISCARDED
+    _notice_record_repair(record_file, disposition)
+    return RecordLoadResult(disposition=disposition)
+
+
+def has_usable_record(result: RecordLoadResult) -> bool:
+    return result.usable
+
+
+def _record_payload_version(data_raw: dict[str, object]) -> int | None:
+    raw_version = data_raw.get("record_version", 0)
+    if isinstance(raw_version, bool) or not isinstance(raw_version, int) or raw_version < 0:
+        return None
+    return raw_version
+
+
+def _notice_record_repair(path: Path, disposition: RecordLoadDisposition) -> None:
+    logger.warning(
+        "auto_integrate: durable record at {} was {} after version/shape validation",
+        path,
+        disposition.value,
+    )
+
+
 def _read_record_raw(
     record_file: Path,
     *,
@@ -451,6 +538,11 @@ def _apply_evidence_migration(
 
 
 def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | None:
+    version = _record_payload_version(data_raw)
+    if version is None or version > INTEGRATION_RECORD_VERSION:
+        return None
+    if version < INTEGRATION_RECORD_VERSION:
+        data_raw = {**data_raw, "record_version": INTEGRATION_RECORD_VERSION}
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
         return None
@@ -603,6 +695,7 @@ __all__ = [
     "CLEAR",
     "CLEAR_TRANSITION",
     "HOLD_DIAGNOSTIC_EVIDENCE",
+    "INTEGRATION_RECORD_VERSION",
     "MARK_LEGACY_FIELDS_PRESERVED",
     "MARK_PENDING_MERGE_COMMIT",
     "MARK_PENDING_REBASE_CONTINUE",
@@ -618,6 +711,8 @@ __all__ = [
     "IntegrationPhase",
     "IntegrationRecord",
     "RecordBusyError",
+    "RecordLoadDisposition",
+    "RecordLoadResult",
     "RecordReadOutcome",
     "RecordReadOutcomeDisposition",
     "RecordUnreadableError",
@@ -626,6 +721,8 @@ __all__ = [
     "apply_containment_release",
     "clear_record",
     "clear_record_on_containment",
+    "has_usable_record",
+    "load_record",
     "parse_lease",
     "parse_record_payload",
     "read_record",

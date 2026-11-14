@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.config._source_migrations import remove_retired_agent_can_commit_assignments
-from ralph.config._toml_fallback import load_optional_toml, validate_or_default
+from ralph.config._toml_fallback import (
+    emit_config_failure_warning,
+    load_optional_toml,
+    validate_or_default,
+)
 from ralph.config.config_error_messages import format_config_validation_error
 from ralph.pydantic_validation_errors import suggest_canonical_field
 
@@ -34,7 +38,22 @@ def _drop_cli_only_fields(*layers: dict[str, object]) -> None:
             data.pop(field, None)
 
 
-class ConfigTomlError(ValueError):
+class ConfigLoadError(ValueError):
+    def __init__(self, file: Path | str, parse_error: str | None = None) -> None:
+        resolved_file = Path(file) if parse_error is not None else Path("<unknown>")
+        resolved_error = parse_error if parse_error is not None else str(file)
+        self.file = resolved_file
+        self.parse_error = resolved_error
+        super().__init__(
+            f"What failed: Ralph could not read {resolved_file}: {resolved_error}.\n"
+            "Why it matters: settings in a malformed file are not safe to use.\n"
+            f"Fix: correct the TOML syntax in {resolved_file}, then run `ralph --check-config`."
+            if parse_error is not None
+            else resolved_error
+        )
+
+
+class ConfigTomlError(ConfigLoadError):
     pass
 
 
@@ -62,11 +81,7 @@ def load_toml(path: Path) -> dict[str, object]:
         UnicodeDecodeError,
         OSError,
     ) as exc:
-        raise ConfigTomlError(
-            f"What failed: Ralph could not read {path}: {exc}.\n"
-            "Why it matters: settings in a malformed file are not safe to use.\n"
-            f"Fix: correct the TOML syntax in {path}, then run `ralph --check-config`."
-        ) from exc
+        raise ConfigTomlError(path, str(exc)) from exc
     logger.debug("Loaded config from {}", path)
     migrated_source = remove_retired_agent_can_commit_assignments(source)
     if migrated_source != source:
@@ -382,8 +397,19 @@ def _load_agents_layer(agents_path: Path, *, strict: bool) -> dict[str, object]:
     try:
         return _load_agents_data(agents_path, strict=strict)
     except ValidationError as exc:
-        logger.error(format_config_validation_error(exc, agents_path))
-        raise SystemExit(1) from exc
+        detail = format_config_validation_error(exc, agents_path)
+        if strict:
+            logger.error(detail)
+            raise SystemExit(1) from exc
+        emit_config_failure_warning(
+            agents_path,
+            kind="agents",
+            error_detail=detail,
+            behaviour="using built-in default",
+            fix_hint="Fix the file, then run `ralph --check-config`.",
+            exc=exc,
+        )
+        return {}
 
 
 def load_config(

@@ -451,6 +451,8 @@ def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tre
     assert first_calls == [
         upstream.RELEASES_API_URL,
         upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
+        upstream.ANTI_SLOP_RELEASES_API_URL,
+        upstream.ANTI_SLOP_ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
     ]
     _assert_every_companion_is_readable(_SKILL_FILES)
     assert get_head_sha(tmp_git_repo) != head_before, (
@@ -473,6 +475,8 @@ def test_a_later_run_installs_a_newer_release_without_dirtying_the_users_git_tre
     assert second_calls == [
         upstream.RELEASES_API_URL,
         upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-2"),
+        upstream.ANTI_SLOP_RELEASES_API_URL,
+        upstream.ANTI_SLOP_ARCHIVE_URL_TEMPLATE.format(tag="v-test-2"),
     ]
     _assert_every_companion_is_readable(changed)
     assert has_uncommitted_changes(tmp_git_repo) is False, (
@@ -556,4 +560,6 @@ def test_the_injected_http_client_is_reached_when_no_switch_is_set(
     assert calls == [
         upstream.RELEASES_API_URL,
         upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
+        upstream.ANTI_SLOP_RELEASES_API_URL,
+        upstream.ANTI_SLOP_ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
     ]

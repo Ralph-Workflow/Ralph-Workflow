@@ -75,11 +75,11 @@ _REBASE_PROGRESS_FILES = (
 __all__ = [
     "RebaseStop",
     "RebaseStopResolver",
+    "_resolve_rebase_in_progress",
     "active_rebase_resolution_session",
     "bind_active_rebase_resolution_session",
     "record_landed_stop",
     "resolution_session_from_config",
-    "resolve_rebase_in_progress",
 ]
 
 
@@ -136,7 +136,7 @@ def active_rebase_resolution_session() -> ResolutionSession | None:
     return _ACTIVE_REBASE_RESOLUTION_SESSION.get()
 
 
-def resolve_rebase_in_progress(
+def _resolve_rebase_in_progress(
     root: Path,
     target: str,
     resolver: RebaseStopResolver,
@@ -226,7 +226,13 @@ def _resolve_one_stop(
     before = _worktree_dirty_paths(root)
     if before is None:
         return False
-    if _try_deterministic_resolution(root, stop):
+    deterministic = _try_deterministic_resolution(root, stop)
+    remaining_after_policy = tuple(
+        path
+        for path in unmerged_paths(root)
+        if path != "<unmerged-path-query-failed>" and path in stop.conflicted_files
+    )
+    if deterministic:
         if _stage_and_prove(root, stop) and _continue_past(root, stop):
             return True
         logger.info(
@@ -234,7 +240,16 @@ def _resolve_one_stop(
             "handing the stop to the resolver",
             stop.stop_index,
         )
-    outcome = resolver(root, target, stop)
+    agent_stop = RebaseStop(
+        sha=stop.sha,
+        subject=stop.subject,
+        conflicted_files=remaining_after_policy,
+        stop_index=stop.stop_index,
+        stop_cap=stop.stop_cap,
+        replay_index=stop.replay_index,
+        replay_total=stop.replay_total,
+    )
+    outcome = resolver(root, target, agent_stop)
     if isinstance(outcome, ResolutionOutcome):
         active_session = active_rebase_resolution_session()
         if active_session is not None:
@@ -254,9 +269,9 @@ def _resolve_one_stop(
         )
         return False
     return (
-        _touched_nothing_unexpected(root, stop, before)
-        and _stage_and_prove(root, stop)
-        and _remove_ort_residue(root, stop.conflicted_files)
+        _touched_nothing_unexpected(root, agent_stop, before)
+        and _stage_and_prove(root, agent_stop)
+        and _remove_ort_residue(root, agent_stop.conflicted_files)
         and _continue_past(root, stop)
     )
 
@@ -500,7 +515,18 @@ def _is_at_the_first_replay(root: Path) -> bool:
 
 
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
-    paths = list(stop.conflicted_files)
+    observed_before = unmerged_paths(root)
+    if "<unmerged-path-query-failed>" in observed_before:
+        return False
+    requested = set(stop.conflicted_files)
+    paths = [
+        path
+        for path in observed_before
+        if path in requested
+        and (root / path).is_file()
+        and (root / path).stat().st_size > 0
+        and path not in paths_with_conflict_markers(root, (path,))
+    ]
     if not stage_paths(root, paths):
         logger.warning(
             "conflict_resolution: failed to stage resolved paths for stop {}: {}",

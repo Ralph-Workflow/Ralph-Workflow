@@ -75,7 +75,7 @@ _HETEROGENEOUS_CORE_HOST_MAX_CORES = 12
 
 
 def _max_pytest_workers_for_host() -> int:
-    return 16
+    return 10
 
 
 _MAX_PYTEST_WORKERS = _max_pytest_workers_for_host()
@@ -143,7 +143,7 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 _PYTEST_DURATIONS_REPORT: int = 10
 
 
-_REQUIRED_E2E_SHARD_COUNT = 10
+_REQUIRED_E2E_SHARD_COUNT = 6
 
 
 def _required_e2e_shard_count() -> int:

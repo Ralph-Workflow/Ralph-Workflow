@@ -38,6 +38,12 @@ RESOLVER_NAMES: Final[frozenset[str]] = frozenset(
     }
 )
 
+REBASE_LOOP_MODULE: Final = "ralph/pipeline/conflict_resolution/rebase_loop.py"
+
+REBASE_LOOP_RESOLVER_NAMES: Final[frozenset[str]] = frozenset(
+    {"_resolve_rebase_in_progress", "resolve_rebase_in_progress"}
+)
+
 PIPELINE_PACKAGE: Final = "ralph/pipeline/"
 
 PIPELINE_ENTRY_MODULE: Final = "ralph/pipeline/__init__.py"
@@ -242,7 +248,37 @@ def collect_resolver_violations(modules: Mapping[str, str]) -> list[Violation]:
         if path != RESOLUTION_ENTRY_MODULE and _mentions_resolver(source)
         for violation in _resolver_module_violations(path, source)
     ]
-    return [*_resolver_entry_violations(modules), *module_violations]
+    audited_loop_names = frozenset({"_resolve_rebase_in_progress"})
+    private_loop_violations: list[Violation] = []
+    for path, source in sorted(modules.items()):
+        if path in {RESOLUTION_ENTRY_MODULE, REBASE_LOOP_MODULE}:
+            continue
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else None
+            )
+            if name in audited_loop_names:
+                private_loop_violations.append(
+                    Violation(
+                        path=path,
+                        line=node.lineno,
+                        rule="rebase_loop_resolver_call_outside_entry",
+                        detail=(
+                            f"'{name}' may only be called by {RESOLUTION_ENTRY_MODULE}; "
+                            "callers must use the public resolution seam"
+                        ),
+                    )
+                )
+    return [*_resolver_entry_violations(modules), *module_violations, *private_loop_violations]
 
 
 def _dict_label_keys(node: ast.Dict) -> list[str]:

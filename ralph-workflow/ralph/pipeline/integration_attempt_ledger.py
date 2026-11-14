@@ -7,8 +7,10 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
+from uuid import uuid4
 
 from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
 from ralph.pipeline.integration_decision import (
@@ -34,6 +36,7 @@ __all__ = [
     "rebuild_state_from_git_facts",
     "repository_ledger_path",
     "shared_budget_dir",
+    "shared_rung_result_key",
     "tombstone_path",
 ]
 
@@ -55,6 +58,7 @@ _MAX_SATURATED_REPEATS: Final[int] = (1 << 31) - 1
 _REPEAT_KEY_TUPLE_LEN = 2
 
 _LADDER_EVIDENCE_CAP: Final[int] = 64
+_SHARED_RUNG_RESULTS_CAP: Final[int] = 256
 
 _TOMBSTONE_SCHEMA_VERSION: Final[int] = 1
 
@@ -97,6 +101,10 @@ class AttemptLedgerState:
     global_actions_charged: int = 0
 
     ladder_evidence: dict[str, str] = field(
+        default_factory=dict,
+    )
+
+    shared_rung_results: dict[str, str] = field(
         default_factory=dict,
     )
 
@@ -163,6 +171,16 @@ def repository_ledger_path(common_dir: Path) -> Path:
 
 def tombstone_path(ledger_path: Path) -> Path:
     return Path(ledger_path).with_name(TOMBSTONE_FILENAME)
+
+
+def shared_rung_result_key(
+    target_tip: str,
+    vendor_pointer: str | None,
+    conflicting_paths: tuple[str, ...],
+) -> str:
+    paths = "\0".join(sorted(set(conflicting_paths)))
+    identity = f"{target_tip}\0{vendor_pointer or ''}\0{paths}".encode()
+    return f"rung-result:{sha256(identity).hexdigest()}"
 
 
 def _saturating_add(total: int, increment: int) -> int:
@@ -299,6 +317,7 @@ class AttemptLedger:
             saturated_repeats=state.saturated_repeats,
             global_actions_charged=charged,
             ladder_evidence=dict(state.ladder_evidence),
+            shared_rung_results=dict(state.shared_rung_results),
         )
 
     @staticmethod
@@ -410,6 +429,7 @@ class AttemptLedger:
                 saturated_repeats=state.saturated_repeats,
                 global_actions_charged=state.global_actions_charged,
                 ladder_evidence=dict(state.ladder_evidence),
+                shared_rung_results=dict(state.shared_rung_results),
             )
         key = (signature, action)
         updated: OrderedDict[tuple[str, str], int] = OrderedDict(state.repeat_counts)
@@ -436,6 +456,7 @@ class AttemptLedger:
             saturated_repeats=saturated,
             global_actions_charged=state.global_actions_charged,
             ladder_evidence=dict(state.ladder_evidence),
+            shared_rung_results=dict(state.shared_rung_results),
         )
 
     def _on_persist_failure(
@@ -452,18 +473,51 @@ class AttemptLedger:
         )
 
     def rebuild_from_git_facts(self, facts: LedgerRebuildFacts) -> AttemptLedgerState:
-        self._quarantine_ledger()
-        rebuilt = rebuild_state_from_git_facts(
-            facts,
-            unknown_budget=self._default_unknown_budget,
-            repeat_threshold=self._default_repeat_threshold,
-        )
-        self._write_state(rebuilt, self._default_state())
-        return rebuilt
+        with self._locked() as acquired:
+            if not acquired:
+                raise OSError("integration attempt ledger lock unavailable")
+            self._quarantine_ledger()
+            rebuilt = rebuild_state_from_git_facts(
+                facts,
+                unknown_budget=self._default_unknown_budget,
+                repeat_threshold=self._default_repeat_threshold,
+            )
+            self._write_state(rebuilt, self._default_state())
+            return rebuilt
 
     def persist(self, state: AttemptLedgerState) -> None:
-        disk, _status = self._load()
-        self._write_state(state, disk)
+        with self._locked() as acquired:
+            if not acquired:
+                raise OSError("integration attempt ledger lock unavailable")
+            disk, _status = self._load()
+            self._write_state(state, disk)
+
+    def publish_rung_result(self, key: str, value: str) -> AttemptLedgerState:
+        if not key:
+            raise ValueError("rung result key must not be empty")
+        with self._locked() as acquired:
+            if not acquired:
+                raise OSError("integration attempt ledger lock unavailable")
+            state, _status = self._load()
+            shared = dict(state.shared_rung_results)
+            shared[key] = value
+            updated = AttemptLedgerState(
+                rung=state.rung,
+                repeat_counts=OrderedDict(state.repeat_counts),
+                unknown_attempts=state.unknown_attempts,
+                unknown_budget=state.unknown_budget,
+                repeat_threshold=state.repeat_threshold,
+                saturated_repeats=state.saturated_repeats,
+                global_actions_charged=state.global_actions_charged,
+                ladder_evidence=dict(state.ladder_evidence),
+                shared_rung_results=shared,
+            )
+            self._write_state(updated, state)
+            persisted, _status = self._load()
+            return persisted
+
+    def read_rung_result(self, key: str) -> str | None:
+        return self.read().shared_rung_results.get(key)
 
     def _write_state(self, state: AttemptLedgerState, disk: AttemptLedgerState) -> None:
         merged = self._merge_monotone(state, disk)
@@ -482,6 +536,8 @@ class AttemptLedger:
         )
         merged_evidence = dict(disk.ladder_evidence)
         merged_evidence.update(state.ladder_evidence)
+        merged_results = dict(disk.shared_rung_results)
+        merged_results.update(state.shared_rung_results)
         return AttemptLedgerState(
             rung=_further_rung(state.rung, disk.rung),
             repeat_counts=merged_counts,
@@ -492,6 +548,9 @@ class AttemptLedger:
             saturated_repeats=saturated,
             global_actions_charged=max(state.global_actions_charged, disk.global_actions_charged),
             ladder_evidence=dict(list(merged_evidence.items())[:_LADDER_EVIDENCE_CAP]),
+            shared_rung_results=dict(
+                list(merged_results.items())[-_SHARED_RUNG_RESULTS_CAP:]
+            ),
         )
 
     @staticmethod
@@ -509,31 +568,32 @@ class AttemptLedger:
             "saturated_repeats": state.saturated_repeats,
             "global_actions_charged": state.global_actions_charged,
             "ladder_evidence": dict(sorted(state.ladder_evidence.items())),
+            "shared_rung_results": dict(sorted(state.shared_rung_results.items())),
         }
         return json.dumps(payload, indent=2, sort_keys=False)
 
     @staticmethod
     def _atomic_write(path: Path, payload: str) -> None:
-        temp_path = path.with_suffix(path.suffix + ".staging")
-        with temp_path.open("w", encoding="utf-8") as stream:
-            stream.write(payload)
-            stream.flush()
-            descriptor = stream.fileno()
-            if isinstance(descriptor, int):
-                os.fsync(descriptor)
-        temp_path.replace(path)
-        directory = path.parent
+        temp_path = path.with_name(f"{path.name}.staging.{os.getpid()}.{uuid4().hex}")
         try:
-            directory_fd = os.open(
-                str(directory),
-                os.O_RDONLY,
-            )
-        except OSError:
-            return
-        try:
-            os.fsync(directory_fd)
+            with temp_path.open("w", encoding="utf-8") as stream:
+                stream.write(payload)
+                stream.flush()
+                descriptor = stream.fileno()
+                if isinstance(descriptor, int):
+                    os.fsync(descriptor)
+            temp_path.replace(path)
+            try:
+                directory_fd = os.open(str(path.parent), os.O_RDONLY)
+            except OSError:
+                return
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         finally:
-            os.close(directory_fd)
+            with contextlib.suppress(OSError):
+                temp_path.unlink(missing_ok=True)
 
     @staticmethod
     def _clamp_repeats(
@@ -679,6 +739,7 @@ class AttemptLedger:
             saturated_repeats=saturated,
             global_actions_charged=_non_negative_int(payload, "global_actions_charged"),
             ladder_evidence=_parse_ladder_evidence(payload.get("ladder_evidence")),
+            shared_rung_results=_parse_shared_rung_results(payload.get("shared_rung_results")),
         )
 
     @staticmethod
@@ -712,6 +773,19 @@ def _parse_ladder_evidence(raw: object) -> dict[str, str]:
         if len(evidence) >= _LADDER_EVIDENCE_CAP:
             break
     return evidence
+
+
+def _parse_shared_rung_results(raw: object) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    results: dict[str, str] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            continue
+        results[key] = value
+        if len(results) >= _SHARED_RUNG_RESULTS_CAP:
+            break
+    return results
 
 
 def _non_negative_int(payload: Mapping[str, object], key: str) -> int:

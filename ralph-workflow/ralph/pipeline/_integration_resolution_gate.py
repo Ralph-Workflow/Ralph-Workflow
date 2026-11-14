@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.git.merge import (
-    MERGE_STATE_IN_PROGRESS,
-    merge_state,
-    staged_conflict_marker_paths,
-    unmerged_paths,
+from ralph.git.operation_snapshot import (
+    OperationSnapshot,
+    OperationState,
+    observe_operation_snapshot,
 )
-from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,66 +18,40 @@ __all__ = [
 
 
 def conflict_resolution_warranted(root: Path) -> bool:
-    warranted = False
     try:
-        if rebase_in_progress_at(root):
-            warranted = True
+        snapshot = observe_operation_snapshot(root)
     except Exception:
-        warranted = True
-    if not warranted:
-        try:
-            warranted = bool(unmerged_paths(root))
-        except Exception:
-            warranted = True
-    if not warranted:
-        try:
-            warranted = bool(staged_conflict_marker_paths(root))
-        except Exception:
-            warranted = True
-    return warranted
+        return True
+    return bool(
+        snapshot.operation_state is OperationState.REBASE_PAUSED
+        or not snapshot.unmerged_query_ok
+        or snapshot.unmerged_paths
+        or snapshot.staged_conflict_marker_paths
+    )
 
 
 def retained_round_fingerprint(root: Path) -> str:
-    return "|".join((_head_identity(root), _stop_identity(root), _unmerged_identity(root)))
+    snapshot = observe_operation_snapshot(root)
+    return "|".join(
+        (_head_identity(snapshot), _stop_identity(snapshot), _unmerged_identity(snapshot))
+    )
 
 
-def _head_identity(root: Path) -> str:
-    try:
-        from ralph.git.operations import get_head_sha
-
-        return get_head_sha(root)
-    except Exception:
-        return "unreadable"
+def _head_identity(snapshot: OperationSnapshot) -> str:
+    return snapshot.head_sha or "unreadable"
 
 
-def _stop_identity(root: Path) -> str:
-    try:
-        if merge_state(root) == MERGE_STATE_IN_PROGRESS:
-            return _marker_sha(root, "MERGE_HEAD") or "merge-in-progress"
-    except Exception:
-        return "unreadable"
-    try:
-        if rebase_in_progress_at(root):
-            return _marker_sha(root, "REBASE_HEAD") or "rebase-in-progress"
-    except Exception:
+def _stop_identity(snapshot: OperationSnapshot) -> str:
+    if snapshot.operation_state is OperationState.MERGE_PAUSED:
+        return snapshot.merge_head or "merge-in-progress"
+    if snapshot.operation_state is OperationState.REBASE_PAUSED:
+        return snapshot.rebase_head or "rebase-in-progress"
+    if snapshot.operation_state is OperationState.UNKNOWN:
         return "unreadable"
     return "none"
 
 
-def _marker_sha(root: Path, marker: str) -> str | None:
-    from ralph.git.subprocess_runner import run_git
-
-    result = run_git(
-        ("rev-parse", "--verify", marker),
-        cwd=root,
-        label=f"integration-gate:{marker.lower()}",
-    )
-    sha = result.stdout.strip()
-    return sha if result.returncode == 0 and sha else None
-
-
-def _unmerged_identity(root: Path) -> str:
-    try:
-        return ",".join(sorted(unmerged_paths(root)))
-    except Exception:
+def _unmerged_identity(snapshot: OperationSnapshot) -> str:
+    if not snapshot.unmerged_query_ok:
         return "unreadable"
+    return ",".join(sorted(snapshot.unmerged_paths))

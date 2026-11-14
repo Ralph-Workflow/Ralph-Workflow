@@ -49,9 +49,6 @@ from ralph.pipeline.auto_integrate_resolve import (
     RESOLUTION_FAILED,
     endpoint_merge_with_resolution,
 )
-from ralph.pipeline.conflict_resolution import (
-    resolve_rebase_in_progress,
-)
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.integration_decision import (
     DecisionContext,
@@ -137,7 +134,6 @@ __all__ = [
     "read_record",
     "rebase_in_progress",
     "registered_skip_slugs",
-    "resolve_rebase_in_progress",
     "run_rebase_or_merge",
     "set_resolving_rebase",
     "skip_reason_description",

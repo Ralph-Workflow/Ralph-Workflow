@@ -416,6 +416,13 @@ def _declared_decision_reason(
     return "marker-less declaration"
 
 
+def _status_scope(status: IntegrationStatus) -> str:
+    details = "; ".join(
+        f"{path}: {reason}" for path, reason in status.paths_with_reasons
+    )
+    return f"{status.summary}; path reasons: {details}" if details else status.summary
+
+
 def _run_rounds(
     *,
     root: Path,
@@ -499,7 +506,7 @@ def _run_rounds(
         require_completion_evidence=bool(decision_paths),
     )
     entry_scope = (
-        f"{len(conflicted)} resolvable; {integration_status.summary}"
+        f"{len(conflicted)} resolvable; {_status_scope(integration_status)}"
         if integration_status is not None
         else f"{len(conflicted)} conflicted file(s)"
     )

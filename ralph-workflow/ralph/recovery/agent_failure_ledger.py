@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
+
+from loguru import logger
 
 from ralph.recovery.eligibility_wait import EligibilityWait
 from ralph.recovery.wait_kind import WaitKind
@@ -12,6 +14,8 @@ if TYPE_CHECKING:
     from ralph.agents.clock import Clock
 
 LEGACY_DEFAULT_AGENT: Final[str] = "claude"
+LEDGER_VERSION: Final[int] = 1
+_LEDGER_VERSION_DRIFT_NOTICES: set[str] = set()
 
 _LEGACY_MALFORMED_REASON: Final[str] = "legacy_guard_malformed"
 
@@ -63,6 +67,10 @@ class _Cooldown(_AgentStatus):
     until_ms: int
     reason: str
 
+    @property
+    def until(self) -> int:
+        return self.until_ms
+
 
 @dataclass(frozen=True)
 class _Spent(_AgentStatus):
@@ -95,9 +103,11 @@ AttemptFact = _AttemptFact
 AgentStatus = _AgentStatus
 Eligible = _Eligible
 Cooldown = _Cooldown
+CoolingDown = _Cooldown
 Spent = _Spent
 Unavailable = _Unavailable
 AttemptOutcome = _AttemptOutcome
+type AgentEligibility = Eligible | CoolingDown | Spent | Unavailable
 
 
 @dataclass
@@ -329,6 +339,31 @@ class AgentFailureLedger:
                 now_ms=now_ms,
             )
 
+    def agent_eligibility(
+        self,
+        phase: str,
+        agent: str,
+        *,
+        cooldown: tuple[int, str] | None = None,
+        spent_reason: str | None = None,
+        unavailable_reason: str | None = None,
+    ) -> AgentEligibility:
+        now_ms = int(self._clock.monotonic() * 1000)
+        if spent_reason is not None:
+            return Spent(reason=spent_reason)
+        status = self.status(phase, agent)
+        if isinstance(status, (Spent, Unavailable)):
+            return status
+        if isinstance(status, Cooldown) and (
+            cooldown is None or status.until_ms <= cooldown[0]
+        ):
+            return status
+        if cooldown is not None and now_ms < cooldown[0]:
+            return CoolingDown(until_ms=cooldown[0], reason=cooldown[1])
+        if unavailable_reason is not None:
+            return Unavailable(reason=unavailable_reason)
+        return Eligible()
+
     def spent_status(self, reason: str) -> AgentStatus:
         return Spent(reason=reason)
 
@@ -481,6 +516,7 @@ class AgentFailureLedger:
             for (phase, agent), entry in self._entries.items()
         }
         return {
+            "version": LEDGER_VERSION,
             "consecutive_limit": self._consecutive_limit,
             "total_limit": self._total_limit,
             "base_cooldown_seconds": self._base_cooldown_seconds,
@@ -574,7 +610,22 @@ class AgentFailureLedger:
         snap: Mapping[str, object],
         *,
         clock: Clock,
+        notice: Callable[[str], None] | None = None,
     ) -> AgentFailureLedger:
+        raw_version = snap.get("version")
+        if raw_version is not None and raw_version != LEDGER_VERSION:
+            message = (
+                f"Agent failure ledger version {raw_version!r} is unsupported; "
+                f"rebuilt as version {LEDGER_VERSION}."
+            )
+            notice_key = repr(raw_version)
+            if notice_key not in _LEDGER_VERSION_DRIFT_NOTICES:
+                _LEDGER_VERSION_DRIFT_NOTICES.add(notice_key)
+                if notice is None:
+                    logger.warning("{}", message)
+                else:
+                    notice(message)
+            return cls(clock=clock)
         if "entries" not in snap and (
             "streak" in snap or "max_identical" in snap or "failed_closed" in snap
         ):
@@ -903,13 +954,16 @@ def migrate_legacy_guard_history(
 
 __all__ = [
     "LEDGER_SNAPSHOT_MALFORMED_REASON",
+    "LEDGER_VERSION",
     "LEGACY_DEFAULT_AGENT",
     "LEGACY_IDENTITY_UNATTRIBUTABLE_REASON",
+    "AgentEligibility",
     "AgentFailureLedger",
     "AgentStatus",
     "AttemptFact",
     "AttemptOutcome",
     "Cooldown",
+    "CoolingDown",
     "EligibilityWait",
     "Eligible",
     "Spent",

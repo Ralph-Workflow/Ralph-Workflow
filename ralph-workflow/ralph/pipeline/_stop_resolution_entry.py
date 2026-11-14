@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.integration_actions import AgentRunner
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
     from ralph.recovery.controller import RecoveryController
@@ -173,19 +174,13 @@ def compute_resolution_attempt_key(
     effective_agents = eligible_agents
     if effective_agents is None and controller is not None:
         try:
-            candidates = list(chain_agents) if chain_agents is not None else []
-            if chain_agents is None:
-                candidates_set: set[str] = set()
-                chain = controller._get_chain_agents(phase)
-                if chain is not None:
-                    candidates_set.update(chain)
-                snapshot = controller.snapshot()
-                for field in ("unavailable_timeouts", "backoff_attempts"):
-                    values = snapshot.get(field)
-                    if isinstance(values, dict):
-                        candidates_set.update(str(value) for value in values)
-                candidates = sorted(candidates_set)
-            effective_agents = tuple(sorted(controller.agents_now_available(phase, candidates)))
+            candidates = (
+                chain_agents if chain_agents is not None else controller.agents_for_phase(phase)
+            )
+            eligibility = controller.chain_eligibility(phase, candidates)
+            effective_agents = tuple(
+                sorted(agent for agent, status in eligibility if status.is_eligible)
+            )
         except Exception as exc:
             return KeyUnavailable(f"agent eligibility unavailable: {exc}")
     if effective_agents is None:
@@ -222,13 +217,18 @@ def _deferred_failure_cause(root: Path, record: IntegrationRecord | None) -> Res
     return current.last_failure_cause
 
 
-def _present_block(root: Path, record: IntegrationRecord, key: ResolutionAttemptKey) -> None:
+def _present_block(
+    root: Path,
+    record: IntegrationRecord | None,
+    key: ResolutionAttemptKey,
+) -> None:
     current = read_record(root) or record
     serialized_key = (key.stop_identity, key.eligible_agents, key.config_fingerprint)
-    if current.waiting_notification_key == serialized_key:
+    if current is not None and current.waiting_notification_key == serialized_key:
         return
     logger.bind(recovery=True).info("{}", _WAITING_ACTION_MESSAGE)
-    write_record(root, current.with_waiting_notification_key(serialized_key))
+    if current is not None:
+        write_record(root, current.with_waiting_notification_key(serialized_key))
 
 
 def _record_failed_attempt(
@@ -282,6 +282,29 @@ def _is_conflict_resolver(resolver: object) -> TypeGuard[ConflictResolver]:
     return callable(resolver)
 
 
+class _ProductionRebaseRunner:
+    def resolve_rebase(
+        self,
+        root: Path,
+        target: str,
+        resolver: RebaseStopResolver,
+        *,
+        session: ResolutionSession,
+    ) -> bool:
+        from ralph.pipeline.conflict_resolution import rebase_loop
+
+        return bool(
+            rebase_loop._resolve_rebase_in_progress(root, target, resolver, session=session)
+        )
+
+
+_PRODUCTION_REBASE_RUNNER = _ProductionRebaseRunner()
+
+
+def production_rebase_runner() -> AgentRunner:
+    return _PRODUCTION_REBASE_RUNNER
+
+
 def _execute_trigger(trigger: StopResolutionTrigger) -> object:
     if trigger.launcher is not None:
         return trigger.launcher()
@@ -309,6 +332,14 @@ def _execute_trigger(trigger: StopResolutionTrigger) -> object:
     raise TypeError(f"expected callable ConflictResolver, got {resolver!r}")
 
 
+def _gate_record(trigger: StopResolutionTrigger) -> IntegrationRecord:
+    if trigger.record is not None:
+        return trigger.record
+    from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+
+    return resolution_gate_record(trigger.root, trigger.target)
+
+
 def attempt_stop_resolution(
     stop_identity: str | None,
     trigger: StopResolutionTrigger,
@@ -317,55 +348,53 @@ def attempt_stop_resolution(
 
     if not isinstance(trigger, StopResolutionTrigger):
         raise TypeError("trigger must be a StopResolutionTrigger")
-    key: ResolutionAttemptKey | None = None
-    if trigger.record is not None:
-        computed = (
-            trigger.key_provider()
-            if trigger.key_provider is not None
-            else compute_resolution_attempt_key(
-                trigger.root,
-                trigger.record,
-                trigger.config,
-                recovery_controller=trigger.recovery_controller,
-                phase=trigger.phase,
-                chain_agents=trigger.chain_agents,
-                config_path=trigger.config_path,
-                stop_identity=stop_identity,
-                eligible_agents=trigger.eligible_agents,
-                config_fingerprint=trigger.config_fingerprint,
-            )
+    record = _gate_record(trigger)
+    computed = (
+        trigger.key_provider()
+        if trigger.key_provider is not None
+        else compute_resolution_attempt_key(
+            trigger.root,
+            record,
+            trigger.config,
+            recovery_controller=trigger.recovery_controller,
+            phase=trigger.phase,
+            chain_agents=trigger.chain_agents,
+            config_path=trigger.config_path,
+            stop_identity=stop_identity,
+            eligible_agents=trigger.eligible_agents,
+            config_fingerprint=trigger.config_fingerprint,
         )
-        if isinstance(computed, KeyUnavailable):
-            return StopResolutionBlocked(f"{_KEY_UNAVAILABLE_PREFIX}: {computed.reason}", computed)
-        key = computed
-        decision = decide_resolution_attempt(
-            ResolutionGateFacts(
-                stored_key=_stored_key(trigger.root, trigger.record),
-                stop_identity=key.stop_identity,
-                eligible_agents=key.eligible_agents,
-                config_fingerprint=key.config_fingerprint,
-                observed_at_ms=_clock_ms(trigger.clock),
-            )
+    )
+    if isinstance(computed, KeyUnavailable):
+        return StopResolutionBlocked(f"{_KEY_UNAVAILABLE_PREFIX}: {computed.reason}", computed)
+    key = computed
+    decision = decide_resolution_attempt(
+        ResolutionGateFacts(
+            stored_key=_stored_key(trigger.root, record),
+            stop_identity=key.stop_identity,
+            eligible_agents=key.eligible_agents,
+            config_fingerprint=key.config_fingerprint,
+            observed_at_ms=_clock_ms(trigger.clock),
         )
-        if decision.blocked and not trigger.force_retry:
-            carried_cause = _deferred_failure_cause(trigger.root, trigger.record)
-            _present_block(trigger.root, trigger.record, decision.key)
-            return DeferredStopResolution(
-                decision.reason or _GATE_ACTIVE_REASON,
-                decision.key,
-                carried_cause,
-            )
+    )
+    if decision.blocked and not trigger.force_retry:
+        carried_cause = _deferred_failure_cause(trigger.root, trigger.record)
+        _present_block(trigger.root, trigger.record, decision.key)
+        return DeferredStopResolution(
+            decision.reason or _GATE_ACTIVE_REASON,
+            decision.key,
+            carried_cause,
+        )
 
     result = _execute_trigger(trigger)
-    if key is not None:
-        post_key = _post_attempt_key(stop_identity, trigger, key)
-        if isinstance(result, RebaseResolutionResult) and not result.succeeded:
-            _record_failed_attempt(trigger, post_key, result.failure_cause)
-        else:
-            from ralph.git.merge import MergeResult
+    post_key = _post_attempt_key(stop_identity, trigger, key)
+    if isinstance(result, RebaseResolutionResult) and not result.succeeded:
+        _record_failed_attempt(trigger, post_key, result.failure_cause)
+    else:
+        from ralph.git.merge import MergeResult
 
-            if isinstance(result, MergeResult) and result.outcome != "success":
-                _record_failed_attempt(trigger, post_key, result.failure_cause)
+        if isinstance(result, MergeResult) and result.outcome != "success":
+            _record_failed_attempt(trigger, post_key, result.failure_cause)
     return result
 
 
@@ -389,12 +418,10 @@ def _resolve_rebase_with_config(
             total_resolution_cap_seconds=config.total_resolution_cap_seconds,
         )
     )
-    from ralph.pipeline import auto_integrate_rebase_merge as merge_module
-
     resolved = (
         agent_runner.resolve_rebase(root, target, resolver, session=session)
         if agent_runner is not None
-        else merge_module.resolve_rebase_in_progress(root, target, resolver, session=session)
+        else production_rebase_runner().resolve_rebase(root, target, resolver, session=session)
     )
     if resolved:
         return RebaseResolutionResult(

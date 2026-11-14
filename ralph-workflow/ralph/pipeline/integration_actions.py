@@ -243,20 +243,6 @@ class _ProductionGitOps:
         return True
 
 
-class _ProductionAgentRunner:
-    def resolve_rebase(
-        self,
-        root: Path,
-        target: str,
-        resolver: RebaseStopResolver,
-        *,
-        session: ResolutionSession,
-    ) -> bool:
-        from ralph.pipeline.conflict_resolution import resolve_rebase_in_progress
-
-        return resolve_rebase_in_progress(root, target, resolver, session=session)
-
-
 class _SystemClock:
     def now(self) -> float:
         return time.monotonic()
@@ -266,7 +252,6 @@ class _SystemClock:
 
 
 _DEFAULT_GIT_OPS = _ProductionGitOps()
-_DEFAULT_AGENT_RUNNER = _ProductionAgentRunner()
 _DEFAULT_CLOCK = _SystemClock()
 
 
@@ -275,7 +260,9 @@ def default_git_ops() -> GitOps:
 
 
 def default_agent_runner() -> AgentRunner:
-    return _DEFAULT_AGENT_RUNNER
+    from ralph.pipeline._stop_resolution_entry import production_rebase_runner
+
+    return production_rebase_runner()
 
 
 def default_clock() -> Clock:

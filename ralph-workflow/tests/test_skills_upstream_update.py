@@ -1043,5 +1043,17 @@ def test_single_source_state_file_is_migrated_in_place_without_reinstall(sandbox
     assert (
         migrated.get("sources", {}).get("obra/superpowers", {}).get("installed_tag") == "v-test-1"
     )
-    assert upstream._needs_update("v-test-1", migrated) is False
-    assert upstream._needs_update("v-test-2", migrated) is True
+
+    current_client, current_calls = _client_for("v-test-1", _SKILL_FILES)
+    current = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=49), http=current_client
+    )
+    assert current.status == "up-to-date"
+    assert current_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
+
+    upgrade_client, upgrade_calls = _client_for("v-test-2", _SKILL_FILES)
+    upgraded = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=73), http=upgrade_client
+    )
+    assert upgraded.status == "updated"
+    assert _archive_url("v-test-2") in upgrade_calls

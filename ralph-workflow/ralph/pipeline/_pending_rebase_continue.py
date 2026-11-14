@@ -8,7 +8,6 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._landed_predicate import (
-    LANDING_WITHHELD_REASON,
     LandedDecision,
     operation_landed,
 )
@@ -234,6 +233,7 @@ def _retain_next_rebase_stop(root: Path) -> str:
                 resolving_rebase=True,
             ),
         )
+        prepare_pending_rebase(root, updated.target)
     return "rebase advanced to another conflict; retained for agent continuation"
 
 
@@ -263,7 +263,7 @@ def _complete_pending_rebase_snapshot(
 
 
 def _landing_failure(decision: LandedDecision) -> str:
-    return f"{LANDING_WITHHELD_REASON}; {decision.operator_status('all recorded Git state')}"
+    return decision.operator_status("all recorded Git state")
 
 
 def _sequencer_snapshot(root: Path) -> tuple[tuple[str, str], ...]:

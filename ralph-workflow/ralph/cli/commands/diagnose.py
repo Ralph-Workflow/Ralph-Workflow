@@ -200,16 +200,22 @@ def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
     status = _persisted_integration_status(workspace_root)
     if status is None:
         return True
+    _emit_simple_table(display, "Integration Status", _integration_status_rows(status))
+    return True
+
+
+def _integration_status_rows(status: IntegrationStatus) -> list[tuple[object, ...]]:
     rows: list[tuple[object, ...]] = [
         ("Summary", status.summary),
         ("Cause", status.cause),
-        ("Paths", ", ".join(status.paths) or "(none)"),
+        ("Paths with reasons", "\n".join(status.path_details) or "(none)"),
         ("Operator command", status.command or "(none)"),
         ("Agents can finish", "yes" if status.agents_can_finish else "no"),
+        ("Agent reasons", "\n".join(status.agent_reasons) or "(none)"),
+        ("Progress", status.progress),
         ("Build", status.build_identity),
     ]
-    _emit_simple_table(display, "Integration Status", rows)
-    return True
+    return rows
 
 
 def _check_capability_state(*, display: object) -> bool:

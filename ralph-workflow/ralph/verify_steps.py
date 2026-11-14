@@ -281,6 +281,24 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "integration swallow audit (audit_integration_swallow)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_integration_swallow"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        "integration single-source audit (audit_integration_single_source)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_integration_single_source"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        "integration no-legacy audit (audit_integration_no_legacy)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_integration_no_legacy"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "make test-verification-smoke",
         "make",
         ("test-verification-smoke",),

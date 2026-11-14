@@ -18,10 +18,6 @@ from ralph.pipeline.auto_integrate_recovery import (
 from ralph.pipeline.commit_executor import (
     reattach_head_if_detached as _reattach_head_if_detached,
 )
-from ralph.pipeline.conflict_resolution import (
-    resolution_session_from_config,
-    resolve_rebase_in_progress,
-)
 from ralph.pipeline.integration_resolution import (
     TreeReadinessAssessment,
     assess_tree_readiness,
@@ -190,9 +186,27 @@ def _finish_paused_rebase(
 ) -> RebaseState | None:
     if resolver is None or not rebase_in_progress(root):
         return None
-    if resolve_rebase_in_progress(
-        root, target, resolver, session=resolution_session_from_config(config)
-    ):
+    from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+    from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
+    from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
+
+    result = attempt_stop_resolution(
+        None,
+        StopResolutionTrigger(
+            name="rebase_stop",
+            root=root,
+            target=target,
+            resolver=resolver,
+            record=read_record(root) or resolution_gate_record(root, target),
+            conflict_config=config.conflict_resolution,
+        ),
+    )
+    if isinstance(result, StopResolutionBlocked):
+        return record_conflict(reason=result.reason, target=target)
+    if isinstance(result, RebaseResolutionResult) and result.succeeded:
         return None
     return record_conflict(
         reason="rebase already in progress could not be resolved; the resolver is asked again",

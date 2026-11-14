@@ -295,7 +295,7 @@ def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
     repo_root_path = Path(repo_root)
     try:
         result = run_git(
-            ("diff", "--name-only", "--diff-filter=U", "-z"),
+            ("ls-files", "-u", "-z"),
             cwd=repo_root_path,
             label="git-unmerged-paths",
         )
@@ -304,10 +304,15 @@ def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
         return UnmergedPathsObservation(query_ok=False)
     if result.returncode != 0:
         return UnmergedPathsObservation(query_ok=False)
-    return UnmergedPathsObservation(
-        tuple(entry for entry in result.stdout.split("\0") if entry),
-        query_ok=True,
-    )
+    paths: dict[str, None] = {}
+    for record in result.stdout.split("\0"):
+        if not record:
+            continue
+        _metadata, separator, path = record.partition("\t")
+        if not separator or not path:
+            return UnmergedPathsObservation(query_ok=False)
+        paths.setdefault(path, None)
+    return UnmergedPathsObservation(tuple(paths), query_ok=True)
 
 
 def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
@@ -479,6 +484,7 @@ __all__ = [
     "paths_with_conflict_markers",
     "reset_keep",
     "stage_paths",
+    "unmerged_paths",
     "worktree_for_branch",
     "worktree_lookup",
 ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -16,10 +17,19 @@ __all__ = [
     "LadderOutcome",
     "LandResult",
     "RepointResult",
+    "RungPostCondition",
 ]
 
 
 type LadderOutcome = Literal["succeeded", "failed", "impossible", "waiting", "terminal"]
+
+
+class RungPostCondition(StrEnum):
+    BLOCKING_OBSERVATION_CHANGED = "blocking_observation_changed"
+    DURABLE_COPY_CREATED = "durable_copy_created"
+    STOP_GONE = "stop_gone"
+    TIP_MOVED = "tip_moved"
+    BRANCH_LANDED = "branch_landed"
 
 type LandResult = Literal[
     "landed",

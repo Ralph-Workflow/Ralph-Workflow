@@ -46,7 +46,7 @@ def _dedicated_lane_shard_count(
 
 @pytest.mark.parametrize(
     ("cpu_count", "expected_shards"),
-    ((None, 1), (1, 1), (4, 4), (8, 8), (12, 10), (40, 10)),
+    ((None, 1), (1, 1), (4, 4), (8, 6), (12, 6), (40, 6)),
 )
 def test_real_git_lane_shards_are_capped_by_the_host_cores(
     tmp_path: Path,

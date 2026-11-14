@@ -27,6 +27,19 @@ if TYPE_CHECKING:
 
 _UNSET_PHASE: Final[str] = "__unset__"
 _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
+PIPELINE_STATE_VERSION: Final[int] = 1
+
+
+def _validated_state_version(payload: Mapping[str, object]) -> int:
+    raw_version = payload.get("state_version", 0)
+    if isinstance(raw_version, bool) or not isinstance(raw_version, int) or raw_version < 0:
+        raise ValueError("pipeline state version must be a non-negative integer")
+    if raw_version > PIPELINE_STATE_VERSION:
+        raise ValueError(
+            f"pipeline state version {raw_version} is newer than supported "
+            f"version {PIPELINE_STATE_VERSION}"
+        )
+    return raw_version
 
 
 def _legacy_chain_agents(chain: dict[str, object]) -> tuple[str, ...]:
@@ -176,6 +189,7 @@ def _normalize_fallover_history_for_cap(
 
 
 class PipelineState(_FrozenPipelineStateModel):
+    state_version: int = PIPELINE_STATE_VERSION
     phase: PipelinePhase = _UNSET_PHASE
     previous_phase: PipelinePhase | None = None
     integration_commit_resume_phase: PipelinePhase | None = None
@@ -279,6 +293,8 @@ class PipelineState(_FrozenPipelineStateModel):
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
+        _validated_state_version(d)
+        d["state_version"] = PIPELINE_STATE_VERSION
 
         _raw_bc = d.get("budget_caps")
         budget_caps_data: dict[str, object] = dict(
@@ -520,6 +536,7 @@ PipelineState.model_rebuild(
 )
 
 __all__ = [
+    "PIPELINE_STATE_VERSION",
     "AgentChainState",
     "CommitState",
     "FalloverRecord",

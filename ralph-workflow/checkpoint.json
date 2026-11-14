@@ -1,4 +1,5 @@
 {
+  "state_version": 1,
   "phase": "planning",
   "previous_phase": null,
   "integration_commit_resume_phase": null,

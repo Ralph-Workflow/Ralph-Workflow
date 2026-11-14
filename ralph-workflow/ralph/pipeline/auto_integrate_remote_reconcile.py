@@ -31,8 +31,6 @@ from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_pro
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
     current_rebase_identity,
-    resolution_session_from_config,
-    resolve_rebase_in_progress,
 )
 from ralph.pipeline.integration_resolution import retained_integration_reason
 
@@ -40,7 +38,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
@@ -98,9 +95,7 @@ def reconcile_target_onto_remote(
                 remote,
                 pre_target_sha,
                 rebase_stop_resolver,
-                resolution_session_from_config(conflict_resolution_config)
-                if conflict_resolution_config is not None
-                else None,
+                conflict_resolution_config,
             )
 
     return _reconcile_unowned_target(
@@ -119,7 +114,7 @@ def _reconcile_owned_target(
     remote: str,
     pre_target_sha: str,
     rebase_stop_resolver: RebaseStopResolver | None,
-    resolution_session: ResolutionSession | None,
+    conflict_resolution_config: UnifiedConfig | None,
     *,
     is_temporary: bool = False,
 ) -> ReconciliationOutcome:
@@ -152,7 +147,7 @@ def _reconcile_owned_target(
                 remote,
                 record,
                 rebase_stop_resolver,
-                resolution_session,
+                conflict_resolution_config,
                 is_temporary=is_temporary,
             )
         if rebase_in_progress(owner):
@@ -173,7 +168,7 @@ def _resolve_owned_reconciliation(
     remote: str,
     record: IntegrationRecord,
     resolver: RebaseStopResolver,
-    session: ResolutionSession | None,
+    conflict_resolution_config: UnifiedConfig | None,
     *,
     is_temporary: bool = False,
 ) -> ReconciliationOutcome:
@@ -189,7 +184,14 @@ def _resolve_owned_reconciliation(
     detail = "resolution interrupted"
     try:
         with bind_integration_record_root(owner, repo_root):
-            resolved = _resolve_rebase_with_session(owner, f"{remote}/{target}", resolver, session)
+            resolved, reason = _resolve_rebase_stop(
+                owner,
+                f"{remote}/{target}",
+                resolver,
+                conflict_resolution_config,
+                record,
+            )
+        detail = reason or detail
         if resolved and not rebase_in_progress(owner):
             return _clear_successful_reconciliation_record(repo_root, target, remote)
     except Exception as exc:
@@ -213,15 +215,34 @@ def _resolve_owned_reconciliation(
     )
 
 
-def _resolve_rebase_with_session(
+def _resolve_rebase_stop(
     owner: Path,
     target: str,
     resolver: RebaseStopResolver,
-    session: ResolutionSession | None,
-) -> bool:
-    if session is None:
-        return resolve_rebase_in_progress(owner, target, resolver)
-    return resolve_rebase_in_progress(owner, target, resolver, session=session)
+    config: UnifiedConfig | None,
+    record: IntegrationRecord,
+) -> tuple[bool, str | None]:
+    from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+    from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
+    from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
+
+    result = attempt_stop_resolution(
+        None,
+        StopResolutionTrigger(
+            name="rebase_stop",
+            root=owner,
+            target=target,
+            resolver=resolver,
+            record=read_record(owner) or record,
+            conflict_config=None if config is None else config.conflict_resolution,
+        ),
+    )
+    if isinstance(result, StopResolutionBlocked):
+        return False, result.reason
+    if not isinstance(result, RebaseResolutionResult):
+        return False, "rebase stop resolution returned an invalid result"
+    return result.succeeded, result.reason
 
 
 def _clear_successful_reconciliation_record(
@@ -380,9 +401,7 @@ def _reconcile_in_temporary_workspace(
                 remote,
                 pre_target_sha,
                 rebase_stop_resolver,
-                resolution_session_from_config(conflict_resolution_config)
-                if conflict_resolution_config is not None
-                else None,
+                conflict_resolution_config,
                 is_temporary=True,
             )
     finally:
