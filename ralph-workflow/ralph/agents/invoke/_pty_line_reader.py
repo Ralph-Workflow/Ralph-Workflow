@@ -127,6 +127,7 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
+from ralph.process.teardown import ProcessTeardown
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.runtime_events import current_runtime_event
 
@@ -148,10 +149,8 @@ if TYPE_CHECKING:
         InteractiveTranscriptEvent,
     )
     from ralph.agents.timeout_clock import Clock
-    from ralph.config.models import AgentConfig
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import ProcessMonitor
-    from ralph.process.teardown import ProcessTeardown
 
 from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 
@@ -362,9 +361,12 @@ class PtyLineReader:
     def _attempt_supervisor(self) -> AttemptSupervisor:
         supervisor = cast("object", getattr(self, "_supervisor", None))
         if not isinstance(supervisor, AttemptSupervisor):
+            process_teardown_value: object = getattr(self, "_process_teardown", None)
             supervisor = supervisor_process_teardown(
                 self._handle,
-                cast("ProcessTeardown | None", getattr(self, "_process_teardown", None)),
+                process_teardown_value
+                if isinstance(process_teardown_value, ProcessTeardown)
+                else None,
             )
             self._supervisor = supervisor
         return supervisor
@@ -1216,6 +1218,8 @@ class PtyLineReader:
             raise self._quota_error
 
     def _raise_if_terminal_startup_error(self, queued_line: str) -> None:
+        if self._process_teardown is not None:
+            _ = self._process_teardown.teardown_subtree
         terminal_startup_error = _terminal_interactive_startup_error(
             self._agent_name,
             queued_line,
@@ -1240,9 +1244,9 @@ class PtyLineReader:
         evidence = provider_quota_line_evidence(
             queued_line,
             channel=quota_evidence_channel(
-                cast("AgentConfig", getattr(self, "_config", None)),
+                self._config,
                 queued_line,
-                parser_key=cast("str | None", getattr(self, "_parser_key", None)),
+                parser_key=self._parser_key,
             ),
         )
         if evidence is not None:

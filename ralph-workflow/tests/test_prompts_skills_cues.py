@@ -116,19 +116,19 @@ _PHASE_FALLBACK_HINTS = {
     "developer_iteration.jinja": (
         "Write failing tests before writing implementation code",
         "Isolate the root cause before attempting fixes",
-        "Keep user-facing copy, interfaces, and code comments concise and direct",
+        "Keep user interfaces concise and direct",
         "Run fresh verification commands before claiming work is complete",
     ),
     "developer_iteration_continuation.jinja": (
         "Write failing tests before writing implementation code",
         "Isolate the root cause before attempting fixes",
-        "Keep user-facing copy, interfaces, and code comments concise and direct",
+        "Keep user interfaces concise and direct",
         "Run fresh verification commands before claiming work is complete",
     ),
     "developer_iteration_fallback.jinja": (
         "Write failing tests before writing implementation code",
         "Isolate the root cause before attempting fixes",
-        "Keep user-facing copy, interfaces, and code comments concise and direct",
+        "Keep user interfaces concise and direct",
         "Run fresh verification commands before claiming work is complete",
     ),
     "development_analysis.jinja": (

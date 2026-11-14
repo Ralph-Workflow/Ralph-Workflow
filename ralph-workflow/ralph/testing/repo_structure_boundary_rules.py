@@ -97,7 +97,9 @@ _B9B_SUPERVISION_PREFIX: Final = "ralph/agents/invoke/attempt_supervision/"
 _B9B_TEARDOWN_MODULE: Final = "ralph.process.teardown"
 _B9B_TEARDOWN_NAME: Final = "teardown_subtree"
 _B10_FACTS_ATTRIBUTE: Final = "attempt_facts"
-_B10_DELETED_NAMES: Final = frozenset({"attach_attempt_facts", "attempt_facts_from_exception"})
+_B10_DELETED_NAMES: Final[frozenset[str]] = frozenset(
+    {"attach_attempt_facts", "attempt_facts_from_exception"}
+)
 _B11_DISPATCH_CALL_NAMES: Final = frozenset({"invoke", "invoke_agent"})
 _B11_AGENT_TYPE_NAMES: Final = frozenset({"InvokeAgentEffect", "AgentConfig"})
 _B11_AGENT_TYPE_MARKERS: Final = ("AgentEffect", "AgentConfig")
@@ -154,6 +156,26 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
         943,
         "commit module agent invocation owned by the registered commit route",
     ),
+)
+_BOUNDARY_TRIGGERS: Final[tuple[str, ...]] = (
+    "RecoveryController",
+    "current_allowance_spent",
+    "Spent",
+    "_spent_agents",
+    "mark_unavailable",
+    "record_confirmed_unavailability",
+    "DEAD_AGENT_NO_PROGRESS",
+    "killpg",
+    "send_signal",
+    "kill",
+    "terminate",
+    "effect_executor",
+    "execute_agent_effect",
+    "invoke_agent",
+    "execute_with_environment_variables",
+    "attempt_facts",
+    "attach_attempt_facts",
+    "attempt_facts_from_exception",
 )
 
 
@@ -1173,12 +1195,24 @@ def _b11_violations(
 def collect_boundary_violations(relative_path: str, source: str) -> list[str]:
     if relative_path.startswith("ralph/testing/"):
         return []
+    is_decision = _decision_path(relative_path)
+    is_detector = relative_path in _B8_DETECTOR_PATHS
+    is_invoke = relative_path.startswith(_B9_INVOKE_PREFIXES)
+    is_controller = relative_path == _CONTROLLER_PATH
+    if not (
+        is_decision
+        or is_detector
+        or is_invoke
+        or is_controller
+        or any(t in source for t in _BOUNDARY_TRIGGERS)
+    ):
+        return []
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return []
     nodes = list(ast.walk(tree))
-    parents = _parent_map(tree)
+    parents = _parent_map(tree) if (is_controller or is_invoke) else {}
     return (
         _b1_violations(relative_path, nodes)
         + _b2_violations(relative_path, nodes, parents)

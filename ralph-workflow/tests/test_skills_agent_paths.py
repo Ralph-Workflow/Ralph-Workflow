@@ -9,8 +9,11 @@ from urllib.parse import urlparse
 
 from ralph.skills._agent_paths import (
     AGENT_SKILL_ROOTS,
+    agent_skill_presence_set,
     agent_skill_roots,
     canonical_agent_skill_root,
+    is_skill_present_for_agent,
+    is_skill_present_in_alternate_root,
     sibling_agent_skill_roots,
 )
 
@@ -203,3 +206,23 @@ def test_every_agent_root_lives_in_the_user_home_and_not_inside_a_project() -> N
             f"{entry.agent}: a user-global root must start at a hidden home directory, "
             f"got {entry.path_segments!r}"
         )
+
+
+def test_preexisting_copy_in_alternate_agent_root_suppresses_install(tmp_path: Path) -> None:
+    sandbox = tmp_path / "home"
+    sandbox.mkdir()
+    alt_codex = sandbox / ".agents" / "skills" / "antislop"
+    alt_codex.mkdir(parents=True)
+    (alt_codex / "SKILL.md").write_text("# Pre-existing\n", encoding="utf-8")
+    assert "antislop" in agent_skill_presence_set("codex", home=sandbox)
+    assert is_skill_present_for_agent("antislop", "codex", home=sandbox) is True
+    assert is_skill_present_for_agent("antislop", "codex-agents", home=sandbox) is True
+    assert is_skill_present_in_alternate_root("antislop", sandbox / ".codex" / "skills") is True
+    assert is_skill_present_in_alternate_root("antislop", sandbox / ".claude" / "skills") is False
+
+    alt_agy = sandbox / ".gemini" / "config" / "skills" / "antislop"
+    alt_agy.mkdir(parents=True)
+    (alt_agy / "SKILL.md").write_text("# Pre-existing\n", encoding="utf-8")
+    assert is_skill_present_for_agent("antislop", "agy", home=sandbox) is True
+    agy_root = sandbox / ".gemini" / "antigravity-cli" / "skills"
+    assert is_skill_present_in_alternate_root("antislop", agy_root) is True

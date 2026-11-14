@@ -461,10 +461,7 @@ def _release_tag_from_body(body: bytes) -> str | None:
     return tag
 
 
-def _parse_release_tag(status: int, body: bytes) -> tuple[str | None, str | None]:
-    if status != HTTP_OK:
-        reason = NO_RELEASE_ERROR if status == HTTP_NOT_FOUND else f"release-api-status-{status}"
-        return (None, reason)
+def _parse_release_tag(body: bytes) -> tuple[str | None, str | None]:
     if len(body) > MAX_RELEASE_BYTES:
         return (None, "release-api-too-large")
     tag = _release_tag_from_body(body)
@@ -478,7 +475,11 @@ def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | 
         status, body = http(source.api_url, REQUEST_TIMEOUT_SECONDS)
     except Exception as exc:
         return (None, _transport_error_reason(exc, "release-api"))
-    return _parse_release_tag(status, body)
+    if status == HTTP_NOT_FOUND:
+        return (None, NO_RELEASE_ERROR)
+    if status != HTTP_OK:
+        return (None, f"release-api-status-{status}")
+    return _parse_release_tag(body)
 
 
 def _load_release_payload(

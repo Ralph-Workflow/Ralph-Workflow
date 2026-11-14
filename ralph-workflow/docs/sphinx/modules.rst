@@ -1789,7 +1789,7 @@ ralph.pipeline.worker_status
 Skills
 ------
 
-This group owns the shipped default skills and the helpers that install and
+This group owns the shipped artifact skills and the helpers that install and
 update them. The artifact skill content lives under
 ``ralph/skills/content/`` and is listed in ``BASELINE_SKILL_NAMES`` in
 ``ralph/skills/_content.py``; the set is DERIVED from the pipeline's
@@ -1799,10 +1799,11 @@ verify step fails the gate when the two drift apart. The manager
 deterministic auto-commit contract enforced by
 ``ralph/testing/audit_skill_auto_commit.py`` (verify step 18).
 
-``ralph/skills/upstream.py`` refreshes the three universal engineering
-skills (``test-driven-development``, ``systematic-debugging``,
-``verification-before-completion``) from the single upstream
-``obra/superpowers`` at release tags, into the user-global skill roots. It
+``ralph/skills/upstream.py`` refreshes the four universal skills
+(``test-driven-development``, ``systematic-debugging``,
+``verification-before-completion`` from ``obra/superpowers``, and
+``antislop`` from ``miqdadbadjuber/anti-slop``) at release tags, into the
+user-global skill roots. It
 is fail-soft, rate-limited to one attempt per day, and preserves a skill
 the user has edited. ``ralph/skills/gating.py`` owns the kill switches that
 silence it: the ``RALPH_DISABLE_SKILL_UPDATES`` environment variable and
@@ -2282,6 +2283,13 @@ ralph.agents.idle_watchdog.watchdog_verdict
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.idle_watchdog.watchdog_verdict
+   :members:
+   :show-inheritance:
+
+ralph.agents.watchdog_fire_reason
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.watchdog_fire_reason
    :members:
    :show-inheritance:
 
@@ -3933,6 +3941,13 @@ ralph.recovery.agent_failure_ledger
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.agent_failure_ledger
+   :members:
+   :show-inheritance:
+
+ralph.recovery.typed_signal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.typed_signal
    :members:
    :show-inheritance:
 

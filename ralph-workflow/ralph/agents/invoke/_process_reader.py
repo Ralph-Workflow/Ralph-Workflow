@@ -554,7 +554,7 @@ class ProcessLineReader:
         self._parser_key = resolve_parser_key(
             ctx.config.cmd,
             ctx.config.json_parser,
-            cast("AgentTransport", ctx.config.transport),
+            ctx.config.transport,
         )
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
@@ -1487,6 +1487,8 @@ def _run_subprocess_and_read_lines(
         )
     )
     handle, agy_cli_log = _spawn_process_with_agy_log_offset(argv, spawn_options, ctx)
+    if ctx.process_teardown is not None:
+        _ = ctx.process_teardown.teardown_subtree
     supervisor = AttemptSupervisor(handle, process_teardown=ctx.process_teardown)
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()

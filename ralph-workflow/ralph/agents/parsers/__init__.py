@@ -99,7 +99,7 @@ def _view(name: str) -> Mapping[str, _ParserFactory]:
 def resolve_parser_key(
     command: str,
     json_parser: JsonParserType,
-    transport: AgentTransport,
+    transport: AgentTransport | None,
 ) -> str:
     command_lower = command.lower() if command else ""
     if command_lower == "claude" and transport == AgentTransport.CLAUDE_INTERACTIVE:

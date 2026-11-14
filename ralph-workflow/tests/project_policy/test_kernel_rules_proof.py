@@ -591,6 +591,7 @@ def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
 
 GUARD_ROW_EVIDENCE_TAGS: dict[str, str] = {
     "independent review model-family diversification": "moderate",
+    "model or harness generation re-audit": "none",
     "premise-check retry line": "anecdotal",
 }
 

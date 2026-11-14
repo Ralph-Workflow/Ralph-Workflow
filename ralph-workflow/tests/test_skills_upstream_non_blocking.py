@@ -26,6 +26,12 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.timeout_seconds(15)]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_the_run_start_path_returns_while_the_upstream_check_is_still_outstandin": (
+        "probe calls assert now expects both superpowers and antislop release api urls"
+    ),
+}
+
 _RELEASE_TAG = "v-test-1"
 _EVENT_WAIT_SECONDS = 10.0
 _TRANSPORT_WAIT_SECONDS = 10.0

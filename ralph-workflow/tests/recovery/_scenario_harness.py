@@ -32,6 +32,7 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
+from ralph.prompts.materialize import prompt_file_for_phase
 from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.failure_category import FailureCategory
@@ -45,8 +46,32 @@ if TYPE_CHECKING:
     from ralph.agents.invoke import InvokeOptions
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
 
 SCENARIO_PHASE = "development"
+
+_SCENARIO_RENDERED_PROMPT = (
+    "## Submit a `development_result` artifact\n\n"
+    "1. **Read the format doc** at `.agent/artifact-formats/development_result.md`\n"
+    '2. Submit the document with `artifact_type` set to `"development_result"`.\n'
+)
+
+
+def _materialize_scenario_prompt(
+    context: PromptPhaseContext | None = None,
+    options: PromptPhaseOptions | None = None,
+    **kwargs: object,
+) -> str:
+    del context, options
+    workspace = kwargs.get("workspace")
+    if not isinstance(workspace, FsWorkspace):
+        raise TypeError("scenario prompt materialization requires an FsWorkspace")
+    phase = kwargs.get("phase")
+    if not isinstance(phase, str):
+        raise TypeError("scenario prompt materialization requires a phase name")
+    prompt_path = prompt_file_for_phase(phase)
+    workspace.write(prompt_path, _SCENARIO_RENDERED_PROMPT)
+    return prompt_path
 
 
 @dataclass(frozen=True)
@@ -393,7 +418,11 @@ def run_scenario(
         registry_factory=lambda _cfg: _ScenarioRegistry(),
         artifact_requirements_resolver=resolve_phase_required_artifact,
     )
-    deps = replace(deps, invoke_agent=fake_invoke_agent)
+    deps = replace(
+        deps,
+        invoke_agent=fake_invoke_agent,
+        phase_prompt_materializer=_materialize_scenario_prompt,
+    )
 
     state = initial_state or PipelineState(
         phase="development",

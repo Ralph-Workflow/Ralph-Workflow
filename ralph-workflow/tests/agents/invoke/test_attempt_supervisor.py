@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -300,8 +300,23 @@ def _dead_handle(terminate_error: type[BaseException]) -> SimpleNamespace:
     )
 
 
+class _ProcessTeardownStub:
+    def __init__(self, fn: TeardownFn) -> None:
+        self._fn = fn
+
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del owner_label
+        self._fn(host_pid, issuer=issuer)
+
+
 def _process_teardown_wrapping(fn: TeardownFn) -> ProcessTeardown:
-    return cast("ProcessTeardown", SimpleNamespace(teardown_subtree=fn))
+    return _ProcessTeardownStub(fn)
 
 
 def test_operator_interrupt_on_a_dead_handle_raises_nothing() -> None:

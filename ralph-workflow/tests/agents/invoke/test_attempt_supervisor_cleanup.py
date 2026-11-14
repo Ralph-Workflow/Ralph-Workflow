@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
 
@@ -127,18 +126,34 @@ def test_cleanup_runs_even_when_an_act_already_won() -> None:
     assert len(supervisor.observations) == 1
 
 
+class _ProcessTeardownStub:
+    def __init__(self, fn: TeardownFn) -> None:
+        self._fn = fn
+
+    def teardown_subtree(
+        self,
+        host_pid: int,
+        *,
+        issuer: ProcessTerminationIssuer,
+        owner_label: str = "invoke",
+    ) -> None:
+        del owner_label
+        self._fn(host_pid, issuer=issuer)
+
+
 def _raising_subtree(fn: TeardownFn) -> ProcessTeardown:
-    return cast("ProcessTeardown", SimpleNamespace(teardown_subtree=fn))
+    return _ProcessTeardownStub(fn)
 
 
 def test_resolve_teardown_uses_the_injected_process_teardown() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     calls: list[tuple[int, ProcessTerminationIssuer]] = []
-    injected = cast(
-        "ProcessTeardown",
-        SimpleNamespace(teardown_subtree=lambda pid, *, issuer: calls.append((pid, issuer))),
-    )
+
+    def _record(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
+        calls.append((pid, issuer))
+
+    injected = _ProcessTeardownStub(_record)
     supervisor = AttemptSupervisor(child, process_teardown=injected)
     try:
         supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)

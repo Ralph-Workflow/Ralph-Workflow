@@ -647,63 +647,102 @@ plus the artifact skills derived from the pipeline's artifact types.
 ### Prompt-cue point-of-use contract
 
 Universal skills are cued at their point of use in phase prompt templates
-(and shared fragments) rather than in disconnected catalogs.
+(and shared fragments) rather than in disconnected catalogs. Point-of-use
+placement is Ralph Workflow's design choice. Anthropic's guidance supports
+description-based discovery and trigger-rich descriptions, not a specific
+point-of-use placement rule: <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>
+(accessed 2026-11-13).
 
 - **Point of use**: Prompts cue skills within the specific operational
   instruction where the model acts (e.g. `test-driven-development` when
   writing code, `systematic-debugging` upon test or gate failures,
   `verification-before-completion` prior to submitting results, and
-  `antislop` when authoring user-facing text or code comments).
-- **Plain rationale**: Every cue states why the skill is invoked in plain
-  words, keeping procedural technique inside the skill itself.
+  `antislop` when generating or building user interfaces). The core
+  `antislop` skill covers UI and interface work; its code-comment and copy
+  techniques live in the separate `antislop-code` and `antislop-copywriting`
+  skills, which Ralph Workflow does not ship.
+- **Plain reason**: Every cue states why the skill is invoked in plain
+  words, keeping procedural technique inside the skill itself, consistent with
+  Anthropic's guidance that context and reason generalize better than
+  unexplained emphatic directives and that emphatic forms such as
+  `CRITICAL: You MUST …` can over-trigger and should be softened:
+  <https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices>
+  (accessed 2026-11-13).
 - **Conditional gating**: Skill cues are conditionally gated on installation
   via dynamically resolved `SKILL_INSTALLED_<NAME>` boolean variables. When a
   skill is not installed for the active agent, the prompt degrades cleanly to
   standard imperative instruction without naming missing skills.
 - **Unattended execution**: Interactive prompt patterns in skills are
-  neutralized for unattended pipeline runs. For example, `_unattended_mode.jinja`
-  renders the explicit session mode cue `Use antislop during for this session.`
-  whenever `antislop` is installed.
+  neutralized for unattended pipeline runs. For example, `shared/_unattended_mode.jinja`
+  defines the explicit session mode cue `Use antislop during this session, with its mode pre-resolved for unattended work so it does not pause for input.`
+  for rendering when `antislop` is installed. That line resolves the initial
+  mode question only; the skill's later ask branches follow its documented
+  placeholder or draft alternatives, and fail closed when none applies.
 
 ### Universal-skill audit verdicts
 
-Every shipped universal skill was read at its pinned release before it was
-admitted to the default set. A skill that blocks on a user question or assumes
-a UI task is not shipped as it is.
+Every shipped universal skill has a recorded release and unattended-use
+verdict. The core `antislop` skill is UI-oriented and is the deliberately named
+second upstream; Ralph Workflow pre-resolves its session-mode question, and its UI scope
+applies to UI-facing work in this project.
 
 | Skill | Upstream and release tag | Companion files | Unattended verdict |
 |---|---|---|---|
-| `test-driven-development` | `obra/superpowers` v7.0.2 | `writing-good-tests.md` | Runs unattended. Its "ask your human partner" advice covers exceptions a Ralph Workflow run never takes. |
-| `systematic-debugging` | `obra/superpowers` v7.0.2 | `root-cause-tracing.md`, `defense-in-depth.md`, `condition-based-waiting.md`, `find-polluter.sh`, `condition-based-waiting-example.ts` | Runs unattended. Its "discuss with your human partner" advice after three failed fixes is advisory; the pipeline's iteration budget is the bound. |
-| `verification-before-completion` | `obra/superpowers` v7.0.2 | none | Runs unattended. No interactive step. |
-| `antislop` | `miqdadbadjuber/anti-slop` v3.2.30 | `VERSION` | Runs unattended only with the session mode line. Without it, the skill's "Two Usage Modes" step asks the user a question and waits, which stalls an unattended run. `shared/_unattended_mode.jinja` renders `Use antislop during for this session.` whenever `antislop` is installed. |
+| `test-driven-development` | [`obra/superpowers` v7.0.2](https://github.com/obra/superpowers/tree/v7.0.2/skills/test-driven-development), accessed 2026-11-13 | `writing-good-tests.md` | Its normal RED/GREEN path is unattended. Its exception and "cannot test" branches need the human partner's permission, and it ends with "No exceptions without your human partner's permission." In a Ralph Workflow unattended run such a branch stops or fails closed instead of being silently bypassed. |
+| `systematic-debugging` | [`obra/superpowers` v7.0.2](https://github.com/obra/superpowers/tree/v7.0.2/skills/systematic-debugging), accessed 2026-11-13 | `root-cause-tracing.md`, `defense-in-depth.md`, `condition-based-waiting.md`, `find-polluter.sh`, `condition-based-waiting-example.ts` | Its normal path is unattended. Its escalation branches say "Ask for help" when the cause is not understood and "Discuss with your human partner before attempting more fixes" after three failed fixes; in a Ralph Workflow unattended run the three-fix escalation stops the unit instead of continuing. |
+| `verification-before-completion` | [`obra/superpowers` v7.0.2](https://github.com/obra/superpowers/tree/v7.0.2/skills/verification-before-completion), accessed 2026-11-13 | none | Runs unattended and requires command evidence before completion claims; it has no interactive step. |
+| `antislop` | `miqdadbadjuber/anti-slop` v3.2.30, from the [latest-release API](https://api.github.com/repos/miqdadbadjuber/anti-slop/releases/latest), accessed 2026-11-13 | `VERSION` | The core skill applies when generating or building UI and asks a mode question. `shared/_unattended_mode.jinja::render_antislop_unattended_mode` supplies `Use antislop during this session, with its mode pre-resolved for unattended work so it does not pause for input.` where the macro is rendered; that line resolves the initial mode question, while the skill's later ask branches follow its documented placeholder or draft alternatives and fail closed when none applies. |
+
+The v3.2.30 release also contains a separate `skills/antislop-code/`
+per-concern skill that holds the code-comment technique. Ralph Workflow does not ship
+it: `ralph/skills/upstream.py:95-109` selects only the core `antislop` skill
+from that upstream.
 
 ### Template and phase skill mapping
 
 The following table records the prompt-template audit: for every phase
 template, the universal skills that template names, and the evidence for the
-decision. `shared/_unattended_mode.jinja` is included by every phase template
-and carries the `antislop` mode-resolution line; that line pre-resolves the
-skill's mode, it is not a cue to apply the skill to the phase's work.
+verdict. The unattended-mode partial is stored on disk as
+`shared/_unattended_mode.jinja` and referenced in Jinja templates by the include
+name `shared/_unattended_mode.j2` (via the template loader's extension
+normalization). Top-level phase templates include the fragment across 14 direct
+template includes + 1 via `_developer_iteration_guidance.j2`. That fragment
+defines `render_antislop_unattended_mode()`; the mode-resolution line renders
+only where `shared/_developer_iteration_guidance.j2:47` invokes the macro. The
+line pre-resolves the skill's mode; it is not a cue to apply the skill to every
+phase's work.
 
 | Template or fragment | Phase | Skills named | Evidence |
 |---|---|---|---|
-| `developer_iteration.jinja` via `shared/_developer_iteration_guidance.j2` | Development | `test-driven-development` (implementing a behavior change), `systematic-debugging` (a failing test or gate), `antislop` (user-facing copy, interfaces, code comments) | `_developer_iteration_guidance.j2:32,37,45` gate each cue on `SKILL_INSTALLED_<NAME>`; `tests/test_prompts_skills_cues.py::test_developer_iteration_prompts_cue_universal_skills` |
-| `developer_iteration.jinja` via `shared/_verification_commitments.j2` | Development | `verification-before-completion` (before claiming completion or submitting results) | `_verification_commitments.j2:9`; same test |
+| `developer_iteration.jinja` via `shared/_developer_iteration_guidance.j2` | Development | `test-driven-development` (implementing a behavior change), `systematic-debugging` (a failing test or gate), `antislop` (user interfaces) | `_developer_iteration_guidance.j2:34,39,48` gate each cue on `SKILL_INSTALLED_<NAME>`; `tests/test_prompts_skills_cues.py::test_each_phase_skill_cue_uses_its_own_installed_flag` |
+| `developer_iteration.jinja` via `shared/_verification_commitments.j2` | Development | `verification-before-completion` (before claiming completion or submitting results) | `_verification_commitments.j2:8-9`; same test |
 | `developer_iteration_continuation.jinja` | Development | the same four, through the same shared fragments | includes `_development_skills.j2`, `_verification_commitments.j2`, `_developer_iteration_guidance.j2` |
 | `developer_iteration_fallback.jinja` | Development | the same four, through the same shared fragments | same includes, so a fallback run behaves like the primary one |
-| `development_analysis.jinja` | Development analysis | `verification-before-completion` (judging the developer's evidence), `systematic-debugging` (judging a failing check) | `development_analysis.jinja:27,48`; `tests/test_prompts_skills_cues.py::test_development_analysis_cues` |
-| `planning.jinja` via `shared/_shipped_skills.j2` | Planning | `test-driven-development`, `systematic-debugging`, `verification-before-completion` — named as the executor skills for the plan's own steps | `_shipped_skills.j2:23-25`; `tests/test_prompts_skills_cues.py::test_planning_and_planning_edit_cues_executor_skills` |
-| `planning_edit.jinja` via `shared/_shipped_skills.j2` | Planning edit | the same three executor skills | `planning_edit.jinja:15-16`; same test |
-| `planning_fallback.jinja` via `shared/_shipped_skills.j2` | Planning fallback | the same three executor skills | `planning_fallback.jinja:7-8` |
-| `planning_edit_fallback.jinja` via `shared/_shipped_skills.j2` | Planning edit fallback | the same three executor skills | `planning_edit_fallback.jinja:7-8` |
-| `planning_analysis.jinja` | Planning analysis | none, because the phase grades the submitted plan against the six plan criteria and reads no command, marker, or gate result; the template's own review contract carries that judgement | the template carries no `SKILL_INSTALLED_*` gate |
-| `policy_remediation.jinja` | Policy remediation | `verification-before-completion` (probing declared markers and gates), `systematic-debugging` (diagnosing a failing check) | `policy_remediation.jinja:26,31`; `tests/test_prompts_skills_cues.py::test_policy_remediation_and_analysis_cues` |
+| `development_analysis.jinja` | Development analysis | `verification-before-completion` (judging the developer's evidence), `systematic-debugging` (judging a failing check) | `development_analysis.jinja:27,48`; `tests/test_prompts_skills_cues.py::test_phase_prompt_names_only_its_installed_universal_skills` |
+| `planning.jinja` via `shared/_planning_thinking.jinja` | Planning | `test-driven-development`, `systematic-debugging`, `verification-before-completion` — named as the executor skills for the plan's own steps | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning.jinja:7`; `tests/test_prompts_skills_cues.py::test_phase_prompt_names_only_its_installed_universal_skills` |
+| `planning_edit.jinja` via `shared/_planning_thinking.jinja` | Planning edit | the same three executor skills | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning_edit.jinja:10`; same test |
+| `planning_fallback.jinja` via `shared/_planning_thinking.jinja` | Planning fallback | the same three executor skills | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning_fallback.jinja:5` |
+| `planning_edit_fallback.jinja` via `shared/_planning_thinking.jinja` | Planning edit fallback | the same three executor skills | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning_edit_fallback.jinja:5` |
+| `planning_analysis.jinja` | Planning analysis | `verification-before-completion` (checking plan claims against fresh evidence) | `planning_analysis.jinja:25-29` gates the cue on `SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION` |
+| `policy_remediation.jinja` | Policy remediation | `verification-before-completion` (probing declared markers and gates), `systematic-debugging` (diagnosing a failing check) | `policy_remediation.jinja:26,31`; `tests/test_prompts_skills_cues.py::test_each_phase_skill_cue_uses_its_own_installed_flag` |
 | `policy_remediation_analysis.jinja` | Policy remediation analysis | `verification-before-completion` (collecting execution evidence), `systematic-debugging` (investigating a failing gate) | `policy_remediation_analysis.jinja:26,31`; same test |
-| `conflict_resolution.jinja` | Conflict resolution | `systematic-debugging` (diagnosing the conflicting changes), `verification-before-completion` (before declaring the resolution) | `conflict_resolution.jinja:51,94`; `tests/test_prompts_skills_cues.py::test_conflict_resolution_cues` |
+| `conflict_resolution.jinja` | Conflict resolution | `systematic-debugging` (diagnosing the conflicting changes), `verification-before-completion` (before declaring the resolution) | `conflict_resolution.jinja:51,94`; `tests/test_prompts_skills_cues.py::test_each_phase_skill_cue_uses_its_own_installed_flag` |
 | `commit_message.jinja` | Commit | none, because the phase only authors the commit-message artifact from the recorded diff and verification facts; no shipped skill teaches that | the template carries no `SKILL_INSTALLED_*` gate |
 | `commit_simplified.jinja` | Commit | none, because the phase only authors the compact commit-message artifact | the template carries no `SKILL_INSTALLED_*` gate |
 | `commit_review.jinja` | Commit review | none, because the phase classifies the pending diff against the safety tripwires and performs its own housekeeping edits; the `commit_review` artifact pointer already carries that format | the template carries no `SKILL_INSTALLED_*` gate |
+
+### Criterion-8 policy-trim verdicts
+
+| Criterion | `docs/ralph-workflow-policy/execution-kernel.md` | `ralph/project_policy/starters/execution-kernel.md` | Evidence |
+|---|---|---|---|
+| Trim generic test-first, evidence, and red-green technique while retaining Ralph Workflow-specific obligations | Satisfied | Satisfied | Neither copy contains generic `test-first` or `red-green` wording; each retains its phase, artifact, runtime, and commit contracts in `## Kernel rules`, `## Agent rules`, and the rule-to-phase and rule-to-enforcer tables. |
+| Remove the premise-check rule | Consciously excepted under the trim-less clause | Consciously excepted under the trim-less clause | Both copies retain the runtime-owned repeated-failure premise-check rule and a `Premise-check retry line` guard-inventory row. Removing them would change the v6 policy enforcement inventory and the retry contract in `ralph/recovery/retry_prompt.py`; commit `48bd5e8ca` records the deliberate restoration for repeated identical failure fingerprints. |
+| Keep checked rules and Ralph Workflow phase, artifact, runtime, and commit rules | Satisfied | Satisfied | The current rule, role-slice, enforcement, and guard-inventory tables retain those contracts. |
+| Keep one “shipped skills are technique, policy wins” line | Satisfied: one line | Satisfied: one line | Each copy contains one `Shipped skills hold technique` precedence statement. |
+| Keep at most one library-documentation sentence | Satisfied: one sentence | Satisfied: one sentence | Each copy states once that the third-party library's own documentation is the spec. |
+| Apply the trim to both policy copies | Satisfied | Satisfied | Both current copies carry the same criterion-8 bounds and exception. |
+| Avoid forcing a policy schema upgrade; trim less if required | Satisfied through the premise-check exception | Satisfied through the premise-check exception | Both files remain schema v6, matching `ralph/project_policy/markers.py::SCHEMA_VERSION`; the premise-check guard remains part of the v6 enforcement inventory and retry contract. |
+| Adjudicate developer-prompt overlap with universal skills | Not applicable: the overlap sits in the prompt fragments, not the policy copies | Not applicable: the overlap sits in the prompt fragments, not the policy copies | Satisfied in the prompt fragments: `shared/_verification_commitments.j2` keeps Ralph Workflow's gate and partial-result obligations and states proof as the result carrying fresh evidence, leaving the evidence-before-claim technique to `verification-before-completion`. `shared/_developer_iteration_guidance.j2` keeps the check-named-before-implementation and gate obligations, and leaves red-green, hypothesis selection, and root-cause technique to `test-driven-development` and `systematic-debugging`. Each cue keeps its generic action for the branch where the skill is absent. |
 
 ### Choosing a universal skill
 

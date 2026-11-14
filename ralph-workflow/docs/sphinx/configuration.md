@@ -309,28 +309,35 @@ Ralph Workflow trusts them are stated in [Trust](#trust).
 
 ### User-global skill roots
 
-Ralph Workflow installs the universal skills into the user-global skill
-directory each supported agent documents. The canonical install is
-`~/.claude/skills`; every other root holds a link to the canonical copy, or a
-copy of it on filesystems without symlinks.
+Ralph Workflow installs the universal skills into each supported agent's
+documented user-global skill directory. The canonical Ralph-managed install is
+`~/.claude/skills`; other roots hold a link to the canonical copy, or a copy of
+it on filesystems without symlinks.
 
 | Agent | Root id | User-global skill root | How the agent reads it | Source |
 |---|---|---|---|---|
 | Claude Code | `claude` (canonical) | `~/.claude/skills` | reads it directly; this is where Ralph Workflow installs | <https://code.claude.com/docs/en/skills> |
-| OpenAI Codex | `codex` | `~/.codex/skills` | reads it directly | <https://github.com/openai/codex/blob/main/codex-rs/skills/src/assets/samples/skill-installer/SKILL.md> |
-| OpenAI Codex | `codex-agents` | `~/.agents/skills` | the shared agent-skills directory Codex also reads | <https://learn.chatgpt.com/docs/build-skills> |
+| OpenAI Codex | `codex-agents` | `$HOME/.agents/skills` | current Codex discovery root; reads it directly | <https://learn.chatgpt.com/docs/build-skills> |
+| OpenAI Codex | `codex` | `~/.codex/skills` | legacy installer root; current Codex does not discover skills there, so Ralph Workflow registers it only for the official built-in installer | <https://github.com/openai/codex/blob/main/codex-rs/skills/src/assets/samples/skill-installer/SKILL.md> |
 | OpenCode | `opencode` | `~/.config/opencode/skills` | reads it directly | <https://opencode.ai/docs/skills/> |
-| Antigravity | `agy` | `~/.gemini/antigravity-cli/skills` | reads it through the private `HOME` an `agy` invocation runs with | <https://antigravity.google/docs/skills/> |
-| Antigravity | `agy-config` | `~/.gemini/config/skills` | reads it through the private `HOME` an `agy` invocation runs with | <https://antigravity.google/docs/skills/> |
+| OpenCode | `claude` / `codex-agents` compatibility roots | `~/.claude/skills`, `~/.agents/skills` | reads both compatibility roots | <https://opencode.ai/docs/skills/> |
+| Antigravity | `agy-config` | `~/.gemini/config/skills/<folder>/SKILL.md` | shared root; the App, the CLI, and the IDE read it | <https://antigravity.google/docs/skills/>, <https://antigravity.google/docs/customization-discovery/> |
+| Antigravity | `agy` | `~/.gemini/antigravity-cli/skills` | Antigravity CLI root; the App and the IDE read `~/.gemini/config/skills` instead | <https://antigravity.google/docs/skills/> |
 
-The source column names the page each path was taken from; the paths were
-last verified on 2026-11-11. A root id names a skill directory, not an agent.
-An `agy` invocation runs with a private `HOME`, and Ralph Workflow projects the two
-Ralph-managed Antigravity roots — `.gemini/antigravity-cli/skills` and
-`.gemini/config/skills` relative to the home directory — into that private
-home. The installed universal skills and their companion files therefore stay
-on the invocation's skill path while the operator's own configuration stays
-isolated — see [Agent Compatibility](agent-compatibility.md#agy).
+Antigravity's optional CLI-only root `~/.gemini/skills` and its legacy IDE root
+`~/.gemini/antigravity/skills` are not registered: the shared root
+`~/.gemini/config/skills` and the CLI root `~/.gemini/antigravity-cli/skills`
+already cover where the App, the IDE, and the CLI look for skills.
+
+The source column names the page each path was taken from; the paths were last
+verified on 2026-11-13. A root id names a skill directory, not an agent. All
+four agents support description-based autonomous discovery and explicit skill
+invocation. An `agy` invocation runs with a private `HOME`, and Ralph Workflow
+projects `.gemini/config/skills` relative to the home directory into that
+private home. The installed universal skills and their companion files
+therefore stay on the invocation's skill path while the operator's own
+configuration stays isolated — see
+[Agent Compatibility](agent-compatibility.md#agy).
 
 Pi is the one supported agent with no user-global skill location: pi.dev
 documents no skill-discovery directory per

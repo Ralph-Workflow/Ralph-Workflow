@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 from collections import deque
-from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from ralph.agents._agy_upstream_diagnostic import agy_cli_log_start_offset
 from ralph.agents._broker_secret import parent_broker_secret
@@ -54,6 +54,7 @@ from ralph.process.manager import (
     PtySpawnOptions,
     get_process_manager,
 )
+from ralph.process.teardown import ProcessTeardown
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -61,7 +62,6 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
     from ralph.process.manager import ManagedPtyProcess
-    from ralph.process.teardown import ProcessTeardown
 
 
 class _CompletionExitSentReader(Protocol):
@@ -90,6 +90,11 @@ def _close_iterator(iterator: object) -> None:
     if _has_close(iterator):
         with contextlib.suppress(Exception):
             iterator.close()
+
+
+def _process_teardown(ctx: AgentRunCtx) -> ProcessTeardown | None:
+    value: object = getattr(ctx, "process_teardown", None)
+    return value if isinstance(value, ProcessTeardown) else None
 
 
 def _terminate_pty_tree(supervisor: AttemptSupervisor) -> None:
@@ -139,7 +144,7 @@ def run_pty_and_read_lines(
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     supervisor = AttemptSupervisor(
         handle,
-        process_teardown=cast("ProcessTeardown | None", getattr(ctx, "process_teardown", None)),
+        process_teardown=_process_teardown(ctx),
     )
     with handle:
         pty_reader = PtyLineReader(

@@ -339,6 +339,7 @@ def _check_test_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwne
             "consecutive_unproductive",
             "total_unproductive",
         )
+        and not is_test_counter_read_allowed(rel_path, node.slice.value)
     ):
         return [
             SingleOwnerViolation(

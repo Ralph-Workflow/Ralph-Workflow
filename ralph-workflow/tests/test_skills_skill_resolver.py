@@ -38,6 +38,12 @@ from ralph.skills.resolver import (
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_integrated_materialize_prepared_prompt_two_agents_no_leak": (
+        "refactor agent skill resolution assertion checks to use materialized prompt text directly"
+    ),
+}
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -294,7 +300,6 @@ def test_integrated_materialize_prepared_prompt_two_agents_no_leak(
     state = PipelineState(phase="planning", previous_phase=None)
     test_config = UnifiedConfig.model_construct()
 
-    # 1. Agent A has test-driven-development and verification-before-completion
     captured_renders.clear()
     monkeypatch.setattr("ralph.pipeline.prompt_prep.agents_for_phase", _agent_a_list)
     materialize_prepared_prompt(
@@ -308,13 +313,12 @@ def test_integrated_materialize_prepared_prompt_two_agents_no_leak(
         config=test_config,
     )
     assert len(captured_renders) >= 1
-    vars_a = captured_renders[-1]
-    assert vars_a["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == "true"
-    assert vars_a["SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION"] == "true"
-    assert vars_a["SKILL_INSTALLED_SYSTEMATIC_DEBUGGING"] == ""
-    assert vars_a["SKILL_INSTALLED_ANTISLOP"] == ""
+    agent_a_vars = captured_renders[-1]
+    assert agent_a_vars["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == "true"
+    assert agent_a_vars["SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION"] == "true"
+    assert agent_a_vars["SKILL_INSTALLED_SYSTEMATIC_DEBUGGING"] == ""
+    assert agent_a_vars["SKILL_INSTALLED_ANTISLOP"] == ""
 
-    # 2. Agent B has no skills installed
     captured_renders.clear()
     monkeypatch.setattr("ralph.pipeline.prompt_prep.agents_for_phase", _agent_b_list)
     materialize_prepared_prompt(
@@ -328,13 +332,12 @@ def test_integrated_materialize_prepared_prompt_two_agents_no_leak(
         config=test_config,
     )
     assert len(captured_renders) >= 1
-    vars_b = captured_renders[-1]
-    assert vars_b["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == ""
-    assert vars_b["SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION"] == ""
-    assert vars_b["SKILL_INSTALLED_SYSTEMATIC_DEBUGGING"] == ""
-    assert vars_b["SKILL_INSTALLED_ANTISLOP"] == ""
+    agent_b_vars = captured_renders[-1]
+    assert agent_b_vars["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == ""
+    assert agent_b_vars["SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION"] == ""
+    assert agent_b_vars["SKILL_INSTALLED_SYSTEMATIC_DEBUGGING"] == ""
+    assert agent_b_vars["SKILL_INSTALLED_ANTISLOP"] == ""
 
-    # 3. No leakage back to Agent A
     captured_renders.clear()
     monkeypatch.setattr("ralph.pipeline.prompt_prep.agents_for_phase", _agent_a_list)
     materialize_prepared_prompt(
@@ -348,9 +351,9 @@ def test_integrated_materialize_prepared_prompt_two_agents_no_leak(
         config=test_config,
     )
     assert len(captured_renders) >= 1
-    vars_a_second = captured_renders[-1]
-    assert vars_a_second["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == "true"
-    assert vars_a_second["SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION"] == "true"
+    agent_a_vars_again = captured_renders[-1]
+    assert agent_a_vars_again["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == "true"
+    assert agent_a_vars_again["SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION"] == "true"
 
 
 def test_integrated_materialize_agent_prompt_if_needed_two_agents(
@@ -484,3 +487,78 @@ def test_integrated_fallback_renders_carry_skill_variables(
     assert dev_fb["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == ""
     assert dev_fb["SKILL_INSTALLED_SYSTEMATIC_DEBUGGING"] == ""
     assert dev_fb["SKILL_INSTALLED_ANTISLOP"] == ""
+
+
+def test_executor_tolerates_plan_artifact_naming_uninstalled_skills(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir(parents=True)
+    (workspace_dir / "PROMPT.md").write_text("Build the user request", encoding="utf-8")
+    (workspace_dir / ".agent").mkdir(parents=True)
+    (workspace_dir / ".agent" / "PRODUCT_CRITERIA.md").write_text("Requirements", encoding="utf-8")
+    (workspace_dir / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
+
+    plan_with_uninstalled_skills = (
+        "---\n"
+        "artifact_type: plan\n"
+        "---\n\n"
+        "# Implementation Plan\n\n"
+        "### [S-1] Core Implementation\n"
+        "- Skills: `test-driven-development`, `systematic-debugging`, `uninstalled-custom-skill`\n"
+        "Files:\n"
+        "- modify `src/app.py`\n"
+    )
+    (workspace_dir / ".agent" / "artifacts" / "plan.md").write_text(
+        plan_with_uninstalled_skills, encoding="utf-8"
+    )
+
+    _setup_two_agent_roots(monkeypatch, tmp_path)
+    bundle = _load_test_policy_bundle()
+    registry = _TestAgentRegistry()
+
+    dev_state = PipelineState(phase="development", previous_phase="planning")
+    dumped_dev_prompt = workspace_dir / ".agent" / "tmp" / "development_prompt.md"
+
+    materialize_agent_prompt_if_needed(
+        effect=InvokeAgentEffect(
+            agent_name="codex",
+            phase="development",
+            prompt_file=str(dumped_dev_prompt),
+        ),
+        state=dev_state,
+        workspace=FsWorkspace(workspace_dir),
+        policy_bundle=bundle,
+        registry=registry,
+    )
+
+    assert dumped_dev_prompt.exists()
+    rendered_b = dumped_dev_prompt.read_text(encoding="utf-8")
+    assert "Write failing tests before writing implementation code" in rendered_b
+    assert "Use test-driven-development when implementing behavior changes" not in rendered_b
+    assert "Isolate the root cause before attempting fixes" in rendered_b
+    assert "Use systematic-debugging when addressing a failing test" not in rendered_b
+    assert "Run fresh verification commands before claiming work is complete" in rendered_b
+    assert "Use verification-before-completion before claiming work is complete" not in rendered_b
+
+    materialize_agent_prompt_if_needed(
+        effect=InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file=str(dumped_dev_prompt),
+        ),
+        state=dev_state,
+        workspace=FsWorkspace(workspace_dir),
+        policy_bundle=bundle,
+        registry=registry,
+    )
+
+    assert dumped_dev_prompt.exists()
+    rendered_a = dumped_dev_prompt.read_text(encoding="utf-8")
+    assert "Use test-driven-development when implementing behavior changes" in rendered_a
+    assert "Write failing tests before writing implementation code" not in rendered_a
+    assert "Isolate the root cause before attempting fixes" in rendered_a
+    assert "Use systematic-debugging when addressing a failing test" not in rendered_a
+    assert "Use verification-before-completion before claiming work is complete" in rendered_a
+    assert "Run fresh verification commands before claiming work is complete" not in rendered_a

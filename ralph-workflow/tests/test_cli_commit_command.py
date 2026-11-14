@@ -457,8 +457,7 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
-        'Generate a commit message with `artifact_type` set to "commit_message".',
-        encoding="utf-8",
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n", encoding="utf-8"
     )
     display_context = make_display_context()
 
@@ -530,8 +529,7 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
-        'Generate a commit message with `artifact_type` set to "commit_message".',
-        encoding="utf-8",
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n", encoding="utf-8"
     )
     display_context = make_display_context()
 
@@ -603,8 +601,7 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(
-        'Generate a commit message with `artifact_type` set to "commit_message".',
-        encoding="utf-8",
+        "Generate a commit message.\n\n## Submit a `commit_message` artifact\n", encoding="utf-8"
     )
     display_context = make_display_context()
 

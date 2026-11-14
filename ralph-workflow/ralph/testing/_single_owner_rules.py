@@ -21,10 +21,17 @@ TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_COUNTER_READS: frozenset[tuple[str, str]] = frozenset(
     {
+        (
+            "tests/integration/test_pipeline_commit_review_grading_e2e.py",
+            "consecutive_unproductive",
+        ),
+        ("tests/integration/test_pipeline_commit_review_grading_e2e.py", "total_unproductive"),
         ("tests/recovery/test_dead_agent_acceptance.py", "consecutive_unproductive"),
         ("tests/recovery/test_dead_agent_acceptance.py", "total_unproductive"),
         ("tests/recovery/test_dead_agent_incidents.py", "consecutive_unproductive"),
         ("tests/recovery/test_dead_agent_incidents.py", "total_unproductive"),
+        ("tests/recovery/test_engine_origin_ledger_fairness.py", "consecutive_unproductive"),
+        ("tests/recovery/test_engine_origin_ledger_fairness.py", "total_unproductive"),
     }
 )
 

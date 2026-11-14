@@ -86,6 +86,10 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "PRIOR_RESULT_STATUS": ("partial",),
     "PRIOR_SESSION_ID": ("worker-session-7",),
     "ROLLBACK_REF": ("refs/ralph/proposals/run-42/7", "refs/ralph/proposals/run-01/2"),
+    "SKILL_INSTALLED_ANTISLOP": ("true",),
+    "SKILL_INSTALLED_SYSTEMATIC_DEBUGGING": ("true",),
+    "SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT": ("true",),
+    "SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION": ("true",),
     "planning_unit_split_allowed": ("true",),
     "SKILLS_INLINE_CONTENT": ("Use the audit-inline skill instructions.",),
     "SOFT_TRIPWIRES": (
@@ -408,6 +412,12 @@ def _branch_scenarios(
             ]
             scenarios.append(("+".join(labels), overrides))
     return tuple(scenarios)
+
+
+def realistic_render_scenarios(
+    condition_names: set[str],
+) -> tuple[tuple[str, dict[str, str]], ...]:
+    return _branch_scenarios(condition_names)
 
 
 def _profile_scenarios(

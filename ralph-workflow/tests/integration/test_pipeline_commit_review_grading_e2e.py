@@ -84,6 +84,12 @@ pytestmark = [
     pytest.mark.required_auto_integrate_e2e,
 ]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_submit_commit_message": (
+        "reformatted assertion across multiple lines to conform to ruff format"
+    ),
+}
+
 REVIEW_PHASES: tuple[str, ...] = (
     "development_commit_review",
     "development_final_commit_review",

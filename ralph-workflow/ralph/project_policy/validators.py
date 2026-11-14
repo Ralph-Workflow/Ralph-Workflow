@@ -66,9 +66,10 @@ def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
 
 def _check_managed_block_uniqueness(content: str) -> list[PolicyFinding]:
     findings: list[PolicyFinding] = []
-    begin_count = content.count(markers.AGENTS_BLOCK_BEGIN)
+    begin_matches = list(markers.AGENTS_BLOCK_BEGIN_RE.finditer(content))
+    begin_count = len(begin_matches)
     end_count = content.count(markers.AGENTS_BLOCK_END)
-    begin_idx = content.find(markers.AGENTS_BLOCK_BEGIN)
+    begin_idx = begin_matches[0].start() if begin_matches else -1
     end_idx = content.find(markers.AGENTS_BLOCK_END)
     if begin_count == 0 and end_count == 0:
         findings.append(
@@ -144,15 +145,10 @@ def _check_managed_block_uniqueness(content: str) -> list[PolicyFinding]:
 
 
 def _extract_managed_block_body(content: str) -> str | None:
-    if content.count(markers.AGENTS_BLOCK_BEGIN) != 1:
+    block = agents_md._locate_managed_block(content)
+    if block is None:
         return None
-    if content.count(markers.AGENTS_BLOCK_END) != 1:
-        return None
-    begin_idx = content.find(markers.AGENTS_BLOCK_BEGIN)
-    end_idx = content.find(markers.AGENTS_BLOCK_END)
-    if begin_idx >= end_idx:
-        return None
-    return content[begin_idx + len(markers.AGENTS_BLOCK_BEGIN) : end_idx]
+    return block.body
 
 
 def _check_managed_block_canonical_dir(content: str) -> list[PolicyFinding]:
