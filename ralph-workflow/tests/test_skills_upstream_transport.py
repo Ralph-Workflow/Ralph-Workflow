@@ -335,8 +335,12 @@ def test_a_failing_upstream_keeps_the_installed_skills_byte_identical(
                 enabled=True, now=_NOW + timedelta(hours=25), http=default_http_client()
             )
 
-    assert outcome.status == "failed"
-    assert outcome.error is not None
+    if failure == "missing-upstream":
+        assert outcome.status == "no-release"
+        assert outcome.error is None
+    else:
+        assert outcome.status == "failed"
+        assert outcome.error is not None
     assert _tree_snapshot(root) == before
 
 
@@ -524,7 +528,7 @@ def test_two_racing_processes_make_exactly_one_upstream_request(
                         process.kill()
                     process.wait(timeout=10)
         release_requests = [path for path in server.requests if path == "/releases/latest.json"]
-        assert len(release_requests) == 1
+        assert len(release_requests) == len(upstream.UNIVERSAL_UPSTREAMS)
         statuses = [stdout.strip() for stdout, _stderr in outputs]
         assert sorted(statuses) == ["failed True", "skipped False"]
     finally:
@@ -534,10 +538,15 @@ def test_two_racing_processes_make_exactly_one_upstream_request(
 def test_the_updater_never_raises_on_a_transport_failure(
     sandbox: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    replies = _routes({"/releases/latest.json": _Reply(status=404, body=b"")})
-    with _serving(replies) as server:
-        _point_at(server, monkeypatch)
-        outcome: UpdateOutcome = upstream.maybe_update_universal_skills(
-            enabled=True, now=_NOW, http=default_http_client()
-        )
+    releases = _unreachable_loopback_url()
+    _assert_loopback_url(releases)
+    monkeypatch.setattr(upstream, "RELEASES_API_URL", releases)
+    monkeypatch.setattr(
+        upstream,
+        "ARCHIVE_URL_TEMPLATE",
+        releases.replace("/releases/latest.json", "/archive/{tag}.tar.gz"),
+    )
+    outcome: UpdateOutcome = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW, http=default_http_client()
+    )
     assert outcome.status == "failed"

@@ -109,7 +109,10 @@ def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_
     transport: AgentTransport,
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
-    prompt_file.write_text("implement the task", encoding="utf-8")
+    prompt_file.write_text(
+        "implement the task\n\n## Submit a `development_result` artifact\n",
+        encoding="utf-8",
+    )
     _RegistryFactory._agent_config = AgentConfig(cmd=agent_name, transport=transport)
     invoke, invoke_count, failure_messages = _completion_failure_invoke(
         transport,
@@ -150,7 +153,10 @@ def test_completion_enforcing_agent_regression_missing_sentinel_does_not_resubmi
     tmp_path: Path,
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
-    prompt_file.write_text("implement the task", encoding="utf-8")
+    prompt_file.write_text(
+        "implement the task\n\n## Submit a `development_result` artifact\n",
+        encoding="utf-8",
+    )
     _RegistryFactory._agent_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     invoke, _, _ = _completion_failure_invoke(AgentTransport.AGY, tmp_path, write_artifact=True)
     display_context = make_display_context()

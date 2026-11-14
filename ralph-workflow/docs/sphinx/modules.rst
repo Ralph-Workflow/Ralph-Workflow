@@ -2120,6 +2120,13 @@ ralph.agents.idle_watchdog_kill
    :members:
    :show-inheritance:
 
+ralph.agents.watchdog_fire_reason
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.watchdog_fire_reason
+   :members:
+   :show-inheritance:
+
 ralph.agents.worker_result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -5650,6 +5657,13 @@ ralph.recovery.eligibility_wait
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.eligibility_wait
+   :members:
+   :show-inheritance:
+
+ralph.recovery.typed_signal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.typed_signal
    :members:
    :show-inheritance:
 

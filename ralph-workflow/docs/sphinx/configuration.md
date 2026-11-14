@@ -304,8 +304,8 @@ skill.
 `obra/superpowers`), and `antislop` (from `miqdadbadjuber/anti-slop`) — fetched
 from their respective upstreams at **release versions** (never a moving branch)
 and installed **user-global**. They are never committed into your project, so
-upstream changes never dirty your git tree. The two upstreams and why Ralph
-Workflow trusts them are stated in [Trust](#trust).
+upstream changes never dirty your git tree. The two upstreams and why
+Ralph Workflow trusts them are stated in [Trust](#trust).
 
 ### User-global skill roots
 
@@ -316,7 +316,7 @@ copy of it on filesystems without symlinks.
 
 | Agent | Root id | User-global skill root | How the agent reads it | Source |
 |---|---|---|---|---|
-| Claude Code | `claude` (canonical) | `~/.claude/skills` | reads it directly; this is where Ralph installs | <https://code.claude.com/docs/en/skills> |
+| Claude Code | `claude` (canonical) | `~/.claude/skills` | reads it directly; this is where Ralph Workflow installs | <https://code.claude.com/docs/en/skills> |
 | OpenAI Codex | `codex` | `~/.codex/skills` | reads it directly | <https://github.com/openai/codex/blob/main/codex-rs/skills/src/assets/samples/skill-installer/SKILL.md> |
 | OpenAI Codex | `codex-agents` | `~/.agents/skills` | the shared agent-skills directory Codex also reads | <https://learn.chatgpt.com/docs/build-skills> |
 | OpenCode | `opencode` | `~/.config/opencode/skills` | reads it directly | <https://opencode.ai/docs/skills/> |

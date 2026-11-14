@@ -137,9 +137,7 @@ def commit_review_repo(tmp_git_repo: Path) -> Path:
 
 
 def _commit_message_markdown(subject: str, files: Iterable[str]) -> str:
-    rendered_files = "\n".join(
-        f"- [F-{index}] {path}" for index, path in enumerate(files, start=1)
-    )
+    rendered_files = "\n".join(f"- [F-{index}] {path}" for index, path in enumerate(files, start=1))
     return f"""\
 ---
 type: commit
@@ -238,7 +236,9 @@ class _ApprovingTransport:
 
     def _submit_commit_message(self, run_id: str) -> None:
         changed = [path for path in list_changed_paths(self._repo) if path == REVIEWED_FILE]
-        assert changed, "the reviewed change must still be pending when the commit message is written"
+        assert changed, (
+            "the reviewed change must still be pending when the commit message is written"
+        )
         markdown = _commit_message_markdown(
             "feat(feature): apply reviewed change",
             changed,

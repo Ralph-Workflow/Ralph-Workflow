@@ -9,7 +9,6 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
-
 PHASE = "development"
 AGENT = "worker"
 AGENT_FAILURE_TEXTS = (
@@ -40,9 +39,7 @@ def _configuration_failure() -> ArtifactContractMismatchError:
 
 
 def test_controller_regression_engine_origin_does_not_charge_ledger() -> None:
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(clock=FakeClock(start=0.0))
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
 
     controller.finalize_attempt(
         PHASE,
@@ -58,9 +55,7 @@ def test_controller_regression_engine_origin_does_not_charge_ledger() -> None:
 
 @pytest.mark.parametrize("failure_text", AGENT_FAILURE_TEXTS)
 def test_controller_regression_agent_text_does_charge_ledger(failure_text: str) -> None:
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(clock=FakeClock(start=0.0))
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
 
     controller.finalize_attempt(
         PHASE,

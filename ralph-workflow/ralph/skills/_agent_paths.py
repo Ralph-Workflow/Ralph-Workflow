@@ -118,9 +118,11 @@ def agent_skill_entries(agent: str, *, home: Path | None = None) -> tuple[Path, 
         if not root.is_dir():
             continue
         try:
-            for child in sorted(root.iterdir()):
-                if (child.is_dir() or child.is_symlink()) and not child.name.startswith("."):
-                    entries.append(child)
+            entries.extend(
+                child
+                for child in sorted(root.iterdir())
+                if (child.is_dir() or child.is_symlink()) and not child.name.startswith(".")
+            )
         except OSError:
             continue
     return tuple(entries)

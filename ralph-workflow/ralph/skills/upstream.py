@@ -450,11 +450,7 @@ def _transport_error_reason(exc: Exception, prefix: str) -> str:
     )
 
 
-def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | None, str | None]:
-    try:
-        status, body = http(source.api_url, REQUEST_TIMEOUT_SECONDS)
-    except Exception as exc:
-        return (None, _transport_error_reason(exc, "release-api"))
+def _parse_release_tag(status: int, body: bytes) -> tuple[str | None, str | None]:
     if status == HTTP_NOT_FOUND:
         return (None, NO_RELEASE_ERROR)
     if status != HTTP_OK:
@@ -469,6 +465,14 @@ def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | 
     if tag is None or _TAG_PATTERN.fullmatch(tag) is None:
         return (None, "release-api-malformed")
     return (tag, None)
+
+
+def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | None, str | None]:
+    try:
+        status, body = http(source.api_url, REQUEST_TIMEOUT_SECONDS)
+    except Exception as exc:
+        return (None, _transport_error_reason(exc, "release-api"))
+    return _parse_release_tag(status, body)
 
 
 def _load_release_payload(
@@ -529,7 +533,6 @@ def _migrate_state(state: Mapping[str, object]) -> dict[str, object]:
     sources.setdefault(source, {"installed_tag": installed_tag})
     migrated["sources"] = sources
     return migrated
-
 
 
 def _needs_update(

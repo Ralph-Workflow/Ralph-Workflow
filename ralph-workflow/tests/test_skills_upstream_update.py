@@ -916,7 +916,9 @@ def test_a_transient_publication_failure_is_repaired_by_a_later_run(
 
     assert repaired.status != "up-to-date"
     assert repaired.tag == "v-test-1"
-    assert repair_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url], "the repair must not fetch the archive again"
+    assert repair_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url], (
+        "the repair must not fetch the archive again"
+    )
     _assert_every_root_carries_every_skill()
     assert _tree_snapshot(project) == before, "the repair must not write into the project"
 

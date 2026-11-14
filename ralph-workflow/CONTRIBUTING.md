@@ -673,7 +673,7 @@ a UI task is not shipped as it is.
 
 | Skill | Upstream and release tag | Companion files | Unattended verdict |
 |---|---|---|---|
-| `test-driven-development` | `obra/superpowers` v7.0.2 | `writing-good-tests.md` | Runs unattended. Its "ask your human partner" advice covers exceptions a Ralph run never takes. |
+| `test-driven-development` | `obra/superpowers` v7.0.2 | `writing-good-tests.md` | Runs unattended. Its "ask your human partner" advice covers exceptions a Ralph Workflow run never takes. |
 | `systematic-debugging` | `obra/superpowers` v7.0.2 | `root-cause-tracing.md`, `defense-in-depth.md`, `condition-based-waiting.md`, `find-polluter.sh`, `condition-based-waiting-example.ts` | Runs unattended. Its "discuss with your human partner" advice after three failed fixes is advisory; the pipeline's iteration budget is the bound. |
 | `verification-before-completion` | `obra/superpowers` v7.0.2 | none | Runs unattended. No interactive step. |
 | `antislop` | `miqdadbadjuber/anti-slop` v3.2.30 | `VERSION` | Runs unattended only with the session mode line. Without it, the skill's "Two Usage Modes" step asks the user a question and waits, which stalls an unattended run. `shared/_unattended_mode.jinja` renders `Use antislop during for this session.` whenever `antislop` is installed. |

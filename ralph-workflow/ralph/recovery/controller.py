@@ -112,9 +112,7 @@ def is_configuration_failure(
         msg = str(exc)
         if any(marker in msg for marker in _ENGINE_ORIGIN_MESSAGE_MARKERS):
             return True
-    if reason is not None and reason in ENGINE_ORIGIN_REASONS:
-        return True
-    return False
+    return reason is not None and reason in ENGINE_ORIGIN_REASONS
 
 
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(

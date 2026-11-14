@@ -135,15 +135,11 @@ _PHASE_FALLBACK_HINTS = {
         "Verify claims independently with fresh command execution",
         "Trace failing checks to their root causes",
     ),
-    "planning.jinja": (
-        "Mention task-relevant available skills when they help the executor",
-    ),
+    "planning.jinja": ("Mention task-relevant available skills when they help the executor",),
     "planning_analysis.jinja": (
         "Check the plan's claims against fresh evidence rather than the planner's account",
     ),
-    "planning_edit.jinja": (
-        "Mention task-relevant available skills when they help the executor",
-    ),
+    "planning_edit.jinja": ("Mention task-relevant available skills when they help the executor",),
     "planning_edit_fallback.jinja": (
         "Mention task-relevant available skills when they help the executor",
     ),
@@ -163,9 +159,7 @@ _CUE_NAME_RE = re.compile(
     r"\b(?:Use|Name)\s+([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\s+"
     r"(?:before|during|for|when)\b"
 )
-_ARTIFACT_POINTER_RE = re.compile(
-    r"render_optional_artifact_skill_pointer\(\s*['\"]([^'\"]+)['\"]"
-)
+_ARTIFACT_POINTER_RE = re.compile(r"render_optional_artifact_skill_pointer\(\s*['\"]([^'\"]+)['\"]")
 _UNIVERSAL_VARIABLE_RE = re.compile(r"SKILL_INSTALLED_([A-Z0-9_]+)")
 _EMPHATIC_RE = re.compile(r"\b(?:CRITICAL|MUST|NEVER)\b")
 
@@ -215,9 +209,7 @@ def _base_variables(template_name: str) -> dict[str, str]:
         "PRODUCT_CRITERIA": "Repair the validation failure.",
         "PRODUCT_CRITERIA_PATH": "PROMPT.md",
         "SKILLS_INLINE_CONTENT": "",
-        "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": (
-            "Submit with ralph_submit_md_artifact."
-        ),
+        "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": ("Submit with ralph_submit_md_artifact."),
         "VERIFICATION_FACTS": "none recorded",
         "agents_block_begin": "AGENTS BEGIN",
         "agents_block_end": "AGENTS END",
@@ -265,10 +257,7 @@ def _render_phase(
 
 def _template_sources() -> dict[str, str]:
     context = TemplateContext.default()
-    sources = {
-        name: context.registry.get_template(name)
-        for name in _PHASE_REQUIRED_SKILLS
-    }
+    sources = {name: context.registry.get_template(name) for name in _PHASE_REQUIRED_SKILLS}
     sources.update(context.partials)
     return sources
 
@@ -278,8 +267,7 @@ def test_submit_plan_artifact_has_executor_skills_handoff_line() -> None:
     assert (
         "Name executor skills (`test-driven-development`, `systematic-debugging`, "
         "`verification-before-completion`) for appropriate plan steps; the executor "
-        "tolerates uninstalled skills."
-        in content
+        "tolerates uninstalled skills." in content
     )
 
 
@@ -378,9 +366,8 @@ def test_templates_name_only_known_universal_and_artifact_skills() -> None:
 def test_skill_cue_text_uses_no_emphatic_all_caps_words() -> None:
     for template_name, source in _template_sources().items():
         for line in source.splitlines():
-            names_skill = (
-                "SKILL_INSTALLED_" in line
-                or any(skill in line for skill in FROZEN_UNIVERSAL_SKILLS)
+            names_skill = "SKILL_INSTALLED_" in line or any(
+                skill in line for skill in FROZEN_UNIVERSAL_SKILLS
             )
             if names_skill:
                 assert not _EMPHATIC_RE.search(line), template_name

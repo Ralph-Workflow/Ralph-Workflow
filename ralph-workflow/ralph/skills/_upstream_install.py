@@ -294,7 +294,9 @@ def _iter_references(
         else:
             dest = match.group(2) or match.group(3) or match.group(4) or match.group(5)
             reference = (
-                _destination_reference(dest, relative, carried_suffix) if isinstance(dest, str) else None
+                _destination_reference(dest, relative, carried_suffix)
+                if isinstance(dest, str)
+                else None
             )
         if reference is not None:
             found.append((match.start(), reference))
@@ -454,9 +456,7 @@ def _is_file_reference(candidate: str, carried_suffix: Callable[[str], str | Non
     _, dot, extension = segment.rpartition(".")
     if not dot or not _FILE_NAME_PATTERN.match(segment):
         return False
-    return (
-        extension.islower() or extension.isupper() or carried_suffix(segment) is not None
-    )
+    return extension.islower() or extension.isupper() or carried_suffix(segment) is not None
 
 
 def _is_external_reference(candidate: str) -> bool:
