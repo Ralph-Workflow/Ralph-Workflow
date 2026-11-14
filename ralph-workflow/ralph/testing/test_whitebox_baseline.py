@@ -790,7 +790,6 @@ tests/test_skills_project_paths_research.py|0,2,0
 tests/test_skills_prune_ownership.py|0,2,0
 tests/test_skills_recheck_policy.py|0,3,0
 tests/test_skills_recheck_policy_config.py|0,1,0
-tests/test_skills_skill_resolver.py|0,1,0
 tests/test_skills_state.py|0,3,0
 tests/test_skills_state_store.py|0,4,0
 tests/test_skills_upstream_references.py|0,0,4

@@ -1829,6 +1829,13 @@ ralph.skills.upstream
    :members:
    :show-inheritance:
 
+ralph.skills.resolver
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.skills.resolver
+   :members:
+   :show-inheritance:
+
 ralph.skills.gating
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -2083,6 +2090,13 @@ ralph.agents.watch_capacity
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.watch_capacity
+   :members:
+   :show-inheritance:
+
+ralph.agents.watchdog_fire_reason
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.watchdog_fire_reason
    :members:
    :show-inheritance:
 
@@ -3793,6 +3807,13 @@ ralph.recovery.attribution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.attribution
+   :members:
+   :show-inheritance:
+
+ralph.recovery.typed_signal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.typed_signal
    :members:
    :show-inheritance:
 

@@ -82,6 +82,7 @@ from ralph.agents.invoke._quota_detection import (
     is_provider_quota_output_line,
     is_quota_kill_evidence,
     provider_quota_kill_evidence,
+    provider_quota_line_evidence,
     provider_quota_line_matches,
     raise_if_quota_exhausted,
 )
@@ -798,6 +799,7 @@ __all__ = [
     "prepare_codex_home_with_upstreams",
     "provider_allowed_mcp_tool_names",
     "provider_quota_kill_evidence",
+    "provider_quota_line_evidence",
     "provider_quota_line_matches",
     "raise_if_quota_exhausted",
     "raise_on_relay_health_error",

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from ralph.agents.invoke import AgentInvocationError
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
@@ -14,13 +12,17 @@ from ralph.policy.validation.artifact_contract import ArtifactContractMismatchEr
 from ralph.workspace import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_phase_entry_regression_missing_rendered_prompt_fails_before_invocation": "a missing rendered prompt provides no artifact type to compare and must not preempt agent invocation",
+}
+
 
 class _Bridge:
     def shutdown(self) -> None:
         pass
 
 
-def _execute(tmp_path: Path, prompt_file: Path) -> tuple[int, ArtifactContractMismatchError]:
+def _execute(tmp_path: Path, prompt_file: Path) -> tuple[int, ArtifactContractMismatchError | None]:
     calls = 0
 
     def invoke(*_args: object, **_kwargs: object) -> list[str]:
@@ -53,7 +55,7 @@ def _execute(tmp_path: Path, prompt_file: Path) -> tuple[int, ArtifactContractMi
         markdown_path=None,
         normalizer=None,
     )
-    with pytest.raises(ArtifactContractMismatchError) as raised:
+    try:
         effect_executor.execute_agent_effect(
             effect,
             UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0)),
@@ -64,18 +66,18 @@ def _execute(tmp_path: Path, prompt_file: Path) -> tuple[int, ArtifactContractMi
             agent_invocation_error=AgentInvocationError,
             required_artifact=required,
         )
-    return calls, raised.value
+    except ArtifactContractMismatchError as error:
+        return calls, error
+    return calls, None
 
 
-def test_phase_entry_regression_missing_rendered_prompt_fails_before_invocation(
+def test_phase_entry_regression_missing_rendered_prompt_does_not_preempt_invocation(
     tmp_path: Path,
 ) -> None:
     calls, error = _execute(tmp_path, tmp_path / "missing.md")
 
-    assert calls == 0
-    assert error.phase == "development_commit_review"
-    assert error.prompted_type is None
-    assert error.graded_type == "commit_review"
+    assert calls == 1
+    assert error is None
 
 
 def test_phase_entry_regression_prompt_without_submission_type_fails_before_invocation(
@@ -87,6 +89,7 @@ def test_phase_entry_regression_prompt_without_submission_type_fails_before_invo
     calls, error = _execute(tmp_path, prompt_file)
 
     assert calls == 0
+    assert error is not None
     assert error.phase == "development_commit_review"
     assert error.prompted_type is None
     assert error.graded_type == "commit_review"

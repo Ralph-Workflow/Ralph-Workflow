@@ -72,6 +72,13 @@ if TYPE_CHECKING:
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit changed": (
+        "the assertion and its message are unchanged; ruff format reflowed the long "
+        "message into parentheses, so the diff shows the single-line form as removed"
+    ),
+}
+
 pytestmark = [
     pytest.mark.timeout_seconds(15),
     pytest.mark.required_auto_integrate_e2e,

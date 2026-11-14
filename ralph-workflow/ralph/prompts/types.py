@@ -26,7 +26,7 @@ from ralph.prompts.template_variables import (
 from ralph.prompts.template_variables import (
     capability_template_variables as _capability_template_variables,
 )
-from ralph.skills._skill_resolver import (
+from ralph.skills.resolver import (
     FROZEN_UNIVERSAL_SKILLS,
     skill_template_variables,
     skill_variable_name,

@@ -446,7 +446,7 @@ a ledger row is a defect, and so is a ledger row without a retained entry.
 The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
-| root | 464 | 395 | 860 | 854 | 2109 | follow-up: backlog white-box conversion unit |
+| root | 463 | 395 | 859 | 854 | 2108 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | follow-up: mcp public-seam unit |
 | agents | 100 | 34 | 281 | 100 | 415 | follow-up: agent public-seam unit |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | follow-up: auto-integrate public-seam unit |
@@ -1281,7 +1281,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_skills_prune_ownership.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_recheck_policy.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_recheck_policy_config.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_skills_skill_resolver.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_state.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_state_store.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_skills_upstream_references.py` | 0 | 0 | 4 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |

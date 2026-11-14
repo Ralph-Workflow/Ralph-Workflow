@@ -18,7 +18,7 @@ from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.template_variables import timebox_template_variables
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
-from ralph.skills._skill_resolver import skill_template_variables
+from ralph.skills.resolver import skill_template_variables
 
 DEFAULT_DOCS_MCP_PORT = "localhost:6280"
 

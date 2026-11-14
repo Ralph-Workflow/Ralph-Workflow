@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL, WRITE_FILE_TOOL
 from ralph.phases.required_artifacts import read_validation_retry_hint
-from ralph.skills._skill_resolver import skill_template_variables
+from ralph.skills.resolver import skill_template_variables
 
 from ..commit_evidence import CommitEvidenceBundle
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory

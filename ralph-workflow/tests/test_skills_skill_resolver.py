@@ -27,7 +27,7 @@ from ralph.prompts.developer import (
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities
-from ralph.skills._skill_resolver import (
+from ralph.skills.resolver import (
     FROZEN_UNIVERSAL_SKILLS,
     get_inline_skill_content,
     resolve_agent_skill_roots,
@@ -432,23 +432,21 @@ def test_integrated_fallback_renders_carry_skill_variables(
     workspace_dir.mkdir(parents=True)
     captured_fallbacks: list[Mapping[str, str]] = []
 
-    render_attempts = 0
-
-    def _render_spy(
+    def _fallback_spy(
         template: str,
         variables: Mapping[str, str],
         partials: Mapping[str, str],
     ) -> str:
-        nonlocal render_attempts
         del template, partials
-        render_attempts += 1
-        if render_attempts % 2:
-            raise TemplateRenderingError("Forced template rendering failure for fallback test")
         captured_fallbacks.append(dict(variables))
         return "fallback rendered"
 
-    monkeypatch.setattr(template_engine, "render_template", _render_spy)
-    monkeypatch.setattr("ralph.prompts.developer.render_template", _render_spy)
+    def _failing_render(*args: object, **kwargs: object) -> str:
+        msg = "Forced template rendering failure for fallback test"
+        raise TemplateRenderingError(msg)
+
+    monkeypatch.setattr(template_engine, "render_template", _fallback_spy)
+    monkeypatch.setattr("ralph.prompts.developer.render_template", _failing_render)
 
     tmpl_ctx = TemplateContext.default(workspace_dir)
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)

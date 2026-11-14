@@ -10,9 +10,13 @@ import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
+from ralph.git.operations import has_uncommitted_changes
+from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.phases.commit_review import CommitReviewRejected
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
+    CommitReviewRejectEffect,
     EmptyCommitEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -149,6 +153,17 @@ def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") ->
     )
 
 
+def _proposal_seal_refs(repo_root: Path) -> list[str]:
+    result = run_git(
+        ("for-each-ref", "refs/ralph/proposals", "--format=%(refname)"),
+        cwd=repo_root,
+        label="git-for-each-ref",
+        options=GitRunOptions(call_class="read_only_verify"),
+    )
+    assert result.returncode == 0, result.stderr
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 @pytest.fixture(autouse=True)
 def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -229,6 +244,73 @@ class TestDetermineEffect:
         assert complete.get_outer_progress("iteration") == DEVELOPER_ITERATIONS
         assert complete.get_loop_iteration("commit_review_iteration") == 0
         assert complete.get_loop_iteration("development_analysis_iteration") == 0
+
+    def test_empty_pending_diff_short_circuits_development_commit_review_without_reviewer(
+        self, tmp_git_repo: Path
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace_scope = WorkspaceScope(root=tmp_git_repo, allowed_roots=[tmp_git_repo])
+        state = PipelineState(
+            phase="development_commit_review",
+            outer_progress={"iteration": 0},
+            loop_iterations={"commit_review_iteration": SECOND_ITERATION},
+            dev_timebox_active=True,
+            dev_timebox_consumed_seconds=60.0,
+        )
+
+        assert has_uncommitted_changes(tmp_git_repo) is False
+        effect = runner_module.determine_effect_from_policy(state, bundle, workspace_scope)
+
+        assert isinstance(effect, EmptyCommitEffect)
+        assert effect.phase_role == "commit_review"
+        assert not isinstance(effect, CommitReviewRejectEffect)
+        assert _proposal_seal_refs(tmp_git_repo) == []
+        assert not (tmp_git_repo / ".agent" / "tmp" / "commit_review_context.json").exists()
+
+        event = runner_module.execute_effect(effect, MagicMock(), workspace_scope)
+
+        assert event is PipelineEvent.AGENT_SUCCESS
+        assert not isinstance(event, CommitReviewRejected)
+
+        after_review, _effects = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, bundle.pipeline)
+        assert after_review.phase == "development_commit"
+        assert after_review.dev_timebox_active is False
+
+    def test_empty_pending_diff_short_circuits_development_final_commit_review_without_reviewer(
+        self, tmp_git_repo: Path
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace_scope = WorkspaceScope(root=tmp_git_repo, allowed_roots=[tmp_git_repo])
+        state = PipelineState(
+            phase="development_final_commit_review",
+            outer_progress={"iteration": DEVELOPER_ITERATIONS - 1},
+            loop_iterations={
+                "commit_review_iteration": SECOND_ITERATION,
+                "development_analysis_iteration": SECOND_ITERATION,
+            },
+            cycle_timebox_active=True,
+            cycle_timebox_consumed_seconds=60.0,
+            dev_timebox_active=True,
+            dev_timebox_consumed_seconds=60.0,
+        )
+
+        assert has_uncommitted_changes(tmp_git_repo) is False
+        effect = runner_module.determine_effect_from_policy(state, bundle, workspace_scope)
+
+        assert isinstance(effect, EmptyCommitEffect)
+        assert effect.phase_role == "commit_review"
+        assert not isinstance(effect, CommitReviewRejectEffect)
+        assert _proposal_seal_refs(tmp_git_repo) == []
+        assert not (tmp_git_repo / ".agent" / "tmp" / "commit_review_context.json").exists()
+
+        event = runner_module.execute_effect(effect, MagicMock(), workspace_scope)
+
+        assert event is PipelineEvent.AGENT_SUCCESS
+        assert not isinstance(event, CommitReviewRejected)
+
+        after_review, _effects = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, bundle.pipeline)
+        assert after_review.phase == "development_final_commit"
+        assert after_review.cycle_timebox_active is False
 
     def test_complete_phase_returns_exit_success(self) -> None:
         bundle = _load_default_policy_bundle()

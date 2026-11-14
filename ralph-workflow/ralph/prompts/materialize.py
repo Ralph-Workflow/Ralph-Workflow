@@ -81,12 +81,12 @@ from ralph.prompts.payload_refs import (
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.recovery.retry_prompt import build_validation_retry_footer
-from ralph.skills._skill_resolver import (
+from ralph.skills.manager import SkillManager
+from ralph.skills.resolver import (
     get_inline_skill_content,
     resolve_installed_skills_for_agent,
     skill_template_variables,
 )
-from ralph.skills.manager import SkillManager
 
 PLAN_MD_DRAFT_PATH = ".agent/artifacts/.plan.draft.md"
 PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH = (

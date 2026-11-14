@@ -16,13 +16,28 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlsplit
 
 import pytest
 
 from ralph.skills import upstream
 from ralph.skills.upstream import HttpClient, HttpResponse, default_http_client
+
+RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
+    "test_a_failing_upstream_keeps_the_installed_skills_byte_identical outcome.status": (
+        "HTTP 404 is the explicit no-release outcome for a release endpoint; every scenario "
+        "now retains exact status equality against its public outcome contract"
+    ),
+    "test_a_failing_upstream_keeps_the_installed_skills_byte_identical outcome.error": (
+        "the no-release outcome intentionally has no error; every scenario now asserts exact "
+        "error equality, which is stronger than the former non-None check for failures"
+    ),
+    "test_two_racing_processes_make_exactly_one_upstream_request release_requests": (
+        "one winning process makes exactly one release request for each configured upstream; "
+        "distinct source paths now retain an exact count-of-one assertion per upstream"
+    ),
+}
 
 pytestmark = [pytest.mark.subprocess_e2e]
 
@@ -47,11 +62,15 @@ from pathlib import Path
 
 from ralph.skills import upstream
 
-releases = os.environ["RALPH_TEST_RELEASES_URL"]
-archive = os.environ["RALPH_TEST_ARCHIVE_TEMPLATE"]
+releases = os.environ["RALPH_TEST_RELEASES_BASE"]
+archive = os.environ["RALPH_TEST_ARCHIVE_BASE"]
 upstream.UNIVERSAL_UPSTREAMS = tuple(
-    replace(source, api_url=releases, archive_url_template=archive)
-    for source in upstream.UNIVERSAL_UPSTREAMS
+    replace(
+        source,
+        api_url=f"{releases}/{index}.json",
+        archive_url_template=f"{archive}/{index}/{{tag}}.tar.gz",
+    )
+    for index, source in enumerate(upstream.UNIVERSAL_UPSTREAMS)
 )
 
 gate = Path(os.environ["RALPH_TEST_GATE"])
@@ -220,6 +239,21 @@ def _point_at(server: _TestServer, monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _point_at_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    releases = _unreachable_loopback_url()
+    archive = releases.replace("/releases/latest.json", "/archive/{tag}.tar.gz")
+    _assert_loopback_url(releases)
+    _assert_loopback_url(archive)
+    monkeypatch.setattr(
+        upstream,
+        "UNIVERSAL_UPSTREAMS",
+        tuple(
+            replace(source, api_url=releases, archive_url_template=archive)
+            for source in upstream.UNIVERSAL_UPSTREAMS
+        ),
+    )
+
+
 def _release_body(tag: str) -> bytes:
     return json.dumps({"tag_name": tag}).encode("utf-8")
 
@@ -307,24 +341,27 @@ def _failing_replies(failure: str) -> dict[str, _Reply]:
 
 
 @pytest.mark.parametrize(
-    "failure",
-    ["rate-limited", "missing-upstream", "malformed-release", "malformed-archive", "offline"],
+    ("failure", "expected_status", "expected_error"),
+    [
+        ("rate-limited", "failed", "release-api-status-403"),
+        ("missing-upstream", "no-release", None),
+        ("malformed-release", "failed", "release-api-malformed"),
+        ("malformed-archive", "failed", "the archive could not be read: ReadError"),
+        ("offline", "failed", "release-api-error:ConnectError"),
+    ],
 )
 def test_a_failing_upstream_keeps_the_installed_skills_byte_identical(
-    sandbox: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+    sandbox: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    expected_status: str,
+    expected_error: str | None,
 ) -> None:
     root = _install_fixture_release()
     before = _tree_snapshot(root)
 
     if failure == "offline":
-        releases = _unreachable_loopback_url()
-        _assert_loopback_url(releases)
-        monkeypatch.setattr(upstream, "RELEASES_API_URL", releases)
-        monkeypatch.setattr(
-            upstream,
-            "ARCHIVE_URL_TEMPLATE",
-            releases.replace("/releases/latest.json", "/archive/{tag}.tar.gz"),
-        )
+        _point_at_unreachable(monkeypatch)
         outcome = upstream.maybe_update_universal_skills(
             enabled=True, now=_NOW + timedelta(hours=25), http=default_http_client()
         )
@@ -335,12 +372,8 @@ def test_a_failing_upstream_keeps_the_installed_skills_byte_identical(
                 enabled=True, now=_NOW + timedelta(hours=25), http=default_http_client()
             )
 
-    if failure == "missing-upstream":
-        assert outcome.status == "no-release"
-        assert outcome.error is None
-    else:
-        assert outcome.status == "failed"
-        assert outcome.error is not None
+    assert outcome.status == expected_status
+    assert outcome.error == expected_error
     assert _tree_snapshot(root) == before
 
 
@@ -482,12 +515,15 @@ def test_the_attempt_reservation_leaves_a_lock_sidecar(
 def test_two_racing_processes_make_exactly_one_upstream_request(
     sandbox: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    replies = _routes(
-        {
-            "/releases/latest.json": _Reply(body=_release_body("v-test-1")),
-            "/archive/v-test-1.tar.gz": _Reply(status=404, body=b"no archive"),
-        }
+    release_paths = tuple(
+        f"/releases/{index}.json" for index in range(len(upstream.UNIVERSAL_UPSTREAMS))
     )
+    archive_paths = tuple(
+        f"/archive/{index}/v-test-1.tar.gz" for index in range(len(upstream.UNIVERSAL_UPSTREAMS))
+    )
+    responses = {path: _Reply(body=_release_body("v-test-1")) for path in release_paths}
+    responses.update({path: _Reply(status=404, body=b"no archive") for path in archive_paths})
+    replies = _routes(responses)
     gate = tmp_path / "gate"
     gate.mkdir()
     script = tmp_path / "runner.py"
@@ -499,8 +535,8 @@ def test_two_racing_processes_make_exactly_one_upstream_request(
         fcntl.flock(descriptor, fcntl.LOCK_EX)
         with _serving(replies) as server:
             env = dict(os.environ)
-            env["RALPH_TEST_RELEASES_URL"] = f"{server.base_url}/releases/latest.json"
-            env["RALPH_TEST_ARCHIVE_TEMPLATE"] = f"{server.base_url}/archive/{{tag}}.tar.gz"
+            env["RALPH_TEST_RELEASES_BASE"] = f"{server.base_url}/releases"
+            env["RALPH_TEST_ARCHIVE_BASE"] = f"{server.base_url}/archive"
             env["RALPH_TEST_NOW"] = _NOW.isoformat()
             env["RALPH_TEST_GATE"] = str(gate)
             env["PYTHONPATH"] = str(_PACKAGE_ROOT)
@@ -527,8 +563,10 @@ def test_two_racing_processes_make_exactly_one_upstream_request(
                     if process.poll() is None:
                         process.kill()
                     process.wait(timeout=10)
-        release_requests = [path for path in server.requests if path == "/releases/latest.json"]
-        assert len(release_requests) == len(upstream.UNIVERSAL_UPSTREAMS)
+        for path in release_paths:
+            assert server.requests.count(path) == 1, (
+                f"exactly one process must request {path}; got {server.requests!r}"
+            )
         statuses = [stdout.strip() for stdout, _stderr in outputs]
         assert sorted(statuses) == ["failed True", "skipped False"]
     finally:
@@ -538,15 +576,9 @@ def test_two_racing_processes_make_exactly_one_upstream_request(
 def test_the_updater_never_raises_on_a_transport_failure(
     sandbox: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    releases = _unreachable_loopback_url()
-    _assert_loopback_url(releases)
-    monkeypatch.setattr(upstream, "RELEASES_API_URL", releases)
-    monkeypatch.setattr(
-        upstream,
-        "ARCHIVE_URL_TEMPLATE",
-        releases.replace("/releases/latest.json", "/archive/{tag}.tar.gz"),
-    )
+    _point_at_unreachable(monkeypatch)
     outcome: UpdateOutcome = upstream.maybe_update_universal_skills(
         enabled=True, now=_NOW, http=default_http_client()
     )
     assert outcome.status == "failed"
+    assert outcome.error == "release-api-error:ConnectError"

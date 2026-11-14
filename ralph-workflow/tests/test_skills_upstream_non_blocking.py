@@ -6,13 +6,20 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from unittest.mock import patch
 
 import pytest
 
 from ralph.cli.commands import run as run_module
 from ralph.skills import upstream
+
+RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
+    "test_the_run_start_path_returns_while_the_upstream_check_is_still_outstanding probe.calls": (
+        "the production registry contains two release-tagged upstreams and checks every entry; "
+        "the replacement remains exact ordered equality against every configured release API"
+    ),
+}
 
 if TYPE_CHECKING:
     from ralph.skills.upstream import HttpClient, HttpResponse
@@ -174,8 +181,9 @@ def test_the_run_start_path_returns_while_the_upstream_check_is_still_outstandin
         assert probe.reported.wait(timeout=_EVENT_WAIT_SECONDS), (
             f"the deferred upstream check never reported; got {probe.messages!r}"
         )
-        assert probe.calls == [upstream.RELEASES_API_URL], (
-            f"the upstream check must query the release API only; got {probe.calls!r}"
+        assert probe.calls == [source.api_url for source in upstream.UNIVERSAL_UPSTREAMS], (
+            "the upstream check must query every configured release API and nothing else; "
+            f"got {probe.calls!r}"
         )
         assert any("up to date" in message for message in probe.messages), (
             f"the deferred upstream check must succeed; got {probe.messages!r}"

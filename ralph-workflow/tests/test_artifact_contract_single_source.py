@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
 import shutil
+from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
@@ -11,8 +13,9 @@ from pydantic import ValidationError
 from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
     get_recorded_receipt_artifact_types,
-    write_artifact_receipt,
 )
+from ralph.mcp.artifacts.format_docs import load_bundled_example
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.prompt_prep import session_capabilities_for_agent_phase
 from ralph.policy.loader import default_dir, load_policy
@@ -23,6 +26,9 @@ from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
 )
 from ralph.workspace.memory import MemoryWorkspace
+from tests._artifact_format_docs_mock_session import MockSession
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
+from tests._support.typed_accessors import must_text
 
 _PROMPT_ARTIFACT_CALL = re.compile(
     r'`artifact_type` set to `"(?P<t1>[a-z_]+)"`|`artifact_type="(?P<t2>[a-z_]+)"`'
@@ -31,10 +37,13 @@ _SKILL_POINTER = re.compile(r"`(submit-[a-z-]+-artifact|submit-artifact)`")
 _BACKTICK_NAME = re.compile(r"`([a-z_]+)`")
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_every_default_phase_grades_the_type_its_prompt_and_skill_name": (
-        "expanded single-source invariant test from template-regex inspection to end-to-end "
-        "phase prompt rendering, skill discovery, receipt verification, and policy artifact validation "
-        "across all 8 pipeline phases"
+    "RALPH_TEST_CHANGE_REASONS test_every_default_phase_grades_the_type_its_prompt_and_skill_name": (
+        "the invariant test spans template-regex inspection, phase prompt rendering, skill "
+        "discovery, receipt verification, and policy artifact validation across all 8 pipeline "
+        "phases, and its receipt leg now submits every phase's seeded document through the "
+        "production ralph_submit_md_artifact handler and reads the receipt type back from the "
+        "persisted receipt store, so a submit-to-receipt mapping defect can no longer be masked "
+        "by a receipt written from the assertion's own input"
     ),
 }
 
@@ -169,22 +178,81 @@ def _extract_skill_contract_type(
     return concrete_type
 
 
-def _exercise_and_read_receipt_type(
+@dataclass
+class _ContractSession(MockSession):
+    run_id: str = "run-artifact-contract"
+
+
+_ARTIFACT_PREREQUISITES: dict[str, tuple[str, ...]] = {
+    "planning_analysis_decision": ("plan",),
+}
+
+
+def _seed_document(artifact_type: str) -> str:
+    document = load_bundled_example(artifact_type)
+    assert document is not None, (
+        f"no bundled format-doc example is available for artifact type {artifact_type!r}"
+    )
+    return document
+
+
+def _submit_through_handler(
+    session: _ContractSession,
+    workspace: MockWorkspace,
+    *,
+    artifact_type: str,
+    phase_name: str,
+) -> None:
+    result = handle_submit_md_artifact(
+        session,
+        workspace,
+        {"artifact_type": artifact_type, "content": _seed_document(artifact_type)},
+    )
+    assert result.is_error is False, (
+        f"production submit handler rejected the seeded {artifact_type!r} document "
+        f"for phase {phase_name!r}: {json.dumps(json.loads(must_text(result.content[0])))}"
+    )
+
+
+def _submit_through_handler_and_read_receipt_type(
     workspace_root: Path,
     *,
     phase_name: str,
-    prompt_artifact_type: str,
+    artifact_type: str,
+    drain: str,
 ) -> str:
-    run_id = f"test-contract-{phase_name}"
-    ws = workspace_root / f"receipt_ws_{phase_name}"
-    ws.mkdir(parents=True, exist_ok=True)
-    write_artifact_receipt(ws, run_id, prompt_artifact_type)
-    recorded = get_recorded_receipt_artifact_types(ws, run_id)
-    assert recorded == [prompt_artifact_type], (
-        f"Receipt writer recorded {recorded} for {run_id}, expected [{prompt_artifact_type}]"
+    workspace_path = workspace_root / f"submit_ws_{phase_name}"
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    workspace = MockWorkspace(workspace_path)
+    run_id = f"run-artifact-contract-{phase_name}"
+    for prerequisite in _ARTIFACT_PREREQUISITES.get(artifact_type, ()):
+        prerequisite_run_id = f"{run_id}-prerequisite-{prerequisite}"
+        _submit_through_handler(
+            _ContractSession(
+                session_id=prerequisite_run_id,
+                drain="planning",
+                run_id=prerequisite_run_id,
+            ),
+            workspace,
+            artifact_type=prerequisite,
+            phase_name=phase_name,
+        )
+    _submit_through_handler(
+        _ContractSession(session_id=run_id, drain=drain, run_id=run_id),
+        workspace,
+        artifact_type=artifact_type,
+        phase_name=phase_name,
     )
-    assert artifact_receipt_present(ws, run_id, prompt_artifact_type) is True
-    return recorded[0]
+    recorded = get_recorded_receipt_artifact_types(workspace_path, run_id)
+    assert len(recorded) == 1, (
+        f"production submit handler recorded receipt types {recorded} for run {run_id!r}; "
+        "expected exactly one persisted receipt"
+    )
+    receipt_type = recorded[0]
+    assert artifact_receipt_present(workspace_path, run_id, receipt_type) is True, (
+        f"receipt {receipt_type!r} for run {run_id!r} is not readable back from the workspace"
+    )
+    return receipt_type
 
 
 def _assert_artifact_contract(
@@ -241,10 +309,11 @@ def test_every_default_phase_grades_the_type_its_prompt_and_skill_name(tmp_path:
             umbrella_supported=umbrella_supported,
             skills_dir=skills_dir,
         )
-        receipt_type = _exercise_and_read_receipt_type(
+        receipt_type = _submit_through_handler_and_read_receipt_type(
             tmp_path,
             phase_name=phase_name,
-            prompt_artifact_type=prompt_type,
+            artifact_type=prompt_type,
+            drain=phase_def.drain or phase_name,
         )
         policy_type = required.artifact_type
 

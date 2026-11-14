@@ -6,7 +6,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
-from ralph.skills._skill_resolver import skill_template_variables
+from ralph.skills.resolver import skill_template_variables
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping

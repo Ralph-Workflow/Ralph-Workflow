@@ -83,7 +83,7 @@ def _resolve_prompt_text(
     prompt_file: str | Path | None,
     workspace_root: Path | None,
     file_backend: FileBackend = DEFAULT_FILE_BACKEND,
-) -> str:
+) -> str | None:
     if prompt_text is not None:
         return prompt_text
     if prompt_file is None:
@@ -98,16 +98,7 @@ def _resolve_prompt_text(
     if not prompt_path.is_absolute() and workspace_root is not None:
         prompt_path = workspace_root / prompt_path
     if not file_backend.exists(prompt_path):
-        msg = (
-            f"Phase '{phase}' requires artifact '{target_type}' but rendered prompt file not "
-            f"found: {prompt_path}"
-        )
-        raise ArtifactContractMismatchError(
-            phase=phase,
-            prompted_type=None,
-            graded_type=target_type,
-            message=msg,
-        )
+        return None
     return file_backend.read_text(prompt_path, encoding="utf-8")
 
 
@@ -265,6 +256,8 @@ def validate_artifact_contract(
         workspace_root=workspace_root,
         file_backend=file_backend,
     )
+    if resolved_text is None:
+        return
 
     _validate_prompted_types(
         phase,

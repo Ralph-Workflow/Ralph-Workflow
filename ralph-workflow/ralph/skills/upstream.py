@@ -451,10 +451,9 @@ def _transport_error_reason(exc: Exception, prefix: str) -> str:
 
 
 def _parse_release_tag(status: int, body: bytes) -> tuple[str | None, str | None]:
-    if status == HTTP_NOT_FOUND:
-        return (None, NO_RELEASE_ERROR)
     if status != HTTP_OK:
-        return (None, f"release-api-status-{status}")
+        reason = NO_RELEASE_ERROR if status == HTTP_NOT_FOUND else f"release-api-status-{status}"
+        return (None, reason)
     if len(body) > MAX_RELEASE_BYTES:
         return (None, "release-api-too-large")
     try:
