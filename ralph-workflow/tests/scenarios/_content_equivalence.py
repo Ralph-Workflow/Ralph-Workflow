@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,10 +20,13 @@ from tests._scenario_harness import (
     commit_file,
     git,
 )
+from tests.scenarios._content_equivalence_report import ContentEquivalence
+from tests.scenarios._counting_resolver import CountingResolver
+from tests.scenarios._integration_run import IntegrationRun
 
 if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
-    from ralph.pipeline.conflict_resolution import RebaseStop, RebaseStopResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -32,6 +35,7 @@ __all__ = [
     "CountingResolver",
     "FastImportCommit",
     "IntegrationRun",
+    "OperatorLine",
     "assert_content_equivalence",
     "build_feature_branch",
     "commit_file",
@@ -137,29 +141,6 @@ def build_feature_branch(
     git(root, "add", "--", *files)
     git(root, "commit", "-q", "-m", message)
     return git(root, "rev-parse", "HEAD")
-
-
-@dataclass(frozen=True)
-class ContentEquivalence:
-    missing: tuple[str, ...] = ()
-    unexpected: tuple[str, ...] = ()
-    lost: tuple[str, ...] = ()
-
-    @property
-    def satisfied(self) -> bool:
-        return not (self.missing or self.unexpected or self.lost)
-
-    def describe(self) -> str:
-        parts: list[str] = []
-        if self.missing:
-            parts.append("feature change absent from the target: " + ", ".join(self.missing))
-        if self.unexpected:
-            parts.append(
-                "unrelated content introduced on the target: " + ", ".join(self.unexpected)
-            )
-        if self.lost:
-            parts.append("uncommitted work lost: " + ", ".join(self.lost))
-        return "; ".join(parts) if parts else "content equivalence holds"
 
 
 def _tree_paths(root: Path, ref: str) -> tuple[str, ...]:
@@ -285,31 +266,6 @@ def assert_content_equivalence(
     )
     assert report.satisfied, f"{contract} -- {report.describe()}"
     return report
-
-
-class CountingResolver:
-    def __init__(self, inner: RebaseStopResolver) -> None:
-        self.inner = inner
-        self.launches = 0
-        self.stops: list[RebaseStop] = []
-
-    def __call__(self, root: Path, target: str, stop: RebaseStop) -> bool:
-        self.launches += 1
-        self.stops.append(stop)
-        return bool(self.inner(root, target, stop))
-
-
-@dataclass(frozen=True)
-class IntegrationRun:
-    state: RebaseState | None
-    error: str | None
-    operator_lines: tuple[OperatorLine, ...] = ()
-    resolver_launches: int = 0
-    facts: dict[str, str] = field(default_factory=dict)
-
-    @property
-    def failed_with_exception(self) -> bool:
-        return self.error is not None
 
 
 def drive_integration(

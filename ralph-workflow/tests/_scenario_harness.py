@@ -4,8 +4,7 @@ import json
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass, field
-from enum import StrEnum
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,6 +18,10 @@ from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from ralph.workspace.scope import WorkspaceScope
+from tests._scenario_agent_mode import AgentMode
+from tests._scenario_display import ScenarioDisplay
+from tests._scenario_operator_line import OperatorLine
+from tests._scenario_result import ScenarioResult
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -30,19 +33,29 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.subprocess_e2e
 
+__all__ = [
+    "SCENARIO_FILES",
+    "AgentMode",
+    "FakeAgentRunner",
+    "OperatorLine",
+    "ScenarioDisplay",
+    "ScenarioResult",
+    "capture_operator_lines",
+    "commit_file",
+    "corrupted_config",
+    "git",
+    "paused_text_and_gitlink_rebase",
+    "paused_text_rebase",
+    "run_completed_rebase_promotion",
+    "run_marker_resolution",
+    "run_spent_gate",
+    "run_unstaged_text_resolution",
+    "scenario_config",
+    "spent_ledger_state",
+    "supervisor_restart",
+]
+
 SCENARIO_FILES: tuple[str, ...] = ("tests/scenarios/test_auto_integrate_symptom_matrix.py",)
-
-
-class AgentMode(StrEnum):
-    EDITS_AND_STAGES = "edits_and_stages"
-    EDITS_NEVER_STAGES = "edits_never_stages"
-    LEAVES_MARKER = "leaves_marker"
-
-
-@dataclass(frozen=True)
-class OperatorLine:
-    level: str
-    content: str
 
 
 @dataclass
@@ -61,22 +74,6 @@ class FakeAgentRunner:
         if self.mode is AgentMode.EDITS_AND_STAGES:
             git(root, "add", "--", *stop.conflicted_files)
         return True
-
-
-@dataclass
-class ScenarioResult:
-    resolver_launches: int
-    operator_lines: tuple[OperatorLine, ...]
-    terminal_state: str
-    facts: dict[str, str] = field(default_factory=dict)
-
-
-class ScenarioDisplay:
-    def __init__(self) -> None:
-        self.lines: list[OperatorLine] = []
-
-    def emit_warn_line(self, _unit_id: str, _tag: str, message: str) -> None:
-        self.lines.append(OperatorLine("WARNING", message))
 
 
 @contextmanager

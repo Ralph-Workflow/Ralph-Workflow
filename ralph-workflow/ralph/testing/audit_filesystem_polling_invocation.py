@@ -89,6 +89,16 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/skills/upstream.py", "_claim_lock", "raw_sleep_poll"),
         ("ralph/telemetry/_user_identity.py", "_identity_lock", "raw_sleep_poll"),
         ("ralph/testing/_audit_baseline.py", "_run_git", "raw_subprocess_invocation"),
+        (
+            "ralph/testing/audit_banned_constructs.py",
+            "_git_root",
+            "raw_subprocess_invocation",
+        ),
+        (
+            "ralph/testing/audit_banned_constructs.py",
+            "_tracked_python_paths",
+            "raw_subprocess_invocation",
+        ),
         ("ralph/testing/audit_comments.py", "_git_output", "raw_subprocess_invocation"),
         ("ralph/testing/fake_agent_executor.py", "FakeAgentExecutor.run", "raw_sleep_poll"),
     }

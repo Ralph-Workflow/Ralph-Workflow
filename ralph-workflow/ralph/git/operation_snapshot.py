@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 
 from ralph.git import subprocess_runner
+from ralph.git._operation_state import OperationState
 from ralph.git.merge import (
     observe_branch_sha,
     observe_unmerged_paths,
@@ -15,14 +15,6 @@ from ralph.git.operations import _resolve_gitdir_paths, get_head_sha
 __all__ = ["OperationSnapshot", "OperationState", "observe_operation_snapshot"]
 
 _MINIMUM_REBASE_SIGNALS = 2
-
-
-class OperationState(StrEnum):
-    NONE = "NONE"
-    REBASE_PAUSED = "REBASE_PAUSED"
-    MERGE_PAUSED = "MERGE_PAUSED"
-    DETACHED = "DETACHED"
-    UNKNOWN = "UNKNOWN"
 
 
 @dataclass(frozen=True, slots=True)

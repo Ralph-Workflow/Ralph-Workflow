@@ -116,7 +116,8 @@ def _assert_observation(
     _assert_never_spent(observation, controller)
     if scenario.corpus_id is not None and entry_point is not AgentEntryPoint.CANARY_PROBE:
         _assert_corpus_expectations(scenario, observation, controller)
-    if entry_point is AgentEntryPoint.CANARY_PROBE:
+    nonrecursive_canary = entry_point is AgentEntryPoint.CANARY_PROBE
+    if nonrecursive_canary:
         assert observation.probe_calls == ()
         assert observation.availability is True
         assert observation.wait_ms == 0

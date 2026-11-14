@@ -70,6 +70,11 @@ def test_u2_regression_stalled_attempt_immediately_enters_shared_cooldown() -> N
     assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary"]) > 0
 
 
+def _clean_exit_facts() -> AttemptFacts:
+    return AttemptFacts(artifact_valid=True)
+
+
+
 def test_stall_is_charged_even_when_the_invocation_already_reported_success() -> None:
     controller = _controller()
     session = ResolutionSession(recovery_controller=controller)
@@ -79,7 +84,7 @@ def test_stall_is_charged_even_when_the_invocation_already_reported_success() ->
         controller.finalize_attempt(
             PHASE_RESOLUTION,
             "primary",
-            facts=AttemptFacts(artifact_valid=True),
+            facts=_clean_exit_facts(),
             attempt_failed=False,
             attempt_key=f"conflict-resolution:primary:{ordinal}",
         )

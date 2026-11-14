@@ -53,8 +53,11 @@ class ConfigLoadError(ValueError):
         )
 
 
-class ConfigTomlError(ConfigLoadError):
+class _ConfigTomlError(ConfigLoadError):
     pass
+
+
+ConfigTomlError = _ConfigTomlError
 
 
 def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:

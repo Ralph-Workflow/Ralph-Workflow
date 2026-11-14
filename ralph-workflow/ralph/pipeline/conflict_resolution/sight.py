@@ -17,6 +17,7 @@ from ralph.git.merge import (
 )
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.conflict_resolution._conflict_classification import ConflictClassification
+from ralph.pipeline.conflict_resolution._conflict_kind import ConflictKind
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
 __all__ = [
@@ -109,16 +110,6 @@ class ConflictSight(StrEnum):
     AGENT = "agent"
     AGENT_DECISION = "agent_decision"
     OUT_OF_REACH = "out_of_reach"
-
-
-class ConflictKind(StrEnum):
-    TEXT = "Text"
-    GITLINK = "Gitlink"
-    DECLARED_DECISION = "DeclaredDecision"
-    DELETE_MODIFY = "DeleteModify"
-    BINARY = "Binary"
-    APPEND_ONLY = "AppendOnly"
-    OTHER = "Other"
 
 
 def classify_conflict_kinds(

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -9,6 +8,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.pipeline.integration_observation import InProgressKind
+
+from ralph.pipeline._rung_post_condition import RungPostCondition
 
 __all__ = [
     "EnvironmentFailure",
@@ -31,14 +32,6 @@ class NextStrategyOutcome:
     strategy: Literal["complete_in_place"]
     reason: str
     alternatives_considered: tuple[str, ...]
-
-
-class RungPostCondition(StrEnum):
-    BLOCKING_OBSERVATION_CHANGED = "blocking_observation_changed"
-    DURABLE_COPY_CREATED = "durable_copy_created"
-    STOP_GONE = "stop_gone"
-    TIP_MOVED = "tip_moved"
-    BRANCH_LANDED = "branch_landed"
 
 
 type LandResult = Literal[

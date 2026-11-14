@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypeGuard, cast
+from typing import TYPE_CHECKING, Final, TypeGuard
 
 from ralph.checked_accessors import as_str_list
 from ralph.git.merge import branch_sha, is_ancestor
@@ -110,7 +110,7 @@ def _atomic_json(path: Path, payload: dict[str, object]) -> None:
 
 def _read_json(path: Path) -> dict[str, object] | None:
     try:
-        parsed = cast("object", json.loads(path.read_text(encoding="utf-8")))
+        parsed: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError, RecursionError):
         return None
     return parsed if isinstance(parsed, dict) else None
@@ -218,8 +218,6 @@ def _write_operation(path: Path, facts: _OperationFacts, steps: tuple[str, ...])
 
 def _is_text(value: object) -> TypeGuard[str]:
     return isinstance(value, str)
-
-
 def _read_operation(path: Path) -> _OperationFacts | None:
     payload = _read_json(path)
     if payload is None or payload.get("version") != _RECORD_VERSION:

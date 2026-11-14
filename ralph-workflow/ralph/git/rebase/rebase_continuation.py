@@ -142,6 +142,12 @@ def _blocked_by_unstaged_changes(stderr: str, stdout: str) -> bool:
     return _UNSTAGED_BLOCK_MARKER in f"{stderr}\n{stdout}"
 
 
+def _saved_patch_has_changes(patch: Path) -> bool:
+    if not DEFAULT_FILE_BACKEND.exists(patch):
+        return False
+    return bool(DEFAULT_FILE_BACKEND.read_bytes(patch))
+
+
 def _set_unstaged_changes_aside(repo_root: Path) -> Path | None:
     located = run_git(
         ["rev-parse", "--git-path", f"ralph-set-aside-{uuid.uuid4().hex}.patch"],
@@ -158,7 +164,7 @@ def _set_unstaged_changes_aside(repo_root: Path) -> Path | None:
         label="git-rebase:set-aside-diff",
         options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
     )
-    if not DEFAULT_FILE_BACKEND.exists(patch) or not DEFAULT_FILE_BACKEND.read_bytes(patch):
+    if not _saved_patch_has_changes(patch):
         DEFAULT_FILE_BACKEND.unlink(patch, missing_ok=True)
         return None
     run_git(

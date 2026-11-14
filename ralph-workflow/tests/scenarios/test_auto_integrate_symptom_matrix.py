@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 import pytest
 
@@ -19,12 +18,15 @@ from tests._scenario_harness import (
     run_unstaged_text_resolution,
     supervisor_restart,
 )
+from tests.scenarios._scenario_runner import ScenarioRunner
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.required_auto_integrate_e2e,
     pytest.mark.timeout_seconds(5),
 ]
+
+__all__ = ["Expected", "ScenarioRunner"]
 
 
 @dataclass(frozen=True)
@@ -34,10 +36,6 @@ class Expected:
     level: str | None
     content: str | None
     terminal: str
-
-
-class ScenarioRunner(Protocol):
-    def __call__(self, root: Path) -> ScenarioResult: ...
 
 
 def _corrupted_config(root: Path) -> ScenarioResult:

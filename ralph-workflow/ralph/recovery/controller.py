@@ -699,10 +699,9 @@ class RecoveryController:
             and not failure.is_unavailable
             and not self._last_attempt_charged_ledger
         ):
-            self._last_demoted_reason = self.record_attempt_fact(
+            self._charge_failure_the_clean_finalize_left_uncharged(
                 phase,
                 current_agent,
-                artifact_valid=False,
                 workspace_changed=workspace_changed,
             )
         bench_applied = outcome.benches_agent
@@ -723,6 +722,20 @@ class RecoveryController:
             context,
             bench_applied=bench_applied,
             sole_demoted_reason=self._last_demoted_reason,
+        )
+
+    def _charge_failure_the_clean_finalize_left_uncharged(
+        self,
+        phase: str,
+        agent: str,
+        *,
+        workspace_changed: bool,
+    ) -> None:
+        self._last_demoted_reason = self.record_attempt_fact(
+            phase,
+            agent,
+            artifact_valid=False,
+            workspace_changed=workspace_changed,
         )
 
     def next_attempt_ordinal(self, phase: str, agent: str | None) -> int:

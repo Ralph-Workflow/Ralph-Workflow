@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-
-class IntegrationRelation(StrEnum):
-    EQUAL = "equal"
-    AHEAD = "ahead"
-    BEHIND = "behind"
-    DIVERGED = "diverged"
-    UNRELATED = "unrelated"
+from ralph.pipeline._integration_policy import IntegrationPolicy
+from ralph.pipeline._integration_relation import IntegrationRelation
+from ralph.pipeline._integration_work_shape import IntegrationWorkShape
+from ralph.pipeline._observed_integration import ObservedIntegration
+from ralph.pipeline._strategy_decision import StrategyDecision
+from ralph.pipeline._strategy_transition import StrategyTransition
+from ralph.pipeline._strategy_transition_guard import StrategyTransitionGuard
 
 
 class IntegrationStrategy(StrEnum):
@@ -19,62 +18,6 @@ class IntegrationStrategy(StrEnum):
     REBASE = "rebase"
     MERGE = "merge"
     COMPLETE_IN_PLACE = "complete_in_place"
-
-
-class StrategyTransitionGuard(StrEnum):
-    SHARED_HISTORY_DISCOVERED = "shared_history_discovered"
-    REPEATED_HOT_CONFLICT = "repeated_hot_conflict"
-    REPLAY_RANGE_SHIFTED = "replay_range_shifted"
-    NEW_FEATURE_WORK = "new_feature_work"
-    NEW_TARGET_WORK = "new_target_work"
-    FAST_FORWARD_DISALLOWED_BY_POLICY = "fast_forward_disallowed_by_policy"
-    REBASE_DISALLOWED_BY_POLICY = "rebase_disallowed_by_policy"
-    MERGE_DISALLOWED_BY_POLICY = "merge_disallowed_by_policy"
-
-
-@dataclass(frozen=True, slots=True)
-class IntegrationWorkShape:
-    commit_count: int = 0
-    many_commits: bool = False
-    contains_merge_commits: bool = False
-    history_already_published: bool = False
-    conflicts_expected: bool = False
-    conflicts_seen: bool = False
-    hot_conflict_repetition: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class ObservedIntegration:
-    relation: IntegrationRelation
-    work_shape: IntegrationWorkShape
-
-
-@dataclass(frozen=True, slots=True)
-class IntegrationPolicy:
-    allow_nothing_to_do: bool = True
-    allow_fast_forward: bool = True
-    allow_rebase: bool = True
-    allow_merge: bool = True
-    allow_direct_integration: bool = True
-    preserve_shared_history: bool = True
-
-
-@dataclass(frozen=True, slots=True)
-class StrategyDecision:
-    strategy: IntegrationStrategy
-    reason: str
-    alternatives: tuple[IntegrationStrategy, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class StrategyTransition:
-    current_strategy: IntegrationStrategy
-    guard: StrategyTransitionGuard
-    next_strategy: IntegrationStrategy
-    preserves_resolved_work: bool
-    restarts_from_zero: bool
-    absorbs_new_work: bool
-    reason: str
 
 
 STRATEGY_ORDER: Final[tuple[IntegrationStrategy, ...]] = (
