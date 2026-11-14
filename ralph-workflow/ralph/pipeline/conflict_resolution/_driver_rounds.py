@@ -462,13 +462,7 @@ def _preferred_conflict_candidate(
     if delay > 0:
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
-        from ralph.pipeline.integration_actions import current_clock
-
-        secs = delay / 1000.0
-        _driver_mod._sleep_seconds(secs)
-        clock = getattr(controller, "_clock", None)
-        if clock is not None and clock is not current_clock() and hasattr(clock, "advance"):
-            clock.advance(secs)
+        _driver_mod._sleep_seconds(delay / 1000.0)
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
