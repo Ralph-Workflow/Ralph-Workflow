@@ -690,9 +690,29 @@ def test_untrack_engine_internal_files_rejects_symlinks(
     def _engine_path(p: str) -> bool:
         return p == ".agent/raw/evil_link"
 
-    untracked = untrack_engine_internal_files(tmp_git_repo, _engine_path)
+    captured: list[tuple[str, str]] = []
+    sink_id = logger.add(
+        lambda msg: captured.append((msg.record["level"].name, str(msg))),
+        level="INFO",
+    )
+    try:
+        untracked = untrack_engine_internal_files(tmp_git_repo, _engine_path)
+    finally:
+        logger.remove(sink_id)
 
     assert untracked == [], f"Symlink must be skipped by the helper, got: {untracked!r}"
+
+    refusal_messages = [
+        (level, msg)
+        for level, msg in captured
+        if "Refusing to git rm --cached symlink under tracked engine-internal path" in msg
+    ]
+    assert len(refusal_messages) == 1, (
+        f"Expected exactly one refusal log message; got: {refusal_messages!r}"
+    )
+    assert refusal_messages[0][0] == "INFO", (
+        f"Symlink refusal message must be logged at INFO level; got: {refusal_messages[0]!r}"
+    )
 
     repo = Repo(tmp_git_repo)
     try:

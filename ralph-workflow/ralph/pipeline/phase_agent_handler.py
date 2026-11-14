@@ -513,3 +513,4 @@ phase_event_after_agent_run = _phase_event_after_agent_run
 render_phase_failure_report = _render_phase_failure_report
 render_phase_artifact_handoff = _render_phase_artifact_handoff
 render_success_artifact = _render_success_artifact
+compute_graded_phase_verdict = _compute_graded_phase_verdict

@@ -28,6 +28,8 @@ FORMAT_DOC_ARTIFACT_TYPES: tuple[str, ...] = (
 
 ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE = "artifact_formats_index"
 
+FORMAT_DOCS_INDEX_FILENAME = f"{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md"
+
 FORMAT_DOCS_WORKSPACE_DIR = ".agent/artifact-formats"
 
 EXAMPLE_ARTIFACT_TYPES: tuple[str, ...] = FORMAT_DOC_ARTIFACT_TYPES
@@ -128,6 +130,43 @@ def materialize_format_index(
     return format_index_workspace_path()
 
 
+def prune_obsolete_format_docs(
+    workspace_root: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    format_dir = workspace_root / FORMAT_DOCS_WORKSPACE_DIR
+    if backend.exists(format_dir):
+        for candidate in backend.glob(format_dir, "*.md"):
+            if candidate.parent != format_dir or not candidate.name.endswith(".md"):
+                continue
+            try:
+                if candidate.is_dir():
+                    continue
+            except OSError:
+                pass
+            stem = candidate.name[:-3]
+            if (
+                candidate.name != FORMAT_DOCS_INDEX_FILENAME
+                and stem not in FORMAT_DOC_ARTIFACT_TYPES
+            ):
+                backend.unlink(candidate, missing_ok=True)
+
+    examples_dir = workspace_root / EXAMPLES_WORKSPACE_DIR
+    if backend.exists(examples_dir):
+        for candidate in backend.glob(examples_dir, "*.md"):
+            if candidate.parent != examples_dir or not candidate.name.endswith(".md"):
+                continue
+            try:
+                if candidate.is_dir():
+                    continue
+            except OSError:
+                pass
+            stem = candidate.name[:-3]
+            if stem not in FORMAT_DOC_ARTIFACT_TYPES:
+                backend.unlink(candidate, missing_ok=True)
+
+
 def materialize_all_format_docs(
     workspace_root: Path,
     *,
@@ -143,6 +182,7 @@ def materialize_all_format_docs(
         if example_path is not None:
             result.append(example_path)
     result.append(materialize_format_index(workspace_root, backend=backend))
+    prune_obsolete_format_docs(workspace_root, backend=backend)
     return result
 
 
@@ -150,6 +190,7 @@ __all__ = [
     "ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE",
     "EXAMPLES_WORKSPACE_DIR",
     "EXAMPLE_ARTIFACT_TYPES",
+    "FORMAT_DOCS_INDEX_FILENAME",
     "FORMAT_DOCS_WORKSPACE_DIR",
     "FORMAT_DOC_ARTIFACT_TYPES",
     "example_workspace_path",
@@ -162,4 +203,5 @@ __all__ = [
     "materialize_example",
     "materialize_format_doc",
     "materialize_format_index",
+    "prune_obsolete_format_docs",
 ]

@@ -62,6 +62,7 @@ _EXCLUDED: dict[str, str] = {
     "phases.commit_attempt_log": "internal phases type, not public API",
     "phases.phase_context": "internal phases type, not public API",
     "phases.phase_timing_record": "internal phases type, not public API",
+    "policy.validation.artifact_contract": "internal artifact contract validation helper, not public API",
     "pipeline.agent_chain_state": "internal pipeline state, not public API",
     "pipeline.auto_integrate_catalog_rationales": "internal catalog rationale registry, not public API",
     "pipeline.auto_integrate_recovery_legacy": "internal recovery legacy helper, not public API",

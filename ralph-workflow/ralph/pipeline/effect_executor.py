@@ -97,6 +97,7 @@ from ralph.pipeline.session_bridge import build_session_bridge, scoped_reset_too
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.pipeline.watchdog_fire_record import record_watchdog_fire, watchdog_fire_detail
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
+from ralph.policy.validation.artifact_contract import validate_artifact_contract
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attempt_failure_log_line import render_attempt_failure_log_line
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
@@ -646,6 +647,7 @@ def _handle_recovery_attempt_failure(
             phase=phase,
             agent=agent,
             workspace_changed=workspace_changed,
+            exc=exc,
         )
     )
     charged_observation = _charged_observation(
@@ -776,7 +778,12 @@ def _demotion_after_finalization(
     phase: str,
     agent: str,
     workspace_changed: bool | None,
+    exc: BaseException | None = None,
 ) -> tuple[bool, str | None]:
+    from ralph.recovery.controller import is_configuration_failure
+
+    if is_configuration_failure(exc):
+        return False, None
     if controller is not None:
         from ralph.recovery.agent_failure_ledger import Cooldown, Spent
 
@@ -806,6 +813,9 @@ def _demotion_after_finalization(
             )
         return outcome.demoted, outcome.reason
     return False, None
+
+
+demotion_after_finalization = _demotion_after_finalization
 
 
 def _charged_observation(
@@ -906,6 +916,29 @@ def _missing_required_artifact_event(
     )
 
 
+def _maybe_validate_artifact_contract(
+    ctx: _AgentInvocationCtx,
+    resolved_required_artifact: RequiredArtifact | None,
+) -> None:
+    if resolved_required_artifact is None:
+        return
+    prompt_path = Path(ctx.effect.prompt_file) if ctx.effect.prompt_file else None
+    if (
+        prompt_path is not None
+        and not prompt_path.is_absolute()
+        and ctx.workspace_scope.root is not None
+    ):
+        prompt_path = ctx.workspace_scope.root / prompt_path
+    if prompt_path is not None and prompt_path.is_file():
+        validate_artifact_contract(
+            phase=str(ctx.effect.phase),
+            prompt_file=ctx.effect.prompt_file,
+            workspace_root=ctx.workspace_scope.root,
+            required_artifact=resolved_required_artifact,
+            require_prompted_type=False,
+        )
+
+
 def _invoke_agent_with_recovery(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
@@ -935,6 +968,7 @@ def _invoke_agent_with_recovery(
         pipeline_deps,
         required_artifact,
     )
+    _maybe_validate_artifact_contract(ctx, resolved_required_artifact)
     if bridge is None:
         bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
     elif run_id is None:

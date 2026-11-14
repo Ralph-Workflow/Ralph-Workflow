@@ -365,7 +365,7 @@ git checkout refs/ralph/proposals/<run>/<iteration> -- .
 
 ### Phase rename and checkpoint compatibility
 
-The current phase names in the bundled default policy (`ralph/policy/defaults/pipeline.toml`) are `planning`, `planning_analysis`, `development`, `development_commit_review`, `development_commit`, `development_analysis`, `development_final_commit_review`, `development_final_commit`, `complete`, and `failed_terminal`. Ralph Workflow performs **no checkpoint migration** for renamed phases: a checkpoint that still names a pre-rename phase is not rewritten, the run cannot route that phase, and the run fails. Start a fresh run after upgrading.
+The current phase names in the bundled default policy (`ralph/policy/defaults/pipeline.toml`) are `planning`, `planning_analysis`, `development`, `development_commit_review`, `development_commit`, `development_analysis`, `development_final_commit_review`, `development_final_commit`, `complete`, and `failed_terminal`. Ralph Workflow performs **no checkpoint migration** for renamed phases: a checkpoint that still names a pre-rename phase is not rewritten, the run cannot route that phase, and the run fails with a clear message. Start a fresh run after upgrading.
 
 ---
 

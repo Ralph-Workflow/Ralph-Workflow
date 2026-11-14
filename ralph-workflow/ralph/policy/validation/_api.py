@@ -41,6 +41,7 @@ from ralph.policy.validation._policy_validation_error import PolicyValidationErr
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 _BLOCK_BASED_POLICY_FORMAT_VERSION = 2
+_UNSET_PHASE = "__unset__"
 
 
 @runtime_checkable
@@ -352,6 +353,9 @@ def validate_checkpoint_against_policy(
             "policy/config before rerunning."
         )
     validate_phase_exists_in_policy(state.phase, bundle.pipeline)
+    entry_phase: str = state.policy_entry_phase
+    if entry_phase not in (_UNSET_PHASE, ""):
+        validate_phase_exists_in_policy(entry_phase, bundle.pipeline)
     if state.current_drain is not None and state.current_drain not in bundle.agents.agent_drains:
         raise PolicyValidationError(
             f"Checkpoint references drain '{state.current_drain}' which is not bound "

@@ -163,6 +163,33 @@ def test_validate_checkpoint_against_policy_fails_when_phase_missing() -> None:
         validate_checkpoint_against_policy(state, bundle)
 
 
+def test_validate_checkpoint_against_policy_fails_when_policy_entry_phase_missing() -> None:
+    stale_phase = "development_commit_" + "cleanup"
+    state = PipelineState(phase="planning", policy_entry_phase=stale_phase)
+    bundle = _FakeBundle(
+        chains={},
+        drains={},
+        phases={"planning": object()},
+    )
+
+    with pytest.raises(CheckpointPolicyMismatchError) as exc_info:
+        validate_checkpoint_against_policy(state, bundle)
+
+    assert exc_info.value.checkpoint_phase == stale_phase
+    assert "planning" in exc_info.value.valid_phases
+
+
+def test_validate_checkpoint_against_policy_passes_when_policy_entry_phase_valid() -> None:
+    state = PipelineState(phase="planning", policy_entry_phase="planning")
+    bundle = _FakeBundle(
+        chains={},
+        drains={},
+        phases={"planning": object()},
+    )
+
+    validate_checkpoint_against_policy(state, bundle)
+
+
 def test_validate_checkpoint_against_policy_rejects_obsolete_checkpoint_format() -> None:
     bundle = PolicyBundle(
         agents=AgentsPolicy(
@@ -330,6 +357,61 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
 
     with pytest.MonkeyPatch().context() as mp:
         mp.setenv("RALPH_CHECKPOINT_PATH", str(checkpoint_json))
+        mp.setattr(run_module.state, "run_func", _fail_if_runner_reached)
+
+        mp.chdir(workspace)
+        assert run_module.run_pipeline(request=RunPipelineRequest(resume=True)) == _EXIT_PREFLIGHT
+
+
+def test_run_pipeline_returns_2_on_checkpoint_policy_entry_phase_mismatch(
+    tmp_path: Path,
+) -> None:
+    workspace = Path(tmp_path)
+
+    prompt = workspace / "PROMPT.md"
+    prompt.write_text("Test prompt\n")
+
+    agent_dir = workspace / ".agent"
+    agent_dir.mkdir()
+
+    agents_toml = agent_dir / "agents.toml"
+    agents_toml.write_text(
+        "[agent_chains.development]\n"
+        'agents = ["claude"]\n'
+        "max_retries = 3\n"
+        "\n"
+        "[agent_drains.development]\n"
+        'chain = "development"\n'
+    )
+
+    pipeline_toml = agent_dir / "pipeline.toml"
+    pipeline_toml.write_text(
+        'entry_phase = "development"\n'
+        'terminal_phase = "complete"\n'
+        "\n"
+        "[phases.development]\n"
+        'drain = "development"\n'
+        'transitions.on_success = "complete"\n'
+        "\n"
+        "[phases.complete]\n"
+        'drain = "complete"\n'
+        'transitions.on_success = "complete"\n'
+        'transitions.on_loopback = "complete"\n'
+    )
+
+    stale_phase = "development_commit_" + "cleanup"
+    checkpoint_json = agent_dir / "checkpoint.json"
+    checkpoint_json.write_text(
+        f'{{"phase": "development", "policy_entry_phase": "{stale_phase}", '
+        '"policy_format_version": 2, '
+        '"recovery_cycle_count": 2, "fallover_history": [], '
+        '"last_failure_category": "agent", "last_connectivity_state": "online", '
+        '"recovery_cycle_cap": 200, "last_retry_delay_ms": 0}'
+    )
+
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setenv("RALPH_CHECKPOINT_PATH", str(checkpoint_json))
+        mp.setattr(run_module.state, "run_func", _fail_if_runner_reached)
 
         mp.chdir(workspace)
         assert run_module.run_pipeline(request=RunPipelineRequest(resume=True)) == _EXIT_PREFLIGHT

@@ -173,7 +173,7 @@ def untrack_engine_internal_files(
                 )
                 continue
             if working_tree_path.is_symlink():
-                logger.warning(
+                logger.info(
                     "Refusing to git rm --cached symlink under tracked engine-internal path: {}",
                     entry_path_str,
                 )

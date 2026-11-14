@@ -22,6 +22,10 @@ from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
+from ralph.policy.validation import (
+    CheckpointPolicyMismatchError,
+    PolicyValidationError,
+)
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
     AgentStatus,
@@ -75,7 +79,53 @@ __all__ = [
     "build_dead_agent_verdict",
     "build_typed_agent_signal",
     "compute_backoff_ms",
+    "is_configuration_failure",
 ]
+
+
+def is_configuration_failure(
+    exc: BaseException | None = None,
+    reason: str | None = None,
+) -> bool:
+    if exc is not None:
+        if isinstance(exc, (PolicyValidationError, CheckpointPolicyMismatchError)):
+            return True
+        name = type(exc).__name__
+        if name in {
+            "PolicyValidationError",
+            "CheckpointPolicyMismatchError",
+            "ArtifactContractMismatchError",
+            "DrainNotBoundError",
+            "UnknownAgentError",
+            "McpConfigError",
+        }:
+            return True
+        msg = str(exc)
+        if any(
+            marker in msg
+            for marker in (
+                "Contract mismatch",
+                "is not bound",
+                "is not defined",
+                "Checkpoint was saved at phase",
+                "no longer exists in pipeline.toml",
+            )
+        ):
+            return True
+    if reason is not None:
+        lower = reason.lower()
+        if any(
+            k in lower
+            for k in (
+                "config",
+                "user_config",
+                "checkpoint",
+                "policy",
+                "contract mismatch",
+            )
+        ):
+            return True
+    return False
 
 
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
@@ -642,6 +692,11 @@ class RecoveryController:
             facts=attempt_facts,
             attempt_failed=True,
             exc=raw_failure if isinstance(raw_failure, BaseException) else None,
+            retryable_reason=(
+                str(failure.category)
+                if failure.category == FailureCategory.USER_CONFIG
+                else (raw_failure if isinstance(raw_failure, str) else None)
+            ),
         )
         bench_applied = outcome.benches_agent
         if bench_applied:
@@ -683,6 +738,7 @@ class RecoveryController:
         attempt_key: str | None = None,
         config_fingerprint: str | None = None,
         session_ref: Mapping[str, str] | None = None,
+        charge_ledger: bool = True,
     ) -> AttemptOutcome:
         if attempt_key is not None:
             memoized = self._attempt_outcome_memo.get(attempt_key)
@@ -693,6 +749,9 @@ class RecoveryController:
             if claimed is not None:
                 return self._restore_memoized_attempt(claimed)
 
+        effective_charge_ledger = charge_ledger and not is_configuration_failure(
+            exc, retryable_reason
+        )
         outcome, demoted_reason, resolved_verdict = self._finalize_attempt_now(
             phase,
             agent,
@@ -704,7 +763,7 @@ class RecoveryController:
             probe_mode=probe_mode,
             config_fingerprint=config_fingerprint,
             session_ref=session_ref,
-            charge_ledger=True,
+            charge_ledger=effective_charge_ledger,
         )
         self._last_attempt_outcome = outcome
         self._last_demoted_reason = demoted_reason

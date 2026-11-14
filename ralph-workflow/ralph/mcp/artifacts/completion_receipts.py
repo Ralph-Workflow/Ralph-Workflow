@@ -285,6 +285,54 @@ def clear_run_receipts(
         backend.unlink(path, missing_ok=True)
 
 
+def get_recorded_receipt_artifact_types(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> list[str]:
+    db: RunStateDB | None = None
+    try:
+        db = _open_db(workspace_root)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
+        try:
+            cursor = db._conn.execute(
+                "SELECT artifact_type FROM receipts WHERE run_id = ?",
+                (run_id,),
+            )
+            raw_rows: object = cursor.fetchall()
+            if isinstance(raw_rows, list):
+                result = [
+                    row[0]
+                    for row in cast("list[object]", raw_rows)
+                    if isinstance(row, tuple) and len(row) > 0 and isinstance(row[0], str)
+                ]
+                if result:
+                    return sorted(result)
+        except (OSError, RuntimeError, sqlite3.Error):
+            pass
+        finally:
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
+    receipt_dir = _receipt_dir(workspace_root, run_id)
+    if not backend.exists(receipt_dir):
+        return []
+    types: list[str] = []
+    for path in backend.glob(receipt_dir, "*.json"):
+        try:
+            parsed: object = json.loads(backend.read_text(path, encoding="utf-8"))
+            if isinstance(parsed, dict):
+                payload = cast("dict[str, object]", parsed)
+                val = payload.get("artifact_type")
+                if isinstance(val, str):
+                    types.append(val)
+        except (OSError, json.JSONDecodeError):
+            continue
+    return sorted(types)
+
+
 __all__ = [
     "RECEIPT_DIR_RELPATH_FMT",
     "ReceiptPersistenceError",
@@ -292,5 +340,6 @@ __all__ = [
     "clear_run_receipts",
     "commit_receipt_matches_changed_files",
     "delete_artifact_receipt",
+    "get_recorded_receipt_artifact_types",
     "write_artifact_receipt",
 ]
