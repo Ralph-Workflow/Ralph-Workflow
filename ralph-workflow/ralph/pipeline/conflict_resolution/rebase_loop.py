@@ -49,7 +49,6 @@ from ralph.pipeline.conflict_resolution.progress import (
     load_progress_for_rebase,
     save_progress,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
 from ralph.pipeline.conflict_resolution.stray_paths import (
@@ -59,6 +58,7 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
 )
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
+    ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,

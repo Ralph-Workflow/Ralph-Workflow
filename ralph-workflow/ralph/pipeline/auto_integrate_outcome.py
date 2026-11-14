@@ -10,12 +10,14 @@ from ralph.git.rebase.rebase import (
 )
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
+    StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
     assert_never,
@@ -146,7 +148,7 @@ def record_resolution_outcome(
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case _ as unreachable:
-            assert_never(unreachable)  # type: ignore[arg-type]
+            assert_never(unreachable)
     return result
 
 

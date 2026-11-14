@@ -229,7 +229,6 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    from ralph.agents.timeout_clock import SystemClock
     from ralph.pipeline.integration_actions import current_clock
     from ralph.recovery.controller import RecoveryController
 

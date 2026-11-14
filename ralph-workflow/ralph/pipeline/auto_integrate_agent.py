@@ -13,17 +13,14 @@ from ralph.pipeline.conflict_resolution import (
     run_conflict_resolution_outcome,
     run_rebase_conflict_resolution_outcome,
 )
-
-run_conflict_resolution_pipeline = run_conflict_resolution_outcome
-run_rebase_conflict_resolution_pipeline = run_rebase_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
+    RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
 )
@@ -46,6 +43,9 @@ if TYPE_CHECKING:
     class _SupportsAgentLookup(Protocol):
         def get(self, name: str) -> AgentConfig | None: ...
 
+
+run_conflict_resolution_pipeline = run_conflict_resolution_outcome
+run_rebase_conflict_resolution_pipeline = run_rebase_conflict_resolution_outcome
 
 _WARN_CHANNEL = "auto-integrate"
 
@@ -143,9 +143,7 @@ def build_agent_rebase_stop_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver:
 
-    def _resolver(
-        root: Path, target: str, stop: RebaseStop
-    ) -> StopResolutionOutcome | ResolutionOutcome | bool:
+    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -192,15 +190,7 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=reason_text,
-                duration_seconds=0.0,
-                last_activity_kind=None,
-                last_activity_at=None,
-                unresolved_paths=(),
-                failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
-            )
+            return RetryLaterOutcome(on_change=reason_text)
         except Exception as exc:
             logger.warning(
                 "auto_integrate: could not use the target worktree's own "
@@ -240,15 +230,7 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=reason_text,
-                duration_seconds=0.0,
-                last_activity_kind=None,
-                last_activity_at=None,
-                unresolved_paths=(),
-                failure_cause=failure_cause,
-            )
+            return RetryLaterOutcome(on_change=reason_text)
 
     return _resolver
 

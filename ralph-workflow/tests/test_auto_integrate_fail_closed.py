@@ -28,8 +28,8 @@ from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
     is_retryable_fast_forward_failure,
 )
-from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
 if TYPE_CHECKING:
     import pytest

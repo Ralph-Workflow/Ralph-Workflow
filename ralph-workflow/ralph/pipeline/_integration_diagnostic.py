@@ -304,7 +304,7 @@ def diagnose_retained_integration(
                 attempt_session.last_attempt_failure = None
                 try:
                     with workspace_context(operation_root):
-                        return invoke_resolution_agent(
+                        outcome = invoke_resolution_agent(
                             agent_name=agent,
                             prompt_path=prompt,
                             config=ctx.config,
@@ -316,6 +316,7 @@ def diagnose_retained_integration(
                             require_completion_evidence=True,
                             session=attempt_session,
                         )
+                        return outcome.succeeded
                 except WorkspaceContextError as exc:
                     reason_text = exc.fix
                     attempt_session.last_attempt_failure = reason_text

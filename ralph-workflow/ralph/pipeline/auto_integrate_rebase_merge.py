@@ -242,11 +242,6 @@ def run_rebase_or_merge(
         def _adapted_resolver(r: Path, t: str) -> StopResolutionOutcome:
             from ralph.git.merge import unmerged_paths
             from ralph.pipeline.conflict_resolution import RebaseStop
-            from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
-            from ralph.pipeline.resolution_outcome import (
-                NextStrategyOutcome,
-                ResolvedOutcome,
-            )
 
             unmerged = tuple(unmerged_paths(r))
             stop = RebaseStop(
@@ -258,12 +253,7 @@ def run_rebase_or_merge(
                 replay_index=1,
                 replay_total=1,
             )
-            res = rebase_stop_resolver(r, t, stop)
-            if isinstance(res, bool):
-                return ResolvedOutcome() if res else NextStrategyOutcome("merge refused")
-            if isinstance(res, ResolutionOutcome):
-                return ResolvedOutcome() if res.succeeded else NextStrategyOutcome("merge refused")
-            return res
+            return rebase_stop_resolver(r, t, stop)
 
         effective_conflict_resolver = _adapted_resolver
 

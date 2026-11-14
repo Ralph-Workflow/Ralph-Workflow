@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from threading import Event
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -261,8 +262,6 @@ class _SystemClock:
         return time.time()
 
     def now_utc(self) -> datetime:
-        from datetime import UTC, datetime
-
         return datetime.now(UTC)
 
     def sleep(self, seconds: float) -> None:

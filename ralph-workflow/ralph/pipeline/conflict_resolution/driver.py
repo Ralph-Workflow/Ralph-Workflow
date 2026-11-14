@@ -181,7 +181,7 @@ def run_conflict_resolution_outcome(
     previous_model = capture_status_bar_model(display)
     clock_inst = None
     if active_session.ledger is not None and hasattr(active_session.ledger, "clock"):
-        clock_inst = getattr(active_session.ledger, "clock")
+        clock_inst = active_session.ledger.clock
     elif pipeline_deps is not None and getattr(pipeline_deps, "recovery_clock", None) is not None:
         clock_inst = pipeline_deps.recovery_clock
     token = None
@@ -571,7 +571,7 @@ def _run_rounds(
     return False
 
 
-def _execute_round_loop(  # noqa: PLR0912
+def _execute_round_loop(
     root: Path,
     target: str,
     runner: ResolutionInvoker,
