@@ -16,6 +16,7 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.policy.loader import load_policy
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
@@ -44,71 +45,71 @@ def _controller() -> RecoveryController:
     )
 
 
-def test_stalled_attempt_is_classified_unavailable_and_budget_charged() -> None:
-    failure = _controller().classify_conflict_attempt(
-        None,
-        agent="primary",
-        outcome=ConflictAttemptOutcome.STALLED,
-        unresolved_count=9,
-    )
-    assert failure.is_unavailable
-    assert failure.unavailability_reason is not None
-    assert failure.counts_against_budget
-
-
-def test_no_activity_attempt_is_classified_unavailable_and_budget_charged() -> None:
-    failure = _controller().classify_conflict_attempt(
-        None, agent="primary", outcome=ConflictAttemptOutcome.NO_ACTIVITY
-    )
-    assert failure.is_unavailable
-    assert failure.counts_against_budget
-
-
-def test_attempt_that_made_progress_is_not_penalised() -> None:
-    failure = _controller().classify_conflict_attempt(
-        None,
-        agent="primary",
-        outcome=ConflictAttemptOutcome.UNRESOLVED_REMAINING,
-        unresolved_count=3,
-    )
-    assert not failure.is_unavailable
-    assert not failure.counts_against_budget
-
-
-def test_stalled_attempt_benches_agent_and_selection_moves_on() -> None:
-    controller = _controller()
-    session = ResolutionSession(recovery_controller=controller)
-    assert controller.preferred_agent_index(PHASE_RESOLUTION, _AGENTS).agent == "primary"
-
+def _stall(controller: RecoveryController, session: ResolutionSession, agent: str) -> None:
     classify_failed_resolution_attempt(
         session,
-        "primary",
+        agent,
         None,
         candidates=_AGENTS,
-        failed_index=0,
+        failed_index=_AGENTS.index(agent),
         outcome=ConflictAttemptOutcome.STALLED,
         unresolved_count=9,
     )
+
+
+def test_stalled_attempts_follow_the_shared_three_strike_cooldown() -> None:
+    controller = _controller()
+    session = ResolutionSession(recovery_controller=controller)
+    limit = controller.ledger.consecutive_limit
+
+    for _ in range(limit - 1):
+        _stall(controller, session, "primary")
+        assert controller.preferred_agent_index(PHASE_RESOLUTION, _AGENTS).agent == "primary"
+
+    _stall(controller, session, "primary")
 
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, _AGENTS)
     assert selection.agent == "fallback"
-    assert any(name == "primary" for name, _reason in selection.skipped_reasons)
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary"]) > 0
 
 
-def test_sole_candidate_stalled_is_not_immediately_reselectable() -> None:
+def test_stall_is_charged_even_when_the_invocation_already_reported_success() -> None:
+    """Production shape: the agent run finalizes its own attempt as a clean exit.
+
+    The driver then finds the conflicts untouched. That stall must still be
+    charged to the shared ledger, or the same agent is re-invoked forever.
+    """
     controller = _controller()
     session = ResolutionSession(recovery_controller=controller)
-    classify_failed_resolution_attempt(
-        session,
-        "primary",
-        None,
-        candidates=("primary",),
-        failed_index=0,
-        outcome=ConflictAttemptOutcome.STALLED,
-        unresolved_count=9,
-    )
-    assert controller.preferred_agent_index(PHASE_RESOLUTION, ("primary",)).agent is None
+    limit = controller.ledger.consecutive_limit
+
+    for ordinal in range(limit):
+        controller.finalize_attempt(
+            PHASE_RESOLUTION,
+            "primary",
+            facts=AttemptFacts(artifact_valid=True),
+            attempt_failed=False,
+            attempt_key=f"conflict-resolution:primary:{ordinal}",
+        )
+        _stall(controller, session, "primary")
+
+    assert controller.preferred_agent_index(PHASE_RESOLUTION, _AGENTS).agent == "fallback"
     assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary"]) > 0
+
+
+def test_no_activity_attempts_follow_the_shared_three_strike_cooldown() -> None:
+    controller = _controller()
+    session = ResolutionSession(recovery_controller=controller)
+    for _ in range(controller.ledger.consecutive_limit):
+        classify_failed_resolution_attempt(
+            session,
+            "primary",
+            None,
+            candidates=_AGENTS,
+            failed_index=0,
+            outcome=ConflictAttemptOutcome.NO_ACTIVITY,
+        )
+    assert controller.preferred_agent_index(PHASE_RESOLUTION, _AGENTS).agent == "fallback"
 
 
 def test_driver_never_reinvokes_a_stalled_agent_while_it_is_cooling_down(
@@ -147,4 +148,7 @@ def test_driver_never_reinvokes_a_stalled_agent_while_it_is_cooling_down(
     finally:
         reset_executors(token)
 
-    assert len(called) == len(set(called)), f"cooling-down agent re-invoked: {called}"
+    limit = 3
+    for agent in set(called):
+        assert called.count(agent) <= limit, f"cooling-down agent re-invoked: {called}"
+    assert len(called) <= limit * 3

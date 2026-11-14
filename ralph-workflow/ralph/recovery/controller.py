@@ -345,14 +345,6 @@ if TYPE_CHECKING:
     ]
 
 
-# Typed conflict attempts that produced no progress must reach the shared
-# cooldown system like every other unproductive agent attempt.
-_UNPRODUCTIVE_CONFLICT_OUTCOMES: dict[ConflictAttemptOutcome, UnavailabilityReason] = {
-    ConflictAttemptOutcome.STALLED: UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
-    ConflictAttemptOutcome.NO_ACTIVITY: UnavailabilityReason.NO_OUTPUT_AT_START,
-}
-
-
 def _typed_conflict_attempt_reason(
     outcome: ConflictAttemptOutcome,
     unresolved_count: int,
@@ -686,6 +678,7 @@ class RecoveryController:
             artifact_valid=artifact_valid,
             workspace_changed=workspace_changed,
         )
+        charged_before = self._unproductive_total(phase, current_agent)
         outcome = self.finalize_attempt(
             phase,
             current_agent,
@@ -698,6 +691,21 @@ class RecoveryController:
                 else (raw_failure if isinstance(raw_failure, str) else None)
             ),
         )
+        if (
+            failure.must_charge_ledger
+            and current_agent is not None
+            and not artifact_valid
+            and self._unproductive_total(phase, current_agent) == charged_before
+        ):
+            # The agent run already finalized this attempt as a clean exit, so
+            # the failure found afterwards was never charged. Charge it here so
+            # the shared cooldown applies to it like any other unproductive attempt.
+            self._last_demoted_reason = self.record_attempt_fact(
+                phase,
+                current_agent,
+                artifact_valid=False,
+                workspace_changed=workspace_changed,
+            )
         bench_applied = outcome.benches_agent
         if bench_applied:
             failure = replace(
@@ -717,6 +725,14 @@ class RecoveryController:
             bench_applied=bench_applied,
             sole_demoted_reason=self._last_demoted_reason,
         )
+
+    def _unproductive_total(self, phase: str, agent: str | None) -> int:
+        if agent is None:
+            return 0
+        entries = self._ledger.snapshot().get("entries")
+        entry = entries.get(f"{phase}:{agent}") if isinstance(entries, dict) else None
+        total = entry.get("total_unproductive") if isinstance(entry, dict) else None
+        return total if isinstance(total, int) else 0
 
     def next_attempt_ordinal(self, phase: str, agent: str | None) -> int:
         key = (phase, agent or "")
@@ -1555,17 +1571,15 @@ class RecoveryController:
                 phase,
                 reason,
             )
-            unproductive = _UNPRODUCTIVE_CONFLICT_OUTCOMES.get(effective)
             return ClassifiedFailure(
                 category=FailureCategory.AGENT,
                 reason=reason,
                 attributed_agent=agent,
                 attributed_phase=phase,
-                counts_against_budget=unproductive is not None,
+                counts_against_budget=False,
                 original_exception=raw_failure if isinstance(raw_failure, BaseException) else None,
                 raw_message="" if raw_failure is None else str(raw_failure),
-                is_unavailable=unproductive is not None,
-                unavailability_reason=unproductive,
+                must_charge_ledger=True,
             )
         raw_text: BaseException | str = raw_failure if raw_failure is not None else ""
         return self._classifier.classify(

@@ -27,3 +27,4 @@ class ClassifiedFailure:
     typed_signal: str | None = field(default=None)
     typed_signal_provider_originated: bool = field(default=False)
     facts: AttemptFacts | None = field(default=None)
+    must_charge_ledger: bool = field(default=False)
