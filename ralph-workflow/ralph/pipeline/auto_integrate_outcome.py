@@ -12,17 +12,14 @@ from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.resolution_outcome import (
-    ConfigFailureOutcome,
-    NextStrategyOutcome,
-    ResolvedOutcome,
-    RetryLaterOutcome,
-    StopResolutionOutcome,
-    UnknownOutcome,
-    WaitingOutcome,
-    assert_never,
-)
+from ralph.pipeline.resolution_outcome import assert_never
+from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
+from ralph.pipeline.resolution_outcome_exhausted import Exhausted
+from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
 from ralph.pipeline.resolution_outcome_producer import RETRY_LATER_REASON
+from ralph.pipeline.resolution_outcome_resolved import Resolved
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
+from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
@@ -92,14 +89,14 @@ def record_resolution_exhausted(
 
 
 def record_resolution_outcome(
-    outcome: StopResolutionOutcome,
+    outcome: ResolutionOutcomeType,
     *,
     target: str | None,
     retry_kind: RebaseOutcomeKind = RebaseOutcomeKind.CONFLICT,
 ) -> RebaseState:
     result: RebaseState
     match outcome:
-        case ResolvedOutcome():
+        case Resolved():
             result = RebaseState(
                 last_outcome=RebaseOutcomeKind.CONFLICT_RESOLUTION,
                 last_reason="conflict resolution completed",
@@ -107,13 +104,13 @@ def record_resolution_outcome(
                 last_target=target,
                 fast_forwarded=False,
             )
-        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+        case NeedsOperator(cause=cause, paths=paths, command=command):
             result = record_conflict(
-                reason=f"waiting for {condition}; resumes when {resumes_when}",
+                reason=f"conflict on {', '.join(paths)} needs operator action: {command}",
                 target=target,
-                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+                failure_cause=cause,
             )
-        case RetryLaterOutcome(until=until, on_change=on_change):
+        case RetryLater(until=until, on_change=on_change):
             message = on_change or (
                 f"retry after {until}" if until is not None else RETRY_LATER_REASON
             )
@@ -129,23 +126,17 @@ def record_resolution_outcome(
                     target=target,
                     failure_cause=ResolutionFailureCause.AGENT_FAILURE,
                 )
-        case NextStrategyOutcome(strategy=strategy):
-            result = record_conflict(
-                reason=f"continuing with autonomous strategy: {strategy}",
+        case Exhausted(agents=agents):
+            result = record_resolution_exhausted(
+                reason=f"resolver agents exhausted: {', '.join(agents)}",
                 target=target,
-                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+                terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
             )
-        case ConfigFailureOutcome(file=file):
+        case ConfigFailure(file=file):
             result = record_conflict(
                 reason=f"fix {file} then run ralph --check-config",
                 target=target,
                 failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
-            )
-        case UnknownOutcome(error=error):
-            result = record_conflict(
-                reason=f"unclassified resolution failure; advancing strategy: {error}",
-                target=target,
-                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case _ as unreachable:
             assert_never(unreachable)

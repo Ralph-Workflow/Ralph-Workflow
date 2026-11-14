@@ -23,16 +23,13 @@ from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
-from ralph.pipeline.resolution_outcome import (
-    ConfigFailureOutcome,
-    NextStrategyOutcome,
-    ResolvedOutcome,
-    RetryLaterOutcome,
-    StopResolutionOutcome,
-    UnknownOutcome,
-    WaitingOutcome,
-)
+from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
+from ralph.pipeline.resolution_outcome_exhausted import Exhausted
+from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
 from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+from ralph.pipeline.resolution_outcome_resolved import Resolved
+from ralph.pipeline.resolution_outcome_retry_later import RetryLater
+from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -219,9 +216,9 @@ def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunRe
     )
 
 
-def _rebase_outcome(result: RebaseResolutionResult) -> StopResolutionOutcome:
+def _rebase_outcome(result: RebaseResolutionResult) -> ResolutionOutcomeType:
     if result.succeeded:
-        return ResolvedOutcome()
+        return Resolved()
     return classify_resolution_failure(
         terminal_reason=result.terminal_reason,
         failure_cause=result.failure_cause,
@@ -266,7 +263,7 @@ def _rebase_run_result(
 
         write_record(root, record.model_copy(update={"last_failure_cause": failure_cause}))
     match outcome:
-        case ResolvedOutcome():
+        case Resolved():
             logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
             return RebaseRunResult(
                 rebase_outcome=RebaseSuccess(),
@@ -274,7 +271,7 @@ def _rebase_run_result(
                 merge_outcome=None,
                 short_circuit=None,
             )
-        case NextStrategyOutcome(strategy=strategy):
+        case Exhausted():
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha if record is not None else None,
@@ -288,31 +285,25 @@ def _rebase_run_result(
                 merge_attempted=False,
                 merge_outcome=None,
                 short_circuit=record_resolution_exhausted(
-                    reason=f"escalating to next strategy: {strategy}",
+                    reason=failure_reason,
                     target=target,
                     failure_cause=failure_cause,
                     terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
                 ),
             )
-        case RetryLaterOutcome():
-            return _conflict_run(target, failure_reason, failure_cause)
-        case WaitingOutcome(external_condition=cond, resumes_when=when):
+        case NeedsOperator(cause=cause, paths=paths, command=command):
             return _conflict_run(
                 target,
-                f"waiting for {cond} (resumes when {when})",
-                failure_cause,
+                f"conflict on {', '.join(paths)} needs operator action: {command}",
+                cause,
             )
-        case ConfigFailureOutcome(file=file):
+        case RetryLater():
+            return _conflict_run(target, failure_reason, failure_cause)
+        case ConfigFailure(file=file):
             return _conflict_run(
                 target,
                 f"fix {file} then run ralph --check-config",
                 ResolutionFailureCause.CONFIG_FAILURE,
-            )
-        case UnknownOutcome(error=err):
-            return _conflict_run(
-                target,
-                f"unknown integration outcome: {err}",
-                ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case _ as unreachable:
             assert_never(unreachable)
