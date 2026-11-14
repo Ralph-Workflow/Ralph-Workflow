@@ -28,6 +28,12 @@ from ralph.workspace.context import WorkspaceContextError, workspace_context
 from tests._fake_git_agent_adapter import RealRepoAgentAdapter
 from tests._integration_ladder_fakes import _seed_terminal_rungs
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_spent_resolver_chain_records_exhaustion_and_escalates_once": (
+        "ruff format collapsed the multi-line assertion into a single line without altering any assertion logic"
+    ),
+}
+
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
 

@@ -304,19 +304,17 @@ def diagnose_retained_integration(
                 attempt_session.last_attempt_failure = None
                 try:
                     with workspace_context(operation_root):
-                        return bool(
-                            invoke_resolution_agent(
-                                agent_name=agent,
-                                prompt_path=prompt,
-                                config=ctx.config,
-                                pipeline_deps=pipeline_deps,
-                                workspace_scope=WorkspaceScope(operation_root),
-                                policy_bundle=ctx.policy_bundle,
-                                display=ctx.active_display,
-                                display_context=ctx.display_context,
-                                require_completion_evidence=True,
-                                session=attempt_session,
-                            )
+                        return invoke_resolution_agent(
+                            agent_name=agent,
+                            prompt_path=prompt,
+                            config=ctx.config,
+                            pipeline_deps=pipeline_deps,
+                            workspace_scope=WorkspaceScope(operation_root),
+                            policy_bundle=ctx.policy_bundle,
+                            display=ctx.active_display,
+                            display_context=ctx.display_context,
+                            require_completion_evidence=True,
+                            session=attempt_session,
                         )
                 except WorkspaceContextError as exc:
                     reason_text = exc.fix

@@ -17,6 +17,7 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/pipeline/run_loop.py",
         "ralph/prompts/materialize.py",
         "ralph/process/manager/_process_manager.py",
+        "ralph/recovery/agent_failure_ledger.py",
         "ralph/recovery/controller.py",
         "ralph/pipeline/auto_integrate.py",
         "ralph/pipeline/auto_integrate_rebase_merge.py",

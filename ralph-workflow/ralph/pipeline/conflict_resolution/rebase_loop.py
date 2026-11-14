@@ -244,31 +244,25 @@ resolve_rebase_in_progress = _resolve_rebase_in_progress
 
 
 def _record_resolver_outcome_on_session(
-    outcome: object,
+    outcome: StopResolutionOutcome | bool,
     active_session: ResolutionSession | None,
 ) -> None:
     if isinstance(outcome, bool) or active_session is None:
         return
-    if isinstance(outcome, ResolutionOutcome):
-        if outcome.failure_cause != ResolutionFailureCause.NONE:
-            active_session.last_failure_cause = outcome.failure_cause
-        if outcome.reason is not None:
-            raw_reason: object = outcome.reason
-            if isinstance(raw_reason, ResolutionTerminationReason):
-                active_session.terminal_reason = raw_reason
-            elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
-                active_session.exhaustion_reason = raw_reason
-    elif isinstance(outcome, NextStrategyOutcome):
-        active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-        active_session.exhaustion_reason = outcome.strategy
-    elif isinstance(outcome, ConfigFailureOutcome):
+    active_session.last_resolution_outcome = outcome
+    if isinstance(outcome, ConfigFailureOutcome):
         active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-        active_session.exhaustion_reason = str(outcome.parse_error)
+        active_session.exhaustion_reason = (
+            str(outcome.parse_error) if outcome.parse_error is not None else None
+        )
     elif isinstance(outcome, UnknownOutcome):
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         active_session.exhaustion_reason = str(outcome.error)
     elif isinstance(outcome, RetryLaterOutcome) and outcome.on_change:
         active_session.exhaustion_reason = outcome.on_change
+    elif isinstance(outcome, NextStrategyOutcome):
+        active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        active_session.exhaustion_reason = outcome.strategy
 
 
 def _resolve_one_stop(

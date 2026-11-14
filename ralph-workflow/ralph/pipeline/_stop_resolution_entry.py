@@ -489,6 +489,8 @@ def _resolve_rebase_with_config(
     )
     if resolved:
         return ResolvedOutcome()
+    if session.last_resolution_outcome is not None:
+        return session.last_resolution_outcome
     carried_cause = session.last_failure_cause
     if carried_cause == ResolutionFailureCause.NONE:
         if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE:

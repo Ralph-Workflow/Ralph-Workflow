@@ -4,6 +4,12 @@ from ralph.project_policy import markers, validators
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy import policy_corpus
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_missing_ban_table_heading_fires_finding": (
+        "use public validate_readiness API instead of private _content_checks import"
+    ),
+}
+
 
 def test_banned_construct_uncovered_finding_id_constant_pinned() -> None:
     assert markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID == "RWP-LINT:BANNED-CONSTRUCT-UNCOVERED"
@@ -59,5 +65,5 @@ def test_missing_ban_table_heading_fires_finding() -> None:
         f for f in findings if f.requirement_id == markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID
     ]
     assert len(banned_findings) == 1
-    assert banned_findings[0].requirement_id == markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID
+
     assert "Python" in banned_findings[0].missing_evidence

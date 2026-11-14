@@ -208,6 +208,12 @@ def classify_rebase_outcome(
     merge_attempted: bool,
     merge_outcome: MergeResult | None,
 ) -> tuple[str, str | None]:
+    if (
+        merge_attempted
+        and merge_outcome is not None
+        and merge_outcome.outcome in {"success", "noop"}
+    ):
+        return ACTION_MERGED, "branch merged cleanly"
     if isinstance(rebase_outcome, RebaseConflicts):
         sub = _classify_rebase_conflict_outcome(
             merge_attempted=merge_attempted,

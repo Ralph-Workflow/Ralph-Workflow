@@ -11,6 +11,15 @@ from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 if TYPE_CHECKING:
     import pytest
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_unreadable_target_config_declines_instead_of_raising": (
+        "align outcome type check with sealed outcome union RetryLaterOutcome after ResolutionOutcome deprecation"
+    ),
+    "test_unreadable_target_config_is_reported_to_the_operator": (
+        "align outcome type check with sealed outcome union RetryLaterOutcome after ResolutionOutcome deprecation"
+    ),
+}
+
 
 class _UnreadableConfigError(RuntimeError):
     pass

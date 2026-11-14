@@ -273,8 +273,13 @@ def _rebase_failure_transport(
                 ),
                 NextAction.LAST_RESORT_RECOVERY.value,
             )
+            msg = (
+                failure_reason
+                if "spent/unavailable" in failure_reason
+                else f"all resolver agents are spent/unavailable; {failure_reason}"
+            )
             return ExhaustedResolutionFailure(
-                failure_reason,
+                msg,
                 ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
             )
         case ConfigFailureOutcome() | UnknownOutcome():

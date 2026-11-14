@@ -57,7 +57,6 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
     select_resolution_action,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_status import (
     push_round_status as _push_round_status,
 )
@@ -72,6 +71,9 @@ from ralph.pipeline.conflict_resolution.round_verdict import (
 )
 from ralph.pipeline.conflict_resolution.round_verdict import (
     resolution_outcome as _resolution_outcome,
+)
+from ralph.pipeline.conflict_resolution.round_verdict import (
+    round_termination_reason,
 )
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
@@ -96,8 +98,10 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
+from ralph.pipeline.integration_actions import Clock as IntegrationClock
 from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.resolution_outcome import StopResolutionOutcome
+from ralph.pipeline.state import PipelineState
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 _ACTIVE_SESSION: list[ResolutionSession | None] = [None]
@@ -157,9 +161,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-type ResolutionInvoker = Callable[
-    [str, "Path", int], ResolutionOutcome | StopResolutionOutcome | bool
-]
+type ResolutionInvoker = Callable[[str, "Path", int], StopResolutionOutcome | bool]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -251,22 +253,20 @@ def run_conflict_resolution_outcome(
 ) -> StopResolutionOutcome:
     active_session = session or _new_resolution_session(config)
     previous_model = capture_status_bar_model(display)
-    clock_inst: Clock | None = None
-    ledger_clock = (
-        getattr(active_session.ledger, "clock", None) or getattr(active_session.ledger, "_clock", None)
-        if active_session.ledger is not None
-        else None
-    )
-    deps_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
-    if isinstance(ledger_clock, Clock):
-        clock_inst = ledger_clock
-    elif isinstance(deps_clock, Clock):
-        clock_inst = deps_clock
     token = None
-    if clock_inst is not None:
+    clock_candidate: object = (
+        (getattr(active_session.ledger, "clock", None) or getattr(active_session.ledger, "_clock", None))
+        if active_session.ledger is not None
+        else (pipeline_deps.recovery_clock if pipeline_deps is not None else None)
+    )
+    if isinstance(clock_candidate, IntegrationClock):
         from ralph.pipeline.integration_actions import install_executors
 
-        token = install_executors(clock=_IntegrationClockAdapter(clock_inst))
+        token = install_executors(clock=clock_candidate)
+    elif isinstance(clock_candidate, Clock):
+        from ralph.pipeline.integration_actions import install_executors
+
+        token = install_executors(clock=_IntegrationClockAdapter(clock_candidate))
     _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(
@@ -513,23 +513,36 @@ def _status_scope(status: IntegrationStatus) -> str:
     return f"{status.summary}; path reasons: {details}" if details else status.summary
 
 
-def _wrap_invoker(
-    base_runner: ResolutionInvoker,
-    session: ResolutionSession,
-) -> ResolutionInvoker:
-    def runner(
-        agent_name: str, prompt_path: Path, round_index: int
-    ) -> StopResolutionOutcome | bool:
-        raw = base_runner(agent_name, prompt_path, round_index)
-        if isinstance(raw, ResolutionOutcome):
-            if raw.failure_cause is not ResolutionFailureCause.NONE:
-                session.last_failure_cause = raw.failure_cause
-            if isinstance(raw.reason, ResolutionTerminationReason):
-                session.terminal_reason = raw.reason
-            return raw.to_stop_resolution_outcome()
-        return raw
+def _ensure_session_workspace_and_probe(
+    session: ResolutionSession, effective_scope: WorkspaceScope
+) -> None:
+    if session.workspace is None:
+        ws_obj: object = getattr(effective_scope, "workspace", None)
+        from ralph.workspace.protocol import Workspace
 
-    return runner
+        if isinstance(ws_obj, Workspace):
+            session.workspace = ws_obj
+        else:
+            ws_root: object = getattr(effective_scope, "root", None)
+            from pathlib import Path
+
+            if isinstance(ws_root, Path):
+                from ralph.workspace.fs import FsWorkspace
+
+                allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
+                allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
+                session.workspace = FsWorkspace(
+                    ws_root,
+                    allowed_roots=allowed,
+                )
+    if session.workspace_probe is None:
+        rc = session.recovery_controller
+        if rc is not None and rc.workspace_probe is not None:
+            session.workspace_probe = rc.workspace_probe
+        else:
+            from ralph.workspace.probe import DefaultWorkspaceChangeProbe
+
+            session.workspace_probe = DefaultWorkspaceChangeProbe()
 
 
 def _run_rounds(
@@ -568,34 +581,12 @@ def _run_rounds(
 
         if isinstance(store, UnavailabilityStore):
             session.unavailability_store = store
+    if invoke is not None and session.probe_runner is None:
+        from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
+
+        session.probe_runner = fail_open_dead_agent_probe_runner()
     ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps, config=config)
-    if session.workspace is None:
-        ws_obj: object = getattr(effective_scope, "workspace", None)
-        from ralph.workspace.protocol import Workspace
-
-        if isinstance(ws_obj, Workspace):
-            session.workspace = ws_obj
-        else:
-            ws_root: object = getattr(effective_scope, "root", None)
-            from pathlib import Path
-
-            if isinstance(ws_root, Path):
-                from ralph.workspace.fs import FsWorkspace
-
-                allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
-                allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
-                session.workspace = FsWorkspace(
-                    ws_root,
-                    allowed_roots=allowed,
-                )
-    if session.workspace_probe is None:
-        rc = session.recovery_controller
-        if rc is not None and rc.workspace_probe is not None:
-            session.workspace_probe = rc.workspace_probe
-        else:
-            from ralph.workspace.probe import DefaultWorkspaceChangeProbe
-
-            session.workspace_probe = DefaultWorkspaceChangeProbe()
+    _ensure_session_workspace_and_probe(session, effective_scope)
     prepared, early, decision_paths, integration_status = _prepare_conflicted_paths(
         root, stop, session, display, active_observer
     )
@@ -665,6 +656,10 @@ def _run_rounds(
     )
     if resolved:
         return True
+    if session.terminal_reason is None:
+        session.terminal_reason = round_termination_reason(
+            session, invoked=False, candidates=candidates
+        )
     unresolved = session.unresolved_paths
     session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
     emit_conflict_phase_line(
@@ -757,6 +752,12 @@ def _execute_round_loop(
         last_invoked_reason: ResolutionTerminationReason | None = session.terminal_reason
         last_invoked_charge: bool = session.charge_conflict_budget
         while round_index < round_cap:
+            if not _can_continue_rounds(session, candidates):
+                if session.terminal_reason is None:
+                    session.terminal_reason = round_termination_reason(
+                        session, invoked=False, candidates=candidates
+                    )
+                break
             round_index += 1
             _push_round_status(display, root, target, round_index, round_cap, stop)
             prompt_path = prompt_materializer(
@@ -869,7 +870,10 @@ def _wait_for_candidates_if_cooling_down(
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
     skipped = skipped_candidates(session, candidates)
     live = [name for name in candidates if name not in skipped]
-    if not live:
+    if not live or (
+        isinstance(session.recovery_state, PipelineState)
+        and session.recovery_state.phase != PHASE_RESOLUTION
+    ):
         return False
     controller = session.recovery_controller
     if controller is not None:
@@ -880,10 +884,10 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
             or controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
         )
     if session.ledger is not None:
-        if session.ledger.any_eligible(PHASE_RESOLUTION, live):
-            return True
         wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
-        return wait is not None and wait > 0
+        return session.ledger.any_eligible(PHASE_RESOLUTION, live) or (
+            wait is not None and wait > 0
+        )
     return True
 
 

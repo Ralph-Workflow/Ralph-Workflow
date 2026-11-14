@@ -227,14 +227,14 @@ def _integrate_once_owned(
             nonlocal reclamation
             reclamation = result
 
-        ff_outcome = _ai._fast_forward_target(
+        raw_ff_outcome: object = _ai._fast_forward_target(
             root,
             target,
             feature_sha,
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=remember_reclamation,
         )
-        ok, skip_reason = _parse_ff_outcome(ff_outcome)
+        ok, skip_reason = _parse_ff_outcome(raw_ff_outcome)
 
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:
@@ -272,7 +272,7 @@ def _integrate_once_owned(
                 record.model_copy(update={"last_reason": skip_reason, "fast_forwarded": False}),
                 rebase_result.skip_reason,
             )
-            return record, is_retryable_fast_forward_failure(ff_outcome)
+            return record, is_retryable_fast_forward_failure(raw_ff_outcome)
         record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
         if publish:
             record = _ai.reconcile_remote_publication(

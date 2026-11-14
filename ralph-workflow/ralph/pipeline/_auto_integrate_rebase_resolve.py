@@ -309,6 +309,18 @@ def _rebase_run_result(
                 f"{condition}; resumes when {resumes_when}",
                 failure_cause,
             )
+        case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
+            return RebaseRunResult(
+                rebase_outcome=RebaseConflicts(files=[]),
+                merge_attempted=False,
+                merge_outcome=None,
+                short_circuit=record_resolution_exhausted(
+                    reason=failure_reason,
+                    target=target,
+                    failure_cause=failure_cause,
+                    terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+                ),
+            )
         case RetryLaterOutcome() | UnknownOutcome():
             return _conflict_run(target, failure_reason, failure_cause)
         case ConfigFailureOutcome(file=file):

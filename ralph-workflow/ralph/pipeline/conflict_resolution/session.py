@@ -45,10 +45,13 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
+    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.classified_failure import ClassifiedFailure
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
@@ -152,6 +155,8 @@ class ResolutionSession:
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     workspace: Workspace | None = None
     workspace_probe: WorkspaceChangeProbe | None = None
+    probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
+    last_resolution_outcome: StopResolutionOutcome | None = None
 
 
 def begin_resolution_stop(
@@ -271,6 +276,7 @@ def ensure_session_controller(
     *,
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
+    probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None,
 ) -> RecoveryController:
     from ralph.agents.timeout_clock import Clock, SystemClock
     from ralph.pipeline.agent_entry_point import AgentEntryPoint
@@ -306,10 +312,19 @@ def ensure_session_controller(
         from ralph.pipeline.integration_actions import current_clock
 
         clock = _LegacyClockAdapter(current_clock())
+    effective_probe_runner = (
+        probe_runner
+        if probe_runner is not None
+        else (
+            session.probe_runner
+            if session is not None and session.probe_runner is not None
+            else production_dead_agent_probe_runner(config)
+        )
+    )
     deps = AttemptRunnerDeps(
         clock=clock,
         invoke=_invoke_effect,
-        probe_runner=production_dead_agent_probe_runner(config),
+        probe_runner=effective_probe_runner,
         workspace_probe=None,
         connectivity=None,
     )
@@ -395,11 +410,20 @@ def classify_failed_resolution_attempt(
     recovery_chain = recovery_state.chain_for_phase(PHASE_RESOLUTION) if recovery_state else None
     current_retries = recovery_chain.retries if recovery_chain is not None else 0
 
-    if not session.skip_same_agent_retries and agent_available and current_retries < max_retries:
+    candidate_unavailable = session.terminal_reason in (
+        ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
+        ResolutionTerminationReason.TOOL_SURFACE_DEAD,
+    )
+
+    if (
+        not session.skip_same_agent_retries
+        and not candidate_unavailable
+        and agent_available
+        and current_retries < max_retries
+    ):
         session.chain_cursor = failed_index
         next_retries = current_retries + 1
     else:
-        controller.note_retry_exhaustion(PHASE_RESOLUTION, agent_name)
         session.skip_same_agent_retries = False
         candidates_tuple = tuple(candidates) if candidates else (agent_name,)
         selection = controller.preferred_agent_index(
@@ -491,6 +515,14 @@ def invoke_resolution_agent(
     )
     if _candidate_cannot_be_launched(agent_name, session):
         return False
+    observed_fault: ResolutionTerminationReason | None = None
+
+    def _record_fault(reason: ResolutionTerminationReason) -> None:
+        nonlocal observed_fault
+        observed_fault = reason
+
+    def _supervision_health_error() -> str | None:
+        return None if observed_fault is None else observed_fault.value
     effect = InvokeAgentEffect(
         agent_name=agent_name,
         phase=PHASE_RESOLUTION,
@@ -499,9 +531,14 @@ def invoke_resolution_agent(
         chain_name=PHASE_RESOLUTION,
         requires_completion_evidence=require_completion_evidence,
         activity_only_supervision=True,
+        activity_only_status_interval_seconds=status_interval_seconds,
         activity_status_listener=wrap_activity_listener(
-            activity_status_listener, session, agent_name=agent_name
+            activity_status_listener,
+            session,
+            agent_name=agent_name,
+            on_fault=_record_fault,
         ),
+        supervision_health_error=_supervision_health_error,
     )
     try:
         attempt = run_agent_attempt(
@@ -538,14 +575,17 @@ def invoke_resolution_agent(
         _record_resolution_exception(session)
         logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
         return False
-    if attempt.event != PipelineEvent.AGENT_SUCCESS:
-        if session is not None:
-            session.last_attempt_result = attempt
-        _record_attempt_failure(session, _failed_attempt_evidence(session, agent_name))
-        _record_attempt_without_agent_work(session)
-        return False
     if session is not None:
         session.last_attempt_result = attempt
+        if attempt.outcome is not None and attempt.outcome.reason:
+            session.last_recovery_reason = attempt.outcome.reason
+            session.last_attempt_evidence = attempt.outcome.reason
+            session.last_attempt_failure = attempt.outcome.reason
+    if attempt.event != PipelineEvent.AGENT_SUCCESS:
+        failure_evidence = _failed_attempt_evidence(session, agent_name)
+        _record_attempt_failure(session, failure_evidence)
+        _record_attempt_without_agent_work(session)
+        return False
     return True
 
 

@@ -7,9 +7,9 @@ from tests.doc_roots import REPOSITORY_ROOT
 RALPH_TEST_CHANGE_REASONS = {
     "test_plan_copies_bound_deterministic_status_to_strong_or_moderate_evidence": (
         "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
-        "`moderate` rules; the comment and docstring ban is the single bounded "
-        "exception, so both plan copies must carry the bounded statements and reject "
-        "the broad wording"
+        "`moderate` rules; the comment/docstring ban and the banned-construct ban are "
+        "the two bounded exceptions, so both plan copies must carry the bounded "
+        "statements and reject the broad wording"
     ),
 }
 
@@ -33,9 +33,11 @@ _PLAN_BOUNDED_DETERMINISTIC_STATEMENTS = (
     "enforcement status; a rule tagged `none` (judgment) or `anecdotal` ships "
     "`advisory` with a review trigger, and no rule is marked `deterministic` on "
     "the strength of an enforcer that is planned but not wired.",
-    "The single exception is the absolute comment and docstring ban, a project "
-    "rule tagged `none` that ships `deterministic` because the comment audit "
-    "(`audit_comments`) enforces it.",
+    "The two exceptions are the absolute comment and docstring ban and the "
+    "banned-construct ban, project rules tagged `none` that ship "
+    "`deterministic` because their wired checkers (`audit_comments`, "
+    "`audit_banned_constructs`) enforce them; each reverts to `advisory` if "
+    "its enforcer is removed.",
 )
 
 _PLAN_BROAD_DETERMINISTIC_PHRASES = (

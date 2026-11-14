@@ -254,8 +254,6 @@ def test_mutation_bypassing_recovery_owner_fails_cooldown_contract() -> None:
     clock = FakeClock(start=0.0)
     controller = _controller(clock, limit=2)
 
-    # If a failure occurs but is dropped without invoking recovery controller
-    # classification or handle, the agent remains erroneously eligible.
     status = controller.agent_eligibility("development", _PRIMARY)
     assert isinstance(status, Eligible)
     selection = controller.preferred_agent_index("development", _AGENTS)

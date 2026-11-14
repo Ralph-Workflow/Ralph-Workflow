@@ -43,7 +43,7 @@ def default_invoker(
 ) -> ResolutionInvoker:
     interval = limits.status_interval_seconds
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
         reporter = ResolutionStatusReporter(
             display=display,
             target=target,
