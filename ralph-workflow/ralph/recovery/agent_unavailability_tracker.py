@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import threading
+import typing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
@@ -19,9 +20,9 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 
-class _UnavailabilityStoreMeta(type(Protocol)):
-    def __instancecheck__(cls, instance: object) -> bool:
-        if super().__instancecheck__(instance):
+class _UnavailabilityStoreMeta(typing._ProtocolMeta):
+    def __instancecheck__(self, instance: object) -> bool:
+        if bool(super().__instancecheck__(instance)):
             return True
         return (
             hasattr(instance, "scope")

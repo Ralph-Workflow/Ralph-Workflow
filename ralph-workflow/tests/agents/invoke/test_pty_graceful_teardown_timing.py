@@ -65,7 +65,9 @@ def _reader(handle: _Handle, grace: float | None) -> PtyLineReader:
     return reader
 
 
-def test_exit_input_precedes_capped_grace_then_termination(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_exit_input_precedes_capped_grace_then_termination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
     handle = _Handle(exited=False, calls=calls)
     reader = _reader(handle, _MAX_INTERACTIVE_EXIT_GRACE_SECONDS + 1.0)

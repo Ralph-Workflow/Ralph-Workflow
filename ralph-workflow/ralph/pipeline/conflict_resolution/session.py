@@ -308,11 +308,16 @@ def _resolve_session_ledger(
     )
     if ledger is not None or store is None:
         return ledger
-    store_ledger: object = getattr(store, "_failure_ledger", None)
+    store_ledger: object = cast("object", getattr(store, "_failure_ledger", None))
     if isinstance(store_ledger, AgentFailureLedger):
         ledger = store_ledger
     else:
-        clock_inst: object = getattr(store, "clock", getattr(store, "_clock", None))
+        store_clock_val: object = cast("object", getattr(store, "clock", None))
+        clock_inst: object = (
+            store_clock_val
+            if store_clock_val is not None
+            else cast("object", getattr(store, "_clock", None))
+        )
         if isinstance(clock_inst, Clock):
             ledger = AgentFailureLedger(clock=clock_inst)
             object.__setattr__(store, "_failure_ledger", ledger)
@@ -332,12 +337,19 @@ def _resolve_session_clock(
     deps_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
     if isinstance(deps_clock, Clock):
         return deps_clock
-    ledger_clock = getattr(ledger, "clock", None) if ledger is not None else None
+    ledger_clock: object = (
+        cast("object", getattr(ledger, "clock", None)) if ledger is not None else None
+    )
     if isinstance(ledger_clock, Clock):
         return ledger_clock
-    store_clock = (
-        getattr(store, "clock", getattr(store, "_clock", None)) if store is not None else None
-    )
+    store_clock: object = None
+    if store is not None:
+        store_clock_attr: object = cast("object", getattr(store, "clock", None))
+        store_clock = (
+            store_clock_attr
+            if store_clock_attr is not None
+            else cast("object", getattr(store, "_clock", None))
+        )
     if isinstance(store_clock, Clock):
         return store_clock
     active_current = current_clock()
@@ -401,7 +413,7 @@ def ensure_session_controller(
     )
     if (
         store is not None
-        and getattr(store, "_failure_ledger", None) is None
+        and cast("object", getattr(store, "_failure_ledger", None)) is None
         and controller.ledger is not None
     ):
         object.__setattr__(store, "_failure_ledger", controller.ledger)
@@ -553,8 +565,6 @@ def classify_failed_resolution_attempt(
             handle_failure,
             context,
         )
-    if session is None:
-        return
     session.recovery_state = new_state
     session.last_retry_delay_ms = new_state.last_retry_delay_ms
     session.last_recovery_reason = (

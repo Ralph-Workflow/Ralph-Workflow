@@ -104,10 +104,10 @@ def _patch_exec_handlers_with_in_memory_runner(monkeypatch: pytest.MonkeyPatch) 
     real_handle_exec_command = _exec_mod.handle_exec_command
     real_handle_unsafe_exec = _unsafe_exec_mod.handle_unsafe_exec
 
-    def patched_exec_command(session, workspace, params):
+    def patched_exec_command(session: object, workspace: object, params: object) -> object:
         return real_handle_exec_command(session, workspace, params, deps=deps)
 
-    def patched_unsafe_exec(session, workspace, params):
+    def patched_unsafe_exec(session: object, workspace: object, params: object) -> object:
         return real_handle_unsafe_exec(session, workspace, params, deps=deps)
 
     monkeypatch.setattr(_exec_mod, "handle_exec_command", patched_exec_command)

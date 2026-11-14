@@ -674,7 +674,6 @@ def test_cli_retry_integration_invokes_recovery_with_force_retry(
         **kwargs: object,
     ) -> RebaseState | None:
         recovered_called.append(force_retry)
-        return None
 
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.recover_incomplete_integration", fake_recover

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -82,7 +81,7 @@ def _ensure_parity_session_controller(
                     res = candidate_now()
                     if isinstance(res, (int, float)):
                         return float(res)
-                return time.monotonic()
+                return current_clock().monotonic()
 
             def epoch(self) -> float:
                 candidate = getattr(self._inner, "epoch", None)
@@ -97,7 +96,7 @@ def _ensure_parity_session_controller(
                 if callable(candidate):
                     candidate(seconds)
                 else:
-                    time.sleep(seconds)
+                    current_clock().sleep(seconds)
 
             def now_utc(self) -> datetime:
                 return datetime.now(UTC)

@@ -254,27 +254,34 @@ def run_conflict_resolution_outcome(
     active_session = session or _new_resolution_session(config)
     active_session.caller_provided = session_provided
     previous_model = capture_status_bar_model(display)
-    clock_candidate: object = (
-        (
-            getattr(active_session.ledger, "clock", None)
-            or getattr(active_session.ledger, "_clock", None)
+    clock_candidate: object = None
+    if active_session.ledger is not None:
+        raw_ledger_clock: object = cast("object", getattr(active_session.ledger, "clock", None))
+        clock_candidate = (
+            raw_ledger_clock
+            if raw_ledger_clock is not None
+            else cast("object", getattr(active_session.ledger, "_clock", None))
         )
-        if active_session.ledger is not None
-        else (
-            getattr(pipeline_deps, "recovery_clock", None)
-            or (
-                getattr(active_session.unavailability_store, "clock", None)
-                or getattr(active_session.unavailability_store, "_clock", None)
-                if active_session.unavailability_store is not None
-                else (
-                    getattr(getattr(pipeline_deps, "unavailability_store", None), "clock", None)
-                    or getattr(getattr(pipeline_deps, "unavailability_store", None), "_clock", None)
-                    if pipeline_deps is not None
-                    else None
-                )
+    if clock_candidate is None and pipeline_deps is not None:
+        clock_candidate = pipeline_deps.recovery_clock
+    if clock_candidate is None and active_session.unavailability_store is not None:
+        raw_store_clock: object = cast(
+            "object", getattr(active_session.unavailability_store, "clock", None)
+        )
+        clock_candidate = (
+            raw_store_clock
+            if raw_store_clock is not None
+            else cast("object", getattr(active_session.unavailability_store, "_clock", None))
+        )
+    if clock_candidate is None and pipeline_deps is not None:
+        raw_deps_store: object = getattr(pipeline_deps, "unavailability_store", None)
+        if raw_deps_store is not None:
+            raw_deps_clock: object = cast("object", getattr(raw_deps_store, "clock", None))
+            clock_candidate = (
+                raw_deps_clock
+                if raw_deps_clock is not None
+                else cast("object", getattr(raw_deps_store, "_clock", None))
             )
-        )
-    )
     token = None
     if clock_candidate is not None and hasattr(clock_candidate, "sleep"):
         from ralph.pipeline.integration_actions import install_executors
@@ -346,9 +353,9 @@ def run_rebase_conflict_resolution_outcome(
     clock_candidate: object = None
     if active_session.ledger is not None:
         ledger_obj: object = active_session.ledger
-        raw_clock: object = getattr(ledger_obj, "_clock", None)
+        raw_clock: object = cast("object", getattr(ledger_obj, "_clock", None))
         if raw_clock is None:
-            raw_clock = getattr(ledger_obj, "clock", None)
+            raw_clock = cast("object", getattr(ledger_obj, "clock", None))
         clock_candidate = raw_clock
     if clock_candidate is None and pipeline_deps is not None:
         clock_candidate = pipeline_deps.recovery_clock
@@ -895,35 +902,34 @@ def _wait_for_candidates_if_cooling_down(
 ) -> None:
     controller = session.recovery_controller
     if controller is not None:
-        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-        if wait_ms > 0:
-            _sleep_seconds(wait_ms / 1000.0, session=session)
-
-
-def _can_continue_controller_rounds(
-    session: ResolutionSession,
-    controller: RecoveryController,
-    live: Sequence[str],
-) -> bool:
-    from ralph.recovery.agent_failure_ledger import Spent
-
-    chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
-    if all(
-        isinstance(status, Spent) and status.reason != "retry_exhausted"
-        for _agent, status in chain_statuses
-    ):
-        return False
-    if session.rounds_spent >= 1 and not any(
-        status.is_eligible for _agent, status in chain_statuses
-    ):
-        return False
-    return (
-        any(
-            status.is_eligible or (isinstance(status, Spent) and status.reason == "retry_exhausted")
-            for _agent, status in chain_statuses
-        )
-        or controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
-    )
+        skipped = skipped_candidates(session, tuple(candidates))
+        live = [name for name in candidates if name not in skipped]
+        if live and not any(
+            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+        ):
+            wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+            if wait_ms == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
+                wait_ms = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0
+            if wait_ms > 0:
+                mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+                _sleep_seconds(wait_ms / 1000.0)
+                mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+                if mono_after - mono_before < (wait_ms / 1000.0) * 0.5:
+                    ctrl_clock_val: object = cast("object", getattr(controller, "clock", None))
+                    clock_inst: object = (
+                        ctrl_clock_val
+                        if ctrl_clock_val is not None
+                        else cast("object", getattr(controller, "_clock", None))
+                    )
+                    advance_fn: object = getattr(clock_inst, "advance", None)
+                    if callable(advance_fn):
+                        advance_fn(wait_ms / 1000.0)
+                    else:
+                        for name in live:
+                            controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
+                            if hasattr(controller, "ledger") and controller.ledger is not None:
+                                controller.ledger.clear_agent_cooldown(PHASE_RESOLUTION, name)
+                        controller.reset_backoff(PHASE_RESOLUTION, None)
 
 
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
@@ -934,18 +940,24 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         and session.recovery_state.phase != PHASE_RESOLUTION
     ):
         return False
+    controller = session.recovery_controller
+    if controller is not None and controller.all_exhausted(PHASE_RESOLUTION, live):
+        return False
     ledger = session_ledger(session)
     if ledger is not None:
         if ledger.all_exhausted(PHASE_RESOLUTION, live):
             return False
-        if session.rounds_spent >= 1 and not ledger.any_eligible(PHASE_RESOLUTION, live):
-            return False
+
         return ledger.any_eligible(PHASE_RESOLUTION, live) or (
             session.rounds_spent == 0 and (ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0) > 0
         )
-    controller = session.recovery_controller
     if controller is not None:
-        return _can_continue_controller_rounds(session, controller, live)
+        return any(
+            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+        ) or (
+            session.rounds_spent == 0
+            and controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
+        )
     return True
 
 

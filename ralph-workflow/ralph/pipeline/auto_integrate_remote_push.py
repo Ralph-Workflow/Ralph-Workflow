@@ -396,6 +396,7 @@ def _reconcile_in_progress_rebase(
         from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
         from ralph.pipeline.auto_integrate_record import read_record
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -416,6 +417,8 @@ def _reconcile_in_progress_rebase(
                 summary=result.reason,
                 pushed=False,
             )
+        if isinstance(result, RebaseResolutionResult):
+            result = result.outcome
         if not isinstance(
             result,
             (

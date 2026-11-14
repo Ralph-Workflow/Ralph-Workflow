@@ -52,7 +52,7 @@ tests/agents/invoke/test_quota_detection_provider_events.py|0,1,0
 tests/agents/invoke/test_reader_stall_lifetime.py|0,1,0
 tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py|0,6,0
 tests/agents/invoke/test_runtime_resolver_endpoint_delivery.py|0,3,0
-tests/agents/invoke/test_subagent_transcript_tail.py|0,3,8
+tests/agents/invoke/test_subagent_transcript_tail.py|0,2,8
 tests/agents/invoke/test_tool_call_extraction.py|0,1,0
 tests/agents/invoke/test_transcript_discovery_concurrent_session.py|0,4,3
 tests/agents/invoke/test_transcript_thread_single_feed.py|0,1,0

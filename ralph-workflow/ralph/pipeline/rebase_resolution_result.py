@@ -28,7 +28,7 @@ def _is_outcome_success(outcome: object) -> bool:
 
 @dataclass(frozen=True, slots=True, init=False)
 class RebaseResolutionResult:
-    outcome: object
+    outcome: StopResolutionOutcome
     reason: str | None
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     terminal_reason: ResolutionTerminationReason | None = None

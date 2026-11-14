@@ -7,6 +7,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause
+
 __all__ = ["ConfigFailureOutcome"]
 
 
@@ -24,6 +26,12 @@ class ConfigFailureOutcome:
     @property
     def reason(self) -> object:
         return self.terminal_reason
+
+    @property
+    def failure_cause(self) -> ResolutionFailureCause:
+        from ralph.git.resolution_failure_cause import ResolutionFailureCause
+
+        return ResolutionFailureCause.CONFIG_FAILURE
 
     def __iter__(self) -> Iterator[object]:
         return iter((False, str(self.parse_error)))

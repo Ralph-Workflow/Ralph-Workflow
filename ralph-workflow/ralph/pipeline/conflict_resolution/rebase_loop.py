@@ -52,6 +52,9 @@ from ralph.pipeline.conflict_resolution.progress import (
     load_progress_for_rebase,
     save_progress,
 )
+from ralph.pipeline.conflict_resolution.resolution_outcome import (
+    ResolutionOutcome,
+)
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
 from ralph.pipeline.conflict_resolution.stray_paths import (
@@ -66,6 +69,7 @@ from ralph.pipeline.resolution_outcome import (
     RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
+    WaitingOutcome,
 )
 
 if TYPE_CHECKING:
@@ -248,8 +252,21 @@ def _record_resolver_outcome_on_session(
 ) -> None:
     if isinstance(outcome, bool) or active_session is None:
         return
-    active_session.last_resolution_outcome = outcome
-    if isinstance(outcome, RetryLaterOutcome):
+    if isinstance(
+        outcome,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
+        active_session.last_resolution_outcome = outcome
+    elif isinstance(outcome, ResolutionOutcome):
+        active_session.last_resolution_outcome = outcome.to_stop_resolution_outcome()
+    if isinstance(outcome, ResolutionOutcome):
         if (
             outcome.failure_cause is not None
             and outcome.failure_cause != ResolutionFailureCause.NONE

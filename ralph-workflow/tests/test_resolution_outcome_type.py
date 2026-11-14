@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import Any
 
 import pytest
 
@@ -128,7 +128,7 @@ def test_union_is_closed_and_consumer_rejects_unknown_variant() -> None:
     assert set(ResolutionOutcomeType.__value__.__args__) == set(
         StopResolutionOutcome.__value__.__args__
     )
-    unknown: object = "unhandled"
+    unknown: Any = "unhandled"
 
     with pytest.raises(AssertionError, match="Expected code to be unreachable"):
-        record_resolution_outcome(cast("StopResolutionOutcome", unknown), target="main")
+        record_resolution_outcome(unknown, target="main")

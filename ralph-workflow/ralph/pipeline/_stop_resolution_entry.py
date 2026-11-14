@@ -521,14 +521,20 @@ def _not_spent_resolution_outcome(
         )
     else:
         reason = None
-    outcome = stop_resolution_outcome_from_legacy(
-        classify_resolution_failure(
-            terminal_reason=session.terminal_reason,
-            failure_cause=carried_cause,
-            reason=reason,
-            paths=session.unresolved_paths,
+    outcome: StopResolutionOutcome
+    if session.last_resolution_outcome is not None and not isinstance(
+        session.last_resolution_outcome, ResolvedOutcome
+    ):
+        outcome = session.last_resolution_outcome
+    else:
+        outcome = stop_resolution_outcome_from_legacy(
+            classify_resolution_failure(
+                terminal_reason=session.terminal_reason,
+                failure_cause=carried_cause,
+                reason=reason,
+                paths=session.unresolved_paths,
+            )
         )
-    )
     return outcome, reason
 
 
@@ -617,13 +623,18 @@ def _handle_spent_session(
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT
     )
+    outcome: StopResolutionOutcome
     if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         outcome = RetryLaterOutcome(
-            on_change="resolver_agent_eligibility_changed",
+            on_change=reason or "resolver_agent_eligibility_changed",
             terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
             unresolved_paths=tuple(session.unresolved_paths),
             failure_cause=effective_cause,
         )
+    elif session.last_resolution_outcome is not None and not isinstance(
+        session.last_resolution_outcome, ResolvedOutcome
+    ):
+        outcome = session.last_resolution_outcome
     else:
         outcome = stop_resolution_outcome_from_legacy(
             classify_resolution_failure(
@@ -633,12 +644,7 @@ def _handle_spent_session(
                 paths=session.unresolved_paths,
             )
         )
-    _persist_resolution_cause(
-        root,
-        effective_cause,
-        reason=reason,
-        record=record,
-    )
+    _persist_resolution_cause(root, effective_cause, reason=reason, record=record)
     return RebaseResolutionResult(
         outcome,
         reason,
@@ -660,16 +666,7 @@ def _resolve_rebase_with_config(
         return RebaseResolutionResult(
             ResolvedOutcome(), None, ResolutionFailureCause.NONE, session.terminal_reason
         )
-    if session.last_resolution_outcome is not None and not isinstance(
-        session.last_resolution_outcome, ResolvedOutcome
-    ):
-        _warn_chain_not_spent(target, session)
-        return RebaseResolutionResult(
-            session.last_resolution_outcome,
-            session.exhaustion_reason,
-            session.last_failure_cause,
-            session.terminal_reason,
-        )
+
     carried_cause = _session_carried_cause(session)
     if (
         not session.charge_conflict_budget

@@ -159,7 +159,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
     def _fake_resolve_rebase(
         root: Path,
         target: str,
-        resolver: Callable[[Path, str, RebaseStop | None], object],
+        resolver: Callable[..., object],
         session: ResolutionSession | None = None,
     ) -> bool:
         outcome = resolver(root, target, None)
@@ -229,7 +229,7 @@ def _deferred_rebase_failure_cause(
     def _fake_resolve_rebase(
         root: Path,
         target: str,
-        resolver: Callable[[Path, str, RebaseStop | None], object],
+        resolver: Callable[..., object],
         session: ResolutionSession | None = None,
     ) -> bool:
         outcome = resolver(root, target, None)

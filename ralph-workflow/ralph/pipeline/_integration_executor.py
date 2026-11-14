@@ -37,6 +37,7 @@ class _LiveRebaseContinuationExecutor:
     ) -> StopResolutionOutcome:
         from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.resolution_outcome import (
             ConfigFailureOutcome,
             NextStrategyOutcome,
@@ -60,6 +61,8 @@ class _LiveRebaseContinuationExecutor:
         )
         if isinstance(outcome, StopResolutionBlocked):
             return WaitingOutcome(outcome.reason, "resolution attempt key changes")
+        if isinstance(outcome, RebaseResolutionResult):
+            outcome = outcome.outcome
         if not isinstance(
             outcome,
             (

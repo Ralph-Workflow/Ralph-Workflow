@@ -760,7 +760,7 @@ def _file_change_reasons(diff_file: _DiffFile) -> dict[str, str]:
     block_lines: list[str] = []
     inside = False
     for hunk in diff_file.hunks:
-        for _line, text in hunk.added:
+        for _line, text, _ in hunk.new_lines:
             if TEST_REASON_CONSTANT in text:
                 inside = True
             if not inside:
@@ -774,6 +774,13 @@ def _file_change_reasons(diff_file: _DiffFile) -> dict[str, str]:
         reason = _group_str(match, 2).strip()
         if name and reason:
             reasons[name] = reason
+    if not reasons:
+        added_text = "\n".join(text for hunk in diff_file.hunks for _, text in hunk.added)
+        for match in _REASON_ENTRY_RE.finditer(added_text):
+            name = _group_str(match, 1).strip()
+            reason = _group_str(match, 2).strip()
+            if name and reason:
+                reasons[name] = reason
     return reasons
 
 

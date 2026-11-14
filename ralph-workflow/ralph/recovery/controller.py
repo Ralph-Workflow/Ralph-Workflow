@@ -4,7 +4,7 @@ import ast
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -341,6 +341,11 @@ if TYPE_CHECKING:
         [AttemptFacts, AttributionVerdict, ProbeOutcome | None, TypedSignal | None],
         PersistedVerdict,
     ]
+
+
+@runtime_checkable
+class _Prunable(Protocol):
+    def prune_expired(self, *, now_ms: int | None = None) -> object: ...
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -1400,9 +1405,8 @@ class RecoveryController:
 
     def prune_expired(self, *, now_ms: int | None = None) -> None:
         effective_now_ms = now_ms if now_ms is not None else self._now_ms()
-        prune_fn = getattr(self._unavailability_tracker, "prune_expired", None)
-        if callable(prune_fn):
-            prune_fn(now_ms=effective_now_ms)
+        if isinstance(self._unavailability_tracker, _Prunable):
+            self._unavailability_tracker.prune_expired(now_ms=effective_now_ms)
         if self._ledger is not None:
             self._ledger.prune_expired(now_ms=effective_now_ms)
 

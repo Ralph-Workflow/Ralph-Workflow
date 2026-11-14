@@ -844,7 +844,7 @@ def _emit_post_dispatch_frames(
 
 
 def _emit_stop_frame(
-    transport: str, stop_emitter: Callable[..., None] | None, session_id: str
+    transport: str, stop_emitter: Callable[..., object] | None, session_id: str
 ) -> None:
     if stop_emitter is None:
         return

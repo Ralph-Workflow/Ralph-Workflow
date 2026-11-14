@@ -214,8 +214,11 @@ def _continue_rebase_resolution(
     )
     if isinstance(result, StopResolutionBlocked):
         return result.reason
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+
+    actual_result = result.outcome if isinstance(result, RebaseResolutionResult) else result
     if not isinstance(
-        result,
+        actual_result,
         (
             ResolvedOutcome,
             WaitingOutcome,
@@ -230,7 +233,7 @@ def _continue_rebase_resolution(
         root,
         record,
         stop_identity,
-        result,
+        actual_result,
         tuple(chain_agents or ()),
     )
 
@@ -272,7 +275,10 @@ def _rebase_failure_transport(
     match outcome:
         case ResolvedOutcome():
             return None
-        case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
+        case (
+            NextStrategyOutcome()
+            | RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED)
+        ):
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha,
@@ -292,24 +298,6 @@ def _rebase_failure_transport(
             )
         case WaitingOutcome() | RetryLaterOutcome():
             return failure_reason
-        case NextStrategyOutcome():
-            AttemptLedger(root).charge_ladder_attempt(
-                rebase_resolution_signature(
-                    record.pre_feature_sha,
-                    record.pre_target_sha,
-                    stop_identity or record.resolving_stop_sha,
-                ),
-                NextAction.LAST_RESORT_RECOVERY.value,
-            )
-            msg = (
-                failure_reason
-                if "spent/unavailable" in failure_reason
-                else f"all resolver agents are spent/unavailable; {failure_reason}"
-            )
-            return ExhaustedResolutionFailure(
-                msg,
-                ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
-            )
         case ConfigFailureOutcome() | UnknownOutcome():
             return failure_reason
         case _ as unreachable:

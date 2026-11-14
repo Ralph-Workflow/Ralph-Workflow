@@ -51,7 +51,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "removed white-box private attribute assertion assert sb._model == model to comply "
         "with zero white-box test policy; the status bar rendering is verified via render_status_bar"
     ),
-    "test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar": "remove newlines from rendered status bar before checking fix_msg to prevent Rich line wrap splitting long paths",
+    "test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar": (
+        "remove newlines from rendered status bar before checking fix_msg to prevent Rich line wrap splitting long paths"
+    ),
 }
 
 
@@ -332,7 +334,7 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
     def _fake_resolve_rebase(
         root: Path,
         target: str,
-        resolver: Callable[[Path, str, RebaseStop | None], object],
+        resolver: Callable[..., object],
         session: ResolutionSession | None = None,
     ) -> bool:
         outcome = resolver(root, target, None)
@@ -398,7 +400,7 @@ def test_resolve_conflicted_rebase_carries_context_failure_not_exhausted(
     def _fake_resolve_rebase(
         root: Path,
         target: str,
-        res_fn: Callable[[Path, str, RebaseStop], object],
+        res_fn: Callable[..., object],
         session: ResolutionSession | None = None,
     ) -> bool:
         stop = RebaseStop(

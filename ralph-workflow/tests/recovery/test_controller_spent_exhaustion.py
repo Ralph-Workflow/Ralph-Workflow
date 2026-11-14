@@ -53,15 +53,6 @@ _CONFIG = UnifiedConfig.model_validate({"general": {}})
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_all_controller_spent_repeat_yields_candidate_exhausted": (
-        "align exhausted-candidate deferral signal with canonical resolver_agent_eligibility_changed"
-    ),
-    "test_sequential_dead_launch_to_spent_repeat_exhaustion": (
-        "align exhausted-candidate deferral signal with canonical resolver_agent_eligibility_changed"
-    ),
-}
-
 
 def _policy_bundle() -> PolicyBundle:
     return _POLICY_BUNDLE
@@ -220,7 +211,9 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
     result = drive_conflict_resolution_session(tmp_path, session)
 
     assert isinstance(result, RetryLaterOutcome)
-    assert result.on_change == "resolver_agent_eligibility_changed"
+    assert result.on_change is not None
+    assert "spent/unavailable" in result.on_change
+    assert "git add -- a.py b.py" in result.on_change
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
@@ -464,7 +457,9 @@ def test_sequential_dead_launch_to_spent_repeat_exhaustion(
     assert session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
-    assert result2.on_change == "resolver_agent_eligibility_changed"
+    assert result2.on_change is not None
+    assert "spent/unavailable" in result2.on_change
+    assert "git add -- a.py b.py" in result2.on_change
 
 
 def test_stale_cooldown_overlap_with_controller_spent() -> None:

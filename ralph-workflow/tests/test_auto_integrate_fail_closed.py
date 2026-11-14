@@ -29,7 +29,14 @@ from ralph.pipeline.auto_integrate_ff import (
     is_retryable_fast_forward_failure,
 )
 from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
-from ralph.pipeline.resolution_outcome import ResolvedOutcome
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+)
 
 if TYPE_CHECKING:
     import pytest
@@ -220,6 +227,33 @@ def test_fast_forward_regression_worktree_query_failure_is_a_retryable_skip(
     assert not isinstance(outcome, ResolvedOutcome)
     assert is_retryable_fast_forward_failure(outcome) is True
     assert not any(argv and argv[0] == "update-ref" for argv in calls)
+
+
+def test_is_retryable_fast_forward_failure_returns_false_for_non_retryable_outcomes() -> None:
+    assert is_retryable_fast_forward_failure(NextStrategyOutcome(strategy="rebase")) is False
+    assert (
+        is_retryable_fast_forward_failure(
+            ConfigFailureOutcome(file=Path("ralph.toml"), parse_error="bad syntax")
+        )
+        is False
+    )
+    assert is_retryable_fast_forward_failure(UnknownOutcome(error=RuntimeError("boom"))) is False
+    assert (
+        is_retryable_fast_forward_failure(
+            WaitingOutcome(
+                external_condition="target branch missing",
+                resumes_when="target branch exists",
+            )
+        )
+        is False
+    )
+    assert is_retryable_fast_forward_failure(ResolvedOutcome()) is False
+    assert (
+        is_retryable_fast_forward_failure(
+            RetryLaterOutcome(on_change="target advanced concurrently (CAS mismatch)")
+        )
+        is True
+    )
 
 
 def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(

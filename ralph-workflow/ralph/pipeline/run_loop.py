@@ -1921,7 +1921,8 @@ def _parse_paused_rebase_outcome(
         case NextStrategyOutcome(strategy=strat):
             reason = strat
         case ConfigFailureOutcome(file=f, parse_error=err):
-            reason = f"{f}: {err}"
+            fix_prefix = f"fix {f} then run ralph --check-config"
+            reason = f"{fix_prefix}: {err}" if err else fix_prefix
             cause_val = "CONFIG_FAILURE"
         case UnknownOutcome(error=err):
             reason = str(err)

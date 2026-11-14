@@ -321,6 +321,7 @@ def _resolve_rebase_stop(
     if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
         return _resolve_overridden_rebase(owner, target, resolver, config)
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -337,6 +338,8 @@ def _resolve_rebase_stop(
     )
     if isinstance(attempt_result, StopResolutionBlocked):
         return WaitingOutcome(attempt_result.reason, "resolution attempt key changes")
+    if isinstance(attempt_result, RebaseResolutionResult):
+        attempt_result = attempt_result.outcome
     if not isinstance(
         attempt_result,
         (

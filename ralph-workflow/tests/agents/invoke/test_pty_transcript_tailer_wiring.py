@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
@@ -222,14 +222,14 @@ def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion
     thread.start()
     _wait_for_tailer_start(tailer_started, reader)
     reader._monitor_stop.set()
-    lazy_tails_for_stop: Any = reader._subagent_tails
+    lazy_tails_for_stop = reader._subagent_tails
     if lazy_tails_for_stop is not None:
         lazy_tails_for_stop.stop()
     thread.join(timeout=2.0)
     assert not thread.is_alive(), "_transcript_thread did not terminate"
     assert captured["exc"] is None, f"_transcript_thread raised: {captured['exc']!r}"
 
-    lazy_tails: Any = reader._subagent_tails
+    lazy_tails = reader._subagent_tails
     assert lazy_tails is not None, (
         "the tailer was not constructed lazily on the first session"
         " event; the parent transcript never reached the tailer"

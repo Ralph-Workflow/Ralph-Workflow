@@ -4,12 +4,6 @@ from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT, COMMIT_M
 from ralph.phases.required_artifacts import resolve_required_artifact
 from ralph.policy.loader import default_dir, load_policy
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_repo_wide_guard_no_lingering_commit_cleanup_identifiers": (
-        "redundant ad-hoc check removed in favor of canonical repo-wide test_repo_retired_identifier_guard"
-    ),
-}
-
 _COMMIT_DRAIN = "development_commit"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {

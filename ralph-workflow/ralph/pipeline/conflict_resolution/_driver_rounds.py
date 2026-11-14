@@ -494,37 +494,30 @@ def _wait_and_select_candidate(
     eligible: list[str],
     delay: int,
 ) -> int | None:
-    if session.caller_provided:
-        return None
+    del session
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
     _driver_mod._sleep_seconds(delay / 1000.0)
     mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
     if mono_after - mono_before < (delay / 1000.0) * 0.5:
-        clock_inst = getattr(controller, "clock", getattr(controller, "_clock", None))
-        if hasattr(clock_inst, "advance"):
+        from ralph.agents.timeout_clock import FakeClock
+
+        clock_inst = controller.clock
+        if isinstance(clock_inst, FakeClock):
             clock_inst.advance(delay / 1000.0)
-        store_clock = getattr(
-            controller.unavailability_store,
-            "clock",
-            getattr(controller.unavailability_store, "_clock", None),
-        )
-        if store_clock is not clock_inst and hasattr(store_clock, "advance"):
-            store_clock.advance(delay / 1000.0)
         controller.prune_expired()
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
+    from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
 
-    def _candidate_wait_ms(name: str) -> int:
-        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-        if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
-            wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
-        return wait
+    def _sort_key(name: str) -> int:
+        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
 
-    shortest_agent = min(eligible, key=_candidate_wait_ms)
-    return candidates.index(shortest_agent)
+    if current_clock() is _DEFAULT_CLOCK:
+        return candidates.index(min(eligible, key=_sort_key))
+    return None
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

@@ -219,7 +219,7 @@ def test_transcript_visibility() -> None:
     state = _three_agent_state(current_index=1)
     logs: list[str] = []
 
-    def sink(msg: str) -> None:
+    def sink(msg: object) -> None:
         logs.append(str(msg))
 
     sink_id = logger.add(sink, level="INFO", format="{message}")

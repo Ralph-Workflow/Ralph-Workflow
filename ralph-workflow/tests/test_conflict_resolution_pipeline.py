@@ -45,10 +45,11 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
-        "with skip_same_agent_retries=True primary runs once without retries and "
-        "fallback retries until exhaustion, yielding four total candidate calls"
+        "without skip_same_agent_retries primary exhausts 3 attempts and fallback "
+        "exhausts 3 attempts, producing six total candidate calls and leaving fallback at index 1"
     ),
 }
+
 
 if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
@@ -355,7 +356,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert not isinstance(outcome, ResolvedOutcome)
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
-    assert calls == ["primary", "fallback", "fallback", "fallback"]
+    assert calls == ["primary", "primary", "primary", "fallback", "fallback", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
@@ -372,6 +373,7 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     session = ResolutionSession(
         max_rounds_per_stop=1,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
+        skip_same_agent_retries=True,
     )
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,

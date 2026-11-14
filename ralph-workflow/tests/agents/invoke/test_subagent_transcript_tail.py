@@ -4,7 +4,7 @@ import json
 import queue
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._pty_transcript import find_claude_subagent_transcripts
 from ralph.agents.invoke._subagent_transcript import (
@@ -12,12 +12,12 @@ from ralph.agents.invoke._subagent_transcript import (
     ClaudeSubagentTranscriptTails,
     R7AbsentLayoutDiagnostic,
     read_meta_file,
+    summarize_event,
 )
+from ralph.agents.parsers.interactive_transcript_event import InteractiveTranscriptEvent
 
 if TYPE_CHECKING:
     import pytest
-
-    from ralph.agents.parsers.interactive_transcript_event import InteractiveTranscriptEvent
 
 
 _SINK_WAIT_TIMEOUT_SECONDS = 5.0
@@ -47,12 +47,12 @@ def _setup_shadow_home(
     return project_dir
 
 
-def _write_jsonl_line(path: Path, obj: dict[str, Any]) -> None:
+def _write_jsonl_line(path: Path, obj: dict[str, object]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(obj) + "\n")
 
 
-def _write_meta_file(path: Path, obj: dict[str, Any]) -> None:
+def _write_meta_file(path: Path, obj: dict[str, object]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         json.dump(obj, handle)
 
@@ -432,8 +432,6 @@ def test_child_event_summary_carries_meta_metadata() -> None:
         "toolUseId": "toolu_01W6KdMFDkyGPNj431JA8wNW",
         "spawnDepth": 1,
     }
-    from ralph.agents.parsers.interactive_transcript_event import InteractiveTranscriptEvent
-
     event = InteractiveTranscriptEvent(
         kind="tool_use",
         text="claude tool: Read",
@@ -445,11 +443,9 @@ def test_child_event_summary_carries_meta_metadata() -> None:
 
 def _invoke_summarize(
     event: InteractiveTranscriptEvent,
-    meta_dict: dict[str, Any] | None,
+    meta_dict: dict[str, object] | None,
     transcript_path: Path,
-) -> str:
-    from ralph.agents.invoke._subagent_transcript import summarize_event
-
+) -> str | None:
     return summarize_event(event, meta_dict, transcript_path)
 
 

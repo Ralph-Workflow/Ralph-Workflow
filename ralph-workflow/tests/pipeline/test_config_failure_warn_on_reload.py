@@ -16,12 +16,25 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
 )
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 from ralph.workspace.scope import WorkspaceScope
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolver_reload_emits_warn_line_on_config_failure": (
+        "accept ConfigFailureOutcome returned by resolver on config error"
+    ),
+    "test_unchanged_broken_config_warns_once_across_reloads": (
+        "accept ConfigFailureOutcome returned by resolver on config error"
+    ),
+    "test_changed_broken_config_warns_again": (
+        "accept ConfigFailureOutcome returned by resolver on config error"
+    ),
+}
 
 
 class _LogLevelDouble(Protocol):
@@ -69,7 +82,7 @@ def _reload_once(resolver: RebaseStopResolver, root: Path) -> StopResolutionOutc
     session = ResolutionSession()
     with bind_active_rebase_resolution_session(session):
         outcome = resolver(root, "main", stop)
-    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
+    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome, ConfigFailureOutcome))
     return outcome
 
 
@@ -136,9 +149,8 @@ def test_resolver_reload_emits_warn_line_on_config_failure(tmp_path: Path) -> No
         with bind_active_rebase_resolution_session(session):
             outcome = resolver(tmp_path, "main", stop)
 
-        assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
-        assert isinstance(outcome, RetryLaterOutcome)
-        assert outcome.on_change is not None
+        assert isinstance(outcome, ConfigFailureOutcome)
+        assert outcome.file == broken_toml
 
         matching_logs = [
             r["message"]

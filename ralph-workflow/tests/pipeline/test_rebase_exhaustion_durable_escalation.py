@@ -119,12 +119,10 @@ def test_rebase_exhaustion_regression_continuation_is_durable_and_charges_once(
     before = ladder_charge_count(ledger.read())
 
     def exhausted_resolve(
-        root: Path,
-        target: str,
-        resolver: object,
-        session: ResolutionSession | None = None,
+        root: Path, target: str, resolver: object, session: ResolutionSession | None = None
     ) -> bool:
-        _set_spent_chain_terminal_reason(session)
+        if session is not None:
+            _set_spent_chain_terminal_reason(session)
         return False
 
     monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", exhausted_resolve)

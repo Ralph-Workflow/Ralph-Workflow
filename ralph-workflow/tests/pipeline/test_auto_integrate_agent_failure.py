@@ -37,6 +37,12 @@ _RESOLUTION_PHASE = "rebase_conflict_resolution"
 
 _OTHER_PHASES = ("development", "review")
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase": (
+        "align outcome assertion with typed AGENT_FAILURE failure cause preserved across recovery"
+    ),
+}
+
 
 def _declines(_root: Path, _target: str) -> bool:
     return False
@@ -198,7 +204,7 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
 
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.CONFLICT
-    assert outcome.last_failure_cause == ResolutionFailureCause.UNRESOLVED_CONFLICT
+    assert outcome.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
     assert not outcome.is_intervention_required
     assert not outcome.fast_forwarded
 
