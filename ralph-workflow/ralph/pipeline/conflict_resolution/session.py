@@ -311,10 +311,20 @@ def classify_failed_resolution_attempt(
     from ralph.recovery.classifier import FailureContext
 
     controller = ensure_session_controller(session, policy_bundle)
+    effective_outcome = outcome
+    if not workspace_changed:
+        if outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
+            effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
+        elif outcome is ConflictAttemptOutcome.ATTEMPT_FAILED:
+            effective_outcome = (
+                ConflictAttemptOutcome.STALLED_NO_PROGRESS
+                if session is not None and session.last_attempt_saw_activity
+                else ConflictAttemptOutcome.NO_ACTIVITY
+            )
     classified = controller.classify_conflict_attempt(
         raw_failure,
         agent=agent_name,
-        outcome=outcome,
+        outcome=effective_outcome,
         unresolved_count=unresolved_count,
     )
     agents = list(candidates) if candidates else [agent_name]

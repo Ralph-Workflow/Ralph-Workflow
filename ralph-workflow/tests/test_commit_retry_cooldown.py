@@ -6,6 +6,12 @@ import pytest
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
+from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import UnifiedConfig
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+from ralph.recovery.agent_failure_ledger import Cooldown
 
 
 def test_retry_budget_exhaustion_surfaces_failure_without_agent_choice_verdict() -> None:
@@ -136,3 +142,36 @@ def test_complete_commit_rejects_missing_or_empty_sha() -> None:
         match="cannot promote integration record to integrated without a valid integrated_feature_sha",
     ):
         complete_commit(record, integrated_feature_sha="   ")
+
+
+def test_commit_outer_retry_regression_owner_controller_preserves_cooldown() -> None:
+    clock = FakeClock()
+    deps = AttemptRunnerDeps(
+        clock=clock,
+        invoke=lambda *_args, **_kwargs: None,
+        probe_runner=None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+    controller = build_entry_point_recovery_controller(
+        AgentEntryPoint.COMMIT_GENERATION,
+        config=UnifiedConfig(),
+        policy_bundle=None,
+        deps=deps,
+        agent_max_consecutive_unproductive=2,
+    )
+
+    controller.record_attempt_fact(
+        "commit",
+        "commit-agent",
+        artifact_valid=False,
+        workspace_changed=False,
+    )
+    controller.record_attempt_fact(
+        "commit",
+        "commit-agent",
+        artifact_valid=False,
+        workspace_changed=False,
+    )
+
+    assert isinstance(controller.ledger.status("commit", "commit-agent"), Cooldown)

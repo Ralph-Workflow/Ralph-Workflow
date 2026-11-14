@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 from ralph.testing.audit_agent_failure_single_owner import (
     PRODUCTION_SCAN_SUBTREES,
+    PROGRESS_PATH_ALLOWLIST,
     TEMPORARY_TRANSITIONAL_RULES,
     audit_production_source,
     audit_test_source,
@@ -25,6 +26,110 @@ def handle_attempt(ledger: AgentFailureLedger, fact: AttemptFact) -> None:
 """
     violations = audit_production_source("ralph/pipeline/runner.py", source)
     assert not violations
+
+
+def test_agent_invocation_catch_and_continue_without_owner_is_flagged() -> None:
+    source = """
+def invoke_chain(controller):
+    for agent in agents:
+        try:
+            run_agent_attempt(agent)
+        except Exception:
+            continue
+"""
+    violations = audit_production_source("ralph/project_policy/runner.py", source)
+    assert any(v.rule == "production_agent_failure_owner_bypass" for v in violations)
+
+
+def test_non_penalising_classified_failure_without_progress_allowlist_is_flagged() -> None:
+    source = """
+def classify_attempt():
+    return ClassifiedFailure(
+        category=category,
+        reason="failed",
+        attributed_agent="agent",
+        attributed_phase="development",
+        counts_against_budget=False,
+        original_exception=None,
+        raw_message="failed",
+        is_unavailable=False,
+    )
+"""
+    violations = audit_production_source("ralph/recovery/custom.py", source)
+    assert any(v.rule == "production_unjustified_non_penalising_failure" for v in violations)
+
+
+def test_non_penalising_classified_failure_on_justified_progress_path_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = """
+def classify_attempt():
+    return ClassifiedFailure(
+        category=category,
+        reason="progress made",
+        attributed_agent="agent",
+        attributed_phase="development",
+        counts_against_budget=False,
+        original_exception=None,
+        raw_message="progress made",
+        is_unavailable=False,
+    )
+"""
+    monkeypatch.setitem(
+        PROGRESS_PATH_ALLOWLIST,
+        ("ralph/recovery/progress.py", "classify_attempt"),
+        "Valid artifact proves useful progress.",
+    )
+    violations = audit_production_source("ralph/recovery/progress.py", source)
+    assert not [v for v in violations if v.rule == "production_unjustified_non_penalising_failure"]
+
+
+def test_progress_allowlist_anchor_survives_line_movement(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(
+        PROGRESS_PATH_ALLOWLIST,
+        ("ralph/recovery/progress.py", "classify_attempt"),
+        "Valid artifact proves useful progress.",
+    )
+    source = """
+
+
+
+def classify_attempt():
+    return ClassifiedFailure(
+        category=category,
+        reason="progress made",
+        attributed_agent="agent",
+        attributed_phase="development",
+        counts_against_budget=False,
+        original_exception=None,
+        raw_message="progress made",
+        is_unavailable=False,
+    )
+"""
+    violations = audit_production_source("ralph/recovery/progress.py", source)
+    assert not [v for v in violations if v.rule == "production_unjustified_non_penalising_failure"]
+
+
+def test_run_agent_attempt_with_owner_controller_is_accepted() -> None:
+    source = """
+def invoke_chain(controller):
+    try:
+        run_agent_attempt(agent, controller=controller)
+    except Exception:
+        continue_after_failure()
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_failure_owner_bypass"]
+
+
+def test_phase_owned_cooldown_state_is_flagged() -> None:
+    source = """
+class DevelopmentPhase:
+    def __init__(self):
+        self.agent_cooldowns = {}
+"""
+    violations = audit_production_source("ralph/phases/development.py", source)
+    assert any(v.rule == "production_phase_failure_state" for v in violations)
 
 
 def test_competing_technical_retry_cap_assignment_flagged() -> None:

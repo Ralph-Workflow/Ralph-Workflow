@@ -16,9 +16,9 @@ class ConflictResolutionConfig(RalphBaseModel):
         default=3,
         ge=1,
         description=(
-            "Compatibility field retained for older configs. It does not cap "
-            "how many resolution rounds conflict resolution runs; the agent failure "
-            "ledger alone governs retry eligibility."
+            "Maximum number of resolution rounds one conflict-resolution stop runs. "
+            "A round that reaches the cap without resolving the conflict escalates "
+            "to intervention instead of invoking the agent again."
         ),
     )
     max_rebase_conflict_stops: int = Field(default=10, ge=1)

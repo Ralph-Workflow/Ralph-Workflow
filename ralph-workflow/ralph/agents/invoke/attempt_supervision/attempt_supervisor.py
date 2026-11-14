@@ -98,6 +98,10 @@ class AttemptSupervisor:
         return self._recorder
 
     @property
+    def teardown_subtree(self) -> TeardownFn:
+        return self._teardown
+
+    @property
     def winner(self) -> ObservationRecord | None:
         return self._winner
 
@@ -131,10 +135,14 @@ class AttemptSupervisor:
                 self._recorder.record_reported_returncode(returncode)
             return TerminationOutcome(issuer=attempt_issuer, returncode=returncode)
 
-    def act_with_teardown(self, observation: AttemptObservation) -> TerminationOutcome | None:
+    def teardown_observed_subtree(
+        self, observation: AttemptObservation
+    ) -> TerminationOutcome | None:
         if _issuer_mapping.suppresses_teardown(observation):
             raise ValueError("observation does not permit subtree teardown")
         return self.act(observation)
+
+    act_with_teardown = teardown_observed_subtree
 
     def cleanup(
         self,

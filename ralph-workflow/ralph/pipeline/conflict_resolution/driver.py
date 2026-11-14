@@ -576,15 +576,13 @@ def _execute_round_loop(
             if _operator_cap_expired(session, clock):
                 _emit_expired_operator_cap(display, session, conflicted, clock)
                 return False
-            _push_round_status(
-                display, root, target, round_index, max(round_index, round_cap), stop
-            )
+            _push_round_status(display, root, target, round_index, round_cap, stop)
             prompt_path = prompt_materializer(
                 root=root,
                 target=target,
                 conflicted_paths=conflicted,
                 round_index=round_index,
-                round_cap=max(round_index, round_cap),
+                round_cap=round_cap,
                 session=session,
                 stop=stop,
                 strategy_history=strategy_history,

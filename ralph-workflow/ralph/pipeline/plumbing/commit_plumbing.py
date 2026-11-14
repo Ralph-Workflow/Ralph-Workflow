@@ -418,6 +418,17 @@ def run_commit_plumbing(
     output_lines: list[str] = []
 
     materializer = effective_core.master_prompt_materializer
+    recovery_config = chain_config.general_config or UnifiedConfig()
+    recovery_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
+    recovery_deps = dataclasses.replace(
+        recovery_deps,
+        probe_runner=_lazy_commit_probe_runner(recovery_config),
+    )
+    recovery_controller = _attempt_controller(
+        recovery_config,
+        effective_pipeline_deps,
+        recovery_deps,
+    )
     with with_bridge_lifetime(
         effective_core,
         effective_bridge_factory,
@@ -461,6 +472,8 @@ def run_commit_plumbing(
                     output_collector=output_lines,
                     materializer=materializer,
                     pipeline_deps=effective_pipeline_deps,
+                    recovery_controller=recovery_controller,
+                    recovery_deps=recovery_deps,
                 )
             except IntegrationDispatchBlockedError as blocked:
                 return CommitAgentResult(
@@ -554,6 +567,8 @@ def _generate_commit_message_with_agent(
     output_collector: list[str] | None = None,
     materializer: MaterializeMasterPromptFn | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    recovery_controller: RecoveryController | None = None,
+    recovery_deps: AttemptRunnerDeps | None = None,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
 
@@ -588,6 +603,8 @@ def _generate_commit_message_with_agent(
         output_collector=output_collector,
         materializer=materializer,
         pipeline_deps=pipeline_deps,
+        recovery_controller=recovery_controller,
+        recovery_deps=recovery_deps,
     )
     if not initial_attempt.failure_detail:
         return _finalize_commit_attempt(
@@ -615,6 +632,8 @@ def _generate_commit_message_with_agent(
                 output_collector=output_collector,
                 materializer=materializer,
                 pipeline_deps=pipeline_deps,
+                recovery_controller=recovery_controller,
+                recovery_deps=recovery_deps,
             )
             if not session_retry.failure_detail:
                 return _finalize_commit_attempt(
@@ -648,6 +667,8 @@ def _generate_commit_message_with_agent(
                 output_collector=output_collector,
                 materializer=materializer,
                 pipeline_deps=pipeline_deps,
+                recovery_controller=recovery_controller,
+                recovery_deps=recovery_deps,
             )
             if not summary_retry.failure_detail:
                 return _finalize_commit_attempt(
@@ -685,6 +706,8 @@ def _run_commit_agent_attempt_with_recovery(
     output_collector: list[str] | None = None,
     materializer: MaterializeMasterPromptFn | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    recovery_controller: RecoveryController | None = None,
+    recovery_deps: AttemptRunnerDeps | None = None,
 ) -> tuple[CommitAgentAttempt, str | None, Exception | None]:
     last_session_id: str | None = prior_session_id
     last_error: Exception | None = None
@@ -732,20 +755,24 @@ def _run_commit_agent_attempt_with_recovery(
             pro_hooks=None,
         )
         invoke = _commit_invoke_agent(commit_module)
-        attempt_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
-        attempt_deps = dataclasses.replace(
-            attempt_deps, probe_runner=_lazy_commit_probe_runner(effective_general_config)
-        )
+        if recovery_deps is None:
+            recovery_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
+            recovery_deps = dataclasses.replace(
+                recovery_deps,
+                probe_runner=_lazy_commit_probe_runner(effective_general_config),
+            )
+        if recovery_controller is None:
+            recovery_controller = _attempt_controller(
+                effective_general_config,
+                effective_pipeline_deps,
+                recovery_deps,
+            )
         attempt = run_agent_attempt(
             AgentEntryPoint.COMMIT_GENERATION,
             effect=effect,
             config=effective_general_config,
-            controller=_attempt_controller(
-                effective_general_config,
-                effective_pipeline_deps,
-                attempt_deps,
-            ),
-            deps=attempt_deps,
+            controller=recovery_controller,
+            deps=recovery_deps,
             pipeline_deps=effective_pipeline_deps,
             workspace_scope=workspace_scope,
             bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),

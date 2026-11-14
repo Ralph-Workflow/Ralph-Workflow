@@ -351,7 +351,7 @@ def _typed_conflict_attempt_reason(
 ) -> str:
     if outcome.value == "unresolved_remaining":
         return f"agent reported success but {unresolved_count} conflicted path(s) remain"
-    if outcome.value == "stalled":
+    if outcome in (ConflictAttemptOutcome.STALLED, ConflictAttemptOutcome.STALLED_NO_PROGRESS):
         return (
             f"agent reported success but made no progress: {unresolved_count} "
             "conflicted path(s) remain unchanged"
@@ -690,11 +690,13 @@ class RecoveryController:
                 if failure.category == FailureCategory.USER_CONFIG
                 else (raw_failure if isinstance(raw_failure, str) else None)
             ),
+            charge_ledger=not failure.is_unavailable,
         )
         if (
             failure.must_charge_ledger
             and current_agent is not None
             and not artifact_valid
+            and not failure.is_unavailable
             and not self._last_attempt_charged_ledger
         ):
             # The agent run already finalized this attempt as a clean exit, so
@@ -1058,21 +1060,7 @@ class RecoveryController:
         reason: UnavailabilityReason,
         verdict: PersistedVerdict | None = None,
     ) -> int:
-        logger.warning(
-            "Confirmed agent unavailability: phase={} agent={} reason={} verdict={} "
-            "facts={} attribution={} probe_outcome={} termination={} "
-            "return_code_discrepancy={}",
-            phase,
-            agent,
-            reason,
-            verdict.verdict if verdict is not None else None,
-            verdict.facts if verdict is not None else None,
-            verdict.attribution if verdict is not None else None,
-            verdict.probe_outcome if verdict is not None else None,
-            verdict.termination if verdict is not None else None,
-            verdict.return_code_discrepancy if verdict is not None else None,
-        )
-        return self._mark_agent_unavailable(phase, agent, reason)
+        return self._mark_agent_unavailable(phase, agent, reason, verdict=verdict)
 
     def record_confirmed_dead_agent(
         self,
@@ -1134,14 +1122,29 @@ class RecoveryController:
         outcome = self._ledger.record(fact)
 
         if outcome.demoted:
-            logger.warning(
-                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
-                agent,
-                phase,
-                outcome.consecutive_unproductive,
-                outcome.total_unproductive,
-                outcome.reason,
-            )
+            if isinstance(outcome.status, Cooldown):
+                now_ms = self._now_ms()
+                self._log_cooldown_decision(
+                    phase,
+                    agent,
+                    UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+                    duration_ms=max(0, outcome.status.until_ms - now_ms),
+                    expiry_ms=outcome.status.until_ms,
+                    demotion=(
+                        outcome.consecutive_unproductive,
+                        outcome.total_unproductive,
+                        outcome.status.reason,
+                    ),
+                )
+            else:
+                logger.warning(
+                    "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
+                    agent,
+                    phase,
+                    outcome.consecutive_unproductive,
+                    outcome.total_unproductive,
+                    outcome.reason,
+                )
             chain_agents = self._get_chain_agents(phase)
             if chain_agents is not None and len(chain_agents) == 1 and chain_agents[0] == agent:
                 return (
@@ -1241,15 +1244,7 @@ class RecoveryController:
         if failure.category == FailureCategory.USER_CONFIG:
             if failure.is_unavailable and agent is not None:
                 if not bench_applied:
-                    cooldown_ms = self._mark_agent_unavailable(
-                        phase, agent, reason=failure.unavailability_reason
-                    )
-                    logger.info(
-                        "{} unavailable: {}; cooldown {}ms active",
-                        agent,
-                        failure.unavailability_reason,
-                        cooldown_ms,
-                    )
+                    self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
                 new_state = new_state.copy_with(
                     last_unavailability_reason=(
                         str(failure.unavailability_reason)
@@ -1269,15 +1264,7 @@ class RecoveryController:
             )
 
         if failure.is_unavailable and agent is not None and not bench_applied:
-            cooldown_ms = self._mark_agent_unavailable(
-                phase, agent, reason=failure.unavailability_reason
-            )
-            logger.info(
-                "{} unavailable: {}; cooldown {}ms active",
-                agent,
-                failure.unavailability_reason,
-                cooldown_ms,
-            )
+            self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
             new_state = new_state.copy_with(
                 last_unavailability_reason=(
                     str(failure.unavailability_reason) if failure.unavailability_reason else None
@@ -1360,11 +1347,59 @@ class RecoveryController:
         phase: str,
         agent: str,
         reason: UnavailabilityReason | None = None,
+        verdict: PersistedVerdict | None = None,
     ) -> int:
         entry = self._unavailability_tracker.mark_unavailable(phase, agent, reason)
         multiplier: int = pow(2, entry.attempt)
         computed = entry.base_backoff_ms * multiplier
-        return min(computed, entry.max_backoff_ms)
+        duration_ms = min(computed, entry.max_backoff_ms)
+        effective_reason = reason or UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
+        self._log_cooldown_decision(
+            phase,
+            agent,
+            effective_reason,
+            duration_ms=duration_ms,
+            expiry_ms=entry.unavailable_until_ms,
+            verdict=verdict,
+        )
+        return duration_ms
+
+    def _log_cooldown_decision(
+        self,
+        phase: str,
+        agent: str,
+        reason: UnavailabilityReason,
+        *,
+        duration_ms: int,
+        expiry_ms: int,
+        verdict: PersistedVerdict | None = None,
+        demotion: tuple[int, int, str] | None = None,
+    ) -> None:
+        prefix = "Confirmed agent unavailability " if verdict is not None else ""
+        demotion_text = ""
+        if demotion is not None:
+            demotion_text = (
+                f" Agent '{agent}' demoted in phase '{phase}' "
+                f"(consecutive={demotion[0]}, total={demotion[1]}, reason={demotion[2]})"
+            )
+        logger.warning(
+            "{}cooldown_decision phase={} agent={} reason={} duration_ms={} expiry_ms={} "
+            "verdict={} facts={} attribution={} probe_outcome={} termination={} "
+            "return_code_discrepancy={}{}",
+            prefix,
+            phase,
+            agent,
+            reason,
+            duration_ms,
+            expiry_ms,
+            verdict.verdict if verdict is not None else None,
+            verdict.facts if verdict is not None else None,
+            verdict.attribution if verdict is not None else None,
+            verdict.probe_outcome if verdict is not None else None,
+            verdict.termination if verdict is not None else None,
+            verdict.return_code_discrepancy if verdict is not None else None,
+            demotion_text,
+        )
 
     def _now_ms(self) -> int:
         return int(self._clock.monotonic() * 1000)
@@ -1566,15 +1601,25 @@ class RecoveryController:
                 phase,
                 reason,
             )
+            unavailable_reason = None
+            if effective is ConflictAttemptOutcome.NO_ACTIVITY:
+                unavailable_reason = UnavailabilityReason.NO_OUTPUT_AT_START
+            elif effective in (
+                ConflictAttemptOutcome.STALLED,
+                ConflictAttemptOutcome.STALLED_NO_PROGRESS,
+            ):
+                unavailable_reason = UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
             return ClassifiedFailure(
                 category=FailureCategory.AGENT,
                 reason=reason,
                 attributed_agent=agent,
                 attributed_phase=phase,
-                counts_against_budget=False,
+                counts_against_budget=unavailable_reason is not None,
                 original_exception=raw_failure if isinstance(raw_failure, BaseException) else None,
                 raw_message="" if raw_failure is None else str(raw_failure),
                 must_charge_ledger=True,
+                is_unavailable=unavailable_reason is not None,
+                unavailability_reason=unavailable_reason,
             )
         raw_text: BaseException | str = raw_failure if raw_failure is not None else ""
         return self._classifier.classify(

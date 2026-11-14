@@ -25,7 +25,6 @@ def select_resolution_action(
     *,
     resolved: bool | None = None,
 ) -> ResolutionAction:
-    del round_index, cap
     if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS or bool(
         session.out_of_reach_paths
     ):
@@ -38,6 +37,9 @@ def select_resolution_action(
             if session.terminal_reason is not None
             else ResolutionAction.PROCEED_TO_FAST_FORWARD
         )
+
+    if cap > 0 and round_index > cap:
+        return ResolutionAction.ESCALATE_TO_INTERVENTION
 
     return ResolutionAction.CONTINUE_AGENT_ROUND
 

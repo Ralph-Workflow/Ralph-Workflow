@@ -436,3 +436,41 @@ def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
     ):
         invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
     assert probed, "the crashed launch must still reach the recovery probe boundary"
+
+
+def test_policy_invocation_regression_launch_crashes_use_owner_cooldown_and_fallover(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load_result = _load_result(_bundle_with_development_bound_remediation())
+    invoked: list[str] = []
+
+    def invoke_effect(effect: object, *_args: object, **_kwargs: object) -> object:
+        from ralph.pipeline.events import PipelineEvent
+
+        agent_name = must_str(getattr(effect, "agent_name", ""))
+        invoked.append(agent_name)
+        if agent_name == "dev-agent":
+            raise RuntimeError("missing agent binary")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        object(),
+        load_result.workspace_scope,
+        None,
+        make_display_context(),
+    )
+
+    for _attempt in range(4):
+        assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+
+    assert invoked == [
+        "dev-agent",
+        "codex",
+        "dev-agent",
+        "codex",
+        "dev-agent",
+        "codex",
+        "codex",
+    ]

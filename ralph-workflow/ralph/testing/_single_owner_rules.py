@@ -17,6 +17,13 @@ class SingleOwnerViolation:
 
 TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
 
+PROGRESS_PATH_ALLOWLIST: dict[tuple[str, str], str] = {
+    (
+        "ralph/pipeline/reducer.py",
+        "_reduce_phase_failure",
+    ): "Phase-level failure routing preserves workspace progress and delegates the outcome to RecoveryController.handle.",
+}
+
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_COUNTER_READS: frozenset[tuple[str, str]] = frozenset(
@@ -261,6 +268,22 @@ def _check_production_assignment(
                     ),
                 )
             )
+        if (
+            target_name is not None
+            and rel_path.startswith("ralph/phases/")
+            and _is_phase_failure_state_name(target_name)
+        ):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_phase_failure_state",
+                    detail=(
+                        f"Phase-owned state '{target_name}' duplicates cooldown, skip-list, "
+                        "or backoff state owned by RecoveryController."
+                    ),
+                )
+            )
     return violations
 
 
@@ -298,7 +321,11 @@ def _check_production_attribute(node: ast.Attribute, rel_path: str) -> list[Sing
     return []
 
 
-def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation]:
+def _check_production_call(
+    node: ast.Call,
+    rel_path: str,
+    enclosing_function: str | None = None,
+) -> list[SingleOwnerViolation]:
     violations: list[SingleOwnerViolation] = [
         SingleOwnerViolation(
             path=rel_path,
@@ -356,7 +383,120 @@ def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerVio
                     ),
                 )
             )
+    if _call_name(node) == "ClassifiedFailure":
+        keyword_values = {keyword.arg: keyword.value for keyword in node.keywords if keyword.arg}
+        counts = keyword_values.get("counts_against_budget", _positional_arg(node, 4))
+        unavailable = keyword_values.get("is_unavailable", _positional_arg(node, 9))
+        if (
+            _is_false_constant(counts)
+            and (unavailable is None or _is_false_constant(unavailable))
+            and not _is_progress_path_allowed(rel_path, enclosing_function)
+        ):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_unjustified_non_penalising_failure",
+                    detail=(
+                        "ClassifiedFailure disables both budget charge and unavailability "
+                        "outside an explicitly justified progress-made path."
+                    ),
+                )
+            )
     return violations
+
+
+_AGENT_INVOCATION_CALLS: frozenset[str] = frozenset(
+    {
+        "execute_agent_effect",
+        "invoke_agent",
+        "invoke_resolution_agent",
+        "run_agent_attempt",
+    }
+)
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _is_false_constant(node: ast.AST | None) -> bool:
+    return isinstance(node, ast.Constant) and node.value is False
+
+
+def _positional_arg(node: ast.Call, index: int) -> ast.AST | None:
+    return node.args[index] if len(node.args) > index else None
+
+
+def _is_progress_path_allowed(rel_path: str, function_name: str | None) -> bool:
+    return function_name is not None and (rel_path, function_name) in PROGRESS_PATH_ALLOWLIST
+
+
+def _is_phase_failure_state_name(name: str) -> bool:
+    lowered = name.lower()
+    return any(
+        marker in lowered
+        for marker in ("cooldown", "backoff", "skip_agents", "skipped_agents", "agent_skip")
+    )
+
+
+def _check_agent_invocation_failure_routing(
+    node: ast.Try, rel_path: str
+) -> list[SingleOwnerViolation]:
+    invocation_calls = [
+        child
+        for statement in node.body
+        for child in ast.walk(statement)
+        if isinstance(child, ast.Call) and _call_name(child) in _AGENT_INVOCATION_CALLS
+    ]
+    if not invocation_calls:
+        return []
+    bypassed_lines: set[int] = set()
+    for handler in node.handlers:
+        if any(isinstance(child, ast.Raise) for child in ast.walk(handler)):
+            continue
+        calls = [child for child in ast.walk(handler) if isinstance(child, ast.Call)]
+        classifier_lines = [
+            call.lineno
+            for call in calls
+            if (name := _call_name(call)) is not None and name.startswith("classify_")
+        ]
+        handle_lines = [call.lineno for call in calls if _call_name(call) == "handle"]
+        routes_to_owner = any(
+            classifier_line < handle_line
+            for classifier_line in classifier_lines
+            for handle_line in handle_lines
+        )
+        if routes_to_owner:
+            continue
+        bypassed_lines.update(
+            invocation.lineno
+            for invocation in invocation_calls
+            if not _invocation_routes_through_owner(invocation)
+        )
+    return [
+        SingleOwnerViolation(
+            path=rel_path,
+            line=invocation.lineno,
+            rule="production_agent_failure_owner_bypass",
+            detail=(
+                f"Agent invocation '{_call_name(invocation)}' is caught without "
+                "routing the failure through classify_* followed by handle."
+            ),
+        )
+        for invocation in invocation_calls
+        if invocation.lineno in bypassed_lines
+    ]
+
+
+def _invocation_routes_through_owner(node: ast.Call) -> bool:
+    return _call_name(node) == "run_agent_attempt" and any(
+        keyword.arg == "controller" for keyword in node.keywords
+    )
 
 
 def _check_production_import(

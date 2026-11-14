@@ -16,6 +16,7 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.policy.loader import load_policy
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -57,19 +58,17 @@ def _stall(controller: RecoveryController, session: ResolutionSession, agent: st
     )
 
 
-def test_stalled_attempts_follow_the_shared_three_strike_cooldown() -> None:
+def test_u2_regression_stalled_attempt_immediately_enters_shared_cooldown() -> None:
     controller = _controller()
     session = ResolutionSession(recovery_controller=controller)
-    limit = controller.ledger.consecutive_limit
-
-    for _ in range(limit - 1):
-        _stall(controller, session, "primary")
-        assert controller.preferred_agent_index(PHASE_RESOLUTION, _AGENTS).agent == "primary"
 
     _stall(controller, session, "primary")
 
+    eligibility = dict(controller.chain_eligibility(PHASE_RESOLUTION, _AGENTS))
+    assert isinstance(eligibility["primary"], Cooldown)
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, _AGENTS)
     assert selection.agent == "fallback"
+    assert selection.index == 1
     assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary"]) > 0
 
 

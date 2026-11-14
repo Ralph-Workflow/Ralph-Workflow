@@ -179,10 +179,33 @@ def test_uncounted_auth_config_failure_logs_one_cooldown_transition() -> None:
         logger.remove(sink_id)
 
     assert event.counted_against_budget is False
-    cooldown_lines = [line for line in logs if "cursor/auto unavailable:" in line]
+    cooldown_lines = [line for line in logs if "cooldown_decision" in line]
     assert len(cooldown_lines) == 1
     assert "auth_config" in cooldown_lines[0]
-    assert "cooldown 5000ms active" in cooldown_lines[0]
+    assert "duration_ms=5000" in cooldown_lines[0]
+
+
+def test_u2_regression_tracker_cooldown_logs_one_complete_owner_decision() -> None:
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock)
+    logs: list[str] = []
+    sink_id = logger.add(logs.append, level="INFO", format="{message}")
+    try:
+        controller.handle(
+            _state(),
+            _cursor_auth_failure(),
+            FailureContext(phase="development", agent="cursor/auto"),
+        )
+    finally:
+        logger.remove(sink_id)
+
+    cooldown_lines = [line for line in logs if "cooldown_decision" in line]
+    assert len(cooldown_lines) == 1
+    assert "phase=development" in cooldown_lines[0]
+    assert "agent=cursor/auto" in cooldown_lines[0]
+    assert "reason=auth_config" in cooldown_lines[0]
+    assert "duration_ms=5000" in cooldown_lines[0]
+    assert "expiry_ms=5000" in cooldown_lines[0]
 
 
 def test_non_auth_user_config_failure_does_not_cool_agent() -> None:

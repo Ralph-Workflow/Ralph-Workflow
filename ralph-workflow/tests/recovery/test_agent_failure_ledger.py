@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.recovery.agent_failure_ledger import (
@@ -11,6 +12,7 @@ from ralph.recovery.agent_failure_ledger import (
     Eligible,
     Spent,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 
 def test_initial_status_is_eligible() -> None:
@@ -95,6 +97,37 @@ def test_consecutive_limit_triggers_cooldown() -> None:
     assert isinstance(status, Cooldown)
     assert status.is_cooldown
     assert not ledger.is_available("development", "agent-a")
+
+
+def test_u2_regression_ledger_cooldown_logs_one_complete_owner_decision() -> None:
+    clock = FakeClock(start=10.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            agent_max_consecutive_unproductive=3,
+            agent_max_total_unproductive=9,
+        )
+    )
+    logs: list[str] = []
+    sink_id = logger.add(logs.append, level="INFO", format="{message}")
+    try:
+        for _ in range(3):
+            controller.record_attempt_fact(
+                "development",
+                "agent-a",
+                artifact_valid=False,
+                workspace_changed=False,
+            )
+    finally:
+        logger.remove(sink_id)
+
+    cooldown_lines = [line for line in logs if "cooldown_decision" in line]
+    assert len(cooldown_lines) == 1
+    assert "phase=development" in cooldown_lines[0]
+    assert "agent=agent-a" in cooldown_lines[0]
+    assert "reason=dead_agent_no_progress" in cooldown_lines[0]
+    assert "duration_ms=60000" in cooldown_lines[0]
+    assert "expiry_ms=70000" in cooldown_lines[0]
 
 
 def test_cooldown_expiry_resets_consecutive_and_returns_eligible() -> None:

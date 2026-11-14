@@ -90,7 +90,7 @@ def _evaluate_round_attempt(
     agent_ran = attempt.invoked and attempt.agent_ran
     proved_by_worktree = agent_ran and not decision_paths
     resolved_now = (succeeded or proved_by_worktree) and not session.unresolved_paths
-    action = select_resolution_action(session, round_index, round_cap, resolved=resolved_now)
+    action = select_resolution_action(session, round_index + 1, round_cap, resolved=resolved_now)
     round_reason = (
         None
         if resolved_now

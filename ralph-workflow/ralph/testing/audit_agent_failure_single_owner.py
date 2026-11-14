@@ -11,11 +11,13 @@ from ralph.testing._single_owner_retry_cap_rule import _check_production_retry_c
 from ralph.testing._single_owner_rules import (
     _FORBIDDEN_TRACKER_MODULES,
     _FORBIDDEN_TRACKER_SYMBOLS,
+    PROGRESS_PATH_ALLOWLIST,
     TEMPORARY_PRODUCTION_ALLOWLIST,
     TEMPORARY_TEST_ALLOWLIST,
     TEMPORARY_TEST_COUNTER_READS,
     TEMPORARY_TRANSITIONAL_RULES,
     SingleOwnerViolation,
+    _check_agent_invocation_failure_routing,
     _check_production_assignment,
     _check_production_attribute,
     _check_production_call,
@@ -44,6 +46,7 @@ from ralph.testing._single_owner_test_rules import (
 
 __all__ = [
     "PRODUCTION_SCAN_SUBTREES",
+    "PROGRESS_PATH_ALLOWLIST",
     "TEMPORARY_PRODUCTION_ALLOWLIST",
     "TEMPORARY_TEST_ALLOWLIST",
     "TEMPORARY_TEST_COUNTER_READS",
@@ -91,6 +94,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
             )
         ]
 
+    enclosing_functions = _enclosing_function_names(tree)
     violations: list[SingleOwnerViolation] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
@@ -108,11 +112,28 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
         elif isinstance(node, (ast.If, ast.While, ast.IfExp)):
             violations.extend(_check_production_retry_cap_rule(node, rel_path))
         elif isinstance(node, ast.Call):
-            violations.extend(_check_production_call(node, rel_path))
+            violations.extend(
+                _check_production_call(node, rel_path, enclosing_functions.get(id(node)))
+            )
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             violations.extend(_check_production_import(node, rel_path))
     violations.extend(_check_ralph_authored_classifier_inputs(tree, rel_path))
+    violations.extend(
+        violation
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Try)
+        for violation in _check_agent_invocation_failure_routing(node, rel_path)
+    )
     return violations
+
+
+def _enclosing_function_names(tree: ast.Module) -> dict[int, str]:
+    names: dict[int, str] = {}
+    for function in ast.walk(tree):
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in ast.walk(function):
+                names.setdefault(id(child), function.name)
+    return names
 
 
 def _check_test_import(

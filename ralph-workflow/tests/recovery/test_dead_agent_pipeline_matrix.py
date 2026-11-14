@@ -284,7 +284,9 @@ def test_reducer_style_finalize_claims_the_outcome_without_double_charge(
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=_scenario_ids(ALL_SCENARIOS))
-def test_canary_probe_mode_records_without_charge_bench_or_probe(scenario: MatrixScenario) -> None:
+def test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_probe(
+    scenario: MatrixScenario,
+) -> None:
     observation, controller, _clock = run_matrix_scenario(AgentEntryPoint.CANARY_PROBE, scenario)
 
     assert observation.probe_calls == ()

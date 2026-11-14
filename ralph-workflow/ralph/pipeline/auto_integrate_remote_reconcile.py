@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.config.models import UnifiedConfig
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import (
@@ -31,6 +32,7 @@ from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_pro
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
     current_rebase_identity,
+    resolution_session_from_config,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_resolution import retained_integration_reason
@@ -38,7 +40,7 @@ from ralph.pipeline.integration_resolution import retained_integration_reason
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
@@ -224,17 +226,15 @@ def resolve_rebase_in_progress(
     target: str,
     resolver: RebaseStopResolver,
     *,
-    session: object | None = None,
+    session: ResolutionSession | None = None,
 ) -> bool:
     from ralph.pipeline._stop_resolution_entry import production_rebase_runner
 
-    effective_session = session if isinstance(session, ResolutionSession) else None
-    return production_rebase_runner().resolve_rebase(
-        owner,
-        target,
-        resolver,
-        session=effective_session,
+    runner = production_rebase_runner()
+    resolved_session = (
+        session if session is not None else resolution_session_from_config(UnifiedConfig())
     )
+    return runner.resolve_rebase(owner, target, resolver, session=resolved_session)
 
 
 _DEFAULT_RESOLVE_REBASE_IN_PROGRESS = resolve_rebase_in_progress

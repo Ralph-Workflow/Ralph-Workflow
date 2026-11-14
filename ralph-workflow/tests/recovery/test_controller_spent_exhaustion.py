@@ -376,6 +376,7 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     )
     (rebase_dir / "onto").write_text("2222222222222222222222222222222222222222\n", encoding="utf-8")
     (rebase_dir / "stopped-sha").write_text("stop-1\n", encoding="utf-8")
+    (rebase_dir / "git-rebase-todo").write_text("pick stop-1 subject\n", encoding="utf-8")
 
     resolver_invocations = [0]
 

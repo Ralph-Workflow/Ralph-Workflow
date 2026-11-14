@@ -295,7 +295,14 @@ def _make_production_invoke_agent(
             return False
         chain_agents = _resolve_chain_agents(load_result, phase)
         last_error: Exception | None = None
-        for agent_name in chain_agents:
+        remaining_agents = list(chain_agents)
+        while remaining_agents:
+            selection = controller.preferred_agent_index(phase, remaining_agents)
+            if selection.agent is None:
+                controller.earliest_available_wait_ms(phase, remaining_agents)
+                break
+            agent_name = selection.agent
+            remaining_agents.remove(agent_name)
             effect = InvokeAgentEffect(
                 agent_name=agent_name,
                 phase=phase,
