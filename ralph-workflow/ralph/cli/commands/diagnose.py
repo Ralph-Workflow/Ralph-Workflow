@@ -14,11 +14,6 @@ from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.cli._capability_summary import DOCS_MCP_NOT_INSTALLED_MESSAGE
-from ralph.cli.commands import _diagnose_integration
-from ralph.cli.commands._diagnose_integration import (
-    _integration_lifecycle_view,
-    _persisted_integration_status,
-)
 from ralph.cli.commands._diagnose_mcp import check_mcp_servers as _check_mcp_servers_extracted
 from ralph.cli.commands._diagnose_next_steps import (
     _print_next_steps_panel,
@@ -64,7 +59,12 @@ if TYPE_CHECKING:
     from ralph.pipeline._integration_status import IntegrationStatus
 
 
-IntegrationLifecycleView = _diagnose_integration.IntegrationLifecycleView
+def __getattr__(name: str) -> object:
+    if name == "IntegrationLifecycleView":
+        from ralph.cli.commands import _diagnose_integration
+
+        return _diagnose_integration.IntegrationLifecycleView
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:
@@ -182,6 +182,10 @@ def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
 
 
 def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
+    from ralph.cli.commands._diagnose_integration import (
+        _integration_lifecycle_view,
+        _persisted_integration_status,
+    )
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)

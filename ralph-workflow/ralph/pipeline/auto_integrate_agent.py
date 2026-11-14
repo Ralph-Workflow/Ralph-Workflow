@@ -14,7 +14,7 @@ from ralph.pipeline.conflict_resolution import (
     run_conflict_resolution_outcome,
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_outcome,
-
+    run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -22,6 +22,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.resolution_outcome import (
+    STOP_RESOLUTION_OUTCOMES,
     ConfigFailureOutcome,
     NextStrategyOutcome,
     ResolvedOutcome,
@@ -31,6 +32,10 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
 )
 from ralph.workspace.context import WorkspaceContextError, workspace_context
+
+ResolutionOutcome = STOP_RESOLUTION_OUTCOMES
+run_conflict_resolution_outcome = run_conflict_resolution_pipeline
+run_rebase_conflict_resolution_outcome = run_rebase_conflict_resolution_pipeline
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -102,7 +107,7 @@ def build_agent_conflict_resolver(
             )
             return NextStrategyOutcome("completion_in_place")
         try:
-            raw_obj: object = run_conflict_resolution_pipeline(
+            raw_outcome = run_conflict_resolution_pipeline(
                 root=root,
                 target=target,
                 config=config,
@@ -113,7 +118,7 @@ def build_agent_conflict_resolver(
                 display_context=display_context,
                 strategy_history=strategy_history,
             )
-            return _wrap_stop_resolution_outcome(raw_obj)
+            return _wrap_stop_resolution_outcome(raw_outcome)
         except Exception as exc:
             logger.warning("auto_integrate: conflict-resolution pipeline raised: {}", exc)
             emit_integration_warn_line(
@@ -206,9 +211,8 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ConfigFailureOutcome(
-                file=Path(exc.file),
-                parse_error=describe_config_failure(exc),
+            return RetryLaterOutcome(
+                on_change=reason_text,
                 terminal_reason=ResolutionTerminationReason.CONFIG_FAILURE,
             )
         except Exception as exc:
@@ -250,12 +254,6 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            if is_config:
-                return ConfigFailureOutcome(
-                    file=Path(target_path),
-                    parse_error=describe_config_failure(exc),
-                    terminal_reason=term_reason,
-                )
             return RetryLaterOutcome(
                 on_change=reason_text,
                 terminal_reason=term_reason,

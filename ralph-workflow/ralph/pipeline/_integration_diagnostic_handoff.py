@@ -1,26 +1,27 @@
 from __future__ import annotations
 
+import json
+import time
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
 from ralph._build_identity import build_identity
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._integration_diagnostic_state import (
     DIAGNOSTIC_BUDGET_SPENT_REASON,
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
 )
+from ralph.pipeline._integration_ladder_evidence import _record_evidence
 from ralph.pipeline.auto_integrate_record import BUMP_DIAGNOSTIC_ATTEMPT
 from ralph.pipeline.auto_integrate_recovery_terminal import (
     RESUME_COMMAND,
     ResolutionTerminalMarker,
     terminal_marker_blocks_attempt,
-)
-from ralph.pipeline.conflict_resolution.resolver_health import (
-    bench_resolver,
-    choose_resolver,
-    clear_resolver,
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import (
@@ -29,13 +30,19 @@ from ralph.pipeline.integration_decision import (
     cleanup_action_for,
 )
 from ralph.pipeline.integration_ladder import (
+    LADDER_ATTEMPT_BUDGET,
+    LAST_RESORT_DISABLED_NO_SIGNATURE,
+    LAST_RESORT_TERMINAL_NO_SIGNATURE,
+    LAST_RESORT_WAIT_SECONDS,
     LadderFacts,
     LadderStepResult,
     LandedVerdict,
     decide_ladder_transition,
     default_git_plumbing,
     ensure_preserved_copy,
+    evaluate_last_resort_preconditions,
     ladder_facts_fingerprint,
+    last_resort_wait_proof,
     preserved_copy_identity,
     record_salvage_attempt,
     resume_rung,
@@ -43,11 +50,14 @@ from ralph.pipeline.integration_ladder import (
     terminal_operator_message,
 )
 from ralph.pipeline.integration_owner import RecordFactOutcome
+from ralph.pipeline.integration_preservation_bundle import (
+    IntegrationPreservationBundle,
+    preserve_integration_state,
+)
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-    from pathlib import Path
 
     from ralph.pipeline._integration_ladder_seams import (
         EnvironmentProbe,
@@ -57,18 +67,35 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.integration_actions import Clock
     from ralph.pipeline.integration_attempt_ledger import AttemptLedgerState
+    from ralph.pipeline.last_resort_agent_pool import LastResortAgentPool
+    from ralph.pipeline.last_resort_wait_proof import LastResortWaitProof
     from ralph.pipeline.operation_evidence import OperationEvidenceCollector
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
 
 __all__ = [
+    "COMPLETION_IN_PLACE_HANDOFF_KEY",
+    "PLANNING_HANDOFF_FILENAME",
     "budget_spent_record",
+    "check_all_last_resort_conditions",
+    "check_last_resort_agent_eligibility",
+    "check_last_resort_preconditions",
     "check_target_worktree_context",
+    "completion_in_place_handoff_record",
+    "create_planning_handoff_record",
+    "ensure_last_resort_preservation",
     "escalate_diagnostic_budget_to_ladder",
     "escalate_record_fact_outcome",
+    "is_disabled_signature_step",
+    "is_last_resort_disabled_for_caller",
     "ladder_terminal_state",
     "next_resolver",
     "observe_workspace_change",
+    "read_planning_handoff_record",
 ]
+
+PLANNING_HANDOFF_FILENAME: Final[str] = "planning-handoff.json"
+COMPLETION_IN_PLACE_HANDOFF_KEY: Final[str] = "handoff:completion_in_place"
 
 _INTEGRATION_PROBE_KEY = "integration_resolution"
 
@@ -132,6 +159,8 @@ def next_resolver(
         if failure_reason is not None:
             return failure_reason
 
+    from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
+
     choice = choose_resolver(controller, agents)
     if choice.agent is None:
         logger.warning(
@@ -153,6 +182,7 @@ def _invoke_and_judge(
     failure_detail: Callable[[], BaseException | str | None] | None,
 ) -> bool:
     from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
+    from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver, clear_resolver
     from ralph.workspace.context import WorkspaceContextError
 
     def _attempt() -> None:
@@ -443,6 +473,32 @@ def escalate_record_fact_outcome(
             quarantined_paths=step.quarantined_paths,
             evidence=step.evidence,
         )
+        if is_disabled_signature_step(step):
+            cip_record = completion_in_place_handoff_record(record, reason=step.reason)
+            from ralph.pipeline.auto_integrate_record import write_record
+
+            write_record(root, cip_record)
+            _record_evidence(ladder, "transition:autonomous", "completion_in_place")
+            _record_evidence(ladder, COMPLETION_IN_PLACE_HANDOFF_KEY, "autonomous_transition")
+            if decided_signature is not None:
+                return LadderStepResult(
+                    rung,
+                    "failed",
+                    "autonomous-transition:completion_in_place",
+                    preserved_ref=step.preserved_ref,
+                    preserved_sidecar=step.preserved_sidecar,
+                    quarantined_paths=step.quarantined_paths,
+                    evidence={**step.evidence, "next_strategy": "completion_in_place"},
+                )
+            terminal_step = LadderStepResult(
+                rung,
+                "terminal",
+                decision.reason,
+                preserved_ref=step.preserved_ref,
+                preserved_sidecar=step.preserved_sidecar,
+                quarantined_paths=step.quarantined_paths,
+                evidence={**step.evidence, "next_strategy": "completion_in_place"},
+            )
         message = terminal_operator_message(
             record,
             reason=decision.reason,
@@ -494,4 +550,167 @@ def escalate_diagnostic_budget_to_ladder(
         target=target,
         branch=branch,
         feature_tip=feature_tip,
+    )
+
+
+def check_last_resort_preconditions(
+    state: AttemptLedgerState,
+    *,
+    decided_signature: str,
+    fresh_signature: str,
+    budget: int = LADDER_ATTEMPT_BUDGET,
+) -> dict[str, str]:
+    return evaluate_last_resort_preconditions(
+        state,
+        decided_signature=decided_signature,
+        fresh_signature=fresh_signature,
+        budget=budget,
+    )
+
+
+def is_last_resort_disabled_for_caller(
+    decided_signature: str | None,
+    fresh_signature: str | None,
+) -> bool:
+    if not decided_signature:
+        return True
+    return fresh_signature is not None and fresh_signature != decided_signature
+
+
+def is_disabled_signature_step(step: LadderStepResult) -> bool:
+    return step.rung == CleanupLadderRung.LAST_RESORT and step.reason in (
+        LAST_RESORT_TERMINAL_NO_SIGNATURE,
+        LAST_RESORT_DISABLED_NO_SIGNATURE,
+    )
+
+
+def check_last_resort_agent_eligibility(
+    ledger: AttemptLedger,
+    eligibility: AgentFailureLedger,
+    pools: tuple[LastResortAgentPool, ...],
+    blocking_signature: str,
+    *,
+    wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
+    epoch_now: Callable[[], float] = time.time,
+) -> LastResortWaitProof:
+    return last_resort_wait_proof(
+        ledger=ledger,
+        eligibility=eligibility,
+        pools=pools,
+        blocking_signature=blocking_signature,
+        wait_seconds=wait_seconds,
+        epoch_now=epoch_now,
+    )
+
+
+def check_all_last_resort_conditions(
+    ledger: AttemptLedger,
+    *,
+    decided_signature: str,
+    fresh_signature: str,
+    eligibility: AgentFailureLedger | None = None,
+    pools: tuple[LastResortAgentPool, ...] = (),
+    budget: int = LADDER_ATTEMPT_BUDGET,
+    wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
+    epoch_now: Callable[[], float] = time.time,
+) -> tuple[bool, dict[str, str], LastResortWaitProof | None]:
+    if is_last_resort_disabled_for_caller(decided_signature, fresh_signature):
+        preconditions = check_last_resort_preconditions(
+            ledger.read(),
+            decided_signature=decided_signature,
+            fresh_signature=fresh_signature,
+            budget=budget,
+        )
+        return False, preconditions, None
+
+    preconditions = check_last_resort_preconditions(
+        ledger.read(),
+        decided_signature=decided_signature,
+        fresh_signature=fresh_signature,
+        budget=budget,
+    )
+    all_preconditions_met = all(v.startswith("met") for v in preconditions.values())
+
+    wait_proof: LastResortWaitProof | None = None
+    if eligibility is not None and pools:
+        wait_proof = check_last_resort_agent_eligibility(
+            ledger,
+            eligibility,
+            pools,
+            fresh_signature,
+            wait_seconds=wait_seconds,
+            epoch_now=epoch_now,
+        )
+        if not wait_proof.authorized:
+            all_preconditions_met = False
+
+    return all_preconditions_met, preconditions, wait_proof
+
+
+def ensure_last_resort_preservation(
+    root: Path,
+    *,
+    state_dir: Path,
+    target: str,
+    ledger: AttemptLedger | None = None,
+) -> IntegrationPreservationBundle | None:
+    bundle = preserve_integration_state(root, state_dir=state_dir, target=target)
+    if bundle is not None:
+        logger.warning(
+            "integration ladder last-resort preservation bundle created at {}",
+            bundle.manifest_path,
+        )
+        if ledger is not None:
+            _record_evidence(ledger, "preserved:bundle", bundle.manifest_path)
+    return bundle
+
+
+def create_planning_handoff_record(
+    state_dir: Path,
+    *,
+    manifest_path: str,
+    carried: tuple[str, ...],
+    not_carried: tuple[str, ...],
+    next_phase: str = "planning",
+    ledger: AttemptLedger | None = None,
+) -> Path:
+    payload: dict[str, object] = {
+        "bundle": manifest_path,
+        "carried": list(carried),
+        "not_carried": list(not_carried),
+        "next_phase": next_phase,
+    }
+    carry_path = Path(manifest_path).with_name(PLANNING_HANDOFF_FILENAME)
+    write_text_if_changed(DEFAULT_FILE_BACKEND, carry_path, json.dumps(payload, indent=2), encoding="utf-8")
+    if ledger is not None:
+        _record_evidence(ledger, "preserved:planning-handoff", str(carry_path))
+    return carry_path
+
+
+def read_planning_handoff_record(handoff_path: Path) -> dict[str, object] | None:
+    if not handoff_path.is_file():
+        return None
+    try:
+        content = handoff_path.read_text(encoding="utf-8")
+        parsed: object = json.loads(content)
+        if isinstance(parsed, dict):
+            return {str(k): v for k, v in parsed.items()}
+        return None
+    except Exception:
+        return None
+
+
+def completion_in_place_handoff_record(
+    record: IntegrationRecord,
+    *,
+    reason: str,
+) -> IntegrationRecord:
+    return record.model_copy(
+        update={
+            "resolving_rebase": False,
+            "resolving_merge": False,
+            "diagnostic_intervention_required": False,
+            "repair_cap_reason": reason,
+            "resolution_terminal_marker": None,
+        }
     )

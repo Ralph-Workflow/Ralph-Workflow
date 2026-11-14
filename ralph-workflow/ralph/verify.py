@@ -117,6 +117,16 @@ _WORKSPACE_RESOURCE_INVENTORY_STEP_LABEL: Final = (
 )
 _SKILL_AUTO_COMMIT_STEP_LABEL: Final = "skill auto-commit audit (audit_skill_auto_commit)"
 _ARTIFACT_SKILL_TYPES_STEP_LABEL: Final = "artifact skill types audit (audit_artifact_skill_types)"
+_INTEGRATION_INVARIANTS_STEP_LABEL: Final = (
+    "integration invariants audit (audit_integration_invariants)"
+)
+_INTEGRATION_SWALLOW_STEP_LABEL: Final = "integration swallow audit (audit_integration_swallow)"
+_INTEGRATION_SINGLE_SOURCE_STEP_LABEL: Final = (
+    "integration single-source audit (audit_integration_single_source)"
+)
+_INTEGRATION_NO_LEGACY_STEP_LABEL: Final = (
+    "integration no-legacy audit (audit_integration_no_legacy)"
+)
 
 
 if not _KNOWN_TEST_STEP_LABELS:
@@ -184,6 +194,18 @@ if not any(_ARTIFACT_SKILL_TYPES_STEP_LABEL in label for label, *_rest in _VERIF
         "A verify step running 'audit_artifact_skill_types' must be present in "
         "_VERIFY_STEPS (the artifact skill-types contract cannot be silently dropped)"
     )
+
+for _integration_audit, _integration_audit_label in (
+    ("audit_integration_invariants", _INTEGRATION_INVARIANTS_STEP_LABEL),
+    ("audit_integration_swallow", _INTEGRATION_SWALLOW_STEP_LABEL),
+    ("audit_integration_single_source", _INTEGRATION_SINGLE_SOURCE_STEP_LABEL),
+    ("audit_integration_no_legacy", _INTEGRATION_NO_LEGACY_STEP_LABEL),
+):
+    if not any(_integration_audit_label in label for label, *_rest in _VERIFY_STEPS):
+        raise RuntimeError(
+            f"A verify step running '{_integration_audit}' must be present in "
+            "_VERIFY_STEPS (the integration invariants contract cannot be silently dropped)"
+        )
 
 if _VERIFY_STEP_TIMEOUT_SECONDS != _verify_steps._VERIFY_STEP_TIMEOUT_SECONDS:
     raise RuntimeError(

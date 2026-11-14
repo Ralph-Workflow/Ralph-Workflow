@@ -25,6 +25,7 @@ class WaitingOutcome:
     @property
     def reason(self) -> object:
         return self.terminal_reason
+
     def __iter__(self) -> Iterator[object]:
         return iter((False, self.external_condition or ""))
 

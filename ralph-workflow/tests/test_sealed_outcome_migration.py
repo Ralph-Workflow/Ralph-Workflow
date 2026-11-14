@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import inspect
 
-from ralph.pipeline.conflict_resolution import attempt_fault
-from ralph.pipeline.conflict_resolution._driver_events import announce_declared_decisions
+from ralph.pipeline.conflict_resolution import announce_declared_decisions, attempt_fault
 
 
 def test_sealed_outcome_migration_regression_attempt_fault_rejects_text_evidence() -> None:

@@ -86,10 +86,8 @@ class RebaseResolutionResult:
     def _succeeded(self) -> bool:
         if self._raw_succeeded is not None:
             return self._raw_succeeded
-        if isinstance(self.outcome, bool):
-            return self.outcome
-        s: object = getattr(self.outcome, "succeeded", None)
-        return s is True
+        return bool(self.outcome)
+
     def __len__(self) -> int:
         return _RESULT_LEN
 

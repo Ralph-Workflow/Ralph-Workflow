@@ -4,8 +4,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
-from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+    InactivityTimeoutOpts,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.pipeline.agent_chain_state import AgentChainState

@@ -358,7 +358,6 @@ tests/test_auto_integrate_catchup.py|7,0,0
 tests/test_auto_integrate_catchup_e2e.py|2,0,2
 tests/test_auto_integrate_catchup_regressions.py|3,0,0
 tests/test_auto_integrate_catchup_remote_coordination.py|10,0,0
-tests/test_auto_integrate_conflict_budget.py|1,1,0
 tests/test_auto_integrate_containment_release.py|10,1,1
 tests/test_auto_integrate_default_policy_seam.py|0,0,2
 tests/test_auto_integrate_drift_recovery.py|1,1,1
@@ -377,18 +376,15 @@ tests/test_auto_integrate_recovery_git_state_reflog_unit.py|0,1,0
 tests/test_auto_integrate_refresh_contract.py|5,0,0
 tests/test_auto_integrate_remote_push.py|0,5,0
 tests/test_auto_integrate_remote_refresh.py|15,0,0
-tests/test_auto_integrate_remote_sync_pull.py|4,0,4
 tests/test_auto_integrate_remote_sync_push.py|3,0,0
 tests/test_auto_integrate_remote_sync_reconcile.py|20,0,0
 tests/test_auto_integrate_resolution.py|2,1,1
-tests/test_auto_integrate_resolving_rebase_record.py|1,0,0
 tests/test_auto_integrate_retained_recovery_seam.py|13,0,0
 tests/test_auto_integrate_runner_seam.py|7,0,3
 tests/test_auto_integrate_seams_e2e.py|0,0,4
 tests/test_auto_integrate_skip_reasons.py|8,1,0
 tests/test_auto_integrate_stateless_seam.py|8,0,13
 tests/test_auto_integrate_toml_discoverability.py|0,0,1
-tests/test_auto_integrate_workspace_context_end_to_end.py|2,0,0
 tests/test_auto_integrate_worktree_sync.py|0,0,1
 tests/test_bootstrap_auto_seed_git_exclude.py|1,2,1
 tests/test_bootstrap_auto_seed_gitignore.py|1,1,1
@@ -448,7 +444,7 @@ tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0
 tests/test_conflict_resolution_phase_parity.py|8,1,2
 tests/test_conflict_resolution_pipeline.py|8,1,1
-tests/test_conflict_resolution_pipeline_outcome.py|5,1,0
+tests/test_conflict_resolution_pipeline_outcome.py|5,0,0
 tests/test_conflict_resolution_rebase_loop.py|16,0,9
 tests/test_conflict_resolution_relay_failure.py|0,1,0
 tests/test_conflict_resolution_resume.py|8,0,0
@@ -560,7 +556,7 @@ tests/test_integration_diagnostic_worktree_isolation.py|0,2,0
 tests/test_integration_fault_catalogue.py|7,0,0
 tests/test_integration_fault_model.py|7,2,0
 tests/test_integration_gate_parity.py|0,0,4
-tests/test_integration_obstruction_real_git.py|1,2,1
+tests/test_integration_obstruction_real_git.py|1,1,0
 tests/test_integration_owner.py|0,1,0
 tests/test_integration_owner_config.py|0,4,0
 tests/test_integration_phase_proof.py|0,1,3
@@ -577,7 +573,7 @@ tests/test_interrupt_cli_helper.py|0,0,2
 tests/test_interrupt_dispatcher.py|2,1,8
 tests/test_kimi_wire_provenance.py|0,4,0
 tests/test_launch_payload_ceiling.py|0,2,0
-tests/test_lifecycle_acceptance.py|0,4,4
+tests/test_lifecycle_acceptance.py|0,4,0
 tests/test_lifecycle_bounded_response.py|0,4,0
 tests/test_list_directory_recursive_bounded.py|2,1,3
 tests/test_live_post_tool_result_wedge.py|0,5,3
@@ -742,7 +738,7 @@ tests/test_recovery_three_caps_distinguished.py|2,3,2
 tests/test_remote_boundary_and_landing.py|0,0,1
 tests/test_repetition_tracker.py|0,0,9
 tests/test_resolution_action.py|0,1,0
-tests/test_resolution_failure_cause_contract.py|0,2,0
+tests/test_resolution_failure_cause_contract.py|0,1,0
 tests/test_resolve_retry_intent.py|0,7,0
 tests/test_restart_from_scratch_detector.py|0,3,1
 tests/test_resume_action_aware_prompt.py|0,1,0
@@ -759,7 +755,6 @@ tests/test_run_loop_pro_integration.py|30,3,11
 tests/test_run_loop_resolver_cooldown_wait.py|6,2,4
 tests/test_run_loop_resolver_ledger.py|0,0,3
 tests/test_run_loop_setters_only.py|1,0,1
-tests/test_runner_auto_integrate_seam.py|3,0,16
 tests/test_runner_cycle_deadline_revocation.py|0,1,1
 tests/test_runner_decision_delegation.py|1,2,7
 tests/test_runner_fan_out_opts_forwarding.py|1,0,0

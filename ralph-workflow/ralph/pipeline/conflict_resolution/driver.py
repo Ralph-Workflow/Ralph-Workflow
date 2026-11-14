@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents.clock import Clock
 from ralph.git.merge import (
     conflict_stage_entries,
     paths_with_conflict_markers,
@@ -99,7 +98,7 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
-from ralph.pipeline.integration_actions import Clock, current_clock, install_executors
+from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
@@ -148,12 +147,14 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
+    from ralph.agents.clock import Clock
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.integration_actions import Clock as IntegrationClock
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
@@ -273,8 +274,15 @@ def run_conflict_resolution_outcome(
         )
     )
     token = None
-    if isinstance(clock_candidate, Clock):
-        token = install_executors(clock=clock_candidate)
+    if clock_candidate is not None and hasattr(clock_candidate, "sleep"):
+        from ralph.pipeline.integration_actions import install_executors
+
+        exec_clock: IntegrationClock = (
+            cast("IntegrationClock", clock_candidate)
+            if hasattr(clock_candidate, "now")
+            else _IntegrationClockAdapter(cast("Clock", clock_candidate))
+        )
+        token = install_executors(clock=exec_clock)
     _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(
@@ -759,6 +767,8 @@ def _classify_incomplete_success(
         unresolved_count=unresolved_count,
         workspace_changed=made_progress,
     )
+
+
 def _execute_round_loop(
     root: Path,
     target: str,
@@ -788,8 +798,6 @@ def _execute_round_loop(
                 _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
                 break
             round_index += 1
-            if session.recovery_controller is not None:
-                session.recovery_controller.reset_backoff(PHASE_RESOLUTION, None)
             _push_round_status(display, root, target, round_index, round_cap, stop)
             prompt_path = prompt_materializer(
                 root=root,
@@ -884,32 +892,35 @@ def _wait_for_candidates_if_cooling_down(
 ) -> None:
     controller = session.recovery_controller
     if controller is not None:
-        skipped = skipped_candidates(session, tuple(candidates))
-        live = [name for name in candidates if name not in skipped]
-        if live and not any(
-            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
-        ):
-            wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
-            if (
-                wait_ms == 0
-                and hasattr(controller, "ledger")
-                and controller.ledger is not None
-            ):
-                wait_ms = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0
-            if wait_ms > 0:
-                mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-                _sleep_seconds(wait_ms / 1000.0)
-                mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-                if mono_after - mono_before < (wait_ms / 1000.0) * 0.5:
-                    clock_inst = getattr(controller, "clock", getattr(controller, "_clock", None))
-                    if hasattr(clock_inst, "advance"):
-                        clock_inst.advance(wait_ms / 1000.0)
-                    else:
-                        for name in live:
-                            controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
-                            if hasattr(controller, "ledger") and controller.ledger is not None:
-                                controller.ledger.clear_agent_cooldown(PHASE_RESOLUTION, name)
-                        controller.reset_backoff(PHASE_RESOLUTION, None)
+        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
+        if wait_ms > 0:
+            _sleep_seconds(wait_ms / 1000.0, session=session)
+
+
+def _can_continue_controller_rounds(
+    session: ResolutionSession,
+    controller: RecoveryController,
+    live: Sequence[str],
+) -> bool:
+    from ralph.recovery.agent_failure_ledger import Spent
+
+    chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
+    if all(
+        isinstance(status, Spent) and status.reason != "retry_exhausted"
+        for _agent, status in chain_statuses
+    ):
+        return False
+    if session.rounds_spent >= 1 and not any(
+        status.is_eligible for _agent, status in chain_statuses
+    ):
+        return False
+    return (
+        any(
+            status.is_eligible or (isinstance(status, Spent) and status.reason == "retry_exhausted")
+            for _agent, status in chain_statuses
+        )
+        or controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
+    )
 
 
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
@@ -924,18 +935,15 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
     if ledger is not None:
         if ledger.all_exhausted(PHASE_RESOLUTION, live):
             return False
+        if session.rounds_spent >= 1 and not ledger.any_eligible(PHASE_RESOLUTION, live):
+            return False
         return (
             ledger.any_eligible(PHASE_RESOLUTION, live)
             or (session.rounds_spent == 0 and (ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0) > 0)
         )
     controller = session.recovery_controller
     if controller is not None:
-        if controller.all_exhausted(PHASE_RESOLUTION, live):
-            return False
-        return (
-            any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live)
-            or (session.rounds_spent == 0 and controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0)
-        )
+        return _can_continue_controller_rounds(session, controller, live)
     return True
 
 
@@ -1021,9 +1029,8 @@ def _handle_dead_candidate_chain(
     barred = skipped_candidates(session, tuple(candidates))
     live_candidates = [agent for agent in candidates if agent not in barred]
 
-    if (
-        session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
-        or session.terminal_reason is None
+    if session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS or (
+        session.rounds_spent == 0 and session.terminal_reason is None
     ):
         session.terminal_reason = _dead_chain_reason(
             live_candidates,

@@ -753,4 +753,3 @@ def test_canary_probe_mode_contract_explicit_exception(
     assert store.earliest_unavailable_wait_ms(PHASE, [agent]) == 0
     assert agent not in store.snapshot().get("unavailability_reasons", {})
 
-

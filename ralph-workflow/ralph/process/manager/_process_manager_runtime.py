@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 
 EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
+    "check_merge_head": frozenset({1}),
     "commit:head-symbolic-ref": frozenset({1}),
     "git-branch-exists": frozenset({1}),
     "git-branch-sha": frozenset({1}),
@@ -23,6 +24,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "git-ort-residue-label": frozenset({1}),
     "git-ort-residue-tracked": frozenset({1}),
     "git-rebase:merge-base": frozenset({1}),
+    "git-rebase-head-sha": frozenset({128}),
     "git-remote-tracking-sha-*": frozenset({1}),
     "git-rev-parse-commit-parent": frozenset({128}),
     "git-rev-parse-head": frozenset({128}),

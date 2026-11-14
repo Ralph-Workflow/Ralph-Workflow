@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.integration_actions import Clock
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 __all__ = [
     "_integrate_once",
@@ -234,7 +235,7 @@ def _integrate_once_owned(
             nonlocal reclamation
             reclamation = result
 
-        raw_ff_outcome: object = _ai._fast_forward_target(
+        raw_ff_outcome: StopResolutionOutcome = _ai._fast_forward_target(
             root,
             target,
             feature_sha,

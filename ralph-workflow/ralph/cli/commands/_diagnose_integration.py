@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -7,7 +8,6 @@ from ralph.git.merge import observe_unmerged_paths
 from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.checkpoint import load as load_checkpoint
-from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 from ralph.pipeline.integration_director import observe as observe_integration
 from ralph.pipeline.integration_observation import (
     InProgressKind,
@@ -48,7 +48,7 @@ def _persisted_integration_status(
     return build_integration_status(
         cause=cause,
         paths_with_reasons=tuple((path, "persisted integration conflict") for path in paths),
-        command=operator_command_for_paths(paths),
+        command=f"git add -- {' '.join(shlex.quote(p) for p in paths)}" if paths else "",
         agents_can_finish=False,
         done_count=None if view is None else view.done_count,
         remaining_count=None if view is None else view.remaining_count,

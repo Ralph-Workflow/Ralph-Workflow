@@ -4,6 +4,10 @@ import ast
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -50,13 +54,13 @@ def _has_loud_boundary(handler: ast.ExceptHandler) -> bool:
     return False
 
 
-def audit_tree(repo_root: Path) -> list[Violation]:
+def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
     violations: list[Violation] = []
-    base = repo_root / "ralph" / "pipeline"
-    for path in sorted(base.rglob("*.py")):
-        rel = path.relative_to(repo_root).as_posix()
+    for rel, source in sorted(modules.items()):
+        if not rel.startswith("ralph/pipeline/"):
+            continue
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+            tree = ast.parse(source, filename=rel)
         except SyntaxError:
             continue
         integration_functions = (
@@ -80,8 +84,95 @@ def audit_tree(repo_root: Path) -> list[Violation]:
     return violations
 
 
+def audit_tree(repo_root: Path) -> list[Violation]:
+    base = repo_root / "ralph" / "pipeline"
+    modules: dict[str, str] = {}
+    for path in sorted(base.rglob("*.py")):
+        rel = path.relative_to(repo_root).as_posix()
+        try:
+            modules[rel] = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return audit_modules(modules)
+
+
+def selftest() -> int:
+    clean_modules = {
+        "ralph/pipeline/clean_narrow.py": (
+            "def resolve_foo():\n"
+            "    try:\n"
+            "        return 1\n"
+            "    except ValueError:\n"
+            "        return None\n"
+        ),
+        "ralph/pipeline/clean_loud.py": (
+            "def resolve_bar():\n"
+            "    try:\n"
+            "        return 1\n"
+            "    except Exception:\n"
+            "        logger.warning('swallowed')\n"
+            "        return None\n"
+        ),
+        "ralph/pipeline/clean_raise.py": (
+            "def resolution_step():\n"
+            "    try:\n"
+            "        return 1\n"
+            "    except Exception:\n"
+            "        raise\n"
+        ),
+    }
+    clean_violations = audit_modules(clean_modules)
+    if clean_violations:
+        print(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}")
+        return 1
+
+    planted_cases: list[tuple[str, str]] = [
+        (
+            "def resolve_conflict():\n"
+            "    try:\n"
+            "        return 1\n"
+            "    except Exception:\n"
+            "        return None\n",
+            "broad handler returns an untyped normal value",
+        ),
+        (
+            "def resolution_retry():\n"
+            "    try:\n"
+            "        return 1\n"
+            "    except:\n"
+            "        return False\n",
+            "broad handler returns an untyped normal value",
+        ),
+        (
+            "def landing_continue():\n"
+            "    try:\n"
+            "        return 1\n"
+            "    except BaseException:\n"
+            "        return ()\n",
+            "broad handler returns an untyped normal value",
+        ),
+    ]
+
+    for index, (source, expected_rule) in enumerate(planted_cases):
+        path = f"ralph/pipeline/planted_{index}.py"
+        violations = audit_modules({path: source})
+        rules = [v.rule for v in violations]
+        if expected_rule not in rules:
+            print(
+                f"SELFTEST FAILED: case {index} did not produce rule '{expected_rule}', got {rules}"
+            )
+            return 1
+
+    print(
+        f"INTEGRATION SWALLOW AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    if "--selftest" in args:
+        return selftest()
     root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(root)
     if violations:

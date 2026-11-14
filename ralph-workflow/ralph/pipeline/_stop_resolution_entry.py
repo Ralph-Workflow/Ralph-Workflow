@@ -261,7 +261,9 @@ def _record_failed_attempt(
         "resolution_gate_key": tuple(key),
         "last_failure_cause": effective_cause,
     }
-    if failure_reason and not current.rebase_continue_error:
+    if failure_reason is not None and not (
+        current.rebase_continue_pending or current.rebase_continue_error
+    ):
         updates["rebase_continue_error"] = failure_reason
     write_record(
         trigger.root,
@@ -396,8 +398,17 @@ def attempt_stop_resolution(
     if decision.blocked and not trigger.force_retry:
         carried_cause = _deferred_failure_cause(trigger.root, trigger.record)
         _present_block(trigger.root, trigger.record, decision.key)
+        current = read_record(trigger.root) or trigger.record
+        gate_reason = decision.reason or _GATE_ACTIVE_REASON
+        blocked_reason = (
+            current.rebase_continue_error
+            if current is not None
+            and current.rebase_continue_error
+            and current.rebase_continue_error.startswith("WAITING:")
+            else gate_reason
+        )
         return DeferredStopResolution(
-            decision.reason or _GATE_ACTIVE_REASON,
+            blocked_reason,
             decision.key,
             carried_cause,
         )
@@ -660,6 +671,8 @@ def _persist_resolution_cause(
     current = read_record(root) or record
     if current is not None:
         updates: dict[str, object] = {"last_failure_cause": cause}
-        if reason is not None:
+        if reason is not None and not (
+            current.rebase_continue_pending or current.rebase_continue_error
+        ):
             updates["rebase_continue_error"] = reason
         write_record(root, current.model_copy(update=updates))

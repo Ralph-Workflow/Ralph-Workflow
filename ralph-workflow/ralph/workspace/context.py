@@ -100,17 +100,24 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
         effective_mcp_plan = _resolve_effective_session_mcp_plan(target_scope.root)
     except (ConfigTomlError, OSError) as exc:
         msg = str(exc)
-        m = re.search(r"Ralph could not read (.*?):", msg)
-        matched_path = ""
-        if m is not None:
-            raw_match: object = m.group(1)
-            if isinstance(raw_match, str):
-                matched_path = raw_match.strip()
-        file_path = (
-            Path(matched_path)
-            if matched_path
-            else target_scope.root / ".agent" / "ralph-workflow.toml"
-        )
+        exc_file: object = getattr(exc, "file", None)
+        file_path: Path
+        if isinstance(exc_file, Path):
+            file_path = exc_file
+        elif isinstance(exc_file, str) and exc_file and exc_file != "<unknown>":
+            file_path = Path(exc_file)
+        else:
+            m = re.search(r"Ralph could not read (.*?):", msg)
+            matched_path: str = ""
+            if m is not None:
+                raw_match: object = m.group(1)
+                if isinstance(raw_match, str):
+                    matched_path = raw_match.strip()
+            file_path = (
+                Path(matched_path)
+                if matched_path
+                else target_scope.root / ".agent" / "ralph-workflow.toml"
+            )
         fix_str = f"fix {file_path} then run ralph --check-config"
         emit_config_failure_warning(
             file_path,

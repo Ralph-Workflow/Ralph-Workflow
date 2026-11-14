@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -41,10 +40,10 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
     UnknownOutcome,
 )
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
-    import threading
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
@@ -53,13 +52,11 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.canary_probe import ProbeOutcome
-    from ralph.recovery.classified_failure import ClassifiedFailure
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
@@ -357,15 +354,21 @@ def ensure_session_controller(
     probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None,
 ) -> RecoveryController:
     from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         return session.recovery_controller
-    if pipeline_deps is not None and isinstance(
-        pipeline_deps.recovery_controller, RecoveryController
-    ):
-        controller = pipeline_deps.recovery_controller
+    rc_candidate: object = (
+        cast("object", getattr(pipeline_deps, "recovery_controller", None))
+        if pipeline_deps is not None
+        else None
+    )
+    if isinstance(rc_candidate, RecoveryController):
+        controller = rc_candidate
         if session is not None:
             session.recovery_controller = controller
             session.ledger = controller.ledger
@@ -506,7 +509,7 @@ def classify_failed_resolution_attempt(
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
     recovery_state: PipelineState
-    if session is not None and isinstance(session.recovery_state, PipelineState):
+    if isinstance(session.recovery_state, PipelineState):
         recovery_state = session.recovery_state
     else:
         recovery_state = PipelineState(
@@ -671,10 +674,10 @@ def invoke_resolution_agent(
         config=conflict_config,
     )
     if _candidate_cannot_be_launched(agent_name, session):
-        return RetryLaterOutcome(
-            on_change="candidate unavailable or dead",
-            terminal_reason=session.terminal_reason if session else None,
-            failure_cause=session.last_failure_cause if session else None,
+        return UnknownOutcome(
+            error=RuntimeError(f"agent {agent_name} cannot be launched"),
+            terminal_reason=session.terminal_reason if session is not None else None,
+            unresolved_paths=session.unresolved_paths if session is not None else (),
         )
     observed_fault: ResolutionTerminationReason | None = None
 
@@ -684,6 +687,7 @@ def invoke_resolution_agent(
 
     def _supervision_health_error() -> str | None:
         return None if observed_fault is None else observed_fault.value
+
     wrapped_listener = wrap_activity_listener(
         activity_status_listener,
         session,
@@ -722,21 +726,58 @@ def invoke_resolution_agent(
             policy_bundle=policy_bundle,
             run_id=None,
         )
-    except AgentInactivityTimeoutError as exc:
+    except (AgentInactivityTimeoutError, SupervisionInfrastructureError) as exc:
         _record_attempt_failure(session, exc)
         _record_resolution_termination(session, exc)
         _log_resolution_termination(exc, unresolved_paths)
-        return UnknownOutcome(exc)
-    except SupervisionInfrastructureError as exc:
-        _record_attempt_failure(session, exc)
-        _record_resolution_termination(session, exc)
-        _log_resolution_termination(exc, unresolved_paths)
-        return UnknownOutcome(exc)
+        if session is not None:
+            facts = AttemptFacts(artifact_valid=False, workspace_changed=False)
+            outcome = controller.last_attempt_outcome
+            if outcome is None:
+                outcome = controller.finalize_attempt(
+                    PHASE_RESOLUTION,
+                    agent_name,
+                    facts=facts,
+                    attempt_failed=True,
+                    exc=exc,
+                )
+            session.last_attempt_result = AttemptResult(
+                event=PipelineEvent.AGENT_FAILURE,
+                facts=facts,
+                outcome=outcome,
+                attempt_outcomes=((1, outcome),),
+            )
+        return UnknownOutcome(
+            error=exc,
+            terminal_reason=session.terminal_reason if session is not None else None,
+            unresolved_paths=session.unresolved_paths if session is not None else unresolved_paths,
+        )
     except Exception as exc:
         _record_attempt_failure(session, exc)
         _record_resolution_exception(session)
         logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
-        return UnknownOutcome(exc)
+        if session is not None:
+            outcome = controller.last_attempt_outcome
+            if outcome is None:
+                outcome = controller.finalize_attempt(
+                    PHASE_RESOLUTION,
+                    agent_name,
+                    facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
+                    attempt_failed=True,
+                    exc=exc,
+                )
+            facts = AttemptFacts(artifact_valid=False, workspace_changed=False)
+            session.last_attempt_result = AttemptResult(
+                event=PipelineEvent.AGENT_FAILURE,
+                facts=facts,
+                outcome=outcome,
+                attempt_outcomes=((1, outcome),),
+            )
+        return UnknownOutcome(
+            error=exc,
+            terminal_reason=session.terminal_reason if session is not None else None,
+            unresolved_paths=session.unresolved_paths if session is not None else unresolved_paths,
+        )
     if session is not None:
         session.last_attempt_result = attempt
         if attempt.outcome is not None and attempt.outcome.reason:
@@ -747,12 +788,15 @@ def invoke_resolution_agent(
         failure_evidence = _failed_attempt_evidence(session, agent_name)
         _record_attempt_failure(session, failure_evidence)
         _record_attempt_without_agent_work(session)
-        return RetryLaterOutcome(
-            on_change=failure_evidence,
-            terminal_reason=session.terminal_reason if session else None,
-            failure_cause=session.last_failure_cause if session else None,
+        return UnknownOutcome(
+            error=RuntimeError(failure_evidence),
+            terminal_reason=session.terminal_reason if session is not None else None,
+            unresolved_paths=session.unresolved_paths if session is not None else (),
         )
-    return ResolvedOutcome()
+    return ResolvedOutcome(
+        terminal_reason=session.terminal_reason if session is not None else None,
+        unresolved_paths=session.unresolved_paths if session is not None else (),
+    )
 
 
 def _candidate_cannot_be_launched(

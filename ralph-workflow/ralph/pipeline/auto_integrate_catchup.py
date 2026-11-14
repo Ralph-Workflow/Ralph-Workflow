@@ -652,6 +652,7 @@ def _advance_observed_target(
             WaitingOutcome,
             stop_resolution_outcome_reason,
         )
+
         outcome: object = fast_forward_target(
             root,
             target,

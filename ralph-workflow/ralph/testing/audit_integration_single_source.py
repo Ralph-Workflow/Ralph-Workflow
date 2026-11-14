@@ -4,6 +4,10 @@ import ast
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -41,11 +45,15 @@ def _string_literals(node: ast.AST) -> set[str]:
     }
 
 
-def audit_tree(repo_root: Path) -> list[Violation]:
+def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
     violations: list[Violation] = []
-    for path in sorted((repo_root / "ralph").rglob("*.py")):
-        rel = path.relative_to(repo_root).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+    for rel, source in sorted(modules.items()):
+        if not rel.startswith("ralph/"):
+            continue
+        try:
+            tree = ast.parse(source, filename=rel)
+        except SyntaxError:
+            continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 literals = _string_literals(node)
@@ -73,8 +81,69 @@ def audit_tree(repo_root: Path) -> list[Violation]:
     return violations
 
 
+def audit_tree(repo_root: Path) -> list[Violation]:
+    modules: dict[str, str] = {}
+    for path in sorted((repo_root / "ralph").rglob("*.py")):
+        rel = path.relative_to(repo_root).as_posix()
+        try:
+            modules[rel] = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return audit_modules(modules)
+
+
+def selftest() -> int:
+    clean_modules = {
+        "ralph/git/conflict_stage_entries.py": 'run_git(["ls-files", "-u"])\n',
+        "ralph/git/operation_snapshot.py": "def operation_state(): pass\n",
+        "ralph/recovery/agent_failure_ledger.py": "def is_agent_eligible(): pass\n",
+        "ralph/pipeline/_landed_predicate.py": "def operation_landed(): pass\n",
+    }
+    clean_violations = audit_modules(clean_modules)
+    if clean_violations:
+        print(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}")
+        return 1
+
+    planted_cases: list[tuple[str, str, str]] = [
+        (
+            "ralph/pipeline/unmerged_probe.py",
+            'run_git(["ls-files", "-u"])\n',
+            "unmerged index read outside git owner",
+        ),
+        (
+            "ralph/pipeline/state_reader.py",
+            "def operation_state(): pass\n",
+            "operation state has a second reader",
+        ),
+        (
+            "ralph/pipeline/agent_checker.py",
+            "def is_agent_eligible(): pass\n",
+            "agent eligibility owner is the ledger",
+        ),
+        (
+            "ralph/pipeline/land_checker.py",
+            "def operation_landed(): pass\n",
+            "operation landed has a second predicate",
+        ),
+    ]
+
+    for rel, source, expected_rule in planted_cases:
+        violations = audit_modules({rel: source})
+        rules = [v.rule for v in violations]
+        if expected_rule not in rules:
+            print(f"SELFTEST FAILED: {rel} did not produce rule '{expected_rule}', got {rules}")
+            return 1
+
+    print(
+        f"INTEGRATION SINGLE-SOURCE AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    if "--selftest" in args:
+        return selftest()
     root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(root)
     if violations:

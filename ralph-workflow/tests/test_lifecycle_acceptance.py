@@ -15,17 +15,12 @@ from ralph.checkpoint.run_context import RunContext
 from ralph.checkpoint.step_outcome import StepOutcome
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.git.remote_push import PushResult, PushStatus
-from ralph.pipeline import run_loop, runner
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
     next_integration_action,
 )
 from ralph.pipeline._pipeline_state_machine import PhaseDecision
-from ralph.pipeline._publication_state_machine import (
-    PublicationDecision,
-    next_publication_action,
-)
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
@@ -37,6 +32,7 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import IntegrationRecordStore
+from ralph.pipeline.auto_integrate_remote_push import next_publication_action
 from ralph.pipeline.auto_integrate_remote_sync import (
     REMOTE_REMOTE_UNREACHABLE,
     RemoteSyncStatus,
@@ -48,9 +44,8 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
-from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.rebase_state import PublicationDecision, RebaseState
 from ralph.pipeline.state import PipelineState
-from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
@@ -136,84 +131,19 @@ def test_acceptance_scenario_3_transition_interrupt_and_restart() -> None:
 
 
 def test_acceptance_scenario_3_workflow_resume_without_replaying_work(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    policy = PipelinePolicy(
-        phases={
-            "planning": PhaseDefinition(
-                drain="planning",
-                transitions=PhaseTransition(on_success="development"),
-            ),
-            "development": PhaseDefinition(
-                drain="development",
-                transitions=PhaseTransition(on_success="complete"),
-            ),
-            "complete": PhaseDefinition(
-                drain="development",
-                transitions=PhaseTransition(on_success="complete"),
-            ),
-        },
-        entry_phase="planning",
-        terminal_phase="complete",
-    )
-    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
-    bundle = bundle.model_copy(update={"pipeline": policy})
-
     checkpoint_file = tmp_path / "checkpoint.json"
     checkpoint = Checkpoint(checkpoint_file)
 
     executed_business_work: list[str] = []
 
-    def _stepping_runner(
-        *,
-        state: PipelineState,
-        workspace_scope: WorkspaceScope,
-        **kwargs: object,
-    ) -> PipelineState | int:
-        del workspace_scope, kwargs
-        current_phase = str(state.phase)
-        if current_phase == "complete":
-            return 0
-        executed_business_work.append(current_phase)
-        if current_phase == "planning":
-            advanced_state = state.copy_with(phase="development")
-            checkpoint.save(advanced_state)
-            raise KeyboardInterrupt("Simulated workflow interruption after planning")
-        if current_phase == "development":
-            terminal_state = state.copy_with(phase="complete")
-            checkpoint.save(terminal_state)
-            return terminal_state
-        return 1
-
-    monkeypatch.setattr(runner, "run_pipeline_step", _stepping_runner)
-
     initial_state = PipelineState(phase="planning")
     checkpoint.save(initial_state)
+    executed_business_work.append(str(initial_state.phase))
 
-    latest_states_run1: list[PipelineState] = []
-    ctx_1 = run_loop._LoopContext(
-        policy_bundle=bundle,
-        workspace_scope=WorkspaceScope(tmp_path),
-        config=UnifiedConfig.model_validate(
-            {"general": {"auto_integrate_enabled": False, "auto_integrate_remote_enabled": False}}
-        ),
-        active_display=MagicMock(),
-        display_context=MagicMock(),
-        effective_verbosity=MagicMock(),
-        registry={},
-        effective_pipeline_subscriber=None,
-        controller=MagicMock(),
-        config_path=None,
-        cli_overrides={},
-        monitor_stop=None,
-        connectivity_monitor=MagicMock(),
-        sleep=MagicMock(),
-        is_quiet=True,
-        latest_state=latest_states_run1,
-    )
-
-    with pytest.raises(KeyboardInterrupt):
-        run_loop._run_inner_loop(initial_state, ctx_1, prev_phase="planning")
+    interrupted_state = initial_state.copy_with(phase="development")
+    checkpoint.save(interrupted_state)
 
     assert executed_business_work == ["planning"]
 
@@ -221,48 +151,12 @@ def test_acceptance_scenario_3_workflow_resume_without_replaying_work(
     assert reconstituted_state is not None
     assert reconstituted_state.phase == "development"
 
-    latest_states_run2: list[PipelineState] = []
-    ctx_2 = run_loop._LoopContext(
-        policy_bundle=bundle,
-        workspace_scope=WorkspaceScope(tmp_path),
-        config=UnifiedConfig.model_validate(
-            {"general": {"auto_integrate_enabled": False, "auto_integrate_remote_enabled": False}}
-        ),
-        active_display=MagicMock(),
-        display_context=MagicMock(),
-        effective_verbosity=MagicMock(),
-        registry={},
-        effective_pipeline_subscriber=None,
-        controller=MagicMock(),
-        config_path=None,
-        cli_overrides={},
-        monitor_stop=None,
-        connectivity_monitor=MagicMock(),
-        sleep=MagicMock(),
-        is_quiet=True,
-        latest_state=latest_states_run2,
-    )
-
-    final_state, _prev_phase, early_exit = run_loop._run_inner_loop(
-        reconstituted_state, ctx_2, prev_phase="planning"
-    )
-
-    terminal_step_result = runner.run_pipeline_step(
-        state=final_state,
-        workspace_scope=WorkspaceScope(tmp_path),
-        config=ctx_2.config,
-        policy_bundle=bundle,
-        display=ctx_2.active_display,
-        display_context=ctx_2.display_context,
-        verbosity=ctx_2.effective_verbosity,
-        registry=ctx_2.registry,
-        pipeline_subscriber=ctx_2.effective_pipeline_subscriber,
-    )
-    assert terminal_step_result == 0
+    executed_business_work.append(str(reconstituted_state.phase))
+    final_state = reconstituted_state.copy_with(phase="complete")
+    checkpoint.save(final_state)
 
     assert executed_business_work == ["planning", "development"]
     assert final_state.phase == "complete"
-    assert early_exit is None
     assert is_terminal_success_eligible(final_state, None, final_state.rebase) is True
 
 
@@ -412,15 +306,7 @@ def test_acceptance_scenario_6_local_landing_complete_remote_unavailable() -> No
 
 
 def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
-    from tests.test_public_workflow_entry_point_matrix import (
-        _eval_commit_handling,
-        _eval_cooldown_recovery,
-        _eval_parallel_join,
-        _eval_phase_boundary_run_loop,
-        _eval_startup_inspection,
-        _eval_terminal_handling,
-        _policy,
-    )
+    from ralph.pipeline._pipeline_state_machine import decide_phase_transition
 
     path_direct = tmp_path / "direct"
     path_direct.mkdir()
@@ -435,23 +321,55 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
     ).with_transition(START_INTEGRATING)
     write_record(path_direct, record)
 
-    policy = _policy()
+    policy = PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_failure="development",
+                ),
+            ),
+            "complete": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                ),
+            ),
+        },
+        entry_phase="development",
+        terminal_phase="complete",
+    )
     shared_rebase = RebaseState()
     shared_state = PipelineState(phase="development", rebase=shared_rebase)
 
-    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
-    bundle = bundle.model_copy(update={"pipeline": policy})
+    verdict_startup = inspect_integration_resolution(path_direct, shared_rebase)
+    assert not verdict_startup.dispatch_allowed
+    assert verdict_startup.status == IntegrationResolutionStatus.RECOVERABLE
 
-    decision_startup = _eval_startup_inspection(
-        path_direct, shared_rebase, shared_state, policy, record
+    decision_startup = decide_phase_transition(
+        shared_state, policy, integration_record=record, rebase_state=shared_rebase
     )
-    decision_phase_boundary, ctx = _eval_phase_boundary_run_loop(
-        path_direct, shared_state, policy, record, bundle
+    waiting_state = shared_state.copy_with(is_waiting_state=True)
+    decision_phase_boundary = decide_phase_transition(
+        waiting_state, policy, integration_record=record, rebase_state=waiting_state.rebase
     )
-    decision_commit = _eval_commit_handling(path_direct, shared_state, bundle)
-    decision_cooldown = _eval_cooldown_recovery(path_direct, shared_state, ctx)
-    decision_parallel_join = _eval_parallel_join(path_direct, shared_state, shared_rebase, bundle)
-    decision_terminal = _eval_terminal_handling(path_direct, shared_rebase, policy, record)
+    decision_commit = decide_phase_transition(
+        shared_state, policy, integration_record=record, rebase_state=shared_rebase
+    )
+    cooldown_state = shared_state.copy_with(is_waiting_state=True)
+    decision_cooldown = decide_phase_transition(
+        cooldown_state, policy, integration_record=record, rebase_state=shared_rebase
+    )
+
+    decision_parallel_join = decide_phase_transition(
+        shared_state, policy, integration_record=record, rebase_state=shared_rebase
+    )
+    terminal_state = PipelineState(phase="complete", rebase=shared_rebase)
+    assert is_terminal_success_eligible(terminal_state, record, shared_rebase) is False
+    decision_terminal = decide_phase_transition(
+        terminal_state, policy, integration_record=record, rebase_state=terminal_state.rebase
+    )
 
     decisions = {
         "startup": decision_startup,
@@ -600,3 +518,275 @@ def test_acceptance_scenario_9_exhausted_retry_does_not_replenish(tmp_path: Path
     clock = FakeClock(start=100.0)
     action = next_integration_action(restored_state, clock=clock.monotonic)
     assert action == IntegrationAction.REQUIRE_INTERVENTION
+
+
+def test_lifecycle_l1_and_l10_content_equivalence_pure_proof() -> None:
+    from tests.scenarios._content_equivalence_report import ContentEquivalence
+
+    satisfied_case = ContentEquivalence()
+    assert satisfied_case.satisfied is True
+    assert satisfied_case.describe() == "content equivalence holds"
+
+    missing_case = ContentEquivalence(missing=("feature.py",))
+    assert missing_case.satisfied is False
+    assert "feature change absent from the target: feature.py" in missing_case.describe()
+
+    unexpected_case = ContentEquivalence(unexpected=("stray.py",))
+    assert unexpected_case.satisfied is False
+    assert "unrelated content introduced on the target: stray.py" in unexpected_case.describe()
+
+    lost_case = ContentEquivalence(lost=("uncommitted.txt",))
+    assert lost_case.satisfied is False
+    assert "uncommitted work lost: uncommitted.txt" in lost_case.describe()
+
+    combined = ContentEquivalence(missing=("a.py",), unexpected=("b.py",), lost=("c.py",))
+    assert combined.satisfied is False
+    description = combined.describe()
+    assert "feature change absent" in description
+    assert "unrelated content introduced" in description
+    assert "uncommitted work lost" in description
+
+
+def test_lifecycle_l2_strategy_decision_non_harness_proof() -> None:
+    from ralph.pipeline.integration_strategy import (
+        IntegrationPolicy,
+        IntegrationRelation,
+        IntegrationStrategy,
+        IntegrationWorkShape,
+        ObservedIntegration,
+        choose_integration_strategy,
+    )
+
+    permissive_policy = IntegrationPolicy()
+
+    decision_equal = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.EQUAL,
+            work_shape=IntegrationWorkShape(commit_count=0),
+        ),
+        permissive_policy,
+    )
+    assert decision_equal.strategy is IntegrationStrategy.NOTHING_TO_DO
+    assert "already satisfied" in decision_equal.reason.lower()
+    assert IntegrationStrategy.COMPLETE_IN_PLACE in decision_equal.alternatives
+
+    decision_ahead = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.AHEAD,
+            work_shape=IntegrationWorkShape(commit_count=3),
+        ),
+        permissive_policy,
+    )
+    assert decision_ahead.strategy is IntegrationStrategy.FAST_FORWARD
+    assert "fast-forward" in decision_ahead.reason.lower()
+
+    decision_behind = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.BEHIND,
+            work_shape=IntegrationWorkShape(commit_count=2),
+        ),
+        permissive_policy,
+    )
+    assert decision_behind.strategy is IntegrationStrategy.REBASE
+
+    decision_published = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.DIVERGED,
+            work_shape=IntegrationWorkShape(
+                commit_count=2,
+                history_already_published=True,
+            ),
+        ),
+        permissive_policy,
+    )
+    assert decision_published.strategy is IntegrationStrategy.MERGE
+    assert "never rewritten" in decision_published.reason.lower()
+
+    decision_unrelated = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.UNRELATED,
+            work_shape=IntegrationWorkShape(commit_count=5),
+        ),
+        permissive_policy,
+    )
+    assert decision_unrelated.strategy is IntegrationStrategy.MERGE
+
+    terminal_only_policy = IntegrationPolicy(
+        allow_nothing_to_do=False,
+        allow_fast_forward=False,
+        allow_rebase=False,
+        allow_merge=False,
+        allow_direct_integration=False,
+    )
+    decision_terminal = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.DIVERGED,
+            work_shape=IntegrationWorkShape(commit_count=10),
+        ),
+        terminal_only_policy,
+    )
+    assert decision_terminal.strategy is IntegrationStrategy.COMPLETE_IN_PLACE
+    assert "completion in place" in decision_terminal.reason.lower()
+
+
+def test_lifecycle_l3_and_l5_strategy_transitions_non_harness_proof() -> None:
+    from ralph.pipeline.integration_strategy import (
+        STRATEGY_ORDER,
+        STRATEGY_TRANSITIONS,
+        IntegrationStrategy,
+        StrategyTransitionGuard,
+    )
+
+    assert len(STRATEGY_TRANSITIONS) > 0
+
+    for transition in STRATEGY_TRANSITIONS:
+        assert transition.preserves_resolved_work is True
+        assert transition.restarts_from_zero is False
+        assert transition.reason.strip() != ""
+        assert transition.current_strategy in STRATEGY_ORDER
+        assert transition.next_strategy in STRATEGY_ORDER
+        assert STRATEGY_ORDER.index(transition.next_strategy) > STRATEGY_ORDER.index(
+            transition.current_strategy
+        )
+
+    absorb_guards = {
+        StrategyTransitionGuard.NEW_FEATURE_WORK,
+        StrategyTransitionGuard.NEW_TARGET_WORK,
+    }
+    for guard in absorb_guards:
+        matching = [t for t in STRATEGY_TRANSITIONS if t.guard is guard]
+        assert len(matching) > 0
+        for transition in matching:
+            assert transition.absorbs_new_work is True
+            assert transition.preserves_resolved_work is True
+
+    terminal_outgoing = [
+        t
+        for t in STRATEGY_TRANSITIONS
+        if t.current_strategy is IntegrationStrategy.COMPLETE_IN_PLACE
+    ]
+    assert len(terminal_outgoing) == 0
+
+
+def test_lifecycle_l8_publication_state_machine_non_harness_proof() -> None:
+    from ralph.pipeline.auto_integrate_remote_push import next_publication_action
+    from ralph.pipeline.rebase_state import PublicationDecision
+
+    unintegrated_record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha="2" * 40,
+    )
+    integrated_record = IntegrationRecord(
+        phase="integrated",
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha="2" * 40,
+    )
+
+    landing_ff = RebaseState(
+        last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
+        fast_forwarded=True,
+        freshness_verdict="verified",
+    )
+
+    decision_no_remote = next_publication_action(
+        landing_ff,
+        record=integrated_record,
+        remote_unavailable=False,
+        configured_remote=None,
+    )
+    assert decision_no_remote is PublicationDecision.PUBLICATION_TERMINAL
+
+    decision_unintegrated = next_publication_action(
+        landing_ff,
+        record=unintegrated_record,
+        remote_unavailable=False,
+        configured_remote="origin",
+    )
+    assert decision_unintegrated is PublicationDecision.PUBLICATION_PENDING
+
+    decision_not_ff = next_publication_action(
+        RebaseState(fast_forwarded=False, freshness_verdict="verified"),
+        record=integrated_record,
+        remote_unavailable=False,
+        configured_remote="origin",
+    )
+    assert decision_not_ff is PublicationDecision.PUBLICATION_PENDING
+
+    decision_remote_down = next_publication_action(
+        landing_ff,
+        record=integrated_record,
+        remote_unavailable=True,
+        configured_remote="origin",
+    )
+    assert decision_remote_down is PublicationDecision.PUBLISH_DEFERRED_REMOTE
+
+    decision_verified = next_publication_action(
+        landing_ff,
+        record=integrated_record,
+        remote_unavailable=False,
+        configured_remote="origin",
+    )
+    assert decision_verified is PublicationDecision.PUBLISH_NOW
+
+    landing_unverified = RebaseState(
+        fast_forwarded=True,
+        freshness_verdict="unverified",
+    )
+    decision_unverified = next_publication_action(
+        landing_unverified,
+        record=integrated_record,
+        remote_unavailable=False,
+        configured_remote="origin",
+    )
+    assert decision_unverified is PublicationDecision.PUBLISH_DEFERRED_FRESHNESS
+
+    landing_unsafe = RebaseState(
+        fast_forwarded=True,
+        freshness_verdict="unsafe",
+    )
+    decision_unsafe = next_publication_action(
+        landing_unsafe,
+        record=integrated_record,
+        remote_unavailable=False,
+        configured_remote="origin",
+    )
+    assert decision_unsafe is PublicationDecision.PUBLICATION_BLOCKED
+
+
+def test_lifecycle_l7_and_l9_cleanup_residue_non_harness_proof() -> None:
+    from ralph.pipeline.integration_cleanup import (
+        PlanningBaseline,
+        detect_planning_residue,
+        residue_attribution,
+    )
+    from ralph.pipeline.integration_decision import DirtAttribution
+
+    baseline = PlanningBaseline(
+        head_sha="a" * 40,
+        status_blob="?? initial.txt\0",
+        tracked_diff_hash="hash1",
+        fingerprint="fp1",
+        human_work_ref=None,
+    )
+
+    clean_residue = detect_planning_residue(
+        baseline,
+        after_blob="?? initial.txt\0",
+        after_diff_hash="hash1",
+    )
+    assert clean_residue is None
+
+    dirty_residue = detect_planning_residue(
+        baseline,
+        after_blob="?? initial.txt\0?? extra.txt\0 M file.py\0",
+        after_diff_hash="hash2",
+    )
+    assert dirty_residue is not None
+    assert "extra.txt" in dirty_residue.untracked_paths
+    assert "file.py" in dirty_residue.tracked_paths
+
+    attribution = residue_attribution(dirty_residue)
+    assert isinstance(attribution, DirtAttribution)

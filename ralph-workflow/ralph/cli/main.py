@@ -24,7 +24,6 @@ from ralph.cli._cli_override_input import CLIOverrideInput
 from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.contribute import contribute
-from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.star import star
 from ralph.cli.commands.workspace_health import workspace_health
 from ralph.config.bootstrap import (
@@ -71,6 +70,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.registry import AgentRegistry
     from ralph.cli._general_overrides import GeneralOverrides
+    from ralph.cli.commands.run import RunPipelineRequest
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -1717,6 +1717,8 @@ def _run_pipeline(
 
     display = resolve_active_display(None, display_context)
     try:
+        from ralph.cli.commands.run import RunPipelineRequest
+
         request = RunPipelineRequest(
             config_path=_config_path(config),
             cli_overrides=opts.cli_overrides,
@@ -1833,6 +1835,20 @@ RunPipelineOpts = _RunPipelineOpts
 invoke_pipeline = _run_pipeline
 LONG_DEVELOPER_ITERS = _LONG_DEVELOPER_ITERS
 THOROUGH_DEVELOPER_ITERS = _THOROUGH_DEVELOPER_ITERS
+
+
+def __getattr__(name: str) -> object:
+    if name == "RunPipelineRequest":
+        from ralph.cli.commands.run import RunPipelineRequest
+
+        return RunPipelineRequest
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def run_pipeline(request: RunPipelineRequest, *, display_context: DisplayContext) -> int:
+    from ralph.cli.commands.run import run_pipeline as _impl
+
+    return _impl(request, display_context=display_context)
 
 
 def _resolve_display_from_legacy(

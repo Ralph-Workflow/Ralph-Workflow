@@ -759,8 +759,9 @@ def test_interrupted_merge_resolver_preserves_edits_for_next_agent(
                 force_retry=True,
             ),
         )
-        assert isinstance(result, RebaseResolutionResult)
-        assert isinstance(result.outcome, ResolvedOutcome)
+        assert isinstance(result, (RebaseResolutionResult, ResolvedOutcome))
+        outcome = result.outcome if isinstance(result, RebaseResolutionResult) else result
+        assert isinstance(outcome, ResolvedOutcome)
     assert _run(root, "show", "HEAD:shared.txt").stdout == "completed resolution\n"
 
 

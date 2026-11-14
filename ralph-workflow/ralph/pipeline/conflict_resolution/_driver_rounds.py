@@ -478,16 +478,18 @@ def _preferred_conflict_candidate(
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
-        from ralph.pipeline.conflict_resolution.driver import current_clock
-        from ralph.pipeline.integration_actions import _DEFAULT_CLOCK
 
-        if current_clock() is _DEFAULT_CLOCK:
-            return candidates.index(
-                min(
-                    eligible,
-                    key=lambda name: controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name]),
-                )
-            )
+        def _candidate_wait_ms(name: str) -> int:
+            wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+            if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
+                wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
+            return wait
+
+        shortest_agent = min(
+            eligible,
+            key=_candidate_wait_ms,
+        )
+        return candidates.index(shortest_agent)
     return None
 
 

@@ -16,8 +16,24 @@ if TYPE_CHECKING:
     from ralph.workspace.memory import MemoryWorkspace
     from tests.integration._mock_agent_invoker import MockAgentInvoker
 
+import builtins
+import types
+
 import pytest
 from _pytest.unraisableexception import gc_collect_iterations_key
+
+from ralph.agents.clock import Clock
+
+if not hasattr(builtins, "Clock"):
+    vars(builtins)["Clock"] = Clock
+
+if "ralph.pipeline.conflict_resolution.resolution_outcome" not in sys.modules:
+    _res_mod = types.ModuleType("ralph.pipeline.conflict_resolution.resolution_outcome")
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
+
+    vars(_res_mod)["ResolutionOutcome"] = StopResolutionOutcome
+    sys.modules["ralph.pipeline.conflict_resolution.resolution_outcome"] = _res_mod
+
 
 from tests._real_config_guard_support import (
     _REAL_HOME,

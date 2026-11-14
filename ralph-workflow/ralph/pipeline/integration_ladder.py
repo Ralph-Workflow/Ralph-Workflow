@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._integration_ladder_evidence import (
     _LADDER_ACTION_VALUES,
     _RUNG_ACTION_VALUE,
@@ -960,7 +962,9 @@ def last_resort_recovery(
         "next_phase": "planning",
     }
     carry_path = Path(preservation.manifest_path).with_name("planning-handoff.json")
-    carry_path.write_text(json.dumps(carry_record, indent=2), encoding="utf-8")
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND, carry_path, json.dumps(carry_record, indent=2), encoding="utf-8"
+    )
     _record_evidence(ledger, "preserved:planning-handoff", str(carry_path))
     git.clean_untracked(root, untracked_paths)
     removed_locks = git.remove_stale_locks(root)
