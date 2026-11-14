@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Final
 from loguru import logger
 
 from ralph.git.branch_relation import branch_relation
-from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.git.rebase.rebase_continuation import rebase_in_progress
 from ralph.pipeline._auto_integrate_once import _integrate_once
 from ralph.pipeline._planning_obstruction import identify_planning_obstruction
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit

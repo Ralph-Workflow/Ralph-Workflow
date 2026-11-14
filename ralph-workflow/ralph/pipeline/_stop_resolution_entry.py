@@ -501,7 +501,7 @@ def _resolve_rebase_with_config(
             )
         else:
             reason = None
-        outcome = stop_resolution_outcome_from_legacy(
+        outcome: StopResolutionOutcome = stop_resolution_outcome_from_legacy(
             classify_resolution_failure(
                 terminal_reason=session.terminal_reason,
                 failure_cause=carried_cause,

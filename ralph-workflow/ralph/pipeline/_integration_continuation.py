@@ -47,6 +47,9 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
+_REBASE_RECEIPT_ENTRIES = 2
+
+
 class ExhaustedResolutionFailure(str):
     terminal_reason: ResolutionTerminationReason
 
@@ -58,9 +61,6 @@ class ExhaustedResolutionFailure(str):
         value = super().__new__(cls, reason)
         value.terminal_reason = terminal_reason
         return value
-
-
-_REBASE_RECEIPT_ENTRIES = 2
 
 
 def reset_continuation_gate_state() -> None:

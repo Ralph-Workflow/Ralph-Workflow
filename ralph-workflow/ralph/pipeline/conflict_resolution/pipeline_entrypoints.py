@@ -75,7 +75,7 @@ def run_rebase_conflict_resolution_pipeline(
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
     _ = PHASE_RESOLUTION
-    return run_rebase_conflict_resolution_outcome(
+    outcome = run_rebase_conflict_resolution_outcome(
         root=root,
         target=target,
         stop=stop,
@@ -90,3 +90,4 @@ def run_rebase_conflict_resolution_pipeline(
         session=session,
         strategy_history=strategy_history,
     )
+    return bool(outcome)  # type: ignore[return-value]

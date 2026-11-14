@@ -556,6 +556,7 @@ def _resumed_failure_outcome(
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 
+        critical("CRITICAL: {}", reason)
         return record_resolution_exhausted(
             reason=reason,
             target=record.target,

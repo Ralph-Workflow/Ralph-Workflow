@@ -11,9 +11,6 @@ from ralph.git.rebase.rebase import (
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -26,8 +23,13 @@ from ralph.pipeline.resolution_outcome import (
     assert_never,
 )
 from ralph.pipeline.resolution_outcome_producer import RETRY_LATER_REASON
+
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
+    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+        ResolutionTerminationReason,
+    )
+
 
 ACTION_SKIPPED = RebaseOutcomeKind.SKIPPED.value
 ACTION_REBASED = RebaseOutcomeKind.REBASED.value

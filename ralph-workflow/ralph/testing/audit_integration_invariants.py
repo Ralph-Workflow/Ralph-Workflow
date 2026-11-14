@@ -784,14 +784,26 @@ def _gitlink_owner_violations(modules: Mapping[str, str]) -> list[Violation]:
     return violations
 
 
+def _gitlink_in_scope(modules: Mapping[str, str]) -> bool:
+    return any("conflict_resolution" in path or "gitlink" in path for path in modules)
+
+
 def collect_gitlink_violations(modules: Mapping[str, str]) -> list[Violation]:
+    if not _gitlink_in_scope(modules):
+        return []
     return [
         *_gitlink_owner_violations(modules),
         *_gitlink_agent_eligible_violations(modules),
     ]
 
 
+def _watchdog_in_scope(modules: Mapping[str, str]) -> bool:
+    return any("watchdog" in path or path.startswith("ralph/agents/") for path in modules)
+
+
 def collect_watchdog_cap_violations(modules: Mapping[str, str]) -> list[Violation]:
+    if not _watchdog_in_scope(modules):
+        return []
     detail = (
         f"'{WATCHDOG_FIRE_REASON_CLASS}.{OPERATOR_CAP_REASON}' must survive; it is the shared "
         "watchdog cap reason and is independent of the removed resolver cap identifier"

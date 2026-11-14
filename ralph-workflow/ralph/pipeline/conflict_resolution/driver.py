@@ -675,16 +675,22 @@ def _execute_round_loop(
                 break
             if not _can_continue_rounds(session, candidates):
                 break
-            controller = session.recovery_controller
-            if controller is not None:
-                wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-                if wait_ms > 0:
-                    _sleep_seconds(wait_ms / 1000.0)
+            _wait_for_candidates_if_cooling_down(session, candidates)
     finally:
         if prompt_path is not None:
             with contextlib.suppress(OSError):
                 prompt_path.unlink()
     return False
+
+
+def _wait_for_candidates_if_cooling_down(
+    session: ResolutionSession, candidates: Sequence[str]
+) -> None:
+    controller = session.recovery_controller
+    if controller is not None:
+        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
+        if wait_ms > 0:
+            _sleep_seconds(wait_ms / 1000.0)
 
 
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
