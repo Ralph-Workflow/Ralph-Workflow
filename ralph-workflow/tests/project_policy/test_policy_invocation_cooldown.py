@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from ralph.agents.invoke import AgentInvocationError
@@ -34,7 +36,7 @@ def test_real_policy_invoker_waits_for_owner_cooldown_across_rounds(
     invocations: list[str] = []
 
     def invoke_effect(effect: object, *_args: object, **_kwargs: object) -> PipelineEvent:
-        invocations.append(str(getattr(effect, "agent_name", "")))
+        invocations.append(cast("str", getattr(effect, "agent_name", "")))
         return PipelineEvent.AGENT_SUCCESS if len(invocations) == 4 else PipelineEvent.AGENT_FAILURE
 
     monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)
@@ -68,7 +70,7 @@ def test_real_policy_invoker_routes_caught_launch_failure_through_owner(
     def invoke_effect(*_args: object, **_kwargs: object) -> PipelineEvent:
         nonlocal invocations
         invocations += 1
-        if invocations == 1:
+        if invocations <= 3:
             raise AgentInvocationError("test-agent", 1, "binary failed to start")
         return PipelineEvent.AGENT_SUCCESS
 
@@ -86,9 +88,10 @@ def test_real_policy_invoker_routes_caught_launch_failure_through_owner(
         display_context,
     )
 
-    with pytest.raises(remediation.RemediationInvocationError, match="binary failed to start"):
-        invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
+    for _round in range(3):
+        with pytest.raises(remediation.RemediationInvocationError, match="binary failed to start"):
+            invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
     assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
 
-    assert invocations == 2
-    assert clock.monotonic() > 0
+    assert invocations == 4
+    assert clock.monotonic() == 60.0

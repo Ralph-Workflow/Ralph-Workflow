@@ -1147,7 +1147,11 @@ def run_ladder_rung(
     target_tip = (
         shared_target_tip
         or expected_target_sha
-        or (plumbing.target_sha(root, target) if (feature_tip or paths or shared_conflicting_paths) else None)
+        or (
+            plumbing.target_sha(root, target)
+            if (shared_vendor_pointer is not None or shared_conflicting_paths is not None)
+            else None
+        )
     )
     shared_key: str | None = None
     if target_tip is not None:

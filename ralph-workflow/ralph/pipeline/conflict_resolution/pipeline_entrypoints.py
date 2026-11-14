@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
@@ -69,9 +68,10 @@ def run_rebase_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
-) -> StopResolutionOutcome:
+) -> bool:
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
     _ = PHASE_RESOLUTION
     outcome = run_rebase_conflict_resolution_outcome(
@@ -89,4 +89,4 @@ def run_rebase_conflict_resolution_pipeline(
         session=session,
         strategy_history=strategy_history,
     )
-    return bool(outcome)  # type: ignore[return-value]
+    return isinstance(outcome, ResolvedOutcome)

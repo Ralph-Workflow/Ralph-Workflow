@@ -211,12 +211,26 @@ def _integrate_once_owned(
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=remember_reclamation,
         )
-        from ralph.pipeline.resolution_outcome import ResolvedOutcome
-
-        ok = isinstance(ff_outcome, ResolvedOutcome) or (
-            isinstance(ff_outcome, tuple) and bool(ff_outcome[0])
+        from ralph.pipeline.resolution_outcome import (
+            ResolvedOutcome,
+            RetryLaterOutcome,
+            WaitingOutcome,
         )
-        skip_reason = "" if ok else str(ff_outcome)
+
+        ok = isinstance(ff_outcome, ResolvedOutcome)
+        skip_reason = (
+            ""
+            if ok
+            else (
+                ff_outcome.on_change
+                if isinstance(ff_outcome, RetryLaterOutcome)
+                else (
+                    ff_outcome.external_condition
+                    if isinstance(ff_outcome, WaitingOutcome)
+                    else str(ff_outcome)
+                )
+            )
+        )
 
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:

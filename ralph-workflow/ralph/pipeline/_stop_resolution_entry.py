@@ -420,8 +420,15 @@ def attempt_stop_resolution(
                 | ConfigFailureOutcome()
                 | UnknownOutcome()
             ):
-                cause = _deferred_failure_cause(trigger.root, trigger.record)
-                _record_failed_attempt(trigger, post_key, cause)
+                attempt_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+                if isinstance(result, (ResolvedOutcome, RetryLaterOutcome)):
+                    if result.failure_cause is not None:
+                        attempt_cause = result.failure_cause
+                elif isinstance(result, ConfigFailureOutcome):
+                    attempt_cause = ResolutionFailureCause.CONFIG_FAILURE
+                if attempt_cause == ResolutionFailureCause.NONE:
+                    attempt_cause = _deferred_failure_cause(trigger.root, trigger.record)
+                _record_failed_attempt(trigger, post_key, attempt_cause)
             case _ as unreachable:
                 assert_never(unreachable)
     else:

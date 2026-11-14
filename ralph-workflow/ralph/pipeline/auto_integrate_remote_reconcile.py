@@ -32,7 +32,6 @@ from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_pro
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
     current_rebase_identity,
-    resolution_session_from_config,
 )
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.resolution_outcome import (
@@ -273,28 +272,6 @@ def _resolve_rebase_stop(
     config: UnifiedConfig | None,
     record: IntegrationRecord,
 ) -> StopResolutionOutcome:
-    if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
-        session = resolution_session_from_config(config) if config is not None else None
-        try:
-            raw_outcome = resolve_rebase_in_progress(owner, target, resolver, session=session)
-        except TypeError:
-            raw_outcome = resolve_rebase_in_progress(owner, target, resolver)
-        raw_res: object = raw_outcome
-        if isinstance(
-            raw_res,
-            (
-                ResolvedOutcome,
-                WaitingOutcome,
-                RetryLaterOutcome,
-                NextStrategyOutcome,
-                ConfigFailureOutcome,
-                UnknownOutcome,
-            ),
-        ):
-            return raw_res
-        if raw_res:
-            return ResolvedOutcome()
-        return RetryLaterOutcome(on_change="rebase resolution state changes")
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger

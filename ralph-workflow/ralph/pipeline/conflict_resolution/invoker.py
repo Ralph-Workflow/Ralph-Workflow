@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -75,7 +76,21 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
-        return bool(result)
+        if bool(result):
+            return ResolvedOutcome()
+        from ralph.pipeline.resolution_outcome_producer import (
+            classify_resolution_failure,
+            stop_resolution_outcome_from_legacy,
+        )
+
+        return stop_resolution_outcome_from_legacy(
+            classify_resolution_failure(
+                terminal_reason=session.terminal_reason,
+                failure_cause=session.last_failure_cause,
+                reason=session.exhaustion_reason,
+                paths=session.unresolved_paths,
+            )
+        )
 
     return _invoke
 

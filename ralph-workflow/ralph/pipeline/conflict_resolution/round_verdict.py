@@ -14,15 +14,12 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.resolution_outcome import (
-    ResolvedOutcome,
-    StopResolutionOutcome,
-)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 __all__ = [
     "is_effectively_empty",
@@ -34,19 +31,10 @@ __all__ = [
 
 
 def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
-    from dataclasses import replace
-
-    from ralph.pipeline.resolution_outcome_producer import (
-        classify_resolution_failure,
-    )
-
-    unresolved = tuple(session.unresolved_paths or ())
     if succeeded:
-        return ResolvedOutcome(
-            succeeded=True,
-            reason=None,
-            unresolved_paths=unresolved,
-        )
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+        return ResolvedOutcome()
     cause = ResolutionFailureCause.NONE
     if not succeeded:
         if session.last_failure_cause != ResolutionFailureCause.NONE:
@@ -57,21 +45,16 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResol
             cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
     ex_msg = (
         session.operator_action_message
-        if not succeeded and session.operator_action_message
-        else (session.exhaustion_reason if not succeeded else None)
+        if session.operator_action_message
+        else session.exhaustion_reason
     )
-    raw_outcome = classify_resolution_failure(
+    from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+
+    return classify_resolution_failure(
         terminal_reason=session.terminal_reason,
         failure_cause=cause,
         reason=ex_msg,
         paths=session.unresolved_paths,
-    )
-    outcome = raw_outcome
-    return replace(
-        outcome,
-        succeeded=False,
-        reason=session.terminal_reason,
-        unresolved_paths=unresolved,
     )
 
 

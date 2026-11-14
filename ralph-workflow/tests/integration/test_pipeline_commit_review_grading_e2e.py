@@ -34,6 +34,9 @@ from ralph.phases.required_artifacts import (
     resolve_phase_required_artifact,
 )
 from ralph.pipeline import effect_executor, phase_agent_handler, runner
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import run_agent_attempt
+from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
 from ralph.pipeline.effect_executor import demotion_after_finalization
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
@@ -473,23 +476,46 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
         markdown_path=required_artifact.markdown_path,
         normalizer=None,
     )
-    with pytest.raises(ArtifactContractMismatchError):
-        effect_executor.execute_agent_effect(
-            InvokeAgentEffect(
-                agent_name=selected_agent,
-                phase=review_phase,
-                prompt_file=str(prompt_path.relative_to(commit_review_repo)),
-                drain="commit",
-            ),
+    mismatch_effect = InvokeAgentEffect(
+        agent_name=selected_agent,
+        phase=review_phase,
+        prompt_file=str(prompt_path.relative_to(commit_review_repo)),
+        drain="commit",
+    )
+    runner_deps = AttemptRunnerDeps(
+        clock=SystemClock(),
+        invoke=lambda target, **_kwargs: effect_executor.execute_agent_effect(
+            target,
             _config(),
             deps,
             WorkspaceScope(commit_review_repo),
             display_context=display_context,
             invoke_agent=transport,
             required_artifact=mismatched,
+        ),
+        probe_runner=lambda *_args: None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+    with pytest.raises(ArtifactContractMismatchError):
+        run_agent_attempt(
+            AgentEntryPoint.MAIN_PHASE_LOOP,
+            effect=mismatch_effect,
+            config=_config(),
+            controller=captured_controllers[0],
+            deps=runner_deps,
         )
     assert len(transport.calls) == calls_before_mismatch, (
         "the mismatching required-artifact type must be rejected before the agent is invoked"
+    )
+    assert ledger.is_available(review_phase, selected_agent), (
+        "an engine-side contract mismatch must not bench or demote the agent"
+    )
+    assert not isinstance(ledger.status(review_phase, selected_agent), (Cooldown, Spent)), (
+        "an engine-side contract mismatch must not place the agent in cooldown or spent"
+    )
+    assert ledger.status(review_phase, selected_agent).is_eligible, (
+        "an engine-side contract mismatch must not charge the consecutive_unproductive counter"
     )
 
 

@@ -218,8 +218,6 @@ def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunRe
     )
 
 
-
-
 def _conflict_run(
     target: str,
     reason: str,
@@ -243,10 +241,20 @@ def _rebase_run_result(
     target: str,
     outcome: StopResolutionOutcome,
 ) -> RebaseRunResult:
-    failure_cause = (
+    outcome_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+    if isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
+        if outcome.failure_cause is not None:
+            outcome_cause = outcome.failure_cause
+    elif isinstance(outcome, ConfigFailureOutcome):
+        outcome_cause = ResolutionFailureCause.CONFIG_FAILURE
+    failure_cause: ResolutionFailureCause = (
         record.last_failure_cause
         if record is not None and record.last_failure_cause is not ResolutionFailureCause.NONE
-        else ResolutionFailureCause.UNRESOLVED_CONFLICT
+        else (
+            outcome_cause
+            if outcome_cause != ResolutionFailureCause.NONE
+            else ResolutionFailureCause.UNRESOLVED_CONFLICT
+        )
     )
     failure_reason = _outcome_reason(outcome)
     if record is not None and not isinstance(outcome, ResolvedOutcome):

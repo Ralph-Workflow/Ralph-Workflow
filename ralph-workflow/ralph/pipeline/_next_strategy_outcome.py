@@ -12,9 +12,16 @@ __all__ = ["NextStrategyOutcome"]
 @dataclass(frozen=True, slots=True)
 class NextStrategyOutcome:
     strategy: str
-    succeeded: bool = False
-    reason: object = None
+    terminal_reason: object | None = None
     unresolved_paths: tuple[str, ...] = ()
+
+    @property
+    def succeeded(self) -> bool:
+        return False
+
+    @property
+    def reason(self) -> object:
+        return self.terminal_reason
 
     def __iter__(self) -> Iterator[object]:
         return iter((False, self.strategy))

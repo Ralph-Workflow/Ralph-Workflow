@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -20,9 +18,6 @@ from ralph.pipeline.resolution_outcome_exhausted import Exhausted
 from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
 from ralph.pipeline.resolution_outcome_resolved import Resolved
 from ralph.pipeline.resolution_outcome_retry_later import RetryLater
-
-if TYPE_CHECKING:
-    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 __all__ = [
     "RETRY_LATER_REASON",
@@ -57,20 +52,37 @@ def classify_resolution_failure(
         if typed is not None:
             return ConfigFailureOutcome(file=typed.file, parse_error=typed.parse_error)
     if failure_cause is ResolutionFailureCause.CONFIG_FAILURE:
-        return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
-    if terminal_reason is ResolutionTerminationReason.OUT_OF_REACH:
-        return NextStrategyOutcome(strategy="completion_in_place")
-    if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        strat = (
-            f"resolver agents exhausted: {', '.join(agents)}"
-            if agents
-            else (reason or "resolver agents exhausted")
+        return RetryLaterOutcome(
+            on_change=reason or RETRY_LATER_REASON,
+            terminal_reason=terminal_reason,
+            unresolved_paths=paths,
+            failure_cause=failure_cause,
         )
-        return NextStrategyOutcome(strategy=strat)
-    return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
+    if terminal_reason is ResolutionTerminationReason.OUT_OF_REACH:
+        return NextStrategyOutcome(
+            strategy="completion_in_place",
+            terminal_reason=terminal_reason,
+            unresolved_paths=paths,
+        )
+    if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+        return RetryLaterOutcome(
+            on_change=reason
+            or ("resolver_agent_eligibility_changed" if agents else RETRY_LATER_REASON),
+            terminal_reason=terminal_reason,
+            unresolved_paths=paths,
+            failure_cause=failure_cause,
+        )
+    return RetryLaterOutcome(
+        on_change=reason or RETRY_LATER_REASON,
+        terminal_reason=terminal_reason,
+        unresolved_paths=paths,
+        failure_cause=failure_cause,
+    )
 
 
-def stop_resolution_outcome_from_legacy(outcome: object) -> StopResolutionOutcome:
+def stop_resolution_outcome_from_legacy(
+    outcome: object,
+) -> StopResolutionOutcome:
     if isinstance(
         outcome,
         (
@@ -83,11 +95,12 @@ def stop_resolution_outcome_from_legacy(outcome: object) -> StopResolutionOutcom
         ),
     ):
         return outcome
+    result: StopResolutionOutcome
     match outcome:
         case Resolved():
-            return ResolvedOutcome()
+            result = ResolvedOutcome()
         case NeedsOperator(command=command):
-            return WaitingOutcome(
+            result = WaitingOutcome(
                 external_condition=(
                     f"operator action required: {command}"
                     if command
@@ -96,10 +109,11 @@ def stop_resolution_outcome_from_legacy(outcome: object) -> StopResolutionOutcom
                 resumes_when="operator resolves the conflict",
             )
         case RetryLater(until=until, on_change=on_change):
-            return RetryLaterOutcome(until=until, on_change=on_change)
+            result = RetryLaterOutcome(until=until, on_change=on_change)
         case Exhausted(agents=agents):
-            return NextStrategyOutcome(strategy=f"resolver agents exhausted: {', '.join(agents)}")
+            result = NextStrategyOutcome(strategy=f"resolver agents exhausted: {', '.join(agents)}")
         case ConfigFailure(file=file, parse_error=parse_error):
-            return ConfigFailureOutcome(file=file, parse_error=str(parse_error))
+            result = ConfigFailureOutcome(file=file, parse_error=str(parse_error))
         case _:
-            raise AssertionError(f"unexpected outcome: {outcome!r}")
+            result = UnknownOutcome(error=RuntimeError(f"unrecognized legacy outcome: {outcome!r}"))
+    return result

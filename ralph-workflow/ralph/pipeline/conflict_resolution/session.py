@@ -229,7 +229,7 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    from ralph.pipeline.integration_actions import current_clock
+    from ralph.agents.timeout_clock import SystemClock
     from ralph.recovery.controller import RecoveryController
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
@@ -256,11 +256,7 @@ def ensure_session_controller(
     clock = (
         pipeline_deps.recovery_clock
         if pipeline_deps is not None and pipeline_deps.recovery_clock is not None
-        else (
-            session.ledger.clock
-            if session is not None and session.ledger is not None and getattr(session.ledger, "clock", None) is not None
-            else current_clock()
-        )
+        else SystemClock()
     )
     deps = AttemptRunnerDeps(
         clock=clock,
@@ -303,7 +299,7 @@ def _build_classified_conflict_failure(
         ConflictAttemptOutcome.STALLED,
         ConflictAttemptOutcome.STALLED_NO_PROGRESS,
     ):
-        unavailable_reason = UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
+        unavailable_reason = UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY
         reason = (
             f"agent reported success but made no progress: {unresolved_count} "
             "conflicted path(s) remain unchanged"
@@ -372,54 +368,49 @@ def classify_failed_resolution_attempt(
         )
     from ralph.recovery.classifier import FailureContext
 
-    handle_failure = raw_failure if raw_failure is not None else "failed"
-    if session.last_attempt_result is None:
-        try:
-            new_state, _effects, _event = controller.handle(
-                recovery_state,
-                handle_failure,
-                FailureContext(
-                    phase=PHASE_RESOLUTION,
-                    agent=agent_name,
-                ),
-                workspace_changed=workspace_changed,
-                artifact_valid=artifact_valid,
-            )
-            recovery_state = new_state
-        except TypeError:
-            new_state, _effects, _event = controller.handle(
-                recovery_state,
-                handle_failure,
-                FailureContext(
-                    phase=PHASE_RESOLUTION,
-                    agent=agent_name,
-                ),
-            )
-            recovery_state = new_state
-        except Exception as handle_exc:
-            logger.debug("controller.handle exception in conflict resolution: {}", handle_exc)
-        session.recovery_state = recovery_state
-        session.last_retry_delay_ms = recovery_state.last_retry_delay_ms
+    handle_failure: BaseException | str = raw_failure if raw_failure is not None else ""
+    facts = session.last_attempt_result.facts if session and session.last_attempt_result else None
+    context = FailureContext(
+        phase=PHASE_RESOLUTION,
+        agent=agent_name,
+        classified_failure=classified,
+        facts=facts,
+    )
+    try:
+        new_state, _effects, _event = controller.handle(
+            recovery_state,
+            handle_failure,
+            context,
+            workspace_changed=workspace_changed,
+            artifact_valid=artifact_valid,
+            facts=facts,
+        )
+    except TypeError:
+        new_state, _effects, _event = controller.handle(
+            recovery_state,
+            handle_failure,
+            context,
+        )
+    except Exception as handle_exc:
+        logger.debug("controller.handle exception in conflict resolution: {}", handle_exc)
+        new_state = recovery_state
+    session.recovery_state = new_state
+    session.last_retry_delay_ms = new_state.last_retry_delay_ms
     session.last_recovery_reason = (
         classified.reason
         if classified is not None
         else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
 
-    agent_status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
-    agent_available = agent_status.is_eligible
+    max_retries = conflict_chain_max_retries(policy_bundle)
+    recovery_chain = recovery_state.chain_for_phase(PHASE_RESOLUTION) if recovery_state else None
+    current_retries = recovery_chain.retries if recovery_chain is not None else 0
 
-    from ralph.recovery.failure_category import FailureCategory
-
-    classified_eff = classified
-    if classified_eff is None and raw_failure is not None:
-        classified_eff = controller.classify_conflict_attempt(raw_failure, agent=agent_name)
-    is_environmental = (
-        classified_eff is not None and classified_eff.category == FailureCategory.ENVIRONMENTAL
-    )
-    if not session.skip_same_agent_retries and is_environmental and agent_available:
+    if not session.skip_same_agent_retries and current_retries < max_retries:
         session.chain_cursor = failed_index
+        next_retries = current_retries + 1
     else:
+        controller.note_retry_exhaustion(PHASE_RESOLUTION, agent_name)
         session.skip_same_agent_retries = False
         candidates_tuple = tuple(candidates) if candidates else (agent_name,)
         selection = controller.preferred_agent_index(
@@ -430,20 +421,25 @@ def classify_failed_resolution_attempt(
         )
         if selection.agent is not None and selection.index is not None:
             session.chain_cursor = selection.index
+            next_retries = 0
         elif candidates:
             session.chain_cursor = controller.next_conflict_candidate(
                 candidates, failed_index=failed_index
             )
-    chain_state = recovery_state.chain_for_phase(PHASE_RESOLUTION)
+            next_retries = 0
+        else:
+            session.chain_cursor = failed_index + 1
+            next_retries = 0
+
     chain_agents: list[str] = (
-        list(chain_state.agents) if chain_state is not None else list(candidates)
+        list(recovery_chain.agents) if recovery_chain is not None else list(candidates)
     )
-    session.recovery_state = recovery_state.with_phase_chain(
+    session.recovery_state = new_state.with_phase_chain(
         PHASE_RESOLUTION,
         AgentChainState(
             agents=chain_agents,
             current_index=min(session.chain_cursor, max(len(chain_agents) - 1, 0)),
-            retries=0,
+            retries=next_retries,
         ),
     )
 

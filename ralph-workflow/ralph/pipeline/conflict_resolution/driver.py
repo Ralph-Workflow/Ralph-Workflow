@@ -94,6 +94,7 @@ from ralph.pipeline.conflict_resolution.status import (
 )
 from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.resolution_outcome import StopResolutionOutcome
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -625,17 +626,7 @@ def _execute_round_loop(
                     observer=observer,
                 )
 
-            controller = session.recovery_controller
-            if controller is not None:
-                skipped = skipped_candidates(session, candidates)
-                live = [name for name in candidates if name not in skipped]
-                if live and not any(
-                    controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible
-                    for name in live
-                ):
-                    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
-                    if wait_ms > 0:
-                        _sleep_seconds(wait_ms / 1000.0)
+            _wait_for_eligible_agent(session, candidates)
 
             attempt = _run_one_round(
                 runner,
@@ -660,16 +651,24 @@ def _execute_round_loop(
                 made_progress = attempt.probe_changed or attempt.count_dropped
                 session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
                 session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-                controller = session.recovery_controller
-                if controller is not None:
-                    from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver
-
-                    bench_resolver(
-                        controller,
-                        attempt.agent_name,
-                        "unresolved paths remain in worktree",
-                        workspace_changed=made_progress,
-                    )
+                classify_failed_resolution_attempt(
+                    session,
+                    attempt.agent_name,
+                    None,
+                    candidates=candidates,
+                    failed_index=attempt.candidate_offset,
+                    policy_bundle=policy_bundle,
+                    outcome=(
+                        ConflictAttemptOutcome.UNRESOLVED_REMAINING
+                        if made_progress
+                        else ConflictAttemptOutcome.STALLED
+                    ),
+                    unresolved_count=unresolved_count,
+                    workspace_changed=made_progress,
+                )
+            if not attempt.invoked:
+                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
+                break
             action = _evaluate_round_attempt(
                 attempt,
                 session,
@@ -703,6 +702,23 @@ def _execute_round_loop(
     return False
 
 
+def _wait_for_eligible_agent(
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+) -> None:
+    controller = session.recovery_controller
+    if controller is None:
+        return
+    skipped = skipped_candidates(session, candidates)
+    live = [name for name in candidates if name not in skipped]
+    if live and not any(
+        controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+    ):
+        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+        if wait_ms > 0:
+            _sleep_seconds(wait_ms / 1000.0)
+
+
 def _wait_for_candidates_if_cooling_down(
     session: ResolutionSession, candidates: Sequence[str]
 ) -> None:
@@ -720,9 +736,17 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         return False
     controller = session.recovery_controller
     if controller is not None:
-        if any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live):
+        if controller.all_exhausted(PHASE_RESOLUTION, live):
+            return False
+        return (
+            any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live)
+            or controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
+        )
+    if session.ledger is not None:
+        if session.ledger.any_eligible(PHASE_RESOLUTION, live):
             return True
-        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
+        wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
+        return wait is not None and wait > 0
     return True
 
 

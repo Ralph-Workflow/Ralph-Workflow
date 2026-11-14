@@ -99,18 +99,6 @@ def build_agent_conflict_resolver(
             )
             return NextStrategyOutcome("completion_in_place")
         try:
-            if strategy_history:
-                return run_conflict_resolution_pipeline(
-                    root=root,
-                    target=target,
-                    config=config,
-                    pipeline_deps=pipeline_deps,
-                    workspace_scope=workspace_scope,
-                    policy_bundle=policy_bundle,
-                    display=display,
-                    display_context=display_context,
-                    strategy_history=strategy_history,
-                )
             return run_conflict_resolution_pipeline(
                 root=root,
                 target=target,
@@ -120,6 +108,7 @@ def build_agent_conflict_resolver(
                 policy_bundle=policy_bundle,
                 display=display,
                 display_context=display_context,
+                strategy_history=strategy_history,
             )
         except Exception as exc:
             logger.warning("auto_integrate: conflict-resolution pipeline raised: {}", exc)
@@ -190,7 +179,12 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return RetryLaterOutcome(on_change=reason_text)
+            return RetryLaterOutcome(
+                on_change=reason_text,
+                terminal_reason=ResolutionTerminationReason.CONFIG_FAILURE,
+                unresolved_paths=(),
+                failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+            )
         except Exception as exc:
             logger.warning(
                 "auto_integrate: could not use the target worktree's own "
@@ -230,7 +224,12 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return RetryLaterOutcome(on_change=reason_text)
+            return RetryLaterOutcome(
+                on_change=reason_text,
+                terminal_reason=term_reason,
+                unresolved_paths=(),
+                failure_cause=failure_cause,
+            )
 
     return _resolver
 

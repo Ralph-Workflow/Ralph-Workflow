@@ -9,6 +9,8 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
 )
 
+__all__ = ["ResolutionOutcomeType"]
+
 type ResolutionOutcomeType = (
     ResolvedOutcome
     | WaitingOutcome
@@ -17,5 +19,3 @@ type ResolutionOutcomeType = (
     | ConfigFailureOutcome
     | UnknownOutcome
 )
-
-__all__ = ["ResolutionOutcomeType"]

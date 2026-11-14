@@ -88,12 +88,44 @@ def emit_success(
 def emit_attempt_outcome(
     display: ParallelDisplay | None,
     outcome: StopResolutionOutcome,
-    *,
     session: ResolutionSession | None = None,
 ) -> None:
+    if isinstance(outcome, ResolvedOutcome):
+        return
+    if session is not None and (
+        session.terminal_reason is not None
+        or session.last_activity_kind is not None
+        or session.last_duration_seconds is not None
+    ):
+        from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+            ResolutionTerminationReason,
+        )
+
+        strategy_fallback = (
+            outcome.strategy
+            if isinstance(outcome, NextStrategyOutcome)
+            else "resolution_incomplete"
+        )
+        reason_label = (
+            session.terminal_reason.value
+            if isinstance(session.terminal_reason, ResolutionTerminationReason)
+            else str(session.terminal_reason or strategy_fallback)
+        )
+        duration = (
+            session.last_duration_seconds if session.last_duration_seconds is not None else 0.0
+        )
+        unresolved = session.unresolved_paths
+        line = (
+            f"{reason_label}: duration={duration:.1f}s; "
+            f"last_activity_kind={session.last_activity_kind or 'none'}; "
+            f"last_activity_at={session.last_activity_at or 'never'}; "
+            f"last_progress=unresolved_count={len(unresolved)}; "
+            f"unresolved_paths={', '.join(unresolved)}; "
+            f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
+        )
+        _emit(display, line)
+        return
     match outcome:
-        case ResolvedOutcome():
-            return
         case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
             line = f"waiting: {condition}; resumes_when={resumes_when}"
         case RetryLaterOutcome(until=until, on_change=on_change):

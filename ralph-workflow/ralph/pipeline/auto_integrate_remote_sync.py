@@ -359,9 +359,7 @@ def _dispatch_ref_comparison(
         )
         from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-        if isinstance(raw_outcome, tuple):
-            advanced, refusal = raw_outcome[0], raw_outcome[1] if len(raw_outcome) > 1 else ""
-        elif isinstance(raw_outcome, ResolvedOutcome):
+        if isinstance(raw_outcome, ResolvedOutcome):
             advanced, refusal = True, ""
         else:
             advanced, refusal = False, str(raw_outcome)

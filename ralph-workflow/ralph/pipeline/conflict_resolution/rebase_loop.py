@@ -114,15 +114,22 @@ class RebaseStop:
     replay_total: int | None = None
 
 
-type RebaseStopResolver = Callable[["Path", str, RebaseStop], StopResolutionOutcome]
+type RebaseStopResolver = Callable[
+    ["Path", str, RebaseStop],
+    StopResolutionOutcome | bool,
+]
 
 _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
     "active_gitlink_policy", default=None
 )
 
 
-def _resolution_succeeded(result: StopResolutionOutcome) -> bool:
-    return isinstance(result, ResolvedOutcome)
+def _resolution_succeeded(
+    result: StopResolutionOutcome | bool,
+) -> bool:
+    if isinstance(result, ResolvedOutcome):
+        return True
+    return bool(result) if isinstance(result, bool) else False
 
 
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
@@ -278,7 +285,9 @@ def _resolve_one_stop(
         if active_session is not None:
             if isinstance(outcome, ConfigFailureOutcome):
                 active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-                active_session.exhaustion_reason = str(outcome.parse_error)
+                active_session.exhaustion_reason = (
+                    str(outcome.parse_error) if outcome.parse_error is not None else None
+                )
             elif isinstance(outcome, UnknownOutcome):
                 active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
                 active_session.exhaustion_reason = str(outcome.error)

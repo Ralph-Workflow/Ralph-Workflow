@@ -14,9 +14,16 @@ __all__ = ["ConfigFailureOutcome"]
 class ConfigFailureOutcome:
     file: Path
     parse_error: BaseException | str
-    succeeded: bool = False
-    reason: object = None
+    terminal_reason: object | None = None
     unresolved_paths: tuple[str, ...] = ()
+
+    @property
+    def succeeded(self) -> bool:
+        return False
+
+    @property
+    def reason(self) -> object:
+        return self.terminal_reason
 
     def __iter__(self) -> Iterator[object]:
         return iter((False, str(self.parse_error)))
@@ -29,3 +36,11 @@ class ConfigFailureOutcome:
 
     def __bool__(self) -> bool:
         return False
+
+    @classmethod
+    def from_error(cls, error: BaseException) -> ConfigFailureOutcome:
+        from ralph.config.loader import ConfigLoadError
+
+        if not isinstance(error, ConfigLoadError):
+            raise TypeError("ConfigFailureOutcome requires ConfigLoadError")
+        return cls(file=error.file, parse_error=error.parse_error)

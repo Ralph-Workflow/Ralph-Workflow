@@ -396,7 +396,7 @@ def _run_one_round(
                 count_dropped=progress.count_dropped,
                 probe_changed=progress.probe_changed,
             )
-        agent_saw = session.last_attempt_saw_activity
+        agent_saw = bool(session.last_attempt_saw_activity)
         agent_ran = agent_ran or agent_saw
         if _check_worktree_repair(
             session, agent_name, round_index, round_cap, display, worktree_resolved, agent_saw
@@ -466,7 +466,7 @@ def _preferred_conflict_candidate(
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
-        return None
+        return candidates.index(eligible[0])
     return None
 
 

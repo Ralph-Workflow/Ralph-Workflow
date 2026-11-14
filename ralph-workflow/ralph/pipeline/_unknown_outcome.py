@@ -12,9 +12,16 @@ __all__ = ["UnknownOutcome"]
 @dataclass(frozen=True, slots=True)
 class UnknownOutcome:
     error: BaseException
-    succeeded: bool = False
-    reason: object = None
+    terminal_reason: object | None = None
     unresolved_paths: tuple[str, ...] = ()
+
+    @property
+    def succeeded(self) -> bool:
+        return False
+
+    @property
+    def reason(self) -> object:
+        return self.terminal_reason
 
     def __iter__(self) -> Iterator[object]:
         return iter((False, str(self.error)))

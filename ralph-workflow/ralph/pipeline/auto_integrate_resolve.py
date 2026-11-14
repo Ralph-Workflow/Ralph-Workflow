@@ -27,13 +27,6 @@ from ralph.pipeline._pending_merge_commit import (
 )
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
-from ralph.pipeline.conflict_resolution.attempt_fault import (
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
-)
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -47,20 +40,12 @@ from ralph.pipeline.resolution_outcome_producer import classify_resolution_failu
 
 _UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
 
-ConflictResolver = Callable[[Path, str], StopResolutionOutcome | bool]
+ConflictResolver = Callable[[Path, str], StopResolutionOutcome]
 
 
 RESOLUTION_FAILED = "resolution_failed"
 MERGE_COMMIT_PENDING = "merge_commit_pending"
-RESOLUTION_AGENT_FAILURE = "resolution_agent_failure"
 _RETAINED_RESOLUTION_REASON = "conflict resolution incomplete; progress retained"
-_SPENT_RESOLVERS_PREFIX = "all resolver agents are spent/unavailable; "
-_NOT_SPENT_TERMINAL_REASONS = RESOLVER_NOT_SPENT_TERMINATION_REASONS - {
-    ResolutionTerminationReason.OUT_OF_REACH,
-    ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
-    ResolutionTerminationReason.CONFIG_FAILURE,
-    ResolutionTerminationReason.CONTEXT_FAILURE,
-}
 
 
 def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
@@ -296,54 +281,8 @@ def _resolver_exception_result(
     return _handle_sealed_outcome(outcome, reason)
 
 
-def _terminal_reason(
-    result: ResolutionOutcome | bool,
-    message: str | None,
-) -> ResolutionTerminationReason | None:
-    if isinstance(result, ResolutionOutcome) and isinstance(
-        result.reason, ResolutionTerminationReason
-    ):
-        return result.reason
-    head = (message or "").partition(":")[0].strip()
-    if not head:
-        return None
-    try:
-        return ResolutionTerminationReason(head)
-    except ValueError:
-        return None
-
-
-def _merge_resolution_facts(
-    result: ResolutionOutcome | bool,
-    reason: str | None,
-) -> tuple[ResolutionTerminationReason | None, ResolutionFailureCause, str | None]:
-    message = reason
-    failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-    if isinstance(result, ResolutionOutcome):
-        if result.failure_cause is not ResolutionFailureCause.NONE:
-            failure_cause = result.failure_cause
-        if message is None:
-            message = result.exhaustion_message or (
-                str(result.reason) if result.reason is not None else None
-            )
-    terminal_reason = _terminal_reason(result, message)
-    if terminal_reason is not None and terminal_reason in _NOT_SPENT_TERMINAL_REASONS:
-        failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        message = RESOLUTION_AGENT_FAILURE
-    return terminal_reason, failure_cause, message
-
-
-def _merge_conflicted_paths(
-    result: ResolutionOutcome | bool,
-    conflicted: tuple[str, ...],
-) -> tuple[str, ...]:
-    if isinstance(result, ResolutionOutcome) and result.unresolved_paths:
-        return tuple(result.unresolved_paths)
-    return conflicted
-
-
 def handle_unsuccessful_resolution(
-    result: StopResolutionOutcome | ResolutionOutcome | bool,
+    result: StopResolutionOutcome | bool,
     reason: str | None,
     conflicted: tuple[str, ...] = (),
 ) -> MergeResult:
@@ -359,16 +298,15 @@ def handle_unsuccessful_resolution(
         ),
     ):
         return _handle_sealed_outcome(result, reason)
-
-    terminal_reason, failure_cause, message = _merge_resolution_facts(result, reason)
-    paths = _merge_conflicted_paths(result, conflicted)
-    outcome = classify_resolution_failure(
-        terminal_reason=terminal_reason,
-        failure_cause=failure_cause,
-        reason=message or _RETAINED_RESOLUTION_REASON,
-        paths=paths,
+    if result is True:
+        return MergeResult("success", failure_cause=ResolutionFailureCause.NONE)
+    return _handle_sealed_outcome(
+        RetryLaterOutcome(
+            on_change=reason or _RETAINED_RESOLUTION_REASON,
+            unresolved_paths=conflicted,
+        ),
+        reason,
     )
-    return _handle_sealed_outcome(outcome, reason)
 
 
 _handle_unsuccessful_resolution = handle_unsuccessful_resolution
