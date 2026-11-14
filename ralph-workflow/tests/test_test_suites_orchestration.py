@@ -18,20 +18,7 @@ from tests._test_test_suites_helpers import (
     _StubSpawner,
 )
 
-EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
-    *BASE_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
-    "tests/scenarios/test_auto_integrate_symptom_matrix.py",
-    "tests/scenarios/test_lifecycle_relations.py",
-    "tests/scenarios/test_lifecycle_work_shapes.py",
-    "tests/scenarios/test_lifecycle_midflight.py",
-    "tests/scenarios/test_lifecycle_restart.py",
-    "tests/scenarios/test_lifecycle_operator_interleave.py",
-    "tests/scenarios/test_lifecycle_target_moves.py",
-    "tests/scenarios/test_lifecycle_conflict_kinds.py",
-    "tests/scenarios/test_lifecycle_publication_cleanup.py",
-    "tests/scenarios/test_lifecycle_content_equivalence.py",
-    "tests/scenarios/test_lifecycle_fault_injection.py",
-)
+EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = BASE_REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
