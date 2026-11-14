@@ -36,7 +36,10 @@ from ralph.pipeline.resolution_outcome import (
     UnknownOutcome,
     WaitingOutcome,
 )
-from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+from ralph.pipeline.resolution_outcome_producer import (
+    classify_resolution_failure,
+    stop_resolution_outcome_from_legacy,
+)
 
 _UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
 
@@ -278,7 +281,7 @@ def _resolver_exception_result(
         paths=conflicted,
         config_error=resolver_exc,
     )
-    return _handle_sealed_outcome(outcome, reason)
+    return _handle_sealed_outcome(stop_resolution_outcome_from_legacy(outcome), reason)
 
 
 def handle_unsuccessful_resolution(

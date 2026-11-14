@@ -48,14 +48,18 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResol
         if session.operator_action_message
         else session.exhaustion_reason
     )
-    from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+    from ralph.pipeline.resolution_outcome_producer import (
+        classify_resolution_failure,
+        stop_resolution_outcome_from_legacy,
+    )
 
-    return classify_resolution_failure(
+    raw_outcome = classify_resolution_failure(
         terminal_reason=session.terminal_reason,
         failure_cause=cause,
         reason=ex_msg,
         paths=session.unresolved_paths,
     )
+    return stop_resolution_outcome_from_legacy(raw_outcome)
 
 
 def reset_round_reporting(session: ResolutionSession) -> None:
