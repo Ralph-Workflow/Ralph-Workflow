@@ -147,6 +147,7 @@ class MatrixScenario:
     connectivity: ConnectivityState | None = None
     precool: tuple[tuple[str, UnavailabilityReason], ...] = ()
     expected_kind: str | None = None
+    expected_reason: str | None = None
     no_ledger_charge: bool = False
     corpus_id: str | None = None
 
@@ -195,6 +196,31 @@ SCENARIOS = (
                 ),
                 returncode=137,
                 message="provider stopped for a never-before-seen reason",
+            ),
+            MatrixScenario.Script(
+                agent=AGENT_B,
+                failed=False,
+                facts=AttemptFacts(artifact_valid=True),
+            ),
+        ),
+        ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
+        expected_kind="completed",
+    ),
+    MatrixScenario(
+        "ac2_ordinary_nonzero_exit_selects_b",
+        ("AC2",),
+        (
+            MatrixScenario.Script(
+                agent=AGENT_A,
+                facts=termination_facts(
+                    TerminationIssuer.AGENT_EXIT,
+                    observed=1,
+                    reported=1,
+                    liveness=False,
+                    event_kinds=("error",),
+                ),
+                returncode=1,
+                message="agent crashed with ordinary exit code 1",
             ),
             MatrixScenario.Script(
                 agent=AGENT_B,
@@ -402,6 +428,7 @@ SCENARIOS = (
         ProbeOutcome.PASSED,
         connectivity=ConnectivityState.ONLINE,
         expected_kind="agent_dead",
+        expected_reason=str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
     ),
     MatrixScenario(
         "typed_signal_missing_credentials_offline",
@@ -410,6 +437,7 @@ SCENARIOS = (
         ProbeOutcome.PASSED,
         connectivity=ConnectivityState.OFFLINE,
         expected_kind="agent_dead",
+        expected_reason=str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
     ),
     MatrixScenario(
         "typed_signal_broken_agent_online",
@@ -418,6 +446,7 @@ SCENARIOS = (
         ProbeOutcome.PASSED,
         connectivity=ConnectivityState.ONLINE,
         expected_kind="agent_dead",
+        expected_reason=str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
     ),
     MatrixScenario(
         "typed_signal_broken_agent_offline",
@@ -426,6 +455,7 @@ SCENARIOS = (
         ProbeOutcome.PASSED,
         connectivity=ConnectivityState.OFFLINE,
         expected_kind="agent_dead",
+        expected_reason=str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
     ),
     MatrixScenario(
         "typed_signal_bench_online",
@@ -434,6 +464,7 @@ SCENARIOS = (
         ProbeOutcome.PASSED,
         connectivity=ConnectivityState.ONLINE,
         expected_kind="agent_dead",
+        expected_reason=str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
     ),
     MatrixScenario(
         "typed_signal_bench_offline",
@@ -442,6 +473,7 @@ SCENARIOS = (
         ProbeOutcome.PASSED,
         connectivity=ConnectivityState.OFFLINE,
         expected_kind="agent_dead",
+        expected_reason=str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
     ),
     MatrixScenario(
         "bench_escalation",

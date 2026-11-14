@@ -101,7 +101,6 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/pipeline/integration_cleanup.py",
         "ralph/pipeline/auto_integrate_catchup.py",
         "ralph/pipeline/integration_attempt_ledger.py",
-        "ralph/recovery/agent_failure_ledger.py",
         "tests/test_conflict_resolution_phase_parity.py",
         "tests/test_auto_integrate_gates.py",
     }

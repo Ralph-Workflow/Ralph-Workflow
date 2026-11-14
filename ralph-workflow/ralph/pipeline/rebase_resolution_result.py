@@ -82,29 +82,26 @@ class RebaseResolutionResult:
         if self._raw_succeeded is not None:
             return self._raw_succeeded
         raise AttributeError("succeeded")
+
+    def _succeeded(self) -> bool:
+        if self._raw_succeeded is not None:
+            return self._raw_succeeded
+        if isinstance(self.outcome, bool):
+            return self.outcome
+        s: object = getattr(self.outcome, "succeeded", None)
+        return s is True
     def __len__(self) -> int:
         return _RESULT_LEN
 
     def __iter__(self) -> Iterator[object]:
-        s_val: object = getattr(self.outcome, "succeeded", False)
-        first: bool = self._raw_succeeded if self._raw_succeeded is not None else (s_val is True)
-        return iter((first, self.reason, self.failure_cause))
+        return iter((self._succeeded(), self.reason, self.failure_cause))
 
     def __getitem__(self, index: int | slice[int | None, int | None, int | None]) -> object:
-        s_val: object = getattr(self.outcome, "succeeded", False)
-        first: bool = self._raw_succeeded if self._raw_succeeded is not None else (s_val is True)
-        items: tuple[bool, str | None, ResolutionFailureCause] = (
-            first,
-            self.reason,
-            self.failure_cause,
-        )
+        items = (self._succeeded(), self.reason, self.failure_cause)
         return items[index]
 
     def __bool__(self) -> bool:
-        if self._raw_succeeded is not None:
-            return self._raw_succeeded
-        s: object = getattr(self.outcome, "succeeded", None)
-        return s is True
+        return self._succeeded()
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, tuple) and len(other) == _RESULT_LEN:

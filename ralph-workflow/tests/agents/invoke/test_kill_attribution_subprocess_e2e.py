@@ -143,10 +143,11 @@ def test_zero_exit_with_non_quiescing_descendant_attributes_post_exit_watchdog(
     )
 
     manager = get_process_manager()
+    termination_outcomes = manager.list_termination_outcomes()
     teardown_outcomes = [
         outcome
         for record in manager.list_records(include_terminal=True)
-        for outcome in manager._termination_outcomes.get(record.pid, [])
+        for outcome in termination_outcomes.get(record.pid, [])
         if outcome.get("stage") == "teardown_subtree"
     ]
     assert any(

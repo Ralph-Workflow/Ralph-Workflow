@@ -1400,7 +1400,9 @@ class RecoveryController:
 
     def prune_expired(self, *, now_ms: int | None = None) -> None:
         effective_now_ms = now_ms if now_ms is not None else self._now_ms()
-        self._unavailability_tracker.prune_expired(now_ms=effective_now_ms)
+        prune_fn = getattr(self._unavailability_tracker, "prune_expired", None)
+        if callable(prune_fn):
+            prune_fn(now_ms=effective_now_ms)
         if self._ledger is not None:
             self._ledger.prune_expired(now_ms=effective_now_ms)
 

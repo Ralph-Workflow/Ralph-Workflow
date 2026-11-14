@@ -27,7 +27,9 @@ from ralph.pipeline.conflict_resolution import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
-from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.driver import (
+    run_conflict_resolution_outcome,
+)
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
@@ -100,7 +102,7 @@ class _TestSessionRunner:
     ) -> bool:
         assert session is not None
         session.__dict__ = self.persistent_session.__dict__
-        outcome = run_conflict_resolution_pipeline(
+        outcome = run_conflict_resolution_outcome(
             root=root,
             target=target,
             config=_CONFIG,
@@ -158,7 +160,7 @@ def test_prior_dead_launch_records_tool_surface_dead(
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         return RetryLaterOutcome(on_change="agent tool surface becomes available")
 
-    outcome = run_conflict_resolution_pipeline(
+    outcome = run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
         config=_CONFIG,
@@ -244,7 +246,7 @@ def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
 
     token = install_executors(clock=_NoSleepClock())
     try:
-        outcome = run_conflict_resolution_pipeline(
+        outcome = run_conflict_resolution_outcome(
             root=tmp_path,
             target="main",
             config=_CONFIG,

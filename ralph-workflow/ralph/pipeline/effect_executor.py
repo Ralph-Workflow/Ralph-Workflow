@@ -426,24 +426,23 @@ class _RegistryLike(Protocol):
 
 
 def _registry_from_pipeline_deps(
-    pipeline_deps: PipelineDeps,
+    pipeline_deps: PipelineDeps | None,
     config: UnifiedConfig,
 ) -> _RegistryLike:
-    if pipeline_deps.registry_factory is not None:
+    if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
         return cast("_RegistryLike", pipeline_deps.registry_factory(config))
     return cast("_RegistryLike", AgentRegistry.from_config(config))
 
 
 def _invoke_agent_from_registry_or_opts(
-    pipeline_deps: PipelineDeps,
+    pipeline_deps: PipelineDeps | None,
     opts: dict[str, object],
 ) -> _InvokeAgentFn:
     invoke = cast("_InvokeAgentFn | None", opts.get("invoke_agent"))
     if invoke is not None:
         return invoke
-    deps_invoke = pipeline_deps.invoke_agent
-    if deps_invoke is not None:
-        return deps_invoke
+    if pipeline_deps is not None and pipeline_deps.invoke_agent is not None:
+        return pipeline_deps.invoke_agent
     return invoke_agent
 
 

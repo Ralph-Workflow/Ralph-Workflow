@@ -663,7 +663,6 @@ class FailureClassifier:
             provider_unavailability is not None
             or broken_agent
             or typed_unavailability is not None
-            or (category == FailureCategory.AGENT and _is_unavailable_agent_message(raw_message))
             or (
                 category == FailureCategory.AGENT
                 and (connectivity_state or "").casefold() == "online"

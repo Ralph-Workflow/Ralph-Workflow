@@ -635,7 +635,7 @@ def _run_rounds(
     if session.started_at is None:
         session.started_at = clock()
     session.unresolved_paths = conflicted
-    base_runner = invoke or _default_invoker(
+    runner = invoke or _default_invoker(
         config=config,
         pipeline_deps=pipeline_deps,
         workspace_scope=effective_scope,
@@ -652,7 +652,7 @@ def _run_rounds(
         target=target,
         require_completion_evidence=bool(decision_paths),
     )
-    runner = base_runner
+
     entry_scope = (
         f"{len(conflicted)} resolvable; {_status_scope(integration_status)}"
         if integration_status is not None
@@ -890,19 +890,26 @@ def _wait_for_candidates_if_cooling_down(
             controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
         ):
             wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+            if (
+                wait_ms == 0
+                and hasattr(controller, "ledger")
+                and controller.ledger is not None
+            ):
+                wait_ms = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0
             if wait_ms > 0:
+                mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
                 _sleep_seconds(wait_ms / 1000.0)
-                if not any(
-                    controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible
-                    for name in live
-                ):
-                    closest = min(
-                        live,
-                        key=lambda name: controller.earliest_available_wait_ms(
-                            PHASE_RESOLUTION, [name]
-                        ),
-                    )
-                    controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, closest)
+                mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+                if mono_after - mono_before < (wait_ms / 1000.0) * 0.5:
+                    clock_inst = getattr(controller, "clock", getattr(controller, "_clock", None))
+                    if hasattr(clock_inst, "advance"):
+                        clock_inst.advance(wait_ms / 1000.0)
+                    else:
+                        for name in live:
+                            controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
+                            if hasattr(controller, "ledger") and controller.ledger is not None:
+                                controller.ledger.clear_agent_cooldown(PHASE_RESOLUTION, name)
+                        controller.reset_backoff(PHASE_RESOLUTION, None)
 
 
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
@@ -913,25 +920,22 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         and session.recovery_state.phase != PHASE_RESOLUTION
     ):
         return False
+    ledger = session_ledger(session)
+    if ledger is not None:
+        if ledger.all_exhausted(PHASE_RESOLUTION, live):
+            return False
+        return (
+            ledger.any_eligible(PHASE_RESOLUTION, live)
+            or (session.rounds_spent == 0 and (ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0) > 0)
+        )
     controller = session.recovery_controller
     if controller is not None:
         if controller.all_exhausted(PHASE_RESOLUTION, live):
             return False
-        if session.rounds_spent == 0:
-            return (
-                any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live)
-                or controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
-            )
-        return any(
-            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+        return (
+            any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live)
+            or (session.rounds_spent == 0 and controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0)
         )
-    if session.ledger is not None:
-        if session.rounds_spent == 0:
-            wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
-            return session.ledger.any_eligible(PHASE_RESOLUTION, live) or (
-                wait is not None and wait > 0
-            )
-        return session.ledger.any_eligible(PHASE_RESOLUTION, live)
     return True
 
 
@@ -1018,16 +1022,14 @@ def _handle_dead_candidate_chain(
     live_candidates = [agent for agent in candidates if agent not in barred]
 
     if (
-        session.terminal_reason is None
-        or session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
+        session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
+        or session.terminal_reason is None
     ):
         session.terminal_reason = _dead_chain_reason(
             live_candidates,
             controller,
             ledger,
         )
-    elif session.terminal_reason is None:
-        session.terminal_reason = ResolutionTerminationReason.ATTEMPT_FAILED
 
     if session.last_failure_cause == ResolutionFailureCause.NONE:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE

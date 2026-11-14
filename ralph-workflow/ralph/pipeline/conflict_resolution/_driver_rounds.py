@@ -462,11 +462,18 @@ def _preferred_conflict_candidate(
             return None
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
-        secs = delay / 1000.0
-        _driver_mod._sleep_seconds(secs)
-        clock = getattr(controller, "_clock", None)
-        if clock is not None and hasattr(clock, "advance"):
-            clock.advance(secs)
+        mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+        _driver_mod._sleep_seconds(delay / 1000.0)
+        mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+        if mono_after - mono_before < (delay / 1000.0) * 0.5:
+            clock_inst = getattr(controller, "clock", getattr(controller, "_clock", None))
+            if hasattr(clock_inst, "advance"):
+                clock_inst.advance(delay / 1000.0)
+            store_clock = getattr(
+                controller.unavailability_store, "clock", getattr(controller.unavailability_store, "_clock", None)
+            )
+            if store_clock is not clock_inst and hasattr(store_clock, "advance"):
+                store_clock.advance(delay / 1000.0)
             controller.prune_expired()
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:

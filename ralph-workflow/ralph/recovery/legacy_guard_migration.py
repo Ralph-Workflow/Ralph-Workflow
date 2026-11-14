@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-LEGACY_DEFAULT_AGENT = "default"
-_LEGACY_MALFORMED_REASON = "legacy guard state malformed or missing"
+LEGACY_DEFAULT_AGENT = "claude"
+_LEGACY_MALFORMED_REASON = "legacy_guard_malformed"
 
 _DEFAULT_CONSECUTIVE_LIMIT = 3
 _DEFAULT_TOTAL_LIMIT = 9

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.pipeline import _terminal_emitter as terminal_emitter
@@ -111,27 +112,33 @@ def _integrate_once(
         reset_executors(clock_token)
 
 
-def _parse_ff_outcome(ff_outcome: object) -> tuple[bool, str]:
+@dataclass(frozen=True, slots=True)
+class _FastForwardStatus:
+    ok: bool
+    skip_reason: str
+
+
+def _parse_ff_status(raw_outcome: object) -> _FastForwardStatus:
     from ralph.pipeline.resolution_outcome import (
         ResolvedOutcome,
         RetryLaterOutcome,
         WaitingOutcome,
     )
 
-    match ff_outcome:
+    match raw_outcome:
         case ResolvedOutcome():
-            return True, ""
+            return _FastForwardStatus(True, "")
         case RetryLaterOutcome(on_change=on_change):
-            return False, on_change or ""
+            return _FastForwardStatus(False, on_change or "")
         case WaitingOutcome(external_condition=cond):
-            return False, cond or ""
+            return _FastForwardStatus(False, cond or "")
         case tuple():
-            reason = str(ff_outcome[1]) if len(ff_outcome) > 1 else ""
-            return bool(ff_outcome[0]), reason
+            reason = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
+            return _FastForwardStatus(bool(raw_outcome[0]), reason)
         case bool():
-            return ff_outcome, ""
+            return _FastForwardStatus(raw_outcome, "")
         case _:
-            return False, str(ff_outcome)
+            return _FastForwardStatus(False, str(raw_outcome))
 
 
 def _integrate_once_owned(
@@ -234,7 +241,8 @@ def _integrate_once_owned(
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=remember_reclamation,
         )
-        ok, skip_reason = _parse_ff_outcome(raw_ff_outcome)
+        ff_status = _parse_ff_status(raw_ff_outcome)
+        ok, skip_reason = ff_status.ok, ff_status.skip_reason
 
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:

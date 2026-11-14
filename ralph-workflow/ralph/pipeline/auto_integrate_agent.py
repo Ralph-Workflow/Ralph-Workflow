@@ -3,6 +3,7 @@ from __future__ import annotations
 __doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -13,7 +14,7 @@ from ralph.pipeline.conflict_resolution import (
     run_conflict_resolution_outcome,
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_outcome,
-    run_rebase_conflict_resolution_pipeline,
+
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -33,7 +34,6 @@ from ralph.workspace.context import WorkspaceContextError, workspace_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -206,11 +206,10 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return RetryLaterOutcome(
-                on_change=reason_text,
+            return ConfigFailureOutcome(
+                file=Path(exc.file),
+                parse_error=describe_config_failure(exc),
                 terminal_reason=ResolutionTerminationReason.CONFIG_FAILURE,
-                unresolved_paths=(),
-                failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
             )
         except Exception as exc:
             logger.warning(
@@ -251,10 +250,15 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
+            if is_config:
+                return ConfigFailureOutcome(
+                    file=Path(target_path),
+                    parse_error=describe_config_failure(exc),
+                    terminal_reason=term_reason,
+                )
             return RetryLaterOutcome(
                 on_change=reason_text,
                 terminal_reason=term_reason,
-                unresolved_paths=(),
                 failure_cause=failure_cause,
             )
 

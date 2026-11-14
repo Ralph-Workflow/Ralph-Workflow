@@ -118,14 +118,22 @@ def _assert_observation(
     _assert_never_spent(observation, controller)
     if scenario.corpus_id is not None and entry_point is not AgentEntryPoint.CANARY_PROBE:
         _assert_corpus_expectations(scenario, observation, controller)
-    nonrecursive_canary = entry_point is AgentEntryPoint.CANARY_PROBE
-    if nonrecursive_canary:
+    if entry_point is AgentEntryPoint.CANARY_PROBE:
+        # Documented probe-mode contract (docs/agents/broken-agent-detection.md:124):
+        # The canary probe runs in probe mode: it records facts and the issuer and reports
+        # the outcome, but it runs no nested probe, benches nothing, and charges no ledger.
         assert observation.probe_calls == ()
         assert observation.availability is True
         assert observation.wait_ms == 0
+        assert observation.wait_positive is False
         assert observation.ledger_status == "eligible"
         assert observation.ledger_entries == {}
         assert observation.false_bench_count == 0
+        agent = scenario.attempts[-1].agent
+        store = controller.unavailability_store
+        assert store.is_available(PHASE, agent) is True
+        assert store.earliest_unavailable_wait_ms(PHASE, [agent]) == 0
+        assert agent not in store.snapshot().get("unavailability_reasons", {})
         if scenario.expected_kind is not None:
             if (
                 scenario.expected_kind == "agent_dead"
@@ -140,6 +148,17 @@ def _assert_observation(
     if scenario.no_ledger_charge:
         assert observation.ledger_status == "eligible"
         assert observation.wait_ms == 0
+    last_attempt = scenario.attempts[-1]
+    if "AC10" in scenario.acceptance and last_attempt.typed_signal is not None:
+        assert observation.availability is False
+        assert observation.wait_positive is True
+        assert observation.wait_ms > 0
+        store = controller.unavailability_store
+        assert store.is_available(PHASE, last_attempt.agent) is False
+        assert store.earliest_unavailable_wait_ms(PHASE, [last_attempt.agent]) > 0
+        expected_reason = scenario.expected_reason or DEAD
+        assert store.snapshot().get("unavailability_reasons", {}).get(last_attempt.agent) == expected_reason
+        assert observation.unavailability_reasons.get(last_attempt.agent) == expected_reason
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS, ids=[ep.value for ep in ENTRY_POINTS])
@@ -334,7 +353,11 @@ def test_ac9_corpus_replay_over_the_matrix_reports_zero_false_benches(
 )
 @pytest.mark.parametrize(
     "scenario_name",
-    ("ac1_chain_selects_b_after_bench", "ac2_post_event_kill_failed_canary"),
+    (
+        "ac1_chain_selects_b_after_bench",
+        "ac2_post_event_kill_failed_canary",
+        "ac2_ordinary_nonzero_exit_selects_b",
+    ),
 )
 def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     entry_point: AgentEntryPoint,
@@ -657,3 +680,77 @@ def test_ac15_post_exit_watchdog_attribution_parity(
         attrib = cast("dict[str, object]", typed_record.get("attribution", {}))
         assert attrib.get("attribution") == "runtime"
         assert attrib.get("runtime_cause") == "runtime_kill_post_exit_watchdog"
+
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+@pytest.mark.parametrize(
+    "scenario_name",
+    (
+        "typed_signal_missing_credentials_online",
+        "typed_signal_missing_credentials_offline",
+        "typed_signal_broken_agent_online",
+        "typed_signal_broken_agent_offline",
+        "typed_signal_bench_online",
+        "typed_signal_bench_offline",
+    ),
+)
+def test_ac10_typed_signals_unavailability_positive_wait_and_mapped_reason(
+    entry_point: AgentEntryPoint,
+    scenario_name: str,
+) -> None:
+    scenario = _scenario(scenario_name)
+    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+    agent = scenario.attempts[-1].agent
+
+    assert observation.outcome_kind == "agent_dead"
+    assert observation.availability is False
+    assert observation.wait_positive is True
+    assert observation.wait_ms > 0
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, agent) is False
+    assert store.earliest_unavailable_wait_ms(PHASE, [agent]) > 0
+    reasons = store.snapshot().get("unavailability_reasons", {})
+    assert reasons.get(agent) == DEAD
+    assert observation.unavailability_reasons.get(agent) == DEAD
+
+
+@pytest.mark.parametrize(
+    "scenario_name",
+    (
+        "typed_signal_missing_credentials_online",
+        "typed_signal_missing_credentials_offline",
+        "typed_signal_broken_agent_online",
+        "typed_signal_broken_agent_offline",
+        "typed_signal_bench_online",
+        "typed_signal_bench_offline",
+        "failed_probe_benches",
+    ),
+)
+def test_canary_probe_mode_contract_explicit_exception(
+    scenario_name: str,
+) -> None:
+    # Documented probe-mode contract (docs/agents/broken-agent-detection.md:124):
+    # "The canary probe runs in probe mode: it records facts and the issuer and reports
+    # the outcome, but it runs no nested probe, benches nothing and charges no ledger."
+    scenario = _scenario(scenario_name)
+    observation, controller, _clock = run_matrix_scenario(AgentEntryPoint.CANARY_PROBE, scenario)
+    agent = scenario.attempts[-1].agent
+
+    assert observation.probe_calls == ()
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.wait_positive is False
+    assert observation.ledger_status == "eligible"
+    assert observation.ledger_entries == {}
+    assert observation.false_bench_count == 0
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, agent) is True
+    assert store.earliest_unavailable_wait_ms(PHASE, [agent]) == 0
+    assert agent not in store.snapshot().get("unavailability_reasons", {})
+
+

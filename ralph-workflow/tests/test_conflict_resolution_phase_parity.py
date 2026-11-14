@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 from ralph.agents.clock import Clock
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.pipeline._retry_later_outcome import RetryLaterOutcome as _FullRetryLaterOutcome
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -73,13 +72,32 @@ def _ensure_parity_session_controller(
                 self._inner = inner
 
             def monotonic(self) -> float:
-                return getattr(self._inner, "monotonic", time.monotonic)()
+                candidate = getattr(self._inner, "monotonic", None)
+                if callable(candidate):
+                    res = candidate()
+                    if isinstance(res, (int, float)):
+                        return float(res)
+                candidate_now = getattr(self._inner, "now", None)
+                if callable(candidate_now):
+                    res = candidate_now()
+                    if isinstance(res, (int, float)):
+                        return float(res)
+                return time.monotonic()
 
             def epoch(self) -> float:
-                return getattr(self._inner, "epoch", getattr(self._inner, "monotonic", time.time))()
+                candidate = getattr(self._inner, "epoch", None)
+                if callable(candidate):
+                    res = candidate()
+                    if isinstance(res, (int, float)):
+                        return float(res)
+                return self.monotonic()
 
             def sleep(self, seconds: float) -> None:
-                getattr(self._inner, "sleep", time.sleep)(seconds)
+                candidate = getattr(self._inner, "sleep", None)
+                if callable(candidate):
+                    candidate(seconds)
+                else:
+                    time.sleep(seconds)
 
             def now_utc(self) -> datetime:
                 return datetime.now(UTC)
@@ -87,7 +105,9 @@ def _ensure_parity_session_controller(
             def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
                 return event.wait(seconds)
 
-        cw = _ClockWrapper(current_clock())
+        ledger_clock = getattr(session.ledger, "clock", None) if session.ledger is not None else None
+        clock_source = ledger_clock if ledger_clock is not None else current_clock()
+        cw = _ClockWrapper(clock_source)
         probe_runner = production_dead_agent_probe_runner(config)
         controller = RecoveryController(
             options=RecoveryControllerOptions(
@@ -157,9 +177,7 @@ def run_conflict_resolution_pipeline(
             res = invoke(*args, **kw)
             if isinstance(res, bool):
                 return ResolvedOutcome() if res else RetryLaterOutcome(on_change="unresolved")
-            if isinstance(res, StopResolutionOutcome):
-                return res
-            raise TypeError(f"Unexpected invoke return type: {type(res)}")
+            return res
 
         adapted_invoke = _invoke_adapter
 
@@ -1027,6 +1045,7 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
 def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    _stub_canary_probe_boundary(monkeypatch)
     session = ResolutionSession(skip_same_agent_retries=True)
     classify_failed_resolution_attempt(
         session,

@@ -19,8 +19,22 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 
+class _UnavailabilityStoreMeta(type(Protocol)):
+    def __instancecheck__(cls, instance: object) -> bool:
+        if super().__instancecheck__(instance):
+            return True
+        return (
+            hasattr(instance, "scope")
+            and hasattr(instance, "mark_unavailable")
+            and hasattr(instance, "is_available")
+            and hasattr(instance, "earliest_unavailable_wait_ms")
+            and hasattr(instance, "reset_backoff")
+            and hasattr(instance, "snapshot")
+        )
+
+
 @runtime_checkable
-class UnavailabilityStore(Protocol):
+class UnavailabilityStore(Protocol, metaclass=_UnavailabilityStoreMeta):
     @property
     def scope(self) -> Literal["session", "persistent"]: ...
 

@@ -19,6 +19,7 @@ class RetryLaterOutcome:
     on_change: str | None = None
     terminal_reason: object | None = None
     unresolved_paths: tuple[str, ...] = ()
+    terminal_reason: object | None = None
     failure_cause: ResolutionFailureCause | None = None
 
     def __post_init__(self) -> None:

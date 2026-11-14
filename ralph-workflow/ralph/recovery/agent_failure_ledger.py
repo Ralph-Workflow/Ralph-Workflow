@@ -303,10 +303,6 @@ class AgentFailureLedger:
     def backoff_factor(self) -> float:
         return self._backoff_factor
 
-    @property
-    def clock(self) -> Clock:
-        return self._clock
-
     def _sync_cooldown_expiry(self, entry: _LedgerEntry, now_ms: int) -> None:
         if entry.is_spent:
             return
