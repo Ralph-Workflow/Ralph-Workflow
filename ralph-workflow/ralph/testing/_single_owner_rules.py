@@ -444,8 +444,517 @@ def _is_phase_failure_state_name(name: str) -> bool:
     )
 
 
+_OWNER_ARGUMENT_NAMES: frozenset[str] = frozenset(
+    {
+        "controller",
+        "owner",
+        "recovery_controller",
+    }
+)
+
+_RUNNER_CALL_NAMES: frozenset[str] = frozenset(
+    {
+        "run_agent_attempt",
+    }
+)
+
+_INVOKE_SEAM_ARGUMENT_NAMES: frozenset[str] = frozenset(
+    {
+        "invoke",
+        "invoke_agent",
+    }
+)
+
+_TERMINATING_STATEMENTS: tuple[type[ast.stmt], ...] = (
+    ast.Raise,
+    ast.Return,
+    ast.Break,
+    ast.Continue,
+)
+
+_PATH_ACTIVE = "active"
+_PATH_ROUTED = "routed"
+_PATH_DELEGATED = "delegated"
+_PATH_SWALLOWED = "swallowed"
+
+
+@dataclass(frozen=True)
+class _OwnershipContext:
+    function_chain: dict[int, tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]]
+    defined_function_names: frozenset[str]
+    invoke_seam_names: frozenset[str]
+    try_body_ids: frozenset[int]
+    optional_return_names: frozenset[str]
+
+
+def _annotation_allows_none(annotation: ast.expr) -> bool:
+    if isinstance(annotation, ast.Constant):
+        return annotation.value is None
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _annotation_allows_none(annotation.left) or _annotation_allows_none(annotation.right)
+    if isinstance(annotation, ast.Subscript):
+        value = annotation.value
+        if isinstance(value, ast.Name):
+            return value.id == "Optional"
+        if isinstance(value, ast.Attribute):
+            return value.attr == "Optional"
+    return False
+
+
+def _function_chain_by_node(
+    tree: ast.Module,
+) -> dict[int, tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]]:
+    chains: dict[int, tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]] = {}
+
+    def visit(node: ast.AST, chain: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]) -> None:
+        for child in ast.iter_child_nodes(node):
+            chains[id(child)] = chain
+            child_chain = (
+                (*chain, child)
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                else chain
+            )
+            visit(child, child_chain)
+
+    visit(tree, ())
+    return chains
+
+
+def _try_body_node_ids(tree: ast.Module) -> frozenset[int]:
+    ids: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        for statement in node.body:
+            for child in ast.walk(statement):
+                ids.add(id(child))
+    return frozenset(ids)
+
+
+_RUNNER_DEPS_CALL_NAME = "AttemptRunnerDeps"
+
+
+def _invoke_seam_names(tree: ast.Module) -> frozenset[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) != _RUNNER_DEPS_CALL_NAME:
+            continue
+        for keyword in node.keywords:
+            if keyword.arg in _INVOKE_SEAM_ARGUMENT_NAMES and isinstance(keyword.value, ast.Name):
+                names.add(keyword.value.id)
+    return frozenset(names)
+
+
+def _optional_return_names(tree: ast.Module) -> frozenset[str]:
+    return frozenset(
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.returns is not None
+        and _annotation_allows_none(node.returns)
+    )
+
+
+def _build_ownership_context(tree: ast.Module) -> _OwnershipContext:
+    return _OwnershipContext(
+        function_chain=_function_chain_by_node(tree),
+        defined_function_names=frozenset(
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ),
+        invoke_seam_names=_invoke_seam_names(tree),
+        try_body_ids=_try_body_node_ids(tree),
+        optional_return_names=_optional_return_names(tree),
+    )
+
+
+def _parameter_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    arguments = function.args
+    names = {
+        argument.arg
+        for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    }
+    if arguments.vararg is not None:
+        names.add(arguments.vararg.arg)
+    if arguments.kwarg is not None:
+        names.add(arguments.kwarg.arg)
+    return frozenset(names)
+
+
+def _parameter_annotations(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, ast.expr | None]:
+    arguments = function.args
+    annotations: dict[str, ast.expr | None] = {}
+    for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs):
+        annotations[argument.arg] = argument.annotation
+    return annotations
+
+
+def _owner_argument_value(call: ast.Call) -> ast.expr | None:
+    for keyword in call.keywords:
+        if keyword.arg in _OWNER_ARGUMENT_NAMES:
+            return keyword.value
+    return None
+
+
+def _expression_is_none(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value is None
+
+
+def _owner_is_definitely_null(owner: ast.expr) -> bool:
+    if _expression_is_none(owner):
+        return True
+    if isinstance(owner, ast.IfExp):
+        return _expression_is_none(owner.body) or _expression_is_none(owner.orelse)
+    if isinstance(owner, ast.BoolOp):
+        return any(_expression_is_none(value) for value in owner.values)
+    return False
+
+
+def _null_bound_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    null_assigned: set[str] = set()
+    other_assigned: set[str] = set()
+    for node in ast.walk(function):
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if value is not None and _expression_is_none(value):
+                null_assigned.add(target.id)
+            else:
+                other_assigned.add(target.id)
+    return frozenset(null_assigned - other_assigned)
+
+
+def _is_narrowed_to_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Compare):
+            continue
+        if not any(isinstance(operator, (ast.Is, ast.IsNot)) for operator in node.ops):
+            continue
+        for operand in (node.left, *node.comparators):
+            if isinstance(operand, ast.Name) and operand.id == name:
+                return True
+    return False
+
+
+def _named_owner_defect(
+    runner: str | None,
+    name: str,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> str | None:
+    if name in _null_bound_names(function):
+        return (
+            f"Runner '{runner}' is invoked with the owner '{name}', which is bound to "
+            "None; the agent failure cannot reach the single owner."
+        )
+    annotation = _parameter_annotations(function).get(name)
+    if (
+        annotation is not None
+        and _annotation_allows_none(annotation)
+        and not _is_narrowed_to_owner(function, name)
+    ):
+        return (
+            f"Runner '{runner}' is invoked with the optional owner '{name}', which is "
+            "never narrowed to a real owner; the owner ownership is unchecked."
+        )
+    return None
+
+
+def _owner_ownership_defect(
+    call: ast.Call,
+    owner: ast.expr,
+    function: ast.FunctionDef | ast.AsyncFunctionDef | None,
+    context: _OwnershipContext,
+) -> str | None:
+    runner = _call_name(call)
+    if _owner_is_definitely_null(owner):
+        return (
+            f"Runner '{runner}' is invoked with an owner argument that can be None; "
+            "the agent failure cannot reach the single owner."
+        )
+    if (
+        isinstance(owner, ast.Call)
+        and isinstance(owner.func, ast.Name)
+        and owner.func.id in context.optional_return_names
+    ):
+        return (
+            f"Runner '{runner}' is invoked with an owner produced by '{owner.func.id}', "
+            "whose return type may be None; the owner ownership is unchecked."
+        )
+    named_defect = (
+        _named_owner_defect(runner, owner.id, function)
+        if isinstance(owner, ast.Name) and function is not None
+        else None
+    )
+    if named_defect is not None:
+        return named_defect
+    return None
+
+
+def _enclosing_function(
+    node: ast.AST, context: _OwnershipContext
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    chain = context.function_chain.get(id(node), ())
+    return chain[-1] if chain else None
+
+
+def _check_unguarded_agent_invocation(
+    tree: ast.Module, rel_path: str, context: _OwnershipContext
+) -> list[SingleOwnerViolation]:
+    violations: list[SingleOwnerViolation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node)
+        if name is None or name not in _AGENT_INVOCATION_CALLS:
+            continue
+        if name in _RUNNER_CALL_NAMES:
+            continue
+        if not isinstance(node.func, ast.Name):
+            continue
+        chain = context.function_chain.get(id(node), ())
+        if len(chain) != 1:
+            continue
+        function = chain[0]
+        if _is_progress_path_allowed(rel_path, function.name):
+            continue
+        if name in _parameter_names(function):
+            continue
+        if name in context.defined_function_names:
+            continue
+        if id(node) in context.try_body_ids:
+            continue
+        owner = _owner_argument_value(node)
+        if owner is not None and _owner_ownership_defect(node, owner, function, context) is None:
+            continue
+        if function.name in context.invoke_seam_names:
+            continue
+        violations.append(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_agent_invoker_unchecked",
+                detail=(
+                    f"Agent invocation '{name}' is neither wrapped in a try/except that routes the "
+                    "failure to the owner nor given an owner argument, and it is not registered as "
+                    "the runner's invoke seam; the agent failure cannot reach the single owner."
+                ),
+            )
+        )
+    return violations
+
+
+def _check_runner_ownership(
+    tree: ast.Module, rel_path: str, context: _OwnershipContext
+) -> list[SingleOwnerViolation]:
+    violations: list[SingleOwnerViolation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node)
+        if name is None or name not in _RUNNER_CALL_NAMES:
+            continue
+        owner = _owner_argument_value(node)
+        if owner is None:
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_agent_runner_no_controller",
+                    detail=(
+                        f"Runner '{name}' is invoked without an owner argument; "
+                        "the agent failure cannot reach the single owner."
+                    ),
+                )
+            )
+            continue
+        defect = _owner_ownership_defect(node, owner, _enclosing_function(node, context), context)
+        if defect is None:
+            continue
+        violations.append(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_agent_runner_controller_only",
+                detail=defect,
+            )
+        )
+    return violations
+
+
+def _direct_calls(statement: ast.stmt) -> list[ast.Call]:
+    headers: list[ast.AST]
+    if isinstance(statement, (ast.If, ast.While)):
+        headers = [statement.test]
+    elif isinstance(statement, (ast.For, ast.AsyncFor)):
+        headers = [statement.iter]
+    elif isinstance(statement, (ast.With, ast.AsyncWith)):
+        headers = list(statement.items)
+    elif isinstance(statement, ast.Match):
+        headers = [statement.subject]
+    elif isinstance(statement, ast.Try):
+        headers = []
+    else:
+        headers = [statement]
+    return [
+        child for header in headers for child in ast.walk(header) if isinstance(child, ast.Call)
+    ]
+
+
+def _is_classifier_call(call: ast.Call) -> bool:
+    name = _call_name(call)
+    return name is not None and name.startswith("classify_")
+
+
+def _contains_node(outer: ast.AST, inner: ast.AST) -> bool:
+    return any(child is inner for child in ast.walk(outer))
+
+
+def _routes_to_owner(calls: list[ast.Call], classified_before: bool) -> bool:
+    classifiers = [call for call in calls if _is_classifier_call(call)]
+    handles = [call for call in calls if _call_name(call) == "handle"]
+    for handle in handles:
+        if classified_before:
+            return True
+        for classifier in classifiers:
+            if classifier.lineno <= handle.lineno:
+                return True
+            if _contains_node(handle, classifier):
+                return True
+    return False
+
+
+def _branch_bodies(statement: ast.stmt) -> list[list[ast.stmt]] | None:
+    if isinstance(statement, ast.If):
+        return [statement.body, statement.orelse]
+    if isinstance(statement, ast.Try):
+        branches = [statement.body, statement.orelse, statement.finalbody]
+        branches.extend(handler.body for handler in statement.handlers)
+        return branches
+    if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+        return [statement.body, statement.orelse]
+    if isinstance(statement, (ast.With, ast.AsyncWith)):
+        return [statement.body]
+    if isinstance(statement, ast.Match):
+        return [case.body for case in statement.cases]
+    return None
+
+
+def _execute_statement(statement: ast.stmt, classified_before: bool) -> set[tuple[bool, str]]:
+    calls = _direct_calls(statement)
+    classified = classified_before or any(_is_classifier_call(call) for call in calls)
+    if _routes_to_owner(calls, classified_before):
+        return {(classified, _PATH_ROUTED)}
+    if isinstance(statement, ast.Raise):
+        return {(classified, _PATH_DELEGATED)}
+    if isinstance(statement, (ast.Return, ast.Break, ast.Continue)):
+        return {(classified, _PATH_SWALLOWED)}
+    branches = _branch_bodies(statement)
+    if branches is None:
+        return {(classified, _PATH_ACTIVE)}
+    states: set[tuple[bool, str]] = set()
+    for branch in branches:
+        states |= _block_states(branch, classified)
+    return states
+
+
+def _block_states(body: list[ast.stmt], classified: bool) -> set[tuple[bool, str]]:
+    states: set[tuple[bool, str]] = {(classified, _PATH_ACTIVE)}
+    for statement in body:
+        advanced: set[tuple[bool, str]] = set()
+        for state_classified, state_outcome in states:
+            if state_outcome != _PATH_ACTIVE:
+                advanced.add((state_classified, state_outcome))
+                continue
+            advanced |= _execute_statement(statement, state_classified)
+        states = advanced
+    return states
+
+
+def _handler_outcomes(handler: ast.ExceptHandler) -> set[str]:
+    states = _block_states(handler.body, False)
+    return {_PATH_SWALLOWED if outcome == _PATH_ACTIVE else outcome for _, outcome in states}
+
+
+def _static_truth(node: ast.expr) -> bool | None:
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return bool(node.elts)
+    return None
+
+
+def _collect_dead_in_block(body: list[ast.stmt], dead: set[int]) -> None:
+    for index, statement in enumerate(body):
+        if isinstance(statement, _TERMINATING_STATEMENTS):
+            for trailing in body[index + 1 :]:
+                dead.update(id(node) for node in ast.walk(trailing))
+            break
+        _collect_dead_in_statement(statement, dead)
+
+
+def _collect_dead_in_statement(statement: ast.stmt, dead: set[int]) -> None:
+    if isinstance(statement, ast.If):
+        truth = _static_truth(statement.test)
+        if truth is False:
+            for node in statement.body:
+                dead.update(id(child) for child in ast.walk(node))
+        elif truth is True:
+            for node in statement.orelse:
+                dead.update(id(child) for child in ast.walk(node))
+        _collect_dead_in_block(statement.body, dead)
+        _collect_dead_in_block(statement.orelse, dead)
+        return
+    if isinstance(statement, ast.Try):
+        _collect_dead_in_block(statement.body, dead)
+        for handler in statement.handlers:
+            _collect_dead_in_block(handler.body, dead)
+        _collect_dead_in_block(statement.orelse, dead)
+        _collect_dead_in_block(statement.finalbody, dead)
+        return
+    if isinstance(statement, (ast.For, ast.AsyncFor)):
+        _collect_dead_in_block(statement.body, dead)
+        _collect_dead_in_block(statement.orelse, dead)
+        return
+    if isinstance(statement, ast.While):
+        if _static_truth(statement.test) is False:
+            for node in statement.body:
+                dead.update(id(child) for child in ast.walk(node))
+        _collect_dead_in_block(statement.body, dead)
+        _collect_dead_in_block(statement.orelse, dead)
+        return
+    if isinstance(statement, (ast.With, ast.AsyncWith)):
+        _collect_dead_in_block(statement.body, dead)
+        return
+    if isinstance(statement, ast.Match):
+        for case in statement.cases:
+            _collect_dead_in_block(case.body, dead)
+
+
+def _recovery_calls(handler: ast.ExceptHandler) -> list[ast.Call]:
+    calls = [
+        child
+        for child in ast.walk(handler)
+        if isinstance(child, ast.Call)
+        and (_is_classifier_call(child) or _call_name(child) == "handle")
+    ]
+    return calls
+
+
 def _check_agent_invocation_failure_routing(
-    node: ast.Try, rel_path: str
+    node: ast.Try, rel_path: str, context: _OwnershipContext
 ) -> list[SingleOwnerViolation]:
     invocation_calls = [
         child
@@ -455,30 +964,32 @@ def _check_agent_invocation_failure_routing(
     ]
     if not invocation_calls:
         return []
+    violations: list[SingleOwnerViolation] = []
     bypassed_lines: set[int] = set()
     for handler in node.handlers:
-        if any(isinstance(child, ast.Raise) for child in ast.walk(handler)):
-            continue
-        calls = [child for child in ast.walk(handler) if isinstance(child, ast.Call)]
-        classifier_lines = [
-            call.lineno
-            for call in calls
-            if (name := _call_name(call)) is not None and name.startswith("classify_")
-        ]
-        handle_lines = [call.lineno for call in calls if _call_name(call) == "handle"]
-        routes_to_owner = any(
-            classifier_line < handle_line
-            for classifier_line in classifier_lines
-            for handle_line in handle_lines
+        dead: set[int] = set()
+        _collect_dead_in_block(handler.body, dead)
+        violations.extend(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=call.lineno,
+                rule="production_agent_failure_recovery_unreachable",
+                detail=(
+                    f"Recovery call '{_call_name(call)}' in the caught handler can never run; "
+                    "the agent failure is not routed to the single owner."
+                ),
+            )
+            for call in _recovery_calls(handler)
+            if id(call) in dead
         )
-        if routes_to_owner:
+        if _handler_outcomes(handler) <= {_PATH_ROUTED, _PATH_DELEGATED}:
             continue
         bypassed_lines.update(
             invocation.lineno
             for invocation in invocation_calls
             if not _invocation_routes_through_owner(invocation)
         )
-    return [
+    violations.extend(
         SingleOwnerViolation(
             path=rel_path,
             line=invocation.lineno,
@@ -490,13 +1001,27 @@ def _check_agent_invocation_failure_routing(
         )
         for invocation in invocation_calls
         if invocation.lineno in bypassed_lines
-    ]
+    )
+    return violations
 
 
 def _invocation_routes_through_owner(node: ast.Call) -> bool:
-    return _call_name(node) == "run_agent_attempt" and any(
-        keyword.arg == "controller" for keyword in node.keywords
-    )
+    if _call_name(node) not in _RUNNER_CALL_NAMES:
+        return False
+    owner = _owner_argument_value(node)
+    if owner is None:
+        return False
+    return not _owner_is_definitely_null(owner)
+
+
+def check_agent_failure_ownership(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
+    context = _build_ownership_context(tree)
+    violations = _check_unguarded_agent_invocation(tree, rel_path, context)
+    violations.extend(_check_runner_ownership(tree, rel_path, context))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Try):
+            violations.extend(_check_agent_invocation_failure_routing(node, rel_path, context))
+    return violations
 
 
 def _check_production_import(

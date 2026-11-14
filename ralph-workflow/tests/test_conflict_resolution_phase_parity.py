@@ -202,7 +202,11 @@ def test_next_round_keeps_the_successful_highest_priority_candidate(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three", "four")
     )
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, []])
+    _install_seams(
+        monkeypatch,
+        unmerged=["src/alpha.py", "src/beta.py"],
+        surviving_per_round=[["src/alpha.py"], ["src/alpha.py"], []],
+    )
     called: list[tuple[str, int]] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -225,6 +229,7 @@ def test_next_round_keeps_the_successful_highest_priority_candidate(
     )
     assert called[0] == ("one", 1)
     assert called[1] == ("one", 2)
+    assert called[2] == ("two", 3)
 
 
 def test_invoke_resolution_agent_keeps_chain_retry_budget(
@@ -409,7 +414,6 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     clock = FakeClock()
     session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
@@ -419,23 +423,31 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
         called.append((round_index, agent_name))
         return agent_name == "two"
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            clock=clock.monotonic,
-            session=session,
+    token = install_executors(clock=clock)
+    try:
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=clock.monotonic,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
-    assert {round_index for round_index, _ in called} == set(range(1, 10))
+    finally:
+        reset_executors(token)
+
+    cap = _config().conflict_resolution.max_rounds_per_stop
+    invoked_rounds = sorted({round_index for round_index, _ in called})
+    assert invoked_rounds == list(range(1, cap + 1))
+    assert len(called) > len(invoked_rounds)
 
 
 def test_a_new_stop_restarts_the_chain_on_a_reused_session(
@@ -444,10 +456,9 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     clock = FakeClock()
     session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, []])
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, []])
 
     def _first_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         return agent_name == "two"
@@ -909,24 +920,31 @@ def test_conflict_invocations_skip_cooldown_and_restore_priority(
     session = ResolutionSession(chain_cursor=1, recovery_controller=controller)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, []])
-    called: list[str] = []
+    called: list[tuple[str, float]] = []
 
     def invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
+        called.append((agent_name, clock.monotonic()))
         clock.advance(6.0)
         return True
 
-    assert run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=invoke,
-        session=session,
-    )
-    assert called[0] == "two"
-    assert called[1:] and all(agent == "one" for agent in called[1:])
+    token = install_executors(clock=clock)
+    try:
+        assert run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=invoke,
+            session=session,
+        )
+    finally:
+        reset_executors(token)
+
+    assert called[0][0] == "two"
+    restored_priority_calls = [at for agent, at in called if agent == "one"]
+    assert restored_priority_calls
+    assert all(at >= 5.0 for at in restored_priority_calls)

@@ -215,11 +215,11 @@ def _rebase_failure_outcome(
     result: RebaseResolutionResult,
     chain_agents: tuple[str, ...],
 ) -> ResolutionOutcomeType:
+    raw_outcome = getattr(result, "outcome", None)
     if (
         getattr(result, "succeeded", False)
-        or isinstance(getattr(result, "outcome", None), Resolved)
-        or getattr(getattr(result, "outcome", None), "__class__", None).__name__
-        == "ResolvedOutcome"
+        or isinstance(raw_outcome, Resolved)
+        or getattr(raw_outcome, "__class__", type(None)).__name__ == "ResolvedOutcome"
     ):
         return Resolved()
     return classify_resolution_failure(

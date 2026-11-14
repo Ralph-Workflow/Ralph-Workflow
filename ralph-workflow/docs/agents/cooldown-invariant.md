@@ -50,14 +50,15 @@ agent, the `UnavailabilityReason`, the duration and the expiry
 
 | Call site | Disposition | Proof |
 | --- | --- | --- |
-| Main pipeline phases (`ralph/pipeline/effect_executor.py`, `ralph/pipeline/runner.py`) | uses owner | `ralph/pipeline/reducer.py:153,211,293` route the attempt outcome through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Reducer and session runtime (`ralph/pipeline/reducer.py`, `ralph/_session_runtime_runtime.py`) | uses owner | `recovery.handle` is the only failure path; `ralph/pipeline/runner.py:846` |
+| Main pipeline phases (`ralph/pipeline/effect_executor.py`, `ralph/pipeline/runner.py`) | uses owner | the registered production runner receives a `RecoveryController`, and the reducer routes classified outcomes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py`, `tests/pipeline/test_reducer_single_owner.py` |
+| Reducer and session runtime (`ralph/pipeline/reducer.py`, `ralph/_session_runtime_runtime.py`) | uses owner | failed attempts reach the shared recovery handler; `tests/pipeline/test_reducer_single_owner.py` |
 | Parallel phase workers (`ralph/pipeline/parallel/worker_runtime.py`) | uses owner | the worker returns the attempt outcome to the phase handler, which the reducer routes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Conflict resolution (`ralph/pipeline/conflict_resolution/`) | uses owner | `ralph/pipeline/conflict_resolution/session.py` classifies through `RecoveryController.classify_conflict_attempt`; `tests/test_conflict_stalled_attempt_cooldown.py`, `tests/recovery/test_conflict_progress_classification.py` |
+| Conflict resolution (`ralph/pipeline/conflict_resolution/`) | uses owner | `ralph/pipeline/conflict_resolution/session.py` classifies typed outcomes through `RecoveryController.classify_conflict_attempt`; `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_phase_parity_cooldown.py`, `tests/test_conflict_stalled_attempt_cooldown.py`, `tests/recovery/test_conflict_progress_classification.py` |
 | Rebase and auto-integrate recovery (`ralph/pipeline/_pending_merge_repair.py`, `ralph/pipeline/_integration_diagnostic.py`, `ralph/pipeline/_integration_continuation.py`) | uses owner | resolution failures resolve through `ralph/pipeline/resolution_outcome_producer.py` into the owner's classification; `tests/recovery/test_cooldown_parity_all_phases.py` |
 | Smoke-test plumbing (`ralph/pipeline/plumbing/smoke_plumbing.py`) | uses owner | the attempt outcome reaches the ledger through the shared owner; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | uses owner, fixed: the chain builds one `RecoveryController` and reuses it across outer retries, so a benched agent keeps its cooldown state | `tests/test_commit_retry_cooldown.py` |
-| Project-policy flows (`ralph/project_policy/analysis.py`, `remediation.py`, `pipeline_driver.py`, `cli_integration.py`) | uses owner, fixed: a caught launch failure is classified and handled by the owner, a cooled-down candidate is skipped, and an all-unavailable chain consults `earliest_available_wait_ms` | `tests/project_policy/test_policy_invocation_cooldown.py` |
+| Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | uses owner | the chain retains one `RecoveryController` across outer retries, so bench state survives; `tests/test_commit_retry_cooldown.py` |
+| Project-policy flows (`ralph/project_policy/analysis.py`, `remediation.py`, `pipeline_driver.py`, `cli_integration.py`) | uses owner | a caught launch failure is classified and handled, cooled-down candidates are skipped, and an all-unavailable chain waits through `earliest_available_wait_ms`; `tests/project_policy/test_policy_invocation_cooldown.py` |
+| Canary and dead-agent probes (`ralph/recovery/canary_probe.py`) | uses owner | the canary runner is registered through `AgentEntryPoint.CANARY_PROBE` and invokes `run_agent_attempt` with a recovery controller; `tests/recovery/test_canary_probe.py`, `tests/recovery/test_dead_agent_pipeline_matrix.py` |
 
 ## Documented exemptions
 
@@ -66,28 +67,71 @@ the agent owner by construction. They are exemptions, not gaps.
 
 | Path | Exemption | Proof |
 | --- | --- | --- |
-| Canary and dead-agent probes (`ralph/recovery/canary_probe.py`) | a probe measures one agent's health on purpose; it runs in a non-charging mode that neither charges the ledger nor benches the agent | `tests/recovery/test_dead_agent_pipeline_matrix.py`, `tests/recovery/test_canary_probe.py` |
-| MCP server restart and explore recovery (`ralph/mcp/server/_mcp_restart_policy.py`, `ralph/mcp/explore/recovery.py`) | these cool down MCP servers and tools, not agents, and carry their own backoff for a different resource | `tests/test_mcp_restart_policy_default_cooldown.py` |
+| MCP server restart policy (`ralph/mcp/server/_mcp_restart_policy.py`) | cools down MCP server restart attempts, not agents | `tests/test_mcp_restart_policy_default_cooldown.py` |
+| MCP explore recovery (`ralph/mcp/explore/recovery.py`) | cools down explore-tool recovery actions, not agents | `tests/test_explore_recovery.py` |
 
 ## How the contract is enforced
 
 - **Structural audit.** `ralph/testing/audit_agent_failure_single_owner.py`
-  runs in `make verify`. It fails when a production agent-invoking call
-  site catches a failure without routing it through `classify_*` and
-  `handle`, when a `ClassifiedFailure` disables both the budget charge
-  and unavailability outside an allowlisted progress path, and when a
-  phase module defines its own cooldown, skip-list or backoff state.
+  runs in `make verify`. Its ownership rules in
+  `ralph/testing/_single_owner_rules.py` include:
+  - `production_agent_failure_owner_bypass`: a caught agent failure does
+    not route through `classify_*` followed by `handle`;
+  - `production_agent_invoker_unchecked`: an agent invocation is neither
+    guarded nor given an owner and is not a registered runner invoke seam;
+  - `production_agent_runner_no_controller`: `run_agent_attempt` is
+    invoked without an owner;
+  - `production_agent_runner_controller_only`: the runner owner is null,
+    nullable, or an unnarrowed optional value;
+  - `production_agent_failure_recovery_unreachable`: the recovery call is
+    in a statically unreachable branch or follows a terminating statement;
+  - `production_unjustified_non_penalising_failure`: a
+    `ClassifiedFailure` disables both budget charge and unavailability
+    outside the registered progress path; and
+  - `production_phase_failure_state` and `production_streak_counter_state`:
+    production code defines phase-local cooldown, skip-list, backoff, or
+    competing failure-counter state.
 - **Cross-phase contract test.**
-  `tests/recovery/test_cooldown_parity_all_phases.py` is parametrised
-  over every agent-invoking phase of the real default policy, loaded
-  through `ralph.policy.loader.cached_default_pipeline_policy`. For each
-  phase it drives a stub agent that fails the same way N times and
-  asserts the identical owner behaviour: `Cooldown` after the owner's
-  threshold, the next candidate selected, the wait equal to
-  `earliest_available_wait_ms`, and the reason and duration taken from
-  the `UnavailabilityReason` policy table. The matrix covers a
-  "stalled but reported success" agent and a "no activity" agent, and
-  includes the conflict-resolution sub-pipeline.
+  `tests/recovery/test_cooldown_parity_all_phases.py` loads the production
+  default policy through
+  `ralph.policy.loader.cached_default_pipeline_policy` and drives the
+  registered production invocation route for `planning`,
+  `planning_analysis`, `development`, `development_commit_review`,
+  `development_commit`, `development_analysis`,
+  `development_final_commit_review`, `development_final_commit`, and
+  `rebase_conflict_resolution`. Each route's failed attempt is routed
+  through the owner's own classification and handling API
+  (`RecoveryController.classify_*` followed by `handle`), and the suite
+  asserts `Cooldown` after the owner threshold, next-candidate
+  selection, the owner's `earliest_available_wait_ms`, and the reason
+  and duration from the `UnavailabilityReason` policy table. The matrix
+  includes a stalled agent that reports success and a no-activity agent.
+  Its mutation check proves that removing the classification-to-handler
+  handoff makes the contract test fail. The production owner handoff of
+  the main loop is pinned separately by
+  `tests/pipeline/test_reducer_single_owner.py`, and the conflict
+  resolution driver's own classification is pinned by
+  `tests/test_conflict_resolution_phase_parity.py`.
+- **Owner-lifetime contract tests.**
+  `tests/test_commit_retry_cooldown.py` drives the commit outer-retry path
+  and requires every outer attempt to share one owner instance, preserving
+  bench state. `tests/project_policy/test_policy_invocation_cooldown.py`
+  drives the project-policy production entry point and requires an
+  all-unavailable chain to wait through `earliest_available_wait_ms` and a
+  caught launch failure to reach the owner.
+- **Conflict-resolution contract.** A no-progress attempt has a typed
+  outcome and is benched with `dead_agent_no_progress` or
+  `no_output_at_start`; it counts against the owner budget. Selection and
+  waiting remain owner decisions, and the driver does not replace a
+  no-selectable-agent result with a local choice. `max_rounds_per_stop`
+  bounds resolution rounds and reaching the cap escalates instead of
+  invoking another resolver. This is pinned by
+  `tests/test_conflict_resolution_phase_parity.py`,
+  `tests/test_conflict_resolution_phase_parity_cooldown.py`,
+  `tests/test_conflict_resolution_round_cap.py`,
+  `tests/test_conflict_stalled_attempt_cooldown.py`,
+  `tests/recovery/test_conflict_progress_classification.py`, and
+  `tests/recovery/test_cooldown_parity_all_phases.py`.
 - **Behavioural tests.** Each audited path above is pinned by the test
   named in its row.
 

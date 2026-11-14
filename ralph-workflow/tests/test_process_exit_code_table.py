@@ -76,7 +76,14 @@ _NEW_ANSWER_LABELS = (
 )
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "5c7d642bf2671374fa221e711498a7bc437f035657a8ee44d919175b0104cf77"
+    "21902ae65641df865e6e370c4d079af10196278d439344c67f73362ab14289ba"
+)
+_NON_BENIGN_LABEL_INVENTORY_REVIEW = (
+    "The reviewed inventory replaces git-rebase:diff with the four "
+    "git-rebase:set-aside-* operations, removes the retired integration-gate:* "
+    "probe, and adds operation-snapshot:index-tree, auto-integrate:update-feature-ref, "
+    "git-completion-in-place, and git-append-only-attributes. These are real recovery "
+    "and conflict-resolution operations whose nonzero exits must retain the loud default."
 )
 
 
@@ -194,7 +201,9 @@ def _process_label_source_digest() -> str:
 
 
 def test_every_emitted_label_has_an_exit_code_decision() -> None:
-    assert _process_label_source_digest() == _NON_BENIGN_LABEL_INVENTORY_DIGEST
+    assert _process_label_source_digest() == _NON_BENIGN_LABEL_INVENTORY_DIGEST, (
+        _NON_BENIGN_LABEL_INVENTORY_REVIEW
+    )
 
 
 @pytest.mark.parametrize("label", _ANSWER_LABELS)

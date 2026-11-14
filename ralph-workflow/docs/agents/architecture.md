@@ -94,7 +94,7 @@ and [ADR-0009](../architecture/adr-0009-pipeline-source-of-truth-ownership.md)
 operator pages are [Pipeline states](../sphinx/operator-states.md) and
 [Recovery](../sphinx/recovery.md). The contract for agent failure
 handling — the single cooldown owner, the audited agent-invoking call
-sites and the checks that enforce them — is in
+sites, production-route contract evidence, and structural checks — is in
 [Agent cooldown: the single-owner invariant](cooldown-invariant.md).
 
 ## Registration

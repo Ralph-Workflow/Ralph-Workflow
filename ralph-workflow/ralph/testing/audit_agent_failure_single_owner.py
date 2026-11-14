@@ -17,7 +17,6 @@ from ralph.testing._single_owner_rules import (
     TEMPORARY_TEST_COUNTER_READS,
     TEMPORARY_TRANSITIONAL_RULES,
     SingleOwnerViolation,
-    _check_agent_invocation_failure_routing,
     _check_production_assignment,
     _check_production_attribute,
     _check_production_call,
@@ -29,6 +28,7 @@ from ralph.testing._single_owner_rules import (
     _check_ralph_authored_classifier_inputs,
     _is_forbidden_target_name,
     _is_ledger_receiver,
+    check_agent_failure_ownership,
     is_test_counter_read_allowed,
     is_transitional_allowed,
 )
@@ -118,12 +118,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             violations.extend(_check_production_import(node, rel_path))
     violations.extend(_check_ralph_authored_classifier_inputs(tree, rel_path))
-    violations.extend(
-        violation
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Try)
-        for violation in _check_agent_invocation_failure_routing(node, rel_path)
-    )
+    violations.extend(check_agent_failure_ownership(tree, rel_path))
     return violations
 
 

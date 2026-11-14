@@ -122,6 +122,250 @@ def invoke_chain(controller):
     assert not [v for v in violations if v.rule == "production_agent_failure_owner_bypass"]
 
 
+def test_unguarded_agent_invocation_is_flagged() -> None:
+    source = """
+def call_agent():
+    invoke_agent()
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert any(v.rule == "production_agent_invoker_unchecked" for v in violations), (
+        f"Expected production_agent_invoker_unchecked, got: {violations}"
+    )
+
+
+def test_unguarded_agent_invocation_reports_the_invocation_line() -> None:
+    source = """
+def call_agent():
+    invoke_agent()
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    flagged = next(v for v in violations if v.rule == "production_agent_invoker_unchecked")
+    assert flagged.path == "ralph/phases/example.py"
+    assert flagged.line == 3
+
+
+def test_direct_agent_invocation_with_null_owner_is_flagged() -> None:
+    source = """
+def call_agent():
+    invoke_agent(controller=None)
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert any(v.rule == "production_agent_invoker_unchecked" for v in violations), (
+        f"Expected production_agent_invoker_unchecked, got: {violations}"
+    )
+
+
+def test_direct_agent_invocation_with_unchecked_optional_owner_is_flagged() -> None:
+    source = """
+def call_agent(controller: RecoveryController | None):
+    invoke_agent(controller=controller)
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert any(v.rule == "production_agent_invoker_unchecked" for v in violations), (
+        f"Expected production_agent_invoker_unchecked, got: {violations}"
+    )
+
+
+def test_agent_invocation_inside_try_is_not_reported_as_unguarded() -> None:
+    source = """
+def call_agent(controller):
+    try:
+        invoke_agent()
+    except Exception as exc:
+        failure = classify_failure(exc)
+        controller.handle(failure)
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_invoker_unchecked"]
+
+
+def test_agent_invocation_registered_as_runner_invoke_seam_is_not_flagged() -> None:
+    source = """
+def _invoke_effect(target, *args, **kwargs):
+    return execute_agent_effect(target, *args, **kwargs)
+
+def build_deps():
+    return AttemptRunnerDeps(invoke=_invoke_effect)
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_invoker_unchecked"], (
+        f"Expected the runner invoke seam to own the failure, got: {violations}"
+    )
+
+
+def test_invoke_keyword_outside_the_runner_deps_seam_is_still_flagged() -> None:
+    source = """
+def _invoke_effect(target, *args, **kwargs):
+    return execute_agent_effect(target, *args, **kwargs)
+
+def build_deps():
+    return SomethingElse(invoke=_invoke_effect)
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert any(v.rule == "production_agent_invoker_unchecked" for v in violations), (
+        f"Expected production_agent_invoker_unchecked, got: {violations}"
+    )
+
+
+def test_injected_agent_invocation_dependency_is_not_flagged() -> None:
+    source = """
+def call_agent(invoke_agent):
+    invoke_agent()
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_invoker_unchecked"], (
+        f"Expected the injected dependency to own the failure, got: {violations}"
+    )
+
+
+def test_runner_without_owner_argument_is_flagged() -> None:
+    source = """
+def call_agent():
+    try:
+        run_agent_attempt(agent)
+    except Exception as exc:
+        failure = classify_failure(exc)
+        controller.handle(failure)
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert any(v.rule == "production_agent_runner_no_controller" for v in violations), (
+        f"Expected production_agent_runner_no_controller, got: {violations}"
+    )
+
+
+def test_runner_with_null_owner_is_flagged() -> None:
+    source = """
+def call_agent():
+    try:
+        run_agent_attempt(agent, controller=None)
+    except Exception as exc:
+        failure = classify_failure(exc)
+        controller.handle(failure)
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert any(v.rule == "production_agent_runner_controller_only" for v in violations), (
+        f"Expected production_agent_runner_controller_only, got: {violations}"
+    )
+
+
+def test_runner_with_unchecked_optional_owner_is_flagged() -> None:
+    source = """
+def call_agent(controller: RecoveryController | None):
+    run_agent_attempt(agent, controller=controller)
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert any(v.rule == "production_agent_runner_controller_only" for v in violations), (
+        f"Expected production_agent_runner_controller_only, got: {violations}"
+    )
+
+
+def test_runner_with_narrowed_optional_owner_is_accepted() -> None:
+    source = """
+def call_agent(controller: RecoveryController | None):
+    if controller is None:
+        controller = build_controller()
+    run_agent_attempt(agent, controller=controller)
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_runner_controller_only"], (
+        f"Expected a narrowed owner to be accepted, got: {violations}"
+    )
+
+
+def test_runner_with_real_owner_is_accepted() -> None:
+    source = """
+def call_agent(controller: RecoveryController):
+    run_agent_attempt(agent, controller=controller)
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_runner_controller_only"], (
+        f"Expected a real owner to be accepted, got: {violations}"
+    )
+
+
+def test_unreachable_recovery_in_handler_is_flagged() -> None:
+    source = """
+def call_agent(controller):
+    try:
+        invoke_agent()
+    except Exception as exc:
+        if False:
+            failure = classify_failure(exc)
+            controller.handle(failure)
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert any(v.rule == "production_agent_failure_recovery_unreachable" for v in violations), (
+        f"Expected production_agent_failure_recovery_unreachable, got: {violations}"
+    )
+
+
+def test_recovery_after_raise_in_handler_is_flagged() -> None:
+    source = """
+def call_agent(controller):
+    try:
+        invoke_agent()
+    except Exception as exc:
+        raise RuntimeError("boom")
+        failure = classify_failure(exc)
+        controller.handle(failure)
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert any(v.rule == "production_agent_failure_recovery_unreachable" for v in violations), (
+        f"Expected production_agent_failure_recovery_unreachable, got: {violations}"
+    )
+
+
+def test_conditional_recovery_in_handler_is_flagged() -> None:
+    source = """
+def call_agent(controller):
+    try:
+        invoke_agent()
+    except Exception as exc:
+        if exc.retryable:
+            failure = classify_failure(exc)
+            controller.handle(failure)
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert any(v.rule == "production_agent_failure_owner_bypass" for v in violations), (
+        f"Expected production_agent_failure_owner_bypass, got: {violations}"
+    )
+
+
+def test_handler_that_classifies_and_handles_is_accepted() -> None:
+    source = """
+def call_agent(controller):
+    try:
+        invoke_agent()
+    except Exception as exc:
+        failure = classify_failure(exc)
+        controller.handle(failure)
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_failure_owner_bypass"], (
+        f"Expected the routed handler to be accepted, got: {violations}"
+    )
+    assert not [
+        v for v in violations if v.rule == "production_agent_failure_recovery_unreachable"
+    ], f"Expected the routed handler to be accepted, got: {violations}"
+
+
+def test_deliberate_reraise_to_outer_owner_is_accepted() -> None:
+    source = """
+def call_agent():
+    try:
+        invoke_agent()
+    except Exception:
+        raise
+"""
+    violations = audit_production_source("ralph/phases/example.py", source)
+    assert not [v for v in violations if v.rule == "production_agent_failure_owner_bypass"], (
+        f"Expected the deliberate re-raise to be accepted, got: {violations}"
+    )
+    assert not [
+        v for v in violations if v.rule == "production_agent_failure_recovery_unreachable"
+    ], f"Expected the deliberate re-raise to be accepted, got: {violations}"
+
+
 def test_phase_owned_cooldown_state_is_flagged() -> None:
     source = """
 class DevelopmentPhase:

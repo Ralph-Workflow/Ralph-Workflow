@@ -33,7 +33,7 @@ and registries to manage configurations and execution strategies.
 - `adding-a-new-agent.md` / `quickstart-add-a-new-agent.md` — register a new agent CLI
 - `architecture.md` — subsystem shape and runtime responsibilities
 - `artifact-submission-contract.md` — required artifact content
-- `cooldown-invariant.md` — the agent cooldown single-owner invariant and the audited call-site list
+- `cooldown-invariant.md` — the agent cooldown single-owner invariant, audited call sites, production-route evidence, and structural enforcement
 - `memory-lifecycle.md` — memory budget, teardown, and resource-lifecycle audit contracts
 - `remote-sync.md` — auto-integration remote-sync contract: the local target follows the configured remote
 - Pro support: see

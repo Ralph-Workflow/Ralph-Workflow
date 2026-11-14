@@ -242,17 +242,15 @@ def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunRe
 
 
 def _rebase_outcome(result: RebaseResolutionResult) -> ResolutionOutcomeType:
+    raw_outcome = getattr(result, "outcome", None)
     if (
         getattr(result, "succeeded", False)
-        or isinstance(getattr(result, "outcome", None), (Resolved, ResolvedOutcome))
-        or getattr(getattr(result, "outcome", None), "__class__", None).__name__
-        == "ResolvedOutcome"
+        or isinstance(raw_outcome, (Resolved, ResolvedOutcome))
+        or getattr(raw_outcome, "__class__", type(None)).__name__ == "ResolvedOutcome"
     ):
         return Resolved()
-    if isinstance(
-        getattr(result, "outcome", None), (NeedsOperator, RetryLater, Exhausted, ConfigFailure)
-    ):
-        return result.outcome
+    if isinstance(raw_outcome, (NeedsOperator, RetryLater, Exhausted, ConfigFailure)):
+        return raw_outcome
     return classify_resolution_failure(
         terminal_reason=result.terminal_reason,
         failure_cause=result.failure_cause,
@@ -322,7 +320,9 @@ def _rebase_run_result(
                     reason=failure_reason,
                     target=target,
                     failure_cause=failure_cause,
-                    terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+                    terminal_reason=(
+                        result.terminal_reason or ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+                    ),
                 ),
             )
         case NeedsOperator(cause=cause, paths=paths, command=command):

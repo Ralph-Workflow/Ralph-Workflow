@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -160,7 +161,10 @@ def test_policy_phase_does_not_leak_session_id_into_pipeline_consumer() -> None:
     )
 
 
-def test_policy_phase_failure_path_does_not_leak_retry_intent() -> None:
+def test_policy_phase_failure_path_does_not_leak_retry_intent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli_integration, "SystemClock", FakeClock)
     bundle = policy_invocation_bundle()
     leaked_intent_action = "fresh"
     leaked_intent_reason = "policy-remediation-leaked-failure"

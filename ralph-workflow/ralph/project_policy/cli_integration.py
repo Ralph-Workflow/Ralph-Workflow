@@ -17,6 +17,7 @@ from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
     set_last_captured_session_id,
 )
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.agent_retry_intent import (
     pop_last_captured_retry_intent,
@@ -60,6 +61,7 @@ from ralph.project_policy.status_bar import (
     remediation_status_bar_session,
 )
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
+from ralph.recovery.classifier import FailureContext
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -299,7 +301,10 @@ def _make_production_invoke_agent(
         while remaining_agents:
             selection = controller.preferred_agent_index(phase, remaining_agents)
             if selection.agent is None:
-                controller.earliest_available_wait_ms(phase, remaining_agents)
+                wait_ms = controller.earliest_available_wait_ms(phase, remaining_agents)
+                if wait_ms > 0:
+                    attempt_deps.clock.sleep(wait_ms / 1000.0)
+                    continue
                 break
             agent_name = selection.agent
             remaining_agents.remove(agent_name)
@@ -335,6 +340,30 @@ def _make_production_invoke_agent(
                         policy_bundle=load_result.policy_bundle,
                     )
                 except Exception as exc:
+                    classified = controller.classify_conflict_attempt(
+                        exc,
+                        agent=agent_name,
+                        phase=phase,
+                    )
+                    controller.handle(
+                        PipelineState(
+                            phase=phase,
+                            phase_chains={
+                                phase: AgentChainState(
+                                    agents=chain_agents,
+                                    current_index=chain_agents.index(agent_name),
+                                    retries=0,
+                                )
+                            },
+                            rebase=RebaseState(),
+                        ),
+                        exc,
+                        FailureContext(
+                            phase=phase,
+                            agent=agent_name,
+                            classified_failure=classified,
+                        ),
+                    )
                     logger.warning(
                         "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
                     )
