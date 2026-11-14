@@ -312,6 +312,7 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
         "initiating_feature_sha": "init_sha",
         "resolution_gate_key": "gate:stop1:primary:sha",
         "waiting_notification_key": "gate:stop1:primary:sha",
+        "record_version": 1,
         "resolution_terminal_marker": (
             ("stop1", ("primary",), "sha"),
             "NeedsOperator",

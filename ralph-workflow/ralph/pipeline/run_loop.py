@@ -1888,46 +1888,48 @@ def resolve_paused_rebase(
         active_executor = (
             executor if executor is not None else default_rebase_continuation_executor()
         )
-        res = active_executor.continue_rebase(
+        outcome = active_executor.continue_rebase(
             ctx.workspace_scope.root,
             target,
             stop_resolver,
             ctx.config.conflict_resolution,
         )
+        from ralph.pipeline.resolution_outcome import (
+            ConfigFailureOutcome,
+            NextStrategyOutcome,
+            ResolvedOutcome,
+            RetryLaterOutcome,
+            UnknownOutcome,
+            WaitingOutcome,
+        )
+
+        resolved = isinstance(outcome, ResolvedOutcome)
+        reason: str | None = None
+        cause_val = "unresolved_conflict"
+        if not resolved:
+            if isinstance(outcome, RetryLaterOutcome):
+                reason = outcome.on_change
+                cause_val = "agent_failure"
+            elif isinstance(outcome, WaitingOutcome):
+                reason = outcome.external_condition
+            elif isinstance(outcome, NextStrategyOutcome):
+                reason = outcome.strategy
+            elif isinstance(outcome, ConfigFailureOutcome):
+                reason = f"{outcome.file}: {outcome.parse_error}"
+                cause_val = "config_failure"
+            elif isinstance(outcome, UnknownOutcome):
+                reason = str(outcome.error)
     except Exception as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
-    from ralph.pipeline.resolution_outcome import (
-        ConfigFailureOutcome,
-        NextStrategyOutcome,
-        ResolvedOutcome,
-        RetryLaterOutcome,
-        UnknownOutcome,
-        WaitingOutcome,
-        assert_never,
-    )
-
-    match res:
-        case ResolvedOutcome():
-            return True
-        case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
-            reason = f"{condition}; resumes when {resumes_when}"
-        case RetryLaterOutcome(until=until, on_change=on_change):
-            reason = on_change or f"retry after {until}"
-        case NextStrategyOutcome(strategy=strategy):
-            reason = f"continue with autonomous strategy: {strategy}"
-        case ConfigFailureOutcome(file=file):
-            reason = f"fix {file} then run ralph --check-config"
-        case UnknownOutcome(error=error):
-            reason = str(error)
-        case _ as unreachable:
-            assert_never(unreachable)
-    logger.warning(
-        "integration resolution: the paused rebase for '{}' was not resolved: {}",
-        target,
-        reason or "no terminal evidence",
-    )
-    return False
+    if not resolved:
+        logger.warning(
+            "integration resolution: the paused rebase for '{}' was not resolved: {} (cause: {})",
+            target,
+            reason or "no terminal evidence",
+            cause_val,
+        )
+    return bool(resolved)
 
 
 def _resolve_paused_rebase(

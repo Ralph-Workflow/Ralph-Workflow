@@ -498,9 +498,9 @@ Submodule gitlink conflicts (`160000` mode in git index) occur when two branches
 
 1. **Typed kind**: `ralph.pipeline.conflict_resolution.sight` classifies a `160000` index entry as `ConflictKind.GITLINK`, which keeps it out of the agent-eligible kinds. `classify_unmerged_conflicts` reports it as `ConflictSight.OUT_OF_REACH` with the reason that the pipeline completes it in place, so the classification names who must act rather than claiming a human must.
 2. **Policy table**: `ralph.pipeline.conflict_resolution.gitlink_policy` holds the pointer-preference table, and `choose_gitlink` applies it. The preference is `ours`, `theirs` or `vendor-immutable`; `vendor-immutable` is the built-in default and prefers the side unchanged from the merge base before falling back to `ours` and then `theirs`.
-3. **Review record**: every gitlink decision records the base, ours and theirs SHAs, the selected side and SHA, and the alternatives considered, so the choice stays reviewable after the fact.
+3. **Review record**: every gitlink resolution records the base, ours and theirs SHAs, and the selected side and SHA, so the resolution stays reviewable after the fact.
 4. **Completion in place**: `try_deterministic_resolution` and `resolve_completion_in_place` stage the selected pointer with `git update-index` and finish the conflict in place. Both read the same policy table, so no path can complete a gitlink under a different rule.
-5. **No agent work**: a gitlink conflict never enters an agent prompt and never consumes a candidate attempt. An operator hand-off remains only when the pipeline cannot stage its own decision.
+5. **No agent work**: a gitlink conflict never enters an agent prompt and never consumes a candidate attempt. An operator hand-off remains only when the pipeline cannot stage its own resolution.
 
 ### Real-configuration isolation guard and audit trail
 

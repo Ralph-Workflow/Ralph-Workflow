@@ -18,8 +18,6 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "commit:head-symbolic-ref": frozenset({1}),
     "git-branch-exists": frozenset({1}),
     "git-branch-sha": frozenset({1}),
-    "git-gitlink-ancestor": frozenset({1}),
-    "git-gitlink-object": frozenset({1}),
     "git-is-ancestor": frozenset({1}),
     "git-observe-target-sha": frozenset({1}),
     "git-ort-residue-label": frozenset({1}),

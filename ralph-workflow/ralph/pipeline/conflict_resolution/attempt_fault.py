@@ -91,13 +91,21 @@ def classify_ralph_origin_fault(payload: str) -> ResolutionTerminationReason | N
 
 
 def classify_attempt_fault(
-    evidence: AttemptFault | ResolutionTerminationReason | None = None,
+    evidence: AttemptFault | ResolutionTerminationReason | str | None = None,
 ) -> AttemptFault:
     if isinstance(evidence, AttemptFault):
         return evidence
     if evidence is None:
         return AttemptFault.AGENT_HEALTHY
-    return _REASON_TO_FAULT.get(evidence, AttemptFault.UNKNOWN)
+    if isinstance(evidence, ResolutionTerminationReason):
+        return _REASON_TO_FAULT.get(evidence, AttemptFault.UNKNOWN)
+    cleaned = evidence.strip()
+    if not cleaned or cleaned.lower() == "healthy":
+        return AttemptFault.AGENT_HEALTHY
+    origin = classify_ralph_origin_fault(evidence)
+    if origin is not None:
+        return _REASON_TO_FAULT.get(origin, AttemptFault.UNKNOWN)
+    return AttemptFault.AGENT_EXITED
 
 
 def attempt_fault_to_termination_reason(

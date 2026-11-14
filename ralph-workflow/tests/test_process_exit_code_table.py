@@ -24,8 +24,6 @@ _ANSWER_LABELS = (
     "commit:head-symbolic-ref",
     "git-branch-exists",
     "git-branch-sha",
-    "git-gitlink-ancestor",
-    "git-gitlink-object",
     "integration-observation-head",
     "git-is-ancestor",
     "git-observe-target-sha",
@@ -55,8 +53,6 @@ _NEW_ANSWER_LABELS = (
     "commit:head-symbolic-ref",
     "git-branch-exists",
     "git-branch-sha",
-    "git-gitlink-ancestor",
-    "git-gitlink-object",
     "git-observe-target-sha",
     "git-ort-residue-label",
     "git-ort-residue-tracked",
@@ -76,7 +72,7 @@ _NEW_ANSWER_LABELS = (
 )
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "21902ae65641df865e6e370c4d079af10196278d439344c67f73362ab14289ba"
+    "2335d85e2838c8f7bc6ba9863cedddb6dfa3e525cca51cc130477f3fc196f117"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory replaces git-rebase:diff with the four "

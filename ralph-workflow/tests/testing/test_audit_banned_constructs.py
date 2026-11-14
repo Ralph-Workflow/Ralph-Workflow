@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.testing.audit_banned_constructs import FIX_HINT, main
+from ralph.testing.audit_banned_constructs import (
+    DEFAULT_GOVERNED_PATHS,
+    FIX_HINT,
+    main,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -567,3 +571,15 @@ def test_json_output_carries_machine_readable_finding_codes(
     first: Mapping[str, object] = payload[0]
     assert first["code"] == "BANNED-CALL"
     assert first["fix_hint"] == FIX_HINT
+
+
+def test_default_governed_paths_scanned_when_no_paths_specified(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert "ralph/checkpoint" in DEFAULT_GOVERNED_PATHS
+    assert "ralph/files" in DEFAULT_GOVERNED_PATHS
+    code = main([])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Banned constructs audit (advisory)" not in captured.out
+    assert "No banned constructs found." in captured.out

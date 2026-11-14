@@ -37,7 +37,10 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
     assert_never,
 )
-from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
+from ralph.pipeline.resolution_outcome_producer import (
+    classify_resolution_failure,
+    stop_resolution_outcome_from_legacy,
+)
 from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 
 if TYPE_CHECKING:
@@ -498,11 +501,13 @@ def _resolve_rebase_with_config(
             )
         else:
             reason = None
-        outcome: StopResolutionOutcome = classify_resolution_failure(
-            terminal_reason=session.terminal_reason,
-            failure_cause=carried_cause,
-            reason=reason,
-            paths=session.unresolved_paths,
+        outcome = stop_resolution_outcome_from_legacy(
+            classify_resolution_failure(
+                terminal_reason=session.terminal_reason,
+                failure_cause=carried_cause,
+                reason=reason,
+                paths=session.unresolved_paths,
+            )
         )
         _persist_resolution_cause(root, carried_cause)
         return outcome
@@ -522,15 +527,17 @@ def _resolve_rebase_with_config(
             "all resolver agents are spent/unavailable; conflict on "
             f"{', '.join(paths)} needs operator action: {operator_command_for_paths(paths)}"
         )
-    outcome = classify_resolution_failure(
-        terminal_reason=session.terminal_reason,
-        failure_cause=(
-            carried_cause
-            if carried_cause != ResolutionFailureCause.NONE
-            else ResolutionFailureCause.UNRESOLVED_CONFLICT
-        ),
-        reason=reason,
-        paths=session.unresolved_paths,
+    outcome = stop_resolution_outcome_from_legacy(
+        classify_resolution_failure(
+            terminal_reason=session.terminal_reason,
+            failure_cause=(
+                carried_cause
+                if carried_cause != ResolutionFailureCause.NONE
+                else ResolutionFailureCause.UNRESOLVED_CONFLICT
+            ),
+            reason=reason,
+            paths=session.unresolved_paths,
+        )
     )
     _persist_resolution_cause(
         root,

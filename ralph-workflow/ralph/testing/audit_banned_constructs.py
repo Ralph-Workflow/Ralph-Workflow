@@ -4,7 +4,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ralph.testing._banned_constructs_config import _audit_config
 from ralph.testing._banned_constructs_model import (
@@ -14,7 +14,7 @@ from ralph.testing._banned_constructs_model import (
     _AuditInputError,
 )
 from ralph.testing._banned_constructs_scope import (
-    _config_paths,
+    _CONFIG_NAMES,
     _git_root,
     _resolve_explicit_paths,
     _scan_root,
@@ -30,8 +30,16 @@ from ralph.testing._banned_constructs_source import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+DEFAULT_GOVERNED_PATHS: Final[tuple[str, ...]] = (
+    "ralph/checkpoint",
+    "ralph/files",
+    "ralph/testing/audit_banned_constructs.py",
+    "ralph/testing/_banned_constructs_auditor.py",
+)
+
 __all__ = [
     "CONFIG_ENV_MODULE",
+    "DEFAULT_GOVERNED_PATHS",
     "FIX_HINT",
     "Finding",
     "audit_paths",
@@ -49,6 +57,16 @@ class _CliOptions:
 
 def _finding_key(finding: Finding) -> tuple[str, int, str, str]:
     return (finding.path, finding.line, finding.code, finding.construct)
+
+
+def _config_paths(paths: Sequence[Path], root: Path) -> list[Path]:
+    found = {path for path in paths if path.name in _CONFIG_NAMES}
+    if not paths:
+        for name in _CONFIG_NAMES:
+            candidate = root / name
+            if candidate.is_file():
+                found.add(candidate.resolve())
+    return sorted(found)
 
 
 def audit_paths(paths: Sequence[str], base: Path | None = None) -> list[Finding]:
@@ -116,12 +134,12 @@ def _parse_cli(argv: Sequence[str]) -> _CliOptions:
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         options = _parse_cli(tuple(sys.argv[1:] if argv is None else argv))
-        if not options.paths and not options.enforce:
-            sys.stdout.write(
-                "Banned constructs audit (advisory): repository-wide enforcement pending full sweep.\n"
-            )
-            return 0
-        findings = audit_paths(options.paths) if options.paths else audit_repository()
+        if options.paths:
+            findings = audit_paths(options.paths)
+        elif options.enforce:
+            findings = audit_repository()
+        else:
+            findings = audit_paths(DEFAULT_GOVERNED_PATHS)
     except _AuditInputError as error:
         sys.stderr.write(f"BANNED-CONSTRUCT AUDIT INPUT ERROR: {error}\n")
         return 2

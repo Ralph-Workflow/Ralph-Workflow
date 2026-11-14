@@ -52,7 +52,7 @@ from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 _UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
 
-ConflictResolver = Callable[[Path, str], StopResolutionOutcome]
+ConflictResolver = Callable[[Path, str], StopResolutionOutcome | bool]
 
 
 RESOLUTION_FAILED = "resolution_failed"

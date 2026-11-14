@@ -177,7 +177,7 @@ select = [
     "PLR0911",
     "PLR0912",
     "PLR2004",
-    "ANN401"
+    "ANN401",
 ]
 "ralph/agents/multimodal_status.py" = [
     "PLR0911",

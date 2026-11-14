@@ -6,15 +6,19 @@ from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
 )
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
+from ralph.pipeline.resolution_outcome_producer import (
+    classify_resolution_failure,
+    stop_resolution_outcome_from_legacy,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
     from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
@@ -40,7 +44,7 @@ def default_invoker(
     root: Path,
     target: str,
     require_completion_evidence: bool = False,
-) -> ResolutionInvoker:
+) -> Callable[[str, Path, int], StopResolutionOutcome]:
     interval = limits.status_interval_seconds
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
@@ -79,11 +83,13 @@ def default_invoker(
         )
         if bool(result):
             return ResolvedOutcome()
-        return classify_resolution_failure(
-            terminal_reason=session.terminal_reason,
-            failure_cause=session.last_failure_cause,
-            reason=session.exhaustion_reason,
-            paths=session.unresolved_paths,
+        return stop_resolution_outcome_from_legacy(
+            classify_resolution_failure(
+                terminal_reason=session.terminal_reason,
+                failure_cause=session.last_failure_cause,
+                reason=session.exhaustion_reason,
+                paths=session.unresolved_paths,
+            )
         )
 
     return _invoke

@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
 
 __all__ = [

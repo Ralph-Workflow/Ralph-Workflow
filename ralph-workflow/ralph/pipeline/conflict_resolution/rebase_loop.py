@@ -69,6 +69,8 @@ from ralph.pipeline.resolution_outcome import (
 if TYPE_CHECKING:
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 _UNKNOWN_SUBJECT = "(subject unavailable)"
 
@@ -116,30 +118,28 @@ class RebaseStop:
     replay_total: int | None = None
 
 
-type RebaseStopResolver = Callable[["Path", str, RebaseStop], StopResolutionOutcome | bool]
+type RebaseStopResolver = Callable[
+    ["Path", str, RebaseStop],
+    StopResolutionOutcome | ResolutionOutcome | bool,
+]
 
 _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
     "active_gitlink_policy", default=None
 )
 
 
-def _resolution_succeeded(result: StopResolutionOutcome | bool) -> bool:
-    if isinstance(result, bool):
-        return result
+def _resolution_succeeded(
+    result: StopResolutionOutcome | ResolutionOutcome | bool,
+) -> bool:
+    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
+
+    if isinstance(result, ResolutionOutcome):
+        return result.succeeded
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
     if isinstance(result, ResolvedOutcome):
         return True
-    if isinstance(
-        result,
-        (
-            WaitingOutcome,
-            RetryLaterOutcome,
-            NextStrategyOutcome,
-            ConfigFailureOutcome,
-            UnknownOutcome,
-        ),
-    ):
-        return False
-    assert_never(result)
+    return bool(result) if isinstance(result, bool) else False
 
 
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:

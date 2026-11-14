@@ -14,7 +14,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,11 +30,7 @@ __all__ = [
 ]
 
 
-def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
-    from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
-
-    if succeeded:
-        return ResolvedOutcome()
+def resolution_outcome(session: ResolutionSession, succeeded: bool) -> ResolutionOutcome:
     cause = ResolutionFailureCause.NONE
     if not succeeded:
         if session.last_failure_cause != ResolutionFailureCause.NONE:
@@ -48,11 +44,15 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResol
         if not succeeded and session.operator_action_message
         else (session.exhaustion_reason if not succeeded else None)
     )
-    return classify_resolution_failure(
-        terminal_reason=session.terminal_reason,
+    return ResolutionOutcome(
+        succeeded=succeeded,
+        reason=None if succeeded else session.terminal_reason,
+        duration_seconds=session.last_duration_seconds or 0.0,
+        last_activity_kind=session.last_activity_kind,
+        last_activity_at=session.last_activity_at,
+        unresolved_paths=session.unresolved_paths,
         failure_cause=cause,
-        reason=ex_msg,
-        paths=session.unresolved_paths,
+        exhaustion_message=ex_msg,
     )
 
 

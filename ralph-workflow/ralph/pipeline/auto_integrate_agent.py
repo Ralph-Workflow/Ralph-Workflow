@@ -3,7 +3,6 @@ from __future__ import annotations
 __doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
 
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -18,17 +17,22 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
+    WaitingOutcome,
 )
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -140,7 +144,9 @@ def build_agent_rebase_stop_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver:
 
-    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
+    def _resolver(
+        root: Path, target: str, stop: RebaseStop
+    ) -> StopResolutionOutcome | ResolutionOutcome | bool:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -187,7 +193,15 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ConfigFailureOutcome(exc.file, describe_config_failure(exc))
+            return ResolutionOutcome(
+                succeeded=False,
+                reason=reason_text,
+                duration_seconds=0.0,
+                last_activity_kind=None,
+                last_activity_at=None,
+                unresolved_paths=(),
+                failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+            )
         except Exception as exc:
             logger.warning(
                 "auto_integrate: could not use the target worktree's own "
@@ -227,9 +241,15 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            if is_config:
-                return ConfigFailureOutcome(Path(target_path), describe_config_failure(exc))
-            return UnknownOutcome(exc)
+            return ResolutionOutcome(
+                succeeded=False,
+                reason=reason_text,
+                duration_seconds=0.0,
+                last_activity_kind=None,
+                last_activity_at=None,
+                unresolved_paths=(),
+                failure_cause=failure_cause,
+            )
 
     return _resolver
 

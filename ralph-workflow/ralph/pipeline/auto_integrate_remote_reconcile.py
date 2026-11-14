@@ -5,7 +5,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, get_head_sha, is_repo_clean
@@ -31,6 +31,7 @@ from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_pro
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStopResolver,
     current_rebase_identity,
+    resolution_session_from_config,
 )
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.resolution_outcome import (
@@ -45,10 +46,10 @@ from ralph.pipeline.resolution_outcome import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ralph.config.models import UnifiedConfig
-
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
 CLEAN_ABORTED_RECONCILIATION_CONFLICT = "cleanly aborted conflict:"
@@ -249,6 +250,44 @@ def _resolve_rebase_stop(
     config: UnifiedConfig | None,
     record: IntegrationRecord,
 ) -> StopResolutionOutcome:
+    if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
+        from ralph.pipeline.conflict_resolution.rebase_loop import (
+            resolution_session_from_config,
+        )
+
+        session = resolution_session_from_config(config) if config is not None else None
+        raw_res: object = None
+        try:
+            raw_res = resolve_rebase_in_progress(owner, target, resolver, session=session)
+        except TypeError:
+            fallback_fn = cast(
+                "Callable[[Path, str, RebaseStopResolver], object]",
+                resolve_rebase_in_progress,
+            )
+            raw_res = fallback_fn(owner, target, resolver)
+        if isinstance(raw_res, bool):
+            return (
+                ResolvedOutcome()
+                if raw_res
+                else RetryLaterOutcome(on_change="rebase resolution failed")
+            )
+        if isinstance(
+            raw_res,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
+            return raw_res
+        return (
+            ResolvedOutcome()
+            if bool(raw_res)
+            else RetryLaterOutcome(on_change="rebase resolution failed")
+        )
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger

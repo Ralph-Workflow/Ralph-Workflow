@@ -205,16 +205,26 @@ def classify_stage_map(
     theirs = stages.get(3)
     if ours is None and theirs is None:
         return ConflictSight.AGENT_DECISION if binary else ConflictSight.AGENT
+    gitlink_sight = ConflictSight.OUT_OF_REACH if has_markers else ConflictSight.GITLINK_POLICY
     if ours is None or theirs is None:
         present = ours if ours is not None else theirs
         if present is not None and present[0] == _GITLINK_MODE:
-            return ConflictSight.GITLINK_POLICY
-        return ConflictSight.AGENT_DECISION if binary else _classify_one_sided(present)
+            return gitlink_sight
+        return (
+            ConflictSight.AGENT_DECISION if binary else _classify_one_sided(present, gitlink_sight)
+        )
 
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs
     if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
-        return _classify_gitlink(ours_mode, ours_blob, theirs_mode, theirs_blob, stages.get(1))
+        return _classify_gitlink(
+            ours_mode,
+            ours_blob,
+            theirs_mode,
+            theirs_blob,
+            stages.get(1),
+            gitlink_sight=gitlink_sight,
+        )
     if binary or (_is_tree(ours_mode) != _is_tree(theirs_mode)):
         return ConflictSight.AGENT_DECISION
     return _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
@@ -228,12 +238,15 @@ def _classify_two_sided_blob(
     return ConflictSight.AGENT if has_markers else ConflictSight.AGENT_DECISION
 
 
-def _classify_one_sided(present: tuple[str, str] | None) -> ConflictSight:
+def _classify_one_sided(
+    present: tuple[str, str] | None,
+    gitlink_sight: ConflictSight = ConflictSight.GITLINK_POLICY,
+) -> ConflictSight:
     if present is None:
         return ConflictSight.OUT_OF_REACH
     mode, _blob = present
     if mode == _GITLINK_MODE:
-        return ConflictSight.GITLINK_POLICY
+        return gitlink_sight
     return ConflictSight.AGENT_DECISION
 
 
@@ -243,12 +256,13 @@ def _classify_gitlink(
     theirs_mode: str,
     theirs_blob: str,
     ancestor: tuple[str, str] | None,
+    gitlink_sight: ConflictSight = ConflictSight.GITLINK_POLICY,
 ) -> ConflictSight:
     if ours_mode == theirs_mode == _GITLINK_MODE and ancestor is not None:
         _ancestor_mode, ancestor_blob = ancestor
         if ancestor_blob == ours_blob == theirs_blob:
             return ConflictSight.MECHANICAL
-    return ConflictSight.GITLINK_POLICY
+    return gitlink_sight
 
 
 def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> ConflictClassification:

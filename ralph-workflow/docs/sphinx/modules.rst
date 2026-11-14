@@ -1382,6 +1382,13 @@ ralph.pipeline.conflict_resolution.deterministic_resolution
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.gitlink_policy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.gitlink_policy
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.stray_paths
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

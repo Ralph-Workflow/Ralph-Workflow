@@ -13,6 +13,7 @@ from ralph.project_policy import (
     markers,
 )
 from ralph.project_policy._content_checks import (
+    _check_ban_table_coverage,
     _check_capture_command_fact,
     _check_commands,
     _check_markers,
@@ -737,6 +738,14 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
         )
 
     findings.extend(_check_per_language_coverage(workspace, stack))
+    if frozen_version not in ("v4", "v5"):
+        findings.extend(
+            _check_ban_table_coverage(
+                workspace,
+                stack,
+                known_enforcers=known_enforcers,
+            )
+        )
     findings.extend(_check_verification_bypass(workspace))
     findings.extend(_check_applicability_overrides(workspace))
 

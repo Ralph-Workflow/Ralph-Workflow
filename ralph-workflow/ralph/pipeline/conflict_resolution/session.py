@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
+    from ralph.recovery.classified_failure import ClassifiedFailure
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
@@ -270,6 +271,50 @@ def ensure_session_controller(
     return controller
 
 
+def _build_classified_conflict_failure(
+    effective_outcome: ConflictAttemptOutcome | None,
+    unresolved_count: int,
+    agent_name: str,
+    raw_failure: BaseException | str | None,
+) -> ClassifiedFailure | None:
+    from ralph.recovery.classified_failure import ClassifiedFailure
+    from ralph.recovery.failure_category import FailureCategory
+    from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+    if effective_outcome is None or effective_outcome is ConflictAttemptOutcome.RAW:
+        return None
+    unavailable_reason: UnavailabilityReason | None = None
+    if effective_outcome is ConflictAttemptOutcome.NO_ACTIVITY:
+        unavailable_reason = UnavailabilityReason.NO_OUTPUT_AT_START
+        reason = "candidate produced no activity before it exited"
+    elif effective_outcome in (
+        ConflictAttemptOutcome.STALLED,
+        ConflictAttemptOutcome.STALLED_NO_PROGRESS,
+    ):
+        unavailable_reason = UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
+        reason = (
+            f"agent reported success but made no progress: {unresolved_count} "
+            "conflicted path(s) remain unchanged"
+        )
+    elif effective_outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
+        reason = f"agent reported success but {unresolved_count} conflicted path(s) remain"
+    else:
+        reason = "conflict attempt failed"
+
+    return ClassifiedFailure(
+        category=FailureCategory.AGENT,
+        reason=reason,
+        attributed_agent=agent_name,
+        attributed_phase=PHASE_RESOLUTION,
+        counts_against_budget=unavailable_reason is not None,
+        original_exception=raw_failure if isinstance(raw_failure, BaseException) else None,
+        raw_message="" if raw_failure is None else str(raw_failure),
+        must_charge_ledger=True,
+        is_unavailable=unavailable_reason is not None,
+        unavailability_reason=unavailable_reason,
+    )
+
+
 def classify_failed_resolution_attempt(
     session: ResolutionSession | None,
     agent_name: str,
@@ -284,11 +329,27 @@ def classify_failed_resolution_attempt(
     outcome: ConflictAttemptOutcome | None = None,
     unresolved_count: int = 0,
 ) -> None:
-    del bench, outcome, unresolved_count
+    del bench
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
 
     controller = ensure_session_controller(session, policy_bundle)
+    effective_outcome = outcome
+    if not workspace_changed:
+        if outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
+            effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
+        elif outcome is ConflictAttemptOutcome.ATTEMPT_FAILED:
+            effective_outcome = (
+                ConflictAttemptOutcome.STALLED_NO_PROGRESS
+                if session is not None and session.last_attempt_saw_activity
+                else ConflictAttemptOutcome.NO_ACTIVITY
+            )
+    classified = _build_classified_conflict_failure(
+        effective_outcome,
+        unresolved_count,
+        agent_name,
+        raw_failure,
+    )
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
     if session is None:
@@ -306,35 +367,41 @@ def classify_failed_resolution_attempt(
         )
     from ralph.recovery.classifier import FailureContext
 
-    handle_failure = raw_failure if raw_failure is not None else "failed"
+    handle_failure: BaseException | str = raw_failure if raw_failure is not None else ""
+    facts = session.last_attempt_result.facts if session and session.last_attempt_result else None
+    context = FailureContext(
+        phase=PHASE_RESOLUTION,
+        agent=agent_name,
+        classified_failure=classified,
+        facts=facts,
+    )
     try:
         new_state, _effects, _event = controller.handle(
             recovery_state,
             handle_failure,
-            FailureContext(
-                phase=PHASE_RESOLUTION,
-                agent=agent_name,
-            ),
+            context,
             workspace_changed=workspace_changed,
             artifact_valid=artifact_valid,
+            facts=facts,
         )
     except TypeError:
         new_state, _effects, _event = controller.handle(
             recovery_state,
             handle_failure,
-            FailureContext(
-                phase=PHASE_RESOLUTION,
-                agent=agent_name,
-            ),
+            context,
         )
-        recovery_state = new_state
     except Exception as handle_exc:
         logger.debug("controller.handle exception in conflict resolution: {}", handle_exc)
-    session.recovery_state = recovery_state
+        new_state = recovery_state
+    if session is None:
+        return
+    session.recovery_state = new_state
     session.last_recovery_reason = (
-        controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None
+        classified.reason
+        if classified is not None
+        else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
-    session.last_retry_delay_ms = recovery_state.last_retry_delay_ms
+    session.last_retry_delay_ms = new_state.last_retry_delay_ms
 
     agent_status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
     agent_available = agent_status.is_eligible

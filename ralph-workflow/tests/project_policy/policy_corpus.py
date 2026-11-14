@@ -55,6 +55,19 @@ def complete_policy_body(filename: str) -> str:
             )
         elif heading == "Bypass detection":
             lines.extend(("Real content.", "RALPH-COMMAND: make bypass-audit", ""))
+        elif heading == "Default requirements" and filename == "clean-code-policy.md":
+            lines.extend(
+                (
+                    "Real content.",
+                    "",
+                    "## Verifiable constructs and banned escape hatches",
+                    "",
+                    "| Language | Banned constructs | Enforcing rule IDs | Enforcement |",
+                    "|---|---|---|---|",
+                    "| Python | eval | S307 | deterministic: make test |",
+                    "",
+                )
+            )
         elif heading == markers.GUARD_INVENTORY_HEADING.removeprefix("## "):
             lines.extend(
                 (

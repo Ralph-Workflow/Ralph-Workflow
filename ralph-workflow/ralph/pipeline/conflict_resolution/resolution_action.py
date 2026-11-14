@@ -3,6 +3,9 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     INFRASTRUCTURE_TERMINATION_REASONS,
 )
@@ -38,7 +41,11 @@ def select_resolution_action(
             else ResolutionAction.PROCEED_TO_FAST_FORWARD
         )
 
-    if cap > 0 and round_index > cap:
+    if (
+        cap > 0
+        and round_index > cap
+        and session.terminal_reason == ResolutionTerminationReason.RESOLUTION_INCOMPLETE
+    ):
         return ResolutionAction.ESCALATE_TO_INTERVENTION
 
     return ResolutionAction.CONTINUE_AGENT_ROUND

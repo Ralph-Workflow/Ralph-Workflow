@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
 from ralph.project_policy import evidence, markers, starters
@@ -748,7 +748,185 @@ def _find_empty_per_language_inapplicable(content: str) -> set[str]:
     return out
 
 
+_MIN_TABLE_LINES: Final[int] = 2
+
+
+def _validate_deterministic_enforcer(
+    path: str,
+    row_lang_cell: str,
+    enforcer_id: str,
+    known_enforcers: frozenset[str] | None,
+) -> PolicyFinding | None:
+    if not enforcer_id:
+        return PolicyFinding(
+            requirement_id=markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID,
+            path=path,
+            missing_evidence=f"ban table row '{row_lang_cell}' has empty deterministic enforcer ID",
+            required_outcome=(
+                f"provide a resolvable enforcer ID after 'deterministic:' for '{row_lang_cell}'"
+            ),
+        )
+    if known_enforcers is not None and enforcer_id not in known_enforcers:
+        return PolicyFinding(
+            requirement_id=markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID,
+            path=path,
+            missing_evidence=(
+                f"ban table row '{row_lang_cell}' references unknown enforcer ID {enforcer_id!r}"
+            ),
+            required_outcome=(
+                f"ensure {enforcer_id!r} matches a declared RALPH-COMMAND value or verify.py step label"
+            ),
+        )
+    return None
+
+
+def _validate_ban_enforcer(
+    path: str,
+    row_lang_cell: str,
+    enforcement_val: str | None,
+    enforcer_col: int | None,
+    known_enforcers: frozenset[str] | None,
+) -> PolicyFinding | None:
+    if enforcement_val is None or enforcement_val.startswith("advisory:"):
+        return None
+    if enforcement_val.startswith("deterministic:"):
+        return _validate_deterministic_enforcer(
+            path,
+            row_lang_cell,
+            enforcement_val[len("deterministic:") :].strip(),
+            known_enforcers,
+        )
+    if enforcer_col is not None:
+        return _validate_deterministic_enforcer(
+            path,
+            row_lang_cell,
+            enforcement_val.strip(),
+            known_enforcers,
+        )
+    return None
+
+
+def _extract_ban_table_lines(content: str, heading: str) -> list[str] | None:
+    if heading not in content:
+        return None
+    section_text = content.split(heading, 1)[1]
+    next_heading_idx = section_text.find("\n## ")
+    if next_heading_idx != -1:
+        section_text = section_text[:next_heading_idx]
+    return [
+        line.strip()
+        for line in section_text.splitlines()
+        if line.strip().startswith("|") and line.strip().endswith("|")
+    ]
+
+
+def _row_enforcement(cells: list[str], enforcer_col: int | None) -> str | None:
+    if enforcer_col is not None and len(cells) > enforcer_col:
+        return cells[enforcer_col]
+    for cell in cells:
+        if cell.startswith("deterministic:") or cell.startswith("advisory:"):
+            return cell
+    return None
+
+
+def _check_ban_table_coverage(
+    workspace: Workspace,
+    stack: ProjectStack,
+    *,
+    known_enforcers: frozenset[str] | None = None,
+) -> list[PolicyFinding]:
+    required_langs = evidence.required_languages(stack)
+    if not required_langs:
+        return []
+
+    path = f"{markers.CANONICAL_DIR}clean-code-policy.md"
+    if not workspace.exists(path):
+        return []
+
+    heading = "## Verifiable constructs and banned escape hatches"
+    table_lines = _extract_ban_table_lines(workspace.read(path), heading)
+    if table_lines is None:
+        return [
+            PolicyFinding(
+                requirement_id=markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID,
+                path=path,
+                missing_evidence=f"ban table under '{heading}' is missing for required language '{lang}'",
+                required_outcome=(
+                    f"add '{heading}' with a ban table containing a row for '{lang}'"
+                ),
+            )
+            for lang in sorted(required_langs)
+        ]
+
+    if len(table_lines) < _MIN_TABLE_LINES:
+        return [
+            PolicyFinding(
+                requirement_id=markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID,
+                path=path,
+                missing_evidence=f"ban table under '{heading}' has no table rows for required language '{lang}'",
+                required_outcome=(
+                    f"add a markdown table with a row for '{lang}' under '{heading}'"
+                ),
+            )
+            for lang in sorted(required_langs)
+        ]
+
+    header_cells = [c.strip().lower() for c in table_lines[0].split("|")[1:-1]]
+    lang_col = 0
+    enforcer_col: int | None = None
+    for idx, col in enumerate(header_cells):
+        if "language" in col:
+            lang_col = idx
+        elif col in ("enforcement", "enforcer"):
+            enforcer_col = idx
+
+    covered_langs: set[str] = set()
+    findings: list[PolicyFinding] = []
+
+    for row_line in table_lines[2:]:
+        cells = [c.strip() for c in row_line.split("|")[1:-1]]
+        if not cells or len(cells) <= lang_col:
+            continue
+        row_lang_cell = cells[lang_col]
+        enforcement_val = _row_enforcement(cells, enforcer_col)
+
+        parts: list[str] = [
+            p.strip() for p in row_lang_cell.replace("/", ",").split(",") if p.strip()
+        ]
+        for part in parts:
+            covered_langs.add(part.lower())
+        covered_langs.add(row_lang_cell.strip().lower())
+
+        finding = _validate_ban_enforcer(
+            path,
+            row_lang_cell,
+            enforcement_val,
+            enforcer_col,
+            known_enforcers,
+        )
+        if finding is not None:
+            findings.append(finding)
+
+    findings.extend(
+        PolicyFinding(
+            requirement_id=markers.BANNED_CONSTRUCT_UNCOVERED_FINDING_ID,
+            path=path,
+            missing_evidence=(
+                f"ban table under '{heading}' lacks a row for required language '{lang}'"
+            ),
+            required_outcome=(
+                f"add a row for '{lang}' to the ban table with banned constructs and a valid enforcer ID"
+            ),
+        )
+        for lang in sorted(required_langs)
+        if lang.lower() not in covered_langs
+    )
+
+    return findings
+
+
 __all__ = [
+    "_check_ban_table_coverage",
     "_check_commands",
     "_check_guard_inventory",
     "_check_markers",
