@@ -255,14 +255,27 @@ def run_conflict_resolution_outcome(
     active_session = session or _new_resolution_session(config)
     active_session.caller_provided = session_provided
     previous_model = capture_status_bar_model(display)
-    clock_candidate: object = None
-    if active_session.ledger is not None:
-        clock_candidate = active_session.ledger._clock
-    elif pipeline_deps is not None:
-        clock_candidate = pipeline_deps.recovery_clock
+    clock_candidate: object = (
+        (getattr(active_session.ledger, "clock", None) or getattr(active_session.ledger, "_clock", None))
+        if active_session.ledger is not None
+        else (
+            getattr(pipeline_deps, "recovery_clock", None)
+            or (
+                getattr(active_session.unavailability_store, "clock", None)
+                or getattr(active_session.unavailability_store, "_clock", None)
+                if active_session.unavailability_store is not None
+                else (
+                    getattr(getattr(pipeline_deps, "unavailability_store", None), "clock", None)
+                    or getattr(getattr(pipeline_deps, "unavailability_store", None), "_clock", None)
+                    if pipeline_deps is not None
+                    else None
+                )
+            )
+        )
+    )
     token = None
-    if clock_candidate is not None and hasattr(clock_candidate, "sleep"):
-        from ralph.pipeline.integration_actions import Clock, install_executors
+    if isinstance(clock_candidate, IntegrationClock):
+        from ralph.pipeline.integration_actions import install_executors
 
         token = install_executors(clock=cast("Clock", clock_candidate))
     _ACTIVE_SESSION[0] = active_session
@@ -624,7 +637,7 @@ def _run_rounds(
         target=target,
         require_completion_evidence=bool(decision_paths),
     )
-    runner = _wrap_invoker(base_runner, session)
+    runner = base_runner
     entry_scope = (
         f"{len(conflicted)} resolvable; {_status_scope(integration_status)}"
         if integration_status is not None
@@ -756,6 +769,9 @@ def _execute_round_loop(
         last_invoked_reason: ResolutionTerminationReason | None = session.terminal_reason
         last_invoked_charge: bool = session.charge_conflict_budget
         while round_index < round_cap:
+            if not _can_continue_rounds(session, candidates):
+                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
+                break
             round_index += 1
             if session.recovery_controller is not None:
                 session.recovery_controller._spent_agents.pop(PHASE_RESOLUTION, None)
@@ -848,6 +864,32 @@ def _execute_round_loop(
     return False
 
 
+def _wait_for_candidates_if_cooling_down(
+    session: ResolutionSession, candidates: Sequence[str]
+) -> None:
+    controller = session.recovery_controller
+    if controller is not None:
+        skipped = skipped_candidates(session, tuple(candidates))
+        live = [name for name in candidates if name not in skipped]
+        if live and not any(
+            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+        ):
+            wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+            if wait_ms > 0:
+                _sleep_seconds(wait_ms / 1000.0)
+                if not any(
+                    controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible
+                    for name in live
+                ):
+                    closest = min(
+                        live,
+                        key=lambda name: controller.earliest_available_wait_ms(
+                            PHASE_RESOLUTION, [name]
+                        ),
+                    )
+                    controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, closest)
+
+
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
     skipped = skipped_candidates(session, candidates)
     live = [name for name in candidates if name not in skipped]
@@ -856,30 +898,25 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         and session.recovery_state.phase != PHASE_RESOLUTION
     ):
         return False
-    ledger = session_ledger(session)
-    if ledger is not None:
-        if ledger.all_exhausted(PHASE_RESOLUTION, live):
-            return False
-        return (
-            ledger.any_eligible(PHASE_RESOLUTION, live)
-            or (ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0) > 0
-        )
     controller = session.recovery_controller
     if controller is not None:
-        chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
-        if all(
-            status.is_spent and getattr(status, "reason", None) != "retry_exhausted"
-            for _agent, status in chain_statuses
-        ):
+        if controller.all_exhausted(PHASE_RESOLUTION, live):
             return False
-        return (
-            any(
-                status.is_eligible
-                or (status.is_spent and getattr(status, "reason", None) == "retry_exhausted")
-                for _agent, status in chain_statuses
+        if session.rounds_spent == 0:
+            return (
+                any(controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live)
+                or controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
             )
-            or controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
+        return any(
+            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
         )
+    if session.ledger is not None:
+        if session.rounds_spent == 0:
+            wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
+            return session.ledger.any_eligible(PHASE_RESOLUTION, live) or (
+                wait is not None and wait > 0
+            )
+        return session.ledger.any_eligible(PHASE_RESOLUTION, live)
     return True
 
 
@@ -896,16 +933,6 @@ def _wait_for_eligible_agent(
         controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
     ):
         wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
-        if wait_ms > 0:
-            _sleep_seconds(wait_ms / 1000.0)
-
-
-def _wait_for_candidates_if_cooling_down(
-    session: ResolutionSession, candidates: Sequence[str]
-) -> None:
-    controller = session.recovery_controller
-    if controller is not None:
-        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
         if wait_ms > 0:
             _sleep_seconds(wait_ms / 1000.0)
 
@@ -927,10 +954,11 @@ def _dead_chain_reason(
     controller: RecoveryController | None,
     ledger: AgentFailureLedger | None = None,
 ) -> ResolutionTerminationReason:
-    del ledger
     wait: int | None = None
     if controller is not None:
         wait = controller.earliest_eligible_wait_ms(PHASE_RESOLUTION, list(live_candidates))
+    elif ledger is not None:
+        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(live_candidates))
     if wait is None:
         return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     if wait > 0:
@@ -943,13 +971,16 @@ def _agent_unavailability_reason(
     ledger: AgentFailureLedger | None,
     controller: RecoveryController | None,
 ) -> str:
-    del ledger
     if controller is not None:
         snap = controller.unavailability_store.snapshot()
         u_reasons = snap.get("unavailability_reasons", {})
         if isinstance(u_reasons, dict) and agent in u_reasons:
             return str(u_reasons[agent])
         reason = controller.ledger.failure_reason(PHASE_RESOLUTION, agent)
+        if reason:
+            return reason
+    elif ledger is not None:
+        reason = ledger.failure_reason(PHASE_RESOLUTION, agent)
         if reason:
             return reason
     return "spent"
@@ -972,8 +1003,8 @@ def _handle_dead_candidate_chain(
     live_candidates = [agent for agent in candidates if agent not in barred]
 
     if (
-        session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
-        or (session.rounds_spent == 0 and session.terminal_reason is None)
+        session.terminal_reason is None
+        or session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
     ):
         session.terminal_reason = _dead_chain_reason(
             live_candidates,

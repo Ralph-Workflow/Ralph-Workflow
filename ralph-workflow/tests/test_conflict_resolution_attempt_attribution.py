@@ -22,6 +22,12 @@ from tests._conflict_resolution_phase_parity_seams import (
     _policy_bundle,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate": (
+        "invoke_resolution_agent returns bool"
+    ),
+}
+
 if TYPE_CHECKING:
     import pytest
 
@@ -199,7 +205,7 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
         display_context=None,
         session=session,
     )
-    assert result.succeeded is False
+    assert result is False
     assert session.last_attempt_failure == "conflict attempt failed"
     assert session.last_attempt_evidence != "PiProviderFailureExitError"
     assert session.skip_same_agent_retries is False

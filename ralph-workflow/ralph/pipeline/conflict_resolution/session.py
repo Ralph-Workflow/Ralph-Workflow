@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.clock import Clock
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
@@ -307,26 +308,38 @@ def ensure_session_controller(
     )
     if session is not None and session.unavailability_store is None and store is not None:
         session.unavailability_store = store
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     ledger = (
         pipeline_deps.ledger
         if pipeline_deps is not None and pipeline_deps.ledger is not None
-        else (session.ledger if session is not None else None)
-    )
-    if ledger is None and store is not None and getattr(store, "_failure_ledger", None) is not None:
-        ledger = getattr(store, "_failure_ledger")
-    store_clock: object = getattr(store, "_clock", None) if store is not None else None
-    deps_clock: object = (
-        getattr(pipeline_deps, "recovery_clock", None) if pipeline_deps is not None else None
-    )
-    clock: Clock = (
-        ledger._clock
-        if ledger is not None and isinstance(getattr(ledger, "_clock", None), Clock)
         else (
-            store_clock
-            if isinstance(store_clock, Clock)
-            else (deps_clock if isinstance(deps_clock, Clock) else SystemClock())
+            session.ledger
+            if session is not None and session.ledger is not None
+            else (
+                getattr(store, "_failure_ledger", None)
+                if isinstance(getattr(store, "_failure_ledger", None), AgentFailureLedger)
+                else None
+            )
         )
     )
+    deps_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
+    ledger_clock = (
+        (getattr(ledger, "clock", None) or getattr(ledger, "_clock", None))
+        if ledger is not None
+        else None
+    )
+    store_clock = getattr(store, "clock", None) or getattr(store, "_clock", None)
+    clock: Clock
+    if isinstance(deps_clock, Clock):
+        clock = deps_clock
+    elif isinstance(ledger_clock, Clock):
+        clock = ledger_clock
+    elif isinstance(store_clock, Clock):
+        clock = store_clock
+    else:
+        from ralph.pipeline.integration_actions import current_clock
+
+        clock = _LegacyClockAdapter(current_clock())
     effective_probe_runner = (
         probe_runner
         if probe_runner is not None

@@ -258,7 +258,7 @@ def _execute_single_candidate(
             session.last_failure_cause = ResolutionFailureCause.NONE
         else:
             _record_invoker_outcome(session, invoker_result)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
         )

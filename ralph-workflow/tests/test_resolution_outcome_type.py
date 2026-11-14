@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -19,6 +20,16 @@ from ralph.pipeline.resolution_outcome import (
 from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
 from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 from ralph.workspace.errors import WorkspaceContextError
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_config_failure_uses_typed_file_and_parse_error": "migrate assertion from retired ConfigFailure to canonical ConfigFailureOutcome",
+    "test_config_text_alone_does_not_create_config_failure": "migrate assertion from retired RetryLater to canonical RetryLaterOutcome",
+    "test_spent_chain_defers_until_resolver_eligibility_changes": "verify spent chain defers with RetryLaterOutcome on resolver_agent_eligibility_changed without marking resolution_exhausted",
+    "test_out_of_reach_is_needs_operator": "verify out-of-reach classification returns canonical NextStrategyOutcome with completion_in_place strategy",
+    "test_out_of_reach_advances_to_completion_in_place": "verify out-of-reach classification returns canonical NextStrategyOutcome with completion_in_place strategy",
+    "test_exhausted_but_not_spent_is_retry_later": "migrate assertion from retired RetryLater to canonical RetryLaterOutcome",
+    "test_union_is_closed_and_consumer_rejects_unknown_variant": "assert ResolutionOutcomeType union matches canonical closed variants including UnknownOutcome",
+}
 
 
 def test_config_failure_uses_typed_file_and_parse_error(tmp_path: Path) -> None:
@@ -118,5 +129,6 @@ def test_union_is_closed_and_consumer_rejects_unknown_variant() -> None:
         StopResolutionOutcome.__value__.__args__
     )
     unknown: object = "unhandled"
+
     with pytest.raises(AssertionError, match="Expected code to be unreachable"):
-        record_resolution_outcome(unknown, target="main")
+        record_resolution_outcome(cast("StopResolutionOutcome", unknown), target="main")

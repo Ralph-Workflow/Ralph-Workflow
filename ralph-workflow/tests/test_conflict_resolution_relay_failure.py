@@ -28,13 +28,23 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.resolution_outcome import UnknownOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 from tests._conflict_resolution_phase_parity_seams import _policy_bundle
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._session_fake_mcp_bridge import _FakeMcpBridge
 from tests._session_registry_instance import _RegistryInstance
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_output": (
+        "invoke_resolution_agent returns a boolean indicating whether the attempt "
+        "succeeded, and failure is recorded in session terminal reason"
+    ),
+    "test_silent_infrastructure_failure_does_not_charge_conflict_budget": (
+        "invoke_resolution_agent returns a boolean indicating whether the attempt "
+        "succeeded, and failure is recorded in session terminal reason"
+    ),
+}
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -118,8 +128,7 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         display_context=None,
         session=session,
     )
-    assert isinstance(outcome, UnknownOutcome)
-    assert outcome.succeeded is False
+    assert outcome is False
     assert session.terminal_reason is reason
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)
     assert session.charge_conflict_budget is False
@@ -181,8 +190,7 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         display_context=None,
         session=session,
     )
-    assert isinstance(outcome, UnknownOutcome)
-    assert outcome.succeeded is False
+    assert outcome is False
     assert session.charge_conflict_budget is False
     assert session.terminal_reason is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
 

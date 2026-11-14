@@ -42,7 +42,8 @@ RETIRED_BROAD_DETERMINISTIC_ANCHORS: tuple[str, ...] = (
 )
 
 COMMENT_BAN_ANCHOR: str = (
-    "the absolute comment and docstring ban in `clean-code-policy.md`, a project rule tagged `none`"
+    "two exceptions are the absolute comment and docstring ban and the "
+    "banned-construct ban in `clean-code-policy.md`, project rules tagged `none`"
 )
 
 GUARD_INVENTORY_COLUMNS: tuple[str, ...] = (
@@ -104,8 +105,8 @@ COMMENT_BAN_CURRENT_FACT_STATEMENTS: tuple[str, ...] = (
     "The evidence tag and the enforcement status are separate properties",
     "the tag names the kind of source behind the rule, the enforcement status names who decides it",
     "The ban ships as `deterministic` because the comment audit enforces it",
-    "it is the single exception to the execution-kernel rule that a rule tagged "
-    "`anecdotal` or `none` ships advisory",
+    "it is one of two exceptions (along with the banned-construct ban) to the "
+    "execution-kernel rule that a rule tagged `anecdotal` or `none` ships advisory",
 )
 
 STARTER_COMMENT_BAN_ENFORCEMENT: str = "deterministic: PROJECT-FACT-UNRESOLVED"

@@ -194,7 +194,7 @@ def _assignment_targets(statement: ast.Assign | ast.AnnAssign) -> tuple[ast.expr
 
 
 def _mutable_value(node: ast.expr | None) -> bool:
-    if isinstance(node, (ast.List, ast.Dict, ast.Set)):
+    if isinstance(node, ast.List | ast.Dict | ast.Set):
         return True
     if not isinstance(node, ast.Call):
         return False
@@ -231,7 +231,7 @@ def _loads_name(node: ast.AST, name: str) -> bool:
 
 
 def _node_line(node: ast.AST) -> int:
-    if isinstance(node, (ast.stmt, ast.expr, ast.arg, ast.keyword, ast.ExceptHandler)):
+    if isinstance(node, ast.stmt | ast.expr | ast.arg | ast.keyword | ast.ExceptHandler):
         return node.lineno
     return 1
 
@@ -689,7 +689,7 @@ class _SourceAuditor(ast.NodeVisitor):
         function: ast.AST | None = None
         if isinstance(target, ast.Name):
             function = self.module_functions.get(target.id)
-        elif isinstance(target, ast.Lambda):
+        if isinstance(target, ast.Lambda):
             function = target
         for mutable, line in self.module_mutables.items():
             if function is not None and _loads_name(function, mutable):

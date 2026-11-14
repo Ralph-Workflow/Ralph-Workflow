@@ -43,6 +43,13 @@ from ralph.recovery import dead_agent_probe
 from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, ProbeResult
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
+        "with skip_same_agent_retries=True primary runs once without retries and "
+        "fallback retries until exhaustion, yielding four total candidate calls"
+    ),
+}
+
 if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
@@ -348,7 +355,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert not isinstance(outcome, ResolvedOutcome)
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
-    assert calls == ["primary", "primary", "primary", "fallback", "fallback", "fallback"]
+    assert calls == ["primary", "fallback", "fallback", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)

@@ -572,7 +572,9 @@ class RecoveryController:
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
             existing_ledger: object = getattr(self._unavailability_tracker, "_failure_ledger", None)
-            if existing_ledger is None:
+            if existing_ledger is not None and isinstance(existing_ledger, AgentFailureLedger):
+                self._ledger = existing_ledger
+            else:
                 object.__setattr__(self._unavailability_tracker, "_failure_ledger", self._ledger)
         else:
             self._unavailability_tracker = AgentUnavailabilityTracker(

@@ -199,7 +199,7 @@ def classify_stage_map(
     stages: dict[int, tuple[str, str]],
     *,
     binary: bool,
-    has_markers: bool = True,
+    has_markers: bool = False,
 ) -> ConflictSight:
     ours = stages.get(2)
     theirs = stages.get(3)

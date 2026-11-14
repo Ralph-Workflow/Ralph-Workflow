@@ -22,6 +22,14 @@ __all__ = ["RebaseResolutionResult"]
 _RESULT_LEN = 3
 
 
+def _is_outcome_success(outcome: object) -> bool:
+    if isinstance(outcome, ResolvedOutcome):
+        return True
+    if outcome is True:
+        return True
+    return False
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class RebaseResolutionResult:
     outcome: object
@@ -62,29 +70,22 @@ class RebaseResolutionResult:
         object.__setattr__(self, "failure_cause", failure_cause)
         object.__setattr__(self, "terminal_reason", terminal_reason)
 
-    @property
-    def succeeded(self) -> bool:
-        if isinstance(self.outcome, bool):
-            return self.outcome
-        s: object = getattr(self.outcome, "succeeded", None)
-        return s is True
-
     def __len__(self) -> int:
         return _RESULT_LEN
 
     def __iter__(self) -> Iterator[object]:
-        return iter((self.succeeded, self.reason, self.failure_cause))
+        return iter((_is_outcome_success(self.outcome), self.reason, self.failure_cause))
 
     def __getitem__(self, index: int | slice[int | None, int | None, int | None]) -> object:
-        items = (self.succeeded, self.reason, self.failure_cause)
+        items = (_is_outcome_success(self.outcome), self.reason, self.failure_cause)
         return items[index]
 
     def __bool__(self) -> bool:
-        return self.succeeded
+        return _is_outcome_success(self.outcome)
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, tuple) and len(other) == _RESULT_LEN:
-            return other == (bool(self.outcome), self.reason, self.failure_cause)
+            return other == (_is_outcome_success(self.outcome), self.reason, self.failure_cause)
         if isinstance(other, RebaseResolutionResult):
             return (
                 self.outcome,

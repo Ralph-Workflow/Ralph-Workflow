@@ -119,6 +119,7 @@ def resolve_conflicted_rebase(
             production_rebase_runner,
         )
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+        from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -144,6 +145,9 @@ def resolve_conflicted_rebase(
                 else ResolutionFailureCause.NONE
             )
             res = RetryLaterOutcome(on_change=outcome.reason)
+        elif isinstance(outcome, RebaseResolutionResult):
+            blocked_reason = None
+            res = outcome.outcome
         elif isinstance(
             outcome,
             (

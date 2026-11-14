@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import difflib
 from collections.abc import Callable, Mapping, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pydantic import ValidationError
@@ -22,7 +22,7 @@ __all__ = [
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
-    details = cast("ValidationErrorDetails", exc.errors())
+    details = exc.errors()
     return [format_validation_error_detail(detail) for detail in details]
 
 
@@ -35,7 +35,7 @@ def format_validation_error_detail(detail: ValidationErrorDetail) -> str:
 def format_validation_location(raw_loc: object | None) -> str:
     if raw_loc is None:
         return "<root>"
-    if isinstance(raw_loc, (list, tuple)):
+    if isinstance(raw_loc, list | tuple):
         if not raw_loc:
             return "<root>"
         return ".".join(str(component) for component in raw_loc)
@@ -208,7 +208,7 @@ def _format_extra_forbidden(
 
 
 def _extra_forbidden_key(input_value: object, loc: object | None) -> str | None:
-    if isinstance(loc, (list, tuple)) and loc:
+    if isinstance(loc, list | tuple) and loc:
         last = loc[-1]
         if isinstance(last, str):
             return last
@@ -238,5 +238,5 @@ def _string_length(value: object) -> int | None:
 
 def _as_mapping(value: object) -> Mapping[str, object]:
     if isinstance(value, Mapping):
-        return cast("Mapping[str, object]", value)
+        return {str(k): v for k, v in value.items()}
     return {}

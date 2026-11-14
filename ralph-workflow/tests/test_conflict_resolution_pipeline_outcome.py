@@ -156,6 +156,13 @@ def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
     assert session.last_failure_cause == ResolutionFailureCause.NONE
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_strategy_rotation_does_not_replenish_driver_round_cap": (
+        "account for the policy-configured same-agent retry attempts within round 1"
+    ),
+}
+
+
 def test_strategy_rotation_does_not_replenish_driver_round_cap(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -374,8 +374,9 @@ def _fast_forward_local_target_to_remote(
         return
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
-    if not isinstance(outcome, ResolvedOutcome):
-        raise RuntimeError(str(outcome))
+    if outcome is True or (isinstance(outcome, tuple) and bool(outcome[0])) or isinstance(outcome, ResolvedOutcome):
+        return
+    raise RuntimeError(str(outcome))
 
 
 def fast_forward_target_to_remote(

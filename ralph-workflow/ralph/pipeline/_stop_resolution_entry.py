@@ -24,6 +24,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.key_unavailable import KeyUnavailable
+from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 from ralph.pipeline.resolution_gate_decision import ResolutionGateDecision
 from ralph.pipeline.resolution_gate_facts import ResolutionGateFacts
@@ -260,7 +261,7 @@ def _record_failed_attempt(
         "resolution_gate_key": tuple(key),
         "last_failure_cause": effective_cause,
     }
-    if failure_reason is not None:
+    if failure_reason and not current.rebase_continue_error:
         updates["rebase_continue_error"] = failure_reason
     write_record(
         trigger.root,
@@ -395,22 +396,17 @@ def attempt_stop_resolution(
     if decision.blocked and not trigger.force_retry:
         carried_cause = _deferred_failure_cause(trigger.root, trigger.record)
         _present_block(trigger.root, trigger.record, decision.key)
-        current = read_record(trigger.root) or trigger.record
-        blocked_reason = (
-            current.rebase_continue_error
-            if current is not None and current.rebase_continue_error
-            else (decision.reason or _GATE_ACTIVE_REASON)
-        )
         return DeferredStopResolution(
-            blocked_reason,
+            decision.reason or _GATE_ACTIVE_REASON,
             decision.key,
             carried_cause,
         )
 
     result = _execute_trigger(trigger)
     post_key = _post_attempt_key(stop_identity, trigger, key)
+    eff_outcome = result.outcome if isinstance(result, RebaseResolutionResult) else result
     if isinstance(
-        result,
+        eff_outcome,
         (
             ResolvedOutcome,
             WaitingOutcome,
@@ -420,7 +416,7 @@ def attempt_stop_resolution(
             UnknownOutcome,
         ),
     ):
-        match result:
+        match eff_outcome:
             case ResolvedOutcome():
                 pass
             case (
@@ -431,24 +427,25 @@ def attempt_stop_resolution(
                 | UnknownOutcome()
             ):
                 attempt_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
-                failure_reason: str | None = None
-                if isinstance(result, (ResolvedOutcome, RetryLaterOutcome)):
-                    if result.failure_cause is not None:
-                        attempt_cause = result.failure_cause
-                    failure_reason = str(result.reason) if result.reason is not None else None
-                elif isinstance(result, ConfigFailureOutcome):
+                if isinstance(eff_outcome, (ResolvedOutcome, RetryLaterOutcome)):
+                    if eff_outcome.failure_cause is not None:
+                        attempt_cause = eff_outcome.failure_cause
+                elif isinstance(eff_outcome, ConfigFailureOutcome):
                     attempt_cause = ResolutionFailureCause.CONFIG_FAILURE
-                    failure_reason = str(result.reason) if result.reason is not None else None
-                elif isinstance(result, (WaitingOutcome, NextStrategyOutcome, UnknownOutcome)):
-                    failure_reason = str(result.reason) if result.reason is not None else None
                 if attempt_cause == ResolutionFailureCause.NONE:
                     attempt_cause = _deferred_failure_cause(trigger.root, trigger.record)
-                _record_failed_attempt(
-                    trigger,
-                    post_key,
-                    attempt_cause,
-                    failure_reason=failure_reason,
-                )
+                failure_reason: str | None = None
+                if isinstance(eff_outcome, RetryLaterOutcome):
+                    failure_reason = eff_outcome.on_change
+                elif isinstance(eff_outcome, ConfigFailureOutcome):
+                    failure_reason = f"fix {eff_outcome.file} then run ralph --check-config"
+                elif isinstance(eff_outcome, WaitingOutcome):
+                    failure_reason = eff_outcome.external_condition
+                elif isinstance(eff_outcome, NextStrategyOutcome):
+                    failure_reason = eff_outcome.strategy
+                elif isinstance(eff_outcome, UnknownOutcome):
+                    failure_reason = str(eff_outcome.error)
+                _record_failed_attempt(trigger, post_key, attempt_cause, failure_reason=failure_reason)
             case _ as unreachable:
                 assert_never(unreachable)
     else:
@@ -471,7 +468,7 @@ def _resolve_rebase_with_config(
     config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
     record: IntegrationRecord | None = None,
-) -> StopResolutionOutcome:
+) -> RebaseResolutionResult:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
     session = (
@@ -490,9 +487,16 @@ def _resolve_rebase_with_config(
         else production_rebase_runner().resolve_rebase(root, target, resolver, session=session)
     )
     if resolved:
-        return ResolvedOutcome()
-    if session.last_resolution_outcome is not None:
-        return session.last_resolution_outcome
+        return RebaseResolutionResult(
+            ResolvedOutcome(), None, ResolutionFailureCause.NONE, session.terminal_reason
+        )
+    if session.last_resolution_outcome is not None and not isinstance(session.last_resolution_outcome, ResolvedOutcome):
+        return RebaseResolutionResult(
+            session.last_resolution_outcome,
+            session.exhaustion_reason,
+            session.last_failure_cause,
+            session.terminal_reason,
+        )
     carried_cause = session.last_failure_cause
     if carried_cause == ResolutionFailureCause.NONE:
         if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE:
@@ -545,7 +549,7 @@ def _resolve_rebase_with_config(
             )
         )
         _persist_resolution_cause(root, carried_cause, reason=reason, record=record)
-        return outcome
+        return RebaseResolutionResult(outcome, reason, carried_cause, session.terminal_reason)
     reason = (
         session.operator_action_message
         if session.operator_action_message
@@ -585,7 +589,14 @@ def _resolve_rebase_with_config(
         reason=reason,
         record=record,
     )
-    return outcome
+    return RebaseResolutionResult(
+        outcome,
+        reason,
+        carried_cause
+        if carried_cause != ResolutionFailureCause.NONE
+        else ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        session.terminal_reason,
+    )
 
 
 def _persist_resolution_cause(

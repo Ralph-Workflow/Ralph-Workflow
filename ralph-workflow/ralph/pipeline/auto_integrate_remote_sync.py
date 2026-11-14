@@ -365,14 +365,12 @@ def _dispatch_ref_comparison(
         from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
         if isinstance(raw_outcome, tuple):
-            advanced, refusal = (
-                bool(raw_outcome[0]),
-                str(raw_outcome[1]) if len(raw_outcome) > 1 else "",
-            )
-        elif isinstance(raw_outcome, bool):
-            advanced, refusal = raw_outcome, "" if raw_outcome else "fast forward failed"
+            advanced = bool(raw_outcome[0])
+            refusal = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
         elif isinstance(raw_outcome, ResolvedOutcome):
             advanced, refusal = True, ""
+        elif isinstance(raw_outcome, bool):
+            advanced, refusal = raw_outcome, ""
         elif isinstance(raw_outcome, _OutcomeWithSucceeded):
             advanced = bool(raw_outcome.succeeded)
             on_change: object = getattr(raw_outcome, "on_change", None)

@@ -31,10 +31,16 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 DEFAULT_GOVERNED_PATHS: Final[tuple[str, ...]] = (
+    "pyproject.toml",
     "ralph/checkpoint",
     "ralph/files",
+    "ralph/pipeline/conflict_resolution/_driver_rounds.py",
+    "ralph/pydantic_validation_errors.py",
     "ralph/testing/audit_banned_constructs.py",
-    "ralph/testing/_banned_constructs_auditor.py",
+    "ralph/testing/_banned_constructs_config.py",
+    "ralph/testing/_banned_constructs_model.py",
+    "ralph/testing/_banned_constructs_scope.py",
+    "ralph/testing/_banned_constructs_source.py",
 )
 
 __all__ = [

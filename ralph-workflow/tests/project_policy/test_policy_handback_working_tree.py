@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 from rich.console import Console
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -27,6 +28,20 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.factory import PipelineDeps
     from ralph.workspace.protocol import Workspace
+
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_blocked_handback_leaves_no_policy_scope_path_dirty": (
+        "project policy remediation retries honor owner cooldown waits, so "
+        "remediation failure tests patch SystemClock with FakeClock to keep "
+        "recovery cooldown fast and within the test execution budget"
+    ),
+    "test_post_preflight_footer_is_neutralized_after_handback": (
+        "project policy remediation retries honor owner cooldown waits, so "
+        "remediation failure tests patch SystemClock with FakeClock to keep "
+        "recovery cooldown fast and within the test execution budget"
+    ),
+}
 
 
 _POLICY_SCOPE_SEEDS: tuple[str, ...] = (
@@ -151,7 +166,9 @@ if TYPE_CHECKING:
 @pytest.mark.timeout_seconds(10)
 def test_blocked_handback_leaves_no_policy_scope_path_dirty(
     tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(cli_integration, "SystemClock", FakeClock)
     _ensure_run_func_state_unset()
     _workspace, _workspace_scope, load_result = _load_git_run_result(tmp_git_repo)
 
@@ -362,7 +379,9 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
 @pytest.mark.timeout_seconds(10)
 def test_post_preflight_footer_is_neutralized_after_handback(
     tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(cli_integration, "SystemClock", FakeClock)
     _ensure_run_func_state_unset()
 
     workspace, _workspace_scope, load_result = _load_git_run_result(tmp_git_repo)

@@ -10,20 +10,22 @@ from loguru import logger
 from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import (
+    run_conflict_resolution_outcome,
     run_conflict_resolution_pipeline,
+    run_rebase_conflict_resolution_outcome,
     run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
+    StopResolutionOutcome,
     UnknownOutcome,
     WaitingOutcome,
 )
@@ -100,7 +102,7 @@ def build_agent_conflict_resolver(
             )
             return NextStrategyOutcome("completion_in_place")
         try:
-            return run_conflict_resolution_pipeline(
+            raw_obj: object = run_conflict_resolution_pipeline(
                 root=root,
                 target=target,
                 config=config,
@@ -111,6 +113,7 @@ def build_agent_conflict_resolver(
                 display_context=display_context,
                 strategy_history=strategy_history,
             )
+            return _wrap_stop_resolution_outcome(raw_obj)
         except Exception as exc:
             logger.warning("auto_integrate: conflict-resolution pipeline raised: {}", exc)
             emit_integration_warn_line(
@@ -127,10 +130,6 @@ def _wrap_stop_resolution_outcome(raw_obj: object) -> StopResolutionOutcome:
             ResolvedOutcome()
             if raw_obj
             else RetryLaterOutcome(on_change="rebase resolution failed")
-        )
-    if isinstance(raw_obj, ResolutionOutcome):
-        return (
-            ResolvedOutcome() if raw_obj.succeeded else RetryLaterOutcome(on_change=raw_obj.reason)
         )
     if isinstance(
         raw_obj,
@@ -207,9 +206,7 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=reason_text,
+            return RetryLaterOutcome(
                 on_change=reason_text,
                 terminal_reason=ResolutionTerminationReason.CONFIG_FAILURE,
                 unresolved_paths=(),
@@ -254,9 +251,7 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=reason_text,
+            return RetryLaterOutcome(
                 on_change=reason_text,
                 terminal_reason=term_reason,
                 unresolved_paths=(),
@@ -294,7 +289,7 @@ def _resolve_within_target_context(
             return NextStrategyOutcome("completion_in_place")
         try:
             if strategy_history:
-                return run_rebase_conflict_resolution_pipeline(
+                return run_rebase_conflict_resolution_outcome(
                     root=root,
                     target=target,
                     stop=stop,
@@ -306,7 +301,7 @@ def _resolve_within_target_context(
                     display_context=display_context,
                     strategy_history=strategy_history,
                 )
-            return run_rebase_conflict_resolution_pipeline(
+            return run_rebase_conflict_resolution_outcome(
                 root=root,
                 target=target,
                 stop=stop,

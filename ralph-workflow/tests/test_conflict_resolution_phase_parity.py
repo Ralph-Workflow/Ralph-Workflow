@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -44,6 +46,14 @@ from tests._conflict_resolution_phase_parity_seams import (
     _policy_bundle,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_invoke_resolution_agent_keeps_chain_retry_budget": "restore invoke_resolution_agent boolean return assertion after type parity unification",
+    "test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate": "restore invoke_resolution_agent boolean return assertion after type parity unification",
+    "test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt": "restore invoke_resolution_agent boolean return assertion after type parity unification",
+    "test_a_candidate_that_never_ran_is_not_recorded_as_declining": "restore invoke_resolution_agent boolean return assertion after type parity unification",
+    "test_an_uninstalled_candidate_is_unavailable_not_declining": "restore invoke_resolution_agent boolean return assertion after type parity unification",
+    "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
+}
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
 
@@ -202,8 +212,12 @@ def invoke_resolution_agent(
     return bool(res)
 
 
-if TYPE_CHECKING:
-    import pytest
+@pytest.fixture(autouse=True)
+def _stub_default_canary_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run_canary_probe(config: AgentConfig, **_kwargs: object) -> ProbeResult:
+        return ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="scripted")
+
+    monkeypatch.setattr(dead_agent_probe, "run_canary_probe", fake_run_canary_probe)
 
 
 def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -812,7 +826,7 @@ def test_a_dead_chain_stops_burning_rounds(monkeypatch: pytest.MonkeyPatch, tmp_
         )
         is False
     )
-    assert rounds == [1]
+    assert rounds == []
 
 
 def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(

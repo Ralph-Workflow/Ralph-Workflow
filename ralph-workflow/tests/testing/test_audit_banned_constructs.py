@@ -16,6 +16,14 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_default_governed_paths_scanned_when_no_paths_specified": (
+        "assert that pyproject.toml, _driver_rounds.py, pydantic_validation_errors.py, "
+        "and banned constructs testing modules are included in DEFAULT_GOVERNED_PATHS"
+    ),
+}
+
+
 def _write(root: Path, relative: str, source: str) -> Path:
     target = root / relative
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -578,6 +586,20 @@ def test_default_governed_paths_scanned_when_no_paths_specified(
 ) -> None:
     assert "ralph/checkpoint" in DEFAULT_GOVERNED_PATHS
     assert "ralph/files" in DEFAULT_GOVERNED_PATHS
+    expected_governed_paths = (
+        "pyproject.toml",
+        "ralph/checkpoint",
+        "ralph/files",
+        "ralph/pipeline/conflict_resolution/_driver_rounds.py",
+        "ralph/pydantic_validation_errors.py",
+        "ralph/testing/audit_banned_constructs.py",
+        "ralph/testing/_banned_constructs_config.py",
+        "ralph/testing/_banned_constructs_model.py",
+        "ralph/testing/_banned_constructs_scope.py",
+        "ralph/testing/_banned_constructs_source.py",
+    )
+    for path in expected_governed_paths:
+        assert path in DEFAULT_GOVERNED_PATHS
     code = main([])
     captured = capsys.readouterr()
     assert code == 0

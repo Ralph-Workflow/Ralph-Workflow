@@ -29,6 +29,10 @@ from ralph.pipeline.operation_evidence import (
     identity_fingerprint,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_fingerprint_schema_immunity_and_defaulted_fields": "register record_version mutation in non_identity_mutations to verify schema immunity",
+}
+
 
 def _seed_record(*, target: str = "main", worktree: str = "wt-a") -> IntegrationRecord:
     return IntegrationRecord(
@@ -310,6 +314,7 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
         "merge_commit_tree": "m_tree",
         "reintegrate_pending": True,
         "initiating_feature_sha": "init_sha",
+        "record_version": 2,
         "resolution_gate_key": "gate:stop1:primary:sha",
         "waiting_notification_key": "gate:stop1:primary:sha",
         "resolution_terminal_marker": (
