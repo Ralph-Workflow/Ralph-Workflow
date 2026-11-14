@@ -61,7 +61,6 @@ from ralph.project_policy.status_bar import (
     remediation_status_bar_session,
 )
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
-
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -340,7 +339,6 @@ def _make_production_invoke_agent(
                         policy_bundle=load_result.policy_bundle,
                     )
                 except Exception as exc:
-
                     logger.warning(
                         "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
                     )

@@ -52,31 +52,14 @@ def classify_resolution_failure(
         if typed is not None:
             return ConfigFailureOutcome(file=typed.file, parse_error=typed.parse_error)
     if failure_cause is ResolutionFailureCause.CONFIG_FAILURE:
-        return RetryLaterOutcome(
-            on_change=reason or RETRY_LATER_REASON,
-            terminal_reason=terminal_reason,
-            unresolved_paths=paths,
-            failure_cause=failure_cause,
-        )
+        return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
     if terminal_reason is ResolutionTerminationReason.OUT_OF_REACH:
-        return NextStrategyOutcome(
-            strategy="completion_in_place",
-            terminal_reason=terminal_reason,
-            unresolved_paths=paths,
-        )
+        return NextStrategyOutcome(strategy="completion_in_place")
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        return RetryLaterOutcome(
-            on_change=reason or "resolver_agent_eligibility_changed",
-            terminal_reason=terminal_reason,
-            unresolved_paths=paths,
-            failure_cause=failure_cause,
-        )
-    return RetryLaterOutcome(
-        on_change=reason or RETRY_LATER_REASON,
-        terminal_reason=terminal_reason,
-        unresolved_paths=paths,
-        failure_cause=failure_cause,
-    )
+        if reason and reason != "resolver_agent_eligibility_changed":
+            return NextStrategyOutcome(strategy=reason)
+        return RetryLaterOutcome(on_change="resolver_agent_eligibility_changed")
+    return RetryLaterOutcome(on_change=reason or RETRY_LATER_REASON)
 
 
 def stop_resolution_outcome_from_legacy(

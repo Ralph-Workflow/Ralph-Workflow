@@ -483,9 +483,9 @@ def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
     monkeypatch.setattr(rebase_loop, "_continue_past", lambda *_a: True)
     asked: list[str] = []
 
-    def _resolver(_root: Path, _target: str, _stop: object) -> bool:
+    def _resolver(_root: Path, _target: str, _stop: object) -> ResolvedOutcome:
         asked.append("resolver")
-        return True
+        return ResolvedOutcome()
 
     resolved = rebase_loop._resolve_one_stop(tmp_path, "main", _resolver, 1, 10, frozenset(), set())
     assert asked == ["resolver"], "the resolver must still be offered the stop"

@@ -22,6 +22,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.conflict_resolution import RebaseStop, RebaseStopResolver
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
 if TYPE_CHECKING:
     import pytest
@@ -109,10 +110,10 @@ def test_post_landing_seam_forwards_rebase_stop_resolver_and_converges(
     received_resolver: RebaseStopResolver | None = None
     resolver_invoked = False
 
-    def my_resolver(_root: Path, _target: str, _stop: RebaseStop) -> bool:
+    def my_resolver(_root: Path, _target: str, _stop: RebaseStop) -> ResolvedOutcome:
         nonlocal resolver_invoked
         resolver_invoked = True
-        return True
+        return ResolvedOutcome()
 
     client = _RecordingRemoteClient(
         remote_sha="diverged-tacos-sha",
@@ -182,8 +183,8 @@ def test_post_landing_seam_forwards_rebase_stop_resolver_and_converges(
     def _fake_read_post_head(_r: Path, _t: str) -> str:
         return "feature-sha"
 
-    def _fake_fast_forward(*_args: object, **_kwargs: object) -> tuple[bool, str]:
-        return (True, "")
+    def _fake_fast_forward(*_args: object, **_kwargs: object) -> ResolvedOutcome:
+        return ResolvedOutcome()
 
     monkeypatch.setattr(remote_sync, "_DEFAULT_REMOTE_CLIENT", client)
     monkeypatch.setattr("ralph.pipeline.auto_integrate.get_head_sha", _fake_head_sha)

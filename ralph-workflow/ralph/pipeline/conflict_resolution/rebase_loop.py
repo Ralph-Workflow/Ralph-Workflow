@@ -125,7 +125,7 @@ _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
 )
 
 
-def _resolution_succeeded(result: bool | StopResolutionOutcome) -> bool:
+def _resolution_succeeded(result: object) -> bool:
     if isinstance(result, bool):
         return result
     from ralph.pipeline.resolution_outcome import ResolvedOutcome

@@ -415,6 +415,8 @@ def _run_one_round(
             offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset
             continue
+        if progress.probe_changed or progress.count_dropped:
+            candidate_retries[offset] = 0
         retries = candidate_retries.get(offset, 0)
         retries_same = (
             session.last_attempt_result.outcome.retries_same_agent

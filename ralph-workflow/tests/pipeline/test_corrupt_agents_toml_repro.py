@@ -27,6 +27,7 @@ from ralph.pipeline.conflict_resolution import (
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.effects import CommitEffect, Effect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.pipeline.run_loop import LoopContext, resolve_paused_rebase
 from ralph.pipeline.run_loop import run as pipeline_run
 from ralph.policy.loader import default_dir, load_policy
@@ -83,12 +84,12 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
 
     launched_pipeline_kwargs: list[dict[str, Any]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> bool:
+    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
         launched_pipeline_kwargs.append(kwargs)
-        return True
+        return ResolvedOutcome()
 
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_pipeline",
+        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_outcome",
         _fake_run_pipeline,
     )
 
@@ -108,7 +109,8 @@ def test_corrupt_agents_toml_rebase_stop_resolver_launches_with_default_agents(
     finally:
         logger.remove(sink_id)
 
-    assert outcome is True
+    assert isinstance(outcome, ResolvedOutcome)
+    assert outcome.succeeded is True
     assert len(launched_pipeline_kwargs) == 1
 
     assert agents_file.read_bytes() == original_bytes
@@ -151,12 +153,12 @@ def test_corrupt_agents_toml_auto_integrate_rebase_does_not_enter_waiting(
 
     pipeline_invocations: list[dict[str, Any]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> bool:
+    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
         pipeline_invocations.append(kwargs)
-        return True
+        return ResolvedOutcome()
 
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_pipeline",
+        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_outcome",
         _fake_run_pipeline,
     )
 
@@ -221,12 +223,12 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
 
     pipeline_invocations: list[dict[str, Any]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> bool:
+    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
         pipeline_invocations.append(kwargs)
-        return True
+        return ResolvedOutcome()
 
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_pipeline",
+        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_outcome",
         _fake_run_pipeline,
     )
 
@@ -237,7 +239,7 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
             target: str,
             resolver: Any,
             config: Any,
-        ) -> tuple[bool, str | None, ResolutionFailureCause]:
+        ) -> ResolvedOutcome:
             del config
             stop = RebaseStop(
                 sha="abcdef1",
@@ -247,9 +249,9 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
                 stop_cap=5,
             )
             outcome = resolver(root, target, stop)
-            if outcome is True:
-                return (True, None, ResolutionFailureCause.NONE)
-            return (False, "failed", ResolutionFailureCause.AGENT_FAILURE)
+            if outcome.succeeded:
+                return ResolvedOutcome()
+            raise AssertionError("the rebase-stop resolver did not succeed")
 
     resolved = resolve_paused_rebase(
         ctx,
@@ -285,8 +287,8 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
 
     pipeline_invocations: list[dict[str, Any]] = []
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_pipeline",
-        lambda **kwargs: pipeline_invocations.append(kwargs) or True,
+        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_outcome",
+        lambda **kwargs: pipeline_invocations.append(kwargs) or ResolvedOutcome(),
     )
 
     stop = RebaseStop(
@@ -302,7 +304,7 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
 
     assert not isinstance(outcome, bool)
     assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
+    assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
     assert len(pipeline_invocations) == 0
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
 
@@ -406,12 +408,12 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
 
     launched_kwargs: list[dict[str, Any]] = []
 
-    def _fake_run_pipeline(**kwargs: Any) -> bool:
+    def _fake_run_pipeline(**kwargs: Any) -> ResolvedOutcome:
         launched_kwargs.append(kwargs)
-        return True
+        return ResolvedOutcome()
 
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_pipeline",
+        "ralph.pipeline.auto_integrate_agent.run_rebase_conflict_resolution_outcome",
         _fake_run_pipeline,
     )
 
@@ -428,7 +430,8 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
     finally:
         logger.remove(sink_id)
 
-    assert outcome is True
+    assert isinstance(outcome, ResolvedOutcome)
+    assert outcome.succeeded is True
     assert len(launched_kwargs) == 1
     assert launched_kwargs[0]["config"].agents == {}
     runner_warn = "\n".join(warnings)

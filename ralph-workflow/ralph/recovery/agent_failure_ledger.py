@@ -313,9 +313,7 @@ class AgentFailureLedger:
 
     def prune_expired(self, *, now_ms: int | None = None) -> None:
         with self._lock:
-            effective_now_ms = (
-                now_ms if now_ms is not None else int(self._clock.monotonic() * 1000)
-            )
+            effective_now_ms = now_ms if now_ms is not None else int(self._clock.monotonic() * 1000)
             for entry in self._entries.values():
                 self._sync_cooldown_expiry(entry, effective_now_ms)
 

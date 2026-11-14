@@ -25,6 +25,7 @@ from ralph.pipeline.auto_integrate_recovery_record import (
     reset_continuation_gate_state,
 )
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.pipeline.run_loop import (
     handle_pending_retry,
     integration_alert_for_state,
@@ -136,14 +137,14 @@ def _setup_agent_rebase_resolver(
 
     if monkeypatch is not None and agent_invocations is not None:
 
-        def fake_agent_pipeline(*args: Any, **kwargs: Any) -> bool:
+        def fake_agent_pipeline(*args: Any, **kwargs: Any) -> ResolvedOutcome:
             agent_invocations[0] += 1
             (root / "conflict.txt").write_text("resolved content\n", encoding="utf-8")
-            return True
+            return ResolvedOutcome()
 
         import ralph.pipeline.auto_integrate_agent as aia_mod
 
-        monkeypatch.setattr(aia_mod, "run_rebase_conflict_resolution_pipeline", fake_agent_pipeline)
+        monkeypatch.setattr(aia_mod, "run_rebase_conflict_resolution_outcome", fake_agent_pipeline)
 
     return build_agent_rebase_stop_resolver(
         policy_bundle=mock_policy,

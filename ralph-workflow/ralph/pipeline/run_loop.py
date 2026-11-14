@@ -1860,6 +1860,83 @@ def _resolve_paused_rebase_with_history(
     return _resolve_paused_rebase(ctx, target, rebase, executor=executor)
 
 
+_TUPLE_CAUSE_OFFSET = 2
+
+
+def _retry_later_cause(outcome: object, default_cause: str) -> str:
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause
+    from ralph.pipeline.config_file_fingerprint import extract_config_path_from_reason
+    from ralph.pipeline.resolution_outcome import RetryLaterOutcome
+
+    if default_cause != "UNRESOLVED_CONFLICT":
+        return default_cause
+    fc: object = getattr(outcome, "failure_cause", None)
+    if isinstance(fc, ResolutionFailureCause) and fc is not ResolutionFailureCause.NONE:
+        return fc.value
+    on_change: str | None = outcome.on_change if isinstance(outcome, RetryLaterOutcome) else None
+    if on_change and extract_config_path_from_reason(on_change):
+        return "CONFIG_FAILURE"
+    if on_change and "context failed" in on_change:
+        return "CONTEXT_FAILURE"
+    return "AGENT_FAILURE"
+
+
+def _parse_paused_rebase_outcome(
+    outcome: object,
+    root: Path,
+) -> tuple[bool, str | None, str]:
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause
+    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.resolution_outcome import (
+        ConfigFailureOutcome,
+        NextStrategyOutcome,
+        ResolvedOutcome,
+        RetryLaterOutcome,
+        UnknownOutcome,
+        WaitingOutcome,
+    )
+
+    if isinstance(outcome, ResolvedOutcome):
+        return True, None, "UNRESOLVED_CONFLICT"
+    rec = read_record(root)
+    cause_val = (
+        rec.last_failure_cause.value
+        if rec is not None and rec.last_failure_cause is not ResolutionFailureCause.NONE
+        else "UNRESOLVED_CONFLICT"
+    )
+    resolved = False
+    reason: str | None = None
+    match outcome:
+        case tuple() | list():
+            resolved = bool(outcome[0])
+            reason = outcome[1] if len(outcome) > 1 and isinstance(outcome[1], str) else None
+            if len(outcome) > _TUPLE_CAUSE_OFFSET and outcome[_TUPLE_CAUSE_OFFSET] is not None:
+                tuple_cause: object = outcome[_TUPLE_CAUSE_OFFSET]
+                cause_val = str(getattr(tuple_cause, "value", tuple_cause)).upper()
+        case RetryLaterOutcome(on_change=on_change):
+            reason = on_change
+            cause_val = _retry_later_cause(outcome, cause_val)
+        case WaitingOutcome(external_condition=cond):
+            reason = cond
+        case NextStrategyOutcome(strategy=strat):
+            reason = strat
+        case ConfigFailureOutcome(file=f, parse_error=err):
+            reason = f"{f}: {err}"
+            cause_val = "CONFIG_FAILURE"
+        case UnknownOutcome(error=err):
+            reason = str(err)
+        case _:
+            if hasattr(outcome, "outcome") and hasattr(outcome, "failure_cause"):
+                succeeded_val: object = getattr(outcome, "succeeded", False)
+                resolved = bool(succeeded_val)
+                raw_reason: object = getattr(outcome, "reason", None)
+                reason = raw_reason if isinstance(raw_reason, str) else None
+                raw_fc: object = getattr(outcome, "failure_cause", None)
+                if raw_fc is not None:
+                    cause_val = str(getattr(raw_fc, "value", raw_fc)).upper()
+    return resolved, reason, cause_val
+
+
 def resolve_paused_rebase(
     ctx: LoopContext,
     target: str,
@@ -1894,60 +1971,9 @@ def resolve_paused_rebase(
             stop_resolver,
             ctx.config.conflict_resolution,
         )
-        from enum import Enum
-
-        from ralph.pipeline.resolution_outcome import (
-            ConfigFailureOutcome,
-            NextStrategyOutcome,
-            ResolvedOutcome,
-            RetryLaterOutcome,
-            UnknownOutcome,
-            WaitingOutcome,
+        resolved, reason, failure_cause = _parse_paused_rebase_outcome(
+            outcome, ctx.workspace_scope.root
         )
-
-        if isinstance(outcome, tuple):
-            resolved = bool(outcome[0]) if outcome else False
-            reason = str(outcome[1]) if len(outcome) > 1 and outcome[1] is not None else None
-            tail = outcome[2:]
-            raw_cause: object = tail[0] if tail else None
-            if isinstance(raw_cause, Enum):
-                failure_cause = raw_cause.name
-            elif raw_cause is not None:
-                failure_cause = str(raw_cause)
-            else:
-                failure_cause = None
-        elif isinstance(outcome, ResolvedOutcome):
-            resolved = True
-            reason = None
-            failure_cause = None
-        elif isinstance(outcome, WaitingOutcome):
-            resolved = False
-            reason = outcome.external_condition
-            failure_cause = None
-        elif isinstance(outcome, RetryLaterOutcome):
-            resolved = False
-            reason = (
-                f"retry until {outcome.until}"
-                if outcome.until is not None
-                else f"retry on change {outcome.on_change}"
-            )
-            failure_cause = None
-        elif isinstance(outcome, NextStrategyOutcome):
-            resolved = False
-            reason = outcome.strategy
-            failure_cause = None
-        elif isinstance(outcome, ConfigFailureOutcome):
-            resolved = False
-            reason = f"{outcome.file}: {outcome.parse_error}"
-            failure_cause = "CONFIG_FAILURE"
-        elif isinstance(outcome, UnknownOutcome):
-            resolved = False
-            reason = str(outcome.error)
-            failure_cause = None
-        else:
-            resolved = False
-            reason = None
-            failure_cause = None
     except Exception as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False

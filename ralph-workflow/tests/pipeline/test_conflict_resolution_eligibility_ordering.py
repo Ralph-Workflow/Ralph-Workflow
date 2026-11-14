@@ -149,7 +149,7 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
         display_context=display_ctx,
         session=session,
     )
-    assert result is False
+    assert result.succeeded is False
     assert executed == []
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     assert session.last_failure_cause is ResolutionFailureCause.NONE
@@ -168,7 +168,7 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
         display_context=display_ctx,
         session=session,
     )
-    assert result is False
+    assert result.succeeded is False
     assert executed == []
 
     result = invoke_resolution_agent(
@@ -182,7 +182,7 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
         display_context=display_ctx,
         session=session,
     )
-    assert result is True
+    assert result.succeeded is True
     assert executed == ["healthy_agent"]
 
 
@@ -225,7 +225,7 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
         display_context=display_ctx,
         session=session,
     )
-    assert result is True
+    assert result.succeeded is True
     assert executed == ["agentA"]
 
     session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
@@ -241,7 +241,7 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
         display_context=display_ctx,
         session=session,
     )
-    assert result is False
+    assert result.succeeded is False
     assert executed == ["agentA"]
 
 
@@ -369,7 +369,7 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
         session=session,
     )
 
-    assert result is False
+    assert result.succeeded is False
     assert executed == []
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     assert session.last_failure_cause is ResolutionFailureCause.NONE

@@ -28,6 +28,12 @@ class RetryLaterOutcome(metaclass=_RetryLaterOutcomeMeta):
     reason: object = None
     unresolved_paths: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        if (self.until is None and self.on_change is None) or (
+            self.until is not None and self.on_change is not None
+        ):
+            raise ValueError("RetryLaterOutcome requires exactly one resume condition")
+
     def __iter__(self) -> Iterator[object]:
         return iter((False, self.on_change or ""))
 

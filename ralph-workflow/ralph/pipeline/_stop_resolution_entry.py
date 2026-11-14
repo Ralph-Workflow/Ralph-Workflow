@@ -248,6 +248,7 @@ def _record_failed_attempt(
     trigger: StopResolutionTrigger,
     key: ResolutionAttemptKey,
     failure_cause: ResolutionFailureCause,
+    failure_reason: str | None = None,
 ) -> None:
     if trigger.record is None:
         return
@@ -257,11 +258,15 @@ def _record_failed_attempt(
         if failure_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT
     )
+    updates: dict[str, object] = {
+        "resolution_gate_key": tuple(key),
+        "last_failure_cause": effective_cause,
+    }
+    if failure_reason:
+        updates["rebase_continue_error"] = failure_reason
     write_record(
         trigger.root,
-        current.model_copy(
-            update={"resolution_gate_key": tuple(key), "last_failure_cause": effective_cause}
-        ),
+        current.model_copy(update=updates),
     )
 
 
@@ -328,6 +333,7 @@ def _execute_trigger(trigger: StopResolutionTrigger) -> object:
                 resolver,
                 trigger.conflict_config,
                 trigger.agent_runner,
+                trigger.record,
             )
         raise TypeError(f"expected callable RebaseStopResolver, got {resolver!r}")
 
@@ -391,8 +397,14 @@ def attempt_stop_resolution(
     if decision.blocked and not trigger.force_retry:
         carried_cause = _deferred_failure_cause(trigger.root, trigger.record)
         _present_block(trigger.root, trigger.record, decision.key)
+        current = read_record(trigger.root) or trigger.record
+        blocked_reason = (
+            current.rebase_continue_error
+            if current is not None and current.rebase_continue_error
+            else (decision.reason or _GATE_ACTIVE_REASON)
+        )
         return DeferredStopResolution(
-            decision.reason or _GATE_ACTIVE_REASON,
+            blocked_reason,
             decision.key,
             carried_cause,
         )
@@ -428,14 +440,25 @@ def attempt_stop_resolution(
                     attempt_cause = ResolutionFailureCause.CONFIG_FAILURE
                 if attempt_cause == ResolutionFailureCause.NONE:
                     attempt_cause = _deferred_failure_cause(trigger.root, trigger.record)
-                _record_failed_attempt(trigger, post_key, attempt_cause)
+                failure_reason: str | None = None
+                if isinstance(result, RetryLaterOutcome):
+                    failure_reason = result.on_change
+                elif isinstance(result, ConfigFailureOutcome):
+                    failure_reason = f"fix {result.file} then run ralph --check-config"
+                elif isinstance(result, WaitingOutcome):
+                    failure_reason = result.external_condition
+                elif isinstance(result, UnknownOutcome):
+                    failure_reason = str(result.error)
+                _record_failed_attempt(trigger, post_key, attempt_cause, failure_reason=failure_reason)
             case _ as unreachable:
                 assert_never(unreachable)
     else:
         from ralph.git.merge import MergeResult
 
         if isinstance(result, MergeResult) and result.outcome != "success":
-            _record_failed_attempt(trigger, post_key, result.failure_cause)
+            _record_failed_attempt(
+                trigger, post_key, result.failure_cause, failure_reason=result.reason
+            )
     return result
 
 
@@ -445,6 +468,7 @@ def _resolve_rebase_with_config(
     resolver: RebaseStopResolver,
     config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
+    record: IntegrationRecord | None = None,
 ) -> StopResolutionOutcome:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
@@ -516,7 +540,7 @@ def _resolve_rebase_with_config(
                 paths=session.unresolved_paths,
             )
         )
-        _persist_resolution_cause(root, carried_cause)
+        _persist_resolution_cause(root, carried_cause, record)
         return outcome
     reason = (
         session.operator_action_message
@@ -554,11 +578,16 @@ def _resolve_rebase_with_config(
         carried_cause
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        record,
     )
     return outcome
 
 
-def _persist_resolution_cause(root: Path, cause: ResolutionFailureCause) -> None:
-    current = read_record(root)
+def _persist_resolution_cause(
+    root: Path,
+    cause: ResolutionFailureCause,
+    record: IntegrationRecord | None = None,
+) -> None:
+    current = read_record(root) or record
     if current is not None:
         write_record(root, current.model_copy(update={"last_failure_cause": cause}))

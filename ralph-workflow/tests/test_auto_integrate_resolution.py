@@ -14,6 +14,12 @@ from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition as _auto_integrate_on_phase_transition,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    WaitingOutcome,
+)
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
@@ -157,8 +163,8 @@ def test_conflict_resolver_failure_retains_progress_and_records_conflict(
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
-    def _resolver(root: Path, target: str) -> bool:
-        return False
+    def _resolver(root: Path, target: str) -> RetryLaterOutcome:
+        return RetryLaterOutcome(on_change="conflict resolution incomplete")
 
     config = _build_config(tmp_git_repo, target=base)
     outcome = auto_integrate_after_commit(
@@ -186,7 +192,7 @@ def test_conflict_resolver_exception_retains_progress_and_records_conflict(
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
-    def _resolver(root: Path, target: str) -> bool:
+    def _resolver(root: Path, target: str) -> StopResolutionOutcome:
         raise RuntimeError("resolver blew up")
 
     config = _build_config(tmp_git_repo, target=base)
@@ -215,9 +221,12 @@ def test_auto_integrate_regression_deterministic_ff_refusal_does_not_retry(
 
     def _dirty_target_ff(
         repo_root: Path, target: str, feature_sha: str, **_kwargs: object
-    ) -> tuple[bool, str]:
+    ) -> WaitingOutcome:
         calls.append(1)
-        return False, "target worktree dirty"
+        return WaitingOutcome(
+            external_condition="target worktree dirty",
+            resumes_when="target worktree becomes clean",
+        )
 
     monkeypatch.setattr(_ai_mod, "_fast_forward_target", _dirty_target_ff)
 
@@ -248,7 +257,7 @@ def test_ff_race_retries_integration_onto_moved_target(
 
     def _flaky_ff(
         repo_root: Path, target: str, feature_sha: str, **_kwargs: object
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         calls.append(1)
         if len(calls) == 1:
             _run(repo_root, "checkout", target)
@@ -261,7 +270,7 @@ def test_ff_race_retries_integration_onto_moved_target(
                 intervening_sha
                 == _run(repo_root, "rev-parse", f"refs/heads/{target}").stdout.strip()
             )
-            return False, "target advanced concurrently (CAS mismatch)"
+            return RetryLaterOutcome(on_change="target advanced concurrently (CAS mismatch)")
         return real_ff(repo_root, target, feature_sha)
 
     monkeypatch.setattr(_ai_mod, "_fast_forward_target", _flaky_ff)
@@ -350,9 +359,9 @@ def test_resolver_that_only_edits_files_still_lands_the_merge(
     base = _diverged_conflicting_repo(tmp_git_repo)
     feature_sha_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
 
-    def _resolver(root: Path, target: str) -> bool:
+    def _resolver(root: Path, target: str) -> ResolvedOutcome:
         (root / "shared.txt").write_text("edited only\n", encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
     config = _build_config(tmp_git_repo, target=base)
     outcome = auto_integrate_after_commit(
@@ -379,12 +388,12 @@ def test_resolver_leaving_conflict_markers_is_rejected(tmp_git_repo: Path) -> No
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
-    def _resolver(root: Path, target: str) -> bool:
+    def _resolver(root: Path, target: str) -> ResolvedOutcome:
         (root / "shared.txt").write_text(
             "<<<<<<< HEAD\nfeature version\n=======\nbase version 1\n>>>>>>> main\n",
             encoding="utf-8",
         )
-        return True
+        return ResolvedOutcome()
 
     config = _build_config(tmp_git_repo, target=base)
     outcome = auto_integrate_after_commit(
@@ -420,9 +429,9 @@ def test_resolver_regression_lone_conflict_marker_is_rejected(
     base = _diverged_conflicting_repo(tmp_git_repo)
     before = _snapshot(tmp_git_repo)
 
-    def _resolver(root: Path, target: str) -> bool:
+    def _resolver(root: Path, target: str) -> ResolvedOutcome:
         (root / "shared.txt").write_text(half_resolved, encoding="utf-8")
-        return True
+        return ResolvedOutcome()
 
     outcome = auto_integrate_after_commit(
         _build_config(tmp_git_repo, target=base),

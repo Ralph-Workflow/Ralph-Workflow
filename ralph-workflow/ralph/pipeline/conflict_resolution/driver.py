@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.clock import Clock
 from ralph.git.merge import (
     conflict_stage_entries,
     paths_with_conflict_markers,
@@ -140,6 +141,8 @@ def emit_conflict_phase_line(
     _status_emit_conflict_phase_line(display, message, channel=channel)
 
 if TYPE_CHECKING:
+    import threading
+    from datetime import datetime
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -167,6 +170,30 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
         ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
     }
 )
+
+
+class _IntegrationClockAdapter:
+    def __init__(self, clock: Clock) -> None:
+        self._clock = clock
+
+    def now(self) -> float:
+        return self._clock.monotonic()
+
+    def monotonic(self) -> float:
+        return self._clock.monotonic()
+
+    def epoch(self) -> float:
+        return self._clock.epoch()
+
+    def now_utc(self) -> datetime:
+        return self._clock.now_utc()
+
+    def sleep(self, seconds: float) -> None:
+        self._clock.sleep(seconds)
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        return self._clock.wait_for_event(event, seconds)
+
 
 __all__ = [
     "MonotonicClock",
@@ -224,19 +251,22 @@ def run_conflict_resolution_outcome(
 ) -> StopResolutionOutcome:
     active_session = session or _new_resolution_session(config)
     previous_model = capture_status_bar_model(display)
-    clock_candidate: object = (
-        getattr(active_session.ledger, "_clock", None)  # type: ignore[misc]
-        or getattr(active_session.ledger, "clock", None)  # type: ignore[misc]
+    clock_inst: Clock | None = None
+    ledger_clock = (
+        getattr(active_session.ledger, "clock", None) or getattr(active_session.ledger, "_clock", None)
         if active_session.ledger is not None
         else None
     )
-    if clock_candidate is None and pipeline_deps is not None:
-        clock_candidate = pipeline_deps.recovery_clock
+    deps_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
+    if isinstance(ledger_clock, Clock):
+        clock_inst = ledger_clock
+    elif isinstance(deps_clock, Clock):
+        clock_inst = deps_clock
     token = None
-    if clock_candidate is not None and hasattr(clock_candidate, "sleep"):
+    if clock_inst is not None:
         from ralph.pipeline.integration_actions import install_executors
 
-        token = install_executors(clock=clock_candidate)  # type: ignore[arg-type]
+        token = install_executors(clock=_IntegrationClockAdapter(clock_inst))
     _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(

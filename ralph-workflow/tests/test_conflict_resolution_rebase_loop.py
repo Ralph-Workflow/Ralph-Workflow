@@ -31,6 +31,7 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
     resolve_rebase_in_progress,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
 
 if TYPE_CHECKING:
     import pytest
@@ -124,9 +125,9 @@ def _install_worktree_seam(
 
 
 def _accepting_resolver(seen: list[RebaseStop]):
-    def _resolve(_root: Path, _target: str, stop: RebaseStop) -> bool:
+    def _resolve(_root: Path, _target: str, stop: RebaseStop) -> ResolvedOutcome:
         seen.append(stop)
-        return True
+        return ResolvedOutcome()
 
     return _resolve
 
@@ -195,7 +196,13 @@ def test_declining_resolver_never_continues_the_rebase(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
-    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, lambda _root, _target, _stop: False)
+    resolved = resolve_rebase_in_progress(
+        tmp_path,
+        _TARGET,
+        lambda _root, _target, _stop: UnknownOutcome(
+            RuntimeError("resolver declined to resolve the stop")
+        ),
+    )
 
     assert resolved is False
     assert repo.continue_calls == 0
@@ -461,7 +468,12 @@ def test_an_unexpected_exception_declines_without_propagating(
     monkeypatch.setattr(loop_module, "get_conflicted_files", _explode)
 
     assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, lambda _root, _target, _stop: True) is False
+        resolve_rebase_in_progress(
+            tmp_path,
+            _TARGET,
+            lambda _root, _target, _stop: ResolvedOutcome(),
+        )
+        is False
     )
 
 
@@ -841,9 +853,11 @@ def test_four_landed_stops_survive_a_fifth_stop_failure(
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", _head)
     seen: list[RebaseStop] = []
 
-    def _resolve(_root: Path, _target: str, stop: RebaseStop) -> bool:
+    def _resolve(_root: Path, _target: str, stop: RebaseStop) -> ResolvedOutcome | UnknownOutcome:
         seen.append(stop)
-        return stop.sha != "s5"
+        if stop.sha != "s5":
+            return ResolvedOutcome()
+        return UnknownOutcome(RuntimeError("resolver failed to resolve stop s5"))
 
     resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _resolve)
 

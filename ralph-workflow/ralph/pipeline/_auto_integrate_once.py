@@ -111,6 +111,29 @@ def _integrate_once(
         reset_executors(clock_token)
 
 
+def _parse_ff_outcome(ff_outcome: object) -> tuple[bool, str]:
+    from ralph.pipeline.resolution_outcome import (
+        ResolvedOutcome,
+        RetryLaterOutcome,
+        WaitingOutcome,
+    )
+
+    match ff_outcome:
+        case ResolvedOutcome():
+            return True, ""
+        case RetryLaterOutcome(on_change=on_change):
+            return False, on_change or ""
+        case WaitingOutcome(external_condition=cond):
+            return False, cond or ""
+        case tuple():
+            reason = str(ff_outcome[1]) if len(ff_outcome) > 1 else ""
+            return bool(ff_outcome[0]), reason
+        case bool():
+            return ff_outcome, ""
+        case _:
+            return False, str(ff_outcome)
+
+
 def _integrate_once_owned(
     config: UnifiedConfig,
     root: Path,
@@ -211,34 +234,7 @@ def _integrate_once_owned(
             reclaim_target_worktree=reclaim_target_worktree,
             on_reclaimed=remember_reclamation,
         )
-        from ralph.pipeline.resolution_outcome import (
-            ResolvedOutcome,
-            RetryLaterOutcome,
-            WaitingOutcome,
-        )
-
-        raw_ff: object = ff_outcome
-        if isinstance(raw_ff, tuple):
-            ok = bool(raw_ff[0])
-            skip_reason = "" if ok else str(raw_ff[1] if len(raw_ff) > 1 else "")
-        elif isinstance(raw_ff, bool):
-            ok = raw_ff
-            skip_reason = "" if ok else "fast forward failed"
-        else:
-            ok = isinstance(ff_outcome, ResolvedOutcome)
-            skip_reason = (
-                ""
-                if ok
-                else (
-                    ff_outcome.on_change
-                    if isinstance(ff_outcome, RetryLaterOutcome)
-                    else (
-                        ff_outcome.external_condition
-                        if isinstance(ff_outcome, WaitingOutcome)
-                        else str(ff_outcome)
-                    )
-                )
-            )
+        ok, skip_reason = _parse_ff_outcome(ff_outcome)
 
         _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:

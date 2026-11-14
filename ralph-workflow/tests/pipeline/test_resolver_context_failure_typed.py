@@ -331,9 +331,11 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
         outcome = resolver(root, target, None)
         if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
-            session.last_failure_cause = outcome.failure_cause
+            session.last_failure_cause = getattr(
+                outcome, "failure_cause", ResolutionFailureCause.CONTEXT_FAILURE
+            )
             session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
-            session.exhaustion_reason = outcome.reason
+            session.exhaustion_reason = "target worktree context failed: simulated context fault"
         return False
 
     mock_runner = MagicMock()
@@ -397,9 +399,15 @@ def test_resolve_conflicted_rebase_carries_context_failure_not_exhausted(
         outcome = res_fn(root, target, stop)
         if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
-            session.last_failure_cause = outcome.failure_cause
+            session.last_failure_cause = getattr(
+                outcome, "failure_cause", ResolutionFailureCause.CONTEXT_FAILURE
+            )
             session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
-            session.exhaustion_reason = outcome.reason
+            session.exhaustion_reason = (
+                getattr(outcome, "reason", None)
+                or getattr(outcome, "on_change", None)
+                or "target worktree context failed: simulated context fault"
+            )
         return False
 
     mock_runner = MagicMock()

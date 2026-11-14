@@ -496,6 +496,11 @@ def test_conflict_resolution_regression_remote_reconcile_accepts_sealed_resolver
     )
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    monkeypatch.setattr(
+        remote_reconcile,
+        "resolve_rebase_in_progress",
+        lambda root, target, resolver, *, session: resolver(root, target, object()),
+    )
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
 
     config = _config()
@@ -531,6 +536,11 @@ def test_target_reconciliation_offers_rebase_stop_resolver(
     )
     states = iter((True, False))
     monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: next(states, False))
+    monkeypatch.setattr(
+        remote_reconcile,
+        "resolve_rebase_in_progress",
+        lambda root, target, resolver, *, session=None: resolver(root, target, object()),
+    )
 
     calls: list[tuple[Path, str]] = []
 
@@ -685,7 +695,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             deadline: float | None = None,
             invoke: object = None,
             clock: object = None,
-        ) -> bool:
+        ) -> ResolvedOutcome:
             observations["root"] = root
             observations["target"] = target
             observations["stop"] = stop
@@ -693,10 +703,10 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
             observations["workspace_scope"] = workspace_scope
             observations["policy_bundle"] = policy_bundle
             observations["prompt_bytes"] = (workspace_scope.root / "PROMPT.md").read_bytes()
-            return True
+            return ResolvedOutcome()
 
         monkeypatch.setattr(
-            resolver_module, "run_rebase_conflict_resolution_pipeline", _record_pipeline
+            resolver_module, "run_rebase_conflict_resolution_outcome", _record_pipeline
         )
 
         resolver = resolver_module.build_agent_rebase_stop_resolver(
@@ -742,8 +752,8 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
 
         monkeypatch.setattr(
             resolver_module,
-            "run_rebase_conflict_resolution_pipeline",
-            lambda **_kwargs: True,
+            "run_rebase_conflict_resolution_outcome",
+            lambda **_kwargs: ResolvedOutcome(),
         )
 
         caller_proxies = _caller_proxies(caller)
@@ -791,7 +801,7 @@ class TestAutoRebaseWorkspaceContextEndToEnd:
         def _explode(**_kwargs: object) -> bool:
             raise RuntimeError("pipeline exploded")
 
-        monkeypatch.setattr(resolver_module, "run_rebase_conflict_resolution_pipeline", _explode)
+        monkeypatch.setattr(resolver_module, "run_rebase_conflict_resolution_outcome", _explode)
 
         resolver = resolver_module.build_agent_rebase_stop_resolver(
             policy_bundle=_load_default_policy_bundle(),

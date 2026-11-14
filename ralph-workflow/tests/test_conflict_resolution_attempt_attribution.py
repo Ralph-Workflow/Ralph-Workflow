@@ -71,8 +71,13 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
 ) -> None:
     chain = ("one", "two", "three")
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: chain)
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    clock = FakeClock()
+    monkeypatch.setattr(
+        driver_module, "_sleep_seconds", lambda seconds: clock.advance(max(seconds, 65.0))
+    )
     _install_seams(monkeypatch)
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
     called: list[tuple[int, str]] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -91,6 +96,7 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
             display=None,
             display_context=None,
             invoke=_invoke,
+            session=session,
         )
         is False
     )
@@ -182,7 +188,7 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    assert not invoke_resolution_agent(
+    result = invoke_resolution_agent(
         agent_name="claude",
         prompt_path=prompt,
         config=_config(),
@@ -193,6 +199,7 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
         display_context=None,
         session=session,
     )
+    assert result.succeeded is False
     assert session.last_attempt_failure == "conflict attempt failed"
     assert session.last_attempt_evidence != "PiProviderFailureExitError"
     assert session.skip_same_agent_retries is False

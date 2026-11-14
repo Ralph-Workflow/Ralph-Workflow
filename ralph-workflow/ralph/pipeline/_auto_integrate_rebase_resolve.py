@@ -241,6 +241,9 @@ def _rebase_run_result(
     target: str,
     outcome: StopResolutionOutcome,
 ) -> RebaseRunResult:
+    failure_reason = _outcome_reason(outcome)
+    from ralph.pipeline.config_file_fingerprint import extract_config_path_from_reason
+
     outcome_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     if isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
         if outcome.failure_cause is not None:
@@ -253,10 +256,17 @@ def _rebase_run_result(
         else (
             outcome_cause
             if outcome_cause != ResolutionFailureCause.NONE
-            else ResolutionFailureCause.UNRESOLVED_CONFLICT
+            else (
+                ResolutionFailureCause.CONFIG_FAILURE
+                if extract_config_path_from_reason(failure_reason) is not None
+                else (
+                    ResolutionFailureCause.CONTEXT_FAILURE
+                    if "target worktree context failed" in failure_reason
+                    else ResolutionFailureCause.UNRESOLVED_CONFLICT
+                )
+            )
         )
     )
-    failure_reason = _outcome_reason(outcome)
     if record is not None and not isinstance(outcome, ResolvedOutcome):
         from ralph.pipeline.auto_integrate_record import write_record
 

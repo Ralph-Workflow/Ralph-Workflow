@@ -35,6 +35,7 @@ if TYPE_CHECKING:
         StrategyTransition,
         StrategyTransitionGuard,
     )
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.reducer import reduce
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
@@ -56,6 +57,7 @@ __all__ = [
     "PipelineState",
     "PlanningSyncVerdict",
     "RebaseOutcomeKind",
+    "RebaseResolutionResult",
     "StopResolutionOutcome",
     "StopResolutionTrigger",
     "StrategyDecision",
@@ -92,6 +94,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "PlanningSyncVerdict",
     ),
     "RebaseOutcomeKind": ("ralph.pipeline._integration_action", "RebaseOutcomeKind"),
+    "RebaseResolutionResult": (
+        "ralph.pipeline.rebase_resolution_result",
+        "RebaseResolutionResult",
+    ),
     "StopResolutionOutcome": (
         "ralph.pipeline.resolution_outcome",
         "StopResolutionOutcome",

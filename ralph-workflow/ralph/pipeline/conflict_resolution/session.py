@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -34,6 +35,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
+    import threading
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
@@ -215,6 +217,54 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
     return agents
 
 
+class _LegacyClockAdapter(Clock):
+    def __init__(self, raw: object) -> None:
+        self._raw = raw
+
+    def monotonic(self) -> float:
+        candidate: object = getattr(self._raw, "monotonic", None)
+        if callable(candidate):
+            res: object = candidate()
+            if isinstance(res, (int, float)):
+                return float(res)
+        candidate_now: object = getattr(self._raw, "now", None)
+        if callable(candidate_now):
+            res = candidate_now()
+            if isinstance(res, (int, float)):
+                return float(res)
+        return 0.0
+
+    def epoch(self) -> float:
+        candidate: object = getattr(self._raw, "epoch", None)
+        if callable(candidate):
+            res: object = candidate()
+            if isinstance(res, (int, float)):
+                return float(res)
+        return self.monotonic()
+
+    def now_utc(self) -> datetime:
+        candidate: object = getattr(self._raw, "now_utc", None)
+        if callable(candidate):
+            res: object = candidate()
+            if isinstance(res, datetime):
+                return res
+        return datetime.fromtimestamp(self.epoch(), tz=UTC)
+
+    def sleep(self, seconds: float) -> None:
+        candidate: object = getattr(self._raw, "sleep", None)
+        if callable(candidate):
+            candidate(seconds)
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        candidate: object = getattr(self._raw, "wait_for_event", None)
+        if callable(candidate):
+            res: object = candidate(event, seconds)
+            if isinstance(res, bool):
+                return res
+        self.sleep(seconds)
+        return True
+
+
 def ensure_session_controller(
     session: ResolutionSession | None,
     policy_bundle: PolicyBundle | None = None,
@@ -245,15 +295,17 @@ def ensure_session_controller(
         if pipeline_deps is not None and pipeline_deps.ledger is not None
         else (session.ledger if session is not None else None)
     )
-    clock: Clock = SystemClock()
-    if pipeline_deps is not None:
-        rec_clock: object = getattr(pipeline_deps, "recovery_clock", None)
-        if isinstance(rec_clock, Clock):
-            clock = rec_clock
-    elif ledger is not None:
-        ledger_clock: object = getattr(ledger, "clock", None)
-        if isinstance(ledger_clock, Clock):
-            clock = ledger_clock
+    deps_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
+    ledger_clock = getattr(ledger, "clock", None) if ledger is not None else None
+    clock: Clock
+    if isinstance(deps_clock, Clock):
+        clock = deps_clock
+    elif isinstance(ledger_clock, Clock):
+        clock = ledger_clock
+    else:
+        from ralph.pipeline.integration_actions import current_clock
+
+        clock = _LegacyClockAdapter(current_clock())
     deps = AttemptRunnerDeps(
         clock=clock,
         invoke=_invoke_effect,

@@ -160,7 +160,9 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
         outcome = resolver(root, target, None)
         if session is not None and isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
             session.charge_conflict_budget = False
-            session.last_failure_cause = outcome.failure_cause
+            session.last_failure_cause = (
+                getattr(outcome, "failure_cause", None) or ResolutionFailureCause.CONFIG_FAILURE
+            )
             session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
             session.exhaustion_reason = (
                 "fix .agent/ralph-workflow.toml then run ralph --check-config"

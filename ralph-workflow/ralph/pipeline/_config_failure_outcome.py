@@ -38,7 +38,7 @@ class ConfigFailureOutcome:
         return False
 
     @classmethod
-    def from_error(cls, error: BaseException) -> ConfigFailureOutcome:
+    def from_error(cls, error: object) -> ConfigFailureOutcome:
         from ralph.config.loader import ConfigLoadError
 
         if not isinstance(error, ConfigLoadError):

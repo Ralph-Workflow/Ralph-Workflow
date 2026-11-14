@@ -28,6 +28,7 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.resolution_outcome import UnknownOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 from tests._conflict_resolution_phase_parity_seams import _policy_bundle
@@ -106,20 +107,19 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
-    assert (
-        invoke_resolution_agent(
-            agent_name="resolver",
-            prompt_path=Path("/workspace/prompt.md"),
-            config=UnifiedConfig.model_validate({"general": {}}),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
-        )
-        is False
+    outcome = invoke_resolution_agent(
+        agent_name="resolver",
+        prompt_path=Path("/workspace/prompt.md"),
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        session=session,
     )
+    assert isinstance(outcome, UnknownOutcome)
+    assert outcome.succeeded is False
     assert session.terminal_reason is reason
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)
     assert session.charge_conflict_budget is False
@@ -170,20 +170,19 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
-    assert (
-        invoke_resolution_agent(
-            agent_name="resolver",
-            prompt_path=Path("/workspace/prompt.md"),
-            config=UnifiedConfig.model_validate({"general": {}}),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
-        )
-        is False
+    outcome = invoke_resolution_agent(
+        agent_name="resolver",
+        prompt_path=Path("/workspace/prompt.md"),
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        session=session,
     )
+    assert isinstance(outcome, UnknownOutcome)
+    assert outcome.succeeded is False
     assert session.charge_conflict_budget is False
     assert session.terminal_reason is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
 

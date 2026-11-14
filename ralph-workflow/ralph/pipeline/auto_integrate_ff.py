@@ -16,12 +16,9 @@ from ralph.git.merge import (
 from ralph.git.operations import find_main_worktree_root
 from ralph.pipeline._auto_integrate_reclaim import ReclaimResult, reclaim_dirty_target_worktree
 from ralph.pipeline.resolution_outcome import (
-    ConfigFailureOutcome,
-    NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
-    UnknownOutcome,
     WaitingOutcome,
 )
 
@@ -217,23 +214,9 @@ def is_retryable_fast_forward_failure(
 ) -> bool:
     if isinstance(outcome, str):
         return outcome in _RETRYABLE_REASONS
-    if isinstance(outcome, tuple):
-        return bool(len(outcome) > 1 and not outcome[0] and outcome[1] in _RETRYABLE_REASONS)
-    if isinstance(outcome, bool):
-        return False
-    match outcome:
-        case RetryLaterOutcome():
-            return True
-        case (
-            ResolvedOutcome()
-            | WaitingOutcome()
-            | NextStrategyOutcome()
-            | ConfigFailureOutcome()
-            | UnknownOutcome()
-        ):
-            return False
-        case _:
-            return False
+    if isinstance(outcome, tuple) and len(outcome) > 1 and isinstance(outcome[1], str):
+        return bool(not outcome[0] and outcome[1] in _RETRYABLE_REASONS)
+    return isinstance(outcome, RetryLaterOutcome)
 
 
 __all__ = [

@@ -16,6 +16,7 @@ from ralph.display.context import make_display_context
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
 from ralph.pipeline.conflict_resolution import RebaseStop
 from ralph.pipeline.factory import PipelineDeps
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
@@ -140,5 +141,6 @@ def test_auto_integrate_regression_live_agent_resolves_conflict_through_mcp(
         ),
     )
 
-    assert resolved is True
+    assert isinstance(resolved, ResolvedOutcome)
+    assert resolved.succeeded is True
     assert shared.read_text(encoding="utf-8") == "resolved by real MCP agent\n"
