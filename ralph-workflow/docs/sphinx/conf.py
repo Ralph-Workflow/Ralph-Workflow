@@ -22,7 +22,6 @@ release = __version__
 
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx_copybutton",
     "sphinx_design",
@@ -36,8 +35,6 @@ autodoc_type_aliases = {
     "PhaseIterationContext": "ralph.display.phase_status.PhaseIterationContext",
     "SessionCapabilities": "ralph.prompts.types.SessionCapabilities",
 }
-napoleon_google_docstring = True
-napoleon_numpy_docstring = False
 
 intersphinx_mapping: dict = {}
 

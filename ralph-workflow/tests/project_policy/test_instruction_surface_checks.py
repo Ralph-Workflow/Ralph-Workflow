@@ -34,6 +34,19 @@ def test_managed_block_line_budget_passes_at_or_below_limit() -> None:
     )
 
 
+def test_rendered_managed_blocks_stay_within_line_budget() -> None:
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+    rendered_placeholder = ws.read(markers.AGENTS_MD)
+    agents_md.condense_placeholder_block(ws)
+    rendered_ready = ws.read(markers.AGENTS_MD)
+    for rendered in (rendered_placeholder, rendered_ready):
+        findings = agents_md.check_agents_md_line_budgets(rendered)
+        assert not any(
+            f.requirement_id == markers.MANAGED_BLOCK_LINE_BUDGET_FINDING_ID for f in findings
+        )
+
+
 def test_managed_block_line_budget_fires_above_limit() -> None:
     block_lines = ["Line inside block"] * 41
     content = (

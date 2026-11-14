@@ -41,8 +41,7 @@ Top-Level
 
 The top-level package exposes version metadata, the CLI entrypoint
 (`ralph.main`), platform detection helpers, and the runtime verification
-primitives used by ``make verify``. The package docstring lists the major
-subpackages a contributor will touch most often. See
+primitives used by ``make verify``. See
 :doc:`developer-internals` for the contributor map and
 :doc:`configuration` for how layered config and policy defaults are wired
 together.
@@ -270,9 +269,6 @@ ralph.timeout_defaults
 
 ralph.verify_timeout
 ~~~~~~~~~~~~~~~~~~~~
-
-.. Note: ralph.verify_timeout contains a policy document as its module docstring;
-   using :no-members: to avoid RST parse errors from indented policy blocks.
 
 .. automodule:: ralph.verify_timeout
    :no-members:
@@ -1908,10 +1904,6 @@ for extending the phase graph.
 
 ralph.phases
 ~~~~~~~~~~~~
-
-.. Note: ralph.phases.__init__ defines PhaseContext with TYPE_CHECKING-only forward
-   references; using :no-members: avoids Napoleon introspecting the partially-built
-   Pydantic model during autodoc. The module docstring is still rendered.
 
 .. automodule:: ralph.phases
    :no-members:

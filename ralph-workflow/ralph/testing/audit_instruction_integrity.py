@@ -9,6 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
+from ralph.project_policy import markers as project_policy_markers
 from ralph.project_policy.instruction_surface import find_hidden_unicode
 
 if TYPE_CHECKING:
@@ -91,7 +92,7 @@ _TOML_KEY_VALUE_RE: re.Pattern[str] = re.compile(r"^\s*([A-Za-z0-9_\-]+)\s*=\s*(
 
 _TOML_STRING_RE: re.Pattern[str] = re.compile(r'"([^"\\]*)"')
 
-AGENTS_BLOCK_BEGIN: str = "<!-- ralph-workflow-policy:begin v2 -->"
+AGENTS_BLOCK_BEGIN: str = project_policy_markers.AGENTS_BLOCK_BEGIN
 AGENTS_BLOCK_END: str = "<!-- ralph-workflow-policy:end -->"
 
 _PROMOTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (

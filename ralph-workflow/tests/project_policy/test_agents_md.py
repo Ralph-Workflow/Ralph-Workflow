@@ -21,6 +21,27 @@ _READINESS_DIMENSIONS_RE = re.compile(
     r"outcome evidence reviewed=[a-z]+"
 )
 
+_V2_BLOCK_BEGIN = "<!-- ralph-workflow-policy:begin v2 -->"
+
+
+def _v2_placeholder_block() -> str:
+    scratch = MemoryWorkspace()
+    agents_md.bootstrap(scratch)
+    return scratch.read(markers.AGENTS_MD).replace(markers.AGENTS_BLOCK_BEGIN, _V2_BLOCK_BEGIN)
+
+
+def _v2_ready_block(*, structure: str, implementation: str, outcome: str) -> str:
+    scratch = MemoryWorkspace()
+    agents_md.bootstrap(scratch)
+    agents_md.condense_placeholder_block(scratch)
+    ready = scratch.read(markers.AGENTS_MD).replace(markers.AGENTS_BLOCK_BEGIN, _V2_BLOCK_BEGIN)
+    return _READINESS_DIMENSIONS_RE.sub(
+        f"structure complete={structure}, "
+        f"implementation verified={implementation}, "
+        f"outcome evidence reviewed={outcome}",
+        ready,
+    )
+
 
 def _outdated_placeholder_block() -> str:
     scratch = MemoryWorkspace()
@@ -452,7 +473,65 @@ def test_bootstrap_and_condense_preserve_user_authored_block() -> None:
     assert ws.read(markers.AGENTS_MD) == user_block
 
 
-def test_bootstrap_migrates_v1_marker_to_v2_idempotently() -> None:
+def test_bootstrap_migrates_v2_placeholder_block_to_v3_idempotently() -> None:
+    ws = MemoryWorkspace()
+    ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
+    user_header = "# Project Title\n\nCustom user rules above.\n\n"
+    user_footer = "\n\nCustom user rules below.\n"
+    ws.write(markers.AGENTS_MD, user_header + _v2_placeholder_block() + user_footer)
+
+    changed = agents_md.bootstrap(ws)
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert content.startswith(user_header)
+    assert content.endswith("Custom user rules below.\n")
+    assert _V2_BLOCK_BEGIN not in content
+    assert markers.AGENTS_BLOCK_BEGIN in content
+    assert "execution-kernel.md first" in content
+    begin = content.find(markers.AGENTS_BLOCK_BEGIN)
+    end = content.find(markers.AGENTS_BLOCK_END)
+    assert len(content[begin:end].splitlines()) <= agents_md.MANAGED_BLOCK_LINE_BUDGET
+
+    assert agents_md.bootstrap(ws) == []
+    assert ws.read(markers.AGENTS_MD) == content
+
+
+def test_bootstrap_migrates_v2_ready_block_to_v3_preserving_dimensions() -> None:
+    ws = MemoryWorkspace()
+    ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
+    v2_ready = _v2_ready_block(structure="true", implementation="false", outcome="true")
+    ws.write(markers.AGENTS_MD, v2_ready)
+
+    changed = agents_md.bootstrap(ws)
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert _V2_BLOCK_BEGIN not in content
+    assert markers.AGENTS_BLOCK_BEGIN in content
+    assert "structure complete=true" in content
+    assert "implementation verified=false" in content
+    assert "outcome evidence reviewed=true" in content
+
+    assert agents_md.bootstrap(ws) == []
+    assert ws.read(markers.AGENTS_MD) == content
+
+
+def test_condense_migrates_v2_ready_block_to_v3_preserving_dimensions() -> None:
+    ws = MemoryWorkspace()
+    v2_ready = _v2_ready_block(structure="true", implementation="true", outcome="false")
+    ws.write(markers.AGENTS_MD, v2_ready)
+
+    changed = agents_md.condense_placeholder_block(ws)
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert _V2_BLOCK_BEGIN not in content
+    assert "structure complete=true" in content
+    assert "outcome evidence reviewed=false" in content
+
+    assert agents_md.condense_placeholder_block(ws) == []
+    assert ws.read(markers.AGENTS_MD) == content
+
+
+def test_bootstrap_migrates_v1_marker_to_v3_idempotently() -> None:
     ws = MemoryWorkspace()
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_header = "# Project Title\n\nCustom user rules above.\n\n"

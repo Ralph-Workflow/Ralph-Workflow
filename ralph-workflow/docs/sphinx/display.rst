@@ -795,4 +795,4 @@ See also
 --------
 
 The full API reference for all display modules is available in the
-:doc:`modules` page, generated from docstrings.
+:doc:`modules` page.

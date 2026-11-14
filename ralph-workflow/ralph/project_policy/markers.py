@@ -16,7 +16,7 @@ SIGNIFICANT_HEADING_PREFIX: Final[str] = "#"
 SIGNIFICANT_NONEMPTY_LINE_THRESHOLD: Final[int] = 10
 
 AGENTS_BLOCK_BEGIN_V1: Final[str] = "<!-- ralph-workflow-policy:begin v1 -->"
-AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v2 -->"
+AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v3 -->"
 AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 
 AGENTS_BLOCK_BEGIN_RE: Final[re.Pattern[str]] = re.compile(

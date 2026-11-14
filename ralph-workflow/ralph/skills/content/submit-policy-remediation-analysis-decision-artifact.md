@@ -24,6 +24,14 @@ Frontmatter: `type: policy_remediation_analysis_decision` and a closed
   and is omitted for `completed`.
 - `## How To Fix` — not permitted.
 
+### Deterministic Enforcement
+
+Every `deterministic` Enforcement entry in the guard inventory gets one
+`PR-###` verdict in `## Criterion Verdicts`. Run the enforcer and, where
+feasible, demonstrate it fails on a minimal violating input; the
+gate-script policy requires demonstrated pass and fail behavior. An
+enforcer that cannot fail is reported as `not met`.
+
 `met` means no counterexample was found. A criterion that cannot be
 evaluated requires `failed` rather than completion. A gate that exposes a
 product failure is attribution, not a policy shortfall.
