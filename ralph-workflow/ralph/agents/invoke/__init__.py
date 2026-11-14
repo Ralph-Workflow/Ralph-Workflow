@@ -7,17 +7,15 @@ import shutil
 import sqlite3
 import subprocess
 from dataclasses import replace
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import uuid4
 
 from loguru import logger
 
 from ralph.agents._broker_secret import parent_broker_secret
-from ralph.agents.catalog import default_catalog
 from ralph.agents.completion_signals import evaluate_completion
-from ralph.agents.execution_state import strategy_for_command
-from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._commands import (
     _agent_transport,
@@ -119,8 +117,8 @@ from ralph.agents.invoke._workspace_change_classifier import (
 )
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.invoke.termination_recorder import TerminationRecorder
-from ralph.agents.registry import AgentRegistry
 from ralph.agents.spec import AgentSpec
+from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.api.opencode import opencode_model_id_from_flag, validate_local_model_support
 from ralph.config._agent_overrides import agent_environment_value, opencode_binary_override
 from ralph.config.enums import AgentTransport
@@ -179,7 +177,10 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Mapping
 
+    from ralph.agents.catalog import AgentCatalog
     from ralph.agents.execution_state import AgentExecutionState
+    from ralph.agents.execution_state._base import BaseExecutionStrategy
+    from ralph.agents.registry import AgentRegistry
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
     from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -187,6 +188,26 @@ if TYPE_CHECKING:
     from ralph.process.teardown import ProcessTeardown
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
+
+
+class _CatalogModule(Protocol):
+    def default_catalog(self) -> AgentCatalog: ...
+
+
+class _RegistryModule(Protocol):
+    AgentRegistry: type[AgentRegistry]
+
+
+class _ExecutionStateModule(Protocol):
+    def strategy_for_command(
+        self,
+        command: str,
+        transport: AgentTransport,
+        *,
+        label_scope: str | None,
+        registry: ChildLivenessRegistry,
+        subagent_pid_source: object,
+    ) -> BaseExecutionStrategy: ...
 
 
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
@@ -482,8 +503,14 @@ def invoke_agent(
             (
                 _subagent_pid_registry,
                 subagent_pid_source,
-            ) = AgentRegistry().build_subagent_pid_registry(transport_for_registry)
-        execution_strategy = strategy_for_command(
+            ) = (
+                cast("_RegistryModule", import_module("ralph.agents.registry"))
+                .AgentRegistry()
+                .build_subagent_pid_registry(transport_for_registry)
+            )
+        execution_strategy = cast(
+            "_ExecutionStateModule", import_module("ralph.agents.execution_state")
+        ).strategy_for_command(
             config.cmd,
             transport_for_registry,
             label_scope=label_scope,
@@ -530,7 +557,11 @@ def invoke_agent(
         ctx = replace(ctx, expected_session_id=opts.session_id)
 
         transport = _agent_transport(config)
-        support = default_catalog().get(config.cmd)
+        support = (
+            cast("_CatalogModule", import_module("ralph.agents.catalog"))
+            .default_catalog()
+            .get(config.cmd)
+        )
         requires_pty = transport == AgentTransport.AGY
         if support is not None and isinstance(support.spec, AgentSpec):
             requires_pty = requires_pty or support.spec.requires_pty

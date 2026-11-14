@@ -47,6 +47,7 @@ from ralph.pipeline.resolution_outcome import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 

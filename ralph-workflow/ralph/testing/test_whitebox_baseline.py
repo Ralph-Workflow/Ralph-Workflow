@@ -255,7 +255,7 @@ tests/project_policy/test_authentic_v4_consent_flow.py|0,2,4
 tests/project_policy/test_citation_workspace_restore.py|0,0,2
 tests/project_policy/test_claim_scope_column_sweep.py|0,5,0
 tests/project_policy/test_claim_scope_guard_rows.py|0,3,0
-tests/project_policy/test_cli_integration_helpers.py|0,8,7
+tests/project_policy/test_cli_integration_helpers.py|0,8,8
 tests/project_policy/test_guard_inventory_contract.py|0,2,0
 tests/project_policy/test_pending_marker.py|0,1,9
 tests/project_policy/test_policy_auto_commit.py|0,1,0

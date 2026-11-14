@@ -165,7 +165,7 @@ def run_conflict_resolution_outcome(
     target: str,
     config: UnifiedConfig,
     pipeline_deps: PipelineDeps,
-    workspace_scope: WorkspaceScope,
+    workspace_scope: WorkspaceScope | None = None,
     policy_bundle: PolicyBundle,
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
@@ -421,7 +421,7 @@ def _run_rounds(
     target: str,
     config: UnifiedConfig,
     pipeline_deps: PipelineDeps,
-    workspace_scope: WorkspaceScope,
+    workspace_scope: WorkspaceScope | None,
     policy_bundle: PolicyBundle,
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
@@ -433,6 +433,9 @@ def _run_rounds(
     observer: WorktreeConflictObserver | None,
     prompt_materializer: PromptMaterializer | None,
 ) -> bool:
+    from ralph.workspace.scope import WorkspaceScope
+
+    effective_scope = workspace_scope if workspace_scope is not None else WorkspaceScope(root)
     active_observer = observer if observer is not None else GitWorktreeConflictObserver()
     materialize_prompt = (
         prompt_materializer if prompt_materializer is not None else materialize_round_prompt
@@ -445,8 +448,8 @@ def _run_rounds(
     if pipeline_deps is not None and session.unavailability_store is None:
         session.unavailability_store = pipeline_deps.unavailability_store
     ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps, config=config)
-    if session.workspace is None and workspace_scope is not None:
-        ws_obj: object = getattr(workspace_scope, "workspace", None)
+    if session.workspace is None:
+        ws_obj: object = getattr(effective_scope, "workspace", None)
         from ralph.workspace.protocol import Workspace
 
         if isinstance(ws_obj, Workspace):
@@ -455,8 +458,8 @@ def _run_rounds(
             from ralph.workspace.fs import FsWorkspace
 
             session.workspace = FsWorkspace(
-                workspace_scope.root,
-                allowed_roots=workspace_scope.allowed_roots,
+                effective_scope.root,
+                allowed_roots=effective_scope.allowed_roots,
             )
     if session.workspace_probe is None:
         rc = session.recovery_controller
@@ -483,7 +486,7 @@ def _run_rounds(
     runner = invoke or _default_invoker(
         config=config,
         pipeline_deps=pipeline_deps,
-        workspace_scope=workspace_scope,
+        workspace_scope=effective_scope,
         policy_bundle=policy_bundle,
         display=display,
         display_context=display_context,

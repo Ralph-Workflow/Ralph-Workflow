@@ -70,6 +70,9 @@ def _rebase_signal_count(
     sequence_present = _marker_exists(rebase_merge, "git-rebase-todo") or (
         _marker_exists(rebase_apply, "next") and _marker_exists(rebase_apply, "last")
     )
+    stopped_present = _marker_exists(rebase_merge, "stopped-sha") or _marker_exists(
+        rebase_merge, "orig-head"
+    )
     return sum(
         (
             rebase_head is not None,
@@ -77,6 +80,7 @@ def _rebase_signal_count(
             has_unmerged,
             plan_present,
             sequence_present,
+            stopped_present,
         )
     )
 

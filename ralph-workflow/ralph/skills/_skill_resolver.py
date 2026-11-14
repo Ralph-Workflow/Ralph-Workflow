@@ -9,13 +9,6 @@ from ralph.skills._agent_paths import (
     project_sibling_skill_roots,
     project_skill_root,
 )
-from ralph.skills._ownership import (
-    RALPH_MANAGED_BY,
-    UNIVERSAL_MANAGED_BY,
-    managed_content_matches,
-    read_managed_marker,
-    verified_recorded_files,
-)
 from ralph.skills.upstream import UNIVERSAL_SKILL_NAMES
 
 if TYPE_CHECKING:
@@ -109,24 +102,9 @@ def resolve_agent_skill_roots(
 def _is_skill_installed(skill_dir: Path) -> bool:
     try:
         resolved = skill_dir.resolve()
-        if not resolved.is_dir():
-            return False
+        return resolved.is_dir() and (resolved / "SKILL.md").is_file()
     except (OSError, RuntimeError):
         return False
-
-    marker = read_managed_marker(resolved)
-    if marker is None:
-        return False
-
-    managed_by = marker.get("managed_by")
-    if managed_by != UNIVERSAL_MANAGED_BY and managed_by not in RALPH_MANAGED_BY:
-        return False
-
-    recorded = verified_recorded_files(marker)
-    if recorded is None:
-        return False
-
-    return managed_content_matches(resolved, recorded)
 
 
 def resolve_installed_skills_for_agent(

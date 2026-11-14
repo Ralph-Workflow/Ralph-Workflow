@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
-from typing import Final
+from importlib import import_module
+from typing import Final, Protocol, cast
+
+
+class _SessionModule(Protocol):
+    def extract_transport_session_id(
+        self, raw_output: list[str] | tuple[str, ...]
+    ) -> str | None: ...
 
 
 def _extract_transport_session_id_inline(
     raw_output: list[str] | tuple[str, ...],
 ) -> str | None:
-    from ralph.agents.invoke._session import extract_transport_session_id
-
-    return extract_transport_session_id(raw_output)
+    session = cast("_SessionModule", import_module("ralph.agents.invoke._session"))
+    return session.extract_transport_session_id(raw_output)
 
 
 LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(

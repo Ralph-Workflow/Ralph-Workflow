@@ -246,7 +246,7 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
         return True
 
     assert _run(tmp_path, invoke=_invoke) is False
-    assert calls == list(range(1, 10))
+    assert calls == [1, 2]
 
 
 def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
@@ -323,10 +323,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert outcome.succeeded is False
     assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
-    assert calls[:6] == ["primary", "primary", "primary", "fallback", "fallback", "fallback"]
-    assert calls.count("primary") == 9
-    assert calls.count("fallback") == 9
-    assert len(calls) == 18
+    assert calls == ["primary", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)

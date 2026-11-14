@@ -218,6 +218,8 @@ def _write_operation(path: Path, facts: _OperationFacts, steps: tuple[str, ...])
 
 def _is_text(value: object) -> TypeGuard[str]:
     return isinstance(value, str)
+
+
 def _read_operation(path: Path) -> _OperationFacts | None:
     payload = _read_json(path)
     if payload is None or payload.get("version") != _RECORD_VERSION:

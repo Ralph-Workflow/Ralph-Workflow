@@ -26,7 +26,7 @@ from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
     from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
-    from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
+
 
 ACTION_SKIPPED = RebaseOutcomeKind.SKIPPED.value
 ACTION_REBASED = RebaseOutcomeKind.REBASED.value

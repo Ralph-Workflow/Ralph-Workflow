@@ -3,14 +3,22 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import StrEnum
+from importlib import import_module
+from typing import Protocol, cast
 
 from ralph.recovery.failure_classifier import _SUBSCRIPTION_LIMIT_SUBSTRINGS
 
 
-def _is_user_prompt_event_line(line: str) -> bool:
-    from ralph.agents.execution_state import is_user_prompt_event_line
+class _HarnessEchoModule(Protocol):
+    def is_user_prompt_event_line(self, line: str) -> bool: ...
 
-    return is_user_prompt_event_line(line)
+
+def _is_user_prompt_event_line(line: str) -> bool:
+    harness_echo = cast(
+        "_HarnessEchoModule",
+        import_module("ralph.agents.execution_state._harness_echo"),
+    )
+    return harness_echo.is_user_prompt_event_line(line)
 
 
 _PROVIDER_FAILURE_OUTPUT_MARKERS = (

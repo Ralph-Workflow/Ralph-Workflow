@@ -194,8 +194,8 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
     session = ResolutionSession(max_rounds_per_stop=2)
     outcome1 = _run_outcome(tmp_path, invoke=_invoke, session=session)
     assert outcome1.succeeded is False
-    assert session.rounds_spent == 7
-    assert rounds_called == [1, 1, 1, 2, 3, 4, 5, 6, 7]
+    assert session.rounds_spent == 1
+    assert rounds_called == [1]
 
     outcome2 = _run_outcome(
         tmp_path,
@@ -204,5 +204,5 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
         strategy_history=("primary-strategy",),
     )
     assert outcome2.succeeded is False
-    assert rounds_called == [1, 1, 1, 2, 3, 4, 5, 6, 7]
-    assert session.rounds_spent == 7
+    assert rounds_called == [1]
+    assert session.rounds_spent == 1

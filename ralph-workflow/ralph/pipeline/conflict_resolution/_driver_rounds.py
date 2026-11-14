@@ -36,7 +36,6 @@ from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutc
 from ralph.pipeline.conflict_resolution.round_verdict import (
     round_termination_reason as _round_termination_reason,
 )
-from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
@@ -464,12 +463,6 @@ def _preferred_conflict_candidate(
         selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
         if selection.agent is not None:
             return candidates.index(selection.agent)
-        if current_clock() is _DEFAULT_CLOCK:
-
-            def remaining_wait_ms(name: str) -> int:
-                return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-
-            return candidates.index(min(eligible, key=remaining_wait_ms))
     return None
 
 

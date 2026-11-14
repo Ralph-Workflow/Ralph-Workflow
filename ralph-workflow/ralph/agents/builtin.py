@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.agents import registry as registry_module
 from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
 from ralph.agents.builtin_spec import BuiltinAgentSpec
 from ralph.agents.display_capabilities import DisplayCapability
@@ -27,7 +28,6 @@ from ralph.agents.parsers.kimi import KimiParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
-from ralph.agents.registry import agy_alias_help
 from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
@@ -124,6 +124,10 @@ _KIMI_CAPABILITIES: tuple[DisplayCapabilityStance, ...] = (
         reason="kimi parser preserves upstream tool names that are not yet mapped to payload_from_tool_event",
     ),
 )
+
+
+def agy_alias_help() -> str:
+    return registry_module.agy_alias_help()
 
 
 _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (

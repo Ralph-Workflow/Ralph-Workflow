@@ -82,7 +82,6 @@ def _clean_exit_facts() -> AttemptFacts:
     return AttemptFacts(artifact_valid=True)
 
 
-
 def test_stall_is_charged_even_when_the_invocation_already_reported_success() -> None:
     controller = _controller()
     session = ResolutionSession(recovery_controller=controller)

@@ -20,6 +20,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
 from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.rebase_state import StartupRetentionReason
@@ -43,6 +44,20 @@ if TYPE_CHECKING:
     from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
+
+
+class ExhaustedResolutionFailure(str):
+    terminal_reason: ResolutionTerminationReason
+
+    def __new__(
+        cls,
+        reason: str,
+        terminal_reason: ResolutionTerminationReason,
+    ) -> ExhaustedResolutionFailure:
+        value = super().__new__(cls, reason)
+        value.terminal_reason = terminal_reason
+        return value
+
 
 _REBASE_RECEIPT_ENTRIES = 2
 
@@ -247,7 +262,7 @@ def _rebase_failure_transport(
             return None
         case RetryLater():
             return failure_reason
-        case NeedsOperator():
+        case Exhausted():
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha,
@@ -256,8 +271,13 @@ def _rebase_failure_transport(
                 ),
                 NextAction.LAST_RESORT_RECOVERY.value,
             )
+            return ExhaustedResolutionFailure(
+                failure_reason,
+                ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            )
+        case NeedsOperator():
             return failure_reason
-        case Exhausted() | ConfigFailure():
+        case ConfigFailure():
             return failure_reason
         case _ as unreachable:
             assert_never(unreachable)

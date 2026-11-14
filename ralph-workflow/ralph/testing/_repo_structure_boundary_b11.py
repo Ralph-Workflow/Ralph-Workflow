@@ -62,7 +62,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/plumbing/commit_plumbing.py",
         "invoke_commit_agent_attempt",
-        943,
+        970,
         "commit module agent invocation owned by the registered commit route",
     ),
 )

@@ -8,7 +8,6 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from ralph.git.hardening import unmerged_paths_collect
-from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
 from ralph.git.rebase._process_executor import ProcessExecutor
 from ralph.git.rebase.process_result import ProcessResult
 from ralph.git.rebase.rebase_conflicts import RebaseConflicts
@@ -81,10 +80,12 @@ def continue_rebase(
 
 
 def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
-    return (
-        observe_operation_snapshot(_resolve_repo_root(repo_root)).operation_state
-        is OperationState.REBASE_PAUSED
-    )
+    try:
+        path = _resolve_repo_root(repo_root)
+        git_dir = _git_dir(path)
+        return any((git_dir / marker).exists() for marker in (REBASE_APPLY_DIR, REBASE_MERGE_DIR))
+    except (RebaseOperationError, InvalidGitRepositoryError):
+        return False
 
 
 def get_conflicted_files(

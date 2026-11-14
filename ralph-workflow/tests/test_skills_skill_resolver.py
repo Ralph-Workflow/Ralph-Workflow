@@ -70,6 +70,16 @@ def _install_skill_in_root(root: Path, skill_name: str, content: str = "Test ski
     )
 
 
+def _install_user_owned_skill(
+    root: Path,
+    skill_name: str,
+    content: str = "User skill body",
+) -> None:
+    skill_dir = root / skill_name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+
+
 def _load_test_policy_bundle() -> PolicyBundle:
     defaults_dir = (
         Path(__file__).resolve().parents[1] / "ralph-workflow" / "ralph" / "policy" / "defaults"
@@ -223,11 +233,49 @@ def test_resolve_installed_skills_valid_marker_and_manifest(tmp_path: Path) -> N
     assert installed == {"test-driven-development", "antislop"}
 
 
-def test_resolve_installed_skills_rejects_corrupted_or_mismatched_marker(tmp_path: Path) -> None:
+def test_skill_cue_regression_user_owned_antislop_is_resolvable(tmp_path: Path) -> None:
+    skill_root = tmp_path / "skills"
+    _install_user_owned_skill(skill_root, "antislop")
+
+    installed = resolve_installed_skills_for_agent("codex", roots=[skill_root])
+
+    assert installed == {"antislop"}
+
+
+def test_skill_cue_regression_edited_managed_skill_remains_resolvable(tmp_path: Path) -> None:
+    skill_root = tmp_path / "skills"
+    _install_skill_in_root(skill_root, "antislop", content="original")
+    (skill_root / "antislop" / "SKILL.md").write_text("user edited", encoding="utf-8")
+
+    installed = resolve_installed_skills_for_agent("codex", roots=[skill_root])
+
+    assert installed == {"antislop"}
+
+
+def test_skill_cue_regression_absent_skill_is_not_resolvable(tmp_path: Path) -> None:
+    skill_root = tmp_path / "skills"
+    skill_root.mkdir()
+
+    installed = resolve_installed_skills_for_agent("codex", roots=[skill_root])
+
+    assert installed == set()
+
+
+def test_skill_cue_regression_directory_without_skill_file_is_not_resolvable(
+    tmp_path: Path,
+) -> None:
+    skill_root = tmp_path / "skills"
+    (skill_root / "antislop").mkdir(parents=True)
+
+    installed = resolve_installed_skills_for_agent("codex", roots=[skill_root])
+
+    assert installed == set()
+
+
+def test_resolve_installed_skills_ignores_marker_ownership_and_integrity(tmp_path: Path) -> None:
     skill_root = tmp_path / "skills"
     bad_json = skill_root / "test-driven-development"
-    bad_json.mkdir(parents=True)
-    (bad_json / "SKILL.md").write_text("Hello", encoding="utf-8")
+    _install_user_owned_skill(skill_root, "test-driven-development", content="Hello")
     (bad_json / ".ralph-managed.json").write_text("invalid json", encoding="utf-8")
 
     tampered = skill_root / "antislop"
@@ -244,7 +292,7 @@ def test_resolve_installed_skills_rejects_corrupted_or_mismatched_marker(tmp_pat
     )
 
     installed = resolve_installed_skills_for_agent("test-agent", roots=[skill_root])
-    assert installed == set()
+    assert installed == {"test-driven-development", "antislop", "systematic-debugging"}
 
 
 def test_resolve_installed_skills_handles_symlink_to_canonical(tmp_path: Path) -> None:
@@ -273,6 +321,7 @@ def test_integrated_materialize_prepared_prompt_two_agents_no_leak(
     (workspace_dir / ".agent" / "PRODUCT_CRITERIA.md").write_text("Requirements", encoding="utf-8")
 
     _setup_two_agent_roots(monkeypatch, tmp_path)
+    _install_user_owned_skill(tmp_path / "home" / ".codex" / "skills", "antislop")
     bundle = _load_test_policy_bundle()
     registry = _TestAgentRegistry()
 
@@ -336,7 +385,7 @@ def test_integrated_materialize_prepared_prompt_two_agents_no_leak(
     assert agent_b_vars["SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT"] == ""
     assert agent_b_vars["SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION"] == ""
     assert agent_b_vars["SKILL_INSTALLED_SYSTEMATIC_DEBUGGING"] == ""
-    assert agent_b_vars["SKILL_INSTALLED_ANTISLOP"] == ""
+    assert agent_b_vars["SKILL_INSTALLED_ANTISLOP"] == "true"
 
     captured_renders.clear()
     monkeypatch.setattr("ralph.pipeline.prompt_prep.agents_for_phase", _agent_a_list)

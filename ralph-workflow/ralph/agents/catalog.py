@@ -1,6 +1,7 @@
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypeVar, overload
+from importlib import import_module
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast, overload
 
 from ralph.agents._contracts import StrategyFactory
 from ralph.agents.execution_state._strategy_builders import (
@@ -53,21 +54,23 @@ _T = TypeVar("_T")
 _ParserRegistryEntry = ParserRegistryEntry
 
 
+class _BuiltinModule(Protocol):
+    def builtin_supports(self) -> tuple[AgentSupport, ...]: ...
+
+
+class _RegistryModule(Protocol):
+    def _resolve_dynamic_agent(
+        self,
+        name: str,
+        ccs_defaults: CcsConfig,
+        *,
+        base_lookup: Callable[[str], AgentConfig | None] | None = None,
+    ) -> AgentConfig | None: ...
+
+
 def _builtin_supports() -> tuple[AgentSupport, ...]:
-    from ralph.agents.builtin import builtin_supports
-
-    return builtin_supports()
-
-
-def _resolve_dynamic_agent(
-    name: str,
-    ccs_defaults: CcsConfig,
-    *,
-    base_lookup: Callable[[str], AgentConfig | None] | None = None,
-) -> AgentConfig | None:
-    from ralph.agents.registry import _resolve_dynamic_agent
-
-    return _resolve_dynamic_agent(name, ccs_defaults, base_lookup=base_lookup)
+    module = cast("_BuiltinModule", import_module("ralph.agents.builtin"))
+    return module.builtin_supports()
 
 
 class _FlexibleFactory:
@@ -354,7 +357,8 @@ def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "Ag
             return entry.config
         return None
 
-    config = _resolve_dynamic_agent(
+    registry = cast("_RegistryModule", import_module("ralph.agents.registry"))
+    config = registry._resolve_dynamic_agent(
         name_or_command,
         CcsConfig(),
         base_lookup=_catalog_base_lookup,
