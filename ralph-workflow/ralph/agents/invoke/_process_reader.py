@@ -122,7 +122,6 @@ from ralph.process.manager import (
     ManagedProcess,
     ProcessEvent,
     ProcessStatus,
-    ProcessTerminationIssuer,
     SpawnOptions,
     get_process_manager,
 )
@@ -1497,11 +1496,6 @@ def _run_subprocess_and_read_lines(
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
             supervisor.act(StartupFailureObserved(msg))
-            if handle.pid is not None:
-                with contextlib.suppress(Exception):
-                    supervisor.teardown_subtree(
-                        handle.pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN
-                    )
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)

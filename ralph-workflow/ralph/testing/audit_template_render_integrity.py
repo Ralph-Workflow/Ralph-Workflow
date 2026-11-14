@@ -91,10 +91,6 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT": ("true",),
     "SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION": ("true",),
     "planning_unit_split_allowed": ("true",),
-    "SKILL_INSTALLED_ANTISLOP": ("true",),
-    "SKILL_INSTALLED_SYSTEMATIC_DEBUGGING": ("true",),
-    "SKILL_INSTALLED_TEST_DRIVEN_DEVELOPMENT": ("true",),
-    "SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION": ("true",),
     "SKILLS_INLINE_CONTENT": ("Use the audit-inline skill instructions.",),
     "SOFT_TRIPWIRES": (
         "- oversized binary: assets/hero.png (1.4 MB)",

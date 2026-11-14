@@ -1224,16 +1224,11 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
-        outcome = self._attempt_supervisor().teardown_subtree(
+        outcome = self._attempt_supervisor().act_with_teardown(
             TerminalStartupErrorObserved(terminal_startup_error)
         )
         if outcome is None:
             return
-        teardown = self._attempt_supervisor().teardown_subtree
-        pid = self._handle.pid
-        if pid is not None:
-            with contextlib.suppress(Exception):
-                teardown(pid, issuer=ProcessTerminationIssuer.INVOKE_TEARDOWN)
         raise AgentInvocationError(
             self._agent_name,
             1,

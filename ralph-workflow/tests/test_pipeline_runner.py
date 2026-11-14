@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import threading
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -928,13 +929,22 @@ class TestInjectionPrecedence:
 
         assert ctx.sleep is _custom_sleep
 
-    def test_recovery_sleep_defaults_to_time_sleep(
+    def test_default_recovery_sleep_waits_for_the_requested_duration(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        run_loop_module = _load_run_loop()
-        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path)
+        waits: list[float | None] = []
 
-        assert ctx.sleep is run_loop_module._event_wait
+        def _fake_wait(_event: threading.Event, timeout: float | None = None) -> bool:
+            waits.append(timeout)
+            return True
+
+        monkeypatch.setattr(threading.Event, "wait", _fake_wait)
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path)
+        waits.clear()
+
+        ctx.sleep(0.25)
+
+        assert waits == [0.25]
 
     def test_pipeline_deps_recovery_sleep_wins_over_pro_hooks(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

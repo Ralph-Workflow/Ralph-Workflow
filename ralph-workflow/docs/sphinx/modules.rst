@@ -2286,13 +2286,6 @@ ralph.agents.idle_watchdog.watchdog_verdict
    :members:
    :show-inheritance:
 
-ralph.agents.watchdog_fire_reason
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.agents.watchdog_fire_reason
-   :members:
-   :show-inheritance:
-
 ralph.agents.invoke
 ~~~~~~~~~~~~~~~~~~~
 
@@ -2619,13 +2612,6 @@ ralph.agents.timeout_clock
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.timeout_clock
-   :members:
-   :show-inheritance:
-
-ralph.agents.watchdog_fire_reason
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.agents.watchdog_fire_reason
    :members:
    :show-inheritance:
 
@@ -3948,13 +3934,6 @@ ralph.recovery.agent_failure_ledger
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.agent_failure_ledger
-   :members:
-   :show-inheritance:
-
-ralph.recovery.typed_signal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.recovery.typed_signal
    :members:
    :show-inheritance:
 
@@ -5700,13 +5679,6 @@ ralph.recovery.wait_kind
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.wait_kind
-   :members:
-   :show-inheritance:
-
-ralph.recovery.typed_signal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.recovery.typed_signal
    :members:
    :show-inheritance:
 

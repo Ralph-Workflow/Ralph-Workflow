@@ -149,6 +149,7 @@ def test_resolve_teardown_uses_the_injected_process_teardown() -> None:
     manager = ProcessManager()
     child = _sleeping_child(manager)
     calls: list[tuple[int, ProcessTerminationIssuer]] = []
+
     def _record(pid: int, *, issuer: ProcessTerminationIssuer) -> None:
         calls.append((pid, issuer))
 

@@ -28,9 +28,7 @@ from ralph.pipeline.conflict_resolution.progress import (
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStop,
-)
-from ralph.pipeline.conflict_resolution.rebase_loop import (
-    _resolve_rebase_in_progress as resolve_rebase_in_progress,
+    resolve_rebase_in_progress,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 

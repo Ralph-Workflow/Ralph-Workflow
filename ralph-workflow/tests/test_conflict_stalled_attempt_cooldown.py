@@ -118,7 +118,6 @@ def test_driver_never_reinvokes_a_stalled_agent_while_it_is_cooling_down(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three")
     )
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     clock = FakeClock()
     token = install_executors(clock=clock)
     try:

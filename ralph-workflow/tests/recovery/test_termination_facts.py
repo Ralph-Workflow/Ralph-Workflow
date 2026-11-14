@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -46,6 +47,8 @@ if TYPE_CHECKING:
     from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.events import AgentFailureEvent
+
+import_module("ralph.pipeline.runner")
 
 
 class _Handle(FakeManagedHandle):

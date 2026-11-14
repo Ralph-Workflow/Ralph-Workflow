@@ -292,9 +292,7 @@ def content_equivalence(
         feature_paths = _tree_paths(root, feature)
         base_paths = set()
 
-    missing = _find_missing_paths(
-        root, target, feature, resolved_base, feature_paths, excluded
-    )
+    missing = _find_missing_paths(root, target, feature, resolved_base, feature_paths, excluded)
 
     allowed: set[str] = set()
     for ref in (*source_refs, feature):

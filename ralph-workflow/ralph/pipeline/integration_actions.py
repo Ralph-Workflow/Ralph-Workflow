@@ -104,7 +104,7 @@ class _AgentRunner(Protocol):
         target: str,
         resolver: RebaseStopResolver,
         *,
-        session: ResolutionSession,
+        session: ResolutionSession | None = None,
     ) -> bool: ...
 
 

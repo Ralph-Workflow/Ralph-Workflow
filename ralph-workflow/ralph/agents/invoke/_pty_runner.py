@@ -92,11 +92,6 @@ def _close_iterator(iterator: object) -> None:
             iterator.close()
 
 
-def _process_teardown(ctx: AgentRunCtx) -> ProcessTeardown | None:
-    value: object = getattr(ctx, "process_teardown", None)
-    return value if isinstance(value, ProcessTeardown) else None
-
-
 def _terminate_pty_tree(supervisor: AttemptSupervisor) -> None:
     supervisor.cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN, terminate=True)
 
