@@ -225,7 +225,7 @@ def _repository_conflict_exhausted(
     target: str,
     identity: ConflictIdentity,
 ) -> bool:
-    return not resolver_allowed(state, target, identity, ledger=None, candidates=())
+    return not resolver_allowed(state, target, identity)
 
 
 def _pending_for_unavailable_agents(
@@ -568,12 +568,11 @@ def _configured_resolver_allowed(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> bool:
-    return resolver_allowed(
-        state,
-        target,
-        identity,
-        ledger=resolve_failure_ledger(ledger),
-        candidates=candidates,
+    if not resolver_allowed(state, target, identity):
+        return False
+    effective_ledger = resolve_failure_ledger(ledger)
+    return effective_ledger is None or effective_ledger.any_eligible(
+        "rebase_conflict_resolution", candidates
     )
 
 

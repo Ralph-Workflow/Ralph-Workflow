@@ -1,38 +1,32 @@
 from __future__ import annotations
 
-import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
+    from ralph.git.git_call_policy import GitCallClass
     from ralph.git.git_run_result import GitRunResult
-    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.config.gitlink_policy_config import GitlinkPolicyConfig, GitlinkPreference
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.pipeline.conflict_resolution import (
-    operator_command_for_paths,
-)
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
     try_deterministic_resolution,
 )
+from ralph.pipeline.conflict_resolution.gitlink_policy import choose_gitlink
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     RebaseStop,
     bind_active_rebase_resolution_session,
 )
-from ralph.pipeline.conflict_resolution.session import (
-    ResolutionSession,
-    ResolutionTerminationReason,
-)
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import (
     ConflictSight,
+    agent_eligible_paths,
     classify_unmerged_conflicts,
-    gitlink_escalation_message,
-    out_of_reach_paths,
+    policy_gitlink_paths,
 )
 
 _GIT_ENV = {
@@ -49,7 +43,7 @@ def _git(cwd: Path, *args: str, input_text: str | None = None) -> GitRunResult:
     res = run_git(
         args,
         cwd=cwd,
-        label="gitlink-escalation-test",
+        label="gitlink-policy-test",
         options=GitRunOptions(
             env=_GIT_ENV,
             input_data=input_text,
@@ -80,7 +74,7 @@ def _setup_submodule_remote(tmp_path: Path) -> tuple[Path, str, str, str]:
 
 
 def _add_descendant_commit(sub_origin: Path) -> str:
-    _git(sub_origin, "checkout", "-q", "branch_a")
+    _git(sub_origin, "checkout", "-q", "-b", "branch_a")
     _git(sub_origin, "commit", "--allow-empty", "-m", "descendant of a")
     return _git(sub_origin, "rev-parse", "HEAD").stdout.strip()
 
@@ -172,444 +166,200 @@ def allow_file_transport(
     return cfg_file
 
 
-@pytest.mark.timeout_seconds(5)
-def test_gitlink_ancestor_descendant_objects_present_resolved(
-    submodule_remote: tuple[Path, str, str, str],
-    super_repo: Path,
-) -> None:
-    sub_origin, base, sha_a, _sha_b = submodule_remote
-    sha_desc = _add_descendant_commit(sub_origin)
+def _stage_gitlink_conflict(repo: Path, base: str, ours: str, theirs: str) -> None:
+    index_info = f"160000 {base} 1\tsub\n160000 {ours} 2\tsub\n160000 {theirs} 3\tsub\n"
+    _git(repo, "update-index", "--index-info", input_text=index_info)
 
-    _git(super_repo / "sub", "fetch", "-q", "origin")
 
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
-    _git(super_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
+def _stop() -> RebaseStop:
+    return RebaseStop(
         stop_index=1,
         stop_cap=1,
         conflicted_files=("sub",),
-        sha="testsha1",
-        subject="rebase stop",
+        sha="gitlink-policy-stop",
+        subject="rebase stop gitlink policy",
     )
 
-    resolved = try_deterministic_resolution(super_repo, stop)
+
+def _recorded_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[object, ...]]:
+    from ralph.pipeline.conflict_resolution import deterministic_resolution
+
+    recorded: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        deterministic_resolution.logger,
+        "info",
+        lambda _message, *args: recorded.append(args),
+    )
+    return recorded
+
+
+@pytest.mark.timeout_seconds(5)
+def test_gitlink_conflict_completes_in_place_by_policy_without_operator_escalation(
+    monkeypatch: pytest.MonkeyPatch,
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
+    _sub_origin, base, sha_a, sha_b = submodule_remote
+    recorded = _recorded_review(monkeypatch)
+
+    _stage_gitlink_conflict(super_repo, base, sha_a, sha_b)
+
+    session = ResolutionSession()
+    with bind_active_rebase_resolution_session(session):
+        resolved = try_deterministic_resolution(super_repo, _stop())
+
     assert resolved is True
 
     unmerged = _git(super_repo, "ls-files", "-u").stdout.strip()
     assert unmerged == "", (
-        f"expected conflict to be resolved, but unmerged entries remain:\n{unmerged}"
+        f"expected the gitlink conflict to be resolved, but unmerged entries remain:\n{unmerged}"
     )
 
     staged = _git(super_repo, "ls-files", "-s", "sub").stdout.strip()
-    assert staged.startswith(f"160000 {sha_desc} 0")
+    assert staged.startswith(f"160000 {sha_a} 0")
+
+    assert recorded == [
+        (
+            "sub",
+            GitlinkPreference.VENDOR_IMMUTABLE,
+            base,
+            sha_a,
+            sha_b,
+            "ours",
+            sha_a,
+            ("unchanged-from-base", "ours", "theirs"),
+        )
+    ]
+
+    assert session.terminal_reason is None
+    assert session.operator_action_message is None
+    assert session.exhaustion_reason is None
+    assert session.unresolved_paths == ()
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_submodule_absent_objects_fetchable_resolved(
-    tmp_path: Path,
-    allow_file_transport: Path,
+def test_gitlink_policy_keeps_the_unchanged_vendor_pointer(
+    monkeypatch: pytest.MonkeyPatch,
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
-    assert os.environ["GIT_CONFIG_GLOBAL"] == str(allow_file_transport)
-    file_transport = run_git(
-        ("config", "--global", "--get", "protocol.file.allow"),
-        cwd=tmp_path,
-        label="git-file-transport-config",
-    )
-    assert file_transport.returncode == 0
-    assert file_transport.stdout.strip() == "always"
+    _sub_origin, base, _sha_a, sha_b = submodule_remote
+    recorded = _recorded_review(monkeypatch)
 
-    sub_origin, base, sha_a, _sha_b = submodule_remote
-    sha_desc = _add_descendant_commit(sub_origin)
+    _stage_gitlink_conflict(super_repo, base, base, sha_b)
 
-    clone_repo = tmp_path / "super_clone"
-    _git(tmp_path, "clone", "-q", str(super_repo), str(clone_repo))
-
-    assert not (clone_repo / "sub" / ".git").exists()
-
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
-    _git(clone_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
-        stop_index=1,
-        stop_cap=1,
-        conflicted_files=("sub",),
-        sha="testsha2",
-        subject="rebase stop clone",
-    )
-
-    resolved = try_deterministic_resolution(clone_repo, stop)
-    assert resolved is True
-
-    unmerged = _git(clone_repo, "ls-files", "-u").stdout.strip()
-    assert unmerged == ""
-
-    staged = _git(clone_repo, "ls-files", "-s", "sub").stdout.strip()
-    assert staged.startswith(f"160000 {sha_desc} 0")
-
-
-@pytest.mark.timeout_seconds(5)
-def test_ancestor_descendant_gitlink_resolves_to_descendant_after_submodule_fetch(
-    tmp_path: Path,
-    allow_file_transport: Path,
-    submodule_remote: tuple[Path, str, str, str],
-    super_repo: Path,
-) -> None:
-    sub_origin, base, sha_a, _sha_b = submodule_remote
-    sha_desc = _add_descendant_commit(sub_origin)
-
-    clone_repo = tmp_path / "super_clone"
-    _git(tmp_path, "clone", "-q", str(super_repo), str(clone_repo))
-
-    assert not (clone_repo / "sub" / ".git").exists()
-
-    absent_before = run_git(
-        ("-C", str(clone_repo / "sub"), "cat-file", "-e", sha_desc),
-        cwd=clone_repo,
-        label="gitlink-object-before-fetch",
-    )
-    assert absent_before.returncode != 0, "the descendant object must be absent before the fetch"
-
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_desc} 2\tsub\n160000 {sha_a} 3\tsub\n"
-    _git(clone_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
-        stop_index=1,
-        stop_cap=1,
-        conflicted_files=("sub",),
-        sha="testsha_descendant_ours",
-        subject="rebase stop descendant on the ours side",
-    )
-
-    resolved = try_deterministic_resolution(clone_repo, stop)
-    assert resolved is True
-
-    unmerged = _git(clone_repo, "ls-files", "-u").stdout.strip()
-    assert unmerged == ""
-
-    staged = _git(clone_repo, "ls-files", "-s", "sub").stdout.strip()
-    assert staged.startswith(f"160000 {sha_desc} 0")
-
-    present_after = run_git(
-        ("-C", str(clone_repo / "sub"), "cat-file", "-e", sha_desc),
-        cwd=clone_repo,
-        label="gitlink-object-after-fetch",
-    )
-    assert present_after.returncode == 0, "the fetch attempt must supply the missing object"
-
-
-@pytest.mark.timeout_seconds(5)
-def test_gitlink_denied_file_transport_escalates_on_sight_without_agent(
-    tmp_path: Path,
-    submodule_remote: tuple[Path, str, str, str],
-    super_repo: Path,
-) -> None:
-    sub_origin, base, sha_a, _sha_b = submodule_remote
-    sha_desc = _add_descendant_commit(sub_origin)
-
-    clone_repo = tmp_path / "super_clone"
-    _git(tmp_path, "clone", "-q", str(super_repo), str(clone_repo))
-
-    assert not (clone_repo / "sub" / ".git").exists()
-
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
-    _git(clone_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
-        stop_index=1,
-        stop_cap=1,
-        conflicted_files=("sub",),
-        sha="testsha_denied",
-        subject="rebase stop denied file transport",
-    )
-
-    agent_calls: list[str] = []
     session = ResolutionSession()
     with bind_active_rebase_resolution_session(session):
-        resolved = try_deterministic_resolution(clone_repo, stop)
+        resolved = try_deterministic_resolution(super_repo, _stop())
 
-    assert resolved is False
-
-    assert not (clone_repo / "sub" / ".git").exists()
-
-    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert session.last_failure_cause is ResolutionFailureCause.AGENT_FAILURE
-    assert session.unresolved_paths == ("sub",)
-
-    expected_cmd = operator_command_for_paths(("sub",))
-    assert expected_cmd == "git add -- sub"
-    assert session.exhaustion_reason is not None
-    assert "sub" in session.exhaustion_reason
-    assert expected_cmd in session.exhaustion_reason
-    assert agent_calls == []
-
-    unmerged = _git(clone_repo, "ls-files", "-u", "sub").stdout.strip()
-    assert f"160000 {base} 1\tsub" in unmerged
-    assert f"160000 {sha_a} 2\tsub" in unmerged
-    assert f"160000 {sha_desc} 3\tsub" in unmerged
-
-    from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
-    from ralph.policy import load_policy
-
-    agent_invocations: list[str] = []
-
-    def mock_invoker(agent_name: str, _repo_root: Path, _round_index: int) -> bool:
-        agent_invocations.append(agent_name)
-        return True
-
-    repo_root = Path(__file__).resolve().parents[1]
-    policy_bundle = load_policy(repo_root / "ralph" / "policy" / "defaults")
-    config = UnifiedConfig.model_validate({"general": {}})
-
-    driver_session = ResolutionSession()
-    outcome = run_rebase_conflict_resolution_outcome(
-        root=clone_repo,
-        target="main",
-        stop=stop,
-        config=config,
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=policy_bundle,
-        display=None,
-        display_context=None,
-        invoke=mock_invoker,
-        session=driver_session,
-    )
-    assert outcome.succeeded is False
-    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert outcome.exhaustion_message is not None
-    assert "git add -- sub" in outcome.exhaustion_message
-    assert agent_invocations == []
-
-
-@pytest.mark.timeout_seconds(5)
-def test_gitlink_submodule_present_missing_objects_fetched_and_resolved(
-    submodule_remote: tuple[Path, str, str, str],
-    super_repo: Path,
-) -> None:
-    sub_origin, base, sha_a, _sha_b = submodule_remote
-    sha_desc = _add_descendant_commit(sub_origin)
-
-    cat_check = run_git(
-        ["cat-file", "-e", sha_desc],
-        cwd=super_repo / "sub",
-        label="cat-file-check",
-    )
-    assert cat_check.returncode != 0
-
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
-    _git(super_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
-        stop_index=1,
-        stop_cap=1,
-        conflicted_files=("sub",),
-        sha="testsha3",
-        subject="rebase stop fetch",
-    )
-
-    resolved = try_deterministic_resolution(super_repo, stop)
     assert resolved is True
 
-    cat_check_after = run_git(
-        ["cat-file", "-e", sha_desc],
-        cwd=super_repo / "sub",
-        label="cat-file-check-after",
-    )
-    assert cat_check_after.returncode == 0
-
     staged = _git(super_repo, "ls-files", "-s", "sub").stdout.strip()
-    assert staged.startswith(f"160000 {sha_desc} 0")
+    assert staged.startswith(f"160000 {base} 0")
+
+    assert recorded[0][5] == "ours"
+    assert recorded[0][6] == base
+
+    assert session.terminal_reason is None
+    assert session.operator_action_message is None
 
 
 @pytest.mark.timeout_seconds(5)
-def test_diverged_gitlink_escalates_on_sight_no_agent_invoked(
+def test_gitlink_policy_preference_theirs_selects_the_theirs_pointer(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
     _sub_origin, base, sha_a, sha_b = submodule_remote
 
-    _git(super_repo / "sub", "fetch", "-q", "origin")
-
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_b} 3\tsub\n"
-    _git(super_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
-        stop_index=1,
-        stop_cap=1,
-        conflicted_files=("sub",),
-        sha="testsha4",
-        subject="rebase stop diverged",
-    )
-
-    agent_calls: list[str] = []
+    _stage_gitlink_conflict(super_repo, base, sha_a, sha_b)
 
     session = ResolutionSession()
     with bind_active_rebase_resolution_session(session):
-        resolved = try_deterministic_resolution(super_repo, stop)
+        resolved = try_deterministic_resolution(
+            super_repo,
+            _stop(),
+            GitlinkPolicyConfig(pointer_preference=GitlinkPreference.THEIRS),
+        )
 
-    assert resolved is False
+    assert resolved is True
 
-    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert session.last_failure_cause is ResolutionFailureCause.AGENT_FAILURE
-    assert session.unresolved_paths == ("sub",)
+    staged = _git(super_repo, "ls-files", "-s", "sub").stdout.strip()
+    assert staged.startswith(f"160000 {sha_b} 0")
 
-    expected_cmd = operator_command_for_paths(("sub",))
-    assert expected_cmd == "git add -- sub"
-    assert session.exhaustion_reason is not None
-    assert "sub" in session.exhaustion_reason
-    assert expected_cmd in session.exhaustion_reason
-
-    kinds = classify_unmerged_conflicts(super_repo, ("sub",))
-    assert kinds.get("sub") is ConflictSight.OUT_OF_REACH
-    assert out_of_reach_paths(kinds) == ("sub",)
-
-    msg = gitlink_escalation_message(("sub",))
-    assert "sub" in msg
-    assert expected_cmd in msg
-
-    assert agent_calls == []
+    assert session.terminal_reason is None
+    assert session.operator_action_message is None
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_unfetchable_objects_escalates_on_sight(
+def test_gitlink_policy_review_record_carries_the_three_stage_shas() -> None:
+    base = "1" * 40
+    ours = "2" * 40
+    theirs = "3" * 40
+
+    record = choose_gitlink("sub", base, ours, theirs)
+
+    assert record.path == "sub"
+    assert record.policy is GitlinkPreference.VENDOR_IMMUTABLE
+    assert record.base == base
+    assert record.ours == ours
+    assert record.theirs == theirs
+    assert record.selected_side == "ours"
+    assert record.selected_sha == ours
+    assert record.alternatives_considered == ("unchanged-from-base", "ours", "theirs")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_gitlink_conflict_is_policy_owned_and_outside_agent_eligible_kinds(
+    submodule_remote: tuple[Path, str, str, str],
+    super_repo: Path,
+) -> None:
+    _sub_origin, base, sha_a, sha_b = submodule_remote
+
+    _stage_gitlink_conflict(super_repo, base, sha_a, sha_b)
+
+    kinds = classify_unmerged_conflicts(super_repo, ("sub",))
+
+    assert kinds.get("sub") is ConflictSight.GITLINK_POLICY
+    assert policy_gitlink_paths(kinds) == ("sub",)
+    assert agent_eligible_paths(kinds) == ()
+    assert kinds.get("sub") not in {ConflictSight.AGENT, ConflictSight.AGENT_DECISION}
+
+
+@pytest.mark.timeout_seconds(5)
+def test_diverged_gitlink_with_unfetchable_object_still_resolves_by_policy(
     submodule_remote: tuple[Path, str, str, str],
     super_repo: Path,
 ) -> None:
     _sub_origin, base, sha_a, _sha_b = submodule_remote
 
-    nonexistent_sha = "ffffffffffffffffffffffffffffffffffffffff"
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {nonexistent_sha} 3\tsub\n"
-    _git(super_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
-        stop_index=1,
-        stop_cap=1,
-        conflicted_files=("sub",),
-        sha="testsha5",
-        subject="rebase stop unfetchable",
+    unfetchable = "f" * 40
+    absent_before = run_git(
+        ("-C", str(super_repo / "sub"), "cat-file", "-e", unfetchable),
+        cwd=super_repo,
+        label="gitlink-object-absent-before",
     )
+    assert absent_before.returncode != 0, "the submodule object must be absent before the resolve"
+
+    _stage_gitlink_conflict(super_repo, base, sha_a, unfetchable)
 
     session = ResolutionSession()
     with bind_active_rebase_resolution_session(session):
-        resolved = try_deterministic_resolution(super_repo, stop)
+        resolved = try_deterministic_resolution(super_repo, _stop())
 
-    assert resolved is False
-    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert session.unresolved_paths == ("sub",)
-    assert "git add -- sub" in (session.exhaustion_reason or "")
+    assert resolved is True
 
+    staged = _git(super_repo, "ls-files", "-s", "sub").stdout.strip()
+    assert staged.startswith(f"160000 {sha_a} 0")
 
-@pytest.mark.timeout_seconds(5)
-def test_diverged_gitlink_production_driver_and_rebase_seam(
-    submodule_remote: tuple[Path, str, str, str],
-    super_repo: Path,
-) -> None:
-    from ralph.config.models import UnifiedConfig
-    from ralph.pipeline import resolve_conflicted_rebase
-    from ralph.pipeline.auto_integrate_resolve import handle_unsuccessful_resolution
-    from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
-    from ralph.policy import load_policy
-
-    _sub_origin, base, sha_a, sha_b = submodule_remote
-    _git(super_repo / "sub", "fetch", "-q", "origin")
-
-    rebase_dir = super_repo / ".git" / "rebase-merge"
-    rebase_dir.mkdir()
-    (rebase_dir / "onto").write_text(base + "\n")
-    (rebase_dir / "orig-head").write_text(sha_a + "\n")
-    (rebase_dir / "msgnum").write_text("1\n")
-    (rebase_dir / "end").write_text("1\n")
-    (rebase_dir / "head-name").write_text("refs/heads/feature\n")
-    _git(super_repo, "update-ref", "REBASE_HEAD", "HEAD")
-
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_b} 3\tsub\n"
-    _git(super_repo, "update-index", "--index-info", input_text=index_info)
-
-    stop = RebaseStop(
-        stop_index=1,
-        stop_cap=10,
-        conflicted_files=("sub",),
-        sha=sha_b,
-        subject="rebase stop diverged production",
-    )
-
-    agent_invocations: list[str] = []
-
-    def mock_invoker(agent_name: str, _repo_root: Path, _round_index: int) -> bool:
-        agent_invocations.append(agent_name)
-        return True
-
-    repo_root = Path(__file__).resolve().parents[1]
-    policy_bundle = load_policy(repo_root / "ralph" / "policy" / "defaults")
-    config = UnifiedConfig.model_validate({"general": {}})
-
-    session = ResolutionSession()
-    outcome = run_rebase_conflict_resolution_outcome(
-        root=super_repo,
-        target="main",
-        stop=stop,
-        config=config,
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=policy_bundle,
-        display=None,
-        display_context=None,
-        invoke=mock_invoker,
-        session=session,
-    )
-
-    assert outcome.succeeded is False
-    assert outcome.reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert outcome.exhaustion_message is not None
-    assert "git add -- sub" in outcome.exhaustion_message
-    assert agent_invocations == [], (
-        "agent invoker must not be called during driver on-sight escalation"
-    )
-
-    merge_result = handle_unsuccessful_resolution(
-        outcome,
-        outcome.exhaustion_message,
-        conflicted=("sub",),
-    )
-    assert merge_result.reason is not None
-    assert "git add -- sub" in merge_result.reason
-
-    def stop_resolver(root: Path, target: str, rebase_stop: RebaseStop) -> ResolutionOutcome | bool:
-        return run_rebase_conflict_resolution_outcome(
-            root=root,
-            target=target,
-            stop=rebase_stop,
-            config=config,
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=policy_bundle,
-            display=None,
-            display_context=None,
-            invoke=mock_invoker,
-        )
-
-    _git(super_repo, "update-index", "--index-info", input_text=index_info)
-    rebase_resolution_result = resolve_conflicted_rebase(
-        super_repo,
-        "main",
-        stop_resolver,
-        None,
-        None,
-    )
-
-    assert rebase_resolution_result is not None
-    assert rebase_resolution_result.short_circuit is not None
-    assert rebase_resolution_result.short_circuit.last_reason is not None
-    assert "git add -- sub" in rebase_resolution_result.short_circuit.last_reason
-    assert agent_invocations == [], "agent invoker must not be called during rebase seam either"
+    assert session.terminal_reason is None
+    assert session.operator_action_message is None
+    assert session.exhaustion_reason is None
 
 
 @pytest.mark.timeout_seconds(5)
-def test_gitlink_deterministic_staging_command_failure_preserves_index(
+def test_gitlink_staging_failure_keeps_the_index_unmerged(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.git.git_run_result import GitRunResult
@@ -627,8 +377,7 @@ def test_gitlink_deterministic_staging_command_failure_preserves_index(
     sha_a = "2" * 40
     sha_desc = "3" * 40
 
-    index_info = f"160000 {base} 1\tsub\n160000 {sha_a} 2\tsub\n160000 {sha_desc} 3\tsub\n"
-    _git(super_repo, "update-index", "--index-info", input_text=index_info)
+    _stage_gitlink_conflict(super_repo, base, sha_a, sha_desc)
 
     orig_run_git = run_git
 
@@ -637,13 +386,9 @@ def test_gitlink_deterministic_staging_command_failure_preserves_index(
         *,
         cwd: Path | None,
         label: str,
-        options: Any = None,
-        call_class: Any = None,
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
     ) -> GitRunResult:
-        if label == "git-gitlink-object":
-            return GitRunResult(args=("cat-file",), returncode=0, stdout="", stderr="")
-        if label == "git-gitlink-ancestor":
-            return GitRunResult(args=("merge-base",), returncode=0, stdout="", stderr="")
         if label == "git-gitlink-resolve-readd":
             return GitRunResult(
                 args=("update-index",), returncode=1, stdout="", stderr="injected readd error"
@@ -655,14 +400,10 @@ def test_gitlink_deterministic_staging_command_failure_preserves_index(
         fake_run_git,
     )
 
-    stop = RebaseStop(
-        sha=sha_desc,
-        subject="test",
-        conflicted_files=("sub",),
-        stop_index=1,
-        stop_cap=1,
-    )
-    resolved = try_deterministic_resolution(super_repo, stop)
+    session = ResolutionSession()
+    with bind_active_rebase_resolution_session(session):
+        resolved = try_deterministic_resolution(super_repo, _stop())
+
     assert resolved is False
 
     unmerged = _git(super_repo, "ls-files", "-u", "sub").stdout.strip()

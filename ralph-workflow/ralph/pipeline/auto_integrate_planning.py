@@ -23,6 +23,15 @@ from ralph.pipeline.integration_resolution import (
     assess_tree_readiness,
     retained_integration_reason,
 )
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+    assert_never,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -212,8 +221,20 @@ def _finish_paused_rebase(
     )
     if isinstance(result, StopResolutionBlocked):
         return record_conflict(reason=result.reason, target=target)
-    if isinstance(result, RebaseResolutionResult) and result.succeeded:
-        return None
+    if isinstance(result, RebaseResolutionResult):
+        match result.outcome:
+            case ResolvedOutcome():
+                return None
+            case (
+                WaitingOutcome()
+                | RetryLaterOutcome()
+                | NextStrategyOutcome()
+                | ConfigFailureOutcome()
+                | UnknownOutcome()
+            ):
+                pass
+            case _ as unreachable:
+                assert_never(unreachable)
     from ralph.git.merge import observe_branch_sha
     from ralph.git.rebase.rebase import abort_rebase
     from ralph.pipeline.auto_integrate_record import clear_record

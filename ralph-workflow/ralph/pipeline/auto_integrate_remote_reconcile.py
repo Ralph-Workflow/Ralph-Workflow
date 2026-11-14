@@ -36,6 +36,16 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_resolution import retained_integration_reason
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+    assert_never,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -185,16 +195,29 @@ def _resolve_owned_reconciliation(
     detail = "resolution interrupted"
     try:
         with bind_integration_record_root(owner, repo_root):
-            resolved, reason = _resolve_rebase_stop(
+            outcome = _resolve_rebase_stop(
                 owner,
                 f"{remote}/{target}",
                 resolver,
                 conflict_resolution_config,
                 record,
             )
-        detail = reason or detail
-        if resolved and not rebase_in_progress(owner):
-            return _clear_successful_reconciliation_record(repo_root, target, remote)
+        match outcome:
+            case ResolvedOutcome():
+                if not rebase_in_progress(owner):
+                    return _clear_successful_reconciliation_record(repo_root, target, remote)
+            case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
+                detail = f"waiting for {condition}; resumes when {resumes_when}"
+            case RetryLaterOutcome(until=until, on_change=on_change):
+                detail = on_change or f"retry after {until}"
+            case NextStrategyOutcome(strategy=strategy):
+                detail = f"continuing with autonomous strategy: {strategy}"
+            case ConfigFailureOutcome(file=file):
+                detail = f"fix {file} then run ralph --check-config"
+            case UnknownOutcome(error=error):
+                detail = f"unknown reconciliation outcome: {error}"
+            case _ as unreachable:
+                assert_never(unreachable)
     except Exception as exc:
         detail = str(exc)
     if is_temporary:
@@ -225,12 +248,16 @@ def resolve_rebase_in_progress(
     resolver: RebaseStopResolver,
     *,
     session: ResolutionSession | None = None,
-) -> bool:
-    from ralph.pipeline.conflict_resolution.rebase_loop import (
-        resolve_rebase_in_progress as resolve_rebase_stops,
-    )
+) -> StopResolutionOutcome:
+    from ralph.pipeline._stop_resolution_entry import production_rebase_runner
 
-    return resolve_rebase_stops(owner, target, resolver, session=session)
+    runner = production_rebase_runner()
+    resolved_session = (
+        session if session is not None else resolution_session_from_config(UnifiedConfig())
+    )
+    if runner.resolve_rebase(owner, target, resolver, session=resolved_session):
+        return ResolvedOutcome()
+    return RetryLaterOutcome(on_change="rebase resolution state changes")
 
 
 _DEFAULT_RESOLVE_REBASE_IN_PROGRESS = resolve_rebase_in_progress
@@ -242,20 +269,14 @@ def _resolve_rebase_stop(
     resolver: RebaseStopResolver,
     config: UnifiedConfig | None,
     record: IntegrationRecord,
-) -> tuple[bool, str | None]:
+) -> StopResolutionOutcome:
     if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
         from ralph.pipeline.conflict_resolution.rebase_loop import (
             resolution_session_from_config,
         )
 
         session = resolution_session_from_config(config) if config is not None else None
-        try:
-            return (
-                bool(resolve_rebase_in_progress(owner, target, resolver, session=session)),
-                None,
-            )
-        except TypeError:
-            return bool(resolve_rebase_in_progress(owner, target, resolver)), None
+        return resolve_rebase_in_progress(owner, target, resolver, session=session)
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
@@ -273,10 +294,10 @@ def _resolve_rebase_stop(
         ),
     )
     if isinstance(result, StopResolutionBlocked):
-        return False, result.reason
+        return WaitingOutcome(result.reason, "resolution attempt key changes")
     if not isinstance(result, RebaseResolutionResult):
-        return False, "rebase stop resolution returned an invalid result"
-    return result.succeeded, result.reason
+        return UnknownOutcome(TypeError("rebase stop resolution returned an invalid result"))
+    return result.outcome
 
 
 def _clear_successful_reconciliation_record(

@@ -505,7 +505,7 @@ def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_al
     )
     monkeypatch.setattr(remote_reconcile, "clear_record", lambda *_a: None)
 
-    config = _config(conflict_resolution={"total_resolution_cap_seconds": 60.0})
+    config = _config()
     outcome = remote_reconcile.reconcile_target_onto_remote(
         Path("/repo"),
         "main",
@@ -516,7 +516,6 @@ def test_conflict_resolution_regression_remote_reconcile_binds_one_session_to_al
 
     assert outcome.reconciled is True
     assert len(sessions) == 1
-    assert sessions[0].total_resolution_cap_seconds == 60.0
 
 
 def test_target_reconciliation_offers_rebase_stop_resolver(

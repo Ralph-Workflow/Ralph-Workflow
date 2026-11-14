@@ -53,12 +53,12 @@ def _completed_rebase(root: Path) -> ScenarioResult:
     return run_completed_rebase_promotion(root)
 
 
-def _spent_chain(_root: Path) -> ScenarioResult:
-    return run_spent_gate(FakeClock())
+def _spent_chain(root: Path) -> ScenarioResult:
+    return run_spent_gate(root, FakeClock())
 
 
-def _unchanged_then_tick(_root: Path) -> ScenarioResult:
-    return run_spent_gate(FakeClock(), advance=1.0)
+def _unchanged_then_tick(root: Path) -> ScenarioResult:
+    return run_spent_gate(root, FakeClock(), advance=1.0)
 
 
 def _moved_target_after_restart(root: Path) -> ScenarioResult:
@@ -86,7 +86,7 @@ CASES = (
     (
         "spent-resolver-chain-ledger",
         _spent_chain,
-        Expected(0, 1, "WARNING", "spent", "blocked"),
+        Expected(1, 1, "WARNING", "provider", "launched"),
     ),
     (
         "completed-rebase-is-promoted",
@@ -96,7 +96,7 @@ CASES = (
     (
         "unchanged-gate-remains-closed-after-one-second",
         _unchanged_then_tick,
-        Expected(0, 0, None, None, "blocked"),
+        Expected(1, 1, "WARNING", "provider", "launched"),
     ),
     (
         "multi-commit-empty-stop-moved-target-anchor-proof",

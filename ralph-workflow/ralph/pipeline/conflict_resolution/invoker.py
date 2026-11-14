@@ -2,17 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
-from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
-from ralph.pipeline.conflict_resolution.operator_cap import (
-    remaining_operator_cap as _remaining_operator_cap,
-)
 from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
-    emit_conflict_phase_line,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
+from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,6 +16,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
+    from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.factory import PipelineDeps
@@ -47,19 +42,9 @@ def default_invoker(
     target: str,
     require_completion_evidence: bool = False,
 ) -> ResolutionInvoker:
-    cap = session.total_resolution_cap_seconds
     interval = limits.status_interval_seconds
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        remaining = _remaining_operator_cap(cap, session, clock)
-        if remaining is not None and remaining <= 0.0:
-            session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
-            emit_conflict_phase_line(
-                display,
-                f"OPERATOR_CAP_REACHED: the resolution cap expired before "
-                f"round {round_index} could launch {agent_name}",
-            )
-            return False
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
         reporter = ResolutionStatusReporter(
             display=display,
             target=target,
@@ -85,7 +70,6 @@ def default_invoker(
             policy_bundle=policy_bundle,
             display=display,
             display_context=display_context,
-            operator_cap_seconds=remaining,
             inactivity_timeout_seconds=inactivity_timeout,
             status_interval_seconds=interval,
             activity_status_listener=reporter.observe,
@@ -93,7 +77,14 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
-        return bool(result)
+        if result:
+            return ResolvedOutcome()
+        return classify_resolution_failure(
+            terminal_reason=session.terminal_reason,
+            failure_cause=session.last_failure_cause,
+            reason=session.exhaustion_reason,
+            paths=session.unresolved_paths,
+        )
 
     return _invoke
 

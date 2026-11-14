@@ -62,6 +62,7 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
 )
 
 if TYPE_CHECKING:
+    from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.config.models import UnifiedConfig
 
 _UNKNOWN_SUBJECT = "(subject unavailable)"
@@ -112,6 +113,10 @@ class RebaseStop:
 
 type RebaseStopResolver = Callable[["Path", str, RebaseStop], ResolutionOutcome | bool]
 
+_ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
+    "active_gitlink_policy", default=None
+)
+
 
 def _resolution_succeeded(result: ResolutionOutcome | bool) -> bool:
     return result.succeeded if isinstance(result, ResolutionOutcome) else result
@@ -124,7 +129,7 @@ def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
         max_rounds_per_stop=limits.max_rounds_per_stop,
         max_rebase_conflict_stops=limits.max_rebase_conflict_stops,
         max_fallback_agents=limits.max_fallback_agents,
-        total_resolution_cap_seconds=limits.total_resolution_cap_seconds,
+        gitlink_policy=limits.gitlink_policy,
     )
 
 
@@ -154,8 +159,12 @@ def _resolve_rebase_in_progress(
         effective_cap = _configured_stop_cap(effective_session, stop_cap)
         if effective_session is None:
             return _resolve_stops(root, target, resolver, effective_cap)
-        with bind_active_rebase_resolution_session(effective_session):
-            return _resolve_stops(root, target, resolver, effective_cap)
+        policy_token = _ACTIVE_GITLINK_POLICY.set(effective_session.gitlink_policy)
+        try:
+            with bind_active_rebase_resolution_session(effective_session):
+                return _resolve_stops(root, target, resolver, effective_cap)
+        finally:
+            _ACTIVE_GITLINK_POLICY.reset(policy_token)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: rebase resolution loop failed for '{}': {}",
@@ -248,7 +257,11 @@ def _resolve_one_stop(
     before = _worktree_dirty_paths(root)
     if before is None:
         return False
-    if _try_deterministic_resolution(root, stop):
+    if _try_deterministic_resolution(
+        root,
+        stop,
+        gitlink_policy=_ACTIVE_GITLINK_POLICY.get(),
+    ):
         if _stage_and_prove(root, stop) and _continue_past(root, stop):
             return True
         logger.info(

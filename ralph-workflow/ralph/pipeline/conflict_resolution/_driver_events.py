@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline._integration_status import IntegrationStatus
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -15,6 +14,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline._integration_status import IntegrationStatus
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
@@ -35,18 +35,11 @@ def _emit(display: ParallelDisplay | None, line: str) -> None:
 
 
 def announce_declared_decisions(
-    display: ParallelDisplay | None, status: IntegrationStatus | Sequence[str] | None
+    display: ParallelDisplay | None, status: IntegrationStatus | None
 ) -> None:
-    if status is None:
+    if status is None or not status.path_details:
         return
-    if isinstance(status, IntegrationStatus):
-        if not status.path_details:
-            return
-        details = "; ".join(status.path_details)
-    else:
-        if not status:
-            return
-        details = "; ".join(f"{path}: marker-less declaration" for path in status)
+    details = "; ".join(status.path_details)
     _emit(
         display,
         "conflict(s) git could not write markers into, so the resolution cannot be "

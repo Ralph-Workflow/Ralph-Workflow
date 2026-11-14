@@ -90,48 +90,14 @@ def classify_ralph_origin_fault(payload: str) -> ResolutionTerminationReason | N
     return None
 
 
-def _classify_text_attempt_fault(text: str) -> AttemptFault:
-    try:
-        return _REASON_TO_FAULT.get(ResolutionTerminationReason(text), AttemptFault.UNKNOWN)
-    except ValueError:
-        pass
-
-    if classify_ralph_origin_fault(text) is not None:
-        return AttemptFault.AGENT_INFRASTRUCTURE_FAILURE
-    lowered = text.lower()
-    if any(
-        k in lowered
-        for k in (
-            "tool_surface_dead",
-            "tool surface dead",
-            "candidate_unavailable",
-            "candidate unavailable",
-        )
-    ):
-        return AttemptFault.AGENT_TOOL_DEAD
-    if any(k in lowered for k in ("unknown", "attempt_failed", "attempt failed")):
-        return AttemptFault.UNKNOWN
-    return AttemptFault.AGENT_EXITED
-
-
-def classify_attempt_fault(evidence: object = None) -> AttemptFault:
+def classify_attempt_fault(
+    evidence: AttemptFault | ResolutionTerminationReason | None = None,
+) -> AttemptFault:
     if isinstance(evidence, AttemptFault):
         return evidence
     if evidence is None:
         return AttemptFault.AGENT_HEALTHY
-    if isinstance(evidence, ResolutionTerminationReason):
-        return _REASON_TO_FAULT.get(evidence, AttemptFault.UNKNOWN)
-
-    text = str(evidence).strip()
-    if not text or text.lower() == "healthy":
-        return AttemptFault.AGENT_HEALTHY
-
-    try:
-        return AttemptFault(text)
-    except ValueError:
-        pass
-
-    return _classify_text_attempt_fault(text)
+    return _REASON_TO_FAULT.get(evidence, AttemptFault.UNKNOWN)
 
 
 def attempt_fault_to_termination_reason(

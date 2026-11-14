@@ -194,10 +194,10 @@ def _handle_candidate_failure(
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     if not isinstance(invoker_result, ResolutionOutcome):
-        fault = classify_attempt_fault(session.last_attempt_evidence)
+        fault = classify_attempt_fault(session.terminal_reason)
         if session.terminal_reason is None:
             session.terminal_reason = (
-                attempt_fault_to_termination_reason(fault, session.last_attempt_evidence)
+                attempt_fault_to_termination_reason(fault)
                 or ResolutionTerminationReason.ATTEMPT_FAILED
             )
         if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:

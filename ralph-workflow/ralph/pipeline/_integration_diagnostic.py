@@ -313,7 +313,6 @@ def diagnose_retained_integration(
                             policy_bundle=ctx.policy_bundle,
                             display=ctx.active_display,
                             display_context=ctx.display_context,
-                            operator_cap_seconds=ctx.config.conflict_resolution.total_resolution_cap_seconds,
                             require_completion_evidence=True,
                             session=attempt_session,
                         )

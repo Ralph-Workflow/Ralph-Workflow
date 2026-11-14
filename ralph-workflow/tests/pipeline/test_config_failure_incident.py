@@ -190,7 +190,6 @@ def test_diagnose_retained_integration_handles_workspace_context_error(
     ctx.active_display = None
     ctx.display_context = None
     ctx.config = MagicMock()
-    ctx.config.conflict_resolution.total_resolution_cap_seconds = 100.0
     ctx.policy_bundle = MagicMock()
     ctx.registry = MagicMock()
     ctx.registry.get.return_value = MagicMock()

@@ -22,7 +22,6 @@ from ralph.pipeline.agent_retry_intent import (
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
-from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
     PolicyValidationError,
@@ -57,7 +56,6 @@ from ralph.recovery.classifier import (
     FailureClassifier,
     FailureContext,
 )
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
@@ -343,22 +341,6 @@ if TYPE_CHECKING:
         [AttemptFacts, AttributionVerdict, ProbeOutcome | None, TypedSignal | None],
         PersistedVerdict,
     ]
-
-
-def _typed_conflict_attempt_reason(
-    outcome: ConflictAttemptOutcome,
-    unresolved_count: int,
-) -> str:
-    if outcome.value == "unresolved_remaining":
-        return f"agent reported success but {unresolved_count} conflicted path(s) remain"
-    if outcome in (ConflictAttemptOutcome.STALLED, ConflictAttemptOutcome.STALLED_NO_PROGRESS):
-        return (
-            f"agent reported success but made no progress: {unresolved_count} "
-            "conflicted path(s) remain unchanged"
-        )
-    if outcome.value == "no_activity":
-        return "candidate produced no activity before it exited"
-    return "conflict attempt failed"
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -1590,51 +1572,6 @@ class RecoveryController:
 
     def note_retry_exhaustion(self, phase: str, agent: str) -> None:
         self._spent_agents.setdefault(phase, set()).add(agent)
-
-    def classify_conflict_attempt(
-        self,
-        raw_failure: BaseException | str | None,
-        *,
-        agent: str,
-        phase: str = RESOLUTION_DRAIN_NAME,
-        connectivity_state: str | None = None,
-        outcome: ConflictAttemptOutcome | None = None,
-        unresolved_count: int = 0,
-    ) -> ClassifiedFailure:
-        effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
-        if effective is not ConflictAttemptOutcome.RAW:
-            reason = _typed_conflict_attempt_reason(effective, unresolved_count)
-            logger.info(
-                "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
-                effective.value,
-                agent,
-                phase,
-                reason,
-            )
-            unavailable_reason = None
-            if effective is ConflictAttemptOutcome.NO_ACTIVITY:
-                unavailable_reason = UnavailabilityReason.NO_OUTPUT_AT_START
-            elif effective in (
-                ConflictAttemptOutcome.STALLED,
-                ConflictAttemptOutcome.STALLED_NO_PROGRESS,
-            ):
-                unavailable_reason = UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
-            return ClassifiedFailure(
-                category=FailureCategory.AGENT,
-                reason=reason,
-                attributed_agent=agent,
-                attributed_phase=phase,
-                counts_against_budget=unavailable_reason is not None,
-                original_exception=raw_failure if isinstance(raw_failure, BaseException) else None,
-                raw_message="" if raw_failure is None else str(raw_failure),
-                must_charge_ledger=True,
-                is_unavailable=unavailable_reason is not None,
-                unavailability_reason=unavailable_reason,
-            )
-        raw_text: BaseException | str = raw_failure if raw_failure is not None else ""
-        return self._classifier.classify(
-            raw_text, phase=phase, agent=agent, connectivity_state=connectivity_state
-        )
 
     def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
         if not candidates:

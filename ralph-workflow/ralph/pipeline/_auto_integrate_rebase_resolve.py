@@ -23,13 +23,15 @@ from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
-from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
-from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
-from ralph.pipeline.resolution_outcome_resolved import Resolved
-from ralph.pipeline.resolution_outcome_retry_later import RetryLater
-from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -145,7 +147,7 @@ def resolve_conflicted_rebase(
                 else ResolutionFailureCause.NONE
             )
             res = RebaseResolutionResult(
-                False,
+                RetryLaterOutcome(on_change=outcome.reason),
                 outcome.reason,
                 (
                     deferred_cause
@@ -158,7 +160,20 @@ def resolve_conflicted_rebase(
             res = outcome
         else:
             raise TypeError("rebase stop resolution returned an invalid result")
-    if res.succeeded and not _merge_mod.set_resolving_rebase(root, False):
+    match res.outcome:
+        case ResolvedOutcome():
+            resolution_completed = True
+        case (
+            WaitingOutcome()
+            | RetryLaterOutcome()
+            | NextStrategyOutcome()
+            | ConfigFailureOutcome()
+            | UnknownOutcome()
+        ):
+            resolution_completed = False
+        case _ as unreachable:
+            assert_never(unreachable)
+    if resolution_completed and not _merge_mod.set_resolving_rebase(root, False):
         logger.warning(
             "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
         )
@@ -216,14 +231,8 @@ def _pending_continue_run(record: IntegrationRecord, target: str) -> RebaseRunRe
     )
 
 
-def _rebase_outcome(result: RebaseResolutionResult) -> ResolutionOutcomeType:
-    if result.succeeded:
-        return Resolved()
-    return classify_resolution_failure(
-        terminal_reason=result.terminal_reason,
-        failure_cause=result.failure_cause,
-        reason=result.reason,
-    )
+def _rebase_outcome(result: RebaseResolutionResult) -> StopResolutionOutcome:
+    return result.outcome
 
 
 def _conflict_run(
@@ -258,7 +267,7 @@ def _rebase_run_result(
     failure_reason = (
         result.reason or "rebase resolution incomplete; progress retained for next agent"
     )
-    if record is not None and not result.succeeded:
+    if record is not None and not isinstance(outcome, ResolvedOutcome):
         from ralph.pipeline.auto_integrate_record import write_record
 
         write_record(root, record.model_copy(update={"last_failure_cause": failure_cause}))

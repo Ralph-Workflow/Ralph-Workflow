@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.pipeline.resolution_outcome import StopResolutionOutcome, WaitingOutcome
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -24,7 +24,7 @@ class RebaseContinuationExecutor(Protocol):
         target: str,
         resolver: RebaseStopResolver,
         config: ConflictResolutionConfig | None,
-    ) -> tuple[bool, str | None, ResolutionFailureCause]: ...
+    ) -> StopResolutionOutcome: ...
 
 
 class _LiveRebaseContinuationExecutor:
@@ -34,7 +34,7 @@ class _LiveRebaseContinuationExecutor:
         target: str,
         resolver: RebaseStopResolver,
         config: ConflictResolutionConfig | None,
-    ) -> tuple[bool, str | None, ResolutionFailureCause]:
+    ) -> StopResolutionOutcome:
         from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
@@ -53,14 +53,13 @@ class _LiveRebaseContinuationExecutor:
             ),
         )
         if isinstance(outcome, StopResolutionBlocked):
-            return (False, outcome.reason, ResolutionFailureCause.UNRESOLVED_CONFLICT)
+            return WaitingOutcome(outcome.reason, "resolution attempt key changes")
         if not isinstance(outcome, RebaseResolutionResult):
-            return (
-                False,
+            return WaitingOutcome(
                 "rebase stop resolution returned an invalid result",
-                ResolutionFailureCause.CONTEXT_FAILURE,
+                "resolution implementation is repaired",
             )
-        return outcome.succeeded, outcome.reason, outcome.failure_cause
+        return outcome.outcome
 
 
 _LIVE_REBASE_CONTINUATION_EXECUTOR = _LiveRebaseContinuationExecutor()

@@ -292,52 +292,33 @@ def test_launch_failure_is_not_collapsed_to_candidate_declined(
     assert session.terminal_reason is ResolutionTerminationReason.EXCEPTION
 
 
-def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_controller(
+def test_failed_invoke_routes_launch_provider_and_decline_through_shared_finalizer(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.failure_classifier import FailureClassifier
-
     seen: list[str] = []
+
+    original = RecoveryController.finalize_attempt
 
     def _spy(
         self: RecoveryController,
-        raw_failure: BaseException | str | None,
-        *,
-        agent: str,
-        phase: str = "rebase_conflict_resolution",
-        connectivity_state: str | None = None,
-        outcome: object | None = None,
-        unresolved_count: int = 0,
+        phase: str,
+        agent: str | None,
+        **kwargs: object,
     ) -> object:
-        from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
-
-        effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
-        if effective is not ConflictAttemptOutcome.RAW:
-            seen.append("decline")
-            return RecoveryController.classify_conflict_attempt(
-                self,
-                raw_failure,
-                agent=agent,
-                phase=phase,
-                connectivity_state=connectivity_state,
-                outcome=effective,
-                unresolved_count=unresolved_count,
-            )
-        text = str(raw_failure).lower() if raw_failure is not None else ""
+        exc = kwargs.get("exc")
+        text = str(exc).lower() if exc is not None else ""
         if "launch" in text:
             seen.append("launch")
         elif "provider" in text:
             seen.append("provider")
         else:
             seen.append("decline")
-        return FailureClassifier().classify(
-            raw_failure if raw_failure is not None else "", phase=phase, agent=agent
-        )
+        return original(self, phase, agent, **kwargs)
 
     monkeypatch.setattr(
         RecoveryController,
-        "classify_conflict_attempt",
+        "finalize_attempt",
         _spy,
         raising=False,
     )

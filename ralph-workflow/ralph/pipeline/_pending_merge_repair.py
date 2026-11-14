@@ -153,7 +153,6 @@ def _repair_owned_merge(
             policy_bundle=policy_bundle,
             display=display,
             display_context=display_context,
-            operator_cap_seconds=config.conflict_resolution.total_resolution_cap_seconds,
             require_completion_evidence=True,
         )
 

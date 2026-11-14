@@ -20,6 +20,15 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+    assert_never,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -414,13 +423,23 @@ def _reconcile_in_progress_rebase(
                 summary=f"rebase in progress on {target} could not be resolved",
                 pushed=False,
             )
-        if not result.succeeded:
-            return _PushOutcome(
-                success=False,
-                summary=result.reason or f"rebase in progress on {target} could not be resolved",
-                pushed=False,
-            )
-        return None
+        match result.outcome:
+            case ResolvedOutcome():
+                return None
+            case (
+                WaitingOutcome()
+                | RetryLaterOutcome()
+                | NextStrategyOutcome()
+                | ConfigFailureOutcome()
+                | UnknownOutcome()
+            ):
+                return _PushOutcome(
+                    success=False,
+                    summary=result.reason or f"rebase in progress on {target} could not be resolved",
+                    pushed=False,
+                )
+            case _ as unreachable:
+                assert_never(unreachable)
     from ralph.pipeline.conflict_resolution.abort import (
         abort_rebase_discarding_progress,
     )

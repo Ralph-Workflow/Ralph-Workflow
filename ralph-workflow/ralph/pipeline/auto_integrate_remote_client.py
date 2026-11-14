@@ -138,13 +138,11 @@ def _prepare_effective_resolver(
         start_conflict_attempt as _start_conflict_attempt,
     )
 
-    if not _resolver_allowed(
-        prior_state,
-        target,
-        identity,
-        ledger=ledger,
-        candidates=candidates,
-    ) or not _start_conflict_attempt(identity):
+    budget_allows = _resolver_allowed(prior_state, target, identity)
+    eligibility_allows = ledger is None or ledger.any_eligible(
+        "rebase_conflict_resolution", candidates
+    )
+    if not budget_allows or not eligibility_allows or not _start_conflict_attempt(identity):
         return None, False
     return rebase_stop_resolver, True
 

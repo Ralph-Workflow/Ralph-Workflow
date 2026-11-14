@@ -19,9 +19,6 @@ from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions as _announce_declared_decisions,
 )
 from ralph.pipeline.conflict_resolution._driver_events import (
-    emit_expired_operator_cap as _emit_expired_operator_cap,
-)
-from ralph.pipeline.conflict_resolution._driver_events import (
     emit_success as _emit_success,
 )
 from ralph.pipeline.conflict_resolution._driver_rounds import (
@@ -45,9 +42,6 @@ from ralph.pipeline.conflict_resolution.graph import (
 from ralph.pipeline.conflict_resolution.invoker import default_invoker as _default_invoker
 from ralph.pipeline.conflict_resolution.operator_cap import (
     MonotonicClock,
-)
-from ralph.pipeline.conflict_resolution.operator_cap import (
-    operator_cap_expired as _operator_cap_expired,
 )
 from ralph.pipeline.conflict_resolution.pipeline_entrypoints import (
     run_conflict_resolution_pipeline,
@@ -268,7 +262,7 @@ def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
         max_rounds_per_stop=limits.max_rounds_per_stop,
         max_rebase_conflict_stops=limits.max_rebase_conflict_stops,
         max_fallback_agents=limits.max_fallback_agents,
-        total_resolution_cap_seconds=limits.total_resolution_cap_seconds,
+        gitlink_policy=limits.gitlink_policy,
     )
 
 
@@ -573,9 +567,6 @@ def _execute_round_loop(
         round_index = session.rounds_spent
         while True:
             round_index += 1
-            if _operator_cap_expired(session, clock):
-                _emit_expired_operator_cap(display, session, conflicted, clock)
-                return False
             _push_round_status(display, root, target, round_index, round_cap, stop)
             prompt_path = prompt_materializer(
                 root=root,

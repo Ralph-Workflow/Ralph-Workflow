@@ -1594,13 +1594,7 @@ def _cold_capped_escalation_due(
 
     if not rebase.resolution_exhausted:
         return False
-    if resolver_allowed(
-        rebase,
-        target,
-        identity,
-        ledger=ledger,
-        candidates=candidates,
-    ):
+    if resolver_allowed(rebase, target, identity):
         return False
     session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
@@ -1685,13 +1679,8 @@ def _run_owned_integration_conflict_resolution(
         candidates=installed,
     ):
         return _run_cold_capped_escalation(ctx, target, rebase)
-    if rebase is not None and not resolver_allowed(
-        rebase,
-        target,
-        identity,
-        ledger=ledger,
-        candidates=installed,
-    ):
+    eligible = ledger is None or ledger.any_eligible("rebase_conflict_resolution", installed)
+    if rebase is not None and (not resolver_allowed(rebase, target, identity) or not eligible):
         logger.warning(
             "integration resolution: no eligible conflict resolver for target '{}'; escalating",
             target,
@@ -2415,12 +2404,8 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         if isinstance(controller_candidate, RecoveryController)
         else None
     )
-    if resolver_allowed(
-        rebase,
-        target,
-        identity,
-        ledger=ledger,
-        candidates=installed,
+    if resolver_allowed(rebase, target, identity) and (
+        ledger is None or ledger.any_eligible("rebase_conflict_resolution", installed)
     ):
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "

@@ -35,8 +35,6 @@ def test_attempt_fault_enum_values() -> None:
 )
 def test_classify_attempt_fault_round_trip_enum(fault: AttemptFault) -> None:
     assert classify_attempt_fault(fault) is fault
-    assert classify_attempt_fault(fault.value) is fault
-    assert classify_attempt_fault(fault.name) is fault
 
 
 @pytest.mark.parametrize(
@@ -96,28 +94,10 @@ def test_classify_attempt_fault_matches_existing_termination_reasons(
     expected_fault: AttemptFault,
 ) -> None:
     assert classify_attempt_fault(reason) is expected_fault
-    assert classify_attempt_fault(reason.value) is expected_fault
 
 
-def test_classify_attempt_fault_from_payload_strings() -> None:
-    assert (
-        classify_attempt_fault("transport_loop_detected")
-        is AttemptFault.AGENT_INFRASTRUCTURE_FAILURE
-    )
-    assert (
-        classify_attempt_fault("SUPERVISION_INFRASTRUCTURE_FAILURE")
-        is AttemptFault.AGENT_INFRASTRUCTURE_FAILURE
-    )
-    assert (
-        classify_attempt_fault("candidate produced no activity before it exited")
-        is AttemptFault.AGENT_EXITED
-    )
-    assert classify_attempt_fault("candidate_unavailable") is AttemptFault.AGENT_TOOL_DEAD
-    assert classify_attempt_fault("tool_surface_dead") is AttemptFault.AGENT_TOOL_DEAD
-    assert classify_attempt_fault("attempt failed") is AttemptFault.UNKNOWN
+def test_classify_attempt_fault_defaults_without_typed_evidence() -> None:
     assert classify_attempt_fault(None) is AttemptFault.AGENT_HEALTHY
-    assert classify_attempt_fault("") is AttemptFault.AGENT_HEALTHY
-    assert classify_attempt_fault("healthy") is AttemptFault.AGENT_HEALTHY
 
 
 def test_attempt_fault_to_termination_reason_with_specific_evidence() -> None:

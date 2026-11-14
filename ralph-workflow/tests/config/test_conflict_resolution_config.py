@@ -8,7 +8,6 @@ from loguru import logger
 from pydantic import ValidationError
 
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
-from ralph.config.loader import load_config
 from ralph.config.models import UnifiedConfig
 
 
@@ -20,7 +19,6 @@ def test_default_conflict_resolution_configuration_has_fixed_documented_values()
     assert resolution.max_rounds_per_stop == 3
     assert resolution.max_rebase_conflict_stops == 10
     assert resolution.max_fallback_agents == 2
-    assert resolution.total_resolution_cap_seconds is None
 
 
 def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -> None:
@@ -42,8 +40,6 @@ def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -
     [
         ("inactivity_timeout_seconds", 0.0),
         ("status_interval_seconds", -1.0),
-        ("total_resolution_cap_seconds", 0.0),
-        ("total_resolution_cap_seconds", float("inf")),
         ("max_rounds_per_stop", 0),
         ("max_rebase_conflict_stops", 0),
         ("max_fallback_agents", 0),
@@ -54,32 +50,6 @@ def test_conflict_resolution_configuration_rejects_invalid_fields(
 ) -> None:
     with pytest.raises(ValidationError, match=field):
         UnifiedConfig.model_validate({"conflict_resolution": {field: value}})
-
-
-def test_config_loader_warns_when_operator_enables_active_resolution_cap(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    config_path = tmp_path / "ralph-workflow.toml"
-    config_path.write_text(
-        "[conflict_resolution]\ntotal_resolution_cap_seconds = 60.0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
-    monkeypatch.setattr(
-        "ralph.config.loader.GLOBAL_AGENTS_CONFIG_PATH", tmp_path / "missing-agents.toml"
-    )
-    records: list[str] = []
-    sink_id = logger.add(records.append, level="WARNING", format="{message}")
-    try:
-        config = load_config(config_path=config_path)
-    finally:
-        logger.remove(sink_id)
-
-    assert config.conflict_resolution.total_resolution_cap_seconds == 60.0
-    assert [record.strip() for record in records] == [
-        "conflict_resolution.total_resolution_cap_seconds is enabled: active resolution may be "
-        "stopped by the operator cap"
-    ]
 
 
 def test_config_loader_identifies_unknown_conflict_resolution_field() -> None:
@@ -104,7 +74,7 @@ def test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator
         for name in names
         if any(token in name for token in ("wait", "ceiling", "deadline", "elapsed", "child"))
     }
-    assert elapsed_kills <= {"total_resolution_cap_seconds"}
+    assert not elapsed_kills
     assert "inactivity_timeout_seconds" in names
 
 

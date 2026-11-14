@@ -188,12 +188,11 @@ def test_conflict_resolution_regression_normal_rebase_binds_one_session_to_all_t
         _TARGET,
         None,
         rebase_stop_resolver=resolver,
-        conflict_resolution_config=ConflictResolutionConfig(total_resolution_cap_seconds=60.0),
+        conflict_resolution_config=ConflictResolutionConfig(),
     )
 
     assert result.merge_attempted is False
     assert len(sessions) == 1
-    assert sessions[0].total_resolution_cap_seconds == 60.0
 
 
 def test_a_recordable_resolution_is_started(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, assert_never
 
 from loguru import logger
 
@@ -15,6 +15,15 @@ from ralph.git.merge import (
 )
 from ralph.git.operations import find_main_worktree_root
 from ralph.pipeline._auto_integrate_reclaim import ReclaimResult, reclaim_dirty_target_worktree
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+)
 
 _TARGET_MISSING = "target branch missing at fast-forward time"
 _TARGET_QUERY_FAILED = "target branch could not be read at fast-forward time"
@@ -107,10 +116,10 @@ def fast_forward_target(
     *,
     reclaim_target_worktree: bool = True,
     on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-) -> tuple[bool, str]:
+) -> StopResolutionOutcome:
     early_reason = _landing_gate_reason(repo_root, target, feature_sha)
     if early_reason:
-        return False, early_reason
+        return _fast_forward_failure(early_reason)
     primary_root = find_main_worktree_root(repo_root)
     verdict, wt = worktree_lookup(primary_root, target)
     if verdict == WORKTREE_QUERY_FAILED:
@@ -119,7 +128,7 @@ def fast_forward_target(
             "refusing to move the shared ref",
             target,
         )
-        return False, _TARGET_WORKTREE_QUERY_FAILED
+        return _fast_forward_failure(_TARGET_WORKTREE_QUERY_FAILED)
     if verdict == WORKTREE_FOUND and wt is not None:
         return _fast_forward_via_target_worktree(
             repo_root,
@@ -160,9 +169,9 @@ def _fast_forward_via_target_worktree(
     *,
     reclaim_target_worktree: bool,
     on_reclaimed: Callable[[ReclaimResult], None] | None,
-) -> tuple[bool, str]:
+) -> StopResolutionOutcome:
     if fast_forward_via_worktree(worktree_root, feature_sha):
-        return True, ""
+        return ResolvedOutcome()
     reclaimed: ReclaimResult | None = None
     if reclaim_target_worktree:
         try:
@@ -172,7 +181,7 @@ def _fast_forward_via_target_worktree(
         if reclaimed is not None and fast_forward_via_worktree(worktree_root, feature_sha):
             if on_reclaimed is not None:
                 on_reclaimed(reclaimed)
-            return True, ""
+            return ResolvedOutcome()
     logger.warning(
         "auto_integrate: target '{}' is checked out in {} and refused "
         "merge --ff-only; leaving shared ref untouched and recording "
@@ -181,24 +190,42 @@ def _fast_forward_via_target_worktree(
         target,
         worktree_root,
     )
-    return False, _TARGET_CHECKED_OUT_REFUSED
+    return _fast_forward_failure(_TARGET_CHECKED_OUT_REFUSED)
 
 
 def _fast_forward_via_cas(
     repo_root: Path,
     target: str,
     feature_sha: str,
-) -> tuple[bool, str]:
+) -> StopResolutionOutcome:
     fresh_target_sha, reason = _observe_landable_target(repo_root, target, feature_sha)
     if fresh_target_sha is None:
-        return False, reason
+        return _fast_forward_failure(reason)
     if not compare_and_swap_branch(repo_root, target, fresh_target_sha, feature_sha):
-        return False, _TARGET_CAS_MISMATCH
-    return True, ""
+        return _fast_forward_failure(_TARGET_CAS_MISMATCH)
+    return ResolvedOutcome()
 
 
-def is_retryable_fast_forward_failure(reason: str) -> bool:
-    return reason in _RETRYABLE_REASONS
+def _fast_forward_failure(reason: str) -> StopResolutionOutcome:
+    if reason in _RETRYABLE_REASONS:
+        return RetryLaterOutcome(on_change=reason)
+    return WaitingOutcome(external_condition=reason, resumes_when="target branch exists")
+
+
+def is_retryable_fast_forward_failure(outcome: StopResolutionOutcome) -> bool:
+    match outcome:
+        case RetryLaterOutcome():
+            return True
+        case (
+            ResolvedOutcome()
+            | WaitingOutcome()
+            | NextStrategyOutcome()
+            | ConfigFailureOutcome()
+            | UnknownOutcome()
+        ):
+            return False
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 __all__ = [

@@ -32,7 +32,6 @@ from ralph.pipeline.resolution_outcome import (
     UnknownOutcome,
     WaitingOutcome,
 )
-from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -216,16 +215,8 @@ def _continue_rebase_resolution(
 
 def _rebase_failure_outcome(
     result: RebaseResolutionResult,
-    chain_agents: tuple[str, ...],
 ) -> StopResolutionOutcome:
-    if result.succeeded:
-        return ResolvedOutcome()
-    return classify_resolution_failure(
-        terminal_reason=result.terminal_reason,
-        failure_cause=result.failure_cause,
-        reason=result.reason,
-        agents=chain_agents,
-    )
+    return result.outcome
 
 
 def _rebase_failure_transport(
@@ -239,7 +230,7 @@ def _rebase_failure_transport(
         "rebase resolution remains pending after continuation "
         f"(cause: {result.failure_cause.value})"
     )
-    outcome = _rebase_failure_outcome(result, chain_agents)
+    outcome = _rebase_failure_outcome(result)
     match outcome:
         case ResolvedOutcome():
             return None

@@ -617,7 +617,6 @@ def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[Sing
 
 _CLASSIFIER_ENTRY_FUNCTIONS: dict[str, int] = {
     "classify_failed_resolution_attempt": 2,
-    "classify_conflict_attempt": 0,
     "should_reset_tool_registry": 0,
     "bench_resolver": 2,
 }

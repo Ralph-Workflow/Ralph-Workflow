@@ -58,7 +58,6 @@ def lifecycle_config(**conflict_resolution_overrides: object) -> UnifiedConfig:
         "conflict_resolution": {
             "max_rounds_per_stop": 2,
             "max_rebase_conflict_stops": 4,
-            "total_resolution_cap_seconds": 10,
         },
     }
     limits = payload["conflict_resolution"]

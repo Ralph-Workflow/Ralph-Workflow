@@ -392,6 +392,20 @@ class AgentFailureLedger:
         ]
         return eligibility_wait_from_statuses(statuses, now_ms=now_ms)
 
+    def any_eligible(self, phase: str, agents: Sequence[str] = ()) -> bool:
+        with self._lock:
+            now_ms = int(self._clock.monotonic() * 1000)
+            snapshot = self._snapshot_locked(now_ms=now_ms)
+            effective_agents = tuple(agents) or tuple(
+                agent for entry_phase, agent in self._entries if entry_phase == phase
+            )
+        if not effective_agents:
+            return True
+        return any(
+            _project_eligibility(snapshot, phase=phase, agent=agent, now_ms=now_ms).is_eligible
+            for agent in effective_agents
+        )
+
     def mark_unavailable(self, phase: str, agent: str, *, reason: str) -> None:
         with self._lock:
             entry = self._entries.get((phase, agent))

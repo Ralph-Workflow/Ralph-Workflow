@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -8,7 +7,6 @@ from loguru import logger
 
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.recovery.agent_failure_ledger import AttemptFact
-from ralph.recovery.failure_category import FailureCategory
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -112,27 +110,14 @@ def bench_resolver(
     outcome: ConflictAttemptOutcome | None = None,
     unresolved_count: int = 0,
 ) -> None:
-    is_free_retry = False
-    with suppress(Exception):
-        classified = controller.classify_conflict_attempt(
-            raw_failure,
-            agent=agent,
-            connectivity_state="online",
-            outcome=outcome,
-            unresolved_count=unresolved_count,
-        )
-        is_free_retry = classified.category in (
-            FailureCategory.ENVIRONMENTAL,
-            FailureCategory.ARTIFACT_VALIDATION,
-            FailureCategory.AMBIGUOUS,
-        )
+    del raw_failure, outcome, unresolved_count
 
     _record_resolver_fact(
         controller,
         agent,
         artifact_valid=False,
         workspace_changed=workspace_changed,
-        free_retry_category=is_free_retry,
+        free_retry_category=False,
     )
 
 
@@ -142,5 +127,4 @@ def clear_resolver(controller: RecoveryController, agent: str) -> None:
         agent,
         artifact_valid=True,
     )
-    with suppress(AttributeError, Exception):
-        controller.reset_backoff(PHASE_RESOLUTION, agent)
+    controller.reset_backoff(PHASE_RESOLUTION, agent)

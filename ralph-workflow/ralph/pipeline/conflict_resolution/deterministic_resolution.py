@@ -1,22 +1,26 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.git.merge import conflict_stage_entries
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.pipeline.conflict_resolution.sight import ConflictKind, escalate_on_sight
+from ralph.pipeline.conflict_resolution.gitlink_policy import (
+    GitlinkReviewRecord,
+    choose_gitlink,
+)
+from ralph.pipeline.conflict_resolution.sight import ConflictKind
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
+    from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 __all__ = [
-    "escalate_gitlink_on_sight",
     "resolve_completion_in_place",
     "try_deterministic_resolution",
 ]
@@ -29,6 +33,7 @@ def resolve_completion_in_place(
     root: Path,
     paths: tuple[str, ...],
     kinds: dict[str, ConflictKind],
+    gitlink_policy: GitlinkPolicyConfig | None = None,
 ) -> tuple[str, ...]:
     selected = tuple(
         path
@@ -41,19 +46,14 @@ def resolve_completion_in_place(
     chosen: list[tuple[str, str, str]] = []
     for path in selected:
         stage = entries.get(path, {})
-        picked = stage.get(_CONFLICT_STAGE_OURS) or stage.get(_CONFLICT_STAGE_THEIRS)
+        picked = (
+            _gitlink_completion_choice(stage, path, gitlink_policy)
+            if kinds.get(path) is ConflictKind.GITLINK
+            else _blob_completion_choice(stage, path)
+        )
         if picked is None:
             continue
         mode, sha = picked
-        ancestor = stage.get(1)
-        logger.info(
-            "conflict_resolution: completion-in-place {} base={} ours={} theirs={} selected={}",
-            path,
-            ancestor[1] if ancestor is not None else "<absent>",
-            stage.get(_CONFLICT_STAGE_OURS, ("", "<absent>"))[1],
-            stage.get(_CONFLICT_STAGE_THEIRS, ("", "<absent>"))[1],
-            sha,
-        )
         chosen.append((mode, sha, path))
     if len(chosen) != len(selected):
         return ()
@@ -66,54 +66,80 @@ def resolve_completion_in_place(
     return tuple(path for _mode, _sha, path in chosen)
 
 
-def escalate_gitlink_on_sight(
-    paths: tuple[str, ...],
-    session: ResolutionSession | None = None,
-) -> str:
-    return escalate_on_sight(paths, session=session)
+def _stage_shas(stage: dict[int, tuple[str, str]]) -> tuple[str, str, str]:
+    ancestor = stage.get(1)
+    ours = stage.get(_CONFLICT_STAGE_OURS)
+    theirs = stage.get(_CONFLICT_STAGE_THEIRS)
+    return (
+        ancestor[1] if ancestor is not None else "<absent>",
+        ours[1] if ours is not None else "<absent>",
+        theirs[1] if theirs is not None else "<absent>",
+    )
 
 
-def _ensure_submodule_objects(
-    root: Path,
+def _blob_completion_choice(
+    stage: dict[int, tuple[str, str]],
     path: str,
-    shas: tuple[str, ...],
+) -> tuple[str, str] | None:
+    picked = stage.get(_CONFLICT_STAGE_OURS) or stage.get(_CONFLICT_STAGE_THEIRS)
+    if picked is None:
+        return None
+    mode, sha = picked
+    base, ours, theirs = _stage_shas(stage)
+    logger.info(
+        "conflict_resolution: completion-in-place {} base={} ours={} theirs={} selected={}",
+        path,
+        base,
+        ours,
+        theirs,
+        sha,
+    )
+    return (mode, sha)
+
+
+def _gitlink_completion_choice(
+    stage: dict[int, tuple[str, str]],
+    path: str,
+    policy: GitlinkPolicyConfig | None,
+) -> tuple[str, str] | None:
+    base, ours_sha, theirs_sha = _stage_shas(stage)
+    record = choose_gitlink(path, base, ours_sha, theirs_sha, policy)
+    ours = stage.get(_CONFLICT_STAGE_OURS)
+    theirs = stage.get(_CONFLICT_STAGE_THEIRS)
+    if ours is None:
+        if theirs is None:
+            return None
+        record = replace(record, selected_side="theirs", selected_sha=theirs[1])
+        _log_gitlink_review(record)
+        return (theirs[0], theirs[1])
+    if theirs is None:
+        record = replace(record, selected_side="ours", selected_sha=ours[1])
+        _log_gitlink_review(record)
+        return (ours[0], ours[1])
+    _log_gitlink_review(record)
+    return (ours[0], record.selected_sha)
+
+
+def _log_gitlink_review(record: GitlinkReviewRecord) -> None:
+    logger.info(
+        "conflict_resolution: gitlink policy path={} policy={} base={} ours={} "
+        "theirs={} selected_side={} selected={} alternatives={}",
+        record.path,
+        record.policy,
+        record.base,
+        record.ours,
+        record.theirs,
+        record.selected_side,
+        record.selected_sha,
+        record.alternatives_considered,
+    )
+
+
+def try_deterministic_resolution(
+    root: Path,
+    stop: RebaseStop,
+    gitlink_policy: GitlinkPolicyConfig | None = None,
 ) -> bool:
-    submodule = root / path
-    missing = [
-        sha
-        for sha in shas
-        if run_git(
-            ("-C", str(submodule), "cat-file", "-e", sha),
-            cwd=root,
-            label="git-gitlink-object",
-        ).returncode
-        != 0
-    ]
-    if not missing:
-        return True
-
-    run_git(
-        ("submodule", "update", "--init", "--", path),
-        cwd=root,
-        label="git-submodule-init",
-    )
-    run_git(
-        ("-C", str(submodule), "fetch"),
-        cwd=root,
-        label="git-submodule-fetch",
-    )
-    return not any(
-        run_git(
-            ("-C", str(submodule), "cat-file", "-e", sha),
-            cwd=root,
-            label="git-gitlink-object",
-        ).returncode
-        != 0
-        for sha in missing
-    )
-
-
-def try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
     try:
         entries = conflict_stage_entries(root, stop.conflicted_files)
         if any(
@@ -127,7 +153,7 @@ def try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
             stage[_CONFLICT_STAGE_OURS][0] == stage[_CONFLICT_STAGE_THEIRS][0] == "160000"
             for stage in stages
         ):
-            return _resolve_gitlinks(root, stop.conflicted_files, stages)
+            return _resolve_gitlinks(root, stop.conflicted_files, stages, gitlink_policy)
         if not all(
             stage[_CONFLICT_STAGE_OURS][1] == stage[_CONFLICT_STAGE_THEIRS][1]
             and {
@@ -148,41 +174,16 @@ def _resolve_gitlinks(
     root: Path,
     paths: tuple[str, ...],
     stages: list[dict[int, tuple[str, str]]],
+    policy: GitlinkPolicyConfig | None,
 ) -> bool:
     chosen: list[tuple[str, str]] = []
-    unresolvable: list[str] = []
     for path, stage in zip(paths, stages, strict=True):
+        base = stage.get(1, ("160000", "<absent>"))[1]
         ours = stage[_CONFLICT_STAGE_OURS][1]
         theirs = stage[_CONFLICT_STAGE_THEIRS][1]
-        submodule = root / path
-        if not _ensure_submodule_objects(root, path, (ours, theirs)):
-            unresolvable.append(path)
-            continue
-        ours_before_theirs = run_git(
-            ("-C", str(submodule), "merge-base", "--is-ancestor", ours, theirs),
-            cwd=root,
-            label="git-gitlink-ancestor",
-        ).returncode
-        theirs_before_ours = run_git(
-            ("-C", str(submodule), "merge-base", "--is-ancestor", theirs, ours),
-            cwd=root,
-            label="git-gitlink-ancestor",
-        ).returncode
-        if ours_before_theirs == 0:
-            chosen.append((path, theirs))
-        elif theirs_before_ours == 0:
-            chosen.append((path, ours))
-        else:
-            unresolvable.append(path)
-
-    if unresolvable:
-        msg = escalate_gitlink_on_sight(tuple(unresolvable))
-        logger.warning(
-            "conflict_resolution: gitlink conflict on {} cannot be resolved deterministically: {}",
-            ", ".join(unresolvable),
-            msg,
-        )
-        return False
+        record = choose_gitlink(path, base, ours, theirs, policy)
+        _log_gitlink_review(record)
+        chosen.append((path, record.selected_sha))
 
     restore_lines: list[str] = []
     for p, stg in zip(paths, stages, strict=True):

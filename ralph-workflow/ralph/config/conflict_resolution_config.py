@@ -4,6 +4,7 @@ import math
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
 from ralph.pydantic_compat import RalphBaseModel
 
 
@@ -22,6 +23,7 @@ class ConflictResolutionConfig(RalphBaseModel):
         ),
     )
     max_rebase_conflict_stops: int = Field(default=10, ge=1)
+    gitlink_policy: GitlinkPolicyConfig = Field(default_factory=GitlinkPolicyConfig)
     max_fallback_agents: int = Field(
         default=2,
         ge=1,
@@ -29,14 +31,6 @@ class ConflictResolutionConfig(RalphBaseModel):
             "Compatibility field retained for older configs. It does not cap "
             "how many chain candidates conflict resolution tries; the bound "
             "agent chain alone decides candidate breadth."
-        ),
-    )
-    total_resolution_cap_seconds: float | None = Field(
-        default=None,
-        description=(
-            "Optional absolute cap for one complete conflict resolution. Disabled"
-            " by default. When set, it may stop an active resolver and is reported"
-            " as OPERATOR_CAP_REACHED rather than as an idle timeout."
         ),
     )
 
@@ -57,20 +51,12 @@ class ConflictResolutionConfig(RalphBaseModel):
         return data
 
     @field_validator(
-        "inactivity_timeout_seconds", "status_interval_seconds", "total_resolution_cap_seconds"
+        "inactivity_timeout_seconds", "status_interval_seconds"
     )
     @classmethod
     def _validate_finite_duration(cls, value: float | None) -> float | None:
         if value is not None and not math.isfinite(value):
             raise ValueError("must be finite")
         return value
-
-    @field_validator("total_resolution_cap_seconds")
-    @classmethod
-    def _validate_operator_cap(cls, value: float | None) -> float | None:
-        if value is not None and value <= 0.0:
-            raise ValueError("must be positive when set")
-        return value
-
 
 __all__ = ["ConflictResolutionConfig"]

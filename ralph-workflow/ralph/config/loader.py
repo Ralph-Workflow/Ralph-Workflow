@@ -171,6 +171,17 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
             prefix="conflict_resolution.",
             suggester=emit,
         )
+        gitlink_policy = conflict_resolution.get("gitlink_policy")
+        if isinstance(gitlink_policy, dict):
+            from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
+
+            _collect_unknown_leaves(
+                gitlink_policy,
+                known_fields=set(GitlinkPolicyConfig.model_fields),
+                path=path,
+                prefix="conflict_resolution.gitlink_policy.",
+                suggester=emit,
+            )
 
     ccs = data.get("ccs")
     if isinstance(ccs, dict):
@@ -479,11 +490,6 @@ def load_config(
 
     try:
         config = UnifiedConfig.model_validate(merged)
-        if config.conflict_resolution.total_resolution_cap_seconds is not None:
-            logger.warning(
-                "conflict_resolution.total_resolution_cap_seconds is enabled: "
-                "active resolution may be stopped by the operator cap"
-            )
         logger.debug("Configuration validated successfully")
         return config
     except ValidationError as exc:
@@ -517,11 +523,6 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
     _drop_cli_only_fields(data)
     try:
         config = UnifiedConfig.model_validate(data)
-        if config.conflict_resolution.total_resolution_cap_seconds is not None:
-            logger.warning(
-                "conflict_resolution.total_resolution_cap_seconds is enabled: "
-                "active resolution may be stopped by the operator cap"
-            )
         return config
     except ValidationError as exc:
         logger.error(format_config_validation_error(exc, config_path))

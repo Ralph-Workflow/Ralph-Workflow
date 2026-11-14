@@ -270,18 +270,11 @@ Use this section to tune **routing limits** for merge and rebase conflict resolu
 | `max_rounds_per_stop` | `3` | integer `>= 1` | Resolution ROUNDS allowed for one merge or paused rebase stop. A round spends the bound chain -- each live candidate gets one turn, plus the chain's `max_retries` on a transient failure -- and a later round starts at the candidate after the last one tried, wrapping to the head of the chain once every candidate has had a turn. The worst-case invocations for one stop are therefore `max_rounds_per_stop x live candidates x max_retries`, not `max_rounds_per_stop`. |
 | `max_rebase_conflict_stops` | `10` | integer `>= 1` | Paused rebase stops that Ralph Workflow may route through resolution. |
 | `max_fallback_agents` | `2` | integer `>= 1` | Retained for compatibility. It does **not** truncate the bound chain. How many agents run, and in what order, is the `rebase_conflict_resolution` chain in `agents.toml`. A one-agent chain is warned at load because this phase then has no fallback. |
-| `total_resolution_cap_seconds` | `None` | `None` or finite number `> 0` | Optional operator cap for one complete merge resolution or all stops of one paused rebase. It is disabled by default. When configured, it can stop active work and is reported as `OPERATOR_CAP_REACHED`, never as an idle timeout. |
+| `gitlink_policy.pointer_preference` | `"vendor-immutable"` | `"ours"`, `"theirs"` or `"vendor-immutable"` | Which side of a submodule (gitlink) conflict wins. `vendor-immutable` prefers the side unchanged from the merge base, then `ours`, then `theirs`. The selected pointer, the base/ours/theirs SHAs and the alternatives considered are recorded, and the conflict is completed in place without invoking a resolver agent. |
 
 The `max_consecutive_resolver_attempts` setting is rejected; use `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`. Those two limits are enforced by the agent failure ledger, which is the single owner of resolver eligibility: the recorded conflict count is repository bookkeeping and never suppresses an agent.
 
-For example, an operator who deliberately wants a one-hour total cap can add:
-
-```toml
-[conflict_resolution]
-total_resolution_cap_seconds = 3600.0
-```
-
-Ralph Workflow reports at configuration load time that this override may stop active resolution. Leave the setting absent to allow active conflict work to continue without an elapsed-time cap.
+No elapsed-time cap can stop active conflict work: an active resolver is supervised by the shared watchdog's inactivity window, and the agent-failure ledger owns when a resolver may run again.
 
 The `rebase_conflict_resolution` drain binds the `rebase_conflict_resolution` chain in `agents.toml`. Its bundled default is `claude`, with `max_retries = 2` and `retry_delay_ms = 1000`. The chain alone owns ordered candidates, retries, backoff, and fallover; add fallback agents to that chain when needed. `max_fallback_agents` is compatibility-only and cannot narrow the chain. A one-agent chain is valid but produces a configuration-load warning because no fallback remains.
 

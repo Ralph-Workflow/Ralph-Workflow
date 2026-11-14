@@ -28,6 +28,17 @@ from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 from ralph.pipeline.resolution_gate_decision import ResolutionGateDecision
 from ralph.pipeline.resolution_gate_facts import ResolutionGateFacts
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+    WaitingOutcome,
+    assert_never,
+)
+from ralph.pipeline.resolution_outcome_producer import classify_resolution_failure
 from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 
 if TYPE_CHECKING:
@@ -386,8 +397,20 @@ def attempt_stop_resolution(
 
     result = _execute_trigger(trigger)
     post_key = _post_attempt_key(stop_identity, trigger, key)
-    if isinstance(result, RebaseResolutionResult) and not result.succeeded:
-        _record_failed_attempt(trigger, post_key, result.failure_cause)
+    if isinstance(result, RebaseResolutionResult):
+        match result.outcome:
+            case ResolvedOutcome():
+                pass
+            case (
+                WaitingOutcome()
+                | RetryLaterOutcome()
+                | NextStrategyOutcome()
+                | ConfigFailureOutcome()
+                | UnknownOutcome()
+            ):
+                _record_failed_attempt(trigger, post_key, result.failure_cause)
+            case _ as unreachable:
+                assert_never(unreachable)
     else:
         from ralph.git.merge import MergeResult
 
@@ -413,7 +436,6 @@ def _resolve_rebase_with_config(
             max_rounds_per_stop=config.max_rounds_per_stop,
             max_rebase_conflict_stops=config.max_rebase_conflict_stops,
             max_fallback_agents=config.max_fallback_agents,
-            total_resolution_cap_seconds=config.total_resolution_cap_seconds,
         )
     )
     resolved = (
@@ -423,7 +445,7 @@ def _resolve_rebase_with_config(
     )
     if resolved:
         return RebaseResolutionResult(
-            True, None, ResolutionFailureCause.NONE, session.terminal_reason
+            ResolvedOutcome(), None, ResolutionFailureCause.NONE, session.terminal_reason
         )
     carried_cause = session.last_failure_cause
     if carried_cause == ResolutionFailureCause.NONE:
@@ -468,7 +490,13 @@ def _resolve_rebase_with_config(
             )
         else:
             reason = None
-        return RebaseResolutionResult(False, reason, carried_cause, session.terminal_reason)
+        outcome: StopResolutionOutcome = classify_resolution_failure(
+            terminal_reason=session.terminal_reason,
+            failure_cause=carried_cause,
+            reason=reason,
+            paths=session.unresolved_paths,
+        )
+        return RebaseResolutionResult(outcome, reason, carried_cause, session.terminal_reason)
     reason = (
         session.operator_action_message
         if session.operator_action_message
@@ -485,8 +513,18 @@ def _resolve_rebase_with_config(
             "all resolver agents are spent/unavailable; conflict on "
             f"{', '.join(paths)} needs operator action: {operator_command_for_paths(paths)}"
         )
+    outcome = classify_resolution_failure(
+        terminal_reason=session.terminal_reason,
+        failure_cause=(
+            carried_cause
+            if carried_cause != ResolutionFailureCause.NONE
+            else ResolutionFailureCause.UNRESOLVED_CONFLICT
+        ),
+        reason=reason,
+        paths=session.unresolved_paths,
+    )
     return RebaseResolutionResult(
-        False,
+        outcome,
         reason,
         carried_cause
         if carried_cause != ResolutionFailureCause.NONE

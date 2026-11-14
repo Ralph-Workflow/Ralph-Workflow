@@ -10,7 +10,10 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "AGENT_ELIGIBILITY_OWNER_MODULE",
     "EXPECTED_EXIT_CODE_LABELS",
+    "GITLINK_POLICY_MODULE",
+    "GITLINK_RESOLUTION_MODULE",
     "PIPELINE_ENTRY_MODULE",
     "PIPELINE_PACKAGE",
     "RESOLUTION_ENTRY_MODULE",
@@ -22,9 +25,12 @@ __all__ = [
     "Violation",
     "audit_modules",
     "audit_tree",
+    "collect_eligibility_violations",
+    "collect_gitlink_violations",
     "collect_resolver_violations",
     "collect_severity_violations",
     "collect_terminal_emitter_violations",
+    "collect_watchdog_cap_violations",
     "load_modules",
     "main",
 ]
@@ -86,6 +92,40 @@ _WARNING_METHODS: Final[frozenset[str]] = frozenset(
 )
 
 _SKIP_DIRS: Final[frozenset[str]] = frozenset({"__pycache__"})
+
+AGENT_ELIGIBILITY_OWNER_MODULE: Final = "ralph/recovery/agent_failure_ledger.py"
+
+FORBIDDEN_PIPELINE_ELIGIBILITY_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "_ledger_candidates_available",
+        "is_available",
+    }
+)
+
+_LEDGER_ELIGIBILITY_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "cooldown_until_epoch_ms",
+        "cooldown_until_ms",
+        "is_spent",
+        "spent_reason",
+        "unavailable_reason",
+    }
+)
+
+GITLINK_POLICY_MODULE: Final = "ralph/pipeline/conflict_resolution/gitlink_policy.py"
+
+GITLINK_RESOLUTION_MODULE: Final = "ralph/pipeline/conflict_resolution/deterministic_resolution.py"
+
+GITLINK_POLICY_OWNER_SYMBOLS: Final[frozenset[str]] = frozenset(
+    {
+        "POLICY_CANDIDATES",
+        "choose_gitlink",
+    }
+)
+
+WATCHDOG_FIRE_REASON_CLASS: Final = "WatchdogFireReason"
+
+OPERATOR_CAP_REASON: Final = "OPERATOR_CAP_REACHED"
 
 
 @dataclass(frozen=True)
@@ -473,11 +513,349 @@ def collect_terminal_emitter_violations(modules: Mapping[str, str]) -> list[Viol
     ]
 
 
+def _ledger_snapshot_calls(node: ast.AST) -> list[ast.Call]:
+    calls: list[ast.Call] = []
+    for part in ast.walk(node):
+        if not isinstance(part, ast.Call):
+            continue
+        func = part.func
+        if not isinstance(func, ast.Attribute) or func.attr != "snapshot":
+            continue
+        receiver = func.value
+        receiver_name = (
+            receiver.id
+            if isinstance(receiver, ast.Name)
+            else receiver.attr
+            if isinstance(receiver, ast.Attribute)
+            else ""
+        )
+        if "ledger" in receiver_name.lower():
+            calls.append(part)
+    return calls
+
+
+def _pipeline_eligibility_helper_violations(path: str, tree: ast.Module) -> list[Violation]:
+    return [
+        Violation(
+            path=path,
+            line=node.lineno,
+            rule="pipeline_agent_eligibility_helper",
+            detail=(
+                f"'{node.name}' implements agent eligibility inside ralph/pipeline/; "
+                f"eligibility is owned by {AGENT_ELIGIBILITY_OWNER_MODULE} and projected by "
+                "RecoveryController"
+            ),
+        )
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.name in FORBIDDEN_PIPELINE_ELIGIBILITY_NAMES
+    ]
+
+
+def _pipeline_snapshot_eligibility_violations(path: str, tree: ast.Module) -> list[Violation]:
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        calls = _ledger_snapshot_calls(node)
+        if not calls:
+            continue
+        keys = {
+            part.value
+            for part in ast.walk(node)
+            if isinstance(part, ast.Constant) and isinstance(part.value, str)
+        }
+        if not keys & _LEDGER_ELIGIBILITY_KEYS:
+            continue
+        violations.extend(
+            Violation(
+                path=path,
+                line=call.lineno,
+                rule="pipeline_ledger_snapshot_eligibility",
+                detail=(
+                    "agent eligibility is decided from a ledger snapshot inside ralph/pipeline/; "
+                    f"the canonical answer is {AGENT_ELIGIBILITY_OWNER_MODULE}.agent_eligibility"
+                ),
+            )
+            for call in calls
+        )
+    return violations
+
+
+def collect_eligibility_violations(modules: Mapping[str, str]) -> list[Violation]:
+    violations: list[Violation] = []
+    for path, source in sorted(modules.items()):
+        if not path.startswith(PIPELINE_PACKAGE):
+            continue
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        violations.extend(_pipeline_eligibility_helper_violations(path, tree))
+        violations.extend(_pipeline_snapshot_eligibility_violations(path, tree))
+    return violations
+
+
+def _definition_name(node: ast.stmt) -> str | None:
+    if isinstance(node, ast.ClassDef):
+        return node.name
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        return node.name
+    return None
+
+
+def _module_symbols(tree: ast.Module) -> set[str]:
+    symbols: set[str] = set()
+    for node in tree.body:
+        name = _definition_name(node)
+        if name is not None:
+            symbols.add(name)
+        elif isinstance(node, ast.Assign):
+            for target in _assignment_targets(node):
+                if isinstance(target, ast.Name):
+                    symbols.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            symbols.add(node.target.id)
+    return symbols
+
+
+def _class_members(node: ast.ClassDef) -> set[str]:
+    members: set[str] = set()
+    for statement in node.body:
+        if isinstance(statement, ast.Assign):
+            for target in _assignment_targets(statement):
+                if isinstance(target, ast.Name):
+                    members.add(target.id)
+        elif isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+            members.add(statement.target.id)
+    return members
+
+
+def _gitlink_member_names(modules: Mapping[str, str]) -> frozenset[str]:
+    names: set[str] = set()
+    for path, source in sorted(modules.items()):
+        if not path.startswith(PIPELINE_PACKAGE):
+            continue
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for statement in node.body:
+                if not isinstance(statement, ast.Assign | ast.AnnAssign):
+                    continue
+                for target in _assignment_targets(statement):
+                    if isinstance(target, ast.Name) and target.id.startswith("GITLINK"):
+                        names.add(target.id)
+    return frozenset(names)
+
+
+def _agent_eligible_container_names(modules: Mapping[str, str]) -> frozenset[str]:
+    names: set[str] = set()
+    for path, source in sorted(modules.items()):
+        if not path.startswith(PIPELINE_PACKAGE):
+            continue
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = _assignment_targets(node)
+            elif isinstance(node, ast.AnnAssign):
+                targets = [node.target]
+            else:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name) and "ELIGIBLE" in target.id.upper():
+                    names.add(target.id)
+    return frozenset(names)
+
+
+def _gitlink_agent_eligible_violations(modules: Mapping[str, str]) -> list[Violation]:
+    gitlink_members = _gitlink_member_names(modules)
+    if not gitlink_members:
+        return []
+    eligible_names = _agent_eligible_container_names(modules)
+    violations: list[Violation] = []
+    for path, source in sorted(modules.items()):
+        if not path.startswith(PIPELINE_PACKAGE):
+            continue
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign | ast.AnnAssign):
+                targets = _assignment_targets(node)
+                eligible = any(
+                    isinstance(target, ast.Name) and "ELIGIBLE" in target.id.upper()
+                    for target in targets
+                )
+                if eligible and node.value is not None:
+                    violations.extend(
+                        Violation(
+                            path=path,
+                            line=part.lineno,
+                            rule="gitlink conflict classified agent-eligible",
+                            detail=(
+                                f"'{part.attr}' is part of an agent-eligible set; a gitlink "
+                                "conflict must never be agent-eligible because the pointer "
+                                "policy resolves it in place"
+                            ),
+                        )
+                        for part in ast.walk(node.value)
+                        if isinstance(part, ast.Attribute) and part.attr in gitlink_members
+                    )
+            if isinstance(node, ast.Compare):
+                operands = [node.left, *node.comparators]
+                gitlink_refs = [
+                    part.attr
+                    for operand in operands
+                    for part in ast.walk(operand)
+                    if isinstance(part, ast.Attribute) and part.attr in gitlink_members
+                ]
+                eligible_refs = [
+                    part.id
+                    for operand in operands
+                    for part in ast.walk(operand)
+                    if isinstance(part, ast.Name) and part.id in eligible_names
+                ]
+                if gitlink_refs and eligible_refs:
+                    violations.append(
+                        Violation(
+                            path=path,
+                            line=node.lineno,
+                            rule="gitlink conflict classified agent-eligible",
+                            detail=(
+                                f"'{gitlink_refs[0]}' is compared with the agent-eligible set "
+                                f"'{eligible_refs[0]}'; a gitlink conflict must never be "
+                                "agent-eligible"
+                            ),
+                        )
+                    )
+    return violations
+
+
+def _gitlink_owner_violations(modules: Mapping[str, str]) -> list[Violation]:
+    violations: list[Violation] = []
+    owner_source = modules.get(GITLINK_POLICY_MODULE)
+    if owner_source is None:
+        violations.append(
+            Violation(
+                path=GITLINK_POLICY_MODULE,
+                line=1,
+                rule="gitlink_policy_owner_missing",
+                detail=(
+                    f"the gitlink pointer-preference owner {GITLINK_POLICY_MODULE} must exist"
+                ),
+            )
+        )
+    else:
+        owner_tree = _parse_module(GITLINK_POLICY_MODULE, owner_source)
+        defined = _module_symbols(owner_tree) if owner_tree is not None else set()
+        violations.extend(
+            Violation(
+                path=GITLINK_POLICY_MODULE,
+                line=1,
+                rule="gitlink_policy_owner_incomplete",
+                detail=f"'{symbol}' must be owned by {GITLINK_POLICY_MODULE}",
+            )
+            for symbol in sorted(GITLINK_POLICY_OWNER_SYMBOLS - defined)
+        )
+    resolution_source = modules.get(GITLINK_RESOLUTION_MODULE)
+    if resolution_source is None:
+        violations.append(
+            Violation(
+                path=GITLINK_RESOLUTION_MODULE,
+                line=1,
+                rule="gitlink_resolution_module_missing",
+                detail=f"{GITLINK_RESOLUTION_MODULE} must exist to resolve gitlinks in place",
+            )
+        )
+    elif "choose_gitlink" not in resolution_source:
+        violations.append(
+            Violation(
+                path=GITLINK_RESOLUTION_MODULE,
+                line=1,
+                rule="gitlink_not_resolved_in_place",
+                detail=(
+                    f"{GITLINK_RESOLUTION_MODULE} must resolve a gitlink conflict in place "
+                    f"through the pointer policy owner {GITLINK_POLICY_MODULE}"
+                ),
+            )
+        )
+    return violations
+
+
+def collect_gitlink_violations(modules: Mapping[str, str]) -> list[Violation]:
+    return [
+        *_gitlink_owner_violations(modules),
+        *_gitlink_agent_eligible_violations(modules),
+    ]
+
+
+def collect_watchdog_cap_violations(modules: Mapping[str, str]) -> list[Violation]:
+    detail = (
+        f"'{WATCHDOG_FIRE_REASON_CLASS}.{OPERATOR_CAP_REASON}' must survive; it is the shared "
+        "watchdog cap reason and is independent of the removed resolver cap identifier"
+    )
+    for path, source in sorted(modules.items()):
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or node.name != WATCHDOG_FIRE_REASON_CLASS:
+                continue
+            if OPERATOR_CAP_REASON in _class_members(node):
+                return []
+            return [
+                Violation(
+                    path=path,
+                    line=node.lineno,
+                    rule="operator_cap_reason_missing",
+                    detail=detail,
+                )
+            ]
+    for path, source in sorted(modules.items()):
+        if WATCHDOG_FIRE_REASON_CLASS not in source:
+            continue
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id == WATCHDOG_FIRE_REASON_CLASS:
+                return [
+                    Violation(
+                        path=path,
+                        line=node.lineno,
+                        rule="operator_cap_reason_missing",
+                        detail=detail,
+                    )
+                ]
+    return [
+        Violation(
+            path=_watchdog_reason_owner_path(modules),
+            line=1,
+            rule="operator_cap_reason_missing",
+            detail=detail,
+        )
+    ]
+
+
+def _watchdog_reason_owner_path(modules: Mapping[str, str]) -> str:
+    candidates = sorted(path for path in modules if path.endswith("watchdog_fire_reason.py"))
+    if candidates:
+        return candidates[0]
+    return "ralph/agents/watchdog_fire_reason.py"
+
+
 def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
     return [
         *collect_resolver_violations(modules),
         *collect_severity_violations(modules),
         *collect_terminal_emitter_violations(modules),
+        *collect_eligibility_violations(modules),
+        *collect_gitlink_violations(modules),
+        *collect_watchdog_cap_violations(modules),
     ]
 
 
@@ -514,7 +892,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         "INTEGRATION INVARIANTS AUDIT: OK "
-        "(private-resolver containment, severity authority, terminal-emitter routing)"
+        "(private-resolver containment, severity authority, terminal-emitter routing, "
+        "agent-eligibility ownership, gitlink policy ownership, watchdog cap reason)"
     )
     return 0
 

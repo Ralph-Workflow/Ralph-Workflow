@@ -3,6 +3,7 @@ from __future__ import annotations
 __doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -17,13 +18,17 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+)
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -66,7 +71,7 @@ def build_agent_conflict_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> ConflictResolver:
 
-    def _resolver(root: Path, target: str) -> bool:
+    def _resolver(root: Path, target: str) -> StopResolutionOutcome:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -79,7 +84,7 @@ def build_agent_conflict_resolver(
                 display,
                 f"conflict resolution unavailable: {missing} not threaded to this seam",
             )
-            return False
+            return NextStrategyOutcome("completion_in_place")
         if not _any_chain_agent_installed(policy_bundle, registry):
             logger.warning(
                 "auto_integrate: no agent of the rebase-conflict-resolution "
@@ -89,7 +94,7 @@ def build_agent_conflict_resolver(
                 display,
                 "conflict resolution unavailable: no rebase-conflict-resolution agent installed",
             )
-            return False
+            return NextStrategyOutcome("completion_in_place")
         try:
             if strategy_history:
                 return run_conflict_resolution_pipeline(
@@ -118,7 +123,7 @@ def build_agent_conflict_resolver(
             emit_integration_warn_line(
                 display, f"conflict resolution failed: resolution pipeline raised {exc}"
             )
-            return False
+            return UnknownOutcome(exc)
 
     return _resolver
 
@@ -135,7 +140,7 @@ def build_agent_rebase_stop_resolver(
     strategy_history: tuple[str, ...] = (),
 ) -> RebaseStopResolver:
 
-    def _resolver(root: Path, target: str, stop: RebaseStop) -> ResolutionOutcome | bool:
+    def _resolver(root: Path, target: str, stop: RebaseStop) -> StopResolutionOutcome:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -148,7 +153,7 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {missing} not threaded to this seam",
             )
-            return False
+            return NextStrategyOutcome("completion_in_place")
         try:
             return _resolve_within_target_context(
                 root=root,
@@ -182,15 +187,7 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=reason_text,
-                duration_seconds=0.0,
-                last_activity_kind=None,
-                last_activity_at=None,
-                unresolved_paths=(),
-                failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
-            )
+            return ConfigFailureOutcome(exc.file, describe_config_failure(exc))
         except Exception as exc:
             logger.warning(
                 "auto_integrate: could not use the target worktree's own "
@@ -199,11 +196,11 @@ def build_agent_rebase_stop_resolver(
                 exc,
             )
             is_config = _is_config_exception(exc)
+            cfg_path = _extract_config_path(exc)
+            target_path = cfg_path if cfg_path else str(root / ".agent" / "ralph-workflow.toml")
             if is_config:
                 failure_cause = ResolutionFailureCause.CONFIG_FAILURE
                 term_reason = ResolutionTerminationReason.CONFIG_FAILURE
-                cfg_path = _extract_config_path(exc)
-                target_path = cfg_path if cfg_path else str(root / ".agent" / "ralph-workflow.toml")
                 reason_text = f"fix {target_path} then run ralph --check-config"
                 emit_config_failure_warning(
                     target_path,
@@ -230,15 +227,9 @@ def build_agent_rebase_stop_resolver(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",
             )
-            return ResolutionOutcome(
-                succeeded=False,
-                reason=reason_text,
-                duration_seconds=0.0,
-                last_activity_kind=None,
-                last_activity_at=None,
-                unresolved_paths=(),
-                failure_cause=failure_cause,
-            )
+            if is_config:
+                return ConfigFailureOutcome(Path(target_path), describe_config_failure(exc))
+            return UnknownOutcome(exc)
 
     return _resolver
 
@@ -252,7 +243,7 @@ def _resolve_within_target_context(
     display: ParallelDisplay,
     display_context: DisplayContext | None,
     strategy_history: tuple[str, ...],
-) -> ResolutionOutcome | bool:
+) -> StopResolutionOutcome:
     with workspace_context(root) as target_ctx:
         target_config = target_ctx.config
         target_policy = target_ctx.policy_bundle
@@ -268,7 +259,7 @@ def _resolve_within_target_context(
                 "rebase conflict resolution unavailable: no "
                 "rebase-conflict-resolution agent installed on the target worktree",
             )
-            return False
+            return NextStrategyOutcome("completion_in_place")
         try:
             if strategy_history:
                 return run_rebase_conflict_resolution_pipeline(
@@ -303,7 +294,7 @@ def _resolve_within_target_context(
                 display,
                 f"rebase conflict resolution failed: resolution pipeline raised {exc}",
             )
-            return False
+            return UnknownOutcome(exc)
 
 
 def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsAgentLookup) -> bool:

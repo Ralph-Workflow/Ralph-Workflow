@@ -21,9 +21,12 @@ from ralph.pipeline.conflict_resolution._conflict_kind import ConflictKind
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
 __all__ = [
+    "AGENT_ELIGIBLE_SIGHTS",
+    "GITLINK_POLICY_REASON_PREFIX",
     "ConflictClassification",
     "ConflictKind",
     "ConflictSight",
+    "agent_eligible_paths",
     "classify_conflict_kinds",
     "classify_stage_map",
     "classify_unmerged_conflicts",
@@ -34,6 +37,7 @@ __all__ = [
     "out_of_reach_escalation_message",
     "out_of_reach_paths",
     "out_of_reach_reasons",
+    "policy_gitlink_paths",
     "stage_mechanical_conflicts",
 ]
 
@@ -42,13 +46,18 @@ _TREE_MODE_PREFIX = "040000"
 _CONFLICT_STAGE_OURS = 2
 _CONFLICT_STAGE_THEIRS = 3
 
+GITLINK_POLICY_REASON_PREFIX = "gitlink pointer policy: "
+
 
 def gitlink_escalation_message(paths: Sequence[str]) -> str:
     command = operator_command_for_paths(paths)
     joined = ", ".join(paths)
     if command:
-        return f"OUT_OF_REACH: gitlink conflict on {joined} needs operator action: {command}"
-    return f"OUT_OF_REACH: gitlink conflict on {joined}"
+        return (
+            f"GITLINK_POLICY: the gitlink pointer policy could not complete on {joined}; "
+            f"needs operator action: {command}"
+        )
+    return f"GITLINK_POLICY: the gitlink pointer policy could not complete on {joined}"
 
 
 def out_of_reach_escalation_message(
@@ -59,17 +68,25 @@ def out_of_reach_escalation_message(
     if not any(p in reasons_map for p in paths):
         return gitlink_escalation_message(paths)
     command = operator_command_for_paths(paths)
-    items: list[str] = []
+    unreachable_items: list[str] = []
+    policy_items: list[str] = []
     for path in paths:
-        reason = reasons_map.get(path)
-        if reason:
-            items.append(reason)
+        reason = reasons_map.get(path) or ""
+        if reason.startswith(GITLINK_POLICY_REASON_PREFIX):
+            policy_items.append(reason.removeprefix(GITLINK_POLICY_REASON_PREFIX))
+        elif reason:
+            unreachable_items.append(reason)
         else:
-            items.append(f"gitlink conflict on {path}")
-    joined_reasons = "; ".join(items)
+            unreachable_items.append(f"conflict on {path}")
+    parts: list[str] = []
+    if unreachable_items:
+        parts.append("OUT_OF_REACH: " + "; ".join(unreachable_items))
+    if policy_items:
+        parts.append("GITLINK_POLICY: " + "; ".join(policy_items))
+    joined_reasons = "; ".join(parts)
     if command:
-        return f"OUT_OF_REACH: {joined_reasons} needs operator action: {command}"
-    return f"OUT_OF_REACH: {joined_reasons}"
+        return f"{joined_reasons} needs operator action: {command}"
+    return joined_reasons
 
 
 def escalate_on_sight(
@@ -110,6 +127,12 @@ class ConflictSight(StrEnum):
     AGENT = "agent"
     AGENT_DECISION = "agent_decision"
     OUT_OF_REACH = "out_of_reach"
+    GITLINK_POLICY = "gitlink_policy"
+
+
+AGENT_ELIGIBLE_SIGHTS: frozenset[ConflictSight] = frozenset(
+    {ConflictSight.AGENT, ConflictSight.AGENT_DECISION}
+)
 
 
 def classify_conflict_kinds(
@@ -149,7 +172,19 @@ def out_of_reach_reasons(kinds: dict[str, ConflictSight]) -> dict[str, str]:
 
 
 def out_of_reach_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
-    return tuple(path for path, kind in kinds.items() if kind is ConflictSight.OUT_OF_REACH)
+    return tuple(
+        path
+        for path, kind in kinds.items()
+        if kind in {ConflictSight.OUT_OF_REACH, ConflictSight.GITLINK_POLICY}
+    )
+
+
+def policy_gitlink_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
+    return tuple(path for path, kind in kinds.items() if kind is ConflictSight.GITLINK_POLICY)
+
+
+def agent_eligible_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
+    return tuple(path for path, kind in kinds.items() if kind in AGENT_ELIGIBLE_SIGHTS)
 
 
 def declared_decision_paths(kinds: dict[str, ConflictSight]) -> tuple[str, ...]:
@@ -173,7 +208,7 @@ def classify_stage_map(
     if ours is None or theirs is None:
         present = ours if ours is not None else theirs
         if present is not None and present[0] == _GITLINK_MODE:
-            return ConflictSight.OUT_OF_REACH
+            return ConflictSight.GITLINK_POLICY
         return ConflictSight.AGENT_DECISION if binary else _classify_one_sided(present)
 
     ours_mode, ours_blob = ours
@@ -198,7 +233,7 @@ def _classify_one_sided(present: tuple[str, str] | None) -> ConflictSight:
         return ConflictSight.OUT_OF_REACH
     mode, _blob = present
     if mode == _GITLINK_MODE:
-        return ConflictSight.OUT_OF_REACH
+        return ConflictSight.GITLINK_POLICY
     return ConflictSight.AGENT_DECISION
 
 
@@ -213,7 +248,7 @@ def _classify_gitlink(
         _ancestor_mode, ancestor_blob = ancestor
         if ancestor_blob == ours_blob == theirs_blob:
             return ConflictSight.MECHANICAL
-    return ConflictSight.OUT_OF_REACH
+    return ConflictSight.GITLINK_POLICY
 
 
 def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> ConflictClassification:
@@ -229,12 +264,13 @@ def classify_unmerged_conflicts(root: Path, paths: tuple[str, ...]) -> ConflictC
         if path in entry_failures:
             kinds[path] = ConflictSight.OUT_OF_REACH
             reasons[path] = entry_failures[path]
-        elif typed_kinds[path] in {ConflictKind.GITLINK, ConflictKind.BINARY, ConflictKind.OTHER}:
+        elif typed_kinds[path] is ConflictKind.GITLINK:
+            kinds[path] = ConflictSight.GITLINK_POLICY
+            reasons[path] = f"{GITLINK_POLICY_REASON_PREFIX}conflict on {path}"
+        elif typed_kinds[path] in {ConflictKind.BINARY, ConflictKind.OTHER}:
             kinds[path] = ConflictSight.OUT_OF_REACH
             reasons[path] = (
-                f"gitlink conflict on {path} requires pipeline completion-in-place"
-                if typed_kinds[path] is ConflictKind.GITLINK
-                else f"{typed_kinds[path].value} conflict on {path} requires pipeline completion-in-place"
+                f"{typed_kinds[path].value} conflict on {path} requires pipeline completion-in-place"
             )
         elif typed_kinds[path] is ConflictKind.APPEND_ONLY:
             kinds[path] = ConflictSight.MECHANICAL

@@ -6,15 +6,15 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from loguru import logger
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline import attempt_stop_resolution
-from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from ralph.workspace.scope import WorkspaceScope
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ralph.agents.timeout_clock import FakeClock
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution import RebaseStop
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
 pytestmark = pytest.mark.subprocess_e2e
@@ -58,13 +59,58 @@ __all__ = [
 SCENARIO_FILES: tuple[str, ...] = ("tests/scenarios/test_auto_integrate_symptom_matrix.py",)
 
 
+class AgentMode(StrEnum):
+    EDITS_AND_STAGES = "edits_and_stages"
+    EDITS_NEVER_STAGES = "edits_never_stages"
+    LEAVES_MARKER = "leaves_marker"
+    NON_ZERO_EXIT = "non_zero_exit"
+    SIGNAL = "signal"
+    WATCHDOG_HANG = "watchdog_hang"
+    PROVIDER_FAILURE = "provider_failure"
+    INVALID_RESULT = "invalid_result"
+
+
+@dataclass(frozen=True)
+class OperatorLine:
+    level: str
+    content: str
+
+
 @dataclass
 class FakeAgentRunner:
     mode: AgentMode
     launches: int = 0
+    launch_times: list[float] = field(default_factory=list)
+    clock: object | None = None
+
+    def resolve_rebase(
+        self,
+        root: Path,
+        target: str,
+        resolver: object,
+        *,
+        session: ResolutionSession | None = None,
+    ) -> bool:
+        from ralph.pipeline._stop_resolution_entry import production_rebase_runner
+
+        return production_rebase_runner().resolve_rebase(
+            root, target, self, session=session
+        )
 
     def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
         self.launches += 1
+        now = getattr(self.clock, "monotonic", None)
+        self.launch_times.append(cast("float", now()) if callable(now) else 0.0)
+        if self.mode is AgentMode.NON_ZERO_EXIT:
+            raise RuntimeError("agent exited with status 7")
+        if self.mode is AgentMode.SIGNAL:
+            raise RuntimeError("agent terminated by signal 15")
+        if self.mode is AgentMode.WATCHDOG_HANG:
+            raise TimeoutError("agent idle watchdog fired")
+        if self.mode is AgentMode.PROVIDER_FAILURE:
+            raise ConnectionError("agent provider unavailable")
+        if self.mode is AgentMode.INVALID_RESULT:
+            return False
         if self.mode is AgentMode.LEAVES_MARKER:
             return True
         for relative in stop.conflicted_files:
@@ -171,7 +217,6 @@ def scenario_config() -> UnifiedConfig:
             "conflict_resolution": {
                 "max_rounds_per_stop": 2,
                 "max_rebase_conflict_stops": 4,
-                "total_resolution_cap_seconds": 10,
             },
         }
     )
@@ -182,24 +227,6 @@ def corrupted_config(root: Path) -> Path:
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text("[general\nauto_integrate_enabled = true\n", encoding="utf-8")
     return config
-
-
-def spent_ledger_state(target: str = "main") -> tuple[RebaseState, ConflictIdentity]:
-    identity = ConflictIdentity(
-        feature_sha="feature",
-        target_sha="target",
-        conflicted_paths=("shared.txt",),
-        stage_oids=("one", "two"),
-    )
-    state = RebaseState(
-        last_target=target,
-        resolution_exhausted=True,
-        last_conflict_feature_sha=identity.feature_sha,
-        last_conflict_target_sha=identity.target_sha,
-        last_conflict_paths=identity.conflicted_paths,
-        last_conflict_stage_oids=identity.stage_oids,
-    )
-    return state, identity
 
 
 def supervisor_restart(root: Path) -> dict[str, object]:
@@ -290,20 +317,33 @@ def run_marker_resolution(root: Path) -> ScenarioResult:
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 
 
-def run_spent_gate(clock: FakeClock, *, advance: float = 0.0) -> ScenarioResult:
-    state, identity = spent_ledger_state()
-    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+def run_spent_gate(root: Path, clock: FakeClock, *, advance: float = 0.0) -> ScenarioResult:
+    paused_text_rebase(root)
+    runner = FakeAgentRunner(AgentMode.PROVIDER_FAILURE, clock=clock)
     if advance:
         clock.advance(advance)
-    allowed = resolver_allowed(state, "main", identity, ledger=None)
-    lines: list[OperatorLine] = []
-    if allowed:
-        runner.launches += 1
-    elif advance == 0.0:
-        lines.append(
-            OperatorLine(
-                "WARNING",
-                f"all resolver agents are spent/unavailable for {identity.conflicted_paths}",
+    class _IntegrationClock:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    token = install_executors(agent_runner=runner, clock=_IntegrationClock())
+    try:
+        with capture_operator_lines() as lines:
+            state = integrate_before_planning(
+                scenario_config(),
+                WorkspaceScope(root),
+                RebaseState(),
+                conflict_resolver=lambda _root, _target: False,
+                rebase_stop_resolver=runner,
             )
-        )
-    return ScenarioResult(runner.launches, tuple(lines), "blocked" if not allowed else "launched")
+    finally:
+        reset_executors(token)
+    terminal = "launched" if runner.launches else "waiting"
+    facts = {
+        "launch_times": ",".join(str(item) for item in runner.launch_times),
+        "next_launch_time": str(getattr(state, "retry_not_before", "")),
+    }
+    return ScenarioResult(runner.launches, tuple(lines), terminal, facts)

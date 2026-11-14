@@ -3,18 +3,22 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
-    from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
+
+    type MonotonicClock = Callable[[], float]
+
 
 
 def run_conflict_resolution_pipeline(
@@ -31,7 +35,7 @@ def run_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
-) -> bool:
+) -> StopResolutionOutcome:
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 
     return run_conflict_resolution_outcome(
@@ -47,7 +51,7 @@ def run_conflict_resolution_pipeline(
         clock=clock,
         session=session,
         strategy_history=strategy_history,
-    ).succeeded
+    )
 
 
 def run_rebase_conflict_resolution_pipeline(
@@ -65,7 +69,7 @@ def run_rebase_conflict_resolution_pipeline(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
-) -> bool:
+) -> StopResolutionOutcome:
     from ralph.pipeline.conflict_resolution.driver import run_rebase_conflict_resolution_outcome
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
@@ -84,4 +88,4 @@ def run_rebase_conflict_resolution_pipeline(
         clock=clock,
         session=session,
         strategy_history=strategy_history,
-    ).succeeded
+    )

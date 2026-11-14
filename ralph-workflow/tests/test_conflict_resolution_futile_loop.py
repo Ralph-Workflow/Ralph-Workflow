@@ -475,7 +475,9 @@ def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
     )
     monkeypatch.setattr(rebase_loop, "_read_stop", lambda *_a: stop)
     monkeypatch.setattr(rebase_loop, "_worktree_dirty_paths", lambda _root: frozenset())
-    monkeypatch.setattr(rebase_loop, "_try_deterministic_resolution", lambda *_a: True)
+    monkeypatch.setattr(
+        rebase_loop, "_try_deterministic_resolution", lambda *_a, **_kw: True
+    )
     monkeypatch.setattr(rebase_loop, "_stage_and_prove", lambda *_a: False)
     monkeypatch.setattr(rebase_loop, "_touched_nothing_unexpected", lambda *_a: True)
     monkeypatch.setattr(rebase_loop, "_remove_ort_residue", lambda *_a: True)
