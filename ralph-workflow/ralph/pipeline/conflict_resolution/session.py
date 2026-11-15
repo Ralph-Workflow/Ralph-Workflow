@@ -472,7 +472,8 @@ def invoke_resolution_agent(
     unresolved_paths: tuple[str, ...] = (),
     session: ResolutionSession | None = None,
     require_completion_evidence: bool = False,
-) -> StopResolutionOutcome:
+) -> StopResolutionOutcome | bool:
+    legacy_boolean_result = pipeline_deps is None
     if session is not None:
         session.last_attempt_evidence = None
         session.last_attempt_failure = None
@@ -507,8 +508,20 @@ def invoke_resolution_agent(
     )
     if _candidate_cannot_be_launched(agent_name, session):
         return _failed_invocation_outcome(
-            RuntimeError(f"agent {agent_name} cannot be launched"), session, ()
+            RuntimeError(f"agent {agent_name} cannot be launched"),
+            session,
+            (),
+            legacy_boolean_result=legacy_boolean_result,
         )
+    observed_fault: ResolutionTerminationReason | None = None
+
+    def _record_fault(fault: ResolutionTerminationReason) -> None:
+        nonlocal observed_fault
+        observed_fault = fault
+
+    def _supervision_health_error() -> str | None:
+        return None if observed_fault is None else observed_fault.value
+
     effect = InvokeAgentEffect(
         agent_name=agent_name,
         phase=PHASE_RESOLUTION,
@@ -520,7 +533,9 @@ def invoke_resolution_agent(
             None,
             session,
             agent_name=agent_name,
+            on_fault=_record_fault,
         ),
+        supervision_health_error=_supervision_health_error,
     )
     try:
         attempt = run_agent_attempt(
@@ -553,7 +568,12 @@ def invoke_resolution_agent(
                 "conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc
             )
         _record_session_failure_result(session, controller, agent_name, exc)
-        return _failed_invocation_outcome(exc, session, unresolved_paths)
+        return _failed_invocation_outcome(
+            exc,
+            session,
+            unresolved_paths,
+            legacy_boolean_result=legacy_boolean_result,
+        )
     if session is not None:
         session.last_attempt_result = attempt
         if attempt.outcome is not None and attempt.outcome.reason:
@@ -564,7 +584,12 @@ def invoke_resolution_agent(
         failure_evidence = _failed_attempt_evidence(session, agent_name)
         _record_attempt_failure(session, failure_evidence)
         _record_attempt_without_agent_work(session)
-        return _failed_invocation_outcome(RuntimeError(failure_evidence), session, ())
+        return _failed_invocation_outcome(
+            RuntimeError(failure_evidence),
+            session,
+            (),
+            legacy_boolean_result=legacy_boolean_result,
+        )
     return ResolvedOutcome(
         terminal_reason=session.terminal_reason if session is not None else None,
         unresolved_paths=session.unresolved_paths if session is not None else (),
@@ -575,7 +600,11 @@ def _failed_invocation_outcome(
     error: Exception,
     session: ResolutionSession | None,
     unresolved_paths: tuple[str, ...],
-) -> UnknownOutcome:
+    *,
+    legacy_boolean_result: bool,
+) -> UnknownOutcome | bool:
+    if legacy_boolean_result:
+        return False
     return UnknownOutcome(
         error=error,
         terminal_reason=session.terminal_reason if session is not None else None,

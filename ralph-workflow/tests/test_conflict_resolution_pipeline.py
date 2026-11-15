@@ -334,7 +334,6 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
         max_rounds_per_stop=1,
         skip_same_agent_retries=True,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
-        skip_same_agent_retries=True,
     )
     calls: list[str] = []
 

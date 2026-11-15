@@ -423,6 +423,16 @@ def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
     )
 
 
+def conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
+    if policy_bundle is None:
+        return 0
+    drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
+    if drain is None:
+        return 0
+    chain = policy_bundle.agents.agent_chains.get(drain.chain)
+    return chain.max_retries if chain is not None else 0
+
+
 def _prepare_conflicted_paths(
     root: Path,
     stop: RebaseStop | None,

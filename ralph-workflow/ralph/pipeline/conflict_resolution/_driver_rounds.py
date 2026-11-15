@@ -360,6 +360,8 @@ def _run_one_round(
     if total == 0:
         return RoundAttempt(succeeded=False, invoked=False)
     visited: set[int] = set()
+    candidate_retries: dict[int, int] = {}
+    max_retries = _driver_mod.conflict_chain_max_retries(policy_bundle)
     attempt = RoundAttempt(succeeded=False, invoked=False)
     while len(visited) < total:
         skipped = _skipped_candidates(session, candidates)
@@ -415,6 +417,15 @@ def _run_one_round(
         if controller is not None:
             status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
             still_eligible = status.is_eligible
+        retries = candidate_retries.get(selected, 0)
+        if (
+            not session.skip_same_agent_retries
+            and retries_same
+            and still_eligible
+            and retries < max_retries
+        ):
+            candidate_retries[selected] = retries + 1
+            continue
         if not (retries_same and still_eligible):
             visited.add(selected)
     return attempt

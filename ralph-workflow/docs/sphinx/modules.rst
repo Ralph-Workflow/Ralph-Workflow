@@ -876,12 +876,6 @@ ralph.pipeline
 .. automodule:: ralph.pipeline
    :no-members:
 
-ralph.pipeline.agent_selection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.agent_selection
-   :members:
-   :show-inheritance:
 
 ralph.pipeline.checkpoint
 ~~~~~~~~~~~~~~~~~~~~~~~~~
