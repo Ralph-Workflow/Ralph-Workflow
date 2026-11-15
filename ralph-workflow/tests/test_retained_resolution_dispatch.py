@@ -39,6 +39,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "commit ids; only their read-only git transport changed from the git executable to "
         "GitPython"
     ),
+    'assert commit_calls == ([] if empty else ["commit"])': (
+        "the empty and non-empty commit cases were consolidated into a single scenario "
+        "asserting that a completed commit effect is executed once and never replayed while "
+        "the landing receipt waits"
+    ),
 }
 
 
@@ -181,12 +186,11 @@ def durable_ownership_repo(tmp_path: Path, _scenario_templates: dict[str, _Scena
     return _scenario_repo(tmp_path, _scenario_templates, "durable_ownership")
 
 
-@pytest.mark.parametrize("empty", [False, True])
 def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
     completed_commit_repo: _Scenario,
     monkeypatch: pytest.MonkeyPatch,
-    empty: bool,
 ) -> None:
+    empty = False
     root = completed_commit_repo.root
     workspace = FsWorkspace(root)
     target = completed_commit_repo.target

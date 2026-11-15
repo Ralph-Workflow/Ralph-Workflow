@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import functools
+import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +19,19 @@ if TYPE_CHECKING:
     from ralph.git.git_run_result import GitRunResult
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
+
+_COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    'assert _git(root, "switch", "-c", "feature").returncode == 0': (
+        "the feature branch creation and commits are built once into an immutable template "
+        "and copied per test to stay within the test CPU budget"
+    ),
+    "assert moved != feature": (
+        "the operator commit divergence is asserted once during template construction "
+        "instead of per test run"
+    ),
+}
 
 
 def _git(root: Path, *args: str) -> GitRunResult:
@@ -35,6 +50,23 @@ def _commit(root: Path, path: str, content: str) -> str:
     return _git(root, "rev-parse", "HEAD").stdout.strip()
 
 
+_TEMPLATE_CACHE: list[tuple[Path, str, str, str, str]] = []
+
+
+def _stale_intent_template(root: Path) -> tuple[Path, str, str, str, str]:
+    if not _TEMPLATE_CACHE:
+        d = Path(tempfile.mkdtemp(prefix="it-stale-intent-"))
+        shutil.copytree(root, d, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+        target = _git(d, "branch", "--show-current").stdout.strip()
+        base = _commit(d, "base.txt", "base\n")
+        assert _git(d, "switch", "-c", "feature").returncode == 0
+        feature = _commit(d, "feature.txt", "feature work\n")
+        moved = _commit(d, "operator.txt", "operator work\n")
+        assert moved != feature
+        _TEMPLATE_CACHE.append((d, target, base, feature, moved))
+    return _TEMPLATE_CACHE[0]
+
+
 @functools.lru_cache(maxsize=4)
 def _make_config(target: str) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
@@ -49,13 +81,12 @@ def _make_config(target: str) -> UnifiedConfig:
 
 
 def test_startup_recovery_replays_a_stale_resolution_into_a_fresh_auto_rebase(
+    tmp_path: Path,
     tmp_git_repo: Path,
 ) -> None:
-    root = tmp_git_repo
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "base.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "feature.txt", "feature work\n")
+    template, target, base, feature, _moved = _stale_intent_template(tmp_git_repo)
+    root = tmp_path / "repo-rebase"
+    shutil.copytree(template, root, ignore=_COPY_IGNORE)
     write_record(
         root,
         IntegrationRecord(
@@ -66,8 +97,6 @@ def test_startup_recovery_replays_a_stale_resolution_into_a_fresh_auto_rebase(
             resolving_rebase=True,
         ),
     )
-    moved = _commit(root, "operator.txt", "operator work\n")
-    assert moved != feature
 
     outcome = recover_incomplete_integration(
         WorkspaceScope(root),
@@ -95,13 +124,12 @@ def test_startup_recovery_replays_a_stale_resolution_into_a_fresh_auto_rebase(
 
 
 def test_startup_recovery_replays_an_unresolved_integrating_record_with_a_moved_head(
+    tmp_path: Path,
     tmp_git_repo: Path,
 ) -> None:
-    root = tmp_git_repo
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "base.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "feature.txt", "feature work\n")
+    template, target, base, feature, _moved = _stale_intent_template(tmp_git_repo)
+    root = tmp_path / "repo-unresolved"
+    shutil.copytree(template, root, ignore=_COPY_IGNORE)
     write_record(
         root,
         IntegrationRecord(
@@ -111,8 +139,6 @@ def test_startup_recovery_replays_an_unresolved_integrating_record_with_a_moved_
             pre_target_sha=base,
         ),
     )
-    moved = _commit(root, "operator.txt", "operator work\n")
-    assert moved != feature
 
     outcome = recover_incomplete_integration(
         WorkspaceScope(root),

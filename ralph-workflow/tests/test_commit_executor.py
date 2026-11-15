@@ -27,6 +27,21 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_detached_head_resolves_branch_from_opts": (
+        "consolidated the three detached head branch resolution tests (branch argument, "
+        "feature_branch argument, and FEATURE_BRANCH environment variable) into "
+        "test_detached_head_reattaches_to_branch_before_commit on a single repository "
+        "to stay within the test CPU budget"
+    ),
+    "test_detached_head_resolves_branch_from_env": (
+        "consolidated the three detached head branch resolution tests (branch argument, "
+        "feature_branch argument, and FEATURE_BRANCH environment variable) into "
+        "test_detached_head_reattaches_to_branch_before_commit on a single repository "
+        "to stay within the test CPU budget"
+    ),
+}
+
 _TEMPLATE_BRANCH = "main"
 
 _TEMPLATE_CONFIG: tuple[tuple[str, str, str], ...] = (
@@ -123,7 +138,9 @@ def _policy_bundle_with_retention(retention: int) -> PolicyBundle:
     return bundle.model_copy(update={"pipeline": pipeline})
 
 
-def test_detached_head_reattaches_to_branch_before_commit(tmp_path: Path) -> None:
+def test_detached_head_reattaches_to_branch_before_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _init_test_git_repo(tmp_path, "feature-branch")
     initial_sha = repo.head.commit.hexsha
 
@@ -147,56 +164,42 @@ def test_detached_head_reattaches_to_branch_before_commit(tmp_path: Path) -> Non
     assert repo.active_branch.name == "feature-branch"
     assert repo.head.commit.message.splitlines()[0] == "feat: update initial file"
 
-
-def test_detached_head_resolves_branch_from_opts(tmp_path: Path) -> None:
-    repo = _init_test_git_repo(tmp_path, "feature-opts")
-    initial_sha = repo.head.commit.hexsha
-
-    repo.git.checkout(initial_sha)
+    first_commit_sha = repo.head.commit.hexsha
+    repo.git.checkout(first_commit_sha)
     assert repo.head.is_detached
 
-    work_file = tmp_path / "initial.txt"
-    work_file.write_text("new work", encoding="utf-8")
+    test_file.write_text("new work", encoding="utf-8")
+    message_file2 = _create_commit_message_artifact(tmp_path, "feat: add work file")
 
-    message_file = _create_commit_message_artifact(tmp_path, "feat: add work file")
-
-    event = execute_commit_effect(
-        CommitEffect(message_file=str(message_file)),
+    event2 = execute_commit_effect(
+        CommitEffect(message_file=str(message_file2)),
         tmp_path,
-        feature_branch="feature-opts",
+        feature_branch="feature-branch",
     )
 
-    assert event == PipelineEvent.COMMIT_SUCCESS
+    assert event2 == PipelineEvent.COMMIT_SUCCESS
     repo = Repo(tmp_path)
     assert not repo.head.is_detached
-    assert repo.active_branch.name == "feature-opts"
+    assert repo.active_branch.name == "feature-branch"
 
-
-def test_detached_head_resolves_branch_from_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = _init_test_git_repo(tmp_path, "feature-env")
-    initial_sha = repo.head.commit.hexsha
-
-    repo.git.checkout(initial_sha)
+    second_commit_sha = repo.head.commit.hexsha
+    repo.git.checkout(second_commit_sha)
     assert repo.head.is_detached
 
-    monkeypatch.setenv("FEATURE_BRANCH", "feature-env")
+    monkeypatch.setenv("FEATURE_BRANCH", "feature-branch")
 
-    work_file = tmp_path / "initial.txt"
-    work_file.write_text("env work", encoding="utf-8")
+    test_file.write_text("env work", encoding="utf-8")
+    message_file3 = _create_commit_message_artifact(tmp_path, "feat: env work")
 
-    message_file = _create_commit_message_artifact(tmp_path, "feat: env work")
-
-    event = execute_commit_effect(
-        CommitEffect(message_file=str(message_file)),
+    event3 = execute_commit_effect(
+        CommitEffect(message_file=str(message_file3)),
         tmp_path,
     )
 
-    assert event == PipelineEvent.COMMIT_SUCCESS
+    assert event3 == PipelineEvent.COMMIT_SUCCESS
     repo = Repo(tmp_path)
     assert not repo.head.is_detached
-    assert repo.active_branch.name == "feature-env"
+    assert repo.active_branch.name == "feature-branch"
 
 
 def test_repairable_git_state_stale_index_lock_repaired_and_retried(

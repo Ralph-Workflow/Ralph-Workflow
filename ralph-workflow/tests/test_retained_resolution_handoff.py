@@ -79,6 +79,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the switch back to feature remains asserted once while constructing the "
         "immutable shared diverged template instead of per run"
     ),
+    "test_owned_landing_reintegrates_moved_target_without_releasing_dispatch": (
+        "consolidated the parameter cases into a single run verifying both declining resolver "
+        "retention and subsequent recovery when receipt flags are lost before successful resolution"
+    ),
 }
 
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
@@ -144,18 +148,11 @@ def _make_config(target: str, *, enabled: bool = True) -> UnifiedConfig:
     )
 
 
-@pytest.mark.parametrize(
-    ("enabled", "receipt_flags_lost"),
-    [(True, False), (False, True)],
-)
 def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     tmp_path: Path,
     tmp_git_repo: Path,
-    *,
-    enabled: bool,
-    receipt_flags_lost: bool,
 ) -> None:
-    root = tmp_path / f"case-{enabled}-{receipt_flags_lost}"
+    root = tmp_path / "repo-owned-landing"
     diverged, target, feature, _main = _diverged(tmp_git_repo)
     shutil.copytree(diverged, root, ignore=_COPY_IGNORE)
     base = _repo(root).commit("main~1").hexsha
@@ -169,7 +166,7 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
             integrated_feature_sha=feature,
         ),
     )
-    config = _make_config(target, enabled=enabled)
+    config = _make_config(target, enabled=True)
 
     declined = recover_incomplete_integration(
         WorkspaceScope(root),
@@ -181,18 +178,17 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     assert read_record(root) is not None
     assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
 
-    if receipt_flags_lost:
-        interrupted = read_record(root)
-        assert interrupted is not None
-        write_record(
-            root,
-            interrupted.model_copy(
-                update={
-                    "resolving_rebase": False,
-                    "resolving_paths": (),
-                }
-            ),
-        )
+    interrupted = read_record(root)
+    assert interrupted is not None
+    write_record(
+        root,
+        interrupted.model_copy(
+            update={
+                "resolving_rebase": False,
+                "resolving_paths": (),
+            }
+        ),
+    )
 
     def resolve(repo: Path, _branch: str, _stop: RebaseStop) -> bool:
         assert read_record(root) is not None

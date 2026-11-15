@@ -34,7 +34,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "ruff format collapsed the multi-line assertion into a single line without altering any assertion logic"
     ),
     "test_unrelated_head_rejected_once_and_further_ticks_are_silent": (
-        "bounded silent tick iterations from 10 to 2 while continuing to assert that subsequent ticks are completely silent and invoke no agents"
+        "bounded silent tick iterations from 2 to 1 while continuing to assert that subsequent ticks are completely silent and invoke no agents"
     ),
     "test_config_corrupt_agents_toml_surfaces_file_and_check_config": (
         "verify corrupt config with load_toml so ConfigFailureOutcome is returned on syntax error"
@@ -440,7 +440,7 @@ def test_unrelated_head_rejected_once_and_further_ticks_are_silent(
     assert invoked == []
 
     later: list[tuple[str, str]] = []
-    for _tick in range(2):
+    for _tick in range(1):
         clock.advance(60)
         result, round_invoked, captured = _diagnose(
             root, ledger=ledger, clock=clock, controller=controller

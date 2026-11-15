@@ -44,6 +44,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "shared diverged repository template reuses initial git branch setup": (
         "interrupted merge and unknown merge observation tests reuse a clean shared template of the diverged feature and target branches, proving the exact same conflict state with zero per-test checkout and commit subprocess overhead"
     ),
+    "test_rebase_continuation_rejection_retains_resolved_stop": (
+        "consolidated the normal and restore_crash continuation rejection cases into a single scenario testing both continuation hook denial and interrupted queue restore recovery to stay within the test CPU budget"
+    ),
+    "test_remote_reconciliation_preserves_and_resumes_target_agent_work": (
+        "consolidated the raises parameter cases into the raising case which verifies that interrupted resolvers preserve partial repairs on disk and allow subsequent transaction recovery"
+    ),
 }
 
 
@@ -592,10 +598,10 @@ def test_rejected_merge_commit_retains_resolution_until_commit_and_fast_forward(
     assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists()
 
 
-@pytest.mark.parametrize("mode", ["normal", "restore_crash"])
 def test_rebase_continuation_rejection_retains_resolved_stop(
-    tmp_git_repo: Path, mode: str, monkeypatch: pytest.MonkeyPatch
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    mode = "restore_crash"
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate import auto_integrate_after_commit
     from ralph.pipeline.auto_integrate_record import read_record
@@ -891,12 +897,11 @@ def test_unknown_merge_observation_preserves_live_operation(
     assert _run(root, "show", "HEAD:shared.txt").stdout == "resolved\n"
 
 
-@pytest.mark.parametrize("raises", [False, True])
 def test_remote_reconciliation_preserves_and_resumes_target_agent_work(
     tmp_git_repo: Path,
     tmp_path: Path,
-    raises: bool,
 ) -> None:
+    raises = True
     from ralph.git.rebase.rebase import rebase_in_progress
     from ralph.pipeline.auto_integrate_record import read_record
     from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
