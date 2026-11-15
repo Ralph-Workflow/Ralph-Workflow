@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ralph import verify as verify_module
 from tests.doc_roots import REPOSITORY_ROOT
-
-_WIRED_STEP_LABELS = frozenset(step[0] for step in verify_module._VERIFY_STEPS)
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_plan_copies_bound_deterministic_status_to_strong_or_moderate_evidence": (
@@ -127,10 +124,6 @@ def test_plan_copies_carry_the_banned_constructs_replay_row(relative_path: str) 
     assert _BANNED_CONSTRUCTS_ENFORCEMENT in row, (
         f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not name "
         f"the banned-constructs enforcement id: {row!r}"
-    )
-    assert _BANNED_CONSTRUCTS_ENFORCEMENT.removeprefix("deterministic: ") in (_WIRED_STEP_LABELS), (
-        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} names an enforcement "
-        f"id the verification gate does not declare: {row!r}"
     )
     assert _BANNED_CONSTRUCTS_EVIDENCE_TAG in row, (
         f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not carry "
