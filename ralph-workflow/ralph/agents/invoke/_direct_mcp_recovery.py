@@ -43,11 +43,9 @@ def _exception_agent_name(exc: Exception) -> str | None:
 
 
 def _exception_parsed_output(exc: Exception) -> tuple[str, ...]:
-    attributes = cast("dict[str, object]", vars(exc))
-    raw = attributes.get("parsed_output", ())
-    if not isinstance(raw, list | tuple):
-        return ()
-    return tuple(str(line) for line in raw)
+    if isinstance(exc, AgentInvocationError):
+        return tuple(exc.parsed_output) if exc.parsed_output is not None else ()
+    return ()
 
 
 def _retry_budget_exhausted_error(

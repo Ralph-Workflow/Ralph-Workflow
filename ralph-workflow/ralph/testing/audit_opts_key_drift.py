@@ -8,8 +8,6 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ralph.testing._runtime_checks import require
-
 _POOL_WORKER_CAP = 1
 _POOL_CONTEXT = multiprocessing.get_context("spawn")
 _PARALLEL_PAYLOAD_THRESHOLD = 32
@@ -59,10 +57,8 @@ def _index_module(name: str, tree: ast.Module) -> _Module:
     module = _Module(name=name)
     for node in ast.walk(tree):
         match True:
-            case _ if isinstance(node, _FUNC_NODES):
-                func = node
-                require(isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef))
-                module.functions.setdefault(func.name, func)
+            case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                module.functions.setdefault(node.name, node)
             case _ if isinstance(node, ast.Call):
                 if node.keywords:
                     module.keyword_calls.append(node)

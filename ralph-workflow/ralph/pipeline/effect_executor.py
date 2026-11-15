@@ -238,6 +238,36 @@ def _event_from_attempt_result(
     return result.event if result.event is not None else PipelineEvent.AGENT_FAILURE
 
 
+def _extract_recovery_controller(opts: Mapping[str, object]) -> RecoveryController | None:
+    raw = opts.get("recovery_controller") or opts.get("recovery")
+    from ralph.recovery.controller import RecoveryController
+
+    return raw if isinstance(raw, RecoveryController) else None
+
+
+def _controller_and_ledger_from_deps(
+    pipeline_deps: object,
+    injected: AgentEffectDependencies,
+) -> tuple[RecoveryController | None, AgentFailureLedger | None]:
+    controller: RecoveryController | None = injected.recovery_controller
+    if controller is None:
+        rc: object = getattr(pipeline_deps, "recovery_controller", None)
+        from ralph.recovery.controller import RecoveryController
+
+        if isinstance(rc, RecoveryController):
+            controller = rc
+    ledger: AgentFailureLedger | None = None
+    if controller is not None:
+        ledger = controller.ledger
+    else:
+        al: object = getattr(pipeline_deps, "ledger", None)
+        from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+        if isinstance(al, AgentFailureLedger):
+            ledger = al
+    return controller, ledger
+
+
 def execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
@@ -264,9 +294,8 @@ def execute_agent_effect(
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     injected = current_agent_effect_dependencies()
     if injected.agent_runner is not None:
-        injected_controller = injected.recovery_controller or pipeline_deps.recovery_controller
-        injected_ledger = (
-            injected_controller.ledger if injected_controller is not None else pipeline_deps.ledger
+        injected_controller, injected_ledger = _controller_and_ledger_from_deps(
+            pipeline_deps, injected
         )
         if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
             logger.error(
@@ -324,10 +353,7 @@ def execute_agent_effect(
         )
         return PipelineEvent.AGENT_FAILURE
 
-    active_rec = (
-        cast("RecoveryController | None", opts.get("recovery_controller") or opts.get("recovery"))
-        or injected.recovery_controller
-    )
+    active_rec = _extract_recovery_controller(opts) or injected.recovery_controller
     if active_rec is None:
         active_rec = pipeline_deps.recovery_controller
     resolved_attempt_finalizer = attempt_finalizer or _fallback_attempt_finalizer(

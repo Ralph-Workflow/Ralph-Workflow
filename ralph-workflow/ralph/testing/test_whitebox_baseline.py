@@ -433,7 +433,6 @@ tests/test_commit_review_diff.py|0,2,0
 tests/test_commit_review_invariants.py|0,2,0
 tests/test_commit_review_tripwires.py|0,1,0
 tests/test_commit_review_verify_gate.py|0,2,0
-tests/test_commit_retry_recovery_owned_bound.py|0,0,2
 tests/test_completion_invocation_exit_logging.py|0,3,0
 tests/test_completion_receipts.py|14,1,0
 tests/test_completion_run_id_from_env.py|0,1,0

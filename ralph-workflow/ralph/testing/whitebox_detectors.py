@@ -188,13 +188,7 @@ def _scan_tree(tree: ast.AST) -> _Scan:
                 handler = _SCAN_HANDLERS.get(type(node))
                 if handler is not None:
                     handler(scan, node)
-        for _field_name, value in reversed(tuple(ast.iter_fields(node))):
-            match True:
-                case _ if isinstance(value, list):
-                    items = [item for item in value if isinstance(item, ast.AST)]
-                    stack.extend(reversed(items))
-                case _ if isinstance(value, ast.AST):
-                    stack.append(value)
+        stack.extend(reversed(list(ast.iter_child_nodes(node))))
     return scan
 
 

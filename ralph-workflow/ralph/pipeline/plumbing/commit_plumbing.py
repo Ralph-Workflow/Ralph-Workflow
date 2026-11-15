@@ -499,6 +499,9 @@ def run_commit_plumbing(
                 break
             cfg = chain_config.registry.get(agent_name)
             if cfg is None:
+                recovery_controller.mark_agent_unavailable(
+                    "commit", agent_name, reason="unregistered_agent"
+                )
                 continue
             evidence = _resolve_commit_evidence(repo_root, diff, commit_evidence_source)
             prompt = _commit_prompt_for_agent(
@@ -556,6 +559,14 @@ def run_commit_plumbing(
                     last_error=last_error,
                     output=list(output_lines),
                     outcome=CommitAgentOutcome.COMPLETED,
+                )
+
+            while recovery_controller.agent_eligibility("commit", agent_name).is_eligible:
+                recovery_controller.record_attempt_fact(
+                    "commit",
+                    agent_name,
+                    artifact_valid=False,
+                    workspace_changed=False,
                 )
 
     if not failure_details:
@@ -956,6 +967,12 @@ def _run_commit_agent_attempt_with_recovery(
                     last_session_id,
                     last_error,
                 )
+            recovery_controller.record_attempt_fact(
+                "commit",
+                agent_name,
+                artifact_valid=False,
+                workspace_changed=False,
+            )
             return (
                 CommitAgentAttempt(
                     failure_detail=_format_commit_agent_failure(

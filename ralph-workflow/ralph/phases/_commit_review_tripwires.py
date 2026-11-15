@@ -457,13 +457,46 @@ def _evaluate_protected_directory_deletions(
     return findings
 
 
+def _manifest_hard_finding(
+    norm: PurePosixPath,
+    norm_str: str,
+    deleted: bool,
+    new_mode: str,
+    is_binary: bool,
+    content: object,
+    base_paths: frozenset[str] | None,
+) -> Finding | None:
+    if norm.name not in DEFAULT_LOCKFILE_BASENAMES and norm.name not in DEFAULT_MANIFEST_BASENAMES:
+        return None
+    if deleted:
+        return Finding(
+            category="protected_deletion",
+            message=f"Protected project manifest or lockfile deleted: {norm_str}",
+            path=norm_str,
+        )
+    destructive = (
+        (content is not None and not str(content).strip()) or new_mode == "120000" or is_binary
+    )
+    if base_paths is not None and norm_str in base_paths and destructive:
+        return Finding(
+            category="protected_overwrite",
+            message=f"Protected project manifest or lockfile destructively overwritten: {norm_str}",
+            path=norm_str,
+        )
+    return None
+
+
 def _evaluate_hard_entry(
     norm: PurePosixPath,
     norm_str: str,
     deleted: bool,
     old_mode: object,
+    new_mode: str,
+    is_binary: bool,
+    content: object,
     custom_protected: set[str],
     protected_top_level_dirs: frozenset[str],
+    base_paths: frozenset[str] | None,
 ) -> Finding | None:
     if _is_git_path(norm):
         action = "deleted" if deleted else "modified or overwritten"
@@ -492,13 +525,11 @@ def _evaluate_hard_entry(
             path=norm_str,
         )
 
-    is_manifest = norm.name in DEFAULT_LOCKFILE_BASENAMES or norm.name in DEFAULT_MANIFEST_BASENAMES
-    if is_manifest and deleted:
-        return Finding(
-            category="protected_deletion",
-            message=f"Protected project manifest or lockfile deleted: {norm_str}",
-            path=norm_str,
-        )
+    manifest_finding = _manifest_hard_finding(
+        norm, norm_str, deleted, new_mode, is_binary, content, base_paths
+    )
+    if manifest_finding is not None:
+        return manifest_finding
 
     is_top_level_dir = norm_str in protected_top_level_dirs or (
         old_mode == "040000" and len(norm.parts) == 1 and norm.parts[0] in protected_top_level_dirs
@@ -519,11 +550,28 @@ def _evaluate_soft_entry(
     norm_str: str,
     deleted: bool,
     size: int,
+    new_mode: str,
+    is_binary: bool,
     content: object,
     allowed_dirs: Sequence[str] | set[str] | None,
     thresholds: TripwireThresholds,
+    base_paths: frozenset[str] | None,
 ) -> list[Finding]:
     findings: list[Finding] = []
+
+    is_manifest = norm.name in DEFAULT_LOCKFILE_BASENAMES or norm.name in DEFAULT_MANIFEST_BASENAMES
+    if not deleted and is_manifest and base_paths is not None and norm_str in base_paths:
+        is_destructive = (
+            (content is not None and not str(content).strip()) or new_mode == "120000" or is_binary
+        )
+        if not is_destructive:
+            findings.append(
+                Finding(
+                    category="protected_overwrite",
+                    message=f"Protected project manifest or lockfile modified: {norm_str}",
+                    path=norm_str,
+                )
+            )
 
     if allowed_dirs and not _is_path_in_allowed_dirs(norm, allowed_dirs):
         findings.append(
@@ -598,7 +646,9 @@ def evaluate_tripwires(
         status = str(_get_entry_attr(entry, "status", ""))
         size = int(str(_get_entry_attr(entry, "size", 0) or 0))
         old_mode = _get_entry_attr(entry, "old_mode", None)
+        new_mode = str(_get_entry_attr(entry, "new_mode", "") or "")
         content = _get_entry_attr(entry, "content", None)
+        is_binary = bool(_get_entry_attr(entry, "is_binary", False))
 
         norm = PurePosixPath(raw_path.replace("\\", "/"))
         norm_str = norm.as_posix()
@@ -609,8 +659,12 @@ def evaluate_tripwires(
             norm_str,
             deleted,
             old_mode,
+            new_mode,
+            is_binary,
+            content,
             custom_protected,
             protected_dirs,
+            base_paths,
         )
         if hard_finding is not None:
             hard_findings.append(hard_finding)
@@ -622,9 +676,12 @@ def evaluate_tripwires(
                 norm_str,
                 deleted,
                 size,
+                new_mode,
+                is_binary,
                 content,
                 allowed_dirs,
                 thresholds,
+                base_paths,
             )
         )
 

@@ -153,9 +153,9 @@ def _node_identifier(node: ast.AST) -> tuple[str, int] | None:
             identifier, line = (node.id, node.lineno)
         case _ if isinstance(node, ast.Attribute):
             identifier, line = (node.attr, node.lineno)
-        case _ if isinstance(node, ast.arg | ast.keyword):
+        case _ if isinstance(node, (ast.arg, ast.keyword)):
             identifier, line = (node.arg, node.lineno)
-        case _ if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+        case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             identifier, line = (node.name, node.lineno)
     if identifier is None:
         return None

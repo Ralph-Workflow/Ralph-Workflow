@@ -215,6 +215,7 @@ def _default_liveness_verifier(
 
 class ProcessManager:
     __slots__ = (
+        "__dict__",
         "_async_process_factory",
         "_async_procs",
         "_descendants",

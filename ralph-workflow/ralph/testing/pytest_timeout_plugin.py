@@ -4,7 +4,7 @@ import os
 import sys
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
@@ -38,7 +38,7 @@ _psutil: _PsutilMod | None
 try:
     import psutil as _psutil_imported
 
-    _psutil = _psutil_imported
+    _psutil = cast("_PsutilMod", _psutil_imported)
 except ImportError:
     _psutil = None
 
@@ -50,10 +50,6 @@ _TIMEOUT_EXIT_CODE = 124
 class _SuiteWatchdog:
     cancel_event: threading.Event
     thread: threading.Thread
-
-
-class _WatchdogConfig(Protocol):
-    _ralph_suite_watchdog: _SuiteWatchdog
 
 
 def _is_xdist_worker(config: pytest.Config) -> bool:
@@ -115,15 +111,13 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         name="ralph-pytest-suite-watchdog",
         daemon=True,
     )
-    watchdog_config: _WatchdogConfig = config
-    watchdog_config._ralph_suite_watchdog = _SuiteWatchdog(cancel_event=cancel_event, thread=thread)
+    setattr(config, _WATCHDOG_ATTR, _SuiteWatchdog(cancel_event=cancel_event, thread=thread))
     thread.start()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     del exitstatus
-    watchdog_config: _WatchdogConfig = session.config
-    watchdog = watchdog_config._ralph_suite_watchdog
+    watchdog = cast("_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None))
     if watchdog is None:
         return
     watchdog.cancel_event.set()

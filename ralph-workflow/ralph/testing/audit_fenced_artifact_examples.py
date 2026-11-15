@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass
+from typing import cast
 
-from jinja2 import Environment, StrictUndefined, TemplateError, meta
+from jinja2 import Environment, StrictUndefined, TemplateError, Undefined, meta
 
 from ralph.mcp.artifacts.format_docs import (
     FORMAT_DOC_ARTIFACT_TYPES,
@@ -104,12 +105,12 @@ def _literal_fenced_examples(
         if opening is None:
             index += 1
             continue
-        marker = opening.group("fence")
+        marker = cast("str", opening.group("fence"))
         closing_index = index + 1
         while closing_index < len(lines) and not _is_closing_fence(lines[closing_index], marker):
             closing_index += 1
         if closing_index == len(lines):
-            info = opening.group("info").strip()
+            info = cast("str", opening.group("info")).strip()
             if info.startswith(("markdown", "md")):
                 violations.append(f"{source_name}:{index + 1} unterminated markdown fence")
             break
@@ -118,7 +119,7 @@ def _literal_fenced_examples(
                 source_name=source_name,
                 first_content_line=index + 2,
                 markdown="\n".join(lines[index + 1 : closing_index]) + "\n",
-                fence_info=opening.group("info").strip(),
+                fence_info=cast("str", opening.group("info")).strip(),
             )
         )
         index = closing_index + 1
@@ -128,11 +129,11 @@ def _literal_fenced_examples(
 def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
     blocks: list[_SetBlock] = []
     for match in _SET_BLOCK_RE.finditer(source):
-        body = match.group("body")
+        body = cast("str", match.group("body"))
         leading_newlines = len(body) - len(body.lstrip("\n"))
         blocks.append(
             _SetBlock(
-                name=match.group("name"),
+                name=cast("str", match.group("name")),
                 body=body,
                 first_content_line=(
                     source.count("\n", 0, match.start("body")) + leading_newlines + 1
@@ -144,7 +145,7 @@ def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
 
 
 def _render_example_body(body: str) -> str:
-    strict_undefined = StrictUndefined
+    strict_undefined = cast("type[Undefined]", StrictUndefined)
     environment = Environment(
         autoescape=False,
         undefined=strict_undefined,
@@ -209,7 +210,7 @@ def _frontmatter_type(markdown: str) -> tuple[bool, str | None]:
     match = _FRONTMATTER_TYPE_RE.search(frontmatter)
     return (
         True,
-        None if match is None else match.group("artifact_type").strip(),
+        None if match is None else cast("str", match.group("artifact_type")).strip(),
     )
 
 
@@ -398,7 +399,7 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     units: list[_PlanUnit] = []
     for index, heading in enumerate(headings):
-        title = heading.group("title")
+        title = cast("str", heading.group("title"))
         if not (
             re.fullmatch(
                 r"(?:Sub(?:[\s-]?plan)(?:\s*[:\-\u2013\u2014]\s*|\s+).+|"
@@ -420,7 +421,7 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
 def _plan_main_fan_in(markdown: str) -> _PlanUnit | None:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     for index, heading in enumerate(headings):
-        title = heading.group("title")
+        title = cast("str", heading.group("title"))
         lowered = title.casefold()
         if "integration" not in lowered or "verif" not in lowered:
             continue
@@ -433,7 +434,7 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
     steps = list(re.finditer(r"^### \[(?P<step_id>S-\d+)\]", body, re.MULTILINE))
     if not steps:
         return None
-    own_step_ids = {step.group("step_id") for step in steps}
+    own_step_ids = {cast("str", step.group("step_id")) for step in steps}
     dependencies: list[str] = []
     for index, step in enumerate(steps):
         end = steps[index + 1].start() if index + 1 < len(steps) else len(body)
@@ -443,14 +444,14 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
             step_body,
             re.MULTILINE,
         ):
-            dependency_text = match.group("ids")
+            dependency_text = cast("str", match.group("ids"))
             dependencies.extend(
                 part.strip()
                 for part in dependency_text.split(",")
                 if part.strip() not in own_step_ids
             )
     return _PlanUnit(
-        steps[-1].group("step_id"),
+        cast("str", steps[-1].group("step_id")),
         title,
         tuple(dependencies),
         len(steps),
@@ -503,7 +504,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 f"{source_name}:1 plan examples must include example-size={example_size}"
             )
     for example in by_size["tiny"]:
-        step_count = len(_PLAN_STEP_HEADING_RE.findall(example.markdown))
+        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
         if step_count not in {1, 2}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -515,7 +516,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 "example-size=tiny must not declare parallel work units"
             )
     for example in by_size["medium"]:
-        step_count = len(_PLAN_STEP_HEADING_RE.findall(example.markdown))
+        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
         if step_count not in {3, 4}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "

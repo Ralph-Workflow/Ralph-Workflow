@@ -106,9 +106,9 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
         match True:
             case _ if isinstance(node, ast.ClassDef):
                 violations.extend(_check_production_class(node, rel_path))
-            case _ if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 violations.extend(_check_production_function(node, rel_path))
-            case _ if isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign):
+            case _ if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
                 violations.extend(_check_production_assignment(node, rel_path))
             case _ if isinstance(node, ast.Attribute):
                 violations.extend(_check_production_attribute(node, rel_path))
@@ -116,13 +116,13 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
                 violations.extend(_check_production_subscript(node, rel_path))
             case _ if isinstance(node, ast.Compare):
                 violations.extend(_check_production_compare(node, rel_path))
-            case _ if isinstance(node, ast.If | ast.While | ast.IfExp):
+            case _ if isinstance(node, (ast.If, ast.While, ast.IfExp)):
                 violations.extend(_check_production_retry_cap_rule(node, rel_path))
             case _ if isinstance(node, ast.Call):
                 violations.extend(
                     _check_production_call(node, rel_path, enclosing_functions.get(id(node)))
                 )
-            case _ if isinstance(node, ast.Import | ast.ImportFrom):
+            case _ if isinstance(node, (ast.Import, ast.ImportFrom)):
                 violations.extend(_check_production_import(node, rel_path))
     violations.extend(_check_ralph_authored_classifier_inputs(tree, rel_path))
     violations.extend(check_phase_local_retry_loops(tree, rel_path))

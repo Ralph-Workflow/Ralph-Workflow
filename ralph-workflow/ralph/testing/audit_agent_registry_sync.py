@@ -4,8 +4,6 @@ import ast
 import sys
 from pathlib import Path
 
-from ralph.testing._runtime_checks import require
-
 
 class RegistrySyncViolation:
     __slots__ = ("category", "detail", "file_path", "line")
@@ -57,7 +55,7 @@ def _parse_support_entry(elt: ast.expr) -> tuple[str | None, str | None, bool]:
     if not is_correct_call:
         return None, None, False
 
-    require(isinstance(elt, ast.Call))
+    assert isinstance(elt, ast.Call)
     name_val: str | None = None
     cmd_val: str | None = None
 

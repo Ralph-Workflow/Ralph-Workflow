@@ -4,9 +4,7 @@ import ast
 import importlib.util
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-from ralph.testing._runtime_checks import require
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,7 +65,7 @@ def _check_fast_path_placement() -> list[str]:
 
     target: ast.FunctionDef | ast.AsyncFunctionDef | None = None
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == (
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == (
             _FAST_PATH_TARGET_FUNCTION
         ):
             target = node
@@ -267,8 +265,8 @@ def _ordering_violations_for_call(
     sites: _CallSites,
 ) -> list[str]:
     problems: list[str] = []
-    require(sites.prior_line is not None)
-    require(sites.later_line is not None)
+    assert sites.prior_line is not None
+    assert sites.later_line is not None
     if lineno < sites.prior_line:
         problems.append(
             f"{rel_path}: {helper!r} call at line {lineno} is BEFORE the "
@@ -433,7 +431,7 @@ def _load_is_agent_internal_path() -> Callable[[str], bool]:
         raise RuntimeError(f"cannot build import spec for {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.is_agent_internal_path
+    return cast("Callable[[str], bool]", module.is_agent_internal_path)
 
 
 def _behavioral_invariants() -> list[str]:

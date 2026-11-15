@@ -62,7 +62,8 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
-        if isinstance(outcome, bool):
+        outcome_obj: object = outcome
+        if isinstance(outcome_obj, bool):
             from ralph.pipeline.resolution_outcome import UnknownOutcome
 
             return UnknownOutcome(

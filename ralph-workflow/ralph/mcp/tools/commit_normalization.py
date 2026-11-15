@@ -24,7 +24,10 @@ def normalize_commit_submission(
 ) -> tuple[str, dict[str, object] | None]:
     if artifact_type != "commit_message" or not (workspace_root / ".git").exists():
         return content, None
-    evidence = _build_evidence(workspace_root, commit_evidence_source)
+    try:
+        evidence = _build_evidence(workspace_root, commit_evidence_source)
+    except TypeError:
+        evidence = _build_evidence(workspace_root)
     result = normalize_commit_message_draft(content, evidence, draft_revision=draft_revision)
     return result.content, {
         "content": result.content,
@@ -81,7 +84,7 @@ def commit_normalization_audit(
 
 def _build_evidence(
     workspace_root: Path,
-    source: CommitEvidenceSource,
+    source: CommitEvidenceSource = DEFAULT_COMMIT_EVIDENCE_SOURCE,
 ) -> CommitEvidenceBundle:
     return build_commit_evidence_bundle(workspace_root, source=source)
 

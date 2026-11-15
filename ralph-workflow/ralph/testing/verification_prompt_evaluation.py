@@ -261,13 +261,12 @@ def _verdicts(
     entries = decision.get("criterion_verdicts")
     identifiers = decision.get("criterion_verdict_ids")
     if isinstance(entries, list) and isinstance(identifiers, list) and entries:
-        raw_identifiers = identifiers
-        raw_entries = entries
-        if not all(isinstance(value, str) for value in (*raw_identifiers, *raw_entries)):
+        str_identifiers = [str(x) for x in identifiers if isinstance(x, str)]
+        str_entries = [str(x) for x in entries if isinstance(x, str)]
+        if len(str_identifiers) != len(identifiers) or len(str_entries) != len(entries):
             raise ValueError("criterion verdict entries must be strings")
         parsed: dict[str, tuple[str, str, bool, str]] = {}
-        for identifier, entry in zip(raw_identifiers, raw_entries, strict=True):
-            identifier_text, entry_text = str(identifier), str(entry)
+        for identifier_text, entry_text in zip(str_identifiers, str_entries, strict=True):
             verdict = entry_text.split("Verdict:", 1)[-1].split(".", 1)[0].strip().casefold()
             evidence = "Evidence:" in entry_text and bool(
                 entry_text.split("Evidence:", 1)[1].split("Location:", 1)[0].strip()

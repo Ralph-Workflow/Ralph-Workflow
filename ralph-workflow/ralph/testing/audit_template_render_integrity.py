@@ -5,7 +5,7 @@ import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 from jinja2 import Environment, meta, nodes
 
@@ -262,7 +262,7 @@ def _base_variables(sources: dict[str, str]) -> dict[str, str]:
 def _loaded_names(node: nodes.Node) -> set[str]:
     names: set[str] = set()
     if type(node).__name__ == "Name":
-        name_node = node
+        name_node = cast("_NameNodeView", node)
         if name_node.ctx == "load":
             names.add(name_node.name)
     for child in node.iter_child_nodes():
@@ -285,7 +285,7 @@ def _conditional_variable_groups(
             undeclared_names: set[str],
         ) -> None:
             if type(node).__name__ == "If":
-                if_node = node
+                if_node = cast("_IfNodeView", node)
                 condition_names = frozenset(_loaded_names(if_node.test) & undeclared_names)
                 path_names = (ancestors | condition_names) - _ENGINE_GLOBAL_NAMES
                 if path_names:
@@ -492,7 +492,7 @@ def _duplicated_headings(lines: list[str]) -> list[str]:
 
 def _duplicated_paragraphs(rendered: str) -> list[str]:
     counts: Counter[str] = Counter()
-    paragraphs = re.split(r"\n\s*\n", rendered)
+    paragraphs = cast("list[str]", re.split(r"\n\s*\n", rendered))
     for paragraph in paragraphs:
         normalized = " ".join(paragraph.split())
         if len(normalized) >= _MIN_DUPLICATE_PARAGRAPH_CHARS:

@@ -29,7 +29,7 @@ def _is_broad(handler: ast.ExceptHandler) -> bool:
 
 def _normal_return(node: ast.Return) -> bool:
     value = node.value
-    empty_sequence = isinstance(value, ast.Tuple | ast.List | ast.Set) and not value.elts
+    empty_sequence = isinstance(value, (ast.Tuple, ast.List, ast.Set)) and not value.elts
     empty_mapping = isinstance(value, ast.Dict) and not value.keys
     default_constant = isinstance(value, ast.Constant) and value.value in {None, False, ""}
     return value is None or empty_sequence or empty_mapping or default_constant
@@ -66,7 +66,7 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
         integration_functions = (
             node
             for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and any(word in node.name for word in ("resolve", "resolution", "landing"))
             and node.name not in {"_resolve_agent_config", "resolve_failure_ledger"}
         )

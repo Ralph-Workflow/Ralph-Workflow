@@ -8,7 +8,7 @@ from loguru import logger
 from ralph.process.manager._process_status import ProcessStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from ralph.process.manager._process_event import ProcessEvent
     from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
@@ -114,11 +114,12 @@ class _PsutilProcessAdapter:
 
 
 class _PsutilModuleAdapter:
-    __slots__ = ("AccessDenied", "NoSuchProcess")
+    __slots__ = ("AccessDenied", "NoSuchProcess", "Process")
 
     def __init__(self) -> None:
         self.NoSuchProcess: type[BaseException] = psutil.NoSuchProcess
         self.AccessDenied: type[BaseException] = psutil.AccessDenied
+        self.Process: Callable[[int], _PsutilProcessLike] = self.process_from_pid
 
     def process_from_pid(self, pid: int) -> _PsutilProcessLike:
         return _PsutilProcessAdapter(psutil.Process(pid))

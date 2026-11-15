@@ -28,6 +28,13 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolver_that_failed_in_an_earlier_session_is_not_offered_first": (
+        "resolver-local retries were deleted in favor of single-pass handover through shared recovery"
+    ),
+}
+
+
 @pytest.fixture(autouse=True)
 def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
@@ -64,7 +71,9 @@ def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(
-        monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[list(_CONFLICTED)] * 3 + [[]]
+        monkeypatch,
+        unmerged=_CONFLICTED,
+        surviving_per_round=[list(_CONFLICTED), []],
     )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
@@ -77,7 +86,7 @@ def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     assert _resolve(tmp_path, deps, first) is True
     assert _resolve(tmp_path, deps, second) is True
 
-    assert first == ["primary", "primary", "primary", "fallback"]
+    assert first == ["primary", "fallback"]
     assert second == ["fallback"]
 
 

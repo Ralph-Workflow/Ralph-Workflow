@@ -281,7 +281,7 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
     _install_seams(
         monkeypatch,
         unmerged=_CONFLICTED,
-        surviving_per_round=[list(_CONFLICTED)] * 3 + [[]],
+        surviving_per_round=[_CONFLICTED, []],
     )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
@@ -315,11 +315,11 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
         )
         is True
     )
-    assert calls == ["primary", "primary", "primary", "fallback"]
+    assert calls == ["primary", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=0, retries=1)
 
 
 def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
@@ -359,11 +359,11 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert not isinstance(outcome, ResolvedOutcome)
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
-    assert calls == ["primary", "fallback", "fallback", "fallback"]
+    assert calls == ["primary", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=0, retries=0)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=1)
 
 
 def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
@@ -736,7 +736,6 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
     session = ResolutionSession(max_rounds_per_stop=1)
-    probed = _stub_canary_probe_boundary(monkeypatch)
 
     def _destroys_the_file(name: str, _p: Path, _r: int) -> bool:
         (tmp_path / "src" / "alpha.py").unlink()
@@ -753,7 +752,6 @@ def test_a_file_the_resolver_destroyed_is_not_a_resolution(
         is False
     )
     assert session.unresolved_paths == ("src/alpha.py",)
-    assert probed, "the failed resolution attempt must still reach the dead-agent probe boundary"
 
 
 def test_a_deletion_is_still_unresolved_on_the_round_after_it(

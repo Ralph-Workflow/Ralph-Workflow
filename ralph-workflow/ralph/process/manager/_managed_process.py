@@ -31,8 +31,10 @@ if TYPE_CHECKING:
 
 class ManagedProcess:
     __slots__ = (
+        "__dict__",
         "_manager",
         "_proc",
+        "_ralph_bounded_stderr",
         "_record",
     )
 

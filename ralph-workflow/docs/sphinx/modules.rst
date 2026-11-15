@@ -16,12 +16,6 @@ development phase writes files and only commits at the commit seam, so
 treating any dirty worktree as unresolved integration would block every
 run.
 
-ralph.pipeline.agent_selection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.agent_selection
-   :members:
-
 ralph.pipeline.integration_resolution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
