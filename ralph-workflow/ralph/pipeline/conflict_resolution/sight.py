@@ -220,23 +220,18 @@ def classify_stage_map(
         ours_mode, ours_blob = ours
         theirs_mode, theirs_blob = theirs
         if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
-            if _is_tree(ours_mode) or _is_tree(theirs_mode):
-                result = ConflictSight.OUT_OF_REACH
-            else:
-                result = _classify_gitlink(
-                    ours_mode,
-                    ours_blob,
-                    theirs_mode,
-                    theirs_blob,
-                    stages.get(1),
-                    gitlink_sight=gitlink_sight,
-                )
+            result = _classify_gitlink(
+                ours_mode,
+                ours_blob,
+                theirs_mode,
+                theirs_blob,
+                stages.get(1),
+                gitlink_sight=gitlink_sight,
+            )
         elif binary or (_is_tree(ours_mode) != _is_tree(theirs_mode)):
             result = ConflictSight.AGENT_DECISION
         else:
-            result = _classify_two_sided_blob(
-                ours_blob, theirs_blob, has_markers=has_markers
-            )
+            result = _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
     return result
 
 
@@ -268,6 +263,8 @@ def _classify_gitlink(
     ancestor: tuple[str, str] | None,
     gitlink_sight: ConflictSight = ConflictSight.GITLINK_POLICY,
 ) -> ConflictSight:
+    if _is_tree(ours_mode) or _is_tree(theirs_mode):
+        return ConflictSight.OUT_OF_REACH
     if ours_mode == theirs_mode == _GITLINK_MODE and ancestor is not None:
         _ancestor_mode, ancestor_blob = ancestor
         if ancestor_blob == ours_blob == theirs_blob:

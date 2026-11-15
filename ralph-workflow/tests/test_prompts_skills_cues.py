@@ -7,6 +7,7 @@ import pytest
 
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_registry import packaged_template_root
 from ralph.prompts.types import (
     FROZEN_UNIVERSAL_SKILLS,
     SessionCapabilities,
@@ -162,6 +163,37 @@ _CUE_NAME_RE = re.compile(
 _ARTIFACT_POINTER_RE = re.compile(r"render_optional_artifact_skill_pointer\(\s*['\"]([^'\"]+)['\"]")
 _UNIVERSAL_VARIABLE_RE = re.compile(r"SKILL_INSTALLED_([A-Z0-9_]+)")
 _EMPHATIC_RE = re.compile(r"\b(?:CRITICAL|MUST|NEVER)\b")
+_SKILL_CUE_MACROS: tuple[tuple[str, str], ...] = (
+    ("render_conflict_resolution_diagnosis_cue", "systematic-debugging"),
+    ("render_conflict_resolution_completion_cue", "verification-before-completion"),
+    ("render_development_analysis_evidence_cue", "verification-before-completion"),
+    ("render_development_analysis_failures_cue", "systematic-debugging"),
+    ("render_planning_analysis_claims_cue", "verification-before-completion"),
+    ("render_policy_remediation_gates_cue", "verification-before-completion"),
+    ("render_policy_remediation_failures_cue", "systematic-debugging"),
+    ("render_policy_remediation_analysis_gates_cue", "verification-before-completion"),
+    ("render_policy_remediation_analysis_failures_cue", "systematic-debugging"),
+)
+_PHASE_SKILL_CUE_MACROS: dict[str, tuple[str, ...]] = {
+    "conflict_resolution.jinja": (
+        "render_conflict_resolution_diagnosis_cue",
+        "render_conflict_resolution_completion_cue",
+    ),
+    "development_analysis.jinja": (
+        "render_development_analysis_evidence_cue",
+        "render_development_analysis_failures_cue",
+    ),
+    "planning_analysis.jinja": ("render_planning_analysis_claims_cue",),
+    "policy_remediation.jinja": (
+        "render_policy_remediation_gates_cue",
+        "render_policy_remediation_failures_cue",
+    ),
+    "policy_remediation_analysis.jinja": (
+        "render_policy_remediation_analysis_gates_cue",
+        "render_policy_remediation_analysis_failures_cue",
+    ),
+}
+_MACRO_SKILLS: dict[str, str] = dict(_SKILL_CUE_MACROS)
 
 
 @pytest.fixture
@@ -255,6 +287,15 @@ def _render_phase(
     )
 
 
+def _render_skill_cue_macro(macro_name: str, skills: tuple[str, ...]) -> str:
+    context = TemplateContext.default()
+    harness = (
+        "{% from 'shared/_skill_cues.j2' import " + macro_name + " %}"
+        "{{ " + macro_name + "() }}"
+    )
+    return render_template(harness, skill_template_variables(skills), context.partials)
+
+
 def _template_sources() -> dict[str, str]:
     context = TemplateContext.default()
     sources = {name: context.registry.get_template(name) for name in _PHASE_REQUIRED_SKILLS}
@@ -327,6 +368,7 @@ def test_phase_prompt_names_only_its_installed_universal_skills(
         (template_name, skill_name)
         for template_name, required_skills in _PHASE_REQUIRED_SKILLS.items()
         for skill_name in required_skills
+        if template_name not in _PHASE_SKILL_CUE_MACROS
     ],
 )
 def test_each_phase_skill_cue_uses_its_own_installed_flag(
@@ -346,6 +388,46 @@ def test_each_phase_skill_cue_uses_its_own_installed_flag(
     assert skill_name not in absent
     for other_skill in set(FROZEN_UNIVERSAL_SKILLS) - {skill_name}:
         assert other_skill not in installed
+
+
+@pytest.mark.parametrize(
+    ("macro_name", "skill_name"),
+    _SKILL_CUE_MACROS,
+)
+def test_skill_cue_macro_follows_only_its_own_installed_flag(
+    macro_name: str,
+    skill_name: str,
+) -> None:
+    other_skill = next(
+        candidate for candidate in FROZEN_UNIVERSAL_SKILLS if candidate != skill_name
+    )
+    installed = _render_skill_cue_macro(macro_name, (skill_name,))
+    absent = _render_skill_cue_macro(macro_name, ())
+    other_installed = _render_skill_cue_macro(macro_name, (other_skill,))
+
+    assert skill_name in installed
+    assert skill_name not in absent
+    assert other_installed == absent
+
+
+@pytest.mark.parametrize("template_name", _PHASE_SKILL_CUE_MACROS)
+def test_phase_skill_cue_uses_the_shared_fragment_macros(template_name: str) -> None:
+    source = TemplateContext.default().registry.get_template(template_name)
+
+    for macro_name in _PHASE_SKILL_CUE_MACROS[template_name]:
+        assert "{{ " + macro_name + "() }}" in source
+def test_skill_installation_flags_live_only_in_shared_fragments() -> None:
+    root = packaged_template_root()
+    shared_root = (root / "shared").resolve()
+    offenders = [
+        path.name
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+        and path.suffix in {".jinja", ".j2", ".txt"}
+        and shared_root not in path.resolve().parents
+        and "SKILL_INSTALLED_" in path.read_text(encoding="utf-8")
+    ]
+    assert not offenders
 
 
 def test_templates_name_only_known_universal_and_artifact_skills() -> None:

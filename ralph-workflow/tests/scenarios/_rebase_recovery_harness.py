@@ -584,7 +584,9 @@ def run_spent_chain_fall_over_then_wait(root: Path) -> ScenarioResult:
         reset_executors(token)
 
     waiting_lines = [
-        line for line in second_lines if "provider" in line.content.lower() or "waiting" in line.content.lower()
+        line
+        for line in second_lines
+        if "provider" in line.content.lower() or "waiting" in line.content.lower()
     ]
     terminal = (
         "waiting"
@@ -624,7 +626,9 @@ def run_empty_resolution_stop(root: Path) -> ScenarioResult:
     target = git(root, "rev-parse", "main")
     terminal = (
         "resolved"
-        if not rebase_in_progress(root) and head == target and (root / "series.txt").read_text(encoding="utf-8") == "seed\nsecond\n"
+        if not rebase_in_progress(root)
+        and head == target
+        and (root / "series.txt").read_text(encoding="utf-8") == "seed\nsecond\n"
         else "retained"
     )
     return ScenarioResult(runner.launches, tuple(lines), terminal)

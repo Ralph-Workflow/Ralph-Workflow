@@ -32,7 +32,11 @@ from ralph.pipeline.effect_executor import (
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+)
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome, attempt_outcome_reason
 
@@ -41,11 +45,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
@@ -101,7 +104,17 @@ _MIN_FALLBACK_CHAIN_LENGTH = 2
 
 ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 
-_invoke_effect = effect_attempt_invoke(_effect_executor_module.execute_agent_effect)
+
+def _invoke_effect(
+    target: InvokeAgentEffect | AgentConfig,
+    *args: object,
+    **kwargs: object,
+) -> object:
+    return effect_attempt_invoke(_effect_executor_module.execute_agent_effect)(
+        target,
+        *args,
+        **kwargs,
+    )
 
 
 @dataclass
@@ -216,7 +229,7 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    del policy_bundle, config
+    del config
     from ralph.recovery.controller import RecoveryController
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
@@ -241,7 +254,15 @@ def ensure_session_controller(
         )
         session.recovery_controller = controller
         return controller
-    raise RecoveryControllerUnavailableError("recovery controller unavailable")
+    from ralph.recovery.controller import RecoveryControllerOptions
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(policy_bundle=policy_bundle),
+    )
+    if session is not None:
+        session.recovery_controller = controller
+        session.ledger = controller.ledger
+    return controller
 
 
 def classify_failed_resolution_attempt(

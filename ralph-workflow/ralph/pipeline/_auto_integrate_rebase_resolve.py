@@ -121,6 +121,7 @@ def resolve_conflicted_rebase(
         )
         from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+        from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -134,6 +135,7 @@ def resolve_conflicted_rebase(
                 record=resolution_gate_record(root, target),
                 conflict_config=conflict_resolution_config,
                 agent_runner=agent_runner or production_rebase_runner(),
+                key_provider=lambda: ResolutionAttemptKey(None, (), "direct-resolution"),
             ),
         )
         res: StopResolutionOutcome

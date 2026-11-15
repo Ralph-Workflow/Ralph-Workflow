@@ -1,0 +1,71 @@
+{% macro render_conflict_resolution_diagnosis_cue() -%}
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+Use systematic-debugging when diagnosing conflicting changes, so resolution preserves the intended root behavior of both branches.
+{% else %}
+Analyze the root intent of conflicting changes on both branches before editing conflict regions.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_conflict_resolution_completion_cue() -%}
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion before declaring resolution, so resolved files are confirmed to build and pass checks cleanly.
+{% else %}
+Confirm resolved files build and pass checks cleanly before declaring resolution.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_development_analysis_evidence_cue() -%}
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion when evaluating developer claims against evidence, so verdicts rely on fresh command execution rather than reported claims.
+{% else %}
+Verify claims independently with fresh command execution rather than trusting reported developer claims.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_development_analysis_failures_cue() -%}
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+- Use systematic-debugging when judging failing checks, so feedback identifies the underlying defect instead of surface symptoms.
+{% else %}
+- Trace failing checks to their root causes, so feedback identifies the underlying defect instead of surface symptoms.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_planning_analysis_claims_cue() -%}
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion when checking the plan's claims against fresh evidence, so the verdict does not rely on the planner's account.
+{% else %}
+Check the plan's claims against fresh evidence rather than the planner's account.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_policy_remediation_gates_cue() -%}
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion when probing declared markers and gates, so recorded evidence is grounded in reproducible command execution.
+{% else %}
+Probe declared markers and gates with reproducible command execution before recording facts or claims.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_policy_remediation_failures_cue() -%}
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+Use systematic-debugging when diagnosing failing checks or unexpected policy validator errors, so repairs address the root discrepancy.
+{% else %}
+Trace failing checks or policy validator errors to their root discrepancy before editing policy files.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_policy_remediation_analysis_gates_cue() -%}
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion when probing declared markers and gates, so criterion verdicts and execution evidence reflect verified command runs.
+{% else %}
+Probe declared markers and gates with fresh command runs before recording criterion verdicts or execution evidence.
+{% endif %}
+{%- endmacro %}
+
+{% macro render_policy_remediation_analysis_failures_cue() -%}
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+Use systematic-debugging when investigating failing policy gates or validator discrepancies, so findings isolate the root cause.
+{% else %}
+Isolate the root cause of failing policy gates or validator discrepancies before drafting remediation feedback.
+{% endif %}
+{%- endmacro %}

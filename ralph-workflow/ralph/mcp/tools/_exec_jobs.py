@@ -616,7 +616,6 @@ class ExecJobRegistry:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     label=f"exec_job:{job_id}",
-                    require_direct_parent=True,
                 ),
             )
             active.handle = handle
