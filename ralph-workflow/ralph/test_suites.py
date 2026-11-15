@@ -4,6 +4,7 @@ import ast
 import multiprocessing
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1316,6 +1317,25 @@ def _select_test_files(
     return (selected_files, _VERIFICATION_MARK_EXPRESSION, required_files, required_shard_count)
 
 
+_ABANDONED_SHARD_ROOT_AGE_SECONDS: Final = 6 * 60 * 60
+
+
+def _newest_activity(root: Path) -> float:
+    return max(entry.stat().st_mtime for entry in (root, *root.iterdir()))
+
+
+def _remove_abandoned_shard_roots(parent: Path, now: float) -> None:
+    for root in parent.iterdir():
+        try:
+            abandoned = root.is_dir() and (
+                now - _newest_activity(root) > _ABANDONED_SHARD_ROOT_AGE_SECONDS
+            )
+        except FileNotFoundError:
+            continue
+        if abandoned:
+            shutil.rmtree(root, ignore_errors=True)
+
+
 def run_test_suites(
     *,
     cwd: Path,
@@ -1394,6 +1414,7 @@ def run_test_suites(
         temp_directory_prefix = "verification"
     basetemp_parent = Path(tempfile.gettempdir()) / "ralph-pytest-shards"
     basetemp_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _remove_abandoned_shard_roots(basetemp_parent, time.time())
     with tempfile.TemporaryDirectory(
         prefix=f"{temp_directory_prefix}-",
         dir=basetemp_parent,
