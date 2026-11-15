@@ -272,6 +272,9 @@ def ensure_session_controller(
     return controller
 
 
+_MAX_SAME_AGENT_RETRIES = 2
+
+
 def classify_failed_resolution_attempt(
     session: ResolutionSession | None,
     agent_name: str,
@@ -380,7 +383,14 @@ def classify_failed_resolution_attempt(
         if recovery_chain is not None and recovery_chain.current_index == bounded_index
         else 0
     )
-    max_conflict_retries = 2
+    from ralph.pipeline.conflict_resolution.driver import conflict_chain_max_retries
+
+    policy_retries = conflict_chain_max_retries(policy_bundle)
+    max_conflict_retries = (
+        min(_MAX_SAME_AGENT_RETRIES, policy_retries)
+        if policy_retries > 0
+        else _MAX_SAME_AGENT_RETRIES
+    )
     if (
         not session.skip_same_agent_retries
         and agent_available

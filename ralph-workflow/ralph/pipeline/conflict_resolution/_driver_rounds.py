@@ -428,7 +428,27 @@ def _run_one_round(
             continue
         if not (retries_same and still_eligible):
             visited.add(selected)
+    if len(visited) >= total:
+        _reset_exhausted_chain_cursor(session)
     return attempt
+
+
+def _reset_exhausted_chain_cursor(session: ResolutionSession) -> None:
+    from ralph.pipeline.agent_chain_state import AgentChainState
+
+    session.chain_cursor = 0
+    from ralph.pipeline.state import PipelineState
+
+    recovery_state = session.recovery_state
+    if not isinstance(recovery_state, PipelineState):
+        return
+    chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
+    if chain is None:
+        return
+    session.recovery_state = recovery_state.with_phase_chain(
+        PHASE_RESOLUTION,
+        AgentChainState(agents=list(chain.agents), current_index=0, retries=chain.retries),
+    )
 
 
 def _select_after_delay(
