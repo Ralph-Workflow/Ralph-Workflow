@@ -11,6 +11,8 @@ _MAX_ADDED_BYTES = _MAX_ADDED_LINES * _MAX_CUE_LINE_CHARACTERS
 _POST_TRIM_BASELINES = {
     "shared/_developer_iteration_guidance.j2": (59, 5886),
     "shared/_verification_commitments.j2": (12, 728),
+    "shared/_skill_cues.j2": (71, 3701),
+    "shared/_planning_thinking.jinja": (64, 4052),
 }
 _SIZE_RULE = (
     "each post-trim fragment has two cue lines of headroom, and each installed or "
@@ -18,7 +20,21 @@ _SIZE_RULE = (
 )
 _CUE_BLOCK: re.Pattern[str] = re.compile(
     r"\{% if SKILL_INSTALLED_[^%]+%\}\n([^\n]+)\n"
-    r"\{% else %\}\n([^\n]+)\n\{% endif %\}"
+    r"(?:\{% else %\}\n([^\n]+)\n)?\{% endif %\}"
+)
+_RED_GREEN_TECHNIQUE_PHRASES: tuple[str, ...] = (
+    "red-green",
+    "red/green",
+    "red green",
+    "test-first",
+    "hypothesis selection",
+    "root-cause technique",
+    "evidence-before-claim",
+    "the failing run is recorded with the change",
+)
+_TECHNIQUE_RULE = (
+    "shared prompt fragments keep obligations and cues, leaving red-green, hypothesis "
+    "selection, root-cause, and evidence-before-claim techniques to universal skills"
 )
 
 
@@ -42,3 +58,16 @@ def test_packaged_prompt_fragments_keep_skill_cues_within_growth_budget() -> Non
         assert all(
             len(line) <= _MAX_CUE_LINE_CHARACTERS for branches in cue_branches for line in branches
         ), _SIZE_RULE
+
+
+def test_shared_prompt_fragments_exclude_red_green_technique_phrases() -> None:
+    partials = load_partial_templates([packaged_template_root()])
+    shared_fragments = {name: text for name, text in partials.items() if name.startswith("shared/")}
+    assert shared_fragments, "expected to find shared prompt fragments"
+    for name, text in shared_fragments.items():
+        lowered = text.lower()
+        for phrase in _RED_GREEN_TECHNIQUE_PHRASES:
+            assert phrase not in lowered, (
+                f"shared fragment {name} contains excluded technique phrase {phrase!r}: "
+                f"{_TECHNIQUE_RULE}"
+            )

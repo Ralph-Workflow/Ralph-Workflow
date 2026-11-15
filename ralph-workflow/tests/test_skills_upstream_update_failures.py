@@ -98,7 +98,7 @@ def _skill_members(
 
 def _archive_bytes(members: Sequence[tuple[tarfile.TarInfo, bytes | None]]) -> bytes:
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+    with tarfile.open(fileobj=buffer, mode="w:gz", compresslevel=1) as archive:
         for info, data in members:
             if data is None:
                 archive.addfile(info)

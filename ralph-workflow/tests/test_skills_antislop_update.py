@@ -31,16 +31,29 @@ _SUPERPOWERS_SKILLS: dict[str, dict[str, bytes]] = {
 }
 
 
+_ANTISLOP_ARCHIVE_CACHE: dict[tuple[str, str, tuple], bytes] = {}
+
+
 def _archive(tag: str, root: str, skills: Mapping[str, Mapping[str, bytes]]) -> bytes:
+    key = (
+        tag,
+        root,
+        tuple((s, tuple(sorted(f.items()))) for s, f in sorted(skills.items())),
+    )
+    cached = _ANTISLOP_ARCHIVE_CACHE.get(key)
+    if cached is not None:
+        return cached
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+    with tarfile.open(fileobj=buffer, mode="w:gz", compresslevel=1) as archive:
         for skill, files in skills.items():
             for relative, data in files.items():
                 info = tarfile.TarInfo(f"{root}-{tag.lstrip('v')}/skills/{skill}/{relative}")
                 info.size = len(data)
                 info.mode = 0o644
                 archive.addfile(info, io.BytesIO(data))
-    return buffer.getvalue()
+    result = buffer.getvalue()
+    _ANTISLOP_ARCHIVE_CACHE[key] = result
+    return result
 
 
 def _client_for(
@@ -196,4 +209,38 @@ def test_antislop_install_spawns_nothing_and_creates_no_project_or_plugin_files(
         _SUPERPOWERS.archive_url_template.format(tag=_SUPERPOWERS_TAG),
         _ANTI_SLOP.api_url,
         _ANTI_SLOP.archive_url_template.format(tag="v3.2.30"),
+    ]
+
+
+def test_older_antislop_release_tag_produces_up_to_date_without_archive_fetch(
+    sandbox: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    monkeypatch.chdir(project)
+    before = _tree_snapshot(project)
+    old_files = {"SKILL.md": b"# Antislop 3.2.30\n", "VERSION": b"3.2.30\n"}
+    old_client, _old_calls = _client_for("v3.2.30", old_files)
+    first = upstream.maybe_update_universal_skills(enabled=True, now=_NOW, http=old_client)
+    installed = upstream.canonical_skills_root() / "antislop"
+
+    assert first.status == "updated"
+    assert (installed / "SKILL.md").read_bytes() == old_files["SKILL.md"]
+    assert (installed / "VERSION").read_bytes() == old_files["VERSION"]
+
+    older_files = {"SKILL.md": b"# Antislop 3.2.29\n", "VERSION": b"3.2.29\n"}
+    older_client, older_calls = _client_for("v3.2.29", older_files)
+    second = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=older_client
+    )
+
+    assert second.status == "up-to-date"
+    assert second.installed == ()
+    assert (installed / "SKILL.md").read_bytes() == old_files["SKILL.md"]
+    assert (installed / "VERSION").read_bytes() == old_files["VERSION"]
+    assert _tree_snapshot(project) == before
+    assert older_calls == [
+        _SUPERPOWERS.api_url,
+        _ANTI_SLOP.api_url,
     ]

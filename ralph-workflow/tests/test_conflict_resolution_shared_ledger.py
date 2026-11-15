@@ -30,7 +30,8 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_resolver_that_failed_in_an_earlier_session_is_not_offered_first": (
-        "resolver-local retries were deleted in favor of single-pass handover through shared recovery"
+        "shared ledger benches primary resolver after reaching consecutive limit so "
+        "benched primary is skipped in the second session"
     ),
 }
 

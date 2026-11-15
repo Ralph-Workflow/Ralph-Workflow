@@ -567,12 +567,12 @@ def _release_advanced(
 ) -> bool:
     source_entry = _mapping(_mapping(migrated.get("sources")).get(_source_slug(source)))
     installed_tag = source_entry.get("installed_tag")
-    if not isinstance(installed_tag, str) or not installed_tag or _is_newer_tag(tag, installed_tag):
+    if not isinstance(installed_tag, str) or not installed_tag or is_newer_tag(tag, installed_tag):
         return True
     skills = _mapping(migrated.get("skills"))
     for name in _source_skills(source):
         stag = _mapping(skills.get(name)).get("source_tag")
-        if not isinstance(stag, str) or not stag or _is_newer_tag(tag, stag):
+        if not isinstance(stag, str) or not stag or is_newer_tag(tag, stag):
             return True
     return False
 
@@ -591,7 +591,7 @@ def _removed_managed_skills(source: str | UpstreamSource = UPSTREAM_REPO) -> tup
     return tuple(removed)
 
 
-def _is_newer_tag(candidate: str, installed: str) -> bool:
+def is_newer_tag(candidate: str, installed: str) -> bool:
     if candidate == installed:
         return False
     cand_parts: list[str] = _TAG_NUMBER_PATTERN.findall(candidate)
@@ -859,6 +859,7 @@ __all__ = [
     "attempt_lock_path",
     "canonical_skills_root",
     "default_http_client",
+    "is_newer_tag",
     "maybe_update_universal_skills",
     "publication_lock_path",
     "sibling_skills_roots",

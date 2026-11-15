@@ -24,6 +24,7 @@ from ralph.skills.upstream import (
     UpstreamSource,
     attempt_cache_path,
     canonical_skills_root,
+    is_newer_tag,
     maybe_update_universal_skills,
     sibling_skills_roots,
     universal_state_path,
@@ -175,7 +176,7 @@ def _skill_members(
 
 def _archive_bytes(members: Sequence[tuple[tarfile.TarInfo, bytes | None]]) -> bytes:
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+    with tarfile.open(fileobj=buffer, mode="w:gz", compresslevel=1) as archive:
         for info, data in members:
             if data is None:
                 archive.addfile(info)
@@ -184,10 +185,25 @@ def _archive_bytes(members: Sequence[tuple[tarfile.TarInfo, bytes | None]]) -> b
     return buffer.getvalue()
 
 
+_ARCHIVE_CACHE: dict[
+    tuple[str, tuple[tuple[str, tuple[tuple[str, bytes], ...]], ...], str | None], bytes
+] = {}
+
+
 def _release_archive(
     tag: str, skills: Mapping[str, Mapping[str, bytes]], *, top_dir: str | None = None
 ) -> bytes:
-    return _archive_bytes(_skill_members(tag, skills, top_dir=top_dir))
+    key = (
+        tag,
+        tuple((s, tuple(sorted(f.items()))) for s, f in sorted(skills.items())),
+        top_dir,
+    )
+    cached = _ARCHIVE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    data = _archive_bytes(_skill_members(tag, skills, top_dir=top_dir))
+    _ARCHIVE_CACHE[key] = data
+    return data
 
 
 def _fake_client(
@@ -675,3 +691,54 @@ def test_single_source_state_file_is_migrated_in_place_without_reinstall(sandbox
     )
     assert upgraded.status == "updated"
     assert _archive_url("v-test-2") in upgrade_calls
+
+
+def testis_newer_tag_numeric_vs_lexicographic() -> None:
+    assert is_newer_tag("v2.10", "v2.9") is True
+    assert is_newer_tag("2.10.0", "2.9.1") is True
+    assert is_newer_tag("v1.100.0", "v1.20.0") is True
+
+
+def testis_newer_tag_equal_and_older_tags() -> None:
+    assert is_newer_tag("v1.0.0", "v1.0.0") is False
+    assert is_newer_tag("v2.10", "v2.10") is False
+    assert is_newer_tag("2.0.0", "2.0.0") is False
+    assert is_newer_tag("v2.9", "v2.10") is False
+    assert is_newer_tag("2.9.1", "2.10.0") is False
+    assert is_newer_tag("v1.0.0", "v2.0.0") is False
+
+
+def testis_newer_tag_multi_component_and_v_prefix_handling() -> None:
+    assert is_newer_tag("v1.2.3.4", "v1.2.3.3") is True
+    assert is_newer_tag("v1.2.3.3", "v1.2.3.4") is False
+    assert is_newer_tag("v1.2.3.1", "v1.2.3") is True
+    assert is_newer_tag("v1.2.3", "v1.2.3.1") is False
+    assert is_newer_tag("v2.0.0", "2.0.0") is False
+    assert is_newer_tag("2.0.0", "v2.0.0") is False
+    assert is_newer_tag("v2.1.0", "2.0.0") is True
+    assert is_newer_tag("2.1.0", "v2.0.0") is True
+    assert is_newer_tag("v1.9.0", "2.0.0") is False
+    assert is_newer_tag("1.9.0", "v2.0.0") is False
+
+
+def test_older_release_tag_produces_up_to_date_without_archive_fetch(sandbox: Path) -> None:
+    client, _calls = _client_for("v2.10.0", _SKILL_FILES, anti_slop_tag="v3.2.30")
+    first = maybe_update_universal_skills(enabled=True, now=_NOW, http=client)
+    assert first.status == "updated"
+
+    root = _canonical_root()
+    tdd_bytes = (root / "test-driven-development" / "SKILL.md").read_bytes()
+    antislop_bytes = (root / "antislop" / "SKILL.md").read_bytes()
+
+    older_client, older_calls = _client_for("v2.9.1", _SKILL_FILES, anti_slop_tag="v3.2.29")
+    second = maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=older_client
+    )
+
+    assert second.status == "up-to-date"
+    assert second.installed == ()
+    assert older_calls == [RELEASES_API_URL, _ANTI_SLOP.api_url]
+    assert _archive_url("v2.9.1") not in older_calls
+    assert _anti_slop_archive_url("v3.2.29") not in older_calls
+    assert (root / "test-driven-development" / "SKILL.md").read_bytes() == tdd_bytes
+    assert (root / "antislop" / "SKILL.md").read_bytes() == antislop_bytes

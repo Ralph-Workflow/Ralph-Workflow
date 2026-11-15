@@ -143,7 +143,6 @@ class ResolutionSession:
     last_resolution_outcome: StopResolutionOutcome | None = None
     dead_surface_agents: frozenset[str] = frozenset()
     inactivity_timeout_seconds: float | None = None
-    last_retry_delay_ms: float | None = None
 
 
 def begin_resolution_stop(
@@ -363,7 +362,6 @@ def classify_failed_resolution_attempt(
             context,
         )
     session.recovery_state = new_state
-    session.last_retry_delay_ms = new_state.last_retry_delay_ms
     if bench:
         from ralph.recovery.unavailability_reason import UnavailabilityReason
 

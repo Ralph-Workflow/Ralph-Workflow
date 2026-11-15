@@ -123,8 +123,8 @@ def test_process_manager_regression_registered_descendant_einval_uses_safe_wait(
         *,
         timeout: float | None,
     ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        safe_wait_pids.append([getattr(proc, "pid", None) for proc in procs])
         assert pm is not None
+        safe_wait_pids.append([getattr(proc, "pid", None) for proc in procs])
         return pm._default_safe_wait_procs(psutil_mod, procs, timeout=timeout)
 
     pm, fake_psutil = _make_manager(safe_wait_procs=counting_safe_wait)
