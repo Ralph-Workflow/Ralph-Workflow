@@ -447,18 +447,6 @@ def _select_after_delay(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    if not controller.all_exhausted(PHASE_RESOLUTION, eligible):
-        unspent = [
-            agent
-            for agent, status in controller.chain_eligibility(PHASE_RESOLUTION, eligible)
-            if not status.is_spent
-        ]
-        if unspent:
-
-            def _wait_key(agent_id: str) -> int:
-                return int(controller.earliest_available_wait_ms(PHASE_RESOLUTION, [agent_id]))
-
-            return candidates.index(min(unspent, key=_wait_key))
     return None
 
 
@@ -483,4 +471,8 @@ def _preferred_conflict_candidate(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
+    if not visited:
+        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
+        if delay > 0:
+            return _select_after_delay(controller, session, eligible, candidates, delay)
     return None

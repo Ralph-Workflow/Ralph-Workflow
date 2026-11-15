@@ -429,7 +429,7 @@ def attempt_stop_resolution(
             observed_at_ms=_clock_ms(trigger.clock),
         )
     )
-    if decision.blocked and not trigger.force_retry:
+    if decision.blocked and (not trigger.force_retry or not key.eligible_agents):
         carried_cause = _deferred_failure_cause(trigger.root, trigger.record)
         _present_block(trigger.root, trigger.record, decision.key)
         current = read_record(trigger.root) or trigger.record

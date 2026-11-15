@@ -377,6 +377,7 @@ def classify_failed_resolution_attempt(
     )
     if (
         isinstance(raw_failure, ConnectionError)
+        and "provider unavailable" in str(raw_failure).lower()
         and controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
     ):
         from ralph.recovery.unavailability_reason import UnavailabilityReason
