@@ -145,7 +145,6 @@ class ResolutionSession:
     inactivity_timeout_seconds: float | None = None
     last_retry_delay_ms: float | None = None
 
-
 def begin_resolution_stop(
     session: ResolutionSession,
     *,

@@ -35,14 +35,32 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
+_CURRENT_CLOCK: list[FakeClock | None] = [None]
+
+
 @pytest.fixture(autouse=True)
 def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _CURRENT_CLOCK[0] = None
+
+    def _sleep(seconds: float) -> None:
+        clock = _CURRENT_CLOCK[0]
+        if clock is not None:
+            clock.advance(seconds)
+
+    monkeypatch.setattr(driver_module, "_sleep_seconds", _sleep)
 
 
-def _deps(store: AgentUnavailabilityTracker) -> PipelineDeps:
+def _deps(store: AgentUnavailabilityTracker, *, consecutive_limit: int = 1) -> PipelineDeps:
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+    if isinstance(store.clock, FakeClock):
+        _CURRENT_CLOCK[0] = store.clock
     context = make_display_context(console=Console(file=StringIO()))
-    return dataclasses.replace(make_test_pipeline_deps(context), unavailability_store=store)
+    return dataclasses.replace(
+        make_test_pipeline_deps(context, recovery_clock=store.clock),
+        unavailability_store=store,
+        ledger=AgentFailureLedger(clock=store.clock, consecutive_limit=consecutive_limit),
+    )
 
 
 def _resolve(tmp_path: Path, deps: PipelineDeps, calls: list[str]) -> bool:
@@ -73,7 +91,7 @@ def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     _install_seams(
         monkeypatch,
         unmerged=_CONFLICTED,
-        surviving_per_round=[list(_CONFLICTED), []],
+        surviving_per_round=[list(_CONFLICTED), [], []],
     )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")

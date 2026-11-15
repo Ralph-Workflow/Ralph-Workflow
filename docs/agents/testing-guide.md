@@ -793,7 +793,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/recovery/test_preflight_validation.py` | 1 | 0 | 0 | recovery | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: recovery public-seam unit |
 | `tests/recovery/test_priority_agent_selection.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_prompt_scenario_unavailability.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
-| `tests/scenarios/_rebase_recovery_harness_helpers.py` | 0 | 1 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py` | 0 | 6 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_runner_offline_pause_resume.py` | 1 | 0 | 0 | recovery | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: recovery public-seam unit |
 | `tests/recovery/test_two_main_retry_rules.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
@@ -1192,7 +1191,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_process_hardening.py` | 0 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: process public-seam unit |
 | `tests/test_process_manager_failure_state.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: process public-seam unit |
 | `tests/test_process_manager_pty.py` | 0 | 0 | 4 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: process public-seam unit |
-| `tests/test_process_manager_wait_procs_oserror.py` | 0 | 4 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: process public-seam unit |
+| `tests/test_process_manager_wait_procs_oserror.py` | 0 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: process public-seam unit |
 | `tests/test_process_termination_outcomes_bound.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: process public-seam unit |
 | `tests/test_product_criteria_idempotent.py` | 0 | 0 | 4 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: backlog white-box conversion unit |
 | `tests/test_prompt_change_detection.py` | 0 | 1 | 7 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |

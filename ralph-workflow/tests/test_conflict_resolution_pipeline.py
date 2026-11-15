@@ -45,8 +45,9 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
-        "with skip_same_agent_retries=True primary runs once without retries and "
-        "fallback retries until exhaustion, leaving chain cursor wrapped to index 0"
+        "with shared recovery controller owning candidate selection, each candidate in "
+        "the chain is attempted without local session retries, leaving current_index=1 "
+        "and retries=0 on chain exhaustion"
     ),
     "test_failed_resolver_attempt_uses_the_next_fallback_candidate": (
         "when primary candidate fails, cursor advances to fallback candidate at "
@@ -335,7 +336,6 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     )
     session = ResolutionSession(
         max_rounds_per_stop=1,
-        skip_same_agent_retries=True,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
     )
     calls: list[str] = []
@@ -367,7 +367,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=1)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
 
 
 def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
@@ -380,7 +380,6 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     session = ResolutionSession(
         max_rounds_per_stop=1,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
-        skip_same_agent_retries=True,
     )
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,

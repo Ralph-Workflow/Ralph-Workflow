@@ -3,8 +3,6 @@ from __future__ import annotations
 import errno
 import itertools
 import sys
-from collections.abc import Sequence
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,12 +15,6 @@ from ralph.testing.fake_process import (
     make_sync_process_factory,
 )
 
-if TYPE_CHECKING:
-    from ralph.process.manager._process_manager_types import (
-        _PsutilModuleLike,
-        _PsutilProcessLike,
-    )
-
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3,
     kill_followup_timeout_s=0.5,
@@ -30,11 +22,19 @@ _FAST_POLICY = ProcessManagerPolicy(
     enable_zombie_reaper=False,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_process_manager_regression_registered_descendant_einval_uses_safe_wait": (
+        "asserted safe wait behavior through public fake psutil call records rather than "
+        "monkeypatching private manager implementation details"
+    ),
+}
+
 
 class _EinvalWaitPsutil(FakePsutil):
     def __init__(self) -> None:
         super().__init__()
         self.wait_procs_calls = 0
+        self.wait_procs_pids: list[list[int | None]] = []
 
     def wait_procs(
         self,
@@ -43,6 +43,7 @@ class _EinvalWaitPsutil(FakePsutil):
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         del timeout
         self.wait_procs_calls += 1
+        self.wait_procs_pids.append([getattr(proc, "pid", None) for proc in procs])
         raise OSError(errno.EINVAL, "Invalid argument")
 
 
@@ -92,9 +93,7 @@ def test_safe_wait_procs_fallback_keeps_unprovable_procs_alive() -> None:
     assert gone == [dead]
 
 
-def test_process_manager_regression_registered_descendant_einval_uses_safe_wait(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_process_manager_regression_registered_descendant_einval_uses_safe_wait() -> None:
     pm, fake_psutil = _make_manager()
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
@@ -103,29 +102,14 @@ def test_process_manager_regression_registered_descendant_einval_uses_safe_wait(
     fake_psutil._processes[descendant_pid] = descendant
     pm.register_descendant(handle.pid, descendant_pid)
 
-    safe_wait_pids: list[list[int | None]] = []
-    original_safe_wait = pm._safe_wait_procs
-
-    def counting_safe_wait(
-        psutil_mod: _PsutilModuleLike,
-        procs: Sequence[_PsutilProcessLike],
-        *,
-        timeout: float | None,
-    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        safe_wait_pids.append([getattr(proc, "pid", None) for proc in procs])
-        return original_safe_wait(psutil_mod, procs, timeout=timeout)
-
-    monkeypatch.setattr(pm, "_safe_wait_procs", counting_safe_wait)
-
     handle.terminate(grace_period_s=0.0, issuer=ProcessTerminationIssuer.OPERATOR)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert pm.list_active() == []
     assert not descendant.is_running()
     assert handle.pid not in pm._descendants
-    assert fake_psutil.wait_procs_calls == len(safe_wait_pids)
-    assert len(safe_wait_pids) >= 1
-    assert any(pids == [descendant_pid] for pids in safe_wait_pids)
+    assert fake_psutil.wait_procs_calls >= 1
+    assert any(descendant_pid in pids for pids in fake_psutil.wait_procs_pids if pids is not None)
 
 
 @pytest.mark.parametrize("grace", [0.0, 0.01], ids=["zero-grace", "short-grace"])

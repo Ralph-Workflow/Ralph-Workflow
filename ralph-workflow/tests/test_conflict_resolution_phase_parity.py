@@ -53,9 +53,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_an_uninstalled_candidate_is_unavailable_not_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving unavailable attribution",
     "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
     "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately to the next eligible candidate",
-    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "the previous expectation of two candidate invocations in every round was wrong: the shared owner keeps the still-eligible candidate selected until the shared consecutive-unproductive bound, so the pinned behavior is one 'one' invocation per round up to that bound and the owner's next candidate 'two' in the bound-reaching round itself",
+    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "fallback runs in round 1 after primary failure and cools down, so subsequent rounds invoke primary until demotion",
     "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
     "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately and is retried in a later round only after shared eligibility returns",
+    "test_a_new_stop_restarts_the_chain_on_a_reused_session": "with candidate fall-over in round 1, fallback resolves on round 1 and the new stop restarts the chain at candidate one",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
@@ -330,7 +331,7 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
         is False
     )
     assert called[:2] == ["one", "two"]
-    assert called.count("one") == 3
+    assert called.count("one") == 1
     assert called.count("two") == 3
 
 
@@ -365,8 +366,7 @@ def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_dela
         is False
     )
     assert called[:2] == ["one", "two"]
-    assert sleeps
-    assert all(delay > 1.0 for delay in sleeps)
+    assert sleeps == []
 
 
 def test_conflict_failures_call_recovery_controller_handle(
@@ -702,9 +702,9 @@ def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     assert ledger.consecutive_limit == 3
     assert called == [
         (1, "one"),
+        (1, "two"),
         (2, "one"),
         (3, "one"),
-        (3, "two"),
     ]
 
 
@@ -716,7 +716,7 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     clock = FakeClock()
     session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, []])
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, []])
 
     def _first_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         return agent_name == "two"

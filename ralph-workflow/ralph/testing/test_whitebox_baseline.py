@@ -288,7 +288,6 @@ tests/recovery/test_broken_agent_single_agent_chain_loop_exit.py|0,0,1
 tests/recovery/test_classifier_typed_cause_chain_child_alive.py|0,4,0
 tests/recovery/test_controller_all_agents_unavailable_never_exits.py|0,2,0
 tests/recovery/test_controller_source_parse_cache.py|1,0,16
-tests/recovery/test_cooldown_real_invocation_paths.py|0,1,0
 tests/recovery/test_failure_classifier.py|1,0,0
 tests/recovery/test_harness_echo_does_not_advance_meaningful_output.py|0,0,2
 tests/recovery/test_no_progress_quiet.py|0,5,0
@@ -305,7 +304,6 @@ tests/recovery/test_two_state_invariant.py|0,2,0
 tests/recovery/test_unavailability_reason.py|0,3,0
 tests/recovery/test_user_interrupt.py|2,0,3
 tests/recovery/test_watchdog_fire_record.py|0,1,0
-tests/scenarios/_rebase_recovery_harness_helpers.py|0,1,2
 tests/test_activity_feed_paths_converge.py|0,0,1
 tests/test_activity_router_subagent_progress_dispatch.py|0,1,0
 tests/test_agent_internal_paths.py|0,2,0
@@ -695,7 +693,7 @@ tests/test_process_cross_platform_hardening.py|0,1,3
 tests/test_process_hardening.py|0,1,4
 tests/test_process_manager_failure_state.py|0,1,0
 tests/test_process_manager_pty.py|0,0,4
-tests/test_process_manager_wait_procs_oserror.py|0,4,1
+tests/test_process_manager_wait_procs_oserror.py|0,1,1
 tests/test_process_termination_outcomes_bound.py|0,1,0
 tests/test_product_criteria_idempotent.py|0,0,4
 tests/test_prompt_change_detection.py|0,1,7
