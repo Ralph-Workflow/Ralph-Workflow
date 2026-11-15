@@ -164,7 +164,7 @@ def test_validate_checkpoint_against_policy_fails_when_phase_missing() -> None:
 
 
 def test_validate_checkpoint_against_policy_fails_when_policy_entry_phase_missing() -> None:
-    stale_phase = "development_commit_" + "cleanup"
+    stale_phase = "phase_removed_from_policy"
     state = PipelineState(phase="planning", policy_entry_phase=stale_phase)
     bundle = _FakeBundle(
         chains={},

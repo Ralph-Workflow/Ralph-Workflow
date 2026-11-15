@@ -9,12 +9,14 @@ from ralph.config.models import UnifiedConfig
 from ralph.phases.execution import handle_execution_phase
 from ralph.phases.phase_context import PhaseContext
 from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.checkpoint import load as load_checkpoint
 from ralph.pipeline.checkpoint import save as save_checkpoint
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce
-from ralph.pipeline.run_loop import build_recovery_controller
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory, FailureContext
@@ -287,11 +289,18 @@ class TestRecoveryControllerDurability:
         assert "development:claude" in as_mapping(loaded_state.ledger_snapshot["entries"])
 
         fresh_clock = FakeClock(start=5000.0)
-        fresh_controller, _ = build_recovery_controller(
-            loaded_state,
-            bundle,
-            config,
-            clock=fresh_clock,
+        fresh_controller = build_entry_point_recovery_controller(
+            AgentEntryPoint.MAIN_PHASE_LOOP,
+            config=config,
+            policy_bundle=bundle,
+            deps=AttemptRunnerDeps(
+                clock=fresh_clock,
+                invoke=PRODUCTION_INVOKE,
+                probe_runner=lambda _phase, _agent: None,
+                workspace_probe=None,
+                connectivity=None,
+            ),
+            ledger_snapshot=loaded_state.ledger_snapshot,
         )
 
         assert fresh_controller.ledger.status("development", "claude").is_eligible is True
