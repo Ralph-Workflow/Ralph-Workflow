@@ -368,18 +368,6 @@ def classify_failed_resolution_attempt(
         if typed_outcome is not None
         else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
-    if (
-        isinstance(raw_failure, ConnectionError)
-        and "provider unavailable" in str(raw_failure).lower()
-        and controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
-    ):
-        from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-        controller.record_conflict_candidate_unavailability(
-            PHASE_RESOLUTION,
-            agent_name,
-            UnavailabilityReason.PROVIDER_UNAVAILABLE,
-        )
     candidates_tuple = tuple(candidates) if candidates else (agent_name,)
     next_cursor = _advance_conflict_chain_cursor(
         session,

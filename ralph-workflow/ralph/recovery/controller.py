@@ -518,12 +518,14 @@ def _failure_for_attempt_outcome(
 def _attempt_cooldown_reasons(
     effective_signal: TypedSignal | None,
     exc: BaseException | None,
-) -> tuple[UnavailabilityReason | None, UnavailabilityReason | None]:
+    failure: ClassifiedFailure | None,
+) -> tuple[UnavailabilityReason | None, UnavailabilityReason | None, UnavailabilityReason | None]:
     cooldown_reason = typed_signal_unavailability_reason(effective_signal)
     watchdog_cooldown = watchdog_unavailability_reason(exc)
     if cooldown_reason is None:
         cooldown_reason = watchdog_cooldown
-    return cooldown_reason, watchdog_cooldown
+    failure_reason = failure.unavailability_reason if failure is not None else None
+    return cooldown_reason, watchdog_cooldown, failure_reason
 
 
 class RecoveryController:
@@ -748,6 +750,23 @@ class RecoveryController:
             failure = _failure_for_attempt_outcome(failure, self._last_resolved_verdict)
         if not bench_applied and cooldown_reason is not None:
             failure = replace(failure, is_unavailable=True, unavailability_reason=cooldown_reason)
+        if (
+            isinstance(raw_failure, ConnectionError)
+            and current_agent is not None
+            and not failure.is_unavailable
+            and failure.unavailability_reason is None
+            and self.agent_eligibility(phase, current_agent).is_eligible
+        ):
+            self.record_confirmed_unavailability(
+                phase,
+                current_agent,
+                UnavailabilityReason.PROVIDER_UNAVAILABLE,
+            )
+            failure = replace(
+                failure,
+                is_unavailable=True,
+                unavailability_reason=UnavailabilityReason.PROVIDER_UNAVAILABLE,
+            )
 
         if failure.category == FailureCategory.INTEGRATION:
             return self._handle_integration_continuation(state, failure, phase)
@@ -938,9 +957,10 @@ class RecoveryController:
             fingerprint = f"agent:{agent}"
         demoted_reason: str | None = None
         self._last_attempt_cooldown_reason = None
-        cooldown_reason, watchdog_cooldown = _attempt_cooldown_reasons(
+        cooldown_reason, watchdog_cooldown, failure_reason = _attempt_cooldown_reasons(
             effective_signal,
             exc,
+            failure,
         )
         preserved_reason = (
             cooldown_reason if cooldown_reason in _TYPED_NO_ACTIVITY_REASONS else None
@@ -964,7 +984,11 @@ class RecoveryController:
             if preserved_reason is not None:
                 self._last_attempt_cooldown_reason = preserved_reason
         elif (
-            attempt_failed and cooldown_reason is not None and not probe_mode and agent is not None
+            attempt_failed
+            and cooldown_reason is not None
+            and not probe_mode
+            and agent is not None
+            and failure_reason != cooldown_reason
         ):
             self._mark_agent_unavailable(phase, agent, reason=cooldown_reason)
             self._last_attempt_cooldown_reason = cooldown_reason
@@ -1141,15 +1165,6 @@ class RecoveryController:
             return None
 
     def record_confirmed_unavailability(
-        self,
-        phase: str,
-        agent: str,
-        reason: UnavailabilityReason,
-        verdict: PersistedVerdict | None = None,
-    ) -> int:
-        return self._mark_agent_unavailable(phase, agent, reason, verdict=verdict)
-
-    def record_conflict_candidate_unavailability(
         self,
         phase: str,
         agent: str,

@@ -139,16 +139,18 @@ def integrate_before_planning(
     force_retry: bool = False,
 ) -> RebaseState | None:
     root = scope.root
-    if retained_integration_reason(root) is not None:
+    retained = retained_integration_reason(root)
+    if retained is not None:
         from ralph.pipeline._integration_continuation import config_for_owned_integration
 
+        effective_force_retry = force_retry or retained == "observed_retained_on_disk"
         config = config_for_owned_integration(config)
         recovered = recover_incomplete_integration(
             scope,
             config=config,
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
-            force_retry=False,
+            force_retry=effective_force_retry,
         )
         if recovery_retained_record(recovered) or (
             recovered is not None and recovered.fast_forwarded
