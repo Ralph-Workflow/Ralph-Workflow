@@ -6,7 +6,6 @@ from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 from rich.console import Console
@@ -23,7 +22,6 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
 )
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
@@ -177,10 +175,7 @@ def test_default_run_propagates_display_subscriber(
 
     monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", plain_init)
 
-    state = MagicMock()
-    state.phase = "complete"
-    state.rebase = RebaseState()
-    state.worker_states = {}
+    state = PipelineState(phase="complete")
     monkeypatch.setattr(
         runner_module,
         "determine_effect_from_policy",

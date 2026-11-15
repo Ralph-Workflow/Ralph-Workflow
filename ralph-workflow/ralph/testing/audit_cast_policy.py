@@ -211,6 +211,7 @@ SEAM_EXEMPT_CALL_SITES: frozenset[tuple[str, str]] = frozenset(
         ("ralph/mcp/server/runtime.py", "str | None"),
         ("ralph/mcp/server/runtime.py", "tuple[Path, ...]"),
         ("ralph/mcp/tools/artifact.py", "Path | None"),
+        ("ralph/mcp/tools/commit_normalization.py", "_EvidenceBuilder"),
         ("ralph/mcp/tools/bridge/_lazy_tool_handler.py", "ToolHandler"),
         ("ralph/mcp/tools/bridge/_registry.py", "_ReadableWorkspace"),
         ("ralph/mcp/tools/bridge/_registry.py", "type[McpConfig]"),

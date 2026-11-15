@@ -296,6 +296,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert ctx.same_workspace.session_capability_profile is not None
     assert ctx.same_workspace.worker_commands["unit-a"] == (
         fan_out_module.sys.executable,
+        "-E",
         "-P",
         "-m",
         "ralph",

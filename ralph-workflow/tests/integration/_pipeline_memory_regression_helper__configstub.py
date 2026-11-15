@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from tests.integration._pipeline_memory_regression_helper__ccsconfigstub import (
-    _CcsConfigStub,
-)
+from ralph.config.models import CcsConfig, UnifiedConfig
 from tests.integration._pipeline_memory_regression_helper__generalconfigstub import (
     _GeneralConfigStub,
 )
 
 
-class _ConfigStub:
-    def __init__(self) -> None:
-        self.general = _GeneralConfigStub()
-        self.ccs = _CcsConfigStub()
-        self.ccs_aliases: dict[str, str] = {}
+def _ConfigStub() -> UnifiedConfig:
+    return UnifiedConfig(
+        general=_GeneralConfigStub(),
+        ccs=CcsConfig(),
+        ccs_aliases={},
+    )

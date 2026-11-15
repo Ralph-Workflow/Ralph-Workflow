@@ -179,7 +179,7 @@ it. The rule table for the production kills is under
 - `ralph-workflow/ralph/process/manager/_managed_process.py:291` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
   only when a non-empty `chunk` arrives from the child's `stdout`/`stderr`.
-- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:349-380`
+- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:349-385`
   computes `inactivity_deadline = last_output_at_ref[0] + timeout`
   (`:359-361`) and arms the kill with `timeout_cause = "inactivity"` and
   `timeout_value = timeout` (`:370-371`); the terminate-then-raise is at

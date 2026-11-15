@@ -424,4 +424,8 @@ def _preferred_conflict_candidate(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    return None
+
+    def _remaining_wait_ms(name: str) -> int:
+        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+
+    return candidates.index(min(eligible, key=_remaining_wait_ms))

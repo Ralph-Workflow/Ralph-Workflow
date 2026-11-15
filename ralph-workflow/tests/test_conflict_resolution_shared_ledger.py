@@ -35,6 +35,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
+
 @pytest.fixture(autouse=True)
 def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)

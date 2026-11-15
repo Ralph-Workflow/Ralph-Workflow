@@ -56,6 +56,7 @@ from ralph.recovery.classifier import (
     FailureClassifier,
     FailureContext,
 )
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
@@ -669,8 +670,9 @@ class RecoveryController:
         effective_facts = facts
         if effective_facts is None:
             effective_facts = context.facts
-        failure = context.classified_failure
-        if failure is None and context.outcome is not None:
+        if context.classified_failure is not None:
+            failure = context.classified_failure
+        elif context.outcome is not None and context.outcome is not ConflictAttemptOutcome.RAW:
             failure = self._classifier.classify_outcome(
                 context.outcome,
                 phase=phase,
@@ -679,7 +681,7 @@ class RecoveryController:
                 raw_failure=raw_failure,
                 facts=effective_facts,
             )
-        if failure is None:
+        else:
             failure = self._classifier.classify(
                 raw_failure,
                 phase=phase,

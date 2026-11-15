@@ -146,7 +146,6 @@ class ResolutionSession:
     dead_surface_agents: frozenset[str] = frozenset()
 
 
-
 def begin_resolution_stop(
     session: ResolutionSession,
     *,
@@ -260,7 +259,6 @@ def ensure_session_controller(
         session.unavailability_store = controller.unavailability_store
         session.ledger = controller.ledger
     return controller
-
 
 
 def _advance_conflict_chain_cursor(

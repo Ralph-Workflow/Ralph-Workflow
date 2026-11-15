@@ -851,6 +851,63 @@ class FailureClassifier:
             facts=facts,
         )
 
+    def classify_outcome(
+        self,
+        outcome: ConflictAttemptOutcome,
+        *,
+        phase: str,
+        agent: str | None,
+        unresolved_count: int = 0,
+        raw_failure: BaseException | str | None = None,
+    ) -> ClassifiedFailure:
+        if outcome is ConflictAttemptOutcome.RAW and raw_failure is not None:
+            return self.classify(raw_failure, phase=phase, agent=agent)
+
+        if (
+            outcome
+            in (
+                ConflictAttemptOutcome.UNRESOLVED_REMAINING,
+                ConflictAttemptOutcome.STALLED,
+                ConflictAttemptOutcome.STALLED_NO_PROGRESS,
+            )
+            or outcome.value == "unresolved_remaining"
+        ):
+            reason = f"agent reported success but {unresolved_count} conflicted path(s) remain"
+        elif outcome is ConflictAttemptOutcome.NO_ACTIVITY:
+            reason = "candidate produced no activity before it exited"
+        else:
+            reason = "conflict attempt failed"
+
+        unavailable_reason: UnavailabilityReason | None = None
+        if outcome is ConflictAttemptOutcome.NO_ACTIVITY:
+            unavailable_reason = UnavailabilityReason.NO_OUTPUT_AT_START
+        elif outcome in (
+            ConflictAttemptOutcome.STALLED,
+            ConflictAttemptOutcome.STALLED_NO_PROGRESS,
+        ):
+            unavailable_reason = UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY
+
+        counts = outcome not in (
+            ConflictAttemptOutcome.ATTEMPT_FAILED,
+            ConflictAttemptOutcome.RAW,
+        )
+
+        original = raw_failure if isinstance(raw_failure, BaseException) else None
+        raw_msg = "" if raw_failure is None else str(raw_failure)
+
+        return ClassifiedFailure(
+            category=FailureCategory.AGENT,
+            reason=reason,
+            attributed_agent=agent,
+            attributed_phase=phase,
+            counts_against_budget=counts,
+            original_exception=original,
+            raw_message=raw_msg,
+            must_charge_ledger=counts,
+            is_unavailable=unavailable_reason is not None,
+            unavailability_reason=unavailable_reason,
+        )
+
     def _is_tool_availability_failure(
         self,
         exc: BaseException | None,
