@@ -109,7 +109,7 @@ MARK_RESOLVING_REBASE = Transition(
         "resolving_merge": "resolving_merge",
         "pre_target_sha": "pre_target_sha",
     },
-    from_state_guard=_is_integrating,
+    from_state_guard=_is_integrating_or_integrated,
 )
 
 MARK_PENDING_REBASE_CONTINUE = Transition(

@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.conflict_resolution.session import remember_dead_surface, session_ledger
+from ralph.pipeline.conflict_resolution.session import (
+    remember_dead_surface,
+    session_ledger,
+)
 
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
@@ -19,7 +22,7 @@ __all__ = [
 def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) -> frozenset[str]:
     from ralph.recovery.agent_failure_ledger import Spent
 
-    barred: set[str] = set(session.dead_surface_agents)
+    barred: set[str] = set()
     ledger = session_ledger(session)
     if ledger is not None:
         for name in candidates:
@@ -30,7 +33,6 @@ def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) 
                 or (session.recovery_controller is None and not status.is_eligible)
             ):
                 barred.add(name)
-    barred.update(name for name in candidates if name in session.dead_surface_agents)
     return frozenset(name for name in candidates if name in barred)
 
 
