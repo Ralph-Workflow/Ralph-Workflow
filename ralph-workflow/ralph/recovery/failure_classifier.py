@@ -308,7 +308,7 @@ def is_missing_artifact_message(raw_message: str) -> bool:
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
 
 
-def _typed_signal_unavailability_reason(signal: TypedSignal | None) -> UnavailabilityReason | None:
+def typed_signal_unavailability_reason(signal: TypedSignal | None) -> UnavailabilityReason | None:
     if signal is None or not signal.provider_originated:
         return None
     if signal.name == "QuotaExhaustedError":
@@ -618,7 +618,7 @@ class FailureClassifier:
             signal = facts_for_failure(exc_obj).typed_signal
         signal_name = signal.name if signal is not None else None
         signal_provider_originated = signal.provider_originated if signal is not None else False
-        typed_unavailability = _typed_signal_unavailability_reason(signal)
+        typed_unavailability = typed_signal_unavailability_reason(signal)
         category, counts, reset_session = self._categorize(
             exc_obj,
             raw_message,

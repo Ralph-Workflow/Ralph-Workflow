@@ -292,7 +292,6 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
     direct_action = NextAction.SAVE_AND_RESTORE
 
     initial_attempts = AttemptState(repeat_threshold=1)
-    # With 0 repeats, the public decision seam keeps the direct action
     assert (
         decide(DecisionContext(obs, attempts=initial_attempts, dirt_shape=shape)) is direct_action
     )
@@ -331,4 +330,3 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
     facts_3 = replace(facts_1, rung=CleanupLadderRung.QUARANTINE)
     t3 = decide_ladder_transition(facts_3)
     assert t3.next_rung is CleanupLadderRung.FRESH_WORKTREE
-

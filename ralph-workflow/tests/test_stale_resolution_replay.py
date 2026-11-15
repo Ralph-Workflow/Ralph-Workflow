@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_stale_resolution_replay_preserves_work_and_retries_auto_rebase": "a dirty worktree is no longer snapshotted into a commit and integrated; the replay leaves the uncommitted work in place for commit review and integrates nothing, so the dirty case asserts the work, HEAD and the retained record are unchanged",
+    "test_stale_resolution_replay_preserves_work_and_retries_auto_rebase": "a dirty worktree's stale record is released so the run can route the uncommitted work through commit review instead of waiting forever on a replay that cannot run; a dirty worktree is no longer snapshotted into a commit and integrated; the replay leaves the uncommitted work in place for commit review and integrates nothing, so the dirty case asserts the work, HEAD and the retained record are unchanged",
 }
 
 
@@ -138,8 +138,12 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
     assert outcome is not None
     if state == "dirty":
         assert calls == []
-        assert outcome.recovery_record_retained is True
-        assert "commit review" in (outcome.last_reason or "")
+        assert outcome.recovery_record_retained is False
+        assert read_record(root) is None
+        assert "uncommitted tracked changes" in (outcome.last_reason or "")
+        preserved = _backup_refs(root)
+        assert len(preserved) == 1
+        assert _git(root, "show", f"{preserved[0]}:untracked.txt").stdout == "untracked work\n"
         assert staged_path.read_text(encoding="utf-8") == "unstaged work\n"
         assert untracked_path.read_text(encoding="utf-8") == "untracked work\n"
         assert _git(root, "rev-parse", "HEAD").stdout.strip() == feature
@@ -310,3 +314,31 @@ def test_promote_completed_resolution_names_a_leftover_operation_marker_instead_
 
     assert isinstance(result, str)
     assert "operation marker" in result
+
+
+def test_a_dirty_worktree_releases_a_stale_record_with_a_pending_owned_landing(
+    tmp_git_repo: Path,
+) -> None:
+    root = tmp_git_repo
+    target, base, feature = _setup_stale_record(root)
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base,
+            reintegrate_pending=True,
+        ),
+    )
+    (root / "untracked.txt").write_text("untracked work\n", encoding="utf-8")
+    stale = read_record(root)
+    assert stale is not None
+
+    outcome = replay_stale_resolution(root, stale, _recovery_config(target), None, None)
+
+    assert outcome.recovery_record_retained is False
+    assert read_record(root) is None
+    assert "uncommitted tracked changes" in (outcome.last_reason or "")
+    assert (root / "untracked.txt").read_text(encoding="utf-8") == "untracked work\n"
+    assert _git(root, "rev-parse", "HEAD").stdout.strip() == feature

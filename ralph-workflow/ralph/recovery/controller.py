@@ -60,6 +60,7 @@ from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
+from ralph.recovery.failure_classifier import typed_signal_unavailability_reason
 from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -553,6 +554,7 @@ class RecoveryController:
         self._last_attempt_outcome: AttemptOutcome | None = None
         self._last_demoted_reason: str | None = None
         self._last_attempt_charged_ledger: bool = False
+        self._last_attempt_cooldown_reason: UnavailabilityReason | None = None
         self._dead_agent_verdict_runner = opts.dead_agent_verdict_runner
         self._false_bench_feedback: FalseBenchFeedback = (
             opts.false_bench_feedback
@@ -560,7 +562,8 @@ class RecoveryController:
             else FalseBenchFeedback()
         )
         self._attempt_outcome_memo: dict[
-            str, tuple[AttemptOutcome, str | None, PersistedVerdict | None]
+            str,
+            tuple[AttemptOutcome, str | None, PersistedVerdict | None, UnavailabilityReason | None],
         ] = {}
         self._attempt_outcome_keys: dict[tuple[str, str], list[str]] = {}
         self._claimed_attempt_outcome_keys: set[str] = set()
@@ -697,6 +700,9 @@ class RecoveryController:
             )
         elif self._last_resolved_verdict is not None:
             failure = _failure_for_attempt_outcome(failure, self._last_resolved_verdict)
+        cooldown_reason = self._last_attempt_cooldown_reason
+        if not bench_applied and cooldown_reason is not None:
+            failure = replace(failure, is_unavailable=True, unavailability_reason=cooldown_reason)
 
         if failure.category == FailureCategory.INTEGRATION:
             return self._handle_integration_continuation(state, failure, phase)
@@ -704,7 +710,7 @@ class RecoveryController:
             state,
             failure,
             context,
-            bench_applied=bench_applied,
+            bench_applied=bench_applied or cooldown_reason is not None,
             sole_demoted_reason=self._last_demoted_reason,
         )
 
@@ -783,16 +789,24 @@ class RecoveryController:
         self._last_demoted_reason = demoted_reason
         self._last_resolved_verdict = resolved_verdict
         if attempt_key is not None:
-            self._attempt_outcome_memo[attempt_key] = (outcome, demoted_reason, resolved_verdict)
+            self._attempt_outcome_memo[attempt_key] = (
+                outcome,
+                demoted_reason,
+                resolved_verdict,
+                self._last_attempt_cooldown_reason,
+            )
             self._attempt_outcome_keys.setdefault((phase, agent or ""), []).append(attempt_key)
         return outcome
 
     def _restore_memoized_attempt(
         self,
-        memoized: tuple[AttemptOutcome, str | None, PersistedVerdict | None],
+        memoized: tuple[
+            AttemptOutcome, str | None, PersistedVerdict | None, UnavailabilityReason | None
+        ],
     ) -> AttemptOutcome:
-        outcome, demoted_reason, resolved_verdict = memoized
+        outcome, demoted_reason, resolved_verdict, cooldown_reason = memoized
         self._last_attempt_charged_ledger = False
+        self._last_attempt_cooldown_reason = cooldown_reason
         self._last_attempt_outcome = outcome
         self._last_demoted_reason = demoted_reason
         self._last_resolved_verdict = resolved_verdict
@@ -802,7 +816,10 @@ class RecoveryController:
         self,
         phase: str,
         agent: str | None,
-    ) -> tuple[AttemptOutcome, str | None, PersistedVerdict | None] | None:
+    ) -> (
+        tuple[AttemptOutcome, str | None, PersistedVerdict | None, UnavailabilityReason | None]
+        | None
+    ):
         keys = self._attempt_outcome_keys.get((phase, agent or ""))
         if not keys:
             return None
@@ -886,6 +903,17 @@ class RecoveryController:
                 verdict_ref=self._last_verdict_record or {},
                 session_ref=session_ref or {},
             )
+        self._last_attempt_cooldown_reason = None
+        cooldown_reason = typed_signal_unavailability_reason(effective_signal)
+        if (
+            attempt_failed
+            and cooldown_reason is not None
+            and not outcome.benches_agent
+            and not probe_mode
+            and agent is not None
+        ):
+            self._mark_agent_unavailable(phase, agent, reason=cooldown_reason)
+            self._last_attempt_cooldown_reason = cooldown_reason
         self._last_attempt_charged_ledger = False
         if (
             _charges_agent_ledger(outcome, peer_failures_identical=peer_failures_identical)

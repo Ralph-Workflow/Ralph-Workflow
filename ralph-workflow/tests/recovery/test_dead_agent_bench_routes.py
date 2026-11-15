@@ -41,6 +41,10 @@ AGENT = "claude"
 OTHER_AGENT = "opencode"
 QuotaExhaustedError = subprocess_executor.QuotaExhaustedError
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_runtime_issued_quota_termination_cools_without_benching_or_charging": "a provider quota kill of a live session now cools the agent so the next selection falls over instead of re-invoking the rate-limited agent; the ledger-untouched and no-bench checks are kept",
+}
+
 
 def _policy() -> PipelinePolicy:
     with tempfile.TemporaryDirectory() as directory:
@@ -236,7 +240,7 @@ def test_ac5_an_inconclusive_probe_does_not_bench_the_agent() -> None:
     assert controller.unavailability_store.earliest_unavailable_wait_ms(PHASE, [AGENT]) == 0
 
 
-def test_a_runtime_issued_termination_never_benches_and_leaves_the_ledger_untouched() -> None:
+def test_a_runtime_issued_quota_termination_cools_without_benching_or_charging() -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
     termination = TerminationRecord.create(
@@ -256,7 +260,7 @@ def test_a_runtime_issued_termination_never_benches_and_leaves_the_ledger_untouc
         ),
     )
 
-    assert controller.unavailability_store.is_available(PHASE, AGENT) is True
+    assert _bench_reason(controller) == str(UnavailabilityReason.OUT_OF_CREDITS)
     entry = _ledger_entry(controller, AGENT)
     assert _counter(entry, "consecutive_unproductive") == 0
 

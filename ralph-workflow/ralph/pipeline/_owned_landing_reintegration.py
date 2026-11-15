@@ -24,6 +24,7 @@ from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
     START_INTEGRATING,
     Transition,
+    clear_record,
     write_record,
 )
 from ralph.pipeline.integration_observation import InProgressKind, read_in_progress_kind
@@ -53,9 +54,9 @@ def replay_stale_resolution(
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
-    blocked = _replay_blocked_reason(root, record)
+    blocked = _replay_blocked_outcome(root, record)
     if blocked is not None:
-        return _retained_replay_outcome(record, blocked)
+        return blocked
 
     try:
         head_sha = get_head_sha(root)
@@ -136,15 +137,44 @@ def replay_stale_resolution(
     )
 
 
-def _replay_blocked_reason(root: Path, record: IntegrationRecord) -> str | None:
+def _replay_blocked_outcome(root: Path, record: IntegrationRecord) -> RebaseState | None:
     if not retained_resolution_is_stale(root, record):
-        return "retained resolution is still owned by live Git state; replay was not started"
-    if _has_user_work(root):
-        return (
-            "the worktree has uncommitted work; it stays in place for commit review and a "
-            "normal commit before the retained resolution is replayed"
+        return _retained_replay_outcome(
+            record,
+            "retained resolution is still owned by live Git state; replay was not started",
         )
+    if _has_user_work(root):
+        return _release_for_commit_review(root, record)
     return None
+
+
+def _release_for_commit_review(root: Path, record: IntegrationRecord) -> RebaseState:
+    try:
+        backup_ref, _feature_sha = create_stale_resolution_snapshot(
+            root,
+            current_branch_or_detached_marker(root),
+            get_head_sha(root),
+            record.owning_worktree or str(root),
+        )
+        if record.reintegrate_pending:
+            write_record(
+                root,
+                record.with_transition(MARK_REINTEGRATE_PENDING, reintegrate_pending=False),
+            )
+        clear_record(root)
+    except Exception as exc:
+        return _retained_replay_outcome(
+            record,
+            f"the worktree has uncommitted work that could not be preserved for commit review: {exc}",
+        )
+    return RebaseState(
+        last_outcome=RebaseOutcomeKind.SKIPPED,
+        last_target=record.target,
+        last_reason=(
+            "uncommitted tracked changes block the retained resolution replay; the work stays "
+            f"in place for commit review and a normal commit, and is preserved in {backup_ref}"
+        ),
+    )
 
 
 def _git_shows_no_operation(root: Path) -> bool:
