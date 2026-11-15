@@ -146,7 +146,6 @@ _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_mess
 _NO_COMMIT_MESSAGE_REASON = "commit-message agent chain produced no message and no skip response"
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
-_SESSION_RETRY_ATTEMPT_NUMBER = 2
 _COMMIT_RUN_ID = "commit-plumbing"
 
 execute_agent_effect = PRODUCTION_INVOKE

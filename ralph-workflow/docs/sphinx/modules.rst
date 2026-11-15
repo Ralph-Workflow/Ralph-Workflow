@@ -5452,13 +5452,6 @@ ralph.pipeline.agent_entry_point
    :members:
    :show-inheritance:
 
-ralph.pipeline.agent_selection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.agent_selection
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.attempt_finalizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
