@@ -423,4 +423,3 @@ def _preferred_conflict_candidate(
     if selection.agent is not None:
         return candidates.index(selection.agent)
     return None
-
