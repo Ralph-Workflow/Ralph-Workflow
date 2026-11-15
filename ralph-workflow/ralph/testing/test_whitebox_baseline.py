@@ -33,9 +33,7 @@ tests/agents/invoke/test_kimi_session_id_extraction.py|0,1,0
 tests/agents/invoke/test_line_reader_queue_bound.py|0,4,8
 tests/agents/invoke/test_missing_credentials_preflight.py|0,1,0
 tests/agents/invoke/test_native_mcp_private_root_concurrency.py|0,1,0
-tests/agents/invoke/test_opencode_child_store_replay.py|0,1,1
 tests/agents/invoke/test_opencode_prompt_delivered_on_stdin.py|0,1,0
-tests/agents/invoke/test_opencode_child_store_replay.py|0,1,1
 tests/agents/invoke/test_pending_subagents_turn_end.py|0,4,0
 tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py|0,2,0
 tests/agents/invoke/test_prompt_echo_line_reader.py|0,2,1
@@ -289,7 +287,6 @@ tests/recovery/test_broken_agent_single_agent_chain_loop_exit.py|0,0,1
 tests/recovery/test_classifier_typed_cause_chain_child_alive.py|0,4,0
 tests/recovery/test_controller_all_agents_unavailable_never_exits.py|0,2,0
 tests/recovery/test_controller_source_parse_cache.py|1,0,16
-tests/recovery/test_cooldown_real_invocation_paths.py|0,1,0
 tests/recovery/test_failure_classifier.py|1,0,0
 tests/recovery/test_harness_echo_does_not_advance_meaningful_output.py|0,0,2
 tests/recovery/test_no_progress_quiet.py|0,5,0
@@ -306,7 +303,6 @@ tests/recovery/test_two_state_invariant.py|0,2,0
 tests/recovery/test_unavailability_reason.py|0,3,0
 tests/recovery/test_user_interrupt.py|2,0,3
 tests/recovery/test_watchdog_fire_record.py|0,1,0
-tests/scenarios/_rebase_recovery_harness.py|0,1,0
 tests/test_activity_feed_paths_converge.py|0,0,1
 tests/test_activity_router_subagent_progress_dispatch.py|0,1,0
 tests/test_agent_internal_paths.py|0,2,0
@@ -570,9 +566,7 @@ tests/test_integration_record_legacy_migration.py|0,2,0
 tests/test_integration_record_rewrite_back.py|0,0,2
 tests/test_integration_remote_ops.py|0,2,0
 tests/test_integration_resolution.py|0,0,1
-tests/test_integration_status.py|0,4,6
 tests/test_integration_success_state.py|0,1,0
-tests/test_integration_status.py|0,4,6
 tests/test_internal_skills_mcp_prompts.py|0,2,0
 tests/test_interrupt.py|1,0,0
 tests/test_interrupt_cli_helper.py|0,0,2
@@ -696,9 +690,7 @@ tests/test_pro_support_state_query.py|2,0,0
 tests/test_pro_support_watcher.py|0,0,2
 tests/test_process_cross_platform_hardening.py|0,1,3
 tests/test_process_hardening.py|0,1,4
-tests/test_process_manager_expected_exits.py|0,1,0
 tests/test_process_manager_failure_state.py|0,1,0
-tests/test_process_manager_expected_exits.py|0,1,0
 tests/test_process_manager_pty.py|0,0,4
 tests/test_process_manager_wait_procs_oserror.py|1,4,1
 tests/test_process_termination_outcomes_bound.py|0,1,0
@@ -847,7 +839,6 @@ tests/test_tool_unsafe_exec_handle.py|0,3,0
 tests/test_tool_workspace_handle_read_media.py|0,1,1
 tests/test_transport_breaker_false_positives.py|0,6,0
 tests/test_transport_multimodal_status.py|0,3,0
-tests/test_u3_git_owned_resolution.py|0,7,0
 tests/test_u4_landed_predicate.py|0,10,0
 tests/test_u4_rendering_and_severity.py|1,2,1
 tests/test_unreadable_record_entry_points.py|0,4,17

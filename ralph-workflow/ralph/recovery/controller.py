@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
@@ -1521,8 +1522,19 @@ class RecoveryController:
         statuses = [status for _agent, status in self.chain_eligibility(phase, agents)]
         return eligibility_wait_from_statuses(statuses, now_ms=now_ms)
 
-    def mark_agent_unavailable(self, phase: str, agent: str, *, reason: str) -> None:
-        self._ledger.mark_unavailable(phase, agent, reason=reason)
+    def mark_agent_unavailable(
+        self, phase: str, agent: str, *, reason: str | UnavailabilityReason
+    ) -> None:
+        raw_reason = reason.value if isinstance(reason, UnavailabilityReason) else reason
+        self._ledger.mark_unavailable(phase, agent, reason=raw_reason)
+        unavail_reason: UnavailabilityReason | None = None
+        if isinstance(reason, UnavailabilityReason):
+            unavail_reason = reason
+        else:
+            with contextlib.suppress(ValueError):
+                unavail_reason = UnavailabilityReason(reason)
+        if unavail_reason is not None:
+            self._mark_agent_unavailable(phase, agent, reason=unavail_reason)
 
     def _is_agent_spent(self, phase: str, agent: str) -> bool:
         return self.agent_eligibility(phase, agent).is_spent

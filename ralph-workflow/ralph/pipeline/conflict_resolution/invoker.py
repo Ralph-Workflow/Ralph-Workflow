@@ -41,6 +41,7 @@ def default_invoker(
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
         del round_index
         from ralph.pipeline.conflict_resolution import driver as _driver
+        from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
 
         patched = _driver.invoke_resolution_agent
         deps = pipeline_deps
@@ -62,6 +63,12 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
+        if isinstance(outcome, bool):
+            return (
+                ResolvedOutcome()
+                if outcome
+                else UnknownOutcome(error=RuntimeError("conflict attempt failed"))
+            )
         return outcome
 
     return _invoke

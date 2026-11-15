@@ -336,7 +336,6 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     )
     session = ResolutionSession(
         max_rounds_per_stop=1,
-        skip_same_agent_retries=True,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
     )
     calls: list[str] = []
@@ -381,7 +380,6 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     session = ResolutionSession(
         max_rounds_per_stop=1,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
-        skip_same_agent_retries=True,
     )
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,

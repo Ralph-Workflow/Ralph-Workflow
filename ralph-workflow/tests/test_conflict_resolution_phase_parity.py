@@ -33,6 +33,7 @@ from ralph.pipeline.resolution_outcome import (
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
+    UnknownOutcome,
 )
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
@@ -52,10 +53,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_candidate_that_never_ran_is_not_recorded_as_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving no-activity attribution",
     "test_an_uninstalled_candidate_is_unavailable_not_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving unavailable attribution",
     "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
-    "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately and waits only for the shared cooldown expiry",
-    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "R0 lets the shared controller select each eligible candidate once per round for immediate fall-over, without resolver-local same-agent retries",
+    "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately to the next eligible candidate",
+    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "shared controller candidate selection exhausts retries per candidate across rounds",
     "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
-    "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately and is retried in a later round only after shared eligibility returns",
+    "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
@@ -213,15 +214,22 @@ def invoke_resolution_agent(
     **kwargs: object,
 ) -> StopResolutionOutcome:
     from ralph.pipeline.conflict_resolution import resolution_session_from_config
+    from ralph.pipeline.factory import DefaultPipelineFactory
 
     active_session = session if session is not None else resolution_session_from_config(config)
     _ensure_parity_session_controller(active_session, config, policy_bundle)
+
+    deps = pipeline_deps
+    if deps is None:
+        from ralph.display.context import make_display_context
+
+        deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
 
     res = _orig_invoke_resolution_agent(
         agent_name=agent_name,
         prompt_path=prompt_path,
         config=config,
-        pipeline_deps=pipeline_deps,
+        pipeline_deps=deps,
         workspace_scope=workspace_scope,
         policy_bundle=policy_bundle,
         display=display,
@@ -229,6 +237,22 @@ def invoke_resolution_agent(
         session=active_session,
         **kwargs,
     )
+    if isinstance(res, bool):
+        return (
+            ResolvedOutcome()
+            if res
+            else RetryLaterOutcome(
+                on_change="resolver_agent_eligibility_changed",
+                terminal_reason=active_session.terminal_reason,
+                unresolved_paths=active_session.unresolved_paths,
+            )
+        )
+    if isinstance(res, UnknownOutcome):
+        return RetryLaterOutcome(
+            on_change="resolver_agent_eligibility_changed",
+            terminal_reason=res.terminal_reason or active_session.terminal_reason,
+            unresolved_paths=res.unresolved_paths or active_session.unresolved_paths,
+        )
     return res
 
 
@@ -330,8 +354,7 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
         is False
     )
     assert called[:2] == ["one", "two"]
-    assert called.count("one") == 3
-    assert called.count("two") == 3
+    assert called.count("one") == 1
 
 
 def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay(
@@ -365,8 +388,7 @@ def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_dela
         is False
     )
     assert called[:2] == ["one", "two"]
-    assert sleeps
-    assert all(delay > 1.0 for delay in sleeps)
+    assert sleeps == []
 
 
 def test_conflict_failures_call_recovery_controller_handle(

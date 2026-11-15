@@ -27,9 +27,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate": (
         "the sealed StopResolutionOutcome contract replaces boolean truthiness and deleted resolver-local retry flags"
     ),
-    "test_one_stop_cannot_exceed_its_configured_invocation_ceiling": (
-        "R0 permits each shared-controller-selected candidate once per round rather than resolver-local same-agent retries"
-    ),
+    "test_one_stop_cannot_exceed_its_configured_invocation_ceiling": "shared recovery controller demotes failing candidates after retry exhaustion across rounds",
     "test_a_failed_attempt_is_charged_to_recovery_exactly_once": (
         "the shared one-attempt/one-charge contract attributes each failed candidate exactly once"
     ),
@@ -122,7 +120,7 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
     assert len(called) == len(chain) * rounds_spent
     for round_index in range(1, rounds_spent + 1):
         spent = [agent for index, agent in called if index == round_index]
-        assert spent == list(chain), f"round {round_index} spent {spent}"
+        assert set(spent) == set(chain), f"round {round_index} spent {spent}"
     for agent in chain:
         assert [a for _, a in called].count(agent) == 3
 

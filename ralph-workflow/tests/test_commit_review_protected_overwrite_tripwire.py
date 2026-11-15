@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ralph.phases._commit_review_tripwires import (
+from ralph.phases.commit_review import (
     DiffEntry,
     TripwireReport,
     TripwireThresholds,
