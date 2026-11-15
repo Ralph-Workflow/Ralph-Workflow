@@ -63,9 +63,36 @@ def _close_cached_repos() -> Generator[None, None, None]:
     _REPO_CACHE.clear()
 
 
+def _git_dir(root: Path) -> Path:
+    dot_git = root / ".git"
+    if dot_git.is_file():
+        try:
+            content = dot_git.read_text(encoding="utf-8").strip()
+            if content.startswith("gitdir: "):
+                git_dir_path = Path(content.removeprefix("gitdir: ").strip())
+                if not git_dir_path.is_absolute():
+                    git_dir_path = (root / git_dir_path).resolve()
+                return git_dir_path
+        except OSError:
+            pass
+    return dot_git
+
+
+def _common_git_dir(git_dir: Path) -> Path:
+    common_file = git_dir / "commondir"
+    if common_file.is_file():
+        try:
+            target = common_file.read_text(encoding="utf-8").strip()
+            return (git_dir / target).resolve()
+        except OSError:
+            pass
+    return git_dir
+
+
 def _fast_branch_name(root: Path) -> str | None:
-    head_file = root / ".git" / "HEAD"
     try:
+        git_dir = _git_dir(root)
+        head_file = git_dir / "HEAD"
         head_content = head_file.read_text(encoding="utf-8").strip()
         if head_content.startswith("ref: refs/heads/"):
             return head_content.removeprefix("ref: refs/heads/")
@@ -79,19 +106,34 @@ def _fast_branch_name(root: Path) -> str | None:
 
 def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
     try:
+        git_dir = _git_dir(root)
+        common_dir = _common_git_dir(git_dir)
         if ref_name == "HEAD":
-            head_file = root / ".git" / "HEAD"
+            head_file = git_dir / "HEAD"
             head_content = head_file.read_text(encoding="utf-8").strip()
             if head_content.startswith("ref: refs/heads/"):
-                target_ref = root / ".git" / head_content.removeprefix("ref: ")
+                rel_path = head_content.removeprefix("ref: ")
+                target_ref = common_dir / rel_path
+                if not target_ref.is_file():
+                    target_ref = git_dir / rel_path
                 if target_ref.is_file():
                     return target_ref.read_text(encoding="utf-8").strip()
             elif len(head_content) == 40:
                 return head_content
         else:
-            ref_file = root / ".git" / "refs" / "heads" / ref_name
+            ref_file = common_dir / "refs" / "heads" / ref_name
+            if not ref_file.is_file():
+                ref_file = git_dir / "refs" / "heads" / ref_name
             if ref_file.is_file():
                 return ref_file.read_text(encoding="utf-8").strip()
+            packed_refs_file = common_dir / "packed-refs"
+            if packed_refs_file.is_file():
+                for line in packed_refs_file.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("#") or line.startswith("^"):
+                        continue
+                    parts = line.split()
+                    if len(parts) == 2 and parts[1] == f"refs/heads/{ref_name}":
+                        return parts[0]
     except OSError:
         pass
     try:

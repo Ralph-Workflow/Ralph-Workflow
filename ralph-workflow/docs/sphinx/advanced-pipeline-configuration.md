@@ -297,9 +297,9 @@ Policy knobs in the `[commit_review]` block of `pipeline.toml`:
 - **Proposal retention (`proposal_retention`, default: 10):** Limits how many historical proposal refs are retained before older ones are pruned.
 - **Rejection ceiling (`max_rejections`, default: 2):** The consecutive-rejection count at which the run routes to `failed_terminal`: with the default of 2, the second consecutive rejection is rolled back and then routed there. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of 2.
 
-#### No plan-based bypass for intentional large deletions
+#### Plan-based bypass for intentional large deletions
 
-The mass-deletion tripwires count the diff against `HEAD`; they do not consult the plan, the task text, or any other operator intent. A deliberately large deletion therefore trips the same hard rejection as an accidental one. There is **no plan-based exemption**: the only supported way to allow a large intentional deletion is to raise `max_deleted_files` and/or `max_deleted_fraction` in the `[commit_review]` block of your pipeline policy TOML.
+Only exact literal deletions listed in the planning-analysis-approved plan may bypass the mass-deletion tripwires (`max_deleted_files` and `max_deleted_fraction`). Protected deletions never bypass their tripwire, even when listed. Developer or reviewer input cannot add paths to or widen this engine-read authorization list. Outside of approved planned deletions, mass-deletion tripwires evaluate the diff against `HEAD`; the only other way to accommodate large unlisted deletions is to raise `max_deleted_files` and/or `max_deleted_fraction` in the `[commit_review]` block of your pipeline policy TOML.
 
 #### Rejection, rollback, and recovery
 

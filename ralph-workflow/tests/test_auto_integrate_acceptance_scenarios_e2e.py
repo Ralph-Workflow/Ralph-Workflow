@@ -18,6 +18,7 @@ from ralph.pipeline import auto_integrate_recovery
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.workspace.scope import WorkspaceScope
+from tests.test_pending_merge_commit_recovery import _common_git_dir, _git_dir
 
 _TARGET = "release"
 _REMOTE = "tacos"
@@ -33,9 +34,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 
 
 def _fast_branch_name(root: Path) -> str | None:
-    git_dir = root / ".git" if (root / ".git").is_dir() else root
-    head_file = git_dir / "HEAD"
     try:
+        git_dir = _git_dir(root)
+        head_file = git_dir / "HEAD"
         head_content = head_file.read_text(encoding="utf-8").strip()
         if head_content.startswith("ref: refs/heads/"):
             return head_content.removeprefix("ref: refs/heads/")
@@ -45,22 +46,28 @@ def _fast_branch_name(root: Path) -> str | None:
 
 
 def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
-    git_dir = root / ".git" if (root / ".git").is_dir() else root
     try:
+        git_dir = _git_dir(root)
+        common_dir = _common_git_dir(git_dir)
         if ref_name == "HEAD":
             head_file = git_dir / "HEAD"
             head_content = head_file.read_text(encoding="utf-8").strip()
             if head_content.startswith("ref: refs/heads/"):
-                target_ref = git_dir / head_content.removeprefix("ref: ")
+                rel_path = head_content.removeprefix("ref: ")
+                target_ref = common_dir / rel_path
+                if not target_ref.is_file():
+                    target_ref = git_dir / rel_path
                 if target_ref.is_file():
                     return target_ref.read_text(encoding="utf-8").strip()
             elif len(head_content) == 40:
                 return head_content
         else:
-            ref_file = git_dir / "refs" / "heads" / ref_name
+            ref_file = common_dir / "refs" / "heads" / ref_name
+            if not ref_file.is_file():
+                ref_file = git_dir / "refs" / "heads" / ref_name
             if ref_file.is_file():
                 return ref_file.read_text(encoding="utf-8").strip()
-            packed_refs_file = git_dir / "packed-refs"
+            packed_refs_file = common_dir / "packed-refs"
             if packed_refs_file.is_file():
                 for line in packed_refs_file.read_text(encoding="utf-8").splitlines():
                     if line.startswith("#") or line.startswith("^"):

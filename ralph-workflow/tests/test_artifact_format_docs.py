@@ -245,6 +245,34 @@ def test_materialized_surface_regression_stale_docs_match_bundled_markdown(
         assert materialized_format_doc_contents[relative_path] == bundled_content
 
 
+def test_obsolete_format_docs_pruned_on_materialization(tmp_path: Path) -> None:
+    retired_stem = "commit_" + "clean" + "up"
+    format_dir = tmp_path / ".agent" / "artifact-formats"
+    examples_dir = format_dir / "examples"
+    examples_dir.mkdir(parents=True, exist_ok=True)
+
+    legacy_doc = format_dir / f"{retired_stem}.md"
+    legacy_example = examples_dir / f"{retired_stem}.md"
+    legacy_doc.write_text("# Legacy Doc\n", encoding="utf-8")
+    legacy_example.write_text("# Legacy Example\n", encoding="utf-8")
+
+    assert legacy_doc.is_file()
+    assert legacy_example.is_file()
+
+    paths = materialize_all_format_docs(tmp_path)
+
+    assert not legacy_doc.exists()
+    assert not legacy_example.exists()
+
+    expected = {
+        *(format_doc_workspace_path(item) for item in FORMAT_DOC_ARTIFACT_TYPES),
+        *(example_workspace_path(item) for item in EXAMPLE_ARTIFACT_TYPES),
+        format_index_workspace_path(),
+    }
+    assert set(paths) == expected
+    assert all((tmp_path / path).is_file() for path in expected)
+
+
 def test_materialize_unknown_type_has_no_side_effect() -> None:
     backend = MemoryBackend()
     workspace_root = Path("/virtual-ws")

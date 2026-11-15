@@ -29,7 +29,7 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
 from tests.test_cli_commit_command import _write_commit_message_doc
-from tests.test_pending_merge_commit_recovery import _commit, _git
+from tests.test_pending_merge_commit_recovery import _commit, _fast_rev_parse, _git
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -97,6 +97,9 @@ def _close_repo(root: Path) -> None:
 
 
 def _sha(root: Path, ref: str = "HEAD") -> str:
+    fast = _fast_rev_parse(root, ref)
+    if fast is not None:
+        return fast
     _close_repo(root)
     return _repo(root).commit(ref).hexsha
 

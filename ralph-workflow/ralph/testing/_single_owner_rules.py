@@ -39,16 +39,7 @@ ROUND_CAP_LITERAL_ALLOWLIST: dict[tuple[str, str], str] = {
     ): "Bound on interactive policy prompts, not an agent invocation round limit.",
 }
 
-PHASE_FAILURE_STATE_ALLOWLIST: dict[tuple[str, str], str] = {
-    (
-        "ralph/pipeline/conflict_resolution/chain_candidates.py",
-        "dead_tool_surfaces",
-    ): "Transitional compatibility with legacy conflict candidate dead surface tracking.",
-    (
-        "ralph/pipeline/conflict_resolution/session.py",
-        "dead_tool_surfaces",
-    ): "Transitional compatibility with legacy conflict candidate dead surface tracking.",
-}
+PHASE_FAILURE_STATE_ALLOWLIST: dict[tuple[str, str], str] = {}
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
