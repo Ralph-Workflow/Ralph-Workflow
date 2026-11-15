@@ -29,6 +29,12 @@ PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 1
 _GLOBAL_POLICY_MAX_PARALLEL_WORKERS = 3
 _LEGACY_GLOBAL_POLICY_MAX_PARALLEL_WORKERS = 4
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_config_synthesized_agents_policy_backfills_policy_remediation": "once any agent chain is configured the packaged claude chains are dropped; policy remediation runs the configured development chain instead of a backfilled claude chain",
+    "test_project_agents_toml_backfills_policy_remediation": "a packaged drain now binds to the configured chain of its class or keeps its packaged chain under that chain's own name; the test checks the drain resolves to a real chain rather than pinning the old backfilled chain name",
+    "test_backfilled_policy_remediation_ignores_review_drain": "the backfilled drain no longer pins the packaged policy_remediation chain name; the review drain must still never be used for remediation",
+}
+
 
 class _DummyValidationError:
     def __init__(self, errors: list[dict[str, object]]) -> None:
@@ -320,12 +326,11 @@ def test_config_synthesized_agents_policy_backfills_policy_remediation(
 
     agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
 
-    remediation_chain = agents_policy.agent_chains.get("policy_remediation")
-    assert remediation_chain is not None
-    assert remediation_chain.agents == ["claude"]
     remediation_drain = agents_policy.agent_drains.get("policy_remediation")
     assert remediation_drain is not None
     assert remediation_drain.chain == "development"
+    assert agents_policy.agent_chains[remediation_drain.chain].agents == ["codex"]
+    assert "policy_remediation" not in agents_policy.agent_chains
     assert agents_policy.agent_chains["planning"].agents == ["codex"]
 
 
@@ -346,10 +351,9 @@ def test_project_agents_toml_backfills_policy_remediation(tmp_path: Path) -> Non
 
     agents_policy = policy_loader.load_agents_policy(tmp_path)
 
-    remediation_chain = agents_policy.agent_chains.get("policy_remediation")
-    assert remediation_chain is not None
-    assert remediation_chain.agents == ["claude"]
-    assert agents_policy.agent_drains["policy_remediation"].chain == "policy_remediation"
+    remediation_drain = agents_policy.agent_drains["policy_remediation"]
+    assert remediation_drain.chain in agents_policy.agent_chains
+    assert agents_policy.agent_chains[remediation_drain.chain].agents
 
 
 def test_project_agents_toml_merges_onto_defaults_like_other_policies(
@@ -429,7 +433,8 @@ def test_backfilled_policy_remediation_ignores_review_drain(tmp_path: Path) -> N
 
     remediation_drain = agents_policy.agent_drains.get("policy_remediation")
     assert remediation_drain is not None
-    assert remediation_drain.chain == "policy_remediation"
+    assert remediation_drain.chain != "review"
+    assert remediation_drain.chain in agents_policy.agent_chains
 
 
 def test_user_defined_policy_remediation_chain_is_not_overwritten(tmp_path: Path) -> None:

@@ -25,6 +25,8 @@ from ralph.policy.loader import (
 from ralph.workspace.scope import WorkspaceScope
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_generated_local_template_missing_drain_heals_from_bundled_defaults": "a missing drain now heals onto the configured chain of its class instead of the packaged claude development_commit chain",
+    "test_global_template_missing_active_drain_heals_on_first_run_startup": "a missing drain now heals onto the configured chain of its class instead of the packaged claude development_commit chain",
     "test_ensure_global_config_force_creates_backup": (
         "the absolute comment gate bans comments in tracked TOML, so the regenerated "
         "global config no longer opens with a comment banner; the check now asserts the "
@@ -541,7 +543,7 @@ def test_generated_local_template_missing_drain_heals_from_bundled_defaults(
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
     config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
     bundle = load_policy(agent_dir, config=config)
-    assert bundle.agents.agent_drains["development_commit"].chain == "development_commit"
+    assert bundle.agents.agent_drains["development_commit"].chain == "commit"
 
 
 def test_ensure_local_configs_adds_default_gitignore_entries(tmp_path: Path) -> None:
@@ -767,7 +769,7 @@ def test_global_template_missing_active_drain_heals_on_first_run_startup(
 
     config = loader_module.load_config(workspace_scope=WorkspaceScope(project_root))
     bundle = load_policy(project_root / ".agent", config=config)
-    assert bundle.agents.agent_drains["development_commit"].chain == "development_commit"
+    assert bundle.agents.agent_drains["development_commit"].chain == "commit"
 
 
 @pytest.mark.timeout_seconds(2.0)

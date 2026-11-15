@@ -327,13 +327,7 @@ def _resolve_artifacts_policy(
 
 def _config_defines_agent_policy(config: object) -> bool:
     chains: object = getattr(config, "agent_chains", None)
-    drains: object = getattr(config, "agent_drains", None)
-    return (
-        isinstance(chains, Mapping)
-        and isinstance(drains, Mapping)
-        and bool(chains)
-        and bool(drains)
-    )
+    return isinstance(chains, Mapping) and bool(chains)
 
 
 def _coerce_agent_chain_config(
@@ -534,9 +528,20 @@ def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolic
         drain_class="development",
         fallback_drain="development",
     )
+    chains = user_chains or dict(defaults.agent_chains)
+    drains = {**defaults.agent_drains, **user_drains}
+    for drain_name, binding in list(drains.items()):
+        if binding.chain in chains:
+            continue
+        if binding.drain_class in chains:
+            drains[drain_name] = AgentDrainConfig(
+                chain=binding.drain_class, drain_class=binding.drain_class
+            )
+            continue
+        chains[binding.chain] = defaults.agent_chains[binding.chain]
     return AgentsPolicy(
-        agent_chains={**defaults.agent_chains, **user_chains},
-        agent_drains={**defaults.agent_drains, **user_drains},
+        agent_chains=chains,
+        agent_drains=drains,
         forbid_sibling_drain_inference=user_policy.forbid_sibling_drain_inference,
     )
 

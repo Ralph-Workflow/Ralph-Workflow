@@ -101,6 +101,7 @@ from ralph.pipeline.rebase_state import (
 )
 from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
+from ralph.pipeline.state_init import with_configured_phase_chains
 from ralph.process.manager import get_process_manager
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
 from ralph.recovery.controller import RecoveryController
@@ -1139,7 +1140,12 @@ def _resolve_initial_state(
     workspace_root: Path | None = None,
 ) -> PipelineState:
     if initial_state is not None:
-        resumed = initial_state
+        resumed = with_configured_phase_chains(
+            initial_state,
+            config,
+            agents_policy=policy_bundle.agents,
+            pipeline_policy=policy_bundle.pipeline,
+        )
         if (
             isinstance(resumed.rollback_pending, bool)
             and resumed.rollback_pending is True

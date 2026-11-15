@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy, PipelinePolicy
 
 
-def _initial_phase_chains(
+def configured_phase_chains(
     config: UnifiedConfig,
     *,
     agents_policy: AgentsPolicy | None,
@@ -32,6 +32,25 @@ def _initial_phase_chains(
     }
 
 
+def with_configured_phase_chains(
+    state: PipelineState,
+    config: UnifiedConfig,
+    *,
+    agents_policy: AgentsPolicy | None,
+    pipeline_policy: PipelinePolicy,
+) -> PipelineState:
+    configured = configured_phase_chains(
+        config, agents_policy=agents_policy, pipeline_policy=pipeline_policy
+    )
+    merged = {
+        name: configured[name]
+        if name in configured and configured[name].agents != saved.agents
+        else saved
+        for name, saved in state.phase_chains.items()
+    }
+    return state if merged == state.phase_chains else state.copy_with(phase_chains=merged)
+
+
 def create_initial_state(
     config: UnifiedConfig,
     *,
@@ -40,7 +59,7 @@ def create_initial_state(
     counter_overrides: dict[str, int] | None = None,
 ) -> PipelineState:
     entry_phase = pipeline_policy.entry_phase
-    phase_chains = _initial_phase_chains(
+    phase_chains = configured_phase_chains(
         config,
         agents_policy=agents_policy,
         pipeline_policy=pipeline_policy,
