@@ -39,6 +39,8 @@ from ralph.mcp.tools.exec import (
 )
 from ralph.timeout_defaults import EXEC_SOFT_REPLY_BUDGET_MS
 
+_DEFAULT_RUN_COMMAND = run_command
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -81,7 +83,7 @@ def handle_unsafe_exec(
 
     timeout_ms = parse_exec_timeout(params)
 
-    if deps is not None and deps.runner is not None:
+    if (deps is not None and deps.runner is not None) or run_command is not _DEFAULT_RUN_COMMAND:
         try:
             output = run_command("sh", ["-c", command], workspace, timeout_ms, deps=deps)
         except ExecutionError as exc:

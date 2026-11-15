@@ -215,6 +215,78 @@ def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbatio
     )
 
 
+@pytest.mark.parametrize(
+    ("perturbation_a", "perturbation_b"),
+    [
+        ("wrong-version-ledger", "target-moved"),
+        ("older-record", "dirty-untracked"),
+        ("agent-stages-nothing", "failing-hook"),
+        ("sibling-vendor", "older-record"),
+    ],
+)
+def test_fault_injection_paired_cells_land_autonomously(
+    tmp_git_repo: Path, perturbation_a: str, perturbation_b: str
+) -> None:
+    commit_file(tmp_git_repo, "shared.txt", "base\n", "base")
+    git(tmp_git_repo, "checkout", "-q", "-b", "feature")
+    feature_sha = commit_file(tmp_git_repo, "shared.txt", "feature\n", "feature")
+
+    for perturbation in (perturbation_a, perturbation_b):
+        if perturbation == "stale-marker":
+            marker = tmp_git_repo / ".git" / "rebase-merge"
+            marker.mkdir(parents=True, exist_ok=True)
+            (marker / "stale").write_text("not a rebase\n", encoding="utf-8")
+        elif perturbation == "older-record":
+            path = record_path(tmp_git_repo)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "record_version": 0,
+                        "phase": "integrating",
+                        "target": "main",
+                        "pre_feature_sha": feature_sha,
+                        "pre_target_sha": git(tmp_git_repo, "rev-parse", "main"),
+                    }
+                ),
+                encoding="utf-8",
+            )
+        elif perturbation == "wrong-version-ledger":
+            ledger = tmp_git_repo / ".agent" / "agent-failure-ledger.json"
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            ledger.write_text('{"version": 999, "entries": {}}', encoding="utf-8")
+        elif perturbation == "target-moved":
+            old = git(tmp_git_repo, "rev-parse", "main")
+            moved = git(tmp_git_repo, "commit-tree", f"{old}^{{tree}}", "-p", old, "-m", "moved")
+            git(tmp_git_repo, "update-ref", "refs/heads/main", moved, old)
+        elif perturbation == "sibling-vendor":
+            git(tmp_git_repo, "update-ref", "refs/heads/main", feature_sha)
+        elif perturbation == "dirty-untracked":
+            (tmp_git_repo / "untracked.txt").write_text("keep\n", encoding="utf-8")
+        elif perturbation == "failing-hook":
+            hook = tmp_git_repo / ".git" / "hooks" / "pre-commit"
+            hook.parent.mkdir(parents=True, exist_ok=True)
+            hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            hook.chmod(0o755)
+
+    git(tmp_git_repo, "checkout", "-q", "feature")
+
+    resolver = (
+        (lambda _root, _target, _stop: True)
+        if "agent-stages-nothing" in (perturbation_a, perturbation_b)
+        else FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    )
+    run = drive_integration(tmp_git_repo, resolver=resolver)
+    pair = f"{perturbation_a}+{perturbation_b}"
+    assert run.error is None, f"paired fault injection {pair} must not crash: {run.error}"
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract=f"paired fault injection {pair} must still land autonomously",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
+
+
 def test_publication_failure_lands_and_verifies(tmp_git_repo: Path) -> None:
     commit_file(tmp_git_repo, "base.txt", "base\n", "base")
     git(tmp_git_repo, "checkout", "-q", "-b", "feature")
