@@ -226,9 +226,7 @@ def test_pending_rebase_identity_match_is_observable_from_snapshot(tmp_path: Pat
         )
         snapshot = mock_observe.return_value
         assert snapshot.operation_state is OperationState.REBASE_PAUSED
-        assert all(
-            (rec.rebase_continue_head, rec.rebase_continue_stop, rec.rebase_continue_tree)
-        )
+        assert all((rec.rebase_continue_head, rec.rebase_continue_stop, rec.rebase_continue_tree))
         assert snapshot.stop_resolved is True
         assert snapshot.head_sha == rec.rebase_continue_head
         assert snapshot.rebase_head == rec.rebase_continue_stop
@@ -306,7 +304,9 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
 
     initial_attempts = AttemptState(repeat_threshold=1)
     # With 0 repeats, the public decision seam keeps the direct action
-    assert decide(DecisionContext(obs, attempts=initial_attempts, dirt_shape=shape)) is direct_action
+    assert (
+        decide(DecisionContext(obs, attempts=initial_attempts, dirt_shape=shape)) is direct_action
+    )
 
     sig = initial_attempts.signature(obs)
     key = (sig, direct_action.value)
@@ -409,7 +409,9 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
             side_effect=mock_attempt_resolution_site2,
         ),
         patch("ralph.pipeline.auto_integrate_planning.rebase_in_progress", return_value=True),
-        patch("ralph.pipeline.auto_integrate_planning.resolve_integration_target", return_value="main"),
+        patch(
+            "ralph.pipeline.auto_integrate_planning.resolve_integration_target", return_value="main"
+        ),
         patch("ralph.git.merge.observe_branch_sha", return_value=("feat_sha", True)),
         patch(
             "ralph.pipeline.conflict_resolution.rebase_loop.current_rebase_identity",

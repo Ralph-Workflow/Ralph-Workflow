@@ -365,14 +365,23 @@ def _run_one_round(
         skipped = _skipped_candidates(session, candidates)
         selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
         if selected is None:
-            return RoundAttempt(succeeded=False, invoked=attempt.invoked, agent_ran=attempt.agent_ran)
+            return RoundAttempt(
+                succeeded=False, invoked=attempt.invoked, agent_ran=attempt.agent_ran
+            )
         agent_name = candidates[selected]
         _driver_mod.emit_conflict_phase_line(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
         succeeded, invoker_result, progress = _execute_single_candidate(
-            runner, agent_name, prompt_path, round_index, session, candidates, selected,
-            policy_bundle, observe_unresolved,
+            runner,
+            agent_name,
+            prompt_path,
+            round_index,
+            session,
+            candidates,
+            selected,
+            policy_bundle,
+            observe_unresolved,
         )
         agent_saw = bool(
             session.last_attempt_saw_activity or not isinstance(invoker_result, ResolvedOutcome)
@@ -390,9 +399,13 @@ def _run_one_round(
                 probe_changed=progress.probe_changed,
             )
         attempt = RoundAttempt(
-            succeeded=succeeded, invoked=True, agent_ran=succeeded or agent_saw,
-            agent_name=agent_name, candidate_offset=selected,
-            count_dropped=progress.count_dropped, probe_changed=progress.probe_changed,
+            succeeded=succeeded,
+            invoked=True,
+            agent_ran=succeeded or agent_saw,
+            agent_name=agent_name,
+            candidate_offset=selected,
+            count_dropped=progress.count_dropped,
+            probe_changed=progress.probe_changed,
         )
         if succeeded:
             return attempt
@@ -438,8 +451,10 @@ def _select_after_delay(
             if not status.is_spent
         ]
         if unspent:
+
             def _wait_key(agent_id: str) -> int:
                 return int(controller.earliest_available_wait_ms(PHASE_RESOLUTION, [agent_id]))
+
             return candidates.index(min(unspent, key=_wait_key))
     return None
 

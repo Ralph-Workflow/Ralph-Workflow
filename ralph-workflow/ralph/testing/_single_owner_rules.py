@@ -79,9 +79,7 @@ _CONFLICT_RESOLUTION_BUDGET_BINDING_MESSAGE = (
     "budget classification belongs to the shared FailureClassifier recovery path."
 )
 
-_CONFLICT_RESOLUTION_PRIVATE_STATE_RULE = (
-    "production_conflict_resolution_private_failure_state"
-)
+_CONFLICT_RESOLUTION_PRIVATE_STATE_RULE = "production_conflict_resolution_private_failure_state"
 
 _SHARED_WAIT_READ_METHODS: frozenset[str] = frozenset(
     {
@@ -563,10 +561,7 @@ def _check_conflict_resolution_classification_ownership(
             continue
         targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
         if any(
-            (
-                isinstance(target, ast.Attribute)
-                and target.attr == "counts_against_budget"
-            )
+            (isinstance(target, ast.Attribute) and target.attr == "counts_against_budget")
             or (isinstance(target, ast.Name) and target.id == "counts_against_budget")
             for target in targets
         ) and _is_statically_falsy_expression(node.value):
@@ -599,9 +594,7 @@ def _resolver_state_target_names(target: ast.expr) -> tuple[str, ...]:
 
 def _is_local_attempt_counter_name(name: str) -> bool:
     lowered = name.lower()
-    return "retr" in lowered and any(
-        token in lowered for token in _LOCAL_ATTEMPT_SCOPE_TOKENS
-    )
+    return "retr" in lowered and any(token in lowered for token in _LOCAL_ATTEMPT_SCOPE_TOKENS)
 
 
 def _is_resolver_delay_computation_name(name: str) -> bool:
@@ -730,9 +723,7 @@ def _check_conflict_resolution_private_state(
                     function, context.function_chain
                 )
             shared_wait_names = shared_names_by_function[function_id]
-        violations.extend(
-            _resolver_assignment_violations(node, rel_path, shared_wait_names)
-        )
+        violations.extend(_resolver_assignment_violations(node, rel_path, shared_wait_names))
     return violations
 
 

@@ -111,9 +111,7 @@ def test_append_only_decision_log_retains_both_ordered_contributions(
 
     assert run.error is None, f"append-only decision-log integration must not crash: {run.error}"
     assert git(tmp_git_repo, "show", f"main:{decision_log}") == (
-        "decision: base\n"
-        "decision: target contribution\n"
-        "decision: feature contribution"
+        "decision: base\ndecision: target contribution\ndecision: feature contribution"
     ), "the union policy must retain both appends in deterministic target-then-feature order"
     assert_content_equivalence(
         tmp_git_repo,

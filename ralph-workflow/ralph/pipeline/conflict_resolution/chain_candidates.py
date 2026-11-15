@@ -44,8 +44,10 @@ def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) 
     if ledger is not None:
         for name in candidates:
             status = ledger.status(PHASE_RESOLUTION, name)
-            if isinstance(status, Spent) or status.reason == "candidate_unavailable" or (
-                session.recovery_controller is None and not status.is_eligible
+            if (
+                isinstance(status, Spent)
+                or status.reason == "candidate_unavailable"
+                or (session.recovery_controller is None and not status.is_eligible)
             ):
                 barred.add(name)
     return frozenset(name for name in candidates if name in barred)

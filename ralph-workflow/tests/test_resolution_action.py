@@ -107,7 +107,9 @@ def test_infrastructure_termination_reason_tool_surface_dead() -> None:
     assert action is ResolutionAction.ESCALATE_TO_INTERVENTION
 
 
-def test_infrastructure_termination_reason_candidate_unavailable_continues_to_shared_fallover() -> None:
+def test_infrastructure_termination_reason_candidate_unavailable_continues_to_shared_fallover() -> (
+    None
+):
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,

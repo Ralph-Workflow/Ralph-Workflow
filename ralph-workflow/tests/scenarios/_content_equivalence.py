@@ -258,9 +258,7 @@ def _snapshot_report(
     unexpected.extend(sorted(target_tree.keys() - allowed - excluded))
     for relative in sorted((source_tree.keys() - feature_paths) - excluded):
         if target_tree.get(relative) != source_tree[relative]:
-            unexpected.append(
-                f"{relative} (content differs from the pre-integration source tree)"
-            )
+            unexpected.append(f"{relative} (content differs from the pre-integration source tree)")
 
     lost = [
         relative

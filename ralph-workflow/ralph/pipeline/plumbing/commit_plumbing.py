@@ -477,7 +477,9 @@ def run_commit_plumbing(
         extra_env = _commit_bridge_env(bridge)
         if extra_env is not None:
             extra_env = _stringify_extra_env(extra_env)
-        max_attempts = max(1, len(chain_config.agents) * recovery_controller.ledger.consecutive_limit)
+        max_attempts = max(
+            1, len(chain_config.agents) * recovery_controller.ledger.consecutive_limit
+        )
         for _ in range(max_attempts):
             selection = recovery_controller.preferred_agent_index(
                 "commit",

@@ -51,4 +51,5 @@ class ConflictResolutionConfig(RalphBaseModel):
                 )
         return data
 
+
 __all__ = ["ConflictResolutionConfig"]

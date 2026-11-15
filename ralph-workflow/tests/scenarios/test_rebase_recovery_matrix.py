@@ -175,7 +175,10 @@ def test_sixth_symptom_lands_records_policy_and_stays_quiet(tmp_git_repo: Path) 
     stages = result.facts["stage_shas"].split(",")
     assert len(stages) == 3 and all(len(sha) == 40 for sha in stages)
     policy = result.facts["policy_lines"]
-    assert all(f"{label}={sha}" in policy for label, sha in zip(("base", "ours", "theirs"), stages, strict=True))
+    assert all(
+        f"{label}={sha}" in policy
+        for label, sha in zip(("base", "ours", "theirs"), stages, strict=True)
+    )
     assert "policy=vendor-immutable" in policy
     assert "alternatives=('unchanged-from-base', 'ours', 'theirs')" in policy
     assert result.facts["integrated_feature_sha"] == result.facts["completed_head"]
@@ -216,5 +219,8 @@ def test_mixed_declared_decisions_and_gitlink_are_separated_then_land(
     assert "conflicts resolved in round" not in content
     stages = result.facts["stage_shas"].split(",")
     policy = result.facts["policy_lines"]
-    assert all(f"{label}={sha}" in policy for label, sha in zip(("base", "ours", "theirs"), stages, strict=True))
+    assert all(
+        f"{label}={sha}" in policy
+        for label, sha in zip(("base", "ours", "theirs"), stages, strict=True)
+    )
     assert result.facts["head"] == result.facts["target"]

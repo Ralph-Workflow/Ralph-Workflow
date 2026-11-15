@@ -160,8 +160,7 @@ def wait_before_retry(session, policy_bundle):
         "ralph/pipeline/conflict_resolution/planted_retry_delay.py", source
     )
     assert any(
-        v.rule == "production_conflict_resolution_private_failure_state"
-        and "delay_ms" in v.detail
+        v.rule == "production_conflict_resolution_private_failure_state" and "delay_ms" in v.detail
         for v in violations
     ), f"Expected production_conflict_resolution_private_failure_state, got: {violations}"
 

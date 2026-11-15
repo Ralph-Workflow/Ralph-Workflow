@@ -815,7 +815,9 @@ def test_transitional_rules_are_fully_retired() -> None:
 def test_conflict_resolution_phase_failure_state_allowlist_is_fully_retired() -> None:
     assert not [
         entry for entry in PHASE_FAILURE_STATE_ALLOWLIST if "conflict_resolution" in entry[0]
-    ], f"Expected no conflict-resolution phase failure state exemptions, got: {PHASE_FAILURE_STATE_ALLOWLIST}"
+    ], (
+        f"Expected no conflict-resolution phase failure state exemptions, got: {PHASE_FAILURE_STATE_ALLOWLIST}"
+    )
 
 
 def test_conflict_resolution_private_state_is_reported_at_its_source_line() -> None:
@@ -841,11 +843,11 @@ def run_one_round(session, candidates):
         "ralph/pipeline/conflict_resolution/_driver_rounds.py", source
     )
     flagged = [
-        v
-        for v in violations
-        if v.rule == "production_conflict_resolution_private_failure_state"
+        v for v in violations if v.rule == "production_conflict_resolution_private_failure_state"
     ]
-    assert flagged, f"Expected production_conflict_resolution_private_failure_state, got: {violations}"
+    assert flagged, (
+        f"Expected production_conflict_resolution_private_failure_state, got: {violations}"
+    )
     assert flagged[0].path == "ralph/pipeline/conflict_resolution/_driver_rounds.py"
     assert flagged[0].line == 3
 

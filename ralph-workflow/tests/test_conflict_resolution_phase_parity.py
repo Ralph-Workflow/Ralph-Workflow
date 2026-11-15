@@ -479,14 +479,14 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
     prompt.write_text("resolve", encoding="utf-8")
     config = UnifiedConfig.model_validate({"general": {"max_same_agent_retries": 4}})
     outcome = invoke_resolution_agent(
-            agent_name="claude",
-            prompt_path=prompt,
-            config=config,
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
+        agent_name="claude",
+        prompt_path=prompt,
+        config=config,
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
     )
     assert isinstance(outcome, RetryLaterOutcome)
     assert outcome.on_change == "resolver_agent_eligibility_changed"
@@ -874,15 +874,15 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
     session = ResolutionSession()
 
     outcome = invoke_resolution_agent(
-            agent_name="pi",
-            prompt_path=prompt,
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
+        agent_name="pi",
+        prompt_path=prompt,
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        session=session,
     )
     assert isinstance(outcome, RetryLaterOutcome)
     assert outcome.on_change == "resolver_agent_eligibility_changed"
@@ -912,15 +912,15 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
     session = ResolutionSession()
 
     outcome = invoke_resolution_agent(
-            agent_name="claude",
-            prompt_path=prompt,
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
+        agent_name="claude",
+        prompt_path=prompt,
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        session=session,
     )
     assert isinstance(outcome, RetryLaterOutcome)
     assert outcome.on_change == "resolver_agent_eligibility_changed"
@@ -944,15 +944,15 @@ def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
     session = ResolutionSession()
 
     outcome = invoke_resolution_agent(
-            agent_name="claude",
-            prompt_path=prompt,
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
+        agent_name="claude",
+        prompt_path=prompt,
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        session=session,
     )
     assert isinstance(outcome, RetryLaterOutcome)
     assert outcome.on_change == "resolver_agent_eligibility_changed"
@@ -987,15 +987,15 @@ def test_an_uninstalled_candidate_is_unavailable_not_declining(
     session = ResolutionSession()
 
     outcome = invoke_resolution_agent(
-            agent_name="pi",
-            prompt_path=prompt,
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
+        agent_name="pi",
+        prompt_path=prompt,
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        session=session,
     )
     assert isinstance(outcome, RetryLaterOutcome)
     assert outcome.on_change == "resolver_agent_eligibility_changed"

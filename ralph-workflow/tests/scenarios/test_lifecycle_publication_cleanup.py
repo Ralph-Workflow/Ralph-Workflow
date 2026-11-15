@@ -193,9 +193,7 @@ def test_local_landing_survives_publication_failure(tmp_git_repo: Path) -> None:
     completion_command = tuple(completion_command_text.split()[1:])
     hook.unlink()
     git(tmp_git_repo, *completion_command)
-    assert git(remote, "rev-parse", "refs/heads/main") == git(
-        tmp_git_repo, "rev-parse", "main"
-    )
+    assert git(remote, "rev-parse", "refs/heads/main") == git(tmp_git_repo, "rev-parse", "main")
 
 
 def test_publication_success_with_cleanup_failure_keeps_remote_landing(tmp_git_repo: Path) -> None:

@@ -6,7 +6,7 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
@@ -32,7 +32,7 @@ from tests._scenario_operator_line import OperatorLine
 from tests._scenario_result import ScenarioResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from ralph.agents.timeout_clock import FakeClock
     from ralph.config.models import UnifiedConfig
@@ -225,9 +225,9 @@ def test_shared_executor_seam_injects_runner_and_shared_controller() -> None:
             "rebase_conflict_resolution", ("shared-controller-agent",)
         )
 
-    assert dependencies.recovery_controller.agents_for_phase(
-        "rebase_conflict_resolution"
-    ) == ("shared-controller-agent",)
+    assert dependencies.recovery_controller.agents_for_phase("rebase_conflict_resolution") == (
+        "shared-controller-agent",
+    )
 
 
 @contextmanager
@@ -373,8 +373,14 @@ def paused_declared_decisions_and_gitlink_rebase(root: Path) -> tuple[str, str, 
         f"160000 {target_oid} 2\tvendor/link\n"
         f"160000 {feature_oid} 3\tvendor/link\n"
     )
-    subprocess.run(("git", "update-index", "--index-info"), input=index_info, cwd=root,
-                   text=True, check=True, capture_output=True)
+    subprocess.run(
+        ("git", "update-index", "--index-info"),
+        input=index_info,
+        cwd=root,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
     if not rebase_in_progress(root):
         raise AssertionError("declared-decision fixture did not pause")
     return _gitlink_stage_shas(root)
@@ -542,7 +548,11 @@ def run_sixth_symptom_landing(root: Path) -> ScenarioResult:
     stages = paused_text_and_gitlink_rebase(root)
     feature_sha = git(root, "rev-parse", "feature")
     runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
-    with shared_executor_seam(runner), capture_operator_lines() as lines, _capture_log_records() as logs:
+    with (
+        shared_executor_seam(runner),
+        capture_operator_lines() as lines,
+        _capture_log_records() as logs,
+    ):
         outcome = attempt_stop_resolution(
             "scenario-sixth-symptom",
             StopResolutionTrigger(
@@ -587,10 +597,12 @@ def run_sixth_symptom_landing(root: Path) -> ScenarioResult:
         source_refs=(target_before,),
         excluded_paths=("vendor/link",),
     )
-    policy_lines = [content for _name, content in logs if "gitlink policy path=vendor/link" in content]
-    post_landing_selections = [
-        record for record in logs if "preferred_agent_index" in record[0]
-    ][selections_after_landing_start:]
+    policy_lines = [
+        content for _name, content in logs if "gitlink policy path=vendor/link" in content
+    ]
+    post_landing_selections = [record for record in logs if "preferred_agent_index" in record[0]][
+        selections_after_landing_start:
+    ]
     attempts = load_integration_attempts(root)
     repeated_pairs = [
         f"{signature}|{action}:{count}"
@@ -614,7 +626,9 @@ def run_sixth_symptom_landing(root: Path) -> ScenarioResult:
             "policy_lines": "\n".join(policy_lines),
             "completed_head": completed_head,
             "integrated_feature_sha": (
-                "" if completed_record is None else str(completed_record.integrated_feature_sha or "")
+                ""
+                if completed_record is None
+                else str(completed_record.integrated_feature_sha or "")
             ),
             "head": head,
             "target": target,
@@ -653,11 +667,29 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
         invoked.append(f"{agent_name}:{round_index}")
         return True
 
-    def materializer(**kwargs: Any) -> Path | None:
-        raw_paths = kwargs.get("conflicted_paths", ())
-        if isinstance(raw_paths, (list, tuple)):
-            prompted.append(tuple(str(path) for path in raw_paths))
-        return materialize_round_prompt(**kwargs)
+    def materializer(
+        *,
+        root: Path,
+        target: str,
+        conflicted_paths: Sequence[str],
+        round_index: int,
+        round_cap: int,
+        session: ResolutionSession,
+        stop: RebaseStop | None,
+        strategy_history: tuple[str, ...] = (),
+    ) -> Path | None:
+        if isinstance(conflicted_paths, (list, tuple)):
+            prompted.append(tuple(str(path) for path in conflicted_paths))
+        return materialize_round_prompt(
+            root=root,
+            target=target,
+            conflicted_paths=conflicted_paths,
+            round_index=round_index,
+            round_cap=round_cap,
+            session=session,
+            stop=stop,
+            strategy_history=strategy_history,
+        )
 
     stop = RebaseStop(
         sha=git(root, "rev-parse", "REBASE_HEAD"),
@@ -687,7 +719,11 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
             prompt_materializer=materializer,
         )
     runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
-    with shared_executor_seam(runner), capture_operator_lines() as landing_lines, _capture_log_records() as logs:
+    with (
+        shared_executor_seam(runner),
+        capture_operator_lines() as landing_lines,
+        _capture_log_records() as logs,
+    ):
         state = integrate_before_planning(
             scenario_config(),
             WorkspaceScope(root),
@@ -704,7 +740,9 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
         source_refs=(target_before,),
         excluded_paths=("vendor/link",),
     )
-    policy_lines = [content for _name, content in logs if "gitlink policy path=vendor/link" in content]
+    policy_lines = [
+        content for _name, content in logs if "gitlink policy path=vendor/link" in content
+    ]
     all_lines = (*driver_lines, *landing_lines)
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
@@ -730,6 +768,8 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
             "target": target,
         },
     )
+
+
 def run_gate_quiescence_ticks(root: Path) -> ScenarioResult:
     from ralph.agents.timeout_clock import FakeClock
 
@@ -756,8 +796,11 @@ def run_gate_quiescence_ticks(root: Path) -> ScenarioResult:
         with shared_executor_seam(runner):
             with capture_operator_lines() as first:
                 integrate_before_planning(
-                    scenario_config(), WorkspaceScope(root), RebaseState(),
-                    conflict_resolver=lambda _root, _target: False, rebase_stop_resolver=runner,
+                    scenario_config(),
+                    WorkspaceScope(root),
+                    RebaseState(),
+                    conflict_resolver=lambda _root, _target: False,
+                    rebase_stop_resolver=runner,
                 )
             all_lines.extend(first)
             launches_before_gate = runner.launches
@@ -765,7 +808,9 @@ def run_gate_quiescence_ticks(root: Path) -> ScenarioResult:
                 clock.advance(1.0)
                 with capture_operator_lines() as tick:
                     integrate_before_planning(
-                        scenario_config(), WorkspaceScope(root), RebaseState(),
+                        scenario_config(),
+                        WorkspaceScope(root),
+                        RebaseState(),
                         conflict_resolver=lambda _root, _target: False,
                         rebase_stop_resolver=runner,
                     )

@@ -38,9 +38,7 @@ def default_invoker(
 ) -> ResolutionInvoker:
     del limits, round_cap, clock, stop, root, target
 
-    def _invoke(
-        agent_name: str, prompt_path: Path, round_index: int
-    ) -> StopResolutionOutcome:
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
         del round_index
         from ralph.pipeline.conflict_resolution import driver as _driver
 

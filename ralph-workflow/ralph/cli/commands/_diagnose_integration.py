@@ -45,11 +45,7 @@ def _persisted_integration_status(
     prefix, separator, _detail = reason.partition(":")
     cause = prefix if separator and prefix.isupper() else rebase.last_failure_cause.value
     paths = tuple(rebase.last_conflict_paths)
-    command = (
-        view.command
-        if view is not None
-        else _finish_command(InProgressKind.REBASE, paths)
-    )
+    command = view.command if view is not None else _finish_command(InProgressKind.REBASE, paths)
     return build_integration_status(
         cause=cause,
         paths_with_reasons=tuple((path, "persisted integration conflict") for path in paths),
@@ -208,16 +204,13 @@ def _integration_lifecycle_view(workspace_root: Path) -> IntegrationLifecycleVie
     remaining_paths = unmerged_paths or conflict_paths
     remaining = len(remaining_paths)
     done = max(0, len(conflict_paths) - remaining)
-    at_risk = (
-        tuple(
-            (
-                path,
-                f"unresolved path in paused {observation.in_progress_kind.value} operation",
-            )
-            for path in remaining_paths
+    at_risk = tuple(
+        (
+            path,
+            f"unresolved path in paused {observation.in_progress_kind.value} operation",
         )
-        or _worktree_risk(observation)
-    )
+        for path in remaining_paths
+    ) or _worktree_risk(observation)
     return IntegrationLifecycleView(
         state_text=_lifecycle_state_text(record, observation),
         relation=relation,

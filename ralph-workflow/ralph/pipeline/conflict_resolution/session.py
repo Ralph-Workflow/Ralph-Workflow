@@ -98,6 +98,7 @@ if AgentEntryPoint.CONFLICT_RESOLUTION not in registered_entry_points():
 
 ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 
+
 def _invoke_effect(
     target: InvokeAgentEffect | AgentConfig, *args: object, **kwargs: object
 ) -> object:
@@ -358,9 +359,10 @@ def classify_failed_resolution_attempt(
         else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
 
-    if isinstance(raw_failure, ConnectionError) and controller.agent_eligibility(
-        PHASE_RESOLUTION, agent_name
-    ).is_eligible:
+    if (
+        isinstance(raw_failure, ConnectionError)
+        and controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
+    ):
         from ralph.recovery.unavailability_reason import UnavailabilityReason
 
         controller.record_confirmed_unavailability(
@@ -587,9 +589,10 @@ def _candidate_cannot_be_launched(
 ) -> bool:
     if session is not None:
         controller = session.recovery_controller
-        if controller is not None and not controller.agent_eligibility(
-            PHASE_RESOLUTION, agent_name
-        ).is_eligible:
+        if (
+            controller is not None
+            and not controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
+        ):
             logger.warning(
                 "conflict_resolution: refusing to launch unavailable agent '{}'",
                 agent_name,
