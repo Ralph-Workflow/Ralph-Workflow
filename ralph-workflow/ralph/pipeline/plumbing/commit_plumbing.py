@@ -105,6 +105,7 @@ from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
     should_reset_tool_registry,
 )
+from ralph.timeout_defaults import AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -643,21 +644,25 @@ def _generate_commit_message_with_agent(
     failure_details.append(initial_attempt.failure_detail)
 
     latest_attempt = initial_attempt
-    retries_used = 0
+    attempt_limit = (
+        recovery_controller.ledger.consecutive_limit
+        if recovery_controller is not None
+        else AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
+    )
+    attempt_number = 1
 
-    def retry_authorized() -> bool:
-        nonlocal retries_used
-        if retries_used >= max_retries:
-            return False
-        if recovery_controller is not None:
-            status = recovery_controller.agent_eligibility("commit", agent_name)
-            if not status.is_eligible:
-                return False
-        retries_used += 1
-        return True
+    while attempt_number < attempt_limit:
+        if recovery_controller is not None and not recovery_controller.agent_eligibility(
+            "commit", agent_name
+        ).is_eligible:
+            break
+        attempt_number += 1
 
-    if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
-        if initial_attempt.resume_session_id and retry_authorized():
+        if (
+            attempt_number == 2
+            and _is_missing_commit_artifact_failure(latest_attempt.failure_detail)
+            and initial_attempt.resume_session_id
+        ):
             (
                 session_retry,
                 last_session_id,
@@ -683,11 +688,9 @@ def _generate_commit_message_with_agent(
                 )
             failure_details.append(session_retry.failure_detail)
             latest_attempt = session_retry
+            continue
 
-        if (
-            _is_missing_commit_artifact_failure(latest_attempt.failure_detail)
-            and retry_authorized()
-        ):
+        if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
             summary_prompt_file = _resolve_commit_write_prompt_file()(
                 attempt_context.repo_root,
                 _summarized_retry_prompt(
@@ -720,6 +723,33 @@ def _generate_commit_message_with_agent(
                     summary_retry, failure_details, last_session_id, last_error
                 )
             failure_details.append(summary_retry.failure_detail)
+            latest_attempt = summary_retry
+            continue
+
+        (
+            latest_attempt,
+            last_session_id,
+            last_error,
+        ) = _run_commit_agent_attempt_with_recovery(
+            agent_name,
+            agent,
+            prompt_file=prompt_file,
+            attempt_context=attempt_context,
+            display_context=display_context,
+            max_retries=max_retries,
+            prior_session_id=latest_attempt.resume_session_id or last_session_id,
+            on_retry_failure=_record_retry_failure,
+            output_collector=output_collector,
+            materializer=materializer,
+            pipeline_deps=pipeline_deps,
+            recovery_controller=recovery_controller,
+            recovery_deps=recovery_deps,
+        )
+        if not latest_attempt.failure_detail:
+            return _finalize_commit_attempt(
+                latest_attempt, failure_details, last_session_id, last_error
+            )
+        failure_details.append(latest_attempt.failure_detail)
 
     if not failure_details:
         failure_details.append(_NO_COMMIT_MESSAGE_REASON)
