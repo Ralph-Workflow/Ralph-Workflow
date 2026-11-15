@@ -341,7 +341,10 @@ def _build_classified_conflict_failure(
     if effective_outcome is ConflictAttemptOutcome.NO_ACTIVITY:
         unavailable_reason = UnavailabilityReason.NO_OUTPUT_AT_START
         reason = "candidate produced no activity before it exited"
-    elif effective_outcome is ConflictAttemptOutcome.STALLED_NO_PROGRESS:
+    elif effective_outcome in (
+        ConflictAttemptOutcome.STALLED,
+        ConflictAttemptOutcome.STALLED_NO_PROGRESS,
+    ):
         unavailable_reason = UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY
         reason = _typed_conflict_attempt_reason(effective_outcome, unresolved_count)
     else:
@@ -453,9 +456,7 @@ def classify_failed_resolution_attempt(
         else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
 
-    agent_available = False
-    if hasattr(controller, "ledger") and controller.ledger is not None:
-        agent_available = controller.ledger.is_available(PHASE_RESOLUTION, agent_name)
+    agent_available = controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
     recovery_chain = recovery_state.chain_for_phase(PHASE_RESOLUTION) if recovery_state else None
     current_retries = (
         recovery_chain.retries

@@ -307,7 +307,7 @@ def _assert_no_permanent_skip_invariant() -> None:
             "No-permanent-skip invariant violated: AgentUnavailabilityTracker"
             f" has public method(s) that are not in the allowlist: {methods}."
             " The only public mutators on the unavailable set are"
-            " mark_unavailable and reset_backoff. Every other public method"
+            " mark_unavailable, reset_backoff, and prune_expired. Every other public method"
             " must be read-only (is_available, earliest_unavailable_wait_ms,"
             " snapshot) or a read-only property (scope). Adding a new mutator"
             " is a deliberate contract change; update the import-time"

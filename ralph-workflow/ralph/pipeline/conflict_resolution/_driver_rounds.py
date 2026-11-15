@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loguru import logger
 
@@ -82,6 +82,17 @@ class RoundAttempt:
     candidate_offset: int = 0
     count_dropped: bool = False
     probe_changed: bool = False
+
+
+@runtime_checkable
+class _AdvanceableClock(Protocol):
+    def advance(self, seconds: float) -> None: ...
+
+
+@runtime_checkable
+class _ClockProvidingStore(Protocol):
+    @property
+    def clock(self) -> object: ...
 
 
 def _evaluate_round_attempt(
@@ -444,18 +455,13 @@ def _resolve_delayed_selection(
     _driver_mod._sleep_seconds(delay / 1000.0)
     mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
     if mono_after - mono_before < (delay / 1000.0) * 0.5:
-        clock_inst: object = getattr(controller, "clock", None)
-        if clock_inst is None:
-            clock_inst = getattr(controller, "_clock", None)
-        advance_fn: object = getattr(clock_inst, "advance", None)
-        if callable(advance_fn):
-            cast("Callable[[float], None]", advance_fn)(delay / 1000.0)
-        store_clock: object = getattr(controller.unavailability_store, "clock", None)
-        if store_clock is None:
-            store_clock = getattr(controller.unavailability_store, "_clock", None)
-        store_advance: object = getattr(store_clock, "advance", None)
-        if store_clock is not clock_inst and callable(store_advance):
-            cast("Callable[[float], None]", store_advance)(delay / 1000.0)
+        controller_clock = controller.clock
+        if isinstance(controller_clock, _AdvanceableClock):
+            controller_clock.advance(delay / 1000.0)
+        store = controller.unavailability_store
+        store_clock = store.clock if isinstance(store, _ClockProvidingStore) else None
+        if store_clock is not controller_clock and isinstance(store_clock, _AdvanceableClock):
+            store_clock.advance(delay / 1000.0)
         controller.prune_expired()
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:

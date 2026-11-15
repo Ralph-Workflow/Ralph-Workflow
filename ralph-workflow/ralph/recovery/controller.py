@@ -4,7 +4,7 @@ import ast
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -341,11 +341,6 @@ if TYPE_CHECKING:
         [AttemptFacts, AttributionVerdict, ProbeOutcome | None, TypedSignal | None],
         PersistedVerdict,
     ]
-
-
-@runtime_checkable
-class _Prunable(Protocol):
-    def prune_expired(self, *, now_ms: int | None = None) -> object: ...
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
