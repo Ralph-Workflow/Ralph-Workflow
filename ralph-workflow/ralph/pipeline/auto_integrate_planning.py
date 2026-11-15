@@ -158,7 +158,7 @@ def integrate_before_planning(
     )
     if target is None:
         return None
-    unfinished = _finish_paused_rebase(config, root, target, rebase_stop_resolver)
+    unfinished = finish_paused_rebase(config, root, target, rebase_stop_resolver)
     if unfinished is not None:
         return unfinished
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
@@ -269,7 +269,7 @@ def _abort_and_fallback_merge(
     return None
 
 
-def _finish_paused_rebase(
+def finish_paused_rebase(
     config: UnifiedConfig,
     root: Path,
     target: str,

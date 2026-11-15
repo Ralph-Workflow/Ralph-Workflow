@@ -144,19 +144,24 @@ def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
     )
 
 
+_ACTIVE_REBASE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = ContextVar(
+    "active_rebase_resolution_session", default=None
+)
+
+
 @contextmanager
 def bind_active_rebase_resolution_session(
     session: ResolutionSession | None = None,
 ) -> Iterator[None]:
-    token = _ACTIVE_RESOLUTION_SESSION.set(session)
+    token = _ACTIVE_REBASE_RESOLUTION_SESSION.set(session)
     try:
         yield
     finally:
-        _ACTIVE_RESOLUTION_SESSION.reset(token)
+        _ACTIVE_REBASE_RESOLUTION_SESSION.reset(token)
 
 
 def active_rebase_resolution_session() -> ResolutionSession | None:
-    return _ACTIVE_RESOLUTION_SESSION.get()
+    return _ACTIVE_REBASE_RESOLUTION_SESSION.get()
 
 
 def _resolve_rebase_in_progress(

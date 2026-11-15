@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import tempfile
 import threading
 import time
 from contextlib import suppress
@@ -238,7 +237,7 @@ def _run_canary_probe(
             return _inconclusive_result("probe_timeout", started)
         if attempt.error is not None:
             return _inconclusive_result(
-                "invocation_error", started, error=_error_text(attempt.error)
+                "probe_could_not_run", started, error=_error_text(attempt.error)
             )
         marker_state = _read_marker_state(workspace_path)
         facts = attempt.result.facts if attempt.result is not None else None
@@ -277,6 +276,8 @@ def _scratch_workspace(
         workspace_path = _create_scratch_workspace(workspace_factory, trusted_parent)
     except Exception as exc:
         return _inconclusive_result("workspace_creation_failed", started, error=_error_text(exc))
+    if workspace_path is None:
+        return _inconclusive_result("probe_could_not_run", started)
     if (
         phase_workspace is not None
         and _is_within(workspace_path, phase_workspace)
@@ -325,12 +326,12 @@ def _prepare_probe(
 def _create_scratch_workspace(
     factory: Callable[[], Path] | None,
     trusted_parent: Path | None,
-) -> Path:
+) -> Path | None:
     if factory is not None:
         return Path(factory())
     parent = _resolve_trusted_parent(trusted_parent)
     if parent is None:
-        return Path(tempfile.mkdtemp(prefix="ralph-canary-probe-"))
+        return None
     probe_area = parent / PROBE_AREA_RELATIVE_DIR
     scratch = probe_area / f"{PROBE_DIR_PREFIX}{uuid4().hex}"
     scratch.mkdir(parents=True, exist_ok=False)

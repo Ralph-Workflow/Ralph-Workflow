@@ -122,7 +122,7 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError("provider unavailable")),
     )
     charged: list[str] = []
@@ -187,7 +187,7 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
         )
     )
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         lambda *args, **kwargs: PipelineEvent.AGENT_FAILURE,
     )
     prompt = tmp_path / "prompt.md"

@@ -34,14 +34,17 @@ def _facts(
     tool_calls: tuple[str, ...] = (),
     subagent_activity_observed: bool | None = None,
     liveness_observed: bool | None = None,
+    termination_issuer: TerminationIssuer | None = TerminationIssuer.AGENT_EXIT,
     observed_returncode: int | None = None,
+    reported_returncode: int | None = None,
 ) -> AttemptFacts:
     termination = (
         TerminationRecord.create(
-            TerminationIssuer.AGENT_EXIT,
+            termination_issuer,
             observed_returncode=observed_returncode,
+            reported_returncode=reported_returncode,
         )
-        if observed_returncode is not None
+        if termination_issuer is not None
         else None
     )
     return AttemptFacts(
@@ -72,17 +75,65 @@ def _facts(
         ),
         pytest.param(
             CanaryMarkerState.MATCHED,
-            _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
+            _facts(
+                event_kinds=(AgentActivityKind.TOOL_USE.value,),
+                termination_issuer=TerminationIssuer.POST_EXIT_WATCHDOG,
+            ),
             ProbeJudgeOutcome.PASSED,
             "marker_written",
-            id="matched_marker_with_evidence_passes",
+            id="matched_marker_with_runtime_termination_passes",
         ),
         pytest.param(
             CanaryMarkerState.MISSING,
-            _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
+            _facts(
+                event_kinds=(AgentActivityKind.TOOL_USE.value,),
+                observed_returncode=0,
+                reported_returncode=0,
+            ),
             ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
             "marker_missing",
-            id="missing_marker_with_tool_use_fails",
+            id="agent_exit_without_discrepancy_with_evidence_fails",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISSING,
+            _facts(
+                event_kinds=(AgentActivityKind.TOOL_USE.value,),
+                termination_issuer=TerminationIssuer.POST_EXIT_WATCHDOG,
+            ),
+            ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
+            id="runtime_termination_with_agent_evidence_is_inconclusive",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISSING,
+            _facts(
+                event_kinds=(AgentActivityKind.TOOL_USE.value,),
+                termination_issuer=None,
+            ),
+            ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
+            id="missing_termination_with_agent_evidence_is_inconclusive",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISSING,
+            _facts(
+                event_kinds=(AgentActivityKind.TOOL_USE.value,),
+                termination_issuer=TerminationIssuer.UNKNOWN,
+            ),
+            ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
+            id="unknown_termination_with_agent_evidence_is_inconclusive",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISSING,
+            _facts(
+                event_kinds=(AgentActivityKind.TOOL_USE.value,),
+                observed_returncode=1,
+                reported_returncode=0,
+            ),
+            ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
+            id="agent_exit_with_return_code_discrepancy_is_inconclusive",
         ),
         pytest.param(
             CanaryMarkerState.MISMATCHED,
@@ -114,10 +165,13 @@ def _facts(
         ),
         pytest.param(
             CanaryMarkerState.UNREADABLE,
-            _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
+            _facts(
+                event_kinds=(AgentActivityKind.TOOL_USE.value,),
+                termination_issuer=TerminationIssuer.POST_EXIT_WATCHDOG,
+            ),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
-            id="unreadable_marker_with_tool_use_is_inconclusive",
+            id="unreadable_marker_with_runtime_termination_is_inconclusive",
         ),
         pytest.param(
             CanaryMarkerState.UNREADABLE,
@@ -149,10 +203,14 @@ def _facts(
         ),
         pytest.param(
             CanaryMarkerState.MISSING,
-            _facts(event_kinds=_NO_EVIDENCE_KINDS),
+            _facts(
+                event_kinds=_NO_EVIDENCE_KINDS,
+                observed_returncode=0,
+                reported_returncode=0,
+            ),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
-            id="missing_marker_output_and_lifecycle_only_is_inconclusive",
+            id="agent_exit_without_discrepancy_without_evidence_is_inconclusive",
         ),
         pytest.param(
             CanaryMarkerState.MISMATCHED,

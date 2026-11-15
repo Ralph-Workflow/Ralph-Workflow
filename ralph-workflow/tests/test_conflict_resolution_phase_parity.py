@@ -472,7 +472,7 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
         raise RuntimeError("launch skipped")
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         _capture_execute,
     )
     prompt = tmp_path / "prompt.md"
@@ -865,7 +865,7 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
         return PipelineEvent.AGENT_FAILURE
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         _exhausted_pi,
     )
     prompt = tmp_path / "prompt.md"
@@ -904,7 +904,7 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
         return PipelineEvent.AGENT_FAILURE
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         lambda effect, *args, **kwargs: _ran_then_refused(effect=effect),
     )
     prompt = tmp_path / "prompt.md"
@@ -937,7 +937,7 @@ def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
     from ralph.pipeline.events import PipelineEvent
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         lambda *args, **kwargs: PipelineEvent.AGENT_FAILURE,
     )
     prompt = tmp_path / "prompt.md"
@@ -980,7 +980,7 @@ def test_an_uninstalled_candidate_is_unavailable_not_declining(
         return PipelineEvent.AGENT_FAILURE
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         _agent_not_found,
     )
     prompt = tmp_path / "prompt.md"

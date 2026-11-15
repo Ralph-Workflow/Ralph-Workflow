@@ -112,7 +112,7 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         raise SupervisionInfrastructureError("resolver", detail)
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         execute,
     )
     resolved = invoke_resolution_agent(
@@ -174,7 +174,7 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         raise SupervisionInfrastructureError("resolver", "activity relay sender: timed out")
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.effect_executor.execute_agent_effect",
         execute,
     )
     resolved = invoke_resolution_agent(

@@ -32,6 +32,10 @@ class _Controller:
         return SimpleNamespace(agent=selected)
 
 
+def _patch_chain_agents(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli_integration, "_resolve_chain_agents", lambda *args: ["first", "second"])
+
+
 def test_wu_c2_project_policy_regression_fallback_is_controller_selected_without_local_skip_state(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -44,7 +48,7 @@ def test_wu_c2_project_policy_regression_fallback_is_controller_selected_without
         "build_entry_point_recovery_controller",
         lambda *args, **kwargs: controller,
     )
-    monkeypatch.setattr(cli_integration, "_resolve_chain_agents", lambda *args: ["first", "second"])
+    _patch_chain_agents(monkeypatch)
 
     def run_attempt(*args: object, **kwargs: object) -> object:
         del args
@@ -71,7 +75,7 @@ def test_wu_c2_project_policy_regression_fallback_is_controller_selected_without
         run_id="wu-c2",
     )
     display_context = make_display_context()
-    invoke = cli_integration._make_production_invoke_agent(
+    invoke = cli_integration.make_production_invoke_agent(
         load_result,
         PipelineDeps(display_context=display_context),
         scope,
@@ -125,7 +129,7 @@ def test_wu_c2_project_policy_wait_regression_all_cooled_uses_shared_wait_path(
         "build_entry_point_recovery_controller",
         lambda *args, **kwargs: controller,
     )
-    monkeypatch.setattr(cli_integration, "_resolve_chain_agents", lambda *args: ["first", "second"])
+    _patch_chain_agents(monkeypatch)
 
     def run_attempt(*args: object, **kwargs: object) -> object:
         del args
@@ -144,7 +148,7 @@ def test_wu_c2_project_policy_wait_regression_all_cooled_uses_shared_wait_path(
         run_id="wu-c2-wait",
     )
     display_context = make_display_context()
-    invoke = cli_integration._make_production_invoke_agent(
+    invoke = cli_integration.make_production_invoke_agent(
         load_result,
         PipelineDeps(display_context=display_context),
         scope,

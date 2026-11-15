@@ -137,7 +137,6 @@ def test_declared_decisions_announcement_names_cause_per_file() -> None:
         None,
         status,
     )
-    # With monkeypatched _emit:
     import ralph.pipeline.conflict_resolution._driver_events as driver_events
 
     original_emit = driver_events._emit
@@ -185,32 +184,31 @@ def test_waiting_lines_emitted_once_per_change_never_per_tick() -> None:
     try:
         driver_events._emit = lambda _d, line: emitted.append(line)
 
-        waiting1 = WaitingOutcome(external_condition="all-agents-cooling-down", resumes_when="10s")
-        waiting2 = WaitingOutcome(external_condition="all-agents-cooling-down", resumes_when="10s")
-        waiting_changed = WaitingOutcome(
+        waiting_first = WaitingOutcome(
+            external_condition="all-agents-cooling-down", resumes_when="10s"
+        )
+        waiting_identical = WaitingOutcome(
+            external_condition="all-agents-cooling-down", resumes_when="10s"
+        )
+        waiting_changed_condition = WaitingOutcome(
             external_condition="all-agents-cooling-down", resumes_when="5s"
         )
 
-        # Tick 1: first waiting outcome
-        emit_attempt_outcome(None, waiting1)
+        emit_attempt_outcome(None, waiting_first)
         assert len(emitted) == 1
         assert emitted[0] == "waiting: all-agents-cooling-down; resumes_when=10s"
 
-        # Tick 2: identical waiting outcome (must NOT emit duplicate line)
-        emit_attempt_outcome(None, waiting2)
+        emit_attempt_outcome(None, waiting_identical)
         assert len(emitted) == 1
 
-        # Tick 3: changed waiting condition (must emit once)
-        emit_attempt_outcome(None, waiting_changed)
+        emit_attempt_outcome(None, waiting_changed_condition)
         assert len(emitted) == 2
         assert emitted[1] == "waiting: all-agents-cooling-down; resumes_when=5s"
 
-        # Tick 4: non-waiting outcome resets state
         emit_attempt_outcome(None, NextStrategyOutcome(strategy="completion_in_place"))
         assert len(emitted) == 3
 
-        # Tick 5: waiting outcome again after strategy change (must emit)
-        emit_attempt_outcome(None, waiting1)
+        emit_attempt_outcome(None, waiting_first)
         assert len(emitted) == 4
     finally:
         driver_events._emit = original_emit

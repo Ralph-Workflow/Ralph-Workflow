@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,6 +14,9 @@ from ralph.mcp.artifacts.completion_receipts import (
     read_artifact_submission_snapshot,
 )
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+
+if TYPE_CHECKING:
+    from ralph.mcp.artifacts.file_backend import FileBackend
 
 PLAN = """---
 type: plan
@@ -116,9 +118,23 @@ def test_failed_plan_replacement_after_receipt_write_restores_previous_state(
         workspace_root: Path,
         run_id: str,
         artifact_type: str,
-        **kwargs: object,
+        *,
+        backend: FileBackend,
+        receipt_secret: str | None = None,
+        normalization_audit: dict[str, object] | None = None,
+        submission_snapshot_path: str | None = None,
+        submission_snapshot_digest: str | None = None,
     ) -> Path:
-        cast("Callable[..., Path]", original)(workspace_root, run_id, artifact_type, **kwargs)
+        original(
+            workspace_root,
+            run_id,
+            artifact_type,
+            backend=backend,
+            receipt_secret=receipt_secret,
+            normalization_audit=normalization_audit,
+            submission_snapshot_path=submission_snapshot_path,
+            submission_snapshot_digest=submission_snapshot_digest,
+        )
         raise ReceiptPersistenceError("failure after receipt write")
 
     monkeypatch.setattr(canonical_submit_module, "write_artifact_receipt", write_then_fail)

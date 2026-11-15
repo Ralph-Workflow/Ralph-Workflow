@@ -13,23 +13,29 @@ from ralph.process.manager import (
 )
 from ralph.process.manager._process_manager_runtime import expected_exit_codes
 
-BENIGN_PROBE_LABELS: tuple[str, ...] = (
-    # git symbolic-ref --quiet HEAD labels
+_HEAD_SYMBOLIC_REF_LABELS: tuple[str, ...] = (
     "git-symbolic-ref-head",
     "git-symbolic-ref",
     "symbolic-ref",
     "commit:head-symbolic-ref",
     "recovery:head-symbolic-ref",
     "integration-observation-head",
-    # is-ancestor labels
+)
+_IS_ANCESTOR_LABELS: tuple[str, ...] = (
     "git-is-ancestor",
     "is-ancestor",
     "git-rebase:merge-base",
     "integration_diagnostic:check_ancestor",
-    # check_merge_head labels
+)
+_CHECK_MERGE_HEAD_LABELS: tuple[str, ...] = (
     "check_merge_head",
     "check-merge-head",
     "integration_diagnostic:check_merge_head",
+)
+BENIGN_PROBE_LABELS: tuple[str, ...] = (
+    *_HEAD_SYMBOLIC_REF_LABELS,
+    *_IS_ANCESTOR_LABELS,
+    *_CHECK_MERGE_HEAD_LABELS,
 )
 
 

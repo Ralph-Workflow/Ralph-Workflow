@@ -100,7 +100,6 @@ def test_mixed_kind_deterministic_resolves_gitlink_and_retains_text(tmp_git_repo
     assert result.remaining_text_paths == ("shared.txt",)
     assert result.remaining_paths == ("shared.txt",)
 
-    # Pure text stop leaves gitlinks empty
     pure_text = resolve_mixed_kind_deterministic(
         tmp_git_repo,
         ("shared.txt",),
@@ -208,7 +207,6 @@ def test_pending_rebase_identity_matches_reads_observation_layer(tmp_path: Path)
         )
         assert pending_rebase_identity_matches(tmp_path, rec) is True
 
-        # Unmerged paths remaining in observation snapshot fails match
         mock_observe.return_value = OperationSnapshot(
             unmerged_paths=("remaining.txt",),
             unmerged_query_ok=True,
@@ -241,7 +239,6 @@ def test_ladder_postcondition_failure_records_evidence_and_escalates(tmp_path: P
     assert result.post_condition is RungPostCondition.BLOCKING_OBSERVATION_CHANGED
     assert not result.post_condition_verified
 
-    # Evidence recorded under both rung key and failed:post-condition:<rung>
     evidence = ledger.read().ladder_evidence
     assert (
         evidence.get("failed:post-condition:quarantine")
@@ -280,10 +277,8 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
     direct_action = NextAction.SAVE_AND_RESTORE
 
     initial_attempts = AttemptState(repeat_threshold=1)
-    # With 0 repeats, no escalation occurs
     assert _cleanup_escalation_action(initial_attempts, obs, direct=direct_action) is None
 
-    # Repeated identical observation and action climbs the ladder
     sig = initial_attempts.signature(obs)
     key = (sig, direct_action.value)
 
@@ -299,7 +294,6 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
     act_3 = _cleanup_escalation_action(pressured_3, obs, direct=direct_action)
     assert act_3 == NextAction.ADAPT_ENVIRONMENT_AND_RETRY
 
-    # Ladder transition escalation verification
     facts_1 = LadderFacts(
         rung=CleanupLadderRung.NORMAL_CLEANUP,
         outcome="failed",
@@ -322,8 +316,7 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
 
 
 def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_path: Path) -> None:
-    # Live Entry Site 1: ralph.pipeline._auto_integrate_rebase_resolve
-    from ralph.pipeline._auto_integrate_rebase_resolve import _resolve_conflicted_rebase
+    from ralph.pipeline import resolve_conflicted_rebase
 
     calls_site1: list[str] = []
 
@@ -348,7 +341,7 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
         patch("ralph.pipeline.conflict_resolution.status.conflict_status_bar_session"),
     ):
         mock_resolver = MagicMock()
-        _resolve_conflicted_rebase(
+        resolve_conflicted_rebase(
             root=tmp_path,
             target="main",
             rebase_stop_resolver=mock_resolver,
@@ -358,8 +351,7 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
 
     assert calls_site1 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]
 
-    # Live Entry Site 2: ralph.pipeline.auto_integrate_planning._finish_paused_rebase
-    from ralph.pipeline.auto_integrate_planning import _finish_paused_rebase
+    from ralph.pipeline.auto_integrate_planning import finish_paused_rebase
 
     calls_site2: list[str] = []
 
@@ -391,7 +383,7 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
             return_value=(True, MagicMock()),
         ),
     ):
-        _finish_paused_rebase(
+        finish_paused_rebase(
             config=MagicMock(),
             root=tmp_path,
             target="main",
@@ -408,10 +400,8 @@ def _call_lineno(node: ast.AST) -> int:
 
 
 def test_entry_sites_ast_order_verification() -> None:
-    # Pin structurally via AST that finish_resolved_rebase_stops call precedes attempt_stop_resolution
     root_repo = Path(__file__).resolve().parents[1]
 
-    # Site 1: _auto_integrate_rebase_resolve.py
     site1_path = root_repo / "ralph" / "pipeline" / "_auto_integrate_rebase_resolve.py"
     site1_tree = ast.parse(site1_path.read_text(encoding="utf-8"))
     site1_calls = sorted(
@@ -431,7 +421,6 @@ def test_entry_sites_ast_order_verification() -> None:
         "attempt_stop_resolution"
     )
 
-    # Site 2: auto_integrate_planning.py
     site2_path = root_repo / "ralph" / "pipeline" / "auto_integrate_planning.py"
     site2_tree = ast.parse(site2_path.read_text(encoding="utf-8"))
     site2_calls = sorted(

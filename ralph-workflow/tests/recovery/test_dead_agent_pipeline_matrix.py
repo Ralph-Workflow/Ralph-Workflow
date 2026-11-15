@@ -452,6 +452,73 @@ def test_ac16_probe_could_not_run_keeps_a_selectable(
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
 
 
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac16_a_runtime_terminated_probe_benches_nothing(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point,
+        _scenario("probe_runtime_terminated"),
+    )
+
+    assert observation.probe_calls == (AGENT_A,)
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert observation.unavailability_reasons.get(AGENT_A) != DEAD
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, AGENT_A) is True
+    assert store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) == 0
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    assert controller.snapshot()["spent_agents"] == {}
+    ledger = controller.ledger
+    assert ledger.registered_agents(PHASE) == (AGENT_A,)
+    status = ledger.status(PHASE, AGENT_A)
+    assert status.is_eligible is True
+    assert status.is_cooldown is False
+    assert status.is_spent is False
+    assert ledger.is_available(PHASE, AGENT_A) is True
+    record = as_mapping(observation.verdict_record)
+    assert record["verdict"] == "unknown"
+    assert record["probe_outcome"] == "inconclusive"
+    assert as_mapping(record["attribution"]).get("attribution") == "unknown"
+    assert as_mapping(record["termination"]).get("issuer") == "agent_exit"
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac16_an_agent_exited_probe_without_a_marker_benches_the_agent(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point,
+        _scenario("probe_agent_exited_missing_marker"),
+    )
+
+    assert observation.probe_calls == (AGENT_A,)
+    assert observation.outcome_kind == "agent_dead"
+    assert observation.availability is False
+    assert observation.wait_ms > 0
+    assert observation.unavailability_reasons.get(AGENT_A) == DEAD
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, AGENT_A) is False
+    assert store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) > 0
+    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    assert controller.snapshot()["spent_agents"] == {}
+    record = as_mapping(observation.verdict_record)
+    assert record["verdict"] == "agent_dead"
+    assert record["probe_outcome"] == "failed_reproducing_no_work"
+    assert as_mapping(record["termination"]).get("issuer") == "agent_exit"
+
+
 def _case_for(scenario: MatrixScenario) -> CorpusCase:
     return next(item for item in corpus_cases() if item.id == scenario.corpus_id)
 

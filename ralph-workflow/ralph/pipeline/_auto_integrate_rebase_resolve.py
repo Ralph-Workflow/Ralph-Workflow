@@ -48,6 +48,7 @@ __all__ = [
     "RebaseRunResult",
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
+    "rebase_run_result",
     "resolve_conflicted_rebase",
     "verify_terminal_state",
 ]
@@ -176,7 +177,7 @@ def resolve_conflicted_rebase(
         return _blocked_run(record, target, blocked_reason, carried_cause=deferred_cause)
     if record is not None and record.rebase_continue_pending:
         return _pending_continue_run(record, target)
-    return _rebase_run_result(root, record, target, res)
+    return rebase_run_result(root, record, target, res)
 
 
 def _blocked_run(
@@ -242,7 +243,7 @@ def _conflict_run(
     )
 
 
-def _rebase_run_result(
+def rebase_run_result(
     root: Path,
     record: IntegrationRecord | None,
     target: str,

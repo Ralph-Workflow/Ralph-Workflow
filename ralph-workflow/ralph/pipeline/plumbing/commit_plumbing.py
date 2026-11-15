@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from rich.text import Text
@@ -152,6 +152,22 @@ _COMMIT_RUN_ID = "commit-plumbing"
 execute_agent_effect = PRODUCTION_INVOKE
 
 
+@runtime_checkable
+class _CommitDispatch(Protocol):
+    def __call__(
+        self,
+        target: InvokeAgentEffect | AgentConfig,
+        *args: object,
+        **kwargs: object,
+    ) -> object: ...
+
+
+def _checked_attempt_dispatch(dispatch: object) -> _CommitDispatch:
+    if not isinstance(dispatch, _CommitDispatch):
+        raise TypeError("commit attempt dispatch must be callable")
+    return dispatch
+
+
 def _run_commit_generation_attempt(
     *_args: object,
     effect: object | None = None,
@@ -188,6 +204,8 @@ def _attempt_deps(
     from ralph.agents.clock import Clock
     from ralph.agents.timeout_clock import SystemClock
 
+    checked_dispatch = _checked_attempt_dispatch(dispatch)
+
     def dispatch_attempt(
         target: InvokeAgentEffect | AgentConfig,
         *args: object,
@@ -198,8 +216,7 @@ def _attempt_deps(
             options = kwargs.pop("options", None)
             if not isinstance(prompt_file, str):
                 raise TypeError("commit prompt file is required")
-            invoke_agent_fn = cast("InvokeAgentFn", dispatch)
-            return invoke_agent_fn(
+            return checked_dispatch(
                 target,
                 prompt_file,
                 options=options if isinstance(options, InvokeOptions) else None,
@@ -208,7 +225,7 @@ def _attempt_deps(
             config = kwargs.pop("config")
             effective_pipeline_deps = kwargs.pop("pipeline_deps")
             workspace_scope = kwargs.pop("workspace_scope")
-            return dispatch(
+            return checked_dispatch(
                 target,
                 config,
                 effective_pipeline_deps,
@@ -216,8 +233,7 @@ def _attempt_deps(
                 *args,
                 **kwargs,
             )
-        attempt_invoke = cast("AttemptInvoke", dispatch)
-        return attempt_invoke(target, *args, **kwargs)
+        return checked_dispatch(target, *args, **kwargs)
 
     clock = pipeline_deps.recovery_clock
     if not isinstance(clock, Clock):

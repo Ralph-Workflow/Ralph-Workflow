@@ -857,7 +857,7 @@ tests/test_workspace_memory_memory_workspace_init.py|0,0,3
 tests/test_workspace_memory_memory_workspace_normalize.py|0,0,3
 tests/test_workspace_monitor_never_delays_the_agent.py|0,2,0
 tests/test_wu_c2_non_agent_recovery_paths.py|0,1,0
-tests/test_wu_c2_project_policy_recovery_ownership.py|1,1,1
+tests/test_wu_c2_project_policy_recovery_ownership.py|1,1,0
 tests/unit/display/_criteria_probes.py|6,35,9
 tests/unit/display/test_brief_criteria_coverage.py|0,2,5
 tests/unit/display/test_crash_output_containment.py|0,0,1

@@ -1065,6 +1065,14 @@ class RecoveryController:
     ) -> int:
         return self._mark_agent_unavailable(phase, agent, reason, verdict=verdict)
 
+    def confirm_unavailability(
+        self,
+        phase: str,
+        agent: str,
+        reason: UnavailabilityReason,
+    ) -> int:
+        return self.record_confirmed_unavailability(phase, agent, reason)
+
     def record_confirmed_dead_agent(
         self,
         phase: str,

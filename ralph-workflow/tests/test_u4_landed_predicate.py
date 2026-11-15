@@ -8,7 +8,7 @@ import pytest
 if TYPE_CHECKING:
     from ralph.git.git_run_result import GitRunResult
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.pipeline._auto_integrate_rebase_resolve import _rebase_run_result
+from ralph.pipeline._auto_integrate_rebase_resolve import rebase_run_result
 from ralph.pipeline._integration_continuation import (
     ExhaustedResolutionFailure,
     _promote_completed_resolution,
@@ -230,7 +230,7 @@ def test_next_strategy_outcome_never_parks_in_rebase_resolve(tmp_path: Path) -> 
         resolving_rebase=True,
     )
     outcome = NextStrategyOutcome(strategy="complete_in_place")
-    result = _rebase_run_result(root, record, "main", outcome)
+    result = rebase_run_result(root, record, "main", outcome)
 
     assert result.short_circuit is not None
     assert result.short_circuit.resolution_exhausted is False
