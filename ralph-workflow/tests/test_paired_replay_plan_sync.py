@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from ralph import verify as verify_module
 from tests.doc_roots import REPOSITORY_ROOT
+
+_WIRED_STEP_LABELS = frozenset(step[0] for step in verify_module._VERIFY_STEPS)
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_plan_copies_bound_deterministic_status_to_strong_or_moderate_evidence": (
@@ -15,7 +18,13 @@ RALPH_TEST_CHANGE_REASONS = {
         "the §13 table carries the banned-construct ban as the second `none`-tagged "
         "deterministic exception, so each plan copy must carry exactly one row with "
         "its enforcement id, `none` tag, arm-snapshot replay procedure, and "
-        "outstanding behavior-change evidence"
+        "outstanding behavior-change evidence. The expected enforcement cell read "
+        "`deterministic: banned-constructs audit (audit_banned_constructs)`, but the "
+        "verification gate declares the step label `banned constructs audit "
+        "(audit_banned_constructs)` and enforcement ids resolve by exact string match "
+        "against the wired step labels, so the hyphenated form named no enforcer. The "
+        "expected cell is now the wired label, and the row is additionally required to "
+        "name a label the gate declares"
     ),
 }
 
@@ -34,7 +43,7 @@ _FORBIDDEN_NARRATION = (
 
 _MODEL_FAMILY_ROW_GUARD = "Independent review model-family diversification"
 _BANNED_CONSTRUCTS_ROW_GUARD = "Banned constructs"
-_BANNED_CONSTRUCTS_ENFORCEMENT = "deterministic: banned-constructs audit (audit_banned_constructs)"
+_BANNED_CONSTRUCTS_ENFORCEMENT = "deterministic: banned constructs audit (audit_banned_constructs)"
 _BANNED_CONSTRUCTS_EVIDENCE_TAG = "evidence tag `none`"
 
 _PLAN_BOUNDED_DETERMINISTIC_STATEMENTS = (
@@ -118,6 +127,10 @@ def test_plan_copies_carry_the_banned_constructs_replay_row(relative_path: str) 
     assert _BANNED_CONSTRUCTS_ENFORCEMENT in row, (
         f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not name "
         f"the banned-constructs enforcement id: {row!r}"
+    )
+    assert _BANNED_CONSTRUCTS_ENFORCEMENT.removeprefix("deterministic: ") in (_WIRED_STEP_LABELS), (
+        f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} names an enforcement "
+        f"id the verification gate does not declare: {row!r}"
     )
     assert _BANNED_CONSTRUCTS_EVIDENCE_TAG in row, (
         f"{relative_path} §13 row for {_BANNED_CONSTRUCTS_ROW_GUARD!r} does not carry "

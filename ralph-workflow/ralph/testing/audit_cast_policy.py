@@ -23,6 +23,8 @@ _BOUNDARY_HELPERS: frozenset[tuple[str, str]] = frozenset(
         ("agy", "parse_event"),
         ("generic", "parse_event"),
         ("_ndjson_base", "parse_event"),
+        ("driver", "_integration_clock_boundary"),
+        ("driver", "_clock_source_boundary"),
         ("_template", "parse_event"),
         ("claude_interactive_transcript_parser", "parse_event"),
         ("claude_interactive", "parse_event"),

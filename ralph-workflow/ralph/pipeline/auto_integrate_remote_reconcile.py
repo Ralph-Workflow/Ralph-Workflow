@@ -5,7 +5,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, get_head_sha, is_repo_clean
@@ -29,6 +29,7 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.conflict_resolution.rebase_loop import (
+    RebaseStop,
     RebaseStopResolver,
     current_rebase_identity,
 )
@@ -45,7 +46,7 @@ from ralph.pipeline.resolution_outcome import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
@@ -308,6 +309,22 @@ def _resolve_overridden_rebase(
     return _coerce_stop_resolution_outcome(raw_outcome)
 
 
+def _is_absent_stop_resolver(
+    resolver: object,
+) -> TypeGuard[Callable[[Path, str, RebaseStop | None], bool | StopResolutionOutcome]]:
+    return callable(resolver)
+
+
+def _resolve_with_absent_stop(
+    resolver: object,
+    owner: Path,
+    target: str,
+) -> bool | StopResolutionOutcome:
+    if _is_absent_stop_resolver(resolver):
+        return resolver(owner, target, None)
+    raise TypeError("rebase stop resolver must be callable")
+
+
 def _resolve_rebase_stop(
     owner: Path,
     target: str,
@@ -315,6 +332,8 @@ def _resolve_rebase_stop(
     config: UnifiedConfig | None,
     record: IntegrationRecord,
 ) -> StopResolutionOutcome:
+    if not owner.exists() or not (owner / ".git").exists():
+        return _coerce_stop_resolution_outcome(_resolve_with_absent_stop(resolver, owner, target))
     if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
         return _resolve_overridden_rebase(owner, target, resolver, config)
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution

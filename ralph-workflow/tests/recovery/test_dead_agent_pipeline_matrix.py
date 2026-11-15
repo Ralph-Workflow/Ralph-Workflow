@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.checked_accessors import as_mapping, as_sequence
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     registered_entry_points,
@@ -62,6 +63,11 @@ MAIN_PHASE_LOOP = AgentEntryPoint.MAIN_PHASE_LOOP
 ALL_SCENARIOS = (*SCENARIOS, *corpus_scenarios())
 DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 _BENCH_POLICY = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY[UnavailabilityReason.DEAD_AGENT_NO_PROGRESS]
+_PROBE_MODE_CONTRACT = (
+    "probe-mode contract (docs/agents/broken-agent-detection.md): the canary probe "
+    "records facts and the issuer and reports the outcome, but it runs no nested "
+    "probe, benches nothing and charges no ledger"
+)
 
 
 def _scenario_ids(scenarios: tuple[MatrixScenario, ...]) -> list[str]:
@@ -108,6 +114,23 @@ def _assert_corpus_expectations(
         assert reasons.get(agent) != DEAD
 
 
+def _assert_probe_mode_records_facts_and_issuer(
+    observation: MatrixScenario.Observation,
+) -> None:
+    record = observation.verdict_record
+    if record is None:
+        return
+    record_mapping = as_mapping(record)
+    assert "facts" in record_mapping, _PROBE_MODE_CONTRACT
+    facts_record = as_mapping(record_mapping["facts"])
+    assert "liveness_observed" in facts_record, _PROBE_MODE_CONTRACT
+    termination_value = record_mapping.get("termination")
+    if termination_value is None:
+        return
+    termination_record = as_mapping(termination_value)
+    assert isinstance(termination_record.get("issuer"), str), _PROBE_MODE_CONTRACT
+
+
 def _assert_observation(
     entry_point: AgentEntryPoint,
     scenario: MatrixScenario,
@@ -119,6 +142,7 @@ def _assert_observation(
     if scenario.corpus_id is not None and entry_point is not AgentEntryPoint.CANARY_PROBE:
         _assert_corpus_expectations(scenario, observation, controller)
     if entry_point is AgentEntryPoint.CANARY_PROBE:
+        _assert_probe_mode_records_facts_and_issuer(observation)
         assert observation.probe_calls == ()
         assert observation.availability is True
         assert observation.wait_ms == 0
@@ -633,16 +657,17 @@ def test_ac14_unattributed_live_session_end_parity(
 
     record = observation.verdict_record
     if isinstance(record, dict) and entry_point is not AgentEntryPoint.CANARY_PROBE:
-        facts_record = record["facts"]
+        typed_record = as_mapping(record)
+        facts_record = as_mapping(typed_record.get("facts", {}))
         assert facts_record.get("liveness_observed") is True
-        tool_calls = facts_record["tool_calls"]
+        tool_calls = as_sequence(facts_record.get("tool_calls", []))
         assert "read_file" in tool_calls
-        term_record = record["termination"]
+        term_record = as_mapping(typed_record.get("termination", {}))
         assert term_record.get("issuer") == "unknown"
         assert term_record.get("observed_returncode") == -15
         assert term_record.get("reported_returncode") == 0
         assert term_record.get("return_code_discrepancy") is True
-        attrib = record["attribution"]
+        attrib = as_mapping(typed_record.get("attribution", {}))
         assert attrib.get("attribution") == "runtime"
         assert attrib.get("runtime_cause") == "runtime_kill_unattributed"
 
@@ -675,16 +700,17 @@ def test_ac15_post_exit_watchdog_attribution_parity(
 
     record = observation.verdict_record
     if isinstance(record, dict) and entry_point is not AgentEntryPoint.CANARY_PROBE:
-        facts_record = record["facts"]
+        typed_record = as_mapping(record)
+        facts_record = as_mapping(typed_record.get("facts", {}))
         assert facts_record.get("liveness_observed") is True
-        tool_calls = facts_record["tool_calls"]
+        tool_calls = as_sequence(facts_record.get("tool_calls", []))
         assert "read_file" in tool_calls
-        term_record = record["termination"]
+        term_record = as_mapping(typed_record.get("termination", {}))
         assert term_record.get("issuer") == "post_exit_watchdog"
         assert term_record.get("observed_returncode") == 143
         assert term_record.get("reported_returncode") == 0
         assert term_record.get("return_code_discrepancy") is True
-        attrib = record["attribution"]
+        attrib = as_mapping(typed_record.get("attribution", {}))
         assert attrib.get("attribution") == "runtime"
         assert attrib.get("runtime_cause") == "runtime_kill_post_exit_watchdog"
 
@@ -742,6 +768,7 @@ def test_canary_probe_mode_contract_explicit_exception(
 ) -> None:
     scenario = _scenario(scenario_name)
     observation, controller, _clock = run_matrix_scenario(AgentEntryPoint.CANARY_PROBE, scenario)
+    _assert_probe_mode_records_facts_and_issuer(observation)
     agent = scenario.attempts[-1].agent
 
     assert observation.probe_calls == ()

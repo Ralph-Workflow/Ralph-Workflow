@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loguru import logger
 
@@ -62,11 +62,11 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
+    ResolutionOutcomeUnion,
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
-    WaitingOutcome,
 )
 
 if TYPE_CHECKING:
@@ -243,25 +243,38 @@ def _resolve_stops(
 resolve_rebase_in_progress = _resolve_rebase_in_progress
 
 
+@runtime_checkable
+class _LegacyResolutionOutcome(Protocol):
+    failure_cause: ResolutionFailureCause | None
+    terminal_reason: object
+
+    def to_stop_resolution_outcome(self) -> StopResolutionOutcome: ...
+
+
 def _record_resolver_outcome_on_session(
     outcome: object,
     active_session: ResolutionSession | None,
 ) -> None:
     if isinstance(outcome, bool) or active_session is None:
         return
-    if isinstance(
-        outcome,
-        (
-            ResolvedOutcome,
-            WaitingOutcome,
-            RetryLaterOutcome,
-            NextStrategyOutcome,
-            ConfigFailureOutcome,
-            UnknownOutcome,
-        ),
-    ):
+    if isinstance(outcome, _LegacyResolutionOutcome):
+        active_session.last_resolution_outcome = outcome.to_stop_resolution_outcome()
+    elif isinstance(outcome, ResolutionOutcomeUnion):
         active_session.last_resolution_outcome = outcome
-    if isinstance(outcome, NextStrategyOutcome):
+
+    if isinstance(outcome, _LegacyResolutionOutcome):
+        if (
+            outcome.failure_cause is not None
+            and outcome.failure_cause != ResolutionFailureCause.NONE
+        ):
+            active_session.last_failure_cause = outcome.failure_cause
+        if outcome.terminal_reason is not None:
+            raw_reason = outcome.terminal_reason
+            if isinstance(raw_reason, ResolutionTerminationReason):
+                active_session.terminal_reason = raw_reason
+            elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
+                active_session.exhaustion_reason = raw_reason
+    elif isinstance(outcome, NextStrategyOutcome):
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
         active_session.exhaustion_reason = outcome.strategy
