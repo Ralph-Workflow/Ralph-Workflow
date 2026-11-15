@@ -28,9 +28,10 @@ def select_resolution_action(
     *,
     resolved: bool | None = None,
 ) -> ResolutionAction:
-    if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS or bool(
-        session.out_of_reach_paths
-    ):
+    if (
+        session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS
+        and session.terminal_reason is not ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    ) or bool(session.out_of_reach_paths):
         return ResolutionAction.ESCALATE_TO_INTERVENTION
 
     is_resolved = (not session.unresolved_paths) if resolved is None else resolved

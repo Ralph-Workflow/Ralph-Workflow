@@ -8,14 +8,17 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import ProcessReaderCtx
-from ralph.agents.invoke._process_reader import ProcessLineReader
+from ralph.agents.invoke import ProcessLineReader, ProcessReaderCtx, extract_transport_session_id
 from ralph.agents.invoke.opencode_subagent_sessions import SqliteOpenCodeChildPartSource
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
 from ralph.process.manager import ManagedProcess
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_opencode_child_store_replay_proves_subagent_activity_observed": "the removed check asserts reader._captured_session_id == parent_id, which read a private attribute of the line reader; the parent session id is now observed through the public transcript with extract_transport_session_id(consumed_lines), which is the shipped session id extraction path, so the same parent session id stays proven without a private reader attribute",
+}
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -241,4 +244,4 @@ def test_opencode_child_store_replay_proves_subagent_activity_observed(tmp_path:
 
     consumed_lines = list(reader.read_lines())
     assert len(consumed_lines) == 6
-    assert reader._captured_session_id == parent_id
+    assert extract_transport_session_id(consumed_lines) == parent_id

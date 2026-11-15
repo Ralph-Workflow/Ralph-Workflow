@@ -138,31 +138,14 @@ if TYPE_CHECKING:
     class _KwargsMaterializeMasterPromptFn(Protocol):
         def __call__(self, **kwargs: object) -> str: ...
 
-    class _AgentEffectRunner(Protocol):
+    class _InjectedAgentRunner(Protocol):
         def __call__(
             self,
             effect: InvokeAgentEffect,
             config: UnifiedConfig,
             pipeline_deps: PipelineDeps,
             workspace_scope: WorkspaceScope,
-            *,
-            display_context: DisplayContext | None,
-            display: ParallelDisplay | None = None,
-            verbosity: Verbosity = Verbosity.VERBOSE,
-            state: PipelineState | None = None,
-            policy_bundle: PolicyBundle | None = None,
-            bridge: RestartAwareMcpBridge | None = None,
-            raw_output_sink: deque[str] | None = None,
-            rendered_output_sink: deque[str] | None = None,
-            raw_line_sink: Callable[[str], None] | None = None,
-            run_id: str | None = None,
-            required_artifact: RequiredArtifact | None = None,
-            session_id: str | None = None,
-            extra_env: dict[str, str] | None = None,
-            raise_resumable_exit: bool = False,
-            agent_invocation_error_sink: Callable[[Exception], object] | None = None,
-            attempt_finalizer: AttemptFinalizer | None = None,
-            **opts: object,
+            **options: object,
         ) -> PipelineEvent | AgentFailureEvent | AttemptEnded: ...
 
 
@@ -191,8 +174,9 @@ _DEFAULT_PHASE_NAMES = frozenset(
 
 @dataclass(frozen=True)
 class AgentEffectDependencies:
-    agent_runner: _AgentEffectRunner | None = None
+    agent_runner: _InjectedAgentRunner | None = None
     recovery_controller: RecoveryController | None = None
+    pipeline_deps: PipelineDeps | None = None
 
 
 _AGENT_EFFECT_DEPENDENCIES: ContextVar[AgentEffectDependencies | None] = ContextVar(
@@ -203,11 +187,16 @@ _AGENT_EFFECT_DEPENDENCIES: ContextVar[AgentEffectDependencies | None] = Context
 
 def install_agent_effect_dependencies(
     *,
-    agent_runner: _AgentEffectRunner | None = None,
+    agent_runner: _InjectedAgentRunner | None = None,
     recovery_controller: RecoveryController | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> Token[AgentEffectDependencies | None]:
     return _AGENT_EFFECT_DEPENDENCIES.set(
-        AgentEffectDependencies(agent_runner, recovery_controller)
+        AgentEffectDependencies(
+            agent_runner=agent_runner,
+            recovery_controller=recovery_controller,
+            pipeline_deps=pipeline_deps,
+        )
     )
 
 
@@ -219,6 +208,18 @@ def reset_agent_effect_dependencies(
 
 def current_agent_effect_dependencies() -> AgentEffectDependencies:
     return _AGENT_EFFECT_DEPENDENCIES.get() or AgentEffectDependencies()
+
+
+def _agent_launch_is_available(
+    effect: InvokeAgentEffect,
+    controller: RecoveryController | None,
+    ledger: AgentFailureLedger | None,
+) -> bool:
+    if controller is not None:
+        return controller.agent_eligibility(str(effect.phase), effect.agent_name).is_eligible
+    if ledger is None:
+        return True
+    return ledger.is_available(str(effect.phase), effect.agent_name)
 
 
 def _record_successful_attempt_session(
@@ -272,6 +273,23 @@ def execute_agent_effect(
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     injected = current_agent_effect_dependencies()
     if injected.agent_runner is not None:
+        injected_controller = injected.recovery_controller or pipeline_deps.recovery_controller
+        injected_ledger = (
+            injected_controller.ledger if injected_controller is not None else pipeline_deps.ledger
+        )
+        if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
+            logger.error(
+                "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+                effect.agent_name,
+            )
+            _set_last_captured_retry_intent(
+                AgentRetryIntent(
+                    action=None,
+                    session_id=None,
+                    failure_reason="Agent unavailable or spent in failure ledger",
+                )
+            )
+            return PipelineEvent.AGENT_FAILURE
         return injected.agent_runner(
             effect,
             config,
@@ -331,9 +349,7 @@ def execute_agent_effect(
         from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
         active_ledger = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=active_clock)
-    if active_ledger is not None and not active_ledger.is_available(
-        str(effect.phase), effect.agent_name
-    ):
+    if not _agent_launch_is_available(effect, active_rec, active_ledger):
         logger.error(
             "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
             effect.agent_name,

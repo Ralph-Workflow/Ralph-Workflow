@@ -416,22 +416,11 @@ def run_rebase_conflict_resolution_outcome(
 def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
     limits = config.conflict_resolution
     return ResolutionSession(
-        inactivity_timeout_seconds=limits.inactivity_timeout_seconds,
         max_rounds_per_stop=limits.max_rounds_per_stop,
         max_rebase_conflict_stops=limits.max_rebase_conflict_stops,
         max_fallback_agents=limits.max_fallback_agents,
         gitlink_policy=limits.gitlink_policy,
     )
-
-
-def conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
-    if policy_bundle is None:
-        return 0
-    drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
-    if drain is None:
-        return 0
-    chain = policy_bundle.agents.agent_chains.get(drain.chain)
-    return chain.max_retries if chain is not None else 0
 
 
 def _prepare_conflicted_paths(
@@ -609,8 +598,11 @@ def _run_rounds(
         prompt_materializer if prompt_materializer is not None else materialize_round_prompt
     )
     limits = config.conflict_resolution
-    round_cap = limits.max_rounds_per_stop
-    inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
+    round_cap = (
+        min(session.max_rounds_per_stop, limits.max_rounds_per_stop)
+        if session.max_rounds_per_stop is not None
+        else limits.max_rounds_per_stop
+    )
     is_rotation = bool(strategy_history)
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
     if pipeline_deps is not None and session.unavailability_store is None:
@@ -674,7 +666,6 @@ def _run_rounds(
         display_context=display_context,
         limits=limits,
         round_cap=round_cap,
-        inactivity_timeout=inactivity_timeout,
         clock=clock,
         session=session,
         stop=stop,
@@ -921,12 +912,6 @@ def _can_continue_controller_rounds(
 ) -> bool:
     from ralph.recovery.agent_failure_ledger import AgentStatus, Cooldown, Spent
 
-    if (
-        isinstance(session.recovery_state, PipelineState)
-        and session.recovery_state.is_waiting_state
-    ):
-        return False
-
     chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
     ledger_statuses: dict[str, AgentStatus] = dict(
         controller.ledger.eligibility(PHASE_RESOLUTION, live)
@@ -949,12 +934,15 @@ def _can_continue_controller_rounds(
     if all(_is_spent_or_demoted(agent, status) for agent, status in chain_statuses):
         return False
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+    provider_fallover_pending = len(live) > 1 and any(
+        status.reason == "provider_unavailable" for _agent, status in chain_statuses
+    )
     return (
         any(
             status.is_eligible or (isinstance(status, Spent) and status.reason == "retry_exhausted")
             for _agent, status in chain_statuses
         )
-        or wait_ms > 0
+        or (wait_ms > 0 and not provider_fallover_pending)
     )
 
 

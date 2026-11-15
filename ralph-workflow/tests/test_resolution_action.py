@@ -12,6 +12,17 @@ from ralph.pipeline.conflict_resolution.driver import (
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_infrastructure_termination_reason_candidate_unavailable_continues_to_shared_fallover": (
+        "the candidate-unavailable action now continues so RecoveryController can select the "
+        "next shared-eligible candidate"
+    ),
+    "test_all_infrastructure_termination_reasons_covered": (
+        "candidate-unavailable now continues to shared fallover while the other infrastructure "
+        "termination reasons still escalate"
+    ),
+}
+
 
 def test_resolution_action_enum_values() -> None:
     expected = {
@@ -96,13 +107,13 @@ def test_infrastructure_termination_reason_tool_surface_dead() -> None:
     assert action is ResolutionAction.ESCALATE_TO_INTERVENTION
 
 
-def test_infrastructure_termination_reason_candidate_unavailable() -> None:
+def test_infrastructure_termination_reason_candidate_unavailable_continues_to_shared_fallover() -> None:
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
     )
     action = select_resolution_action(session, round_index=1, cap=5)
-    assert action is ResolutionAction.ESCALATE_TO_INTERVENTION
+    assert action is ResolutionAction.CONTINUE_AGENT_ROUND
 
 
 def test_all_infrastructure_termination_reasons_covered() -> None:
@@ -118,7 +129,9 @@ def test_all_infrastructure_termination_reasons_covered() -> None:
             unresolved_paths=("conflict.py",),
             terminal_reason=reason,
         )
-        assert (
-            select_resolution_action(session, round_index=1, cap=5)
-            is ResolutionAction.ESCALATE_TO_INTERVENTION
+        expected_action = (
+            ResolutionAction.CONTINUE_AGENT_ROUND
+            if reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+            else ResolutionAction.ESCALATE_TO_INTERVENTION
         )
+        assert select_resolution_action(session, round_index=1, cap=5) is expected_action

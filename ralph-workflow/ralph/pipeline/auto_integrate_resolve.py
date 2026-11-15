@@ -38,7 +38,6 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.pipeline.resolution_outcome_producer import (
     classify_resolution_failure,
-    stop_resolution_outcome_from_legacy,
 )
 
 _UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
@@ -156,6 +155,7 @@ def resolve_and_commit_with_reason(
                 target=target,
                 resolver=resolver,
                 record=resolution_gate_record(root, target),
+                eligible_agents=(),
                 launcher=lambda: _merge_resolution_result(
                     root,
                     target,
@@ -287,7 +287,7 @@ def _resolver_exception_result(
         paths=conflicted,
         config_error=resolver_exc,
     )
-    return _handle_sealed_outcome(stop_resolution_outcome_from_legacy(outcome), reason)
+    return _handle_sealed_outcome(outcome, reason)
 
 
 def handle_unsuccessful_resolution(

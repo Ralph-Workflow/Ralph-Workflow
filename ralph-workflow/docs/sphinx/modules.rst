@@ -5444,6 +5444,13 @@ ralph.pipeline.agent_entry_point
    :members:
    :show-inheritance:
 
+ralph.pipeline.agent_selection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.agent_selection
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.attempt_finalizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -5640,45 +5647,10 @@ ralph.pipeline.resolution_gate_facts
    :members:
    :show-inheritance:
 
-ralph.pipeline.resolution_outcome_config_failure
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.resolution_outcome_config_failure
-   :members:
-   :show-inheritance:
-
-ralph.pipeline.resolution_outcome_exhausted
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.resolution_outcome_exhausted
-   :members:
-   :show-inheritance:
-
-ralph.pipeline.resolution_outcome_needs_operator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.resolution_outcome_needs_operator
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.resolution_outcome_producer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.resolution_outcome_producer
-   :members:
-   :show-inheritance:
-
-ralph.pipeline.resolution_outcome_resolved
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.resolution_outcome_resolved
-   :members:
-   :show-inheritance:
-
-ralph.pipeline.resolution_outcome_retry_later
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.resolution_outcome_retry_later
    :members:
    :show-inheritance:
 

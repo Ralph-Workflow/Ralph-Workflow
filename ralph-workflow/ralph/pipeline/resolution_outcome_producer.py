@@ -7,23 +7,14 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
-    ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
-    UnknownOutcome,
-    WaitingOutcome,
 )
-from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
-from ralph.pipeline.resolution_outcome_resolved import Resolved
-from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
 __all__ = [
     "RETRY_LATER_REASON",
     "classify_resolution_failure",
     "config_failure_from_exception",
-    "stop_resolution_outcome_from_legacy",
 ]
 
 RETRY_LATER_REASON = "conflict resolution incomplete; progress retained for next agent"
@@ -72,42 +63,3 @@ def classify_resolution_failure(
         unresolved_paths=paths,
         failure_cause=failure_cause,
     )
-
-
-def stop_resolution_outcome_from_legacy(
-    outcome: object,
-) -> StopResolutionOutcome:
-    if isinstance(
-        outcome,
-        (
-            ResolvedOutcome,
-            WaitingOutcome,
-            RetryLaterOutcome,
-            NextStrategyOutcome,
-            ConfigFailureOutcome,
-            UnknownOutcome,
-        ),
-    ):
-        return outcome
-    result: StopResolutionOutcome
-    match outcome:
-        case Resolved():
-            result = ResolvedOutcome()
-        case NeedsOperator(command=command):
-            result = WaitingOutcome(
-                external_condition=(
-                    f"operator action required: {command}"
-                    if command
-                    else "operator action required"
-                ),
-                resumes_when="operator resolves the conflict",
-            )
-        case RetryLater(until=until, on_change=on_change):
-            result = RetryLaterOutcome(until=until, on_change=on_change)
-        case Exhausted(agents=agents):
-            result = NextStrategyOutcome(strategy=f"resolver agents exhausted: {', '.join(agents)}")
-        case ConfigFailure(file=file, parse_error=parse_error):
-            return ConfigFailureOutcome(file=file, parse_error=parse_error)
-        case _:
-            result = UnknownOutcome(error=RuntimeError(f"unrecognized legacy outcome: {outcome!r}"))
-    return result

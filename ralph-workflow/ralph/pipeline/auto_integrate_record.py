@@ -624,6 +624,42 @@ def set_resolving_rebase(
     return True
 
 
+def adopt_active_rebase_record(
+    workspace_root: Path,
+    target: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> IntegrationRecord | None:
+    if not target.strip():
+        return None
+    try:
+        if read_record(workspace_root, backend=backend) is not None:
+            return None
+        from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+        from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
+
+        if not rebase_in_progress_at(workspace_root):
+            return None
+        original, onto = current_rebase_identity(workspace_root)
+        if not original or not onto:
+            return None
+        record = IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=original,
+            pre_target_sha=onto,
+        )
+        write_record(workspace_root, record, backend=backend)
+    except Exception as exc:
+        logger.warning(
+            "auto_integrate: could not adopt the active rebase on '{}' into the durable record: {}",
+            target,
+            exc,
+        )
+        return None
+    return record
+
+
 def clear_record(
     workspace_root: Path,
     *,
@@ -738,6 +774,7 @@ __all__ = [
     "RecordUnreadableError",
     "RecordUnreadableReason",
     "Transition",
+    "adopt_active_rebase_record",
     "apply_containment_release",
     "clear_record",
     "clear_record_on_containment",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,8 +14,23 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.agents.watchdog_fire_reason import WatchdogFireReason
+from ralph.display.context import make_display_context
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.auto_integrate_record import record_path
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.conflict_resolution.session import (
+    ResolutionSession,
+    invoke_resolution_agent,
+)
+from ralph.pipeline.effect_executor import (
+    current_agent_effect_dependencies,
+    install_agent_effect_dependencies,
+    reset_agent_effect_dependencies,
+)
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineDeps
+from ralph.pipeline.runner import execute_effect_with_optional_display
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import cached_default_policy_bundle
 from ralph.recovery.agent_failure_ledger import Cooldown, Eligible
@@ -25,16 +41,85 @@ from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
 )
-from tests._conflict_resolution_phase_parity_seams import _policy_bundle
+from ralph.workspace.scope import WorkspaceScope
+from tests._conflict_resolution_phase_parity_seams import _config, _policy_bundle
 from tests._scenario_harness import AgentMode, FakeAgentRunner, paused_text_rebase
 from tests.scenarios._content_equivalence import drive_integration
 
 if TYPE_CHECKING:
+    from ralph.config.models import UnifiedConfig
     from ralph.policy.models import PolicyBundle
 
 _PRIMARY = "primary-agent"
 _FALLBACK = "fallback-agent"
 _AGENTS = (_PRIMARY, _FALLBACK)
+
+
+@dataclass
+class _LaunchRecorder:
+    clock: FakeClock
+    failures: list[BaseException] = field(default_factory=list)
+    phases: list[str] = field(default_factory=list)
+    launch_times: list[float] = field(default_factory=list)
+
+    def __call__(
+        self,
+        effect: InvokeAgentEffect,
+        config: UnifiedConfig,
+        pipeline_deps: PipelineDeps,
+        workspace_scope: WorkspaceScope,
+        **options: object,
+    ) -> PipelineEvent:
+        del config, pipeline_deps, workspace_scope, options
+        self.phases.append(str(effect.phase))
+        self.launch_times.append(self.clock.monotonic())
+        if self.failures:
+            raise self.failures.pop(0)
+        return PipelineEvent.AGENT_SUCCESS
+
+
+def _pipeline_deps(controller: RecoveryController) -> PipelineDeps:
+    return PipelineDeps(
+        display_context=make_display_context(),
+        recovery_controller=controller,
+    )
+
+
+def _installed_pipeline_deps() -> PipelineDeps:
+    pipeline_deps = current_agent_effect_dependencies().pipeline_deps
+    if pipeline_deps is None:
+        raise AssertionError("public agent-effect seam did not retain PipelineDeps")
+    return pipeline_deps
+
+
+def _invoke_resolver(root: Path, session: ResolutionSession) -> None:
+    invoke_resolution_agent(
+        agent_name=_PRIMARY,
+        prompt_path=root / "resolver-prompt.md",
+        config=_config(),
+        pipeline_deps=_installed_pipeline_deps(),
+        workspace_scope=WorkspaceScope(root),
+        policy_bundle=_declared_policy_bundle(),
+        display=None,
+        display_context=None,
+        session=session,
+        require_completion_evidence=False,
+    )
+
+
+def _invoke_ordinary_phase(root: Path) -> None:
+    execute_effect_with_optional_display(
+        InvokeAgentEffect(
+            agent_name=_PRIMARY,
+            phase="development",
+            prompt_file="ordinary-prompt.md",
+            requires_completion_evidence=False,
+        ),
+        _config(),
+        WorkspaceScope(root),
+        policy_bundle=_declared_policy_bundle(),
+        pipeline_deps=_installed_pipeline_deps(),
+    )
 
 
 def _declared_policy_bundle() -> PolicyBundle:
@@ -199,6 +284,85 @@ def test_valid_artifact_no_workspace_change_asserts_no_cooldown(phase: str) -> N
     assert selection.agent == _PRIMARY
     assert selection.index == 0
     assert controller.earliest_available_wait_ms(phase, [_PRIMARY]) == 0
+
+
+def test_ordinary_phase_cooldown_blocks_resolver_until_shared_expiry(tmp_path: Path) -> None:
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock)
+    controller.handle(
+        _pipeline_state("development"),
+        AgentInvocationError(_PRIMARY, 1, "process terminated unexpectedly"),
+        FailureContext(phase="development", agent=_PRIMARY),
+    )
+    status = controller.agent_eligibility(PHASE_RESOLUTION, _PRIMARY)
+    expected_wait_ms = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY[
+        UnavailabilityReason.PROCESS_EXITED
+    ].base_backoff_ms
+
+    assert isinstance(status, Cooldown)
+    assert status.until_ms == expected_wait_ms
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, [_PRIMARY]) == expected_wait_ms
+
+    recorder = _LaunchRecorder(clock)
+    session = ResolutionSession()
+    pipeline_deps = _pipeline_deps(controller)
+    token = install_agent_effect_dependencies(
+        agent_runner=recorder,
+        recovery_controller=controller,
+        pipeline_deps=pipeline_deps,
+    )
+    try:
+        assert current_agent_effect_dependencies().pipeline_deps is pipeline_deps
+        _invoke_resolver(tmp_path, session)
+        assert recorder.launch_times == []
+
+        clock.advance(expected_wait_ms / 1000.0)
+        _invoke_resolver(tmp_path, session)
+    finally:
+        reset_agent_effect_dependencies(token)
+
+    assert recorder.phases == [PHASE_RESOLUTION]
+    assert recorder.launch_times == [expected_wait_ms / 1000.0]
+
+
+def test_resolver_cooldown_blocks_ordinary_phase_until_shared_expiry(tmp_path: Path) -> None:
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock)
+    failure = AgentInactivityTimeoutError(
+        _PRIMARY,
+        30.0,
+        [],
+        InactivityTimeoutOpts(reason=WatchdogFireReason.NO_OUTPUT_AT_START),
+    )
+    recorder = _LaunchRecorder(clock, failures=[failure])
+    pipeline_deps = _pipeline_deps(controller)
+    token = install_agent_effect_dependencies(
+        agent_runner=recorder,
+        recovery_controller=controller,
+        pipeline_deps=pipeline_deps,
+    )
+    try:
+        assert current_agent_effect_dependencies().pipeline_deps is pipeline_deps
+        _invoke_resolver(tmp_path, ResolutionSession())
+        status = controller.agent_eligibility("development", _PRIMARY)
+        expected_wait_ms = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY[
+            UnavailabilityReason.NO_OUTPUT_AT_START
+        ].base_backoff_ms
+
+        assert isinstance(status, Cooldown)
+        assert status.until_ms == expected_wait_ms
+        assert controller.earliest_available_wait_ms("development", [_PRIMARY]) == expected_wait_ms
+
+        _invoke_ordinary_phase(tmp_path)
+        assert recorder.launch_times == [0.0]
+
+        clock.advance(expected_wait_ms / 1000.0)
+        _invoke_ordinary_phase(tmp_path)
+    finally:
+        reset_agent_effect_dependencies(token)
+
+    assert recorder.phases == [PHASE_RESOLUTION, "development"]
+    assert recorder.launch_times == [0.0, expected_wait_ms / 1000.0]
 
 
 def test_resolver_hard_failure_cools_agent_public_seam(tmp_git_repo: Path) -> None:

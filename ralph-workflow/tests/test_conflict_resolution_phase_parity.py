@@ -46,12 +46,16 @@ from tests._conflict_resolution_phase_parity_seams import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_invoke_resolution_agent_keeps_chain_retry_budget": "restore invoke_resolution_agent boolean return assertion after type parity unification",
-    "test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate": "restore invoke_resolution_agent boolean return assertion after type parity unification",
-    "test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt": "restore invoke_resolution_agent boolean return assertion after type parity unification",
-    "test_a_candidate_that_never_ran_is_not_recorded_as_declining": "restore invoke_resolution_agent boolean return assertion after type parity unification",
-    "test_an_uninstalled_candidate_is_unavailable_not_declining": "restore invoke_resolution_agent boolean return assertion after type parity unification",
+    "test_invoke_resolution_agent_keeps_chain_retry_budget": "the sealed StopResolutionOutcome contract requires an exact typed retry result rather than the superseded boolean API",
+    "test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving terminal attribution",
+    "test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving activity attribution",
+    "test_a_candidate_that_never_ran_is_not_recorded_as_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving no-activity attribution",
+    "test_an_uninstalled_candidate_is_unavailable_not_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving unavailable attribution",
     "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
+    "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately to the next eligible candidate",
+    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "R0 permits only the shared controller selection per round, not resolver-local traversal or retry counts",
+    "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
+    "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
@@ -144,8 +148,6 @@ def classify_failed_resolution_attempt(
         policy_bundle=policy_bundle,
         **kwargs,
     )
-    if session is not None and session.skip_same_agent_retries:
-        session.skip_same_agent_retries = False
     return res
 
 
@@ -209,7 +211,7 @@ def invoke_resolution_agent(
     display_context: object = None,
     session: ResolutionSession | None = None,
     **kwargs: object,
-) -> bool:
+) -> StopResolutionOutcome:
     from ralph.pipeline.conflict_resolution import resolution_session_from_config
 
     active_session = session if session is not None else resolution_session_from_config(config)
@@ -327,14 +329,11 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
         )
         is False
     )
-    assert called[0] == "one"
-    assert called.count("one") > 1
-    assert "two" in called
-    one_indexes = [index for index, name in enumerate(called) if name == "one"]
-    assert one_indexes[1] == one_indexes[0] + 1
+    assert called[:2] == ["one", "two"]
+    assert called.count("one") == 1
 
 
-def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
+def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     sleeps: list[float] = []
@@ -342,7 +341,10 @@ def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
 
+    called: list[str] = []
+
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
         if agent_name == "one":
             raise ConnectionError("provider unavailable")
         return False
@@ -361,10 +363,8 @@ def test_conflict_retry_honors_chain_retry_delay_ms_from_recovery_controller(
         )
         is False
     )
-    chain = _policy_bundle().agents.agent_chains["rebase_conflict_resolution"]
-    expected_seconds = chain.retry_delay_ms / 1000.0
-    assert sleeps
-    assert sleeps[0] == expected_seconds
+    assert called[:2] == ["one", "two"]
+    assert sleeps == []
 
 
 def test_conflict_failures_call_recovery_controller_handle(
@@ -478,8 +478,7 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
     prompt = tmp_path / "prompt.md"
     prompt.write_text("resolve", encoding="utf-8")
     config = UnifiedConfig.model_validate({"general": {"max_same_agent_retries": 4}})
-    assert (
-        invoke_resolution_agent(
+    outcome = invoke_resolution_agent(
             agent_name="claude",
             prompt_path=prompt,
             config=config,
@@ -488,9 +487,10 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
             policy_bundle=_policy_bundle(),
             display=None,
             display_context=None,
-        )
-        is False
     )
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change == "resolver_agent_eligibility_changed"
+    assert outcome.until is None
     assert captured == [4]
     assert probed, "the failed resolution attempt must still reach the dead-agent probe boundary"
 
@@ -646,7 +646,7 @@ def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
         reset_executors(token)
 
 
-def test_round_after_a_spent_chain_still_invokes_a_candidate(
+def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
@@ -696,7 +696,8 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
     cap = config.conflict_resolution.max_rounds_per_stop
     invoked_rounds = sorted({round_index for round_index, _ in called})
     assert invoked_rounds == list(range(1, cap + 1))
-    assert len(called) > len(invoked_rounds)
+    assert len(called) == len(invoked_rounds)
+    assert called == [(1, "one"), (2, "one"), (3, "one")]
 
 
 def test_a_new_stop_restarts_the_chain_on_a_reused_session(
@@ -872,8 +873,7 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    assert (
-        invoke_resolution_agent(
+    outcome = invoke_resolution_agent(
             agent_name="pi",
             prompt_path=prompt,
             config=_config(),
@@ -883,11 +883,11 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
             display=None,
             display_context=None,
             session=session,
-        )
-        is False
     )
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change == "resolver_agent_eligibility_changed"
+    assert outcome.until is None
     assert session.last_attempt_failure == "PiContextExhaustedExitError"
-    assert session.skip_same_agent_retries is True
     assert effect_executor_module.pop_last_captured_retry_intent().failure_reason == ""
 
 
@@ -911,8 +911,7 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    assert (
-        invoke_resolution_agent(
+    outcome = invoke_resolution_agent(
             agent_name="claude",
             prompt_path=prompt,
             config=_config(),
@@ -922,11 +921,11 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
             display=None,
             display_context=None,
             session=session,
-        )
-        is False
     )
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change == "resolver_agent_eligibility_changed"
+    assert outcome.until is None
     assert session.last_attempt_failure == "conflict attempt failed"
-    assert session.skip_same_agent_retries is False
     assert session.last_attempt_saw_activity is True
     assert session.terminal_reason is None
 
@@ -944,8 +943,7 @@ def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    assert (
-        invoke_resolution_agent(
+    outcome = invoke_resolution_agent(
             agent_name="claude",
             prompt_path=prompt,
             config=_config(),
@@ -955,9 +953,10 @@ def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
             display=None,
             display_context=None,
             session=session,
-        )
-        is False
     )
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change == "resolver_agent_eligibility_changed"
+    assert outcome.until is None
     assert session.last_attempt_saw_activity is False
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXITED
 
@@ -987,8 +986,7 @@ def test_an_uninstalled_candidate_is_unavailable_not_declining(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    assert (
-        invoke_resolution_agent(
+    outcome = invoke_resolution_agent(
             agent_name="pi",
             prompt_path=prompt,
             config=_config(),
@@ -998,11 +996,11 @@ def test_an_uninstalled_candidate_is_unavailable_not_declining(
             display=None,
             display_context=None,
             session=session,
-        )
-        is False
     )
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change == "resolver_agent_eligibility_changed"
+    assert outcome.until is None
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    assert session.skip_same_agent_retries is True
 
 
 def test_an_uninstalled_candidate_hands_over_to_the_next_one(
@@ -1041,11 +1039,11 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
     assert "claude" not in skipped_candidates(session, ("pi", "claude"))
 
 
-def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
+def test_shared_controller_advances_past_a_cooling_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_canary_probe_boundary(monkeypatch)
-    session = ResolutionSession(skip_same_agent_retries=True)
+    session = ResolutionSession()
     classify_failed_resolution_attempt(
         session,
         "pi",
@@ -1055,17 +1053,10 @@ def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
         policy_bundle=_policy_bundle(),
     )
     assert session.chain_cursor == 1
-    assert session.skip_same_agent_retries is False
-    retried = ResolutionSession()
-    classify_failed_resolution_attempt(
-        retried,
-        "pi",
-        ConnectionError("provider unavailable"),
-        candidates=("pi", "claude"),
-        failed_index=0,
-        policy_bundle=_policy_bundle(),
-    )
-    assert retried.chain_cursor == 0
+    controller = session.recovery_controller
+    assert controller is not None
+    assert not controller.agent_eligibility(PHASE_RESOLUTION, "pi").is_eligible
+    assert controller.preferred_agent_index(PHASE_RESOLUTION, ("pi", "claude")).agent == "claude"
 
 
 def test_a_live_candidate_behind_the_cursor_is_still_invoked(

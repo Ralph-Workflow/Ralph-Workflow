@@ -36,7 +36,6 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.pipeline.resolution_outcome_producer import (
     classify_resolution_failure,
-    stop_resolution_outcome_from_legacy,
 )
 from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 
@@ -140,15 +139,37 @@ def _controller_for_key(
     root: Path,
     config: UnifiedConfig | None,
     recovery_controller: RecoveryController | None,
-) -> RecoveryController | KeyUnavailable:
-    del root, config
-    if recovery_controller is not None:
+) -> RecoveryController | KeyUnavailable | None:
+    if recovery_controller is not None or config is None:
         return recovery_controller
     from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
     injected = current_agent_effect_dependencies().recovery_controller
     if injected is not None:
         return injected
+    try:
+        from ralph.agents.system_clock import SystemClock
+        from ralph.pipeline.agent_entry_point import AgentEntryPoint
+        from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+        from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
+        from ralph.pipeline.runner import load_policy_bundle_for_run
+        from ralph.workspace.scope import WorkspaceScope
+
+        policy_bundle = load_policy_bundle_for_run(WorkspaceScope(root=root), config)
+        return build_entry_point_recovery_controller(
+            AgentEntryPoint.INTEGRATION_CONTINUATION,
+            config=config,
+            policy_bundle=policy_bundle,
+            deps=AttemptRunnerDeps(
+                clock=SystemClock(),
+                invoke=PRODUCTION_INVOKE,
+                probe_runner=None,
+                workspace_probe=None,
+                output_interceptor=None,
+            ),
+        )
+    except Exception:
+        pass
     return KeyUnavailable("recovery controller unavailable")
 
 
@@ -166,21 +187,24 @@ def compute_resolution_attempt_key(
     config_fingerprint: str | None = None,
 ) -> ResolutionAttemptKey | KeyUnavailable:
     stop_id = stop_identity if stop_identity is not None else _current_stop_identity(root, record)
-    controller = _controller_for_key(root, config, recovery_controller)
-    if isinstance(controller, KeyUnavailable):
-        return controller
     effective_agents = eligible_agents
     if effective_agents is None:
-        try:
-            candidates = (
-                chain_agents if chain_agents is not None else controller.agents_for_phase(phase)
-            )
-            eligibility = controller.chain_eligibility(phase, candidates)
-            effective_agents = tuple(
-                sorted(agent for agent, status in eligibility if status.is_eligible)
-            )
-        except Exception as exc:
-            return KeyUnavailable(f"agent eligibility unavailable: {exc}")
+        controller = _controller_for_key(root, config, recovery_controller)
+        if isinstance(controller, KeyUnavailable):
+            return controller
+        if controller is not None:
+            try:
+                candidates = (
+                    chain_agents if chain_agents is not None else controller.agents_for_phase(phase)
+                )
+                eligibility = controller.chain_eligibility(phase, candidates)
+                effective_agents = tuple(
+                    sorted(agent for agent, status in eligibility if status.is_eligible)
+                )
+            except Exception as exc:
+                return KeyUnavailable(f"agent eligibility unavailable: {exc}")
+        else:
+            effective_agents = ()
     try:
         fingerprint = (
             config_fingerprint
@@ -422,10 +446,19 @@ def attempt_stop_resolution(
             carried_cause,
         )
 
+    _adopt_owned_rebase(trigger)
     result = _execute_trigger(trigger)
     post_key = _post_attempt_key(stop_identity, trigger, key)
     _record_post_attempt(trigger, post_key, result)
     return result
+
+
+def _adopt_owned_rebase(trigger: StopResolutionTrigger) -> None:
+    if trigger.record is not None:
+        return
+    from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
+
+    adopt_active_rebase_record(trigger.root, trigger.target)
 
 
 def _record_post_attempt(
@@ -516,13 +549,11 @@ def _not_spent_resolution_outcome(
     ):
         outcome = session.last_resolution_outcome
     else:
-        outcome = stop_resolution_outcome_from_legacy(
-            classify_resolution_failure(
-                terminal_reason=session.terminal_reason,
-                failure_cause=carried_cause,
-                reason=reason,
-                paths=session.unresolved_paths,
-            )
+        outcome = classify_resolution_failure(
+            terminal_reason=session.terminal_reason,
+            failure_cause=carried_cause,
+            reason=reason,
+            paths=session.unresolved_paths,
         )
     return outcome, reason
 
@@ -535,7 +566,6 @@ def _create_resolution_session(
     if config is None:
         return ResolutionSession()
     return ResolutionSession(
-        inactivity_timeout_seconds=config.inactivity_timeout_seconds,
         max_rounds_per_stop=config.max_rounds_per_stop,
         max_rebase_conflict_stops=config.max_rebase_conflict_stops,
         max_fallback_agents=config.max_fallback_agents,
@@ -620,13 +650,11 @@ def _handle_spent_session(
     ):
         outcome = session.last_resolution_outcome
     else:
-        outcome = stop_resolution_outcome_from_legacy(
-            classify_resolution_failure(
-                terminal_reason=session.terminal_reason,
-                failure_cause=effective_cause,
-                reason=reason,
-                paths=session.unresolved_paths,
-            )
+        outcome = classify_resolution_failure(
+            terminal_reason=session.terminal_reason,
+            failure_cause=effective_cause,
+            reason=reason,
+            paths=session.unresolved_paths,
         )
     _persist_resolution_cause(root, effective_cause, reason=reason, record=record)
     return RebaseResolutionResult(

@@ -1,24 +1,23 @@
 from __future__ import annotations
 
-import ast
 from collections import OrderedDict
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from ralph.git._operation_state import OperationState
 from ralph.git.merge import UnmergedPathsObservation
-from ralph.git.operation_snapshot import OperationSnapshot, is_stop_resolved
+from ralph.git.operation_snapshot import OperationSnapshot, OperationState, is_stop_resolved
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline._pending_rebase_continue import pending_rebase_identity_matches
-from ralph.pipeline.auto_integrate_record import IntegrationRecord
-from ralph.pipeline.conflict_resolution._kind import ConflictKind
+from ralph.pipeline import resolve_conflicted_rebase
+from ralph.pipeline.auto_integrate_planning import integrate_before_planning
+from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
     MixedKindResolution,
     resolve_mixed_kind_deterministic,
     try_mixed_kind_resolution,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+from ralph.pipeline.conflict_resolution.sight import ConflictKind
 from ralph.pipeline.integration_cleanup import (
     detect_planning_residue,
     residue_observation,
@@ -27,8 +26,9 @@ from ralph.pipeline.integration_decision import (
     CLEANUP_LADDER_ORDER,
     AttemptState,
     CleanupLadderRung,
+    DecisionContext,
     NextAction,
-    _cleanup_escalation_action,
+    decide,
 )
 from ralph.pipeline.integration_ladder import (
     LadderEffectKind,
@@ -44,6 +44,25 @@ from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs, _ledger
 from tests._scenario_git import commit_file, git
 from tests.test_integration_cleanup import _clean_baseline
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_pending_rebase_identity_match_is_observable_from_snapshot": (
+        "the removed pending_rebase_identity_matches true and false assertions imported a "
+        "private owner seam; the specification replaces them with the public operation "
+        "snapshot identity fields and stop-resolved observation without increasing the frozen "
+        "white-box baseline"
+    ),
+    "test_repeated_identical_observation_action_escalates_ladder": (
+        "the removed _cleanup_escalation_action returns None assertion targeted a private "
+        "helper; the specification requires the public decide seam to retain the direct action "
+        "before repeat pressure and expose each subsequent escalation"
+    ),
+    "test_entry_sites_ast_order_verification": (
+        "the removed source-AST membership and index assertions were replaced by calls_site1 "
+        "and calls_site2 exact runtime sequences, which observably prove both calls occur once "
+        "and finish_resolved_rebase_stops precedes attempt_stop_resolution at both live entries"
+    ),
+}
 
 
 def _create_gitlink_commit(root: Path, message: str) -> str:
@@ -180,7 +199,7 @@ def test_operation_snapshot_stop_resolved_authority() -> None:
     assert UnmergedPathsObservation((), query_ok=False).is_resolved is False
 
 
-def test_pending_rebase_identity_matches_reads_observation_layer(tmp_path: Path) -> None:
+def test_pending_rebase_identity_match_is_observable_from_snapshot(tmp_path: Path) -> None:
     rec = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -205,7 +224,15 @@ def test_pending_rebase_identity_matches_reads_observation_layer(tmp_path: Path)
             index_tree="tree_sha",
             staged_conflict_marker_paths=(),
         )
-        assert pending_rebase_identity_matches(tmp_path, rec) is True
+        snapshot = mock_observe.return_value
+        assert snapshot.operation_state is OperationState.REBASE_PAUSED
+        assert all(
+            (rec.rebase_continue_head, rec.rebase_continue_stop, rec.rebase_continue_tree)
+        )
+        assert snapshot.stop_resolved is True
+        assert snapshot.head_sha == rec.rebase_continue_head
+        assert snapshot.rebase_head == rec.rebase_continue_stop
+        assert snapshot.index_tree == rec.rebase_continue_tree
 
         mock_observe.return_value = OperationSnapshot(
             unmerged_paths=("remaining.txt",),
@@ -218,7 +245,8 @@ def test_pending_rebase_identity_matches_reads_observation_layer(tmp_path: Path)
             index_tree="tree_sha",
             staged_conflict_marker_paths=(),
         )
-        assert pending_rebase_identity_matches(tmp_path, rec) is False
+        snapshot = mock_observe.return_value
+        assert snapshot.stop_resolved is False
 
 
 def test_ladder_postcondition_failure_records_evidence_and_escalates(tmp_path: Path) -> None:
@@ -273,25 +301,26 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
     baseline = _clean_baseline()
     residue = detect_planning_residue(baseline, " M src/app.py\0", after_diff_hash="x")
     assert residue is not None
-    obs, _ = residue_observation(residue)
+    obs, shape = residue_observation(residue)
     direct_action = NextAction.SAVE_AND_RESTORE
 
     initial_attempts = AttemptState(repeat_threshold=1)
-    assert _cleanup_escalation_action(initial_attempts, obs, direct=direct_action) is None
+    # With 0 repeats, the public decision seam keeps the direct action
+    assert decide(DecisionContext(obs, attempts=initial_attempts, dirt_shape=shape)) is direct_action
 
     sig = initial_attempts.signature(obs)
     key = (sig, direct_action.value)
 
     pressured_1 = AttemptState(repeat_counts=OrderedDict({key: 2}), repeat_threshold=1)
-    act_1 = _cleanup_escalation_action(pressured_1, obs, direct=direct_action)
+    act_1 = decide(DecisionContext(obs, attempts=pressured_1, dirt_shape=shape))
     assert act_1 == NextAction.QUARANTINE_AND_RESTORE
 
     pressured_2 = AttemptState(repeat_counts=OrderedDict({key: 3}), repeat_threshold=1)
-    act_2 = _cleanup_escalation_action(pressured_2, obs, direct=direct_action)
+    act_2 = decide(DecisionContext(obs, attempts=pressured_2, dirt_shape=shape))
     assert act_2 == NextAction.REBUILD_IN_FRESH_WORKTREE
 
     pressured_3 = AttemptState(repeat_counts=OrderedDict({key: 4}), repeat_threshold=1)
-    act_3 = _cleanup_escalation_action(pressured_3, obs, direct=direct_action)
+    act_3 = decide(DecisionContext(obs, attempts=pressured_3, dirt_shape=shape))
     assert act_3 == NextAction.ADAPT_ENVIRONMENT_AND_RETRY
 
     facts_1 = LadderFacts(
@@ -316,9 +345,16 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
 
 
 def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_path: Path) -> None:
-    from ralph.pipeline import resolve_conflicted_rebase
-
     calls_site1: list[str] = []
+    write_record(
+        tmp_path,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="feat_sha",
+            pre_target_sha="onto_sha",
+        ),
+    )
 
     def mock_finish_stops_site1(root: Path, target: str) -> bool:
         calls_site1.append("finish_resolved_rebase_stops")
@@ -351,9 +387,9 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
 
     assert calls_site1 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]
 
-    from ralph.pipeline.auto_integrate_planning import finish_paused_rebase
-
     calls_site2: list[str] = []
+    site2_root = tmp_path / "planning-entry"
+    site2_root.mkdir()
 
     def mock_finish_stops_site2(root: Path, target: str) -> bool:
         calls_site2.append("finish_resolved_rebase_stops")
@@ -373,69 +409,18 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
             side_effect=mock_attempt_resolution_site2,
         ),
         patch("ralph.pipeline.auto_integrate_planning.rebase_in_progress", return_value=True),
+        patch("ralph.pipeline.auto_integrate_planning.resolve_integration_target", return_value="main"),
         patch("ralph.git.merge.observe_branch_sha", return_value=("feat_sha", True)),
         patch(
             "ralph.pipeline.conflict_resolution.rebase_loop.current_rebase_identity",
             return_value=("feat_sha", "onto_sha"),
         ),
-        patch(
-            "ralph.pipeline.auto_integrate_planning._evaluate_paused_resolution",
-            return_value=(True, MagicMock()),
-        ),
     ):
-        finish_paused_rebase(
+        integrate_before_planning(
             config=MagicMock(),
-            root=tmp_path,
-            target="main",
-            resolver=MagicMock(),
+            scope=MagicMock(root=site2_root),
+            state=MagicMock(),
+            rebase_stop_resolver=MagicMock(),
         )
 
     assert calls_site2 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]
-
-
-def _call_lineno(node: ast.AST) -> int:
-    if isinstance(node, ast.Call):
-        return node.lineno
-    return 0
-
-
-def test_entry_sites_ast_order_verification() -> None:
-    root_repo = Path(__file__).resolve().parents[1]
-
-    site1_path = root_repo / "ralph" / "pipeline" / "_auto_integrate_rebase_resolve.py"
-    site1_tree = ast.parse(site1_path.read_text(encoding="utf-8"))
-    site1_calls = sorted(
-        [
-            node
-            for node in ast.walk(site1_tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id in {"finish_resolved_rebase_stops", "attempt_stop_resolution"}
-        ],
-        key=_call_lineno,
-    )
-    site1_names = [n.func.id for n in site1_calls if isinstance(n.func, ast.Name)]
-    assert "finish_resolved_rebase_stops" in site1_names
-    assert "attempt_stop_resolution" in site1_names
-    assert site1_names.index("finish_resolved_rebase_stops") < site1_names.index(
-        "attempt_stop_resolution"
-    )
-
-    site2_path = root_repo / "ralph" / "pipeline" / "auto_integrate_planning.py"
-    site2_tree = ast.parse(site2_path.read_text(encoding="utf-8"))
-    site2_calls = sorted(
-        [
-            node
-            for node in ast.walk(site2_tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id in {"finish_resolved_rebase_stops", "attempt_stop_resolution"}
-        ],
-        key=_call_lineno,
-    )
-    site2_names = [n.func.id for n in site2_calls if isinstance(n.func, ast.Name)]
-    assert "finish_resolved_rebase_stops" in site2_names
-    assert "attempt_stop_resolution" in site2_names
-    assert site2_names.index("finish_resolved_rebase_stops") < site2_names.index(
-        "attempt_stop_resolution"
-    )

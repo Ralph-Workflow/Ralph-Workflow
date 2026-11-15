@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -8,6 +7,7 @@ from ralph.git.merge import observe_unmerged_paths
 from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.checkpoint import load as load_checkpoint
+from ralph.pipeline.conflict_resolution import operator_command_for_paths
 from ralph.pipeline.integration_director import observe as observe_integration
 from ralph.pipeline.integration_observation import (
     InProgressKind,
@@ -45,17 +45,22 @@ def _persisted_integration_status(
     prefix, separator, _detail = reason.partition(":")
     cause = prefix if separator and prefix.isupper() else rebase.last_failure_cause.value
     paths = tuple(rebase.last_conflict_paths)
+    command = (
+        view.command
+        if view is not None
+        else _finish_command(InProgressKind.REBASE, paths)
+    )
     return build_integration_status(
         cause=cause,
         paths_with_reasons=tuple((path, "persisted integration conflict") for path in paths),
-        command=f"git add -- {' '.join(shlex.quote(p) for p in paths)}" if paths else "",
+        command=command,
         agents_can_finish=False,
         done_count=None if view is None else view.done_count,
         remaining_count=None if view is None else view.remaining_count,
         relation=None if view is None or view.relation is None else view.relation.value,
         strategy=(None if view is None or view.decision is None else view.decision.strategy.value),
         strategy_reason=None if view is None or view.decision is None else view.decision.reason,
-        at_risk=() if view is None else view.at_risk,
+        at_risk=() if view is None else tuple(path for path, _reason in view.at_risk),
     )
 
 
@@ -64,13 +69,14 @@ def _status_from_view(view: IntegrationLifecycleView | None) -> IntegrationStatu
         return None
     return build_integration_status(
         cause=view.state_text,
-        command="",
+        paths_with_reasons=view.at_risk,
+        command=view.command,
         done_count=view.done_count,
         remaining_count=view.remaining_count,
         relation=None if view.relation is None else view.relation.value,
         strategy=None if view.decision is None else view.decision.strategy.value,
         strategy_reason=None if view.decision is None else view.decision.reason,
-        at_risk=view.at_risk,
+        at_risk=tuple(path for path, _reason in view.at_risk),
     )
 
 
@@ -81,7 +87,8 @@ class IntegrationLifecycleView:
     decision: StrategyDecision | None
     done_count: int
     remaining_count: int
-    at_risk: tuple[str, ...]
+    command: str
+    at_risk: tuple[tuple[str, str], ...]
 
 
 _RELATION_BY_TARGET_VS_FEATURE: Final[dict[TargetVsFeature, IntegrationRelation]] = {
@@ -90,29 +97,6 @@ _RELATION_BY_TARGET_VS_FEATURE: Final[dict[TargetVsFeature, IntegrationRelation]
     TargetVsFeature.BEHIND: IntegrationRelation.AHEAD,
     TargetVsFeature.DIVERGED: IntegrationRelation.DIVERGED,
 }
-
-
-def _lifecycle_rows(view: IntegrationLifecycleView) -> list[tuple[object, ...]]:
-    rows: list[tuple[object, ...]] = [
-        (
-            "Relation (feature vs target)",
-            view.relation.value if view.relation is not None else "unknown",
-        ),
-        (
-            "Chosen strategy",
-            view.decision.strategy.value if view.decision is not None else "unknown",
-        ),
-        (
-            "Why this strategy",
-            view.decision.reason
-            if view.decision is not None
-            else "no strategy could be chosen from the observed relation",
-        ),
-        ("Done (paths resolved)", str(view.done_count)),
-        ("Remaining (paths unresolved)", str(view.remaining_count)),
-        ("At risk", "\n".join(view.at_risk) or "nothing"),
-    ]
-    return rows
 
 
 def _read_durable_record(workspace_root: Path) -> IntegrationRecord | None:
@@ -158,10 +142,22 @@ def _lifecycle_state_text(
     )
 
 
-def _worktree_risk(observation: Observation) -> tuple[str, ...]:
+def _worktree_risk(observation: Observation) -> tuple[tuple[str, str], ...]:
     if observation.worktree is WorktreeState.TRACKED_CHANGES:
-        return ("uncommitted tracked changes in the worktree",)
+        return (("worktree", "uncommitted tracked changes are not yet preserved"),)
     return ()
+
+
+def _finish_command(in_progress: InProgressKind, paths: tuple[str, ...]) -> str:
+    stage_command = operator_command_for_paths(paths)
+    continuation = {
+        InProgressKind.REBASE: "git rebase --continue",
+        InProgressKind.MERGE: "git merge --continue",
+        InProgressKind.CHERRY_PICK: "git cherry-pick --continue",
+        InProgressKind.REVERT: "git revert --continue",
+        InProgressKind.AM: "git am --continue",
+    }.get(in_progress, "")
+    return " && ".join(part for part in (stage_command, continuation) if part)
 
 
 def _integration_lifecycle_view(workspace_root: Path) -> IntegrationLifecycleView | None:
@@ -212,11 +208,22 @@ def _integration_lifecycle_view(workspace_root: Path) -> IntegrationLifecycleVie
     remaining_paths = unmerged_paths or conflict_paths
     remaining = len(remaining_paths)
     done = max(0, len(conflict_paths) - remaining)
+    at_risk = (
+        tuple(
+            (
+                path,
+                f"unresolved path in paused {observation.in_progress_kind.value} operation",
+            )
+            for path in remaining_paths
+        )
+        or _worktree_risk(observation)
+    )
     return IntegrationLifecycleView(
         state_text=_lifecycle_state_text(record, observation),
         relation=relation,
         decision=decision,
         done_count=done,
         remaining_count=remaining,
-        at_risk=remaining_paths or _worktree_risk(observation),
+        command=_finish_command(observation.in_progress_kind, remaining_paths),
+        at_risk=at_risk,
     )

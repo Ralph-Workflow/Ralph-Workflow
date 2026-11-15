@@ -14,6 +14,7 @@ from ralph.pipeline.conflict_resolution.session import (
     classify_failed_resolution_attempt,
     invoke_resolution_agent,
 )
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
@@ -24,7 +25,13 @@ from tests._conflict_resolution_phase_parity_seams import (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate": (
-        "invoke_resolution_agent returns bool"
+        "the sealed StopResolutionOutcome contract replaces boolean truthiness and deleted resolver-local retry flags"
+    ),
+    "test_one_stop_cannot_exceed_its_configured_invocation_ceiling": (
+        "R0 permits one shared-controller-selected invocation per round rather than resolver-local traversal of every candidate"
+    ),
+    "test_a_failed_attempt_is_charged_to_recovery_exactly_once": (
+        "the shared one-attempt/one-charge contract attributes each failed candidate exactly once"
     ),
 }
 
@@ -106,13 +113,14 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
         )
         is False
     )
-    assert len(called) == 27
+    assert len(called) == 9
+    assert len(called) <= config.conflict_resolution.max_rounds_per_stop
     rounds_spent = max(index for index, _ in called)
     for round_index in range(1, rounds_spent + 1):
         spent = [agent for index, agent in called if index == round_index]
-        assert set(spent) == set(chain), f"round {round_index} spent {spent}"
+        assert len(spent) == 1, f"round {round_index} spent {spent}"
     for agent in chain:
-        assert [a for _, a in called].count(agent) == 9
+        assert [a for _, a in called].count(agent) == 3
 
 
 def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
@@ -168,8 +176,7 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
         )
         is False
     )
-    assert charged.count("one") > 1
-    assert "two" in charged
+    assert charged == ["one", "two"]
 
 
 def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
@@ -194,7 +201,7 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
     prompt.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
 
-    assert not invoke_resolution_agent(
+    outcome = invoke_resolution_agent(
         agent_name="claude",
         prompt_path=prompt,
         config=_config(),
@@ -205,9 +212,11 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
         display_context=None,
         session=session,
     )
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change == "resolver_agent_eligibility_changed"
+    assert outcome.until is None
     assert session.last_attempt_failure == "conflict attempt failed"
     assert session.last_attempt_evidence != "PiProviderFailureExitError"
-    assert session.skip_same_agent_retries is False
 
 
 def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(

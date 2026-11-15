@@ -6,7 +6,7 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from loguru import logger
@@ -62,17 +62,21 @@ __all__ = [
     "commit_file",
     "corrupted_config",
     "git",
+    "paused_declared_decisions_and_gitlink_rebase",
     "paused_multi_commit_empty_stop_rebase",
     "paused_multi_commit_first_stop_rebase",
     "paused_text_and_gitlink_rebase",
     "paused_text_rebase",
     "run_completed_rebase_promotion",
     "run_corrupted_config",
+    "run_declared_decisions_and_gitlink_resolution",
     "run_detached_head_probe_quietness",
     "run_empty_resolution_stop",
+    "run_gate_quiescence_ticks",
     "run_marker_resolution",
     "run_marker_resolution_bounded",
     "run_multi_commit_empty_stop_recovery",
+    "run_sixth_symptom_landing",
     "run_spent_chain_fall_over_then_wait",
     "run_spent_gate",
     "run_unstaged_text_resolution",
@@ -209,11 +213,8 @@ def shared_executor_seam(runner: FakeAgentRunner | None) -> Iterator[None]:
         reset_agent_effect_dependencies(token)
 
 
-def test_shared_executor_seam_injects_runner_and_shared_controller(tmp_path: Path) -> None:
-    from ralph.pipeline._stop_resolution_entry import compute_resolution_attempt_key
-    from ralph.pipeline.auto_integrate_record import IntegrationRecord
+def test_shared_executor_seam_injects_runner_and_shared_controller() -> None:
     from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
     with shared_executor_seam(runner):
@@ -223,20 +224,10 @@ def test_shared_executor_seam_injects_runner_and_shared_controller(tmp_path: Pat
         dependencies.recovery_controller.register_phase_chain(
             "rebase_conflict_resolution", ("shared-controller-agent",)
         )
-        key = compute_resolution_attempt_key(
-            tmp_path,
-            IntegrationRecord(
-                phase="integrating",
-                target="main",
-                pre_feature_sha="feature",
-                pre_target_sha="target",
-            ),
-            stop_identity="stop",
-            config_fingerprint="config",
-        )
 
-    assert isinstance(key, ResolutionAttemptKey)
-    assert tuple(key) == ("stop", ("shared-controller-agent",), "config")
+    assert dependencies.recovery_controller.agents_for_phase(
+        "rebase_conflict_resolution"
+    ) == ("shared-controller-agent",)
 
 
 @contextmanager
@@ -258,6 +249,21 @@ def capture_operator_lines(display: ScenarioDisplay | None = None) -> Iterator[l
         logger.remove(sink_id)
         if display is not None:
             lines.extend(display.lines)
+
+
+@contextmanager
+def _capture_log_records() -> Iterator[list[tuple[str, str]]]:
+    records: list[tuple[str, str]] = []
+
+    def sink(message: object) -> None:
+        record = getattr(message, "record", {})
+        records.append((str(record.get("name", "")), str(record.get("message", ""))))
+
+    sink_id = logger.add(sink, level="DEBUG", format="{message}")
+    try:
+        yield records
+    finally:
+        logger.remove(sink_id)
 
 
 def paused_text_rebase(root: Path) -> None:
@@ -286,21 +292,37 @@ def paused_multi_commit_first_stop_rebase(root: Path, commit_count: int = 3) -> 
         raise AssertionError("multi-commit fixture did not pause in a conflicted rebase")
 
 
-def paused_text_and_gitlink_rebase(root: Path) -> None:
+def _gitlink_stage_shas(root: Path, path: str = "vendor/link") -> tuple[str, str, str]:
+    entries: dict[int, str] = {}
+    for line in git(root, "ls-files", "-u", "--", path).splitlines():
+        metadata, _separator, _relative = line.partition("\t")
+        fields = metadata.split()
+        if len(fields) == 3:
+            entries[int(fields[2])] = fields[1]
+    s1, s2, s3 = entries.get(1, ""), entries.get(2, ""), entries.get(3, "")
+    if not (s1 and s2 and s3):
+        raise AssertionError(f"expected three gitlink stages for {path}, got {(s1, s2, s3)}")
+    return (s1, s2, s3)
+
+
+def paused_text_and_gitlink_rebase(root: Path) -> tuple[str, str, str]:
     base_oid = git(root, "rev-parse", "HEAD")
     feature_oid = git(root, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "feature link")
     target_oid = git(root, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "target link")
     commit_file(root, "shared.txt", "base\n", "mixed base text")
+    commit_file(root, "second.txt", "base second\n", "mixed second base text")
     git(root, "update-index", "--add", "--cacheinfo", f"160000,{base_oid},vendor/link")
     git(root, "commit", "-q", "-m", "mixed base link")
     git(root, "checkout", "-q", "-b", "feature")
     (root / "shared.txt").write_text("feature\n", encoding="utf-8")
-    git(root, "add", "shared.txt")
+    (root / "second.txt").write_text("feature second\n", encoding="utf-8")
+    git(root, "add", "shared.txt", "second.txt")
     git(root, "update-index", "--cacheinfo", f"160000,{feature_oid},vendor/link")
     git(root, "commit", "-q", "-m", "feature mixed change")
     git(root, "checkout", "-q", "main")
     (root / "shared.txt").write_text("target\n", encoding="utf-8")
-    git(root, "add", "shared.txt")
+    (root / "second.txt").write_text("target second\n", encoding="utf-8")
+    git(root, "add", "shared.txt", "second.txt")
     git(root, "update-index", "--cacheinfo", f"160000,{target_oid},vendor/link")
     git(root, "commit", "-q", "-m", "target mixed change")
     git(root, "checkout", "-q", "feature")
@@ -320,6 +342,42 @@ def paused_text_and_gitlink_rebase(root: Path) -> None:
     )
     if not rebase_in_progress(root):
         raise AssertionError("mixed scenario fixture did not pause in a conflicted rebase")
+    return _gitlink_stage_shas(root)
+
+
+def paused_declared_decisions_and_gitlink_rebase(root: Path) -> tuple[str, str, str]:
+    base_oid = git(root, "rev-parse", "HEAD")
+    feature_oid = git(root, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "feature link")
+    target_oid = git(root, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "target link")
+    commit_file(root, "deleted.txt", "base delete/modify\n", "declared base")
+    commit_file(root, "docs/decision.md", "base decision\n", "decision base")
+    git(root, "update-index", "--add", "--cacheinfo", f"160000,{base_oid},vendor/link")
+    git(root, "commit", "-q", "-m", "declared gitlink base")
+    git(root, "checkout", "-q", "-b", "feature")
+    (root / "deleted.txt").write_text("feature keeps file\n", encoding="utf-8")
+    (root / "docs/decision.md").write_text("feature decision\n", encoding="utf-8")
+    git(root, "add", "deleted.txt", "docs/decision.md")
+    git(root, "update-index", "--cacheinfo", f"160000,{feature_oid},vendor/link")
+    git(root, "commit", "-q", "-m", "feature declared set")
+    git(root, "checkout", "-q", "main")
+    git(root, "rm", "-q", "deleted.txt")
+    (root / "docs/decision.md").write_text("target decision\n", encoding="utf-8")
+    git(root, "add", "docs/decision.md")
+    git(root, "update-index", "--cacheinfo", f"160000,{target_oid},vendor/link")
+    git(root, "commit", "-q", "-m", "target declared set")
+    git(root, "checkout", "-q", "feature")
+    git(root, "rebase", "main", check=False)
+    (root / "docs/decision.md").write_text("declared decision\n", encoding="utf-8")
+    index_info = (
+        f"160000 {base_oid} 1\tvendor/link\n"
+        f"160000 {target_oid} 2\tvendor/link\n"
+        f"160000 {feature_oid} 3\tvendor/link\n"
+    )
+    subprocess.run(("git", "update-index", "--index-info"), input=index_info, cwd=root,
+                   text=True, check=True, capture_output=True)
+    if not rebase_in_progress(root):
+        raise AssertionError("declared-decision fixture did not pause")
+    return _gitlink_stage_shas(root)
 
 
 def paused_multi_commit_empty_stop_rebase(root: Path) -> None:
@@ -473,6 +531,260 @@ def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
         succeeded = _resolution_succeeded(outcome)
     terminal = "resolved" if succeeded and not rebase_in_progress(root) else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
+
+
+def run_sixth_symptom_landing(root: Path) -> ScenarioResult:
+    from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.integration_owner import load_integration_attempts
+    from tests.scenarios._content_equivalence import assert_content_equivalence
+
+    target_before = git(root, "rev-parse", "main")
+    stages = paused_text_and_gitlink_rebase(root)
+    feature_sha = git(root, "rev-parse", "feature")
+    runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
+    with shared_executor_seam(runner), capture_operator_lines() as lines, _capture_log_records() as logs:
+        outcome = attempt_stop_resolution(
+            "scenario-sixth-symptom",
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=root,
+                target="main",
+                resolver=runner,
+                conflict_config=scenario_config().conflict_resolution,
+                force_retry=True,
+            ),
+        )
+        completed_head = git(root, "rev-parse", "HEAD")
+        completed_record = read_record(root)
+        state = integrate_before_planning(
+            scenario_config(),
+            WorkspaceScope(root),
+            RebaseState(),
+            conflict_resolver=lambda _root, _target: False,
+            rebase_stop_resolver=runner,
+        )
+        launches_after_landing = runner.launches
+        selections_after_landing_start = len(
+            [record for record in logs if "preferred_agent_index" in record[0]]
+        )
+        quiet_lines: list[OperatorLine] = []
+        for _ in range(10):
+            with capture_operator_lines() as tick_lines:
+                integrate_before_planning(
+                    scenario_config(),
+                    WorkspaceScope(root),
+                    RebaseState(),
+                    conflict_resolver=lambda _root, _target: False,
+                    rebase_stop_resolver=runner,
+                )
+            quiet_lines.extend(tick_lines)
+    head = git(root, "rev-parse", "HEAD")
+    target = git(root, "rev-parse", "main")
+    equivalence = assert_content_equivalence(
+        root,
+        contract="the sixth-symptom recovery must preserve feature and target content",
+        feature=feature_sha,
+        source_refs=(target_before,),
+        excluded_paths=("vendor/link",),
+    )
+    policy_lines = [content for _name, content in logs if "gitlink policy path=vendor/link" in content]
+    post_landing_selections = [
+        record for record in logs if "preferred_agent_index" in record[0]
+    ][selections_after_landing_start:]
+    attempts = load_integration_attempts(root)
+    repeated_pairs = [
+        f"{signature}|{action}:{count}"
+        for (signature, action), count in attempts.repeat_counts.items()
+        if count > attempts.repeat_threshold
+    ]
+    terminal = (
+        "landed"
+        if _resolution_succeeded(outcome)
+        and head == target
+        and state is not None
+        and equivalence.satisfied
+        else "retained"
+    )
+    return ScenarioResult(
+        runner.launches,
+        tuple(lines),
+        terminal,
+        {
+            "stage_shas": ",".join(stages),
+            "policy_lines": "\n".join(policy_lines),
+            "completed_head": completed_head,
+            "integrated_feature_sha": (
+                "" if completed_record is None else str(completed_record.integrated_feature_sha or "")
+            ),
+            "head": head,
+            "target": target,
+            "launches_after_landing": str(runner.launches - launches_after_landing),
+            "lines_after_landing": str(len(quiet_lines)),
+            "post_landing_selections": str(len(post_landing_selections)),
+            "repeated_pairs": "\n".join(repeated_pairs),
+        },
+    )
+
+
+def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
+    from ralph.display.context import make_display_context
+    from ralph.pipeline.conflict_resolution import (
+        RebaseStop,
+        run_rebase_conflict_resolution_outcome,
+    )
+    from ralph.pipeline.conflict_resolution.prompt import materialize_round_prompt
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.pipeline.factory import PipelineDeps
+    from ralph.policy.loader import default_dir, load_policy
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+    from tests.scenarios._content_equivalence import assert_content_equivalence
+
+    target_before = git(root, "rev-parse", "main")
+    stages = paused_declared_decisions_and_gitlink_rebase(root)
+    feature_sha = git(root, "rev-parse", "feature")
+    policy = load_policy(default_dir())
+    controller = RecoveryController(options=RecoveryControllerOptions())
+    session = ResolutionSession(recovery_controller=controller, ledger=controller.ledger)
+    display = ScenarioDisplay()
+    prompted: list[tuple[str, ...]] = []
+    invoked: list[str] = []
+
+    def invoke(agent_name: str, _prompt_path: Path, round_index: int) -> bool:
+        invoked.append(f"{agent_name}:{round_index}")
+        return True
+
+    def materializer(**kwargs: Any) -> Path | None:
+        raw_paths = kwargs.get("conflicted_paths", ())
+        if isinstance(raw_paths, (list, tuple)):
+            prompted.append(tuple(str(path) for path in raw_paths))
+        return materialize_round_prompt(**kwargs)
+
+    stop = RebaseStop(
+        sha=git(root, "rev-parse", "REBASE_HEAD"),
+        subject="feature declared set",
+        conflicted_files=("deleted.txt", "docs/decision.md", "vendor/link"),
+        stop_index=1,
+        stop_cap=4,
+    )
+    deps = PipelineDeps(
+        display_context=make_display_context(),
+        recovery_controller=controller,
+        policy_bundle=policy,
+    )
+    with capture_operator_lines(display) as driver_lines:
+        driver_outcome = run_rebase_conflict_resolution_outcome(
+            root=root,
+            target="main",
+            stop=stop,
+            config=scenario_config(),
+            pipeline_deps=deps,
+            workspace_scope=WorkspaceScope(root),
+            policy_bundle=policy,
+            display=display,
+            display_context=None,
+            invoke=invoke,
+            session=session,
+            prompt_materializer=materializer,
+        )
+    runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
+    with shared_executor_seam(runner), capture_operator_lines() as landing_lines, _capture_log_records() as logs:
+        state = integrate_before_planning(
+            scenario_config(),
+            WorkspaceScope(root),
+            RebaseState(),
+            conflict_resolver=lambda _root, _target: False,
+            rebase_stop_resolver=runner,
+        )
+    head = git(root, "rev-parse", "HEAD")
+    target = git(root, "rev-parse", "main")
+    equivalence = assert_content_equivalence(
+        root,
+        contract="mixed declared-decision and policy paths must land without content loss",
+        feature=feature_sha,
+        source_refs=(target_before,),
+        excluded_paths=("vendor/link",),
+    )
+    policy_lines = [content for _name, content in logs if "gitlink policy path=vendor/link" in content]
+    all_lines = (*driver_lines, *landing_lines)
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
+
+    terminal = (
+        "landed"
+        if not isinstance(driver_outcome, ResolvedOutcome)
+        and head == target
+        and state is not None
+        and equivalence.satisfied
+        else "retained"
+    )
+    return ScenarioResult(
+        runner.launches,
+        all_lines,
+        terminal,
+        {
+            "stage_shas": ",".join(stages),
+            "policy_lines": "\n".join(policy_lines),
+            "prompted_paths": ",".join(prompted[0] if prompted else ()),
+            "driver_invocations": str(len(invoked)),
+            "driver_resolved": str(isinstance(driver_outcome, ResolvedOutcome)).lower(),
+            "head": head,
+            "target": target,
+        },
+    )
+def run_gate_quiescence_ticks(root: Path) -> ScenarioResult:
+    from ralph.agents.timeout_clock import FakeClock
+
+    clock = FakeClock(start=1000.0)
+    runner = FakeAgentRunner(AgentMode.PROVIDER_FAILURE, clock=clock)
+
+    class _IntegrationClock:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def monotonic(self) -> float:
+            return clock.monotonic()
+
+        def epoch(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    paused_text_rebase(root)
+    token = install_executors(agent_runner=runner, clock=_IntegrationClock())
+    all_lines: list[OperatorLine] = []
+    try:
+        with shared_executor_seam(runner):
+            with capture_operator_lines() as first:
+                integrate_before_planning(
+                    scenario_config(), WorkspaceScope(root), RebaseState(),
+                    conflict_resolver=lambda _root, _target: False, rebase_stop_resolver=runner,
+                )
+            all_lines.extend(first)
+            launches_before_gate = runner.launches
+            for _ in range(11):
+                clock.advance(1.0)
+                with capture_operator_lines() as tick:
+                    integrate_before_planning(
+                        scenario_config(), WorkspaceScope(root), RebaseState(),
+                        conflict_resolver=lambda _root, _target: False,
+                        rebase_stop_resolver=runner,
+                    )
+                all_lines.extend(tick)
+    finally:
+        reset_executors(token)
+    waiting = [line.content for line in all_lines if "waiting:" in line.content.lower()]
+    gate = [line.content for line in all_lines if "gate active" in line.content.lower()]
+    return ScenarioResult(
+        runner.launches - launches_before_gate,
+        tuple(all_lines),
+        "quiescent" if rebase_in_progress(root) else "resolved",
+        {
+            "waiting_lines": "\n".join(waiting),
+            "waiting_count": str(len(waiting)),
+            "gate_lines": "\n".join(gate),
+            "gate_count": str(len(gate)),
+        },
+    )
 
 
 def run_marker_resolution(root: Path) -> ScenarioResult:

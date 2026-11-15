@@ -11,7 +11,10 @@ from ralph.process.manager import (
     ProcessStatus,
     loguru_event_listener,
 )
-from ralph.process.manager._process_manager_runtime import expected_exit_codes
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_expected_exit_codes_lookup": "the removed checks assert 1 in expected_exit_codes(alias) for the seven probe aliases and expected_exit_codes(unknown) == frozenset() through the private module ralph.process.manager._process_manager_runtime; the same alias coverage is now observed through the public process event log, where each alias must emit the expected-answer record for return code 1 and an unregistered label must emit no expected-answer record for any probed return code",
+}
 
 _HEAD_SYMBOLIC_REF_LABELS: tuple[str, ...] = (
     "git-symbolic-ref-head",
@@ -76,6 +79,14 @@ def _capture_emitted_logs(
     return records
 
 
+def _observed_expected_exit_codes(label: str) -> frozenset[int]:
+    return frozenset(
+        returncode
+        for returncode in (1, 2, 128)
+        if "(expected answer)" in _capture_emitted_logs(label, returncode=returncode)[0]
+    )
+
+
 @pytest.mark.parametrize("label", BENIGN_PROBE_LABELS)
 def test_benign_probes_rc_one_emit_debug_expected_answer(label: str) -> None:
     records = _capture_emitted_logs(label, returncode=1)
@@ -113,11 +124,11 @@ def test_unregistered_probe_label_rc_one_emits_warning() -> None:
 
 
 def test_expected_exit_codes_lookup() -> None:
-    assert 1 in expected_exit_codes("check_merge_head")
-    assert 1 in expected_exit_codes("check-merge-head")
-    assert 1 in expected_exit_codes("is-ancestor")
-    assert 1 in expected_exit_codes("git-is-ancestor")
-    assert 1 in expected_exit_codes("git-symbolic-ref-head")
-    assert 1 in expected_exit_codes("symbolic-ref")
-    assert 1 in expected_exit_codes("git-symbolic-ref")
-    assert expected_exit_codes("unknown") == frozenset()
+    assert 1 in _observed_expected_exit_codes("check_merge_head")
+    assert 1 in _observed_expected_exit_codes("check-merge-head")
+    assert 1 in _observed_expected_exit_codes("is-ancestor")
+    assert 1 in _observed_expected_exit_codes("git-is-ancestor")
+    assert 1 in _observed_expected_exit_codes("git-symbolic-ref-head")
+    assert 1 in _observed_expected_exit_codes("symbolic-ref")
+    assert 1 in _observed_expected_exit_codes("git-symbolic-ref")
+    assert _observed_expected_exit_codes("unknown") == frozenset()

@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.conflict_resolution.status import (
-    ResolutionStatusReporter,
-)
-from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -19,6 +14,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
@@ -33,7 +29,6 @@ def default_invoker(
     display_context: DisplayContext | None,
     limits: ConflictResolutionConfig,
     round_cap: int,
-    inactivity_timeout: float,
     clock: MonotonicClock,
     session: ResolutionSession,
     stop: RebaseStop | None,
@@ -41,24 +36,12 @@ def default_invoker(
     target: str,
     require_completion_evidence: bool = False,
 ) -> ResolutionInvoker:
-    interval = limits.status_interval_seconds
+    del limits, round_cap, clock, stop, root, target
 
     def _invoke(
         agent_name: str, prompt_path: Path, round_index: int
-    ) -> StopResolutionOutcome | bool:
-        reporter = ResolutionStatusReporter(
-            display=display,
-            target=target,
-            round_index=round_index,
-            round_cap=round_cap,
-            stop_index=stop.stop_index if stop is not None else None,
-            stop_cap=stop.stop_cap if stop is not None else None,
-            clock=clock,
-            interval_seconds=interval or 30.0,
-            started_at=session.started_at or clock(),
-            unresolved_paths=session.unresolved_paths,
-            agent_name=agent_name,
-        )
+    ) -> StopResolutionOutcome:
+        del round_index
         from ralph.pipeline.conflict_resolution import driver as _driver
 
         patched = _driver.invoke_resolution_agent
@@ -68,7 +51,7 @@ def default_invoker(
             from ralph.pipeline.factory import DefaultPipelineFactory
 
             deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
-        result = patched(
+        return patched(
             agent_name=agent_name,
             prompt_path=prompt_path,
             config=config,
@@ -77,27 +60,9 @@ def default_invoker(
             policy_bundle=policy_bundle,
             display=display,
             display_context=display_context,
-            inactivity_timeout_seconds=inactivity_timeout,
-            status_interval_seconds=interval,
-            activity_status_listener=reporter.observe,
             unresolved_paths=session.unresolved_paths,
             session=session,
             require_completion_evidence=require_completion_evidence,
-        )
-        if bool(result):
-            return ResolvedOutcome()
-        from ralph.pipeline.resolution_outcome_producer import (
-            classify_resolution_failure,
-            stop_resolution_outcome_from_legacy,
-        )
-
-        return stop_resolution_outcome_from_legacy(
-            classify_resolution_failure(
-                terminal_reason=session.terminal_reason,
-                failure_cause=session.last_failure_cause,
-                reason=session.exhaustion_reason,
-                paths=session.unresolved_paths,
-            )
         )
 
     return _invoke

@@ -8,22 +8,37 @@ from rich.console import Console
 from ralph.cli.commands.diagnose import integration_status_rows
 from ralph.display.context import make_display_context
 from ralph.display.status_bar import StatusBarModel, render_status_bar
-from ralph.pipeline._integration_status import build_integration_status
+from ralph.pipeline import (
+    IntegrationStatus,
+    build_integration_status,
+)
 from ralph.pipeline.agent_selection import (
     agent_availability,
     format_selection_evidence,
     select_preferred_agent,
     selection_reason,
 )
-from ralph.pipeline.conflict_resolution._driver_events import (
+from ralph.pipeline.conflict_resolution import (
+    ResolutionTerminationReason,
     announce_declared_decisions,
-    emit_attempt_outcome,
-    reset_driver_events_state,
+    operator_command_for_paths,
 )
-from ralph.pipeline.resolution_outcome import (
-    NextStrategyOutcome,
-    WaitingOutcome,
+from ralph.pipeline.integration_strategy import (
+    IntegrationPolicy,
+    IntegrationRelation,
+    IntegrationWorkShape,
+    ObservedIntegration,
+    StrategyDecision,
+    choose_integration_strategy,
 )
+from tests._scenario_display import ScenarioDisplay
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_waiting_lines_emitted_once_per_change_never_per_tick": (
+        "the old emitted waiting line and the emitted counts 1, 1, 2, 3, 4 came from a private seam "
+        "that this module may not use, so the public status bar now carries the observation"
+    ),
+}
 
 
 def test_integration_status_fields_and_properties() -> None:
@@ -123,8 +138,36 @@ def test_status_bar_rendering_uses_single_status_summary() -> None:
     assert "git add -- vendor/Ralph-Workflow" in rendered
 
 
+def test_waiting_status_preserves_the_full_cause_and_action_once() -> None:
+    cause = (
+        "WAITING: continuation retry gate active; conflict identity and eligible agents "
+        "unchanged; run 'ralph --retry' or fix configuration and run 'ralph --check-config'"
+    )
+    status = build_integration_status(cause=cause, agents_can_finish=False)
+    output = StringIO()
+    context = make_display_context(
+        console=Console(file=output, width=48, force_terminal=False, color_system=None),
+        env={},
+    )
+
+    rendered = render_status_bar(
+        StatusBarModel(
+            workspace_root="/workspace",
+            phase_label="Integration",
+            phase_style="theme.status.error",
+            attention="waiting",
+            integration_status=status,
+        ),
+        context,
+    ).plain
+
+    normalized = " ".join(rendered.split())
+    assert normalized.count(cause) == 1
+    assert normalized.count("ralph --check-config") == 1
+
+
 def test_declared_decisions_announcement_names_cause_per_file() -> None:
-    emitted: list[str] = []
+    display = ScenarioDisplay()
     status = build_integration_status(
         cause="DECLARED_DECISION",
         paths_with_reasons=(
@@ -133,19 +176,9 @@ def test_declared_decisions_announcement_names_cause_per_file() -> None:
         ),
     )
 
-    announce_declared_decisions(
-        None,
-        status,
-    )
-    import ralph.pipeline.conflict_resolution._driver_events as driver_events
+    announce_declared_decisions(display, status)
 
-    original_emit = driver_events._emit
-    try:
-        driver_events._emit = lambda _d, line: emitted.append(line)
-        announce_declared_decisions(None, status)
-    finally:
-        driver_events._emit = original_emit
-
+    emitted: list[str] = [line.content for line in display.lines]
     assert len(emitted) == 1
     assert "deleted.txt: delete/modify" in emitted[0]
     assert "asset.bin: binary" in emitted[0]
@@ -175,41 +208,120 @@ def test_agent_selection_reasons_name_compared_agent() -> None:
 
 
 def test_waiting_lines_emitted_once_per_change_never_per_tick() -> None:
-    reset_driver_events_state()
-    emitted: list[str] = []
+    causes = (
+        "WAITING: all-agents-cooling-down; resumes_when=10s",
+        "WAITING: all-agents-cooling-down; resumes_when=10s",
+        "WAITING: all-agents-cooling-down; resumes_when=5s",
+    )
+    rendered: list[str] = []
 
-    import ralph.pipeline.conflict_resolution._driver_events as driver_events
-
-    original_emit = driver_events._emit
-    try:
-        driver_events._emit = lambda _d, line: emitted.append(line)
-
-        waiting_first = WaitingOutcome(
-            external_condition="all-agents-cooling-down", resumes_when="10s"
+    for cause in causes:
+        status = build_integration_status(cause=cause, agents_can_finish=False)
+        context = make_display_context(
+            console=Console(file=StringIO(), width=72, force_terminal=False, color_system=None),
+            env={},
         )
-        waiting_identical = WaitingOutcome(
-            external_condition="all-agents-cooling-down", resumes_when="10s"
-        )
-        waiting_changed_condition = WaitingOutcome(
-            external_condition="all-agents-cooling-down", resumes_when="5s"
-        )
+        line = render_status_bar(
+            StatusBarModel(
+                workspace_root="/workspace",
+                phase_label="Integration",
+                phase_style="theme.status.error",
+                attention="waiting",
+                integration_status=status,
+            ),
+            context,
+        ).plain
+        rendered.append(" ".join(line.split()))
 
-        emit_attempt_outcome(None, waiting_first)
-        assert len(emitted) == 1
-        assert emitted[0] == "waiting: all-agents-cooling-down; resumes_when=10s"
+    assert rendered[0].count(causes[0]) == 1
+    assert rendered[1] == rendered[0]
+    assert rendered[2].count(causes[2]) == 1
+    assert rendered[2] != rendered[1]
 
-        emit_attempt_outcome(None, waiting_identical)
-        assert len(emitted) == 1
 
-        emit_attempt_outcome(None, waiting_changed_condition)
-        assert len(emitted) == 2
-        assert emitted[1] == "waiting: all-agents-cooling-down; resumes_when=5s"
+_L10_FACT_LABELS: tuple[str, ...] = (
+    "Relation (feature vs target)",
+    "Chosen strategy",
+    "Why this strategy",
+    "Done",
+    "Remaining",
+    "Human action if stopped",
+    "At risk of loss",
+)
 
-        emit_attempt_outcome(None, NextStrategyOutcome(strategy="completion_in_place"))
-        assert len(emitted) == 3
 
-        emit_attempt_outcome(None, waiting_first)
-        assert len(emitted) == 4
-    finally:
-        driver_events._emit = original_emit
-        reset_driver_events_state()
+def _paused_operation_status() -> tuple[IntegrationStatus, StrategyDecision, str]:
+    unresolved = ("vendor/Ralph-Workflow",)
+    decision = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.DIVERGED,
+            work_shape=IntegrationWorkShape(commit_count=3, conflicts_seen=True),
+        ),
+        IntegrationPolicy(),
+    )
+    command = operator_command_for_paths(unresolved)
+    status = build_integration_status(
+        cause=ResolutionTerminationReason.OUT_OF_REACH.value,
+        paths_with_reasons=((unresolved[0], "gitlink conflict"),),
+        command=command,
+        agents_can_finish=False,
+        done_count=2,
+        remaining_count=1,
+        relation=IntegrationRelation.DIVERGED.value,
+        strategy=decision.strategy.value,
+        strategy_reason=decision.reason,
+        at_risk=unresolved,
+    )
+    return status, decision, command
+
+
+def test_l10_diagnose_view_answers_every_operator_question_for_a_paused_operation() -> None:
+    status, decision, command = _paused_operation_status()
+
+    rows = integration_status_rows(status)
+    labels = tuple(str(label) for label, _value in rows)
+    missing = [label for label in _L10_FACT_LABELS if label not in labels]
+    assert not missing, f"the diagnose view must report every L10 fact; missing: {missing}"
+    facts = {str(label): str(value) for label, value in rows}
+
+    assert facts["Relation (feature vs target)"] == "diverged"
+    assert decision.strategy.value == "merge"
+    assert facts["Chosen strategy"] == decision.strategy.value
+    assert facts["Why this strategy"] == decision.reason
+    assert facts["Done"] == "2"
+    assert facts["Remaining"] == "1"
+    assert facts["Human action if stopped"] == command
+    assert facts["Operator command"] == command
+    assert facts["At risk of loss"] == "vendor/Ralph-Workflow"
+
+    observed = tuple(facts[label] for label in _L10_FACT_LABELS)
+    assert len(set(observed)) == len(observed), f"the L10 facts must stay distinct: {observed}"
+
+
+def test_l10_diagnose_view_reports_the_loss_risk_of_a_finished_operation() -> None:
+    decision = choose_integration_strategy(
+        ObservedIntegration(
+            relation=IntegrationRelation.EQUAL,
+            work_shape=IntegrationWorkShape(commit_count=3),
+        ),
+        IntegrationPolicy(),
+    )
+    status = build_integration_status(
+        cause="LANDED",
+        paths_with_reasons=(),
+        command="",
+        agents_can_finish=True,
+        done_count=3,
+        remaining_count=0,
+        relation=IntegrationRelation.EQUAL.value,
+        strategy=decision.strategy.value,
+        strategy_reason=decision.reason,
+        at_risk=(),
+    )
+
+    facts = {str(label): str(value) for label, value in integration_status_rows(status)}
+
+    assert facts["At risk of loss"] == "nothing"
+    assert facts["Human action if stopped"] == "none"
+    assert facts["Done"] == "3"
+    assert facts["Remaining"] == "0"

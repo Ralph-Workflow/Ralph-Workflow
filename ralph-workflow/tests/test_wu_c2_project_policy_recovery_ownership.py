@@ -18,7 +18,10 @@ from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
+
+    from ralph.project_policy.analysis import InvokePolicyAgent
 
 
 class _Controller:
@@ -32,8 +35,36 @@ class _Controller:
         return SimpleNamespace(agent=selected)
 
 
-def _patch_chain_agents(monkeypatch: pytest.MonkeyPatch) -> None:
+def _make_invoke_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    controller: object,
+    run_attempt: Callable[..., object],
+    run_id: str,
+) -> InvokePolicyAgent:
+    monkeypatch.setattr(
+        cli_integration,
+        "build_entry_point_recovery_controller",
+        lambda *args, **kwargs: controller,
+    )
     monkeypatch.setattr(cli_integration, "_resolve_chain_agents", lambda *args: ["first", "second"])
+    monkeypatch.setattr(cli_integration, "run_agent_attempt", run_attempt)
+    scope = WorkspaceScope(tmp_path)
+    load_result = LoadResult(
+        config=UnifiedConfig(),
+        workspace_scope=scope,
+        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
+        policy_bundle=load_policy(default_dir()),
+        run_id=run_id,
+    )
+    display_context = make_display_context()
+    return cli_integration._make_production_invoke_agent(
+        load_result,
+        PipelineDeps(display_context=display_context),
+        scope,
+        None,
+        display_context,
+    )
 
 
 def test_wu_c2_project_policy_regression_fallback_is_controller_selected_without_local_skip_state(
@@ -42,13 +73,6 @@ def test_wu_c2_project_policy_regression_fallback_is_controller_selected_without
 ) -> None:
     controller = _Controller()
     launched: list[str] = []
-
-    monkeypatch.setattr(
-        cli_integration,
-        "build_entry_point_recovery_controller",
-        lambda *args, **kwargs: controller,
-    )
-    _patch_chain_agents(monkeypatch)
 
     def run_attempt(*args: object, **kwargs: object) -> object:
         del args
@@ -65,23 +89,7 @@ def test_wu_c2_project_policy_regression_fallback_is_controller_selected_without
             )
         )
 
-    monkeypatch.setattr(cli_integration, "run_agent_attempt", run_attempt)
-    scope = WorkspaceScope(tmp_path)
-    load_result = LoadResult(
-        config=UnifiedConfig(),
-        workspace_scope=scope,
-        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
-        policy_bundle=load_policy(default_dir()),
-        run_id="wu-c2",
-    )
-    display_context = make_display_context()
-    invoke = cli_integration.make_production_invoke_agent(
-        load_result,
-        PipelineDeps(display_context=display_context),
-        scope,
-        None,
-        display_context,
-    )
+    invoke = _make_invoke_agent(monkeypatch, tmp_path, controller, run_attempt, "wu-c2")
 
     assert invoke(phase=PHASE_REMEDIATION, prompt_path=str(tmp_path / "PROMPT.md")) is False
     assert invoke(phase=PHASE_REMEDIATION, prompt_path=str(tmp_path / "PROMPT.md")) is True
@@ -124,12 +132,6 @@ def test_wu_c2_project_policy_wait_regression_all_cooled_uses_shared_wait_path(
 ) -> None:
     controller = _CoolingController()
     launched: list[str] = []
-    monkeypatch.setattr(
-        cli_integration,
-        "build_entry_point_recovery_controller",
-        lambda *args, **kwargs: controller,
-    )
-    _patch_chain_agents(monkeypatch)
 
     def run_attempt(*args: object, **kwargs: object) -> object:
         del args
@@ -138,23 +140,7 @@ def test_wu_c2_project_policy_wait_regression_all_cooled_uses_shared_wait_path(
         launched.append(effect.agent_name)
         return SimpleNamespace(outcome=SimpleNamespace(kind=AttemptOutcomeKind.COMPLETED))
 
-    monkeypatch.setattr(cli_integration, "run_agent_attempt", run_attempt)
-    scope = WorkspaceScope(tmp_path)
-    load_result = LoadResult(
-        config=UnifiedConfig(),
-        workspace_scope=scope,
-        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
-        policy_bundle=load_policy(default_dir()),
-        run_id="wu-c2-wait",
-    )
-    display_context = make_display_context()
-    invoke = cli_integration.make_production_invoke_agent(
-        load_result,
-        PipelineDeps(display_context=display_context),
-        scope,
-        None,
-        display_context,
-    )
+    invoke = _make_invoke_agent(monkeypatch, tmp_path, controller, run_attempt, "wu-c2-wait")
 
     assert invoke(phase=PHASE_REMEDIATION, prompt_path=str(tmp_path / "PROMPT.md")) is True
     assert controller.wait_calls == [(PHASE_REMEDIATION, ("first", "second"))]

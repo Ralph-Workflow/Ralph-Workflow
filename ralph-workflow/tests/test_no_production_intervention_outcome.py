@@ -76,7 +76,7 @@ _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "import of the retired transition name for re-export via __all__ (legacy parsing surface)",
     ),
-    ("pipeline/auto_integrate_record.py", 706): (
+    ("pipeline/auto_integrate_record.py", 762): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ re-export of the retired transition name (parsing surface)",
     ),

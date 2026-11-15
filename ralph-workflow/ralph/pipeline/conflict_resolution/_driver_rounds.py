@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loguru import logger
 
@@ -13,13 +13,9 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    INFRASTRUCTURE_TERMINATION_REASONS,
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
     attempt_fault_to_termination_reason,
     classify_attempt_fault,
-)
-from ralph.pipeline.conflict_resolution.chain_candidates import (
-    next_unvisited as _next_unvisited,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     remember_dead_surface as _remember_dead_surface,
@@ -69,7 +65,6 @@ __all__ = [
     "_preferred_conflict_candidate",
     "_record_invoker_outcome",
     "_run_one_round",
-    "_sleep_conflict_retry",
 ]
 
 
@@ -82,6 +77,17 @@ class RoundAttempt:
     candidate_offset: int = 0
     count_dropped: bool = False
     probe_changed: bool = False
+
+
+@runtime_checkable
+class _AdvanceableClock(Protocol):
+    def advance(self, seconds: float) -> None: ...
+
+
+@runtime_checkable
+class _ClockProvidingStore(Protocol):
+    @property
+    def clock(self) -> object: ...
 
 
 def _evaluate_round_attempt(
@@ -184,6 +190,7 @@ def _handle_candidate_failure(
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     fault = classify_attempt_fault(session.terminal_reason)
+    _remember_dead_surface(session, agent_name)
     if session.terminal_reason is None:
         session.terminal_reason = (
             attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
@@ -352,49 +359,24 @@ def _run_one_round(
     total = len(candidates)
     if total == 0:
         return RoundAttempt(succeeded=False, invoked=False)
-    skipped = _skipped_candidates(session, candidates)
     visited: set[int] = set()
-    candidate_retries: dict[int, int] = {}
-    from ralph.pipeline.conflict_resolution.session import conflict_chain_max_retries
-
-    max_retries = conflict_chain_max_retries(policy_bundle)
-    invoked = False
-    agent_ran = False
+    attempt = RoundAttempt(succeeded=False, invoked=False)
     while len(visited) < total:
+        skipped = _skipped_candidates(session, candidates)
         selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
         if selected is None:
-            return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
-        offset = selected
-        agent_name = candidates[offset]
+            return RoundAttempt(succeeded=False, invoked=attempt.invoked, agent_ran=attempt.agent_ran)
+        agent_name = candidates[selected]
         _driver_mod.emit_conflict_phase_line(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
-        invoked = True
-        succeeded, _invoker_result, progress = _execute_single_candidate(
-            runner,
-            agent_name,
-            prompt_path,
-            round_index,
-            session,
-            candidates,
-            offset,
-            policy_bundle,
-            observe_unresolved,
+        succeeded, invoker_result, progress = _execute_single_candidate(
+            runner, agent_name, prompt_path, round_index, session, candidates, selected,
+            policy_bundle, observe_unresolved,
         )
-        if succeeded:
-            return RoundAttempt(
-                succeeded=True,
-                invoked=True,
-                agent_ran=True,
-                agent_name=agent_name,
-                candidate_offset=offset,
-                count_dropped=progress.count_dropped,
-                probe_changed=progress.probe_changed,
-            )
         agent_saw = bool(
-            session.last_attempt_saw_activity or not isinstance(_invoker_result, ResolvedOutcome)
+            session.last_attempt_saw_activity or not isinstance(invoker_result, ResolvedOutcome)
         )
-        agent_ran = agent_ran or agent_saw
         if _check_worktree_repair(
             session, agent_name, round_index, round_cap, display, worktree_resolved, agent_saw
         ):
@@ -403,33 +385,26 @@ def _run_one_round(
                 invoked=True,
                 agent_ran=True,
                 agent_name=agent_name,
-                candidate_offset=offset,
+                candidate_offset=selected,
                 count_dropped=progress.count_dropped,
                 probe_changed=progress.probe_changed,
             )
-        if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
-            _remember_dead_surface(session, agent_name)
-            skipped = _skipped_candidates(session, candidates)
-            session.charge_conflict_budget = False
-            session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-            visited.add(offset)
-            offset = _next_unvisited(offset, total, visited)
-            session.chain_cursor = offset
-            continue
-        made_progress = progress.count_dropped or progress.probe_changed
-        if made_progress:
-            candidate_retries[offset] = 0
-        retries = candidate_retries.get(offset, 0)
-        retries_same = session.chain_cursor == offset
-        if not session.skip_same_agent_retries and retries_same and retries < max_retries:
-            candidate_retries[offset] = 0 if made_progress else (retries + 1)
-            _sleep_conflict_retry(session, policy_bundle)
-            continue
-        visited.add(offset)
-        proposed = _next_unvisited(offset, total, visited)
-        offset = proposed
-        session.chain_cursor = offset
-    return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
+        attempt = RoundAttempt(
+            succeeded=succeeded, invoked=True, agent_ran=succeeded or agent_saw,
+            agent_name=agent_name, candidate_offset=selected,
+            count_dropped=progress.count_dropped, probe_changed=progress.probe_changed,
+        )
+        if succeeded:
+            return attempt
+        retries_same = session.chain_cursor == selected
+        controller = session.recovery_controller
+        still_eligible = False
+        if controller is not None:
+            status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
+            still_eligible = status.is_eligible
+        if not (retries_same and still_eligible):
+            visited.add(selected)
+    return attempt
 
 
 def _select_after_delay(
@@ -441,26 +416,30 @@ def _select_after_delay(
 ) -> int | None:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
+    mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
     _driver_mod._sleep_seconds(delay / 1000.0)
-    controller.prune_expired()
+    mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+    if mono_after - mono_before < (delay / 1000.0) * 0.5:
+        controller_clock = getattr(controller, "clock", None)
+        if isinstance(controller_clock, _AdvanceableClock):
+            controller_clock.advance(delay / 1000.0)
+        store = getattr(controller, "unavailability_store", None)
+        store_clock = store.clock if isinstance(store, _ClockProvidingStore) else None
+        if store_clock is not controller_clock and isinstance(store_clock, _AdvanceableClock):
+            store_clock.advance(delay / 1000.0)
+        controller.prune_expired()
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
-
-    if current_clock() is _DEFAULT_CLOCK and not controller.all_exhausted(
-        PHASE_RESOLUTION, eligible
-    ):
+    if not controller.all_exhausted(PHASE_RESOLUTION, eligible):
         unspent = [
             agent
             for agent, status in controller.chain_eligibility(PHASE_RESOLUTION, eligible)
             if not status.is_spent
         ]
         if unspent:
-
             def _wait_key(agent_id: str) -> int:
                 return int(controller.earliest_available_wait_ms(PHASE_RESOLUTION, [agent_id]))
-
             return candidates.index(min(unspent, key=_wait_key))
     return None
 
@@ -487,31 +466,6 @@ def _preferred_conflict_candidate(
     if selection.agent is not None:
         return candidates.index(selection.agent)
     delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-    if delay == 0 and not session.caller_provided:
-        delay = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
     if delay > 0:
         return _select_after_delay(controller, session, eligible, candidates, delay)
-
-    def _candidate_wait_ms(name: str) -> int:
-        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-        if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
-            wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
-        return wait
-
-    shortest_agent = min(
-        eligible,
-        key=_candidate_wait_ms,
-    )
-    return candidates.index(shortest_agent)
-
-
-def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:
-    delay_ms = session.last_retry_delay_ms
-    if delay_ms <= 0:
-        drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
-        chain = policy_bundle.agents.agent_chains.get(drain.chain) if drain else None
-        delay_ms = chain.retry_delay_ms if chain else 0
-    if delay_ms > 0:
-        from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
-        _driver_mod._sleep_seconds(delay_ms / 1000.0)
+    return None

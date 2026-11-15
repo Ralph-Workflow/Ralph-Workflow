@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     import pytest
 
 from ralph.testing.audit_agent_failure_single_owner import (
+    PHASE_FAILURE_STATE_ALLOWLIST,
     PRODUCTION_SCAN_SUBTREES,
     PROGRESS_PATH_ALLOWLIST,
     TEMPORARY_TRANSITIONAL_RULES,
@@ -13,6 +14,13 @@ from ralph.testing.audit_agent_failure_single_owner import (
     audit_test_source,
     is_transitional_allowed,
 )
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_transitional_rules_are_fully_retired": (
+        "the old test_transitional_rules_consolidated asserted the exact registry contents "
+        "assert set(TEMPORARY_TRANSITIONAL_RULES.keys()) == {...}; the registry is retired and empty"
+    ),
+}
 
 
 def test_clean_production_code_passes() -> None:
@@ -789,16 +797,57 @@ import ralph.pipeline._retry_progress_guard
     )
 
 
-def test_transitional_rules_consolidated() -> None:
-    assert set(TEMPORARY_TRANSITIONAL_RULES.keys()) == {
-        "ralph/pipeline/conflict_resolution/session.py",
-        "ralph/pipeline/conflict_resolution/chain_candidates.py",
-    }
+def test_transitional_rules_are_fully_retired() -> None:
+    assert not TEMPORARY_TRANSITIONAL_RULES
     assert not any(k.startswith("tests/") for k in TEMPORARY_TRANSITIONAL_RULES)
     assert (
         "ralph/pipeline/conflict_resolution/_driver_rounds.py" not in TEMPORARY_TRANSITIONAL_RULES
     )
     assert not any("retry_progress_guard" in k for k in TEMPORARY_TRANSITIONAL_RULES)
+    assert not is_transitional_allowed(
+        "ralph/pipeline/conflict_resolution/session.py", "skip_same_agent_retries"
+    )
+    assert not is_transitional_allowed(
+        "ralph/pipeline/conflict_resolution/chain_candidates.py", "dead_tool_surfaces"
+    )
+
+
+def test_conflict_resolution_phase_failure_state_allowlist_is_fully_retired() -> None:
+    assert not [
+        entry for entry in PHASE_FAILURE_STATE_ALLOWLIST if "conflict_resolution" in entry[0]
+    ], f"Expected no conflict-resolution phase failure state exemptions, got: {PHASE_FAILURE_STATE_ALLOWLIST}"
+
+
+def test_conflict_resolution_private_state_is_reported_at_its_source_line() -> None:
+    source = """
+class ResolutionSession:
+    def __init__(self):
+        self.skip_same_agent_retries = False
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_resolution/session.py", source)
+    flagged = [v for v in violations if v.rule == "production_phase_failure_state"]
+    assert flagged, f"Expected production_phase_failure_state, got: {violations}"
+    assert flagged[0].path == "ralph/pipeline/conflict_resolution/session.py"
+    assert flagged[0].line == 4
+
+
+def test_conflict_resolution_retry_counter_is_reported_at_its_source_line() -> None:
+    source = """
+def run_one_round(session, candidates):
+    candidate_retries = {}
+    return candidate_retries
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/_driver_rounds.py", source
+    )
+    flagged = [
+        v
+        for v in violations
+        if v.rule == "production_conflict_resolution_private_failure_state"
+    ]
+    assert flagged, f"Expected production_conflict_resolution_private_failure_state, got: {violations}"
+    assert flagged[0].path == "ralph/pipeline/conflict_resolution/_driver_rounds.py"
+    assert flagged[0].line == 3
 
 
 def test_u4b_bans_permanently_promoted() -> None:
