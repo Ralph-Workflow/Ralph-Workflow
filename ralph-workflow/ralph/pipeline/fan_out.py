@@ -744,7 +744,7 @@ def execute_fan_out_sync(
 
 
 def parallel_worker_command(manifest_path: Path | None = None) -> tuple[str, ...]:
-    command: tuple[str, ...] = (sys.executable, "-P", "-m", "ralph")
+    command: tuple[str, ...] = (sys.executable, "-E", "-P", "-m", "ralph")
     if manifest_path is None:
         return command
     return (*command, "--parallel-worker-manifest", str(manifest_path))

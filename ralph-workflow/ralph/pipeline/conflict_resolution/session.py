@@ -435,11 +435,13 @@ def classify_failed_resolution_attempt(
         else:
             session.chain_cursor = failed_index
             next_retries = 0
-    chain_state = recovery_state.chain_for_phase(PHASE_RESOLUTION)
+    chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
     chain_agents: list[str] = (
         list(chain_state.agents) if chain_state is not None else list(candidates)
     )
-    session.recovery_state = recovery_state.with_phase_chain(
+    if chain_agents and session.chain_cursor >= len(chain_agents):
+        session.chain_cursor = 0
+    session.recovery_state = new_state.with_phase_chain(
         PHASE_RESOLUTION,
         AgentChainState(
             agents=chain_agents,
