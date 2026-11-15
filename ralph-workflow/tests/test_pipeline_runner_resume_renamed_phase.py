@@ -21,7 +21,10 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 if TYPE_CHECKING:
     from pathlib import Path
 
-_RETIRED_PHASE = "development_commit_" + "cleanup"
+_RETIRED_ARTIFACT_TYPE = "commit_" + "cleanup"
+_CURRENT_ARTIFACT_TYPE = "commit_review"
+_RETIRED_PHASE = f"development_{_RETIRED_ARTIFACT_TYPE}"
+_CURRENT_PHASE = f"development_{_CURRENT_ARTIFACT_TYPE}"
 _EXIT_PREFLIGHT = 2
 
 
@@ -72,7 +75,7 @@ def test_resume_preflight_refuses_retired_phase_before_any_agent_invocation(
 
     def _record_ledger_charge(_ledger: object, *_args: object, **_kwargs: object) -> object:
         ledger_charges.append("ledger-record")
-        raise AssertionError("agent failure accounting must not be charged before an invocation")
+        raise AssertionError("agent demotion must not be recorded before an invocation")
 
     monkeypatch.setattr(run_module.state, "run_func", _record_runner_call)
     monkeypatch.setattr(agents_invoke, "invoke_agent", _record_agent_invocation)
@@ -95,8 +98,11 @@ def test_resume_preflight_refuses_retired_phase_before_any_agent_invocation(
     assert exit_code == _EXIT_PREFLIGHT, rendered
     assert "Checkpoint mismatch" in rendered, rendered
     assert _RETIRED_PHASE in flattened, rendered
+    assert _RETIRED_ARTIFACT_TYPE in flattened, rendered
+    assert _CURRENT_ARTIFACT_TYPE in flattened, rendered
     named_phases = set(re.findall(r"'([^']+)'", flattened))
     assert named_phases == set(default_bundle.pipeline.phases) | {_RETIRED_PHASE}, rendered
+    assert _CURRENT_PHASE in named_phases, rendered
     assert checkpoint_path.read_bytes() == persisted_checkpoint
     final_state = checkpoint.load()
     assert final_state is not None

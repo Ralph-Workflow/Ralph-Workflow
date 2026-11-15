@@ -44,9 +44,10 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "rollback_pending at the rejection ceiling and after the cycle timebox": (
-        "a rejection that skipped the rollback left the rejected tree in place, so "
-        "recovery re-entered commit review and rejected the same tree on every pass; "
-        "every rejection now requests the rollback and the assertion pins that"
+        "PRODUCT_CRITERIA outcome 6 requires terminal rejection to retain the saved "
+        "proposal without another reset, so rollback_pending must be false while "
+        "rollback_ref remains the saved proposal ref; normal under-limit rejections "
+        "still request rollback"
     ),
 }
 
@@ -329,7 +330,8 @@ def test_commit_review_gate_counter_exhaustion_routes_to_failure(
 
     assert next_state.phase == policy.recovery.failed_route
     assert next_state.commit_review_rejections == 3
-    assert next_state.rollback_pending is True
+    assert next_state.rollback_pending is False
+    assert next_state.rollback_ref == seal.ref
     assert "limit exceeded" in (next_state.last_error or "")
 
     preflight(tmp_path, seal.ref)

@@ -342,6 +342,7 @@ def _run_one_round(
     display: ParallelDisplay | None,
     session: ResolutionSession,
     policy_bundle: PolicyBundle,
+    round_cap: int,
     worktree_resolved: Callable[[], bool] | None = None,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
 ) -> RoundAttempt:
@@ -358,7 +359,6 @@ def _run_one_round(
     max_retries = conflict_chain_max_retries(policy_bundle)
     invoked = False
     agent_ran = False
-    round_cap = session.max_rounds_per_stop or 3
     while len(visited) < total:
         selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
         if selected is None:

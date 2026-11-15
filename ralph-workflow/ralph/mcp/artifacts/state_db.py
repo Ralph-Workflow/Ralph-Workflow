@@ -19,8 +19,10 @@ MISSING: Final = _Missing()
 
 CLEARED_SENTINEL_HMAC: Final[str] = "__ralph_internal_cleared__"
 
-_SCHEMA_VERSION: Final[int] = 2
+_SCHEMA_VERSION: Final[int] = 4
 _INITIAL_SCHEMA_VERSION: Final[int] = 1
+_SUBMISSION_SNAPSHOT_COLUMN_COUNT: Final[int] = 3
+_LATEST_SUBMISSION_SNAPSHOT_COLUMN_COUNT: Final[int] = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS receipts (
@@ -28,6 +30,9 @@ CREATE TABLE IF NOT EXISTS receipts (
     artifact_type TEXT NOT NULL,
     hmac          TEXT,
     normalization_audit TEXT,
+    submission_snapshot_path TEXT,
+    submission_snapshot_digest TEXT,
+    submission_snapshot_hmac TEXT,
     created_at    REAL NOT NULL DEFAULT (unixepoch('subsec')),
     PRIMARY KEY (run_id, artifact_type)
 );
@@ -76,6 +81,14 @@ class RunStateDB:
             }
             if "normalization_audit" not in columns:
                 self._conn.execute("ALTER TABLE receipts ADD COLUMN normalization_audit TEXT")
+            if "submission_snapshot_path" not in columns:
+                self._conn.execute("ALTER TABLE receipts ADD COLUMN submission_snapshot_path TEXT")
+            if "submission_snapshot_digest" not in columns:
+                self._conn.execute(
+                    "ALTER TABLE receipts ADD COLUMN submission_snapshot_digest TEXT"
+                )
+            if "submission_snapshot_hmac" not in columns:
+                self._conn.execute("ALTER TABLE receipts ADD COLUMN submission_snapshot_hmac TEXT")
         if version_value < _SCHEMA_VERSION:
             self._conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
             self._conn.commit()
@@ -91,6 +104,9 @@ class RunStateDB:
         artifact_type: str,
         hmac_hex: str | None,
         normalization_audit: str | None = None,
+        submission_snapshot_path: str | None = None,
+        submission_snapshot_digest: str | None = None,
+        submission_snapshot_hmac: str | None = None,
     ) -> None:
         with self._conn:
             params: tuple[str | None, ...] = (
@@ -98,11 +114,18 @@ class RunStateDB:
                 artifact_type,
                 hmac_hex,
                 normalization_audit,
+                submission_snapshot_path,
+                submission_snapshot_digest,
+                submission_snapshot_hmac,
             )
             self._conn.execute(
-                "INSERT INTO receipts (run_id, artifact_type, hmac, normalization_audit) "
-                "VALUES (?, ?, ?, ?) ON CONFLICT(run_id, artifact_type) DO UPDATE SET "
+                "INSERT INTO receipts (run_id, artifact_type, hmac, normalization_audit, "
+                "submission_snapshot_path, submission_snapshot_digest, submission_snapshot_hmac) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(run_id, artifact_type) DO UPDATE SET "
                 "hmac=excluded.hmac, normalization_audit=excluded.normalization_audit, "
+                "submission_snapshot_path=excluded.submission_snapshot_path, "
+                "submission_snapshot_digest=excluded.submission_snapshot_digest, "
+                "submission_snapshot_hmac=excluded.submission_snapshot_hmac, "
                 "created_at=unixepoch('subsec')",
                 params,
             )
@@ -134,6 +157,51 @@ class RunStateDB:
         if row is None:
             return MISSING
         return _coerce_hmac(row)
+
+    def get_receipt_submission_snapshot(
+        self, run_id: str, artifact_type: str
+    ) -> tuple[str | None, str | None, str | None] | _Missing:
+        cursor = self._conn.execute(
+            "SELECT submission_snapshot_path, submission_snapshot_digest, "
+            "submission_snapshot_hmac FROM receipts "
+            "WHERE run_id = ? AND artifact_type = ?",
+            (run_id, artifact_type),
+        )
+        try:
+            row: object = cursor.fetchone()
+        finally:
+            cursor.close()
+        if row is None:
+            return MISSING
+        if not isinstance(row, tuple) or len(row) != _SUBMISSION_SNAPSHOT_COLUMN_COUNT:
+            return None, None, None
+        path = row[0] if isinstance(row[0], str) else None
+        digest = row[1] if isinstance(row[1], str) else None
+        snapshot_hmac = row[2] if isinstance(row[2], str) else None
+        return path, digest, snapshot_hmac
+
+    def get_latest_receipt_submission_snapshot(
+        self, artifact_type: str
+    ) -> tuple[str, str | None, str | None, str | None, str | None] | _Missing:
+        row: object = self._conn.execute(
+            "SELECT run_id, hmac, submission_snapshot_path, submission_snapshot_digest, "
+            "submission_snapshot_hmac FROM receipts WHERE artifact_type = ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (artifact_type,),
+        ).fetchone()
+        if (
+            not isinstance(row, tuple)
+            or len(row) != _LATEST_SUBMISSION_SNAPSHOT_COLUMN_COUNT
+            or not isinstance(row[0], str)
+        ):
+            return MISSING
+        return (
+            row[0],
+            row[1] if isinstance(row[1], str) else None,
+            row[2] if isinstance(row[2], str) else None,
+            row[3] if isinstance(row[3], str) else None,
+            row[4] if isinstance(row[4], str) else None,
+        )
 
     def delete_receipt(self, run_id: str, artifact_type: str) -> None:
         with self._conn:

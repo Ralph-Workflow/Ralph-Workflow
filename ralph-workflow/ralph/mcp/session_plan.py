@@ -203,7 +203,7 @@ def build_session_mcp_plan(
     capability_cls = _resolve_capability_cls(drain, agents_policy)
     capabilities = _base_capabilities_for_resolved_class(
         capability_cls,
-        planning_drain=drain == "planning",
+        planning_drain=capability_cls == DrainClass.PLANNING,
     )
     mcp_config = load_mcp_config(
         config_path=(

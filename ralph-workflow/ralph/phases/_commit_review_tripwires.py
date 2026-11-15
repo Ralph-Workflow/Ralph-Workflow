@@ -329,9 +329,10 @@ def _evaluate_mass_deletion(
     entries: list[object],
     tracked_count: int,
     thresholds: TripwireThresholds,
+    approved_deletions: frozenset[str],
 ) -> list[Finding]:
     findings: list[Finding] = []
-    deleted_count = sum(1 for e in entries if _is_deleted(str(_get_entry_attr(e, "status", ""))))
+    deleted_count = len(_collect_deleted_paths(entries) - approved_deletions)
 
     if thresholds.max_deleted_files >= 0 and deleted_count > thresholds.max_deleted_files:
         findings.append(
@@ -567,13 +568,22 @@ def evaluate_tripwires(
     thresholds: TripwireThresholds,
     allowed_dirs: Sequence[str] | set[str] | None = None,
     protected: Sequence[str] | set[str] | None = None,
+    approved_deletions: frozenset[str] | set[str] | None = None,
 ) -> TripwireReport:
     entries = list(diff_entries)
     base_paths = _collect_base_tree_paths(entries)
     deleted_paths = _collect_deleted_paths(entries)
     protected_dirs = _protected_top_level_dirs(base_paths)
 
-    hard_findings = _evaluate_mass_deletion(entries, tracked_count, thresholds)
+    normalized_approved = frozenset(
+        _normalized_repo_path(path) for path in (approved_deletions or ())
+    )
+    hard_findings = _evaluate_mass_deletion(
+        entries,
+        tracked_count,
+        thresholds,
+        normalized_approved,
+    )
     hard_findings.extend(
         _evaluate_protected_directory_deletions(base_paths, deleted_paths, protected_dirs)
     )

@@ -24,6 +24,40 @@ PROGRESS_PATH_ALLOWLIST: dict[tuple[str, str], str] = {
     ): "Phase-level failure routing preserves workspace progress and delegates the outcome to RecoveryController.handle.",
 }
 
+ROUND_CAP_LITERAL_ALLOWLIST: dict[tuple[str, str], str] = {
+    (
+        "ralph/config/conflict_resolution_config.py",
+        "max_rounds_per_stop",
+    ): "Canonical validated configuration default, not a phase-local fallback.",
+    (
+        "ralph/pipeline/_stop_resolution_entry.py",
+        "_PRESENTED_ROUNDS_CAP",
+    ): "Bound on retained presentation history, not an agent invocation round limit.",
+    (
+        "ralph/project_policy/cli_integration.py",
+        "_MAX_PROMPT_ROUNDS",
+    ): "Bound on interactive policy prompts, not an agent invocation round limit.",
+}
+
+PHASE_FAILURE_STATE_ALLOWLIST: dict[tuple[str, str], str] = {
+    (
+        "ralph/pipeline/conflict_resolution/chain_candidates.py",
+        "dead_tool_surfaces",
+    ): "Transitional compatibility with legacy conflict candidate dead surface tracking.",
+    (
+        "ralph/pipeline/conflict_resolution/session.py",
+        "dead_tool_surfaces",
+    ): "Transitional compatibility with legacy conflict candidate dead surface tracking.",
+    (
+        "ralph/pipeline/conflict_resolution/session.py",
+        "last_retry_delay_ms",
+    ): "Transitional compatibility with conflict resolution retry delay tracking.",
+    (
+        "ralph/pipeline/conflict_resolution/session.py",
+        "skip_same_agent_retries",
+    ): "Transitional compatibility with conflict resolution retry loop.",
+}
+
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_COUNTER_READS: frozenset[tuple[str, str]] = frozenset(
@@ -46,6 +80,8 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
     "ralph/pipeline/conflict_resolution/session.py": frozenset(
         {
             "dead_tool_surfaces",
+            "skip_same_agent_retries",
+            "last_retry_delay_ms",
         }
     ),
     "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(
@@ -270,8 +306,9 @@ def _check_production_assignment(
             )
         if (
             target_name is not None
-            and rel_path.startswith("ralph/phases/")
+            and _is_phase_implementation_path(rel_path)
             and _is_phase_failure_state_name(target_name)
+            and not _is_phase_failure_state_allowed(rel_path, target_name)
         ):
             violations.append(
                 SingleOwnerViolation(
@@ -281,6 +318,20 @@ def _check_production_assignment(
                     detail=(
                         f"Phase-owned state '{target_name}' duplicates cooldown, skip-list, "
                         "or backoff state owned by RecoveryController."
+                    ),
+                )
+            )
+        if target_name is not None and _assignment_has_hardcoded_round_cap(
+            target_name, node, rel_path
+        ):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_hardcoded_round_cap",
+                    detail=(
+                        f"Round-cap assignment '{ast.unparse(node)}' contains a hardcoded "
+                        "numeric fallback; round limits must come from the configured policy."
                     ),
                 )
             )
@@ -386,11 +437,8 @@ def _check_production_call(
     if _call_name(node) == "ClassifiedFailure":
         keyword_values = {keyword.arg: keyword.value for keyword in node.keywords if keyword.arg}
         counts = keyword_values.get("counts_against_budget", _positional_arg(node, 4))
-        unavailable = keyword_values.get("is_unavailable", _positional_arg(node, 9))
-        if (
-            _is_false_constant(counts)
-            and (unavailable is None or _is_false_constant(unavailable))
-            and not _is_progress_path_allowed(rel_path, enclosing_function)
+        if _is_false_constant(counts) and not _is_progress_path_allowed(
+            rel_path, enclosing_function
         ):
             violations.append(
                 SingleOwnerViolation(
@@ -398,8 +446,8 @@ def _check_production_call(
                     line=node.lineno,
                     rule="production_unjustified_non_penalising_failure",
                     detail=(
-                        "ClassifiedFailure disables both budget charge and unavailability "
-                        "outside an explicitly justified progress-made path."
+                        "ClassifiedFailure disables the budget charge outside an explicitly "
+                        "justified progress-made path."
                     ),
                 )
             )
@@ -438,9 +486,132 @@ def _is_progress_path_allowed(rel_path: str, function_name: str | None) -> bool:
 
 def _is_phase_failure_state_name(name: str) -> bool:
     lowered = name.lower()
+    return (
+        "cooldown" in lowered
+        or "backoff" in lowered
+        or "retry_delay" in lowered
+        or "dead_tool_surface" in lowered
+        or "skip_same_agent" in lowered
+        or "excluded_candidate" in lowered
+        or "candidate_exclusion" in lowered
+        or ("skip" in lowered and any(scope in lowered for scope in ("agent", "candidate")))
+    )
+
+
+def _is_phase_failure_state_allowed(rel_path: str, name: str) -> bool:
+    return (rel_path, name) in PHASE_FAILURE_STATE_ALLOWLIST
+
+
+def _is_phase_implementation_path(rel_path: str) -> bool:
+    return rel_path.startswith(("ralph/phases/", "ralph/pipeline/conflict_resolution/"))
+
+
+def _assigned_name(node: ast.Assign | ast.AnnAssign | ast.AugAssign) -> str | None:
+    targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+    names = [target.id for target in targets if isinstance(target, ast.Name)]
+    return names[0] if len(names) == 1 else None
+
+
+def _phase_local_retry_loop_violation(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, rel_path: str
+) -> SingleOwnerViolation | None:
+    if not _is_phase_implementation_path(rel_path):
+        return None
+    parameters = _parameter_names(function)
+    retry_maps = {
+        name
+        for node in ast.walk(function)
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and (name := _assigned_name(node)) is not None
+        and "retr" in name.lower()
+        and isinstance(node.value, (ast.Dict, ast.Call))
+    }
+    if not retry_maps:
+        return None
+    for loop in (
+        node for node in ast.walk(function) if isinstance(node, (ast.For, ast.AsyncFor, ast.While))
+    ):
+        calls = [node for node in ast.walk(loop) if isinstance(node, ast.Call)]
+        invokes_parameter = any(
+            isinstance(call.func, ast.Name) and call.func.id in parameters for call in calls
+        )
+        call_names = [name for call in calls if (name := _call_name(call)) is not None]
+        waits = any(
+            any(token in name.lower() for token in ("sleep", "wait", "delay"))
+            for name in call_names
+        )
+        retries = any(isinstance(node, ast.Continue) for node in ast.walk(loop))
+        mutated_map = any(
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+            and any(
+                isinstance(target, ast.Subscript)
+                and isinstance(target.value, ast.Name)
+                and target.value.id in retry_maps
+                for target in (
+                    list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+                )
+            )
+            for node in ast.walk(loop)
+        )
+        injected_bound = any(
+            isinstance(compare, ast.Compare)
+            and any(
+                isinstance(child, ast.Name) and child.id in parameters
+                for operand in (compare.left, *compare.comparators)
+                for child in ast.walk(operand)
+            )
+            for compare in ast.walk(loop)
+            if isinstance(compare, ast.Compare)
+        )
+        if invokes_parameter and waits and retries and mutated_map and injected_bound:
+            return SingleOwnerViolation(
+                path=rel_path,
+                line=loop.lineno,
+                rule="production_phase_local_retry_loop",
+                detail=(
+                    f"Function '{function.name}' owns a phase-local retry counter and "
+                    "sleep-and-retry loop around an injected invocation; retry fate belongs "
+                    "to AgentFailureLedger and RecoveryController."
+                ),
+            )
+    return None
+
+
+def check_phase_local_retry_loops(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
+    return [
+        violation
+        for function in ast.walk(tree)
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and (violation := _phase_local_retry_loop_violation(function, rel_path)) is not None
+    ]
+
+
+def _is_round_cap_name(name: str) -> bool:
+    lowered = name.lower()
+    return "round" in lowered and any(token in lowered for token in ("cap", "max", "limit"))
+
+
+def _assignment_value(node: ast.Assign | ast.AnnAssign | ast.AugAssign) -> ast.expr | None:
+    return node.value
+
+
+def _assignment_has_hardcoded_round_cap(
+    target_name: str,
+    node: ast.Assign | ast.AnnAssign | ast.AugAssign,
+    rel_path: str,
+) -> bool:
+    if not _is_round_cap_name(target_name):
+        return False
+    if (rel_path, target_name) in ROUND_CAP_LITERAL_ALLOWLIST:
+        return False
+    value = _assignment_value(node)
+    if value is None:
+        return False
     return any(
-        marker in lowered
-        for marker in ("cooldown", "backoff", "skip_agents", "skipped_agents", "agent_skip")
+        isinstance(child, ast.Constant)
+        and isinstance(child.value, (int, float))
+        and not isinstance(child.value, bool)
+        for child in ast.walk(value)
     )
 
 
@@ -822,7 +993,9 @@ def _contains_node(outer: ast.AST, inner: ast.AST) -> bool:
     return any(child is inner for child in ast.walk(outer))
 
 
-def _routes_to_owner(calls: list[ast.Call], classified_before: bool) -> bool:
+def _routes_to_owner(
+    calls: list[ast.Call], classified_before: bool, context: _OwnershipContext | None = None
+) -> bool:
     classifiers = [call for call in calls if _is_classifier_call(call)]
     handles = [call for call in calls if _call_name(call) == "handle"]
     for handle in handles:
@@ -834,6 +1007,45 @@ def _routes_to_owner(calls: list[ast.Call], classified_before: bool) -> bool:
             if _contains_node(handle, classifier):
                 return True
     return False
+
+
+def _annotation_names(annotation: ast.expr | None) -> frozenset[str]:
+    if annotation is None:
+        return frozenset()
+    return frozenset(
+        child.id if isinstance(child, ast.Name) else child.attr
+        for child in ast.walk(annotation)
+        if isinstance(child, (ast.Name, ast.Attribute))
+    )
+
+
+def _is_cooldown_owner_handle(call: ast.Call, context: _OwnershipContext) -> bool:
+    if not isinstance(call.func, ast.Attribute):
+        return False
+    receiver = call.func.value
+    if isinstance(receiver, ast.Name):
+        name = receiver.id
+    else:
+        return False
+    function = _enclosing_function(call, context)
+    if function is None:
+        return False
+    annotation = _parameter_annotations(function).get(name)
+    if "RecoveryController" in _annotation_names(annotation):
+        return True
+    return any(
+        isinstance(node, (ast.Assign, ast.AnnAssign))
+        and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in (list(node.targets) if isinstance(node, ast.Assign) else [node.target])
+        )
+        and node.value is not None
+        and any(
+            isinstance(child, ast.Call) and _call_name(child) == "RecoveryController"
+            for child in ast.walk(node.value)
+        )
+        for node in ast.walk(function)
+    )
 
 
 def _branch_bodies(statement: ast.stmt) -> list[list[ast.stmt]] | None:
@@ -852,10 +1064,12 @@ def _branch_bodies(statement: ast.stmt) -> list[list[ast.stmt]] | None:
     return None
 
 
-def _execute_statement(statement: ast.stmt, classified_before: bool) -> set[tuple[bool, str]]:
+def _execute_statement(
+    statement: ast.stmt, classified_before: bool, context: _OwnershipContext
+) -> set[tuple[bool, str]]:
     calls = _direct_calls(statement)
     classified = classified_before or any(_is_classifier_call(call) for call in calls)
-    if _routes_to_owner(calls, classified_before):
+    if _routes_to_owner(calls, classified_before, context):
         return {(classified, _PATH_ROUTED)}
     if isinstance(statement, ast.Raise):
         return {(classified, _PATH_DELEGATED)}
@@ -866,11 +1080,13 @@ def _execute_statement(statement: ast.stmt, classified_before: bool) -> set[tupl
         return {(classified, _PATH_ACTIVE)}
     states: set[tuple[bool, str]] = set()
     for branch in branches:
-        states |= _block_states(branch, classified)
+        states |= _block_states(branch, classified, context)
     return states
 
 
-def _block_states(body: list[ast.stmt], classified: bool) -> set[tuple[bool, str]]:
+def _block_states(
+    body: list[ast.stmt], classified: bool, context: _OwnershipContext
+) -> set[tuple[bool, str]]:
     states: set[tuple[bool, str]] = {(classified, _PATH_ACTIVE)}
     for statement in body:
         advanced: set[tuple[bool, str]] = set()
@@ -878,13 +1094,13 @@ def _block_states(body: list[ast.stmt], classified: bool) -> set[tuple[bool, str
             if state_outcome != _PATH_ACTIVE:
                 advanced.add((state_classified, state_outcome))
                 continue
-            advanced |= _execute_statement(statement, state_classified)
+            advanced |= _execute_statement(statement, state_classified, context)
         states = advanced
     return states
 
 
-def _handler_outcomes(handler: ast.ExceptHandler) -> set[str]:
-    states = _block_states(handler.body, False)
+def _handler_outcomes(handler: ast.ExceptHandler, context: _OwnershipContext) -> set[str]:
+    states = _block_states(handler.body, False, context)
     return {_PATH_SWALLOWED if outcome == _PATH_ACTIVE else outcome for _, outcome in states}
 
 
@@ -982,7 +1198,7 @@ def _check_agent_invocation_failure_routing(
             for call in _recovery_calls(handler)
             if id(call) in dead
         )
-        if _handler_outcomes(handler) <= {_PATH_ROUTED, _PATH_DELEGATED}:
+        if _handler_outcomes(handler, context) <= {_PATH_ROUTED, _PATH_DELEGATED}:
             continue
         bypassed_lines.update(
             invocation.lineno
@@ -1002,6 +1218,24 @@ def _check_agent_invocation_failure_routing(
         for invocation in invocation_calls
         if invocation.lineno in bypassed_lines
     )
+    for handler in node.handlers:
+        calls = _recovery_calls(handler)
+        if (
+            any(_is_classifier_call(call) for call in calls)
+            and any(_call_name(call) == "handle" for call in calls)
+            and not any(_is_cooldown_owner_handle(call, context) for call in calls)
+        ):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=handler.lineno,
+                    rule="production_agent_failure_cooldown_bypass",
+                    detail=(
+                        "Caught agent failure is handled by an object that is not identifiable "
+                        "as the recovery/cooldown owner."
+                    ),
+                )
+            )
     return violations
 
 

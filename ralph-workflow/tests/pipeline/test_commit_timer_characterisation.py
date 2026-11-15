@@ -24,9 +24,8 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "rollback_pending at the rejection ceiling and after the cycle timebox": (
-        "a rejection that skipped the rollback left the rejected tree in place, so "
-        "recovery re-entered commit review and rejected the same tree on every pass; "
-        "every rejection now requests the rollback and the assertion pins that"
+        "terminal rejection must preserve the saved proposal without resetting the "
+        "working tree, while the retained ref makes the failure non-recoverable"
     ),
 }
 
@@ -657,7 +656,7 @@ def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal
 
     assert next_state.phase == policy.recovery.failed_route
     assert next_state.commit_review_rejections == 2
-    assert next_state.rollback_pending is True
+    assert next_state.rollback_pending is False
     assert next_state.rollback_ref == "refs/ralph/proposals/run-1/1"
     assert "limit reached" in (next_state.last_error or "")
 
@@ -692,7 +691,8 @@ def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_fail
 
     assert next_state.phase == policy.recovery.failed_route
     assert next_state.commit_review_rejections == 1
-    assert next_state.rollback_pending is True
+    assert next_state.rollback_pending is False
+    assert next_state.rollback_ref == "refs/ralph/proposals/run-1/0"
     assert "expired" in (next_state.last_error or "")
 
 

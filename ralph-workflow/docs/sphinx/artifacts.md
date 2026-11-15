@@ -95,7 +95,11 @@ specific section or field is required.
 
 ## Commit review contract
 
-The `commit_review` artifact acts as the second stage of the pre-commit damage gate and edit phase. Commit review is a **damage gate**, not a code review: it answers only *"does this pending diff look like accidental damage?"*. Code quality and plan adherence belong to `development_analysis`.
+The `commit_review` artifact controls Stage 2 of the pre-commit damage gate and
+edit phase. Stage 1 has already evaluated tracked and untracked pending state.
+The artifact may remove only content that does not belong through validated
+edit actions; it never performs source-code review. Code quality and plan
+adherence belong to `development_analysis`.
 
 ### Frontmatter
 
@@ -123,9 +127,9 @@ tree_sha: 0123456789abcdef0123456789abcdef01234567
 ### Proposal sealing and rollback
 
 1. Before review, changes are sealed into `refs/ralph/proposals/<run>/<iteration>` using a temporary index.
-2. If Stage 1 **hard** tripwires trigger — mass deletion beyond `max_deleted_files` (default 50) or `max_deleted_fraction` (default 0.25), or the removal of a protected path (`.git` internals, `PROMPT.md`, `AGENTS.md`, a project manifest or lockfile, or a top-level source/test directory entry; `.git` internals and the two core prompts are also protected when overwritten) — the engine rejects immediately without an agent. **Soft** findings (out-of-scope paths, staged secrets, and oversized binaries above `binary_size_limit`, default 1,000,000 bytes) never reject on their own; they are handed to the review agent as evidence, and the agent can then offer a flagged binary for cleanup through the `## Actions` edit step (`delete_file` or `add_to_gitignore`).
+2. Stage 1 hard mass-deletion or protected-path findings reject immediately without an agent. Only exact deletions from the planning-analysis-approved plan bypass mass-deletion accounting; protected deletions never bypass, and no artifact field or reviewer text can widen the list. Soft out-of-scope, secret, and oversized-binary findings are supplied as Stage 2 evidence.
 3. If Stage 2 approves, actions are applied, the tree is resealed, and the commit executor verifies that staging matches the approved `tree_sha`.
-4. If Stage 2 rejects, the engine checkpoints `rollback_pending` and restores the working tree from the sealed proposal ref: `git read-tree --reset -u HEAD` (or the dirty run-start baseline) resets tracked files, and the proposal diff removes the files the proposal added. The rollback uses neither `git stash` nor a saved patch file. The rejection reason and proposal ref are forwarded to the next developer prompt.
+4. If Stage 2 rejects, the engine has already saved the whole proposal under its ref. A normal rejection checkpoints `rollback_pending` and resets every pending-commit file: `git read-tree --reset -u HEAD` (or the run-start baseline) restores tracked files, and the proposal diff removes proposal-added files. This is a proposal disposition, not a source review. The rollback uses neither `git stash` nor a saved patch file.
 5. Preserved proposal refs can be recovered manually with `git checkout refs/ralph/proposals/<run>/<iteration> -- .`.
 
 ## Validation

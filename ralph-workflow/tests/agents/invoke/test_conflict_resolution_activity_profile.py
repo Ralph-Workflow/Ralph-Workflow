@@ -1,18 +1,40 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutProfile
-from ralph.agents.invoke import AgentRunCtx, InvokeOptions, policy_from_options
+from ralph.agents.invoke import (
+    AgentRunCtx,
+    InvokeOptions,
+    InvokeRuntimeOptions,
+    build_invoke_options_from_config,
+    policy_from_options,
+)
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.enums import AgentTransport
-from ralph.config.models import AgentConfig
+from ralph.config.general_config import GeneralConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.server._activity_sink import reset_active_sink, reset_subagent_sink
+from ralph.pipeline.attempt_result import AttemptResult
+from ralph.pipeline.conflict_resolution import session as conflict_session
+from ralph.pipeline.events import PipelineEvent
+from ralph.policy.models import PolicyBundle
+from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.attempt_outcome import AttemptOutcome
+from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
+from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from ralph.pipeline.effects import InvokeAgentEffect
 
 
 @pytest.mark.parametrize(
@@ -171,3 +193,80 @@ def test_conflict_resolution_regression_initial_activity_keeps_its_provenance(
     assert watchdog.evaluate(lambda: AgentExecutionState.ACTIVE) is WatchdogVerdict.FIRE
     assert watchdog.activity_only_snapshot() == (expected_kind, 0.0)
     assert watchdog.diagnostic_snapshot(now=10.0)["last_activity_kind"] == expected_kind
+
+
+def test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivity_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_timeout = 47.0
+    config = UnifiedConfig(
+        general=GeneralConfig(agent_idle_timeout_seconds=13.0),
+        conflict_resolution=ConflictResolutionConfig(inactivity_timeout_seconds=configured_timeout),
+    )
+    captured_options: list[InvokeOptions] = []
+
+    class _Controller:
+        clock = FakeClock()
+
+    def _controller(*_args: object, **_kwargs: object) -> _Controller:
+        return _Controller()
+
+    def _run_attempt(
+        _entry_point: object,
+        *,
+        effect: InvokeAgentEffect,
+        config: UnifiedConfig,
+        controller: object,
+        deps: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        display: object,
+        display_context: object,
+        policy_bundle: object,
+        run_id: object,
+    ) -> AttemptResult:
+        del (
+            controller,
+            deps,
+            pipeline_deps,
+            workspace_scope,
+            display,
+            display_context,
+            policy_bundle,
+            run_id,
+        )
+        captured_options.append(
+            build_invoke_options_from_config(
+                config.general,
+                InvokeRuntimeOptions(activity_only_supervision=effect.activity_only_supervision),
+            )
+        )
+        outcome = AttemptOutcome(
+            kind=AttemptOutcomeKind.COMPLETED,
+            issuer=None,
+            verdict=None,
+            reason="",
+        )
+        return AttemptResult(
+            event=PipelineEvent.AGENT_SUCCESS,
+            facts=AttemptFacts(artifact_valid=True, workspace_changed=True),
+            outcome=outcome,
+            attempt_outcomes=((1, outcome),),
+        )
+
+    monkeypatch.setattr(conflict_session, "ensure_session_controller", _controller)
+    monkeypatch.setattr(conflict_session, "run_agent_attempt", _run_attempt)
+
+    conflict_session.invoke_resolution_agent(
+        agent_name="resolver",
+        prompt_path=Path("prompt.md"),
+        config=config,
+        workspace_scope=WorkspaceScope(Path.cwd()),
+        policy_bundle=MagicMock(spec=PolicyBundle),
+        display=None,
+        display_context=MagicMock(),
+    )
+
+    assert captured_options[0].idle_timeout_seconds == configured_timeout
+    assert policy_from_options(captured_options[0]).idle_timeout_seconds == configured_timeout
+    assert config.general.agent_idle_timeout_seconds == 13.0

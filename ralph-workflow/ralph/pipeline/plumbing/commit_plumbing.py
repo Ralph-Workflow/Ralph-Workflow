@@ -59,6 +59,7 @@ from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     register_entry_point,
     registered_entry_points,
+    registered_runners,
 )
 from ralph.pipeline.attempt_runner import (
     AttemptInvoke,
@@ -181,21 +182,32 @@ if AgentEntryPoint.COMMIT_GENERATION not in registered_entry_points():
 
 def _attempt_deps(
     pipeline_deps: PipelineDeps,
-    invoke: AttemptInvoke,
+    dispatch: AttemptInvoke | InvokeAgentFn,
 ) -> AttemptRunnerDeps:
     from ralph.agents.clock import Clock
     from ralph.agents.timeout_clock import SystemClock
 
-    def invoke_attempt(
+    def dispatch_attempt(
         target: InvokeAgentEffect | AgentConfig,
         *args: object,
         **kwargs: object,
     ) -> object:
-        if invoke is execute_agent_effect:
+        if isinstance(target, AgentConfig):
+            prompt_file = args[0] if args else kwargs.pop("prompt_file", None)
+            options = kwargs.pop("options", None)
+            if not isinstance(prompt_file, str):
+                raise TypeError("commit prompt file is required")
+            invoke_agent_fn = cast("InvokeAgentFn", dispatch)
+            return invoke_agent_fn(
+                target,
+                prompt_file,
+                options=options if isinstance(options, InvokeOptions) else None,
+            )
+        if dispatch is execute_agent_effect:
             config = kwargs.pop("config")
             effective_pipeline_deps = kwargs.pop("pipeline_deps")
             workspace_scope = kwargs.pop("workspace_scope")
-            return invoke(
+            return dispatch(
                 target,
                 config,
                 effective_pipeline_deps,
@@ -203,14 +215,15 @@ def _attempt_deps(
                 *args,
                 **kwargs,
             )
-        return invoke(target, *args, **kwargs)
+        attempt_invoke = cast("AttemptInvoke", dispatch)
+        return attempt_invoke(target, *args, **kwargs)
 
     clock = pipeline_deps.recovery_clock
     if not isinstance(clock, Clock):
         clock = None
     return AttemptRunnerDeps(
         clock=clock if clock is not None else SystemClock(),
-        invoke=invoke_attempt,
+        invoke=dispatch_attempt,
         probe_runner=None,
         workspace_probe=None,
         connectivity=None,
@@ -433,6 +446,7 @@ def run_commit_plumbing(
         effective_pipeline_deps,
         recovery_deps,
     )
+    recovery_controller.register_phase_chain("commit", chain_config.agents)
     with with_bridge_lifetime(
         effective_core,
         effective_bridge_factory,
@@ -446,7 +460,19 @@ def run_commit_plumbing(
         extra_env = _commit_bridge_env(bridge)
         if extra_env is not None:
             extra_env = _stringify_extra_env(extra_env)
-        for agent_name in chain_config.agents:
+        visited_agents: set[str] = set()
+        for _ in range(len(chain_config.agents)):
+            candidates = tuple(name for name in chain_config.agents if name not in visited_agents)
+            if not candidates:
+                break
+            selection = recovery_controller.preferred_agent_index(
+                "commit",
+                candidates,
+            )
+            agent_name = selection.agent
+            if agent_name is None:
+                break
+            visited_agents.add(agent_name)
             cfg = chain_config.registry.get(agent_name)
             if cfg is None:
                 continue
@@ -617,9 +643,21 @@ def _generate_commit_message_with_agent(
     failure_details.append(initial_attempt.failure_detail)
 
     latest_attempt = initial_attempt
+    retries_used = 0
+
+    def retry_authorized() -> bool:
+        nonlocal retries_used
+        if retries_used >= max_retries:
+            return False
+        if recovery_controller is not None:
+            status = recovery_controller.agent_eligibility("commit", agent_name)
+            if not status.is_eligible:
+                return False
+        retries_used += 1
+        return True
 
     if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
-        if initial_attempt.resume_session_id:
+        if initial_attempt.resume_session_id and retry_authorized():
             (
                 session_retry,
                 last_session_id,
@@ -646,7 +684,10 @@ def _generate_commit_message_with_agent(
             failure_details.append(session_retry.failure_detail)
             latest_attempt = session_retry
 
-        if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
+        if (
+            _is_missing_commit_artifact_failure(latest_attempt.failure_detail)
+            and retry_authorized()
+        ):
             summary_prompt_file = _resolve_commit_write_prompt_file()(
                 attempt_context.repo_root,
                 _summarized_retry_prompt(
@@ -771,8 +812,7 @@ def _run_commit_agent_attempt_with_recovery(
                 effective_pipeline_deps,
                 recovery_deps,
             )
-        attempt = run_agent_attempt(
-            AgentEntryPoint.COMMIT_GENERATION,
+        attempt = registered_runners()[AgentEntryPoint.COMMIT_GENERATION](
             effect=effect,
             config=effective_general_config,
             controller=recovery_controller,
@@ -805,11 +845,11 @@ def _run_commit_agent_attempt_with_recovery(
         )
         if output_collector is not None:
             output_collector.extend(raw_lines)
-        if getattr(attempt.event, "value", attempt.event) == "agent_success":
-            read_artifact = _get_patched(
-                commit_module, "read_commit_message_artifact", read_commit_message_artifact
-            )
-            artifact_message = read_artifact(attempt_context.repo_root)
+        read_artifact = _get_patched(
+            commit_module, "read_commit_message_artifact", read_commit_message_artifact
+        )
+        artifact_message = read_artifact(attempt_context.repo_root)
+        if getattr(attempt.event, "value", attempt.event) == "agent_success" or artifact_message:
             if artifact_message:
                 if _is_skip_response(artifact_message):
                     return (
@@ -966,17 +1006,9 @@ def invoke_commit_agent_attempt(
         materializer,
     )
 
-    def invoke_from_commit_module(target: object, *args: object, **kwargs: object) -> object:
-        del target, args
-        final_options = kwargs.get("options")
-        if not isinstance(final_options, InvokeOptions):
-            raise TypeError("commit invocation options are required")
-        return invoke(agent, prompt_file, options=final_options)
-
-    attempt_deps = _attempt_deps(pipeline_deps, invoke_from_commit_module)
+    attempt_deps = _attempt_deps(pipeline_deps, invoke)
     try:
-        attempt = run_agent_attempt(
-            AgentEntryPoint.COMMIT_GENERATION,
+        attempt = registered_runners()[AgentEntryPoint.COMMIT_GENERATION](
             invocation=agent,
             config=effective_config,
             controller=_attempt_controller(effective_config, pipeline_deps, attempt_deps),

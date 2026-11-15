@@ -40,7 +40,7 @@ class _ArtifactSubmitSession:
     worker_artifact_dir: Path | None = None
 
     def check_capability(self, capability: str) -> object:
-        return capability == "artifact.submit"
+        return capability in ("artifact.submit", "artifact.plan_write")
 
 
 def test_prompt_materialize_regression_real_validator_context_enters_planning_edit_prompt(

@@ -95,6 +95,34 @@ def test_rung6_healed_state_cancels_the_reset(tmp_path: Path) -> None:
     assert not any(call.startswith("reset_hard") for call in git.calls)
 
 
+def test_integration_ladder_regression_wu_c1_preservation_failure_fails_closed_before_destructive_reset(
+    tmp_path: Path,
+) -> None:
+    ledger = _ledger(tmp_path)
+    _seed_all_preconditions(ledger)
+    git = _FakePlumbing(commit_ref=None, readable_refs=frozenset(), fail_patch=True)
+
+    result = last_resort_recovery(
+        tmp_path,
+        git=git,
+        fs=_FakeQuarantineFs(),
+        ledger=ledger,
+        state_dir=tmp_path / ".agent",
+        clock=FakeClock(),
+        feature_tip="tipsha",
+        target="main",
+        branch="feature",
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+    )
+
+    assert result.outcome == "failed"
+    assert result.reason == "failed:no-preserved-copy:failed:no-durable-copy"
+    assert not any(call.startswith("reset_hard") for call in git.calls)
+    assert "clean_untracked" not in git.calls
+    assert _evidence(tmp_path)["rung:preserve_via_temp_index"] == "failed:no-durable-copy"
+
+
 def test_rung6_resets_only_after_all_six_preconditions_hold(tmp_path: Path) -> None:
     ledger = _ledger(tmp_path)
     _seed_all_preconditions(ledger)

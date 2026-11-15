@@ -136,6 +136,18 @@ This prevents a persistently failing workflow from retrying forever without maki
 
 Ralph Workflow saves a checkpoint after each successful phase transition so a run can continue from the last completed step after an interruption or crash.
 
+### Commit-review rejection recovery
+
+Commit-review rejection is not a source-code verdict. Ralph Workflow first
+saves the complete pending proposal under `refs/ralph/proposals/<run>/<iteration>`.
+For a normal rejection it then checkpoints `rollback_pending`, resets every
+pending-commit file to `HEAD` or the run-start baseline, removes files added by
+the proposal, and returns to development with the reason and ref. If the
+rejection reaches the configured consecutive-rejection limit or arrives after
+the cycle timebox, the run retains the saved ref and routes to
+`failed_terminal` without another reset. Recover a saved proposal with
+`git checkout <proposal-ref> -- .`.
+
 ### Where the checkpoint lives
 
 ```

@@ -406,7 +406,6 @@ def classify_failed_resolution_attempt(
             context,
         )
     session.recovery_state = new_state
-    session.last_retry_delay_ms = new_state.last_retry_delay_ms
     session.last_recovery_reason = (
         classified.reason
         if classified is not None
@@ -485,16 +484,16 @@ def _conflict_config_with_inactivity(
     config: UnifiedConfig,
     inactivity_timeout_seconds: float | None,
 ) -> UnifiedConfig:
-    conflict_limits = config.conflict_resolution.model_copy(
-        update={
-            "inactivity_timeout_seconds": (
-                inactivity_timeout_seconds
-                if inactivity_timeout_seconds is not None
-                else config.conflict_resolution.inactivity_timeout_seconds
-            )
-        }
+    effective_timeout = (
+        inactivity_timeout_seconds
+        if inactivity_timeout_seconds is not None
+        else config.conflict_resolution.inactivity_timeout_seconds
     )
-    return config.model_copy(update={"conflict_resolution": conflict_limits})
+    conflict_limits = config.conflict_resolution.model_copy(
+        update={"inactivity_timeout_seconds": effective_timeout}
+    )
+    general = config.general.model_copy(update={"agent_idle_timeout_seconds": effective_timeout})
+    return config.model_copy(update={"conflict_resolution": conflict_limits, "general": general})
 
 
 def _record_session_failure_result(
@@ -521,6 +520,16 @@ def _record_session_failure_result(
         outcome=outcome,
         attempt_outcomes=((1, outcome),),
     )
+    if isinstance(exc, AgentInactivityTimeoutError):
+        from ralph.agents.watchdog_fire_reason import WatchdogFireReason
+        from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+        if exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START:
+            controller.record_confirmed_unavailability(
+                PHASE_RESOLUTION,
+                agent_name,
+                UnavailabilityReason.NO_OUTPUT_AT_START,
+            )
 
 
 def invoke_resolution_agent(

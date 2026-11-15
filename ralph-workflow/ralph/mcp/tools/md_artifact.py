@@ -43,6 +43,7 @@ from ralph.mcp.tools.artifact import (
 )
 from ralph.mcp.tools.commit_normalization import normalize_commit_submission
 from ralph.mcp.tools.coordination import (
+    ARTIFACT_PLAN_WRITE_CAPABILITY,
     ARTIFACT_SUBMIT_CAPABILITY,
     CoordinationSessionLike,
     InvalidParamsError,
@@ -105,6 +106,7 @@ def handle_submit_md_artifact(
 ) -> ToolResult:
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown artifact submission")
     artifact_type, content = _params(params)
+    _require_artifact_write_capability(session, artifact_type)
     unstageable = _unstageable_plan_result(artifact_type, content)
     if unstageable is not None:
         return unstageable
@@ -146,6 +148,7 @@ def handle_edit_md_artifact(
 ) -> ToolResult:
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft editing")
     artifact_type = _artifact_type_param(params)
+    _require_artifact_write_capability(session, artifact_type)
     edits = parse_text_edits(params)
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     artifact_dir = _resolve_artifact_dir(session, workspace)
@@ -247,6 +250,7 @@ def handle_stage_md_artifact(
 ) -> ToolResult:
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft staging")
     artifact_type, content = _params(params)
+    _require_artifact_write_capability(session, artifact_type)
     mode = params.get("mode", "append")
     if mode not in ("append", "replace_all"):
         raise InvalidParamsError("mode must be 'append' or 'replace_all'")
@@ -321,6 +325,7 @@ def handle_finalize_md_artifact(
 ) -> ToolResult:
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft finalization")
     artifact_type = _artifact_type_param(params)
+    _require_artifact_write_capability(session, artifact_type)
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     artifact_dir = _resolve_artifact_dir(session, workspace)
     content = load_md_draft(artifact_dir, artifact_type, backend=backend)
@@ -428,6 +433,14 @@ def _artifact_type_param(params: dict[str, object]) -> str:
     except ValueError as exc:
         raise InvalidParamsError(str(exc)) from exc
     return artifact_type
+
+
+def _require_artifact_write_capability(
+    session: CoordinationSessionLike,
+    artifact_type: str,
+) -> None:
+    if artifact_type == "plan":
+        require_capability(session, ARTIFACT_PLAN_WRITE_CAPABILITY, "Plan artifact writing")
 
 
 def _unstageable_plan_result(artifact_type: str, content: str) -> ToolResult | None:

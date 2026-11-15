@@ -172,13 +172,13 @@ def untrack_engine_internal_files(
                     entry_path_str,
                 )
                 continue
+            if not is_internal_path(entry_path_str):
+                continue
             if working_tree_path.is_symlink():
                 logger.info(
                     "Refusing to git rm --cached symlink under tracked engine-internal path: {}",
                     entry_path_str,
                 )
-                continue
-            if not is_internal_path(entry_path_str):
                 continue
             try:
                 route_git_method(repo, "rm", ("--cached", "--", entry_path_str))

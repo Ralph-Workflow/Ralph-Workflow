@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final, cast
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.git.commit_review import (
     add_to_git_exclude,
     delete_file_from_repo,
@@ -19,6 +21,7 @@ from ralph.git.operations import append_to_gitignore
 from ralph.git.proposal_seal import DiffEntry, Seal, diff_tree, seal_pending
 from ralph.mcp.artifacts._commit_review_action import CommitReviewAction
 from ralph.mcp.artifacts.citation_verifier import verify_reject_citations
+from ralph.mcp.artifacts.completion_receipts import read_latest_artifact_submission_snapshot
 from ralph.mcp.artifacts.markdown import parse_markdown_document
 from ralph.phases._agent_internal_paths import is_agent_internal_path
 from ralph.phases._commit_review_actions import (
@@ -82,7 +85,10 @@ from ralph.phases._commit_review_verdict import (
     maybe_succeed_after_identity_bound,
     persist_unapplied_hint,
 )
-from ralph.phases.required_artifacts import clear_validation_retry_hint
+from ralph.phases.required_artifacts import (
+    clear_validation_retry_hint,
+    resolve_planning_artifact_type,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.policy.models._pipeline_policy import PipelinePolicy
@@ -104,6 +110,7 @@ _UNSAFE_SURVIVAL_CATEGORIES: Final[frozenset[str]] = frozenset({"secret", "binar
 _TREE_SHA_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-fA-F]{40}$")
 
 _MAX_IDENTITY_FINGERPRINTS: Final[int] = 32
+_APPROVED_DELETIONS_HEADING_LEVEL: Final[int] = 2
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -494,6 +501,8 @@ def run_commit_review_stage1_preflight(
     iteration: str,
     pipeline_policy: object,
     phase_name: str,
+    *,
+    artifacts_policy: object | None = None,
 ) -> (
     tuple[Seal, list[DiffEntry], TripwireReport, str]
     | CommitReviewRejected
@@ -558,12 +567,18 @@ def run_commit_review_stage1_preflight(
             e.path == ".agent" or e.path.startswith(".agent/") or is_agent_internal_path(e.path)
         )
     ]
+    approved_deletions = _approved_deletions_for_run(
+        repo_root,
+        run_id,
+        artifacts_policy,
+    )
     tripwire_report = evaluate_tripwires(
         tripwire_entries,
         tracked_count,
         thresholds,
         allowed_dirs=allowed_dirs,
         protected=protected,
+        approved_deletions=approved_deletions,
     )
 
     _persist_commit_review_context_to_root(repo_root, seal, tripwire_report.soft, diff_entries)
@@ -574,6 +589,97 @@ def run_commit_review_stage1_preflight(
         return CommitReviewRejected(reason=reason, ref=seal.ref, hard=True)
 
     return seal, diff_entries, tripwire_report, base
+
+
+def _approved_deletions_for_run(
+    repo_root: Path,
+    run_id: str,
+    artifacts_policy: object | None,
+) -> frozenset[str]:
+    from ralph.policy.models import ArtifactsPolicy
+
+    if not isinstance(artifacts_policy, ArtifactsPolicy):
+        return frozenset()
+    artifact_type = resolve_planning_artifact_type(artifacts_policy)
+    if artifact_type is None:
+        return frozenset()
+    receipt_snapshot = read_latest_artifact_submission_snapshot(
+        repo_root,
+        artifact_type,
+        receipt_secret=parent_broker_secret(),
+    )
+    if receipt_snapshot is None:
+        return frozenset()
+    receipt_run_id, snapshot = receipt_snapshot
+    snapshot_path, snapshot_digest = snapshot
+    content = _read_valid_submission_snapshot(
+        repo_root,
+        receipt_run_id,
+        artifact_type,
+        snapshot_path,
+        snapshot_digest,
+    )
+    if content is None:
+        return frozenset()
+    return _parse_approved_deletions(content)
+
+
+def _read_valid_submission_snapshot(
+    repo_root: Path,
+    run_id: str,
+    artifact_type: str,
+    relative_path: str,
+    expected_digest: str,
+) -> bytes | None:
+    canonical = PurePosixPath(".agent", "receipts", run_id, "submissions", f"{artifact_type}.md")
+    snapshot_path = PurePosixPath(relative_path)
+    if snapshot_path != canonical:
+        return None
+    path = repo_root.joinpath(*snapshot_path.parts)
+    try:
+        if path.is_symlink():
+            return None
+        receipt_dir = (repo_root / ".agent" / "receipts" / run_id).resolve(strict=True)
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(receipt_dir)
+        content = path.read_bytes()
+        canonical_content = (
+            repo_root / ".agent" / "artifacts" / f"{artifact_type}.md"
+        ).read_bytes()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if hashlib.sha256(content).hexdigest() != expected_digest:
+        return None
+    if hashlib.sha256(canonical_content).hexdigest() != expected_digest:
+        return None
+    return content
+
+
+def _parse_approved_deletions(content: bytes) -> frozenset[str]:
+    try:
+        document, _ = parse_markdown_document(content.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return frozenset()
+    section = document.section("Approved deletions")
+    if section is None or section.level != _APPROVED_DELETIONS_HEADING_LEVEL:
+        return frozenset()
+    approved: set[str] = set()
+    for line in section.lines:
+        match = re.fullmatch(r"- `([^`]+)`", line.text)
+        if match is None:
+            continue
+        raw: str = match.group(1)
+        if "\\" in raw or raw.startswith("/") or not _is_literal_repo_path(raw):
+            continue
+        path_value = PurePosixPath(raw)
+        if not raw or ".." in path_value.parts or path_value.as_posix() != raw:
+            continue
+        approved.add(raw)
+    return frozenset(approved)
+
+
+def _is_literal_repo_path(path: str) -> bool:
+    return not any(character in path for character in "*?[]{}")
 
 
 def _run_stage1(
@@ -589,6 +695,7 @@ def _run_stage1(
         iteration,
         ctx.pipeline_policy,
         phase_name,
+        artifacts_policy=ctx.artifacts_policy,
     )
     if isinstance(res, (CommitReviewRejected, CommitReviewGateFailed)):
         return [res]

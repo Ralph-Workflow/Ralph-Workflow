@@ -698,7 +698,7 @@ The commit review phases (`development_commit_review` and `development_final_com
 
 - **`[loop_counters.commit_review_iteration]`** (default: `3`): Maximum review passes per iteration.
 - **`[loop_counters.commit_review_identity]`** (default: `3`): Maximum identical no-progress review attempts before the commit review gate fails closed to `failed_terminal`. Reaching the bound means the reviewer made no progress on the same pending tree (a missing or invalid artifact), so the gate treats it as a reviewer malfunction and never approves the pending tree.
-- **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which the run transitions to `failed_terminal`. Unlike iteration counters, this counter survives loop resets; an approved review resets it to zero. With the default of `2`, the second consecutive rejection rolls the rejected changes back, keeps the rejected proposal ref, and routes to `failed_terminal`, from which recovery resumes on the restored tree.
+- **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which the run transitions to `failed_terminal`. Unlike iteration counters, this counter survives loop resets; an approved review resets it to zero. With the default of `2`, the second consecutive rejection keeps the saved proposal ref and routes to `failed_terminal` without another reset.
 
 #### Deterministic tripwire thresholds
 
@@ -706,18 +706,28 @@ Configured under the commit review policy settings (`[commit_review]` in `pipeli
 
 | Setting | Default | Description |
 |---|---|---|
-| `max_deleted_files` | `50` | Maximum count of deleted tracked files allowed before triggering a hard mass-deletion tripwire. |
+| `max_deleted_files` | `50` | Maximum count of non-plan-approved deleted tracked files allowed; the hard tripwire fires above this value. |
 | `max_deleted_fraction` | `0.25` (25%) | Maximum ratio of deleted tracked files to total tracked files. Exceeding this triggers a hard tripwire. |
 | `binary_size_limit` | `1000000` (1 MB) | Maximum size in bytes for binary files before flagging them for cleanup review. This is a **soft** finding at Stage 1: it is review evidence, not an automatic rejection. A binary that is still over the limit after the edit step is rejected on the engine's own evidence. |
 | `proposal_retention` | `10` | Number of proposal refs to retain before pruning historical proposals. |
-| `max_rejections` | `2` | The consecutive-rejection count at which the run routes to `failed_terminal`: with the default of `2`, the second consecutive rejection is rolled back and then routed there. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of `2`. |
+| `max_rejections` | `2` | The consecutive-rejection count at which the run routes to `failed_terminal`: with the default of `2`, the second consecutive rejection retains its saved proposal ref and does not request another reset. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of `2`. |
 
-Stage 1 produces two kinds of finding. A **hard** tripwire rejects the proposal without an agent: mass deletion beyond the thresholds above, and the removal of a protected path (`.git` internals, `PROMPT.md`, `AGENTS.md`, a project manifest or lockfile, or a top-level source/test directory entry; `.git` internals and the two core prompts are also protected when overwritten). A **soft** finding does not reject at Stage 1 — out-of-scope paths, staged secrets, and oversized binaries are handed to the review agent as evidence. A staged secret or an oversized binary that the edit step could not untrack or ignore is still in the re-sealed proposal, and the engine then rejects it on its own evidence (the path, the measured size and the policy limit). See [Concepts → Commit review and damage gate](concepts.md#commit-review-and-damage-gate) for the full two-stage model.
+Stage 1 evaluates tracked changes and untracked pending files. A **hard**
+tripwire rejects without an agent: mass deletion beyond the thresholds above,
+or a protected deletion (`.git` internals, `PROMPT.md`, `AGENTS.md`, a project
+manifest or lockfile, or an entire top-level source/test directory). Protected
+documents and `.git` content are also protected from overwrite. A **soft**
+finding proceeds to Stage 2: paths outside a phase's `allowed_directories`,
+recognized secret paths or secret-content patterns, and oversized binaries.
+The bundled commit-review phases declare no `allowed_directories`, so that
+restriction is disabled by default. Secret detection has no numeric threshold:
+any recognized match is evidence. A secret or oversized binary that survives
+the validated edit actions is rejected on the engine's evidence.
 
 #### Transitions and recovery
 
 - **`on_success`**: Advances to the commit phase (`development_commit` or `development_final_commit`).
-- **`on_reject`**: Executes a crash-safe rollback to `HEAD` (or dirty run-start baseline) and returns to `development`. The proposal ref (`refs/ralph/proposals/<run>/<iteration>`) and rejection reason are injected into the next prompt.
+- **`on_reject`**: Saves the rejected proposal ref, then resets every pending-commit file to `HEAD` (or the run-start baseline) and returns to `development`. Rejection is a whole-proposal damage disposition, not source review. Rejections at the limit or after the cycle timebox route to `failed_terminal` without another reset.
 - **`on_failure`**: Fail-closed transition to `failed_terminal` on reviewer malfunction (invalid artifact, unresolvable HEAD preflight, or unverifiable reason citation). No rollback is performed on malfunction.
 - **Manual recovery**: A rejected iteration's files can be inspected or recovered at any time via:
   ```bash
@@ -729,8 +739,8 @@ Stage 1 produces two kinds of finding. A **hard** tripwire rejects the proposal 
 These four behaviours are part of the contract and are not configurable:
 
 - **The rollback uses neither `git stash` nor a saved patch.** The rollback is driven by the sealed proposal ref: the proposal diff identifies the files the proposal added, and `git read-tree --reset -u` restores the tracked files to `HEAD` (or the dirty run-start baseline). Nothing is stashed, and no patch file is written.
-- **A rejection after the cycle timebox expires routes to `failed_terminal`, not back to `development`.** Timebox exhaustion and the consecutive-rejection ceiling both roll the rejected changes back and take the phase's `on_failure` target (the recovery `failed_route` when `on_failure` is unset). A rollback that is refused keeps the tree and the proposal ref and stops the run for manual recovery.
-- **Intentional large deletions get no plan-based bypass.** The mass-deletion tripwires compare the diff against `HEAD` and never consult the plan or the task text, so a deliberate large deletion trips the same hard rejection as an accidental one. Raise `max_deleted_files` and/or `max_deleted_fraction` in `[commit_review]` when a large intentional deletion is expected.
+- **A rejection after the cycle timebox expires routes to `failed_terminal`, not back to `development`.** Timebox exhaustion and the consecutive-rejection ceiling retain the saved proposal ref and do not request another reset.
+- **The deletion bypass is closed.** Only exact deletions listed in the planning-analysis-approved plan may bypass the mass-deletion tripwire. Protected deletions never bypass it, and developer or reviewer input cannot widen the list.
 - **Old phase names are not migrated.** The phase, role, artifact, counter, template, and skill identifiers that commit review replaced are gone, and Ralph Workflow performs no checkpoint migration for them; see [Concepts → Phase rename and checkpoint compatibility](concepts.md#phase-rename-and-checkpoint-compatibility) for the checkpoint consequence. A checkpoint that still names a pre-rename phase is not rewritten: the run cannot route that phase and fails. Start a fresh run after upgrading.
 
 ## `artifacts.toml` in plain language

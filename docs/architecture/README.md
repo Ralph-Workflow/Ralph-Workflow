@@ -5,6 +5,15 @@ The runtime architecture for the maintained Python package lives under
 For the interrupt architecture ADR see
 [`ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md).
 
+Agent recovery has one owner: `RecoveryController` owns cooldown and
+unavailability, failure-budget charging, backoff, spent state, candidate
+selection, and wait/termination. Agent-invoking paths report every failed or
+unproductive attempt through it, and a failure may be unpenalised only after
+proven progress. Round caps come from configured limits; phases keep no local
+skip/backoff/cooldown collection. The audited path list and the two tested
+non-agent exceptions are maintained in
+[`docs/agents/architecture.md`](../agents/architecture.md#shared-recovery-ownership).
+
 The retired Rust implementation's architecture material is quarantined
 under [`../legacy-rust/`](../legacy-rust/README.md) and is not a source
 of current behavior.

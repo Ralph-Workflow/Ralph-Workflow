@@ -159,6 +159,43 @@ canonical per-agent model-string shapes and worked examples live in
 [Agent Compatibility](../sphinx/agent-compatibility.md) — that page
 is the single home for those facts, do not re-describe them here.
 
+## Shared recovery ownership
+
+Exactly one `RecoveryController` owns agent cooldown and unavailability,
+failure-budget charging, retry backoff, spent state, candidate selection, and
+whether execution waits or terminates. Every agent-invoking path reports every
+failed or unproductive attempt to that controller. Candidate selection also
+goes through the controller so a cooled or spent candidate cannot be launched.
+A failed attempt may be left unpenalised only when the controller receives
+proof that the attempt made progress.
+
+The implementation is
+[`ralph/recovery/controller.py`](../../ralph-workflow/ralph/recovery/controller.py).
+Agent entry points share
+[`run_agent_attempt`](../../ralph-workflow/ralph/pipeline/attempt_runner.py),
+which finalises each attempt through the controller. Round limits come from the
+configured limits passed into each loop; phases do not keep their own
+skip/backoff/cooldown collections.
+
+The audited invocation paths are:
+
+| Path | Shared recovery route |
+|---|---|
+| Main pipeline phase loop | Phase candidate selection uses the controller; attempts use the `MAIN_PHASE_LOOP` entry point. |
+| Parallel worker | Phase candidate selection uses the controller; attempts use the `PARALLEL_WORKER` entry point. |
+| Integration continuation | Phase candidate selection uses the controller; continuation attempts use the `INTEGRATION_CONTINUATION` entry point. |
+| Conflict resolution | Resolver selection, cooldown waits, exhaustion, and attempts use the shared controller. |
+| Pending-merge repair | `choose_resolver` selects through the controller; failed or unproductive repairs are finalised through it. |
+| Integration diagnostics | `next_resolver` delegates selection to the controller; diagnostic attempts report their outcome through it. |
+| Project-policy analysis and remediation | Each round asks the controller for the next eligible chain candidate and runs the attempt through the `PROJECT_POLICY` entry point. |
+| Commit-message generation and `ralph commit` | Candidate selection asks `RecoveryController.preferred_agent_index` to choose the next candidate; attempts use the `COMMIT_GENERATION` entry point and report through the controller. |
+| Canary probe | The probe runs through the `CANARY_PROBE` entry point in probe mode. |
+| Dead-agent probe | The dead-agent check delegates to the canary probe path and its controller-owned verdict. |
+
+Two tested recovery paths do not invoke agents and therefore do not participate
+in agent cooldown selection: MCP server restart is process-level recovery, and
+Explore recovery rebuilds the local index.
+
 ## Adding a new agent
 
 To learn how to register a new agent, perform updates, or remove an agent, see

@@ -9,13 +9,19 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_all_format_docs,
 )
 
+_RETIRED_ARTIFACT_TYPE = "commit_" + "cleanup"
+_CURRENT_ARTIFACT_TYPE = "commit_review"
+
 
 def test_materialize_all_format_docs_prunes_obsolete_docs_and_examples(tmp_path: Path) -> None:
     formats_dir = tmp_path / FORMAT_DOCS_WORKSPACE_DIR
     examples_dir = formats_dir / "examples"
     examples_dir.mkdir(parents=True, exist_ok=True)
 
-    stale_name = "commit_" + "cleanup.md"
+    assert _RETIRED_ARTIFACT_TYPE not in FORMAT_DOC_ARTIFACT_TYPES
+    assert _CURRENT_ARTIFACT_TYPE in FORMAT_DOC_ARTIFACT_TYPES
+
+    stale_name = f"{_RETIRED_ARTIFACT_TYPE}.md"
     stale_doc = formats_dir / stale_name
     stale_doc.write_text("# obsolete", encoding="utf-8")
     stale_example = examples_dir / stale_name
@@ -30,6 +36,8 @@ def test_materialize_all_format_docs_prunes_obsolete_docs_and_examples(tmp_path:
 
     assert not stale_doc.exists()
     assert not stale_example.exists()
+    assert (formats_dir / f"{_CURRENT_ARTIFACT_TYPE}.md").exists()
+    assert (examples_dir / f"{_CURRENT_ARTIFACT_TYPE}.md").exists()
     assert kept_txt.exists()
     assert kept_example_txt.exists()
 

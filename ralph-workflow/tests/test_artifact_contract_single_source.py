@@ -10,6 +10,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
     get_recorded_receipt_artifact_types,
@@ -17,17 +20,27 @@ from ralph.mcp.artifacts.completion_receipts import (
 from ralph.mcp.artifacts.format_docs import load_bundled_example
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pipeline import effect_executor
+from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.prompt_prep import session_capabilities_for_agent_phase
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PolicyBundle
+from ralph.policy.validation.artifact_contract import ArtifactContractMismatchError
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
     materialize_prompt_for_phase,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.workspace import WorkspaceScope
 from ralph.workspace.memory import MemoryWorkspace
-from tests._artifact_format_docs_mock_session import MockSession
+from tests._artifact_format_docs_mock_session import (
+    _DEFAULT_GRANTED,
+    _PLANNING_GRANTED,
+    MockSession,
+)
 from tests._artifact_format_docs_mock_workspace import MockWorkspace
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._support.typed_accessors import must_text
 
 _PROMPT_ARTIFACT_CALL = re.compile(
@@ -96,6 +109,90 @@ def test_stale_project_contract_never_overrides_the_default_grading_type(
         required = resolve_phase_required_artifact(bundle.pipeline, bundle.artifacts, phase=phase)
         assert required is not None
         assert required.artifact_type == "commit_review"
+
+
+def test_same_name_override_mismatch_is_loud_before_invocation_and_not_charged(
+    tmp_path: Path,
+) -> None:
+    policy_dir = tmp_path / "policy"
+    policy_dir.mkdir()
+    for name in ("agents.toml", "pipeline.toml"):
+        shutil.copy(default_dir() / name, policy_dir / name)
+    (policy_dir / "artifacts.toml").write_text(
+        "[artifacts.development_commit_review_artifact]\n"
+        'drain = "commit"\n'
+        'artifact_type = "stale_review"\n'
+        "decision_vocabulary = []\n",
+        encoding="utf-8",
+    )
+    bundle = load_policy(policy_dir, strict_optional_files=True)
+    phase = "development_commit_review"
+    required = resolve_phase_required_artifact(bundle.pipeline, bundle.artifacts, phase=phase)
+    assert required is not None
+    prompt_text = _render_phase_prompt(
+        bundle=bundle,
+        phase_name=phase,
+        phase_def=bundle.pipeline.phases[phase],
+        workspace_root=tmp_path / "render",
+    )
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    invocation_count = 0
+
+    def invoke(*_args: object, **_kwargs: object) -> list[str]:
+        nonlocal invocation_count
+        invocation_count += 1
+        return ["done"]
+
+    agent_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+
+    class _Registry:
+        def get(self, _name: str) -> AgentConfig:
+            return agent_config
+
+    class _Bridge:
+        def shutdown(self) -> None:
+            pass
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=FakeClock(start=0.0),
+            agent_max_consecutive_unproductive=1,
+        )
+    )
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=_Bridge(),
+        master_prompt_materializer=lambda *_args, **_kwargs: str(tmp_path / "MASTER.md"),
+        registry_factory=lambda _config: _Registry(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="reviewer",
+        phase=phase,
+        prompt_file=str(prompt_file),
+        drain="commit",
+    )
+
+    with pytest.raises(ArtifactContractMismatchError) as caught:
+        effect_executor.execute_agent_effect(
+            effect,
+            UnifiedConfig(general=GeneralConfig(agent_idle_timeout_seconds=300.0)),
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            invoke_agent=invoke,
+            required_artifact=required,
+            recovery_controller=controller,
+        )
+
+    assert caught.value.phase == phase
+    assert caught.value.prompted_type == "commit_review"
+    assert caught.value.graded_type == "stale_review"
+    assert phase in str(caught.value)
+    assert "commit_review" in str(caught.value)
+    assert "stale_review" in str(caught.value)
+    assert invocation_count == 0
+    assert controller.ledger.status(phase, "reviewer").is_eligible
 
 
 def _render_phase_prompt(
@@ -232,13 +329,20 @@ def _submit_through_handler_and_read_receipt_type(
                 session_id=prerequisite_run_id,
                 drain="planning",
                 run_id=prerequisite_run_id,
+                granted_capabilities=_PLANNING_GRANTED,
             ),
             workspace,
             artifact_type=prerequisite,
             phase_name=phase_name,
         )
+    granted = _PLANNING_GRANTED if drain == "planning" else _DEFAULT_GRANTED
     _submit_through_handler(
-        _ContractSession(session_id=run_id, drain=drain, run_id=run_id),
+        _ContractSession(
+            session_id=run_id,
+            drain=drain,
+            run_id=run_id,
+            granted_capabilities=granted,
+        ),
         workspace,
         artifact_type=artifact_type,
         phase_name=phase_name,

@@ -309,12 +309,18 @@ The runtime guarantees that every artifact passes its type's boundary, including
 
 ## Commit review and damage gate
 
-Before any code change is committed, the commit review phase executes as both a deterministic safety gate and an edit phase. Accidental damage—such as mass file deletion, removal of protected project files, or staged secrets—is caught and rolled back before `git commit` ever runs.
+Before any pending change is committed, commit review runs as a deterministic
+damage gate followed, when needed, by a narrow housekeeping edit phase. It is
+not source-code review: `development_analysis` owns code quality, test adequacy,
+and plan adherence.
 
 ### Two-stage review architecture
 
 1. **Stage 1 — Deterministic tripwires (engine, no agent):**
-   The engine computes diff statistics between `HEAD` and the pending change. **Hard tripwires** reject automatically without consulting an agent: no reviewer agent is invoked and no prompt is materialised, so an agent cannot talk the gate out of a hard tripwire.
+   The engine seals the complete pending state, including tracked changes and
+   untracked files, then computes tripwires against the immutable base tree.
+   **Hard tripwires** reject automatically: no reviewer agent is invoked and no
+   prompt is materialised.
    - **Mass deletion:** Deleted tracked files exceed the count limit (`max_deleted_files`, default 50) or fractional limit (`max_deleted_fraction`, default 0.25 / 25%).
    - **Protected paths:** Deletion or overwrite of `.git` internals and of the core instructions (`PROMPT.md`, `AGENTS.md`); deletion of a project manifest or lockfile (`pyproject.toml`, `package.json`, `Cargo.toml`, `uv.lock`, etc.); and deletion of a top-level source or test directory entry (`src`, `tests`, `test`, `lib`, `ralph`, `app`, `pkg`).
 
@@ -322,20 +328,31 @@ Before any code change is committed, the commit review phase executes as both a 
    - **Out-of-scope paths:** Modified or added files outside `allowed_directories` when configured.
    - **Secrets and binaries:** Recognized secret filenames or patterns and binaries exceeding `binary_size_limit` (default 1,000,000 bytes / 1 MB) are surfaced as evidence for cleanup. When the edit step cannot untrack or ignore them, the unsafe content is still in the re-sealed proposal and the engine rejects it on its own evidence (path, size, and the policy limit).
 
-2. **Stage 2 — Agent review:**
-   When no hard tripwire fires, an agent inspects the diff and Stage 1 evidence. The agent submits a `commit_review` artifact containing:
+2. **Stage 2 — Housekeeping edit phase:**
+   When no hard tripwire fires, an agent classifies only content that does not
+   belong in the commit. It may request validated `delete_file`,
+   `add_to_gitignore`, or `add_to_git_exclude` actions, then approve the cleaned
+   proposal. It never performs source-code review. The agent submits a
+   `commit_review` artifact containing:
    - `verdict: approve | reject`: Strict closed-vocabulary verdict.
    - `tree_sha`: 40-character hex SHA of the sealed proposal tree.
    - `## Actions`: Required section (it may be empty) of permitted cleanup operations (`delete_file`, `add_to_gitignore`, `add_to_git_exclude`), each written as `<action> | <value>` and executed through a strict security boundary.
    - `## Reason`: Mandatory on `reject`. The reviewer must cite concrete paths or counts present in the diff. Unverifiable citations fail as reviewer malfunctions rather than triggering rollbacks.
 
-Commit review is **not** a code quality review—`development_analysis` owns code quality and plan adherence. Commit review answers only: *"does this diff look like accidental damage?"*
+Reject means that the whole pending proposal is unsuitable to commit, not that
+its source code failed review. Ralph Workflow saves the proposal under a Git
+ref before rejection; a normal rejection then resets every file in the pending
+commit to `HEAD` or the run-start baseline, including removing proposal-added
+files.
 
 Every threshold above is a `[commit_review]` setting in the pipeline policy TOML. The full table with the bundled defaults is in [Configuration → Commit review configuration](configuration.md#commit-review-configuration).
 
-### Intentional large deletions have no bypass
+### Plan-approved deletion bypass
 
-The mass-deletion tripwires measure the diff against `HEAD`. They never consult the plan, the task text, or any other signal of operator intent, so a deliberately large deletion trips the same hard rejection as an accidental one. There is no plan-based exemption: the supported way to allow a large intentional deletion is to raise `max_deleted_files` and/or `max_deleted_fraction` in the `[commit_review]` block of the pipeline policy TOML.
+Only exact deletion paths listed in the planning-analysis-approved plan may be
+excluded from the mass-deletion count and fraction. Protected deletions never
+bypass their tripwire, even when listed. Developer or reviewer input cannot add
+paths to or widen this engine-read authorization list.
 
 ### Proposal sealing
 
@@ -352,8 +369,8 @@ When a proposal is rejected:
 - **Checkpoint:** Records `rollback_pending` for crash-safe resume.
 - **Restore:** Resets the working tree to `HEAD` (or the run-start baseline if the run started on a dirty tree) using `git read-tree --reset -u HEAD`, removing files present in the proposal tree but absent from `HEAD`. Ignored files and `.agent/` runtime state are preserved intact. The rollback is driven by the sealed proposal ref and uses **neither `git stash` nor a saved patch file**.
 - **Continuation:** The rejection reason and proposal ref are passed to the next developer prompt, and the workflow loops back to `development`.
-- **Bounded retries:** Each rejection charges the iteration budget like a commit. The `commit_review_rejections` counter tracks consecutive rejections (default limit 2); an approved review resets it. With the default of 2, the second consecutive rejection is rolled back like the first, the rejected proposal ref is kept, and the run routes to `failed_terminal`, from which recovery resumes on the restored tree.
-- **Timebox exhaustion:** A rejection that arrives after the cycle timebox has elapsed does not loop back to `development`. It rolls the rejected changes back and routes to `failed_terminal` (the phase's `on_failure` target, or the recovery `failed_route` when `on_failure` is unset).
+- **Bounded retries:** Each rejection charges the iteration budget like a commit. The `commit_review_rejections` counter tracks consecutive rejections (default limit 2); an approved review resets it. A rejection below the limit resets the pending proposal and returns to development. A rejection that reaches the limit retains the saved proposal ref and routes to `failed_terminal` without another reset.
+- **Timebox exhaustion:** A rejection after the cycle timebox has elapsed retains the saved proposal ref and routes to `failed_terminal` without another reset.
 
 ### Manual recovery
 

@@ -177,6 +177,34 @@ make test-subprocess-e2e
 
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md`.
 
+## Agent recovery ownership audit
+
+The agent-failure single-owner audit enforces the recovery invariant described
+in [Agent Invoke Architecture](architecture.md#shared-recovery-ownership).
+Exactly one `RecoveryController` owns cooldown/unavailability, failure-budget
+charging, backoff, spent state, candidate selection, and wait/termination.
+Every agent invocation must report each failed or unproductive attempt through
+that owner. A failure may be unpenalised only on an explicitly checked path that
+proves progress. Agent phases must not maintain local skip, backoff, or cooldown
+collections, and invocation round caps must come from configured limits.
+
+Run the focused structural check from `ralph-workflow/`:
+
+```bash
+uv run python -m ralph.testing.audit_agent_failure_single_owner
+```
+
+The audit covers the main phase loop, parallel worker, integration
+continuation, conflict resolution, pending-merge repair, integration
+diagnostics, project-policy analysis/remediation, commit-message generation
+including `ralph commit`, canary probes, and dead-agent probes. MCP server
+restart is a tested process-level non-agent exception; Explore recovery is a
+tested local-index non-agent exception. Commit-message generation and `ralph
+commit` select the next candidate through the shared controller and report
+attempt outcomes through it. The cooled-candidate regression in
+`tests/test_commit_message_agent_selection.py` proves that the unavailable
+candidate is skipped while the eligible candidate runs once.
+
 ## Terminal escape containment
 
 The terminal-escape containment contract keeps interactive agents (Claude Code, Cursor, etc.) from blanking Ralph's screen or overwriting live log lines. It is enforced by `ralph/testing/audit_terminal_escape_containment.py` (a `make verify` step) and consists of three pinning rules plus one exception:

@@ -79,6 +79,13 @@ def resolve_required_artifact(
         return None
 
 
+def resolve_planning_artifact_type(artifacts_policy: ArtifactsPolicy) -> str | None:
+    required = resolve_required_artifact(artifacts_policy, drain="planning")
+    if required is None or required.artifact_type != "plan":
+        return None
+    return required.artifact_type
+
+
 def resolve_phase_required_artifact(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy,
@@ -413,6 +420,7 @@ __all__ = [
     "build_retry_hint",
     "build_validation_retry_hint",
     "resolve_phase_required_artifact",
+    "resolve_planning_artifact_type",
     "resolve_required_artifact",
     "retry_fingerprint_path",
     "retry_fingerprint_path_for_hint",

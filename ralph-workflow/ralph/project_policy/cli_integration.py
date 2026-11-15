@@ -296,56 +296,56 @@ def _make_production_invoke_agent(
             return False
         chain_agents = _resolve_chain_agents(load_result, phase)
         last_error: Exception | None = None
-        remaining_agents = list(chain_agents)
-        while remaining_agents:
-            selection = controller.preferred_agent_index(phase, remaining_agents)
+        selection = controller.preferred_agent_index(phase, chain_agents)
+        if selection.agent is None:
+            wait_ms = controller.earliest_available_wait_ms(phase, chain_agents)
+            if wait_ms <= 0:
+                return False
+            controller.clock.sleep(wait_ms / 1000.0)
+            controller.prune_expired()
+            selection = controller.preferred_agent_index(phase, chain_agents)
             if selection.agent is None:
-                wait_ms = controller.earliest_available_wait_ms(phase, remaining_agents)
-                if wait_ms > 0:
-                    attempt_deps.clock.sleep(wait_ms / 1000.0)
-                    continue
-                break
-            agent_name = selection.agent
-            remaining_agents.remove(agent_name)
-            effect = InvokeAgentEffect(
-                agent_name=agent_name,
-                phase=phase,
-                prompt_file=prompt_path,
-                drain=phase,
-                chain_name=phase,
-                requires_completion_evidence=(phase == PHASE_ANALYSIS),
-            )
-            with _capture_pipeline_state():
-                try:
-                    policy_config = load_result.config.model_copy(
-                        update={
-                            "general": load_result.config.general.model_copy(
-                                update={"auto_integrate_enabled": False}
-                            )
-                        }
-                    )
-                    result = run_agent_attempt(
-                        AgentEntryPoint.PROJECT_POLICY,
-                        effect=effect,
-                        config=policy_config,
-                        controller=controller,
-                        deps=attempt_deps,
-                        state=PipelineState(phase=phase, rebase=RebaseState()),
-                        pipeline_deps=pipeline_deps,
-                        workspace_scope=workspace_scope,
-                        display=display,
-                        display_context=display_context,
-                        run_id=load_result.run_id,
-                        policy_bundle=load_result.policy_bundle,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
-                    )
-                    last_error = exc
-                    continue
-            if result.outcome.kind is AttemptOutcomeKind.COMPLETED:
-                return True
+                return False
+        agent_name = selection.agent
+        effect = InvokeAgentEffect(
+            agent_name=agent_name,
+            phase=phase,
+            prompt_file=prompt_path,
+            drain=phase,
+            chain_name=phase,
+            requires_completion_evidence=(phase == PHASE_ANALYSIS),
+        )
+        with _capture_pipeline_state():
+            try:
+                policy_config = load_result.config.model_copy(
+                    update={
+                        "general": load_result.config.general.model_copy(
+                            update={"auto_integrate_enabled": False}
+                        )
+                    }
+                )
+                result = run_agent_attempt(
+                    AgentEntryPoint.PROJECT_POLICY,
+                    effect=effect,
+                    config=policy_config,
+                    controller=controller,
+                    deps=attempt_deps,
+                    state=PipelineState(phase=phase, rebase=RebaseState()),
+                    pipeline_deps=pipeline_deps,
+                    workspace_scope=workspace_scope,
+                    display=display,
+                    display_context=display_context,
+                    run_id=load_result.run_id,
+                    policy_bundle=load_result.policy_bundle,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
+                )
+                last_error = exc
+            else:
+                if result.outcome.kind is AttemptOutcomeKind.COMPLETED:
+                    return True
         if last_error is not None:
             raise policy_remediation.RemediationInvocationError(str(last_error)) from last_error
         return False

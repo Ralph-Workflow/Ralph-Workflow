@@ -467,6 +467,9 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
     assert ledger.status(review_phase, selected_agent).is_eligible, (
         "a graded PASS must not charge the agent failure ledger"
     )
+    assert selected_agent not in ledger.registered_agents(review_phase), (
+        "a graded PASS must record no AttemptFact for the review agent"
+    )
 
     calls_before_mismatch = len(transport.calls)
     mismatched = RequiredArtifact(
@@ -516,6 +519,9 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
     )
     assert ledger.status(review_phase, selected_agent).is_eligible, (
         "an engine-side contract mismatch must not charge the consecutive_unproductive counter"
+    )
+    assert selected_agent not in ledger.registered_agents(review_phase), (
+        "an engine-side contract mismatch must record no AttemptFact for the review agent"
     )
 
 

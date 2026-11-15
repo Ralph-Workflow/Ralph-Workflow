@@ -276,6 +276,7 @@ def _commit_review_phase_effect(
         return completed_effect
 
     from ralph.phases._commit_review_events import (
+        CommitReviewGateFailed,
         CommitReviewRejected,
     )
     from ralph.phases.commit_review import run_commit_review_stage1_preflight
@@ -288,6 +289,7 @@ def _commit_review_phase_effect(
         iteration,
         policy_bundle.pipeline,
         state.phase,
+        artifacts_policy=policy_bundle.artifacts,
     )
     if isinstance(preflight_outcome, CommitReviewRejected):
         return CommitReviewRejectEffect(
@@ -296,6 +298,8 @@ def _commit_review_phase_effect(
             ref=preflight_outcome.ref,
             hard=preflight_outcome.hard,
         )
+    if isinstance(preflight_outcome, CommitReviewGateFailed) and workspace_scope.root.exists():
+        return ExitFailureEffect(reason=f"Commit review gate failed: {preflight_outcome.detail}")
 
     return _parallel_or_agent_effect(
         state,

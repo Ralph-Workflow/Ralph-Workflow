@@ -419,6 +419,7 @@ tests/test_commit_attempt_clears_receipt.py|0,1,0
 tests/test_commit_completion_authority.py|0,1,0
 tests/test_commit_detached_head_recovery.py|0,2,0
 tests/test_commit_executor.py|2,0,0
+tests/test_commit_message_agent_selection.py|0,1,0
 tests/test_commit_message_pipeline.py|3,0,0
 tests/test_commit_plumbing_transport_tools.py|0,2,0
 tests/test_commit_plumbing_uses_canonical_submit.py|0,1,4
@@ -855,6 +856,8 @@ tests/test_workspace_fs_fs_workspace_read_lines.py|0,0,5
 tests/test_workspace_memory_memory_workspace_init.py|0,0,3
 tests/test_workspace_memory_memory_workspace_normalize.py|0,0,3
 tests/test_workspace_monitor_never_delays_the_agent.py|0,2,0
+tests/test_wu_c2_non_agent_recovery_paths.py|0,1,0
+tests/test_wu_c2_project_policy_recovery_ownership.py|1,1,1
 tests/unit/display/_criteria_probes.py|6,35,9
 tests/unit/display/test_brief_criteria_coverage.py|0,2,5
 tests/unit/display/test_crash_output_containment.py|0,0,1

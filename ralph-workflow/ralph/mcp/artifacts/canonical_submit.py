@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
     delete_artifact_receipt,
+    read_artifact_submission_snapshot,
     write_artifact_receipt,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -16,10 +17,15 @@ from ralph.mcp.artifacts.history import (
     history_dir_for_artifact,
     rebuild_history_index,
     snapshot_current_artifact,
+    submission_snapshot_path,
+    validate_submission_snapshot_components,
+    write_submission_snapshot,
 )
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.mcp.artifacts.markdown import MarkdownArtifactError, parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
+
+_restore_artifact_receipt = write_artifact_receipt
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.artifact import ArtifactHandlerDeps
@@ -82,6 +88,55 @@ def _restore_file_state(
     backend.unlink(path, missing_ok=True)
 
 
+def _restore_receipt_state(
+    workspace_root: Path,
+    run_id: str,
+    artifact_type: str,
+    previous_receipt_snapshot: tuple[str, str] | None,
+    receipt_secret: str | None,
+    *,
+    backend: FileBackend,
+    preexisting: bool,
+) -> None:
+    if not preexisting:
+        delete_artifact_receipt(workspace_root, run_id, artifact_type, backend=backend)
+        return
+    previous_path, previous_digest = (
+        previous_receipt_snapshot if previous_receipt_snapshot is not None else (None, None)
+    )
+    _restore_artifact_receipt(
+        workspace_root,
+        run_id,
+        artifact_type,
+        backend=backend,
+        receipt_secret=receipt_secret,
+        submission_snapshot_path=previous_path,
+        submission_snapshot_digest=previous_digest,
+    )
+
+
+def _write_handoff(
+    backend: FileBackend,
+    handoff_path: Path | None,
+    markdown: str,
+    artifact_type: str,
+) -> None:
+    if handoff_path is None:
+        return
+    if not backend.exists(handoff_path.parent):
+        backend.mkdir(handoff_path.parent, parents=True, exist_ok=True)
+    atomic_write_text_if_changed(
+        backend,
+        handoff_path,
+        markdown,
+        tmp_path=handoff_path.with_suffix(".md.tmp"),
+        encoding="utf-8",
+        sync_directory=artifact_type == "plan",
+    )
+    if backend.read_text(handoff_path, encoding="utf-8") != markdown:
+        raise OSError(f"canonical handoff write was corrupt: {handoff_path}")
+
+
 def _rollback_submission(
     *,
     workspace_root: Path,
@@ -97,11 +152,24 @@ def _rollback_submission(
     artifact_type: str,
     run_id: str | None,
     restorable_receipt_preexisting: bool,
+    previous_receipt_snapshot: tuple[str, str] | None,
+    receipt_secret: str | None,
+    submission_snapshot_path_value: Path | None,
+    submission_snapshot_state: tuple[bool, str] | None,
 ) -> None:
     rollback_errors: list[Exception] = []
     if handoff_path is not None and handoff_state is not None:
         try:
             _restore_file_state(backend, handoff_path, handoff_state)
+        except Exception as exc:
+            rollback_errors.append(exc)
+    if submission_snapshot_path_value is not None and submission_snapshot_state is not None:
+        try:
+            _restore_file_state(
+                backend,
+                submission_snapshot_path_value,
+                submission_snapshot_state,
+            )
         except Exception as exc:
             rollback_errors.append(exc)
     try:
@@ -130,13 +198,16 @@ def _rollback_submission(
             )
         except Exception as exc:
             rollback_errors.append(exc)
-    if run_id is not None and not restorable_receipt_preexisting:
+    if run_id is not None:
         try:
-            delete_artifact_receipt(
+            _restore_receipt_state(
                 workspace_root,
                 run_id,
                 artifact_type,
+                previous_receipt_snapshot,
+                receipt_secret,
                 backend=backend,
+                preexisting=restorable_receipt_preexisting,
             )
         except Exception as exc:
             rollback_errors.append(exc)
@@ -162,6 +233,8 @@ def submit_artifact_canonical(
     del parsed_content
     if markdown is None:
         raise ValueError("markdown source is required for migrated artifacts")
+    if run_id is not None:
+        validate_submission_snapshot_components(run_id, artifact_type)
     if normalization_audit is None:
         markdown, normalization_audit = _normalize_commit_submission(
             artifact_type, markdown, workspace_root
@@ -199,6 +272,9 @@ def submit_artifact_canonical(
         else frozenset()
     )
     receipt_path: Path | None = None
+    snapshot_path: Path | None = None
+    snapshot_state: tuple[bool, str] | None = None
+    snapshot_digest: str | None = None
     restorable_receipt_preexisting = artifact_state[0] and (
         artifact_receipt_present(
             workspace_root,
@@ -210,6 +286,15 @@ def submit_artifact_canonical(
         if run_id is not None
         else False
     )
+    previous_receipt_snapshot = None
+    if run_id is not None and restorable_receipt_preexisting:
+        previous_receipt_snapshot = read_artifact_submission_snapshot(
+            workspace_root,
+            run_id,
+            artifact_type,
+            backend=backend,
+            receipt_secret=deps.receipt_secret,
+        )
     try:
         if not backend.exists(directory):
             backend.mkdir(directory, parents=True, exist_ok=True)
@@ -232,19 +317,18 @@ def submit_artifact_canonical(
         if backend.read_text(artifact_path, encoding="utf-8") != markdown:
             raise OSError(f"canonical artifact write was corrupt: {artifact_path}")
 
-        if handoff_path is not None:
-            if not backend.exists(handoff_path.parent):
-                backend.mkdir(handoff_path.parent, parents=True, exist_ok=True)
-            atomic_write_text_if_changed(
-                backend,
-                handoff_path,
+        _write_handoff(backend, handoff_path, markdown, artifact_type)
+
+        if run_id is not None and artifact_type == "plan":
+            snapshot_path = submission_snapshot_path(workspace_root, run_id, artifact_type)
+            snapshot_state = _capture_file_state(backend, snapshot_path)
+            snapshot_path, snapshot_digest = write_submission_snapshot(
+                workspace_root,
+                run_id,
+                artifact_type,
                 markdown,
-                tmp_path=handoff_path.with_suffix(".md.tmp"),
-                encoding="utf-8",
-                sync_directory=artifact_type == "plan",
+                backend=backend,
             )
-            if backend.read_text(handoff_path, encoding="utf-8") != markdown:
-                raise OSError(f"canonical handoff write was corrupt: {handoff_path}")
 
         if run_id is not None:
             receipt_path = write_artifact_receipt(
@@ -254,6 +338,12 @@ def submit_artifact_canonical(
                 backend=backend,
                 receipt_secret=deps.receipt_secret,
                 normalization_audit=normalization_audit,
+                submission_snapshot_path=(
+                    snapshot_path.relative_to(workspace_root).as_posix()
+                    if snapshot_path is not None
+                    else None
+                ),
+                submission_snapshot_digest=snapshot_digest,
             )
     except Exception as submission_error:
         try:
@@ -271,6 +361,10 @@ def submit_artifact_canonical(
                 artifact_type=artifact_type,
                 run_id=run_id,
                 restorable_receipt_preexisting=restorable_receipt_preexisting,
+                previous_receipt_snapshot=previous_receipt_snapshot,
+                receipt_secret=deps.receipt_secret,
+                submission_snapshot_path_value=snapshot_path,
+                submission_snapshot_state=snapshot_state,
             )
         except Exception as rollback_error:
             raise ExceptionGroup(

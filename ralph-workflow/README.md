@@ -177,9 +177,14 @@ for update cadence and the trust statement.
 
 ## Protections
 
-A two-stage commit review acts as a damage gate during the pipeline's
-commit phases: the commit review phases run immediately before their
-corresponding commit phases. Ralph Workflow's own engine writes are
+A two-stage commit review runs immediately before each commit. Stage 1 computes
+deterministic tripwires from tracked and untracked pending state; hard mass or
+protected-deletion damage rejects without invoking an agent. Stage 2 applies
+validated housekeeping edits only and never performs source-code review. A
+normal rejection saves the proposal first, then resets every pending-commit
+file. Only exact deletions in the planning-analysis-approved plan may bypass
+mass-deletion accounting; protected deletions never bypass, and developer or
+reviewer input cannot widen the list. Ralph Workflow's own engine writes are
 auto-committed in isolation at the producer boundary: each commit covers
 only the exact paths the writer just modified, paths that are already
 dirty are skipped and stay in the agent or user commit flow, and an

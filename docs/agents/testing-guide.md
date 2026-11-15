@@ -446,7 +446,7 @@ a ledger row is a defect, and so is a ledger row without a retained entry.
 The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
-| root | 463 | 395 | 859 | 854 | 2108 | follow-up: backlog white-box conversion unit |
+| root | 466 | 396 | 862 | 855 | 2113 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | follow-up: mcp public-seam unit |
 | agents | 100 | 34 | 281 | 100 | 415 | follow-up: agent public-seam unit |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | follow-up: auto-integrate public-seam unit |
@@ -914,6 +914,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_commit_completion_authority.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_detached_head_recovery.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_executor.py` | 2 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
+| `tests/test_commit_message_agent_selection.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_message_pipeline.py` | 3 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_plumbing_transport_tools.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_plumbing_uses_canonical_submit.py` | 0 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
@@ -1351,6 +1352,8 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_workspace_memory_memory_workspace_init.py` | 0 | 0 | 3 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_workspace_memory_memory_workspace_normalize.py` | 0 | 0 | 3 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_workspace_monitor_never_delays_the_agent.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_wu_c2_non_agent_recovery_paths.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_wu_c2_project_policy_recovery_ownership.py` | 1 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/unit/display/_criteria_probes.py` | 6 | 35 | 9 | display | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: display public-seam unit |
 | `tests/unit/display/test_brief_criteria_coverage.py` | 0 | 2 | 5 | display | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: display public-seam unit |
 | `tests/unit/display/test_crash_output_containment.py` | 0 | 0 | 1 | display | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: display public-seam unit |

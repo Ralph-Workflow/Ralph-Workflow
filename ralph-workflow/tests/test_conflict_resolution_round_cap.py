@@ -37,6 +37,57 @@ class _CooldownClock(FakeClock):
         return self.monotonic()
 
 
+def test_round_cap_regression_session_cap_cannot_override_configured_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    configured_cap = 7
+    config = UnifiedConfig.model_validate(
+        {"general": {}, "conflict_resolution": {"max_rounds_per_stop": configured_cap}}
+    )
+    session = ResolutionSession(max_rounds_per_stop=configured_cap + 11)
+    display = _StatusDisplay()
+    invoked_rounds: list[int] = []
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
+    _install_seams(
+        monkeypatch,
+        surviving_per_round=[("src/alpha.py",)] * (configured_cap + 2),
+    )
+
+    token = install_executors(clock=_CooldownClock())
+    try:
+        outcome = run_conflict_resolution_outcome(
+            root=tmp_path,
+            target="main",
+            config=config,
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=display,
+            display_context=None,
+            invoke=lambda _agent, _prompt, round_index: invoked_rounds.append(round_index) is None,
+            session=session,
+            prompt_materializer=lambda **_kwargs: tmp_path / "resolution-prompt.md",
+        )
+    finally:
+        reset_executors(token)
+
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert invoked_rounds
+    assert invoked_rounds == list(range(1, len(invoked_rounds) + 1))
+    assert max(invoked_rounds) <= configured_cap
+    assert session.max_rounds_per_stop == configured_cap + 11
+    assert session.rounds_spent <= configured_cap
+    rendered_rounds = [
+        (model.outer_dev_iteration, model.outer_dev_cap)
+        for model in display.models
+        if model.outer_dev_iteration is not None and model.outer_dev_cap is not None
+    ]
+    assert rendered_rounds
+    assert all(round_cap == configured_cap for _, round_cap in rendered_rounds)
+    assert all(round_index <= round_cap for round_index, round_cap in rendered_rounds)
+
+
 @pytest.mark.parametrize("candidates", [("one",), ("one", "two")])
 def test_round_cap_regression_unresolved_success_never_exceeds_cap(
     monkeypatch: pytest.MonkeyPatch,

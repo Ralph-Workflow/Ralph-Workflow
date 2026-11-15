@@ -256,8 +256,14 @@ def run_agent_attempt(
         raise
     if isinstance(event, AttemptEnded):
         carried_facts = event.facts
-        event = PipelineEvent.AGENT_SUCCESS
-    attempt_failed = _is_agent_failure_event(event)
+        if carried_facts is not None and not carried_facts.artifact_valid:
+            event = PipelineEvent.AGENT_FAILURE
+            attempt_failed = True
+        else:
+            event = PipelineEvent.AGENT_SUCCESS
+            attempt_failed = False
+    else:
+        attempt_failed = _is_agent_failure_event(event)
     ordinal = max(finalized, default=0)
     if not attempt_failed or not finalized:
         ordinal += 1
@@ -302,7 +308,10 @@ def _attempt_facts(
     if finalization.exc is not None:
         facts = attempt_facts_for_failure(finalization.exc)
     elif carried is not None:
-        facts = replace(carried, artifact_valid=not finalization.attempt_failed)
+        facts = replace(
+            carried,
+            artifact_valid=carried.artifact_valid and not finalization.attempt_failed,
+        )
     else:
         facts = AttemptFacts(artifact_valid=not finalization.attempt_failed)
     if finalization.workspace_changed is not None:

@@ -20,6 +20,9 @@ class ReceiptPersistenceError(RuntimeError):
     pass
 
 
+type ArtifactSubmissionSnapshot = tuple[str, str]
+
+
 def _receipt_dir(workspace_root: Path, run_id: str) -> Path:
     return workspace_root / RECEIPT_DIR_RELPATH_FMT.format(run_id=run_id)
 
@@ -30,6 +33,11 @@ def _receipt_path(workspace_root: Path, run_id: str, artifact_type: str) -> Path
 
 def _receipt_hmac(secret: str, run_id: str, artifact_type: str) -> str:
     msg = f"{run_id}\n{artifact_type}".encode()
+    return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def _snapshot_hmac(secret: str, run_id: str, artifact_type: str, path: str, digest: str) -> str:
+    msg = f"{run_id}\n{artifact_type}\n{path}\n{digest}".encode()
     return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
 
 
@@ -72,12 +80,27 @@ def write_artifact_receipt(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     receipt_secret: str | None = None,
     normalization_audit: dict[str, object] | None = None,
+    submission_snapshot_path: str | None = None,
+    submission_snapshot_digest: str | None = None,
 ) -> Path:
     hmac_hex: str | None
+    snapshot_hmac: str | None = None
     if receipt_secret is not None:
         hmac_hex = _receipt_hmac(receipt_secret, run_id, artifact_type)
     else:
         hmac_hex = None
+    if (
+        receipt_secret is not None
+        and submission_snapshot_path is not None
+        and submission_snapshot_digest is not None
+    ):
+        snapshot_hmac = _snapshot_hmac(
+            receipt_secret,
+            run_id,
+            artifact_type,
+            submission_snapshot_path,
+            submission_snapshot_digest,
+        )
 
     audit_json = json.dumps(normalization_audit, sort_keys=True) if normalization_audit else None
     db_written = False
@@ -88,10 +111,25 @@ def write_artifact_receipt(
         db = None
     if db is not None:
         try:
-            if normalization_audit is None:
-                db.upsert_receipt(run_id, artifact_type, hmac_hex)
+            if (
+                submission_snapshot_path is None
+                and submission_snapshot_digest is None
+                and snapshot_hmac is None
+            ):
+                if normalization_audit is None:
+                    db.upsert_receipt(run_id, artifact_type, hmac_hex)
+                else:
+                    db.upsert_receipt(run_id, artifact_type, hmac_hex, audit_json)
             else:
-                db.upsert_receipt(run_id, artifact_type, hmac_hex, audit_json)
+                db.upsert_receipt(
+                    run_id,
+                    artifact_type,
+                    hmac_hex,
+                    audit_json,
+                    submission_snapshot_path,
+                    submission_snapshot_digest,
+                    snapshot_hmac,
+                )
             db_written = True
         except (OSError, RuntimeError, sqlite3.Error):
             pass
@@ -109,6 +147,9 @@ def write_artifact_receipt(
         artifact_type,
         hmac_hex=hmac_hex,
         normalization_audit=normalization_audit,
+        submission_snapshot_path=submission_snapshot_path,
+        submission_snapshot_digest=submission_snapshot_digest,
+        submission_snapshot_hmac=snapshot_hmac,
         backend=backend,
     )
     if not legacy_written:
@@ -126,6 +167,9 @@ def _write_legacy_receipt_fallback(
     *,
     hmac_hex: str | None,
     normalization_audit: dict[str, object] | None,
+    submission_snapshot_path: str | None,
+    submission_snapshot_digest: str | None,
+    submission_snapshot_hmac: str | None,
     backend: FileBackend,
 ) -> bool:
     path = _receipt_path(workspace_root, run_id, artifact_type)
@@ -134,6 +178,12 @@ def _write_legacy_receipt_fallback(
         payload["hmac"] = hmac_hex
     if normalization_audit is not None:
         payload["normalization_audit"] = normalization_audit
+    if submission_snapshot_path is not None:
+        payload["submission_snapshot_path"] = submission_snapshot_path
+    if submission_snapshot_digest is not None:
+        payload["submission_snapshot_digest"] = submission_snapshot_digest
+    if submission_snapshot_hmac is not None:
+        payload["submission_snapshot_hmac"] = submission_snapshot_hmac
     try:
         write_text_if_changed(
             backend,
@@ -147,6 +197,128 @@ def _write_legacy_receipt_fallback(
     except OSError:
         return False
     return True
+
+
+def _snapshot_from_payload(
+    payload: object,
+    run_id: str,
+    artifact_type: str,
+    receipt_secret: str,
+) -> ArtifactSubmissionSnapshot | None:
+    if not isinstance(payload, dict):
+        return None
+    values = cast("dict[str, object]", payload)
+    path = values.get("submission_snapshot_path")
+    digest = values.get("submission_snapshot_digest")
+    stored_hmac = values.get("submission_snapshot_hmac")
+    if not isinstance(path, str) or not isinstance(digest, str) or not isinstance(stored_hmac, str):
+        return None
+    expected = _snapshot_hmac(receipt_secret, run_id, artifact_type, path, digest)
+    if not hmac.compare_digest(stored_hmac, expected):
+        return None
+    return path, digest
+
+
+def read_artifact_submission_snapshot(
+    workspace_root: Path,
+    run_id: str,
+    artifact_type: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    receipt_secret: str | None = None,
+) -> ArtifactSubmissionSnapshot | None:
+    if receipt_secret is None or not artifact_receipt_present(
+        workspace_root,
+        run_id,
+        artifact_type,
+        backend=backend,
+        receipt_secret=receipt_secret,
+    ):
+        return None
+    try:
+        db = _open_db(workspace_root)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
+        try:
+            stored = db.get_receipt_submission_snapshot(run_id, artifact_type)
+        except (OSError, RuntimeError, sqlite3.Error):
+            stored = MISSING
+        finally:
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
+        if isinstance(stored, tuple):
+            path, digest, stored_hmac = stored
+            if (
+                isinstance(path, str)
+                and isinstance(digest, str)
+                and isinstance(stored_hmac, str)
+                and hmac.compare_digest(
+                    stored_hmac,
+                    _snapshot_hmac(receipt_secret, run_id, artifact_type, path, digest),
+                )
+            ):
+                return path, digest
+        if stored is not MISSING:
+            return None
+    receipt_path = _receipt_path(workspace_root, run_id, artifact_type)
+    if not backend.exists(receipt_path):
+        return None
+    try:
+        payload = cast("object", json.loads(backend.read_text(receipt_path, encoding="utf-8")))
+        return _snapshot_from_payload(payload, run_id, artifact_type, receipt_secret)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def read_latest_artifact_submission_snapshot(
+    workspace_root: Path,
+    artifact_type: str,
+    *,
+    receipt_secret: str | None,
+) -> tuple[str, ArtifactSubmissionSnapshot] | None:
+    if receipt_secret is None:
+        return None
+    try:
+        db = _open_db(workspace_root)
+    except (OSError, RuntimeError, sqlite3.Error):
+        return None
+    try:
+        stored = db.get_latest_receipt_submission_snapshot(artifact_type)
+    except (OSError, RuntimeError, sqlite3.Error):
+        return None
+    finally:
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            db.close()
+    return _authenticate_latest_snapshot(stored, artifact_type, receipt_secret)
+
+
+def _authenticate_latest_snapshot(
+    stored: tuple[str, str | None, str | None, str | None, str | None] | _Missing,
+    artifact_type: str,
+    receipt_secret: str,
+) -> tuple[str, ArtifactSubmissionSnapshot] | None:
+    if stored is MISSING:
+        return None
+    stored_values = cast("tuple[str, str | None, str | None, str | None, str | None]", stored)
+    run_id, receipt_hmac_value, path_value, digest_value, snapshot_hmac_value = stored_values
+    if not all(
+        isinstance(value, str)
+        for value in (receipt_hmac_value, path_value, digest_value, snapshot_hmac_value)
+    ):
+        return None
+    receipt_hmac = cast("str", receipt_hmac_value)
+    path = cast("str", path_value)
+    digest = cast("str", digest_value)
+    snapshot_hmac = cast("str", snapshot_hmac_value)
+    if not hmac.compare_digest(receipt_hmac, _receipt_hmac(receipt_secret, run_id, artifact_type)):
+        return None
+    if not hmac.compare_digest(
+        snapshot_hmac,
+        _snapshot_hmac(receipt_secret, run_id, artifact_type, path, digest),
+    ):
+        return None
+    return run_id, (path, digest)
 
 
 def artifact_receipt_present(
@@ -335,11 +507,14 @@ def get_recorded_receipt_artifact_types(
 
 __all__ = [
     "RECEIPT_DIR_RELPATH_FMT",
+    "ArtifactSubmissionSnapshot",
     "ReceiptPersistenceError",
     "artifact_receipt_present",
     "clear_run_receipts",
     "commit_receipt_matches_changed_files",
     "delete_artifact_receipt",
     "get_recorded_receipt_artifact_types",
+    "read_artifact_submission_snapshot",
+    "read_latest_artifact_submission_snapshot",
     "write_artifact_receipt",
 ]

@@ -768,7 +768,7 @@ class TestPhaseFailureEvent:
 
         assert new_state.phase == "failed_terminal"
         assert new_state.commit_review_rejections == 2
-        assert new_state.rollback_pending is True
+        assert new_state.rollback_pending is False
         assert new_state.rollback_ref == "refs/ralph/proposals/run-1/1"
         assert "limit reached" in (new_state.last_error or "")
         assert effects == []

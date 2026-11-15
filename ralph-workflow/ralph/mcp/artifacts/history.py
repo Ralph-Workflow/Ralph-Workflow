@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import re
+from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.mcp.artifacts.idempotent_write import (
+    atomic_write_text_if_changed,
+    write_text_if_changed,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -16,6 +20,18 @@ _HISTORY_SUBDIR = "history"
 _TIMESTAMP_PATTERN = re.compile(r"^(\d{8}T\d{6})_")
 _TIMESTAMP_LENGTH = 15
 HISTORY_RETENTION_LIMIT = 64
+_SUBMISSION_SNAPSHOT_SUBDIR = "submissions"
+_SNAPSHOT_COMPONENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _validate_snapshot_component(value: str, label: str) -> None:
+    if value in {".", ".."} or _SNAPSHOT_COMPONENT_PATTERN.fullmatch(value) is None:
+        raise ValueError(f"invalid {label} for submission snapshot: {value!r}")
+
+
+def validate_submission_snapshot_components(run_id: str, artifact_type: str) -> None:
+    _validate_snapshot_component(run_id, "run_id")
+    _validate_snapshot_component(artifact_type, "artifact_type")
 
 
 def history_dir_for_artifact(artifact_dir: Path, artifact_type: str) -> Path:
@@ -24,6 +40,43 @@ def history_dir_for_artifact(artifact_dir: Path, artifact_type: str) -> Path:
 
 def history_index_path(artifact_dir: Path, artifact_type: str) -> Path:
     return history_dir_for_artifact(artifact_dir, artifact_type) / "index.md"
+
+
+def submission_snapshot_path(workspace_root: Path, run_id: str, artifact_type: str) -> Path:
+    validate_submission_snapshot_components(run_id, artifact_type)
+    return (
+        workspace_root
+        / ".agent"
+        / "receipts"
+        / run_id
+        / _SUBMISSION_SNAPSHOT_SUBDIR
+        / f"{artifact_type}.md"
+    )
+
+
+def write_submission_snapshot(
+    workspace_root: Path,
+    run_id: str,
+    artifact_type: str,
+    content: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> tuple[Path, str]:
+    path = submission_snapshot_path(workspace_root, run_id, artifact_type)
+    atomic_write_text_if_changed(
+        backend,
+        path,
+        content,
+        tmp_path=path.with_suffix(".md.tmp"),
+        encoding="utf-8",
+        sync_directory=True,
+        prepare_write=lambda: backend.mkdir(path.parent, parents=True, exist_ok=True),
+    )
+    stored = backend.read_text(path, encoding="utf-8").encode("utf-8")
+    expected = content.encode("utf-8")
+    if stored != expected:
+        raise OSError(f"submission snapshot write was corrupt: {path}")
+    return path, sha256(stored).hexdigest()
 
 
 def _safe_timestamp(now_iso: Callable[[], str]) -> str:
@@ -221,4 +274,7 @@ __all__ = [
     "prune_artifact_history",
     "rebuild_history_index",
     "snapshot_current_artifact",
+    "submission_snapshot_path",
+    "validate_submission_snapshot_components",
+    "write_submission_snapshot",
 ]

@@ -77,7 +77,6 @@ from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     begin_resolution_stop,
     classify_failed_resolution_attempt,
-    conflict_chain_max_retries,
     ensure_session_controller,
     invoke_resolution_agent,
     resolution_chain_agents,
@@ -224,7 +223,6 @@ __all__ = [
     "_sleep_seconds",
     "classify_failed_resolution_attempt",
     "classify_unmerged_conflicts",
-    "conflict_chain_max_retries",
     "declared_decision_paths",
     "emit_conflict_phase_line",
     "invoke_resolution_agent",
@@ -297,9 +295,7 @@ def run_conflict_resolution_outcome(
     observer: WorktreeConflictObserver | None = None,
     prompt_materializer: PromptMaterializer | None = None,
 ) -> StopResolutionOutcome:
-    session_provided = session is not None
     active_session = session or _new_resolution_session(config)
-    active_session.caller_provided = session_provided
     previous_model = capture_status_bar_model(display)
     clock_candidate: object = _extract_clock_candidate(active_session, pipeline_deps)
     token = None
@@ -372,11 +368,9 @@ def run_rebase_conflict_resolution_outcome(
     observer: WorktreeConflictObserver | None = None,
     prompt_materializer: PromptMaterializer | None = None,
 ) -> StopResolutionOutcome:
-    session_provided = session is not None
     active_session = (
         session or active_rebase_resolution_session() or _new_resolution_session(config)
     )
-    active_session.caller_provided = session_provided
     clock_candidate: object = _extract_clock_candidate(active_session, pipeline_deps)
     token = None
     if isinstance(clock_candidate, IntegrationClock):
@@ -428,6 +422,16 @@ def _new_resolution_session(config: UnifiedConfig) -> ResolutionSession:
         max_fallback_agents=limits.max_fallback_agents,
         gitlink_policy=limits.gitlink_policy,
     )
+
+
+def conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
+    if policy_bundle is None:
+        return 0
+    drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
+    if drain is None:
+        return 0
+    chain = policy_bundle.agents.agent_chains.get(drain.chain)
+    return chain.max_retries if chain is not None else 0
 
 
 def _prepare_conflicted_paths(
@@ -605,7 +609,7 @@ def _run_rounds(
         prompt_materializer if prompt_materializer is not None else materialize_round_prompt
     )
     limits = config.conflict_resolution
-    round_cap = session.max_rounds_per_stop or limits.max_rounds_per_stop
+    round_cap = limits.max_rounds_per_stop
     inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
     is_rotation = bool(strategy_history)
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
@@ -852,6 +856,7 @@ def _execute_round_loop(
                 display,
                 session,
                 policy_bundle,
+                round_cap,
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
             )

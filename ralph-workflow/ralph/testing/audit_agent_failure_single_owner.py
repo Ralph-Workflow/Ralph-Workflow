@@ -11,7 +11,9 @@ from ralph.testing._single_owner_retry_cap_rule import _check_production_retry_c
 from ralph.testing._single_owner_rules import (
     _FORBIDDEN_TRACKER_MODULES,
     _FORBIDDEN_TRACKER_SYMBOLS,
+    PHASE_FAILURE_STATE_ALLOWLIST,
     PROGRESS_PATH_ALLOWLIST,
+    ROUND_CAP_LITERAL_ALLOWLIST,
     TEMPORARY_PRODUCTION_ALLOWLIST,
     TEMPORARY_TEST_ALLOWLIST,
     TEMPORARY_TEST_COUNTER_READS,
@@ -29,6 +31,7 @@ from ralph.testing._single_owner_rules import (
     _is_forbidden_target_name,
     _is_ledger_receiver,
     check_agent_failure_ownership,
+    check_phase_local_retry_loops,
     is_test_counter_read_allowed,
     is_transitional_allowed,
 )
@@ -45,8 +48,10 @@ from ralph.testing._single_owner_test_rules import (
 )
 
 __all__ = [
+    "PHASE_FAILURE_STATE_ALLOWLIST",
     "PRODUCTION_SCAN_SUBTREES",
     "PROGRESS_PATH_ALLOWLIST",
+    "ROUND_CAP_LITERAL_ALLOWLIST",
     "TEMPORARY_PRODUCTION_ALLOWLIST",
     "TEMPORARY_TEST_ALLOWLIST",
     "TEMPORARY_TEST_COUNTER_READS",
@@ -118,6 +123,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             violations.extend(_check_production_import(node, rel_path))
     violations.extend(_check_ralph_authored_classifier_inputs(tree, rel_path))
+    violations.extend(check_phase_local_retry_loops(tree, rel_path))
     violations.extend(check_agent_failure_ownership(tree, rel_path))
     return violations
 

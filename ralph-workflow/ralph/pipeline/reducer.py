@@ -1462,21 +1462,24 @@ def _reduce_commit_review_rejection(
 
     if new_rejections >= max_rejections or timebox_expired:
         if timebox_expired:
-            reason = f"Cycle timebox expired on commit review rejection: {event.reason}"
+            reason = (
+                f"Cycle timebox expired on commit review rejection; "
+                f"the rejected changes remain saved at {event.ref}: {event.reason}"
+            )
         elif new_rejections > max_rejections:
             reason = (
-                f"Commit review rejection limit exceeded ({new_rejections}/{max_rejections}): "
-                f"{event.reason}"
+                f"Commit review rejection limit exceeded ({new_rejections}/{max_rejections}); "
+                f"the rejected changes remain saved at {event.ref}: {event.reason}"
             )
         else:
             reason = (
                 f"Commit review rejection limit reached ({new_rejections}/{max_rejections}); "
-                f"the rejected changes are rolled back before recovery: {event.reason}"
+                f"the rejected changes remain saved at {event.ref}: {event.reason}"
             )
         failed_state = state.copy_with(
             commit_review_rejections=new_rejections,
             last_error=reason,
-            rollback_pending=True,
+            rollback_pending=False,
             rollback_ref=event.ref,
             last_review_rejection_reason=event.reason,
         )
