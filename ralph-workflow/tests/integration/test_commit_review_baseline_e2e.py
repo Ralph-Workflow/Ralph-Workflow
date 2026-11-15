@@ -167,3 +167,29 @@ def test_the_baseline_ref_survives_the_proposal_sweep(tmp_git_repo: Path) -> Non
     assert proposal.ref in pruned, "the proposal sweep must still prune the proposal refs it owns"
     baseline_file = _ref_file(repo_root, baseline_ref)
     assert baseline_file.exists(), "the baseline ref must be excluded from proposal pruning"
+
+
+def test_a_rejection_of_work_present_at_run_start_is_a_refused_rollback(
+    tmp_git_repo: Path,
+) -> None:
+    repo_root = Path(tmp_git_repo)
+    readme = repo_root / "README.md"
+    readme.write_text(_USER_README, encoding="utf-8")
+    start_state = _start_run(repo_root)
+    assert start_state.rollback_baseline_ref is not None
+
+    seal = seal_pending(repo_root, run_id="run-preexisting", iteration="0")
+    rejected_state, _ = reduce(
+        start_state.copy_with(phase="development_commit_review"),
+        CommitReviewRejected(
+            reason="Protected document overwritten: README.md", ref=seal.ref, hard=True
+        ),
+        _bundle().pipeline,
+    )
+    rolled_back = _run_pending_rollback(repo_root, rejected_state)
+
+    assert rolled_back.rollback_pending is False
+    assert rolled_back.rollback_ref == seal.ref
+    assert rolled_back.last_error is not None
+    assert "already in the working tree when the run started" in rolled_back.last_error
+    assert readme.read_text(encoding="utf-8") == _USER_README

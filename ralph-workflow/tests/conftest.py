@@ -27,11 +27,13 @@ from tests._real_config_guard_support import (
     _compute_file_sha256,
     _ConfigPathSnapshot,
     _diff_config_snapshots,
+    _diff_project_local_configs,
     _get_test_read_violations,
     _install_config_guard_audit_hook,
     _read_violations_count,
     _resolve_guarded_config_dirs,
     _scan_guarded_config_files,
+    _scan_project_local_configs,
     _set_current_test_node,
 )
 
@@ -169,6 +171,7 @@ def _guard_real_config_files(
     _clear_recorded_write_violations()
     guarded_dirs = _resolve_guarded_config_dirs()
     before = _scan_guarded_config_files(guarded_dirs)
+    project_local_before = _scan_project_local_configs()
     session_home = tmp_path_factory.mktemp("session-home")
     session_config = session_home / ".config"
     session_config.mkdir(parents=True)
@@ -189,6 +192,9 @@ def _guard_real_config_files(
             os.environ.pop("XDG_CONFIG_HOME", None)
         after = _scan_guarded_config_files(guarded_dirs)
         violations = _diff_config_snapshots(before, after)
+        violations.extend(
+            _diff_project_local_configs(project_local_before, _scan_project_local_configs())
+        )
         for node, p in _clear_recorded_read_violations():
             if node:
                 violations.append(f"READ: {p} (by {node})")

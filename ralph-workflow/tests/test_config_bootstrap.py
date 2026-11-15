@@ -25,7 +25,6 @@ from ralph.policy.loader import (
 from ralph.workspace.scope import WorkspaceScope
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_generated_local_template_missing_drain_heals_from_bundled_defaults": "a missing drain now heals onto the configured chain of its class instead of the packaged claude development_commit chain",
     "test_global_template_missing_active_drain_heals_on_first_run_startup": "a missing drain now heals onto the configured chain of its class instead of the packaged claude development_commit chain",
     "test_ensure_global_config_force_creates_backup": (
         "the absolute comment gate bans comments in tracked TOML, so the regenerated "
@@ -432,49 +431,12 @@ def test_bundled_mcp_template_describes_broad_multimodal_support() -> None:
     assert "Multimodal image reading support" not in doc
 
 
-def test_local_template_defines_active_runtime_drain_bindings() -> None:
+def test_local_template_selects_no_agents() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
     data = tomllib.loads(template.read_text(encoding="utf-8"))
-    drains = data["agent_drains"]
 
-    for drain_name, chain_name in (
-        ("planning", "planning"),
-        ("development", "development"),
-        ("development_analysis", "analysis"),
-        ("development_commit", "commit"),
-    ):
-        assert drains.get(drain_name) == chain_name, (
-            f"Expected active local template drain binding {drain_name!r} -> {chain_name!r}"
-        )
-
-
-def test_local_template_defines_active_agent_chain_defaults() -> None:
-    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
-    data = tomllib.loads(template.read_text(encoding="utf-8"))
-    chains = data["agent_chains"]
-
-    assert chains["planning"] == ["claude/opus"]
-    assert chains["development"] == ["claude/sonnet"]
-    assert chains["analysis"] == ["claude/opus"]
-    assert chains["commit"] == ["claude/haiku"]
-
-    review_era_chains = {"review", "fix"}
-    assert not review_era_chains.intersection(chains), (
-        f"Review-era chains still active in local template: "
-        f"{review_era_chains.intersection(chains)}"
-    )
-
-
-def test_local_template_does_not_expose_review_era_drain_bindings() -> None:
-    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
-    data = tomllib.loads(template.read_text(encoding="utf-8"))
-    drains = data["agent_drains"]
-
-    review_era_drains = {"review", "review_analysis", "review_commit", "fix"}
-    assert not review_era_drains.intersection(drains), (
-        f"Review-era drains still active in local template: "
-        f"{review_era_drains.intersection(drains)}"
-    )
+    assert "agent_chains" not in data
+    assert "agent_drains" not in data
 
 
 def test_local_template_mentions_ccs_alternative() -> None:
@@ -517,33 +479,6 @@ def test_generated_local_template_validates_against_bundled_policy(
         assert phase_def.drain in bundle.agents.agent_drains, (
             f"Generated local template left phase {phase_name!r} drain {phase_def.drain!r} unbound"
         )
-
-
-def test_generated_local_template_missing_drain_heals_from_bundled_defaults(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
-    agent_dir = tmp_path / ".agent"
-    agent_dir.mkdir()
-    broken = (
-        (defaults_dir / "ralph-workflow-local.toml")
-        .read_text(encoding="utf-8")
-        .replace('development_commit = "commit"\n', "")
-    )
-    (agent_dir / "ralph-workflow.toml").write_text(broken, encoding="utf-8")
-    (agent_dir / "pipeline.toml").write_text(
-        (defaults_dir / "pipeline.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    (agent_dir / "artifacts.toml").write_text(
-        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
-    config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
-    bundle = load_policy(agent_dir, config=config)
-    assert bundle.agents.agent_drains["development_commit"].chain == "commit"
 
 
 def test_ensure_local_configs_adds_default_gitignore_entries(tmp_path: Path) -> None:

@@ -463,3 +463,29 @@ def _clear_recorded_write_violations() -> list[tuple[str | None, Path]]:
     writes = list(_STATE.recorded_writes)
     _STATE.recorded_writes.clear()
     return writes
+
+
+_PROJECT_LOCAL_CONFIG_NAMES: tuple[str, ...] = (
+    "ralph-workflow.toml",
+    "mcp.toml",
+    "pipeline.toml",
+    "artifacts.toml",
+)
+
+
+def _scan_project_local_configs() -> dict[Path, str | None]:
+    return {
+        path: _compute_file_sha256(path) if path.is_file() else None
+        for agent_dir in (_ROOT_DIR / ".agent", _REPO_DIR / ".agent")
+        for path in (agent_dir / name for name in _PROJECT_LOCAL_CONFIG_NAMES)
+    }
+
+
+def _diff_project_local_configs(
+    before: dict[Path, str | None], after: dict[Path, str | None]
+) -> list[str]:
+    return [
+        f"PROJECT-LOCAL CONFIG {'CREATED' if before[path] is None else 'CHANGED'}: {path}"
+        for path in before
+        if after[path] != before[path] and after[path] is not None
+    ]

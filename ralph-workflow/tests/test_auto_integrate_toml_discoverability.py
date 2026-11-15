@@ -169,7 +169,8 @@ def test_templates_omit_retired_auto_integrate_keys() -> None:
 def test_chains_precede_general_settings() -> None:
     for _, path in _bundled():
         text = _read_text(path)
-        assert text.index("[agent_chains]") < text.index("[general]")
+        if "[agent_chains]" in text:
+            assert text.index("[agent_chains]") < text.index("[general]")
 
 
 def test_no_duplicate_auto_integrate_key_in_a_template() -> None:

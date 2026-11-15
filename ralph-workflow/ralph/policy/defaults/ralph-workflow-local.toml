@@ -1,18 +1,3 @@
-[agent_chains]
-planning = ["claude/opus"]
-development = ["claude/sonnet"]
-analysis = ["claude/opus"]
-commit = ["claude/haiku"]
-
-[agent_drains]
-planning = "planning"
-planning_analysis = "analysis"
-development = "development"
-development_analysis = "analysis"
-development_commit = "commit"
-analysis = "analysis"
-commit = "commit"
-
 [general]
 auto_integrate_enabled = true
 auto_integrate_target = "main"

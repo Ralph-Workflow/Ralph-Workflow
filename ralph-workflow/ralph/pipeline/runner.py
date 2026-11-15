@@ -1919,6 +1919,19 @@ def _write_rejection_hint(
     dev_hint_path.write_text(rejection_text, encoding="utf-8")
 
 
+def _rejected_changes_predate_the_run(workspace_root: Path, state: PipelineState) -> bool:
+    from ralph.git.proposal_seal import diff_tree
+
+    baseline_ref = state.rollback_baseline_ref
+    rollback_ref = state.rollback_ref
+    if not isinstance(baseline_ref, str) or not baseline_ref or not isinstance(rollback_ref, str):
+        return False
+    try:
+        return not diff_tree(workspace_root, ref=rollback_ref, base=baseline_ref)
+    except Exception:
+        return False
+
+
 def execute_pending_rollback(
     state: PipelineState,
     workspace_root: Path,
@@ -1945,6 +1958,15 @@ def execute_pending_rollback(
             state,
             pipeline_policy,
             "Rollback checkpoint save failed: rollback-pending marker was not persisted",
+        )
+    if _rejected_changes_predate_the_run(workspace_root, state):
+        return rollback_gate_failure_state(
+            state,
+            pipeline_policy,
+            "Rollback cannot remove the rejected changes: they were already in the working "
+            "tree when the run started, so every review would reject them again. Resolve "
+            f"them by hand ({state.last_review_rejection_reason or 'see the rejection reason'}) "
+            "and restart the run.",
         )
     try:
         rollback(workspace_root, rollback_ref, baseline_ref=state.rollback_baseline_ref)
