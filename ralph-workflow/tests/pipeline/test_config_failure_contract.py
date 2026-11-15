@@ -23,6 +23,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
@@ -94,6 +95,13 @@ def test_workspace_context_wraps_system_exit(tmp_path: Path) -> None:
         raise AssertionError("Expected WorkspaceContextError was not raised")
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_auto_integrate_agent_resolver_catches_workspace_context_error": (
+        "align outcome assertion with ConfigFailureOutcome returned by resolver on config error"
+    ),
+}
+
+
 def test_auto_integrate_agent_resolver_catches_workspace_context_error(tmp_path: Path) -> None:
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True)
@@ -128,10 +136,10 @@ def test_auto_integrate_agent_resolver_catches_workspace_context_error(tmp_path:
     with bind_active_rebase_resolution_session(session):
         outcome = resolver(tmp_path, "main", stop)
 
-    assert isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert outcome.on_change is not None
-    assert f"fix {cfg_file} then run ralph --check-config" in str(outcome.on_change)
+    assert isinstance(outcome, ConfigFailureOutcome)
+    assert outcome.file == cfg_file
+    assert session.exhaustion_reason is not None
+    assert f"fix {cfg_file} then run ralph --check-config" in session.exhaustion_reason
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE

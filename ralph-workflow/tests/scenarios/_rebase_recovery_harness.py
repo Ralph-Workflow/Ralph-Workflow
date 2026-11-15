@@ -16,6 +16,7 @@ from ralph.pipeline import attempt_stop_resolution
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ResolvedOutcome,
@@ -296,9 +297,7 @@ def corrupted_config(root: Path) -> Path:
 
 def supervisor_restart(root: Path) -> dict[str, object]:
     script = (
-        "import builtins,json,pathlib,subprocess,sys,types; "
-        "m=types.ModuleType('o'); m.ResolutionOutcome=object; sys.modules['ralph.pipeline.conflict_resolution.resolution_outcome']=m; "
-        "from ralph.agents.clock import Clock; builtins.Clock=Clock; "
+        "import json,pathlib,subprocess,sys; "
         "p=pathlib.Path(sys.argv[1]);sys.path.insert(0,sys.argv[2]); "
         "from ralph.pipeline.auto_integrate_planning import integrate_before_planning; "
         "from ralph.pipeline.rebase_state import RebaseState; "
@@ -357,6 +356,11 @@ def run_completed_rebase_promotion(root: Path) -> ScenarioResult:
     return ScenarioResult(runner.launches, tuple(lines), terminal, {"head": head, "target": target})
 
 
+def _resolution_succeeded(outcome: object) -> bool:
+    resolved = outcome.outcome if isinstance(outcome, RebaseResolutionResult) else outcome
+    return isinstance(resolved, ResolvedOutcome)
+
+
 def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
     paused_text_and_gitlink_rebase(root)
     runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
@@ -372,7 +376,7 @@ def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
                 force_retry=True,
             ),
         )
-        succeeded = isinstance(outcome, ResolvedOutcome)
+        succeeded = _resolution_succeeded(outcome)
     terminal = "resolved" if succeeded and not rebase_in_progress(root) else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 
@@ -392,7 +396,7 @@ def run_marker_resolution(root: Path) -> ScenarioResult:
                 force_retry=True,
             ),
         )
-        succeeded = isinstance(outcome, ResolvedOutcome)
+        succeeded = _resolution_succeeded(outcome)
     terminal = "resolved" if succeeded else "retained"
     return ScenarioResult(runner.launches, tuple(lines), terminal)
 

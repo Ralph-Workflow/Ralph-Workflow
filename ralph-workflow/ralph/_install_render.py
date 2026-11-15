@@ -13,9 +13,7 @@ DEV_LAUNCHER_NAME = "rdev"
 _SHORT_COMMIT_LENGTH = 8
 
 
-_ISOLATED_ENTRY = (
-    'import sys; sys.argv[0] = "ralph"; from ralph.cli.main import app; sys.exit(app())'
-)
+_ISOLATED_ENTRY = "from ralph._launcher_environment import launch; launch()"
 
 
 def dev_launcher_command(package_dir: Path, uv_executable: str) -> tuple[str, ...]:

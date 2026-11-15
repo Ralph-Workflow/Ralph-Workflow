@@ -5,12 +5,14 @@ import re
 import sys
 import tomllib
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ralph.project_policy import markers as project_policy_markers
 from ralph.project_policy.instruction_surface import find_hidden_unicode
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -193,21 +195,24 @@ def advisory_rules() -> tuple[tuple[str, str], ...]:
     )
 
 
-def _is_skipped(path: Path, root: Path) -> bool:
-    try:
-        relative = path.relative_to(root)
-    except ValueError:
-        return True
-    return any(part in _SKIP_DIRS for part in relative.parts)
+def _audited_relative_paths_uncached(root: Path) -> tuple[Path, ...]:
+    return tuple(
+        relative
+        for relative in sorted(Path(entry) for entry in FsWorkspace(root).iter_files(""))
+        if not any(part in _SKIP_DIRS for part in relative.parts)
+    )
+
+
+_audited_relative_paths = lru_cache(maxsize=1)(_audited_relative_paths_uncached)
 
 
 def _iter_files(root: Path, suffixes: tuple[str, ...]) -> Iterator[Path]:
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix not in suffixes:
+    for relative in _audited_relative_paths(root):
+        if relative.suffix not in suffixes:
             continue
-        if _is_skipped(path, root):
-            continue
-        yield path
+        path = root / relative
+        if path.is_file():
+            yield path
 
 
 def _parse_toml_value(raw: str) -> tuple[str, ...]:
@@ -562,6 +567,7 @@ def _audit_hidden_unicode(root: Path) -> list[InstructionIntegrityFinding]:
 
 
 def audit_instruction_integrity(root: Path) -> list[InstructionIntegrityFinding]:
+    _audited_relative_paths.cache_clear()
     findings = (
         _audit_mcp_declarations(root) + _audit_instruction_files(root) + _audit_hidden_unicode(root)
     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -16,6 +17,9 @@ from ralph.project_policy.cli_integration import LoadResult
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.workspace.scope import WorkspaceScope
 from tests.project_policy.policy_corpus import policy_invocation_bundle
+
+if TYPE_CHECKING:
+    from ralph.pipeline.effects import InvokeAgentEffect
 
 
 def _load_result() -> LoadResult:
@@ -34,8 +38,10 @@ def test_real_policy_invoker_waits_for_owner_cooldown_across_rounds(
     clock = FakeClock()
     invocations: list[str] = []
 
-    def invoke_effect(effect: object, *_args: object, **_kwargs: object) -> PipelineEvent:
-        invocations.append(cast("str", getattr(effect, "agent_name", "")))
+    def invoke_effect(
+        effect: InvokeAgentEffect, *_args: object, **_kwargs: object
+    ) -> PipelineEvent:
+        invocations.append(effect.agent_name)
         return PipelineEvent.AGENT_SUCCESS if len(invocations) == 4 else PipelineEvent.AGENT_FAILURE
 
     monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)

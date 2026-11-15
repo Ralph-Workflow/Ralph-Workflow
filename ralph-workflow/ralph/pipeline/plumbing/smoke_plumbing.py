@@ -1102,7 +1102,7 @@ def _execute_smoke_turns(
         attempt_deps = AttemptRunnerDeps(
             clock=recovery_clock or SystemClock(),
             invoke=_invoke_smoke_effect,
-            probe_runner=None,
+            probe_runner=params.probe_runner,
             workspace_probe=None,
             connectivity=None,
         )

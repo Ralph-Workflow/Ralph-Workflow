@@ -679,13 +679,12 @@ class RecoveryController:
                 if failure.category == FailureCategory.USER_CONFIG
                 else (raw_failure if isinstance(raw_failure, str) else None)
             ),
-            charge_ledger=not failure.is_unavailable,
+            charge_ledger=failure.must_charge_ledger or not failure.is_unavailable,
         )
         if (
             failure.must_charge_ledger
             and current_agent is not None
             and not artifact_valid
-            and not failure.is_unavailable
             and not self._last_attempt_charged_ledger
         ):
             self._charge_failure_the_clean_finalize_left_uncharged(

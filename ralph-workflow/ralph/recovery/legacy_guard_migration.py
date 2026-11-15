@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+
+type EntryStrictness = Callable[[Mapping[str, object], int, int], tuple[int, int, int, int]]
 
 LEGACY_DEFAULT_AGENT = "claude"
 _LEGACY_MALFORMED_REASON = "legacy_guard_malformed"
@@ -114,19 +116,6 @@ def _failed_closed_entry(
     }
 
 
-def _entry_strictness(
-    entry: Mapping[str, object],
-    *,
-    consecutive_limit: int,
-    total_limit: int,
-) -> tuple[int, int, int, int]:
-    spent = 0 if bool(entry.get("is_spent")) else 1
-    consecutive = _counter_value(entry.get("consecutive_unproductive"))
-    total = _counter_value(entry.get("total_unproductive"))
-    remaining = max(0, min(consecutive_limit - consecutive, total_limit - total))
-    return (spent, remaining, -total, -consecutive)
-
-
 def _snapshot_limits(
     snapshot: Mapping[str, object] | None,
 ) -> tuple[int, int, float, float, float]:
@@ -220,6 +209,7 @@ def _translate_legacy_source(
 def migrate_legacy_guard_history(
     sources: Sequence[_LegacyGuardSource],
     *,
+    entry_strictness: EntryStrictness,
     existing_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object] | None:
     if not sources:
@@ -246,14 +236,8 @@ def migrate_legacy_guard_history(
             if stored is None:
                 entries[key] = migrated
                 continue
-            if _entry_strictness(
-                migrated,
-                consecutive_limit=consecutive_limit,
-                total_limit=total_limit,
-            ) < _entry_strictness(
-                stored,
-                consecutive_limit=consecutive_limit,
-                total_limit=total_limit,
+            if entry_strictness(migrated, consecutive_limit, total_limit) < entry_strictness(
+                stored, consecutive_limit, total_limit
             ):
                 entries[key] = migrated
     return {

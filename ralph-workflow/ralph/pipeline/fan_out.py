@@ -363,7 +363,7 @@ def _fan_out_worker_context(
         if mcp_factory_cls is not None
         else cast("_McpFactory", DynamicBindingMcpServerFactory)
     )
-    executor = _executor_cls(_parallel_worker_command(), signal_bridge=bridge)
+    executor = _executor_cls(parallel_worker_command(), signal_bridge=bridge)
     workspace = FsWorkspace(
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
@@ -378,7 +378,7 @@ def _fan_out_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=repo_root,
             mcp_factory=_mcp_factory_cls(workspace=workspace),
-            executor_command=_parallel_worker_command(),
+            executor_command=parallel_worker_command(),
             worker_commands=worker_commands,
             signal_bridge=bridge,
             worker_namespace_root=worker_namespace_root,
@@ -439,7 +439,7 @@ def _worker_commands_from_manifests(
     manifest_paths: dict[str, Path],
 ) -> dict[str, tuple[str, ...]]:
     return {
-        unit_id: _parallel_worker_command(manifest_path)
+        unit_id: parallel_worker_command(manifest_path)
         for unit_id, manifest_path in manifest_paths.items()
     }
 
@@ -743,8 +743,8 @@ def execute_fan_out_sync(
     return asyncio.run(_run_fan_out_async(ctx))
 
 
-def _parallel_worker_command(manifest_path: Path | None = None) -> tuple[str, ...]:
-    command: tuple[str, ...] = (sys.executable, "-m", "ralph")
+def parallel_worker_command(manifest_path: Path | None = None) -> tuple[str, ...]:
+    command: tuple[str, ...] = (sys.executable, "-P", "-m", "ralph")
     if manifest_path is None:
         return command
     return (*command, "--parallel-worker-manifest", str(manifest_path))

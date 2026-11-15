@@ -15,6 +15,9 @@ from ralph.mcp.server._process_like import ProcessLike
 from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_candidate_spawn_uses_same_interpreter_as_parent": "the server interpreter now starts with -P so the workspace it runs in is kept off the import path; the module argument follows that flag",
+}
 _ = _workspace
 
 
@@ -123,7 +126,7 @@ def test_candidate_spawn_uses_same_interpreter_as_parent(tmp_path: Path) -> None
     cmd = spawned_commands[0]
 
     assert cmd[0] == sys.executable
-    assert cmd[1:3] == ["-m", "ralph.mcp.server"]
+    assert cmd[1:4] == ["-P", "-m", "ralph.mcp.server"]
 
 
 def test_real_child_imports_package_root_despite_broken_ralph_in_workspace(

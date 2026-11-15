@@ -33,6 +33,7 @@ __all__ = [
     "fast_forward_target",
     "install_executors",
     "reset_executors",
+    "system_clock_active",
 ]
 
 
@@ -345,6 +346,10 @@ def current_agent_runner() -> AgentRunner:
 def current_clock() -> Clock:
     executors = _EXECUTORS.get()
     return executors.clock if executors is not None else _DEFAULT_CLOCK
+
+
+def system_clock_active() -> bool:
+    return current_clock() is _DEFAULT_CLOCK
 
 
 def create_backup_ref(

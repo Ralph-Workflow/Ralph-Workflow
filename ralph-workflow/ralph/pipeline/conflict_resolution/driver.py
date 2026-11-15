@@ -32,6 +32,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import (
+    session_ledger,
     skipped_candidates,
 )
 from ralph.pipeline.conflict_resolution.git_worktree_observer import GitWorktreeConflictObserver
@@ -56,7 +57,6 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
     select_resolution_action,
 )
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_status import (
     push_round_status as _push_round_status,
 )
@@ -95,7 +95,11 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
-from ralph.pipeline.integration_actions import Clock, current_clock, install_executors
+from ralph.pipeline.integration_actions import (
+    Clock,
+    current_clock,
+    install_executors,
+)
 from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
     RetryLaterOutcome,
@@ -175,9 +179,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-type ResolutionInvoker = Callable[
-    [str, "Path", int], ResolutionOutcome | StopResolutionOutcome | bool
-]
+type ResolutionInvoker = Callable[[str, "Path", int], StopResolutionOutcome | bool]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -531,25 +533,6 @@ def _status_scope(status: IntegrationStatus) -> str:
     return f"{status.summary}; path reasons: {details}" if details else status.summary
 
 
-def _wrap_invoker(
-    base_runner: ResolutionInvoker,
-    session: ResolutionSession,
-) -> ResolutionInvoker:
-    def runner(
-        agent_name: str, prompt_path: Path, round_index: int
-    ) -> StopResolutionOutcome | bool:
-        raw = base_runner(agent_name, prompt_path, round_index)
-        if isinstance(raw, ResolutionOutcome):
-            if raw.failure_cause is not ResolutionFailureCause.NONE:
-                session.last_failure_cause = raw.failure_cause
-            if isinstance(raw.reason, ResolutionTerminationReason):
-                session.terminal_reason = raw.reason
-            return raw.to_stop_resolution_outcome()
-        return raw
-
-    return runner
-
-
 def _run_rounds(
     *,
     root: Path,
@@ -586,6 +569,10 @@ def _run_rounds(
 
         if isinstance(store, UnavailabilityStore):
             session.unavailability_store = store
+    if invoke is not None and session.probe_runner is None:
+        from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
+
+        session.probe_runner = fail_open_dead_agent_probe_runner()
     ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps, config=config)
     if session.workspace is None:
         ws_obj: object = getattr(effective_scope, "workspace", None)
@@ -809,7 +796,7 @@ def _execute_round_loop(
                     observer=observer,
                 )
 
-            _wait_for_candidates_if_cooling_down(session, candidates)
+            _wait_for_eligible_agent(session, candidates)
 
             attempt = _run_one_round(
                 runner,
@@ -821,7 +808,6 @@ def _execute_round_loop(
                 policy_bundle,
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
-                stop_round_cap=round_cap,
             )
             _classify_incomplete_success(attempt, session, round_index, candidates, policy_bundle)
             action = _evaluate_round_attempt(
@@ -861,71 +847,11 @@ def _execute_round_loop(
                 break
             if not _can_continue_rounds(session, candidates):
                 break
-            _wait_for_candidates_if_cooling_down(session, candidates)
     finally:
         if prompt_path is not None:
             with contextlib.suppress(OSError):
                 prompt_path.unlink()
     return False
-
-
-def _wait_for_candidates_if_cooling_down(
-    session: ResolutionSession, candidates: Sequence[str]
-) -> None:
-    controller = session.recovery_controller
-    if controller is not None:
-        skipped = skipped_candidates(session, tuple(candidates))
-        live = [name for name in candidates if name not in skipped]
-        if live and not any(
-            controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
-        ):
-            wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
-            if wait_ms == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
-                wait_ms = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0
-            if wait_ms > 0:
-                mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-                _sleep_seconds(wait_ms / 1000.0)
-                mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-                if mono_after - mono_before < (wait_ms / 1000.0) * 0.5:
-                    ctrl_clock_val: object = cast("object", getattr(controller, "clock", None))
-                    clock_inst: object = (
-                        ctrl_clock_val
-                        if ctrl_clock_val is not None
-                        else cast("object", getattr(controller, "_clock", None))
-                    )
-                    advance_fn: object = getattr(clock_inst, "advance", None)
-                    if callable(advance_fn):
-                        advance_fn(wait_ms / 1000.0)
-                    else:
-                        for name in live:
-                            controller.unavailability_store.reset_backoff(PHASE_RESOLUTION, name)
-                            if hasattr(controller, "ledger") and controller.ledger is not None:
-                                controller.ledger.clear_agent_cooldown(PHASE_RESOLUTION, name)
-                        controller.reset_backoff(PHASE_RESOLUTION, None)
-
-
-def _can_continue_controller_rounds(
-    session: ResolutionSession,
-    controller: RecoveryController,
-    live: Sequence[str],
-) -> bool:
-    from ralph.recovery.agent_failure_ledger import Spent
-
-    chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
-    if all(
-        (isinstance(status, Spent) and status.reason != "retry_exhausted")
-        or getattr(status, "reason", None) == "consecutive_unproductive_limit_reached"
-        for _agent, status in chain_statuses
-    ):
-        return False
-    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
-    return (
-        any(
-            status.is_eligible or (isinstance(status, Spent) and status.reason == "retry_exhausted")
-            for _agent, status in chain_statuses
-        )
-        or wait_ms > 0
-    )
 
 
 def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
@@ -938,20 +864,36 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         and session.recovery_state.phase != PHASE_RESOLUTION
     ):
         return False
-    if session.ledger is not None:
-        if session.ledger.all_exhausted(PHASE_RESOLUTION, live):
-            return False
-        wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0
-        if session.rounds_spent >= 1 and not session.ledger.any_eligible(PHASE_RESOLUTION, live) and wait == 0:
-            return False
-        return (
-            session.ledger.any_eligible(PHASE_RESOLUTION, live)
-            or wait > 0
-        )
     controller = session.recovery_controller
-    if controller is not None:
-        return _can_continue_controller_rounds(session, controller, live)
-    return True
+    ledger = session_ledger(session)
+    if controller is not None and controller.all_exhausted(PHASE_RESOLUTION, live):
+        return False
+    if ledger is None:
+        return True
+    if ledger.all_exhausted(PHASE_RESOLUTION, live):
+        return False
+    return ledger.any_eligible(PHASE_RESOLUTION, live) or (
+        session.rounds_spent == 0 and (ledger.earliest_wait_ms(PHASE_RESOLUTION, live) or 0) > 0
+    )
+
+
+def _wait_for_eligible_agent(
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+) -> None:
+    controller = session.recovery_controller
+    if controller is None:
+        return
+    skipped = skipped_candidates(session, candidates)
+    live = [name for name in candidates if name not in skipped]
+    if live and not any(
+        controller.agent_eligibility(PHASE_RESOLUTION, name).is_eligible for name in live
+    ):
+        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
+        if wait_ms > 0:
+            _sleep_seconds(wait_ms / 1000.0)
+
+
 def _record_unconfigured_resolver(
     session: ResolutionSession,
     conflicted: tuple[str, ...],

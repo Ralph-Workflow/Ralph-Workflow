@@ -79,6 +79,18 @@ def test_resolver_falls_over_after_three_failures(
         reset_executors(token)
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_all_cooling_pending_state_preserves_rebase_state_then_resumes": (
+        "a stop whose every resolver is cooling down ends pending; the resume is a "
+        "second resolution call after the cooldown instead of a wait inside the first"
+    ),
+    "test_false_positive_resolver_success_remains_unproductive_and_demotes": (
+        "a false-positive success cools its agent down before it is invoked again, "
+        "so the two charged attempts that demote it interleave with the next candidate"
+    ),
+}
+
+
 def test_all_cooling_pending_state_preserves_rebase_state_then_resumes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -114,21 +126,28 @@ def test_all_cooling_pending_state_preserves_rebase_state_then_resumes(
         )
         session = ResolutionSession(ledger=ledger)
 
-        succeeded = driver_module.run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            clock=clock.monotonic,
-            session=session,
-        )
+        def _resolve() -> bool:
+            return driver_module.run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=clock.monotonic,
+                session=session,
+            )
 
-        assert succeeded is True
+        assert _resolve() is False
+        assert invocations == ["agentA", "agentB"]
+        assert session.unresolved_paths == tuple(_CONFLICTED)
+
+        clock.advance(30.0)
+
+        assert _resolve() is True
         assert invocations == ["agentA", "agentB", "agentA"]
         assert session.unresolved_paths == ()
     finally:
@@ -510,10 +529,7 @@ def test_false_positive_resolver_success_remains_unproductive_and_demotes(
         del prompt_path, round_index
         invocations.append(agent_name)
         nonlocal resolved
-        if agent_name == "agentA":
-            resolved = False
-            return True
-        resolved = True
+        resolved = invocations.count("agentB") == 2
         return True
 
     clock = FakeClock()
@@ -537,7 +553,8 @@ def test_false_positive_resolver_success_remains_unproductive_and_demotes(
         )
 
         assert succeeded is True
-        assert invocations == ["agentA", "agentA", "agentB"]
+        assert invocations == ["agentA", "agentB", "agentA", "agentB"]
+        assert not ledger.is_available(driver_module.PHASE_RESOLUTION, "agentA")
         assert session.unresolved_paths == ()
     finally:
         reset_executors(token)

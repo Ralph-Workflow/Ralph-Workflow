@@ -13,7 +13,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, AttemptOutcome
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -27,6 +27,18 @@ def _policy_bundle() -> PolicyBundle:
 
 def _config() -> UnifiedConfig:
     return UnifiedConfig.model_validate({"general": {}})
+
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_conflict_resolution_observes_workspace_changes_allowing_total_limit": (
+        "observe the charged attempts through the invocation order and the public ledger "
+        "status instead of replacing the read-only AgentFailureLedger.record method"
+    ),
+    "test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limit": (
+        "observe the charged attempts through the invocation order and the public ledger "
+        "status instead of replacing the read-only AgentFailureLedger.record method"
+    ),
+}
 
 
 def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
@@ -52,7 +64,6 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
 
     workspace_scope = WorkspaceScope(tmp_path)
     invocations: list[str] = []
-    facts_recorded: list[AttemptFact] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         del prompt_path, round_index
@@ -74,14 +85,6 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
             consecutive_limit=3,
             total_limit=9,
         )
-
-        original_record = ledger.record
-
-        def _spy_record(fact: AttemptFact) -> AttemptOutcome:
-            facts_recorded.append(fact)
-            return original_record(fact)
-
-        monkeypatch.setattr(ledger, "record", _spy_record)
 
         session = ResolutionSession(ledger=ledger, max_rounds_per_stop=15)
 
@@ -105,10 +108,6 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         assert len(agent_a_invocations) == 9
 
         assert invocations == ["agentA"] * 9 + ["agentB"]
-
-        agent_a_facts = [f for f in facts_recorded if f.agent == "agentA"]
-        assert len(agent_a_facts) == 9
-        assert all(f.workspace_changed for f in agent_a_facts)
 
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
         assert agent_a_status.is_spent is True
@@ -139,7 +138,6 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
 
     workspace_scope = WorkspaceScope(tmp_path)
     invocations: list[str] = []
-    facts_recorded: list[AttemptFact] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         del prompt_path, round_index
@@ -160,14 +158,6 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
             total_limit=9,
         )
 
-        original_record = ledger.record
-
-        def _spy_record(fact: AttemptFact) -> AttemptOutcome:
-            facts_recorded.append(fact)
-            return original_record(fact)
-
-        monkeypatch.setattr(ledger, "record", _spy_record)
-
         session = ResolutionSession(ledger=ledger, max_rounds_per_stop=15)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
@@ -187,10 +177,6 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
         assert succeeded is True
 
         assert invocations == ["agentA"] * 3 + ["agentB"]
-
-        agent_a_facts = [f for f in facts_recorded if f.agent == "agentA"]
-        assert len(agent_a_facts) == 3
-        assert all(not f.workspace_changed for f in agent_a_facts)
 
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
         assert agent_a_status.is_cooldown is True

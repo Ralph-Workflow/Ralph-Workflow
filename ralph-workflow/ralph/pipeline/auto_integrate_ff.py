@@ -213,7 +213,7 @@ def _fast_forward_failure(reason: str) -> StopResolutionOutcome:
 
 
 def is_retryable_fast_forward_failure(
-    outcome: object,
+    outcome: StopResolutionOutcome | tuple[object, ...] | str | bool,
 ) -> bool:
     if isinstance(outcome, str):
         return outcome in _RETRYABLE_REASONS

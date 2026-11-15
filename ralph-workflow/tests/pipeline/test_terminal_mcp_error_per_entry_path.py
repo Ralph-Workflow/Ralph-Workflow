@@ -18,6 +18,7 @@ from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
 from ralph.pipeline.conflict_resolution.session import ResolutionSession, invoke_resolution_agent
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -25,6 +26,7 @@ from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
 from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
+from ralph.pipeline.resolution_outcome import UnknownOutcome
 from ralph.pipeline.runner import load_policy_bundle_for_run
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import cli_integration
@@ -58,6 +60,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.events import Event
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_terminal_mcp_error_converts_to_typed_failure_on_every_entry_path": "invoke_resolution_agent reports a typed outcome instead of a boolean; the conflict-session case asserts the UnknownOutcome that carries the MCP server error",
+}
 
 
 class _FakeBridge(RestartAwareMcpBridge):
@@ -471,7 +477,8 @@ def _drive_conflict_session(
 
 def _assert_conflict_outcome(outcome: object) -> None:
     assert isinstance(outcome, _ConflictOutcome)
-    assert outcome.launched is False
+    assert isinstance(outcome.launched, UnknownOutcome)
+    assert str(outcome.launched.error) == "McpServerError"
     assert outcome.last_attempt_evidence == "McpServerError"
 
 
@@ -484,8 +491,9 @@ def _commit_attempt_with_bridge(
     from ralph.pipeline.plumbing import commit_plumbing
 
     prompt_path = tmp_path / "PROMPT.md"
-    if not prompt_path.exists():
-        prompt_path.write_text("commit prompt", encoding="utf-8")
+    prompt_path.write_text(
+        "commit prompt\n\n## Submit a `commit_message` artifact\n", encoding="utf-8"
+    )
     attempt, _session_id, last_error = commit_plumbing._run_commit_agent_attempt_with_recovery(
         "claude",
         AgentConfig(cmd="claude", transport="claude", json_parser="generic"),
@@ -544,6 +552,7 @@ def _smoke_turn_with_bridge(
         display_context=make_display_context(),
         bridge=bridge,
         pipeline_deps=deps,
+        probe_runner=fail_open_dead_agent_probe_runner(),
     )
     supervised_before = len(factory.supervisors)
     _all_lines, _live, _session_id, final_exception, _ceiling = smoke_plumbing._execute_smoke_turns(

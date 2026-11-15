@@ -2171,6 +2171,7 @@ def _spawn_mcp_process(
         process = deps.spawn_process(
             [
                 str(executable),
+                "-P",
                 "-m",
                 "ralph.mcp.server",
                 "--host",

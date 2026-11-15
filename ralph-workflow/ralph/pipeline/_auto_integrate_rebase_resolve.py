@@ -315,7 +315,6 @@ def _rebase_run_result(
                 failure_cause,
             )
         case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
-
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha if record is not None else None,

@@ -11,8 +11,10 @@ from loguru import logger
 from ralph.recovery.eligibility_wait import EligibilityWait
 from ralph.recovery.legacy_guard_migration import (
     _LegacyGuardSource,
-    migrate_legacy_guard_history,
     translate_legacy_entry,
+)
+from ralph.recovery.legacy_guard_migration import (
+    migrate_legacy_guard_history as _migrate_legacy_guard_history,
 )
 from ralph.recovery.wait_kind import WaitKind
 
@@ -149,6 +151,43 @@ def _coerce_optional_float(raw: object) -> float | None:
             return float(raw)
         case _:
             return None
+
+
+def _snapshot_counter(raw: object) -> int:
+    match raw:
+        case int() | float():
+            return max(0, int(raw))
+        case str():
+            try:
+                return max(0, int(raw.strip()))
+            except ValueError:
+                return 0
+        case _:
+            return 0
+
+
+def _snapshot_entry_strictness(
+    entry: Mapping[str, object],
+    consecutive_limit: int,
+    total_limit: int,
+) -> tuple[int, int, int, int]:
+    spent = 0 if bool(entry.get("is_spent")) else 1
+    consecutive = _snapshot_counter(entry.get("consecutive_unproductive"))
+    total = _snapshot_counter(entry.get("total_unproductive"))
+    remaining = max(0, min(consecutive_limit - consecutive, total_limit - total))
+    return (spent, remaining, -total, -consecutive)
+
+
+def migrate_legacy_guard_history(
+    sources: Sequence[_LegacyGuardSource],
+    *,
+    existing_snapshot: Mapping[str, object] | None = None,
+) -> dict[str, object] | None:
+    return _migrate_legacy_guard_history(
+        sources,
+        entry_strictness=_snapshot_entry_strictness,
+        existing_snapshot=existing_snapshot,
+    )
 
 
 def _optional_int_or_default(raw: object, default: int) -> int:

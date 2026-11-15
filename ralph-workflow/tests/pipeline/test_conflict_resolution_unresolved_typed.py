@@ -56,29 +56,29 @@ _RESOLUTION_CHAIN = "rebase_conflict_resolution"
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
-class _FrozenSleepClock:
+class _SharedRecoveryClock:
     def __init__(self) -> None:
-        self._now = 1_000.0
+        self.recovery_clock = FakeClock(start=1_000.0)
 
     def now(self) -> float:
-        return self._now
+        return self.recovery_clock.monotonic()
 
     def monotonic(self) -> float:
-        return self._now
+        return self.recovery_clock.monotonic()
 
     def epoch(self) -> float:
-        return self._now
+        return self.recovery_clock.monotonic()
 
     def now_utc(self) -> datetime:
-        return datetime.fromtimestamp(self._now, tz=UTC)
+        return datetime.fromtimestamp(self.recovery_clock.monotonic(), tz=UTC)
 
     def sleep(self, seconds: float) -> None:
-        del seconds
+        self.recovery_clock.advance(seconds)
 
 
 @pytest.fixture
-def frozen_clock() -> Iterator[_FrozenSleepClock]:
-    clock = _FrozenSleepClock()
+def shared_clock() -> Iterator[_SharedRecoveryClock]:
+    clock = _SharedRecoveryClock()
     token = install_executors(clock=clock)
     try:
         yield clock
@@ -168,7 +168,9 @@ class _ScriptedRunner:
         observer: _ScriptedObserver,
         scripts: dict[str, Sequence[_AttemptStep]],
         invocations: list[str],
+        session: ResolutionSession,
     ) -> None:
+        self._session = session
         self._observer = observer
         self._scripts = {name: tuple(steps) for name, steps in scripts.items()}
         self._invocations = invocations
@@ -188,6 +190,7 @@ class _ScriptedRunner:
         if step.raw_error is not None:
             raise RuntimeError(step.raw_error)
         if step.active_failure:
+            self._session.last_attempt_saw_activity = True
             return RetryLaterOutcome(on_change="unresolved conflict remains")
         return step.report_success
 
@@ -253,9 +256,9 @@ def _resolution_policy_bundle(candidates: Sequence[str]) -> PolicyBundle:
     )
 
 
-def _session_with_controller() -> ResolutionSession:
+def _session_with_controller(clock: _SharedRecoveryClock) -> ResolutionSession:
     session = ResolutionSession()
-    session.recovery_controller = make_resolver_controller(FakeClock(start=0.0))
+    session.recovery_controller = make_resolver_controller(clock.recovery_clock)
     return session
 
 
@@ -266,14 +269,14 @@ def _drive(
     scripts: dict[str, Sequence[_AttemptStep]],
     observer: _ScriptedObserver | None = None,
     stop: RebaseStop | None = None,
-    clock: _FrozenSleepClock | None = None,
+    clock: _SharedRecoveryClock | None = None,
 ) -> tuple[StopResolutionOutcome, list[str], ResolutionSession]:
     active_observer = observer or _ScriptedObserver(_CONFLICTED)
     materializer = _FakeMaterializer(workspace)
     invocations: list[str] = []
-    runner = _ScriptedRunner(active_observer, scripts, invocations)
-    session = _session_with_controller()
-    effective_clock = clock or _FrozenSleepClock()
+    effective_clock = clock or _SharedRecoveryClock()
+    session = _session_with_controller(effective_clock)
+    runner = _ScriptedRunner(active_observer, scripts, invocations, session)
     if stop is None:
         outcome = run_conflict_resolution_outcome(
             root=workspace,
@@ -317,7 +320,7 @@ def _drive_captured(
     scripts: dict[str, Sequence[_AttemptStep]],
     stop: RebaseStop | None = None,
     observer: _ScriptedObserver | None = None,
-    clock: _FrozenSleepClock | None = None,
+    clock: _SharedRecoveryClock | None = None,
 ) -> tuple[StopResolutionOutcome, list[str], list[str], ResolutionSession]:
     with _captured_logs() as logs:
         outcome, invocations, session = _drive(
@@ -335,18 +338,42 @@ def _no_progress(count: int = 6) -> tuple[_AttemptStep, ...]:
     return tuple(_AttemptStep() for _ in range(count))
 
 
+def _resolves_on_third_attempt() -> tuple[_AttemptStep, ...]:
+    return (_AttemptStep(), _AttemptStep(), _AttemptStep(surviving=()))
+
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure": (
+        "a stalled attempt cools its agent down before the same agent is invoked again, "
+        "so the no-progress attempts that reach demotion interleave with the next candidate"
+    ),
+    "test_B2_demotion_requires_three_no_progress_attempts_after_a_drop": (
+        "a stalled attempt cools its agent down before the same agent is invoked again, "
+        "so the no-progress attempts that reach demotion interleave with the next candidate"
+    ),
+    "test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands": (
+        "a stalled attempt cools its agent down before the same agent is invoked again, "
+        "so the no-progress attempts that reach demotion interleave with the next candidate"
+    ),
+    "test_C_all_resolvers_demoted_reports_pending_not_failed": (
+        "a stalled attempt cools its agent down before the same agent is invoked again, "
+        "so the no-progress attempts that reach demotion interleave with the next candidate"
+    ),
+}
+
+
 def test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("agentA", "agentB"),
-        scripts={"agentA": _no_progress(3), "agentB": (_AttemptStep(surviving=()),)},
-        clock=frozen_clock,
+        scripts={"agentA": _no_progress(3), "agentB": _resolves_on_third_attempt()},
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
-    assert invocations == ["agentA", "agentA", "agentA", "agentB"]
+    assert invocations == ["agentA", "agentB", "agentA", "agentB", "agentA", "agentB"]
     assert any(_typed_reason(6) in line for line in logs), (
         "the typed failure reason must be logged, not rediscovered from prose"
     )
@@ -356,7 +383,7 @@ def test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure(
 
 
 def test_B1_count_drop_restarts_the_consecutive_streak(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
@@ -368,7 +395,7 @@ def test_B1_count_drop_restarts_the_consecutive_streak(
                 _AttemptStep(surviving=()),
             )
         },
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
@@ -382,7 +409,7 @@ def test_B1_count_drop_restarts_the_consecutive_streak(
 
 
 def test_B2_demotion_requires_three_no_progress_attempts_after_a_drop(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
@@ -394,13 +421,21 @@ def test_B2_demotion_requires_three_no_progress_attempts_after_a_drop(
                 _AttemptStep(),
                 _AttemptStep(),
             ),
-            "agentB": (_AttemptStep(surviving=()),),
+            "agentB": _resolves_on_third_attempt(),
         },
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
-    assert invocations == ["agentA", "agentA", "agentA", "agentA", "agentB"], (
+    assert invocations == [
+        "agentA",
+        "agentA",
+        "agentB",
+        "agentA",
+        "agentB",
+        "agentA",
+        "agentB",
+    ], (
         "the drop must restart the streak: demotion only after 3 further "
         f"no-progress attempts; got {invocations}"
     )
@@ -430,21 +465,22 @@ def _rebase_stop() -> RebaseStop:
 
 
 def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, session = _drive_captured(
         tmp_path,
         candidates=_CANDIDATES_C,
         scripts={
             "lead": _no_progress(3),
-            "second": (_AttemptStep(surviving=()),),
+            "second": _resolves_on_third_attempt(),
+            **dict.fromkeys(_CANDIDATES_C[2:], _no_progress(3)),
         },
         stop=_rebase_stop(),
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
-    assert invocations == ["lead", "lead", "lead", "second"]
+    assert invocations == [*_CANDIDATES_C, *_CANDIDATES_C, "lead", "second"]
     selection_lines = [line for line in logs if "Selected agent second" in line]
     assert selection_lines, "the next eligible candidate must be selected after demotion"
     list_order_reason = (
@@ -463,26 +499,31 @@ def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
 
     controller = session.recovery_controller
     assert controller is not None
+    shared_clock.recovery_clock.advance(
+        controller.unavailability_store.earliest_unavailable_wait_ms("development", ["lead"])
+        / 1000.0
+    )
+    assert not controller.agent_eligibility(_RESOLUTION_PHASE, "lead").is_eligible
     selection = controller.preferred_agent_index("development", ("lead", "second"))
     assert selection.agent == "lead"
     assert all(skipped_agent != "lead" for skipped_agent, _ in selection.skipped_reasons)
 
 
 def test_C_all_resolvers_demoted_reports_pending_not_failed(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("agentA", "agentB"),
         scripts={"agentA": _no_progress(3), "agentB": _no_progress(3)},
         stop=_rebase_stop(),
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, RetryLaterOutcome)
     assert outcome.on_change is not None
     assert "operator" not in (outcome.on_change or "")
-    assert invocations == ["agentA", "agentA", "agentA", "agentB", "agentB", "agentB"], (
+    assert invocations == ["agentA", "agentB", "agentA", "agentB", "agentA", "agentB"], (
         f"each resolver must be spent to its demotion; got {invocations}"
     )
     _assert_demoted(logs, "agentA", consecutive=3, total=3)
@@ -502,7 +543,7 @@ _RAW_EXTERNAL_TEXTS = (
 
 
 def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_limit(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
@@ -511,7 +552,7 @@ def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_lim
             "agentA": tuple(_AttemptStep(raw_error=text) for text in _RAW_EXTERNAL_TEXTS),
             "agentB": (_AttemptStep(surviving=()),),
         },
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
@@ -526,7 +567,7 @@ def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_lim
 
 
 def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     drops = (
         _AttemptStep(surviving=_CONFLICTED[:5]),
@@ -552,7 +593,7 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
         tmp_path,
         candidates=("agentA", "agentB"),
         scripts=scripts,
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
@@ -573,7 +614,7 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
 
 
 def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     observer = _ScriptedObserver(_CONFLICTED)
     outcome, invocations, logs, _ = _drive_captured(
@@ -589,7 +630,7 @@ def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
             "agentB": (_AttemptStep(surviving=()),),
         },
         observer=observer,
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
@@ -609,7 +650,7 @@ def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
 
 
 def test_D4_false_return_with_count_drop_restarts_the_streak(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     observer = _ScriptedObserver(_CONFLICTED)
     outcome, invocations, logs, _ = _drive_captured(
@@ -625,7 +666,7 @@ def test_D4_false_return_with_count_drop_restarts_the_streak(
             "agentB": (_AttemptStep(surviving=()),),
         },
         observer=observer,
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
@@ -643,7 +684,7 @@ def test_D4_false_return_with_count_drop_restarts_the_streak(
 
 
 def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     observer = _ScriptedObserver(_CONFLICTED)
     outcome, invocations, _, _session = _drive_captured(
@@ -651,7 +692,7 @@ def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
         candidates=("agentA",),
         scripts={"agentA": (_AttemptStep(surviving=(), active_failure=True),)},
         observer=observer,
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
@@ -666,13 +707,13 @@ def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
 
 
 def test_E_sole_resolver_demoted_reports_pending_without_operator_handoff(
-    tmp_path: Path, frozen_clock: _FrozenSleepClock
+    tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
         candidates=("solo",),
         scripts={"solo": _no_progress(3)},
-        clock=frozen_clock,
+        clock=shared_clock,
     )
 
     assert isinstance(outcome, RetryLaterOutcome)

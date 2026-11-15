@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.controller import RecoveryController
 
 __all__ = [
     "RoundAttempt",
@@ -194,9 +195,7 @@ def _handle_candidate_failure(
     else:
         outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
         raw_failure = (
-            session.last_attempt_failure
-            if isinstance(session.last_attempt_failure, str)
-            else None
+            session.last_attempt_failure if isinstance(session.last_attempt_failure, str) else None
         )
     _driver_mod.classify_failed_resolution_attempt(
         session,
@@ -228,7 +227,6 @@ def _execute_single_candidate(
     offset: int,
     policy_bundle: PolicyBundle,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
-    handover_to_alternative: bool = False,
 ) -> tuple[bool, StopResolutionOutcome, RoundAttempt]:
     session.terminal_reason = None
     session.last_attempt_failure = None
@@ -261,10 +259,6 @@ def _execute_single_candidate(
             session.last_failure_cause = ResolutionFailureCause.NONE
         else:
             _record_invoker_outcome(session, invoker_result)
-            if handover_to_alternative and not isinstance(
-                session.last_attempt_failure, BaseException
-            ):
-                session.skip_same_agent_retries = True
     except (OSError, RuntimeError, ValueError) as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
@@ -340,18 +334,6 @@ def _check_worktree_repair(
     return True
 
 
-def _alternative_candidate_available(
-    candidates: tuple[str, ...],
-    visited: set[int],
-    skipped: frozenset[str],
-    offset: int,
-) -> bool:
-    return any(
-        index not in visited and index != offset and candidates[index] not in skipped
-        for index in range(len(candidates))
-    )
-
-
 def _run_one_round(
     runner: ResolutionInvoker,
     candidates: tuple[str, ...],
@@ -362,7 +344,6 @@ def _run_one_round(
     policy_bundle: PolicyBundle,
     worktree_resolved: Callable[[], bool] | None = None,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
-    stop_round_cap: int = 0,
 ) -> RoundAttempt:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
@@ -388,11 +369,6 @@ def _run_one_round(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
         invoked = True
-        handover_to_alternative = (
-            stop_round_cap > 0
-            and round_index >= stop_round_cap
-            and _alternative_candidate_available(candidates, visited, skipped, offset)
-        )
         succeeded, _invoker_result, progress = _execute_single_candidate(
             runner,
             agent_name,
@@ -403,7 +379,6 @@ def _run_one_round(
             offset,
             policy_bundle,
             observe_unresolved,
-            handover_to_alternative=handover_to_alternative,
         )
         if succeeded:
             return RoundAttempt(
@@ -475,17 +450,35 @@ def _preferred_conflict_candidate(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    def _candidate_wait_ms(name: str) -> int:
-        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-        if wait == 0 and hasattr(controller, "ledger") and controller.ledger is not None:
-            wait = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, [name]) or 0
-        return wait
+    return _candidate_after_cooldown(session, controller, candidates, eligible)
 
-    shortest_agent = min(
-        eligible,
-        key=_candidate_wait_ms,
-    )
-    return candidates.index(shortest_agent)
+
+def _candidate_after_cooldown(
+    session: ResolutionSession,
+    controller: RecoveryController,
+    candidates: tuple[str, ...],
+    eligible: list[str],
+) -> int | None:
+    from ralph.pipeline.conflict_resolution import driver as _driver_mod
+    from ralph.pipeline.integration_actions import system_clock_active
+
+    delay_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
+    if delay_ms == 0 and not session.caller_provided:
+        delay_ms = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
+    if delay_ms <= 0:
+        return None
+    _driver_mod._sleep_seconds(delay_ms / 1000.0)
+    controller.prune_expired()
+    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+    if selection.agent is not None:
+        return candidates.index(selection.agent)
+    if not system_clock_active():
+        return None
+
+    def _wait_ms(name: str) -> int:
+        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+
+    return candidates.index(min(eligible, key=_wait_ms))
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

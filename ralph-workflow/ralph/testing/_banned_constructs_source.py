@@ -194,12 +194,14 @@ def _assignment_targets(statement: ast.Assign | ast.AnnAssign) -> tuple[ast.expr
 
 
 def _mutable_value(node: ast.expr | None) -> bool:
-    if isinstance(node, ast.List | ast.Dict | ast.Set):
-        return True
-    if not isinstance(node, ast.Call):
-        return False
-    leaf = _qualified_name(node.func, {}).rsplit(".", maxsplit=1)[-1]
-    return leaf in _MUTABLE_FACTORIES
+    match node:
+        case ast.List() | ast.Dict() | ast.Set():
+            return True
+        case ast.Call():
+            leaf = _qualified_name(node.func, {}).rsplit(".", maxsplit=1)[-1]
+            return leaf in _MUTABLE_FACTORIES
+        case _:
+            return False
 
 
 def _module_mutables(tree: ast.Module) -> dict[str, int]:
@@ -231,9 +233,11 @@ def _loads_name(node: ast.AST, name: str) -> bool:
 
 
 def _node_line(node: ast.AST) -> int:
-    if isinstance(node, ast.stmt | ast.expr | ast.arg | ast.keyword | ast.ExceptHandler):
-        return node.lineno
-    return 1
+    match node:
+        case ast.stmt() | ast.expr() | ast.arg() | ast.keyword() | ast.ExceptHandler():
+            return node.lineno
+        case _:
+            return 1
 
 
 class _SourceAuditor(ast.NodeVisitor):
