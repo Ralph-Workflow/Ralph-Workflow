@@ -48,14 +48,14 @@ from tests._conflict_resolution_phase_parity_seams import (
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_invoke_resolution_agent_keeps_chain_retry_budget": "the sealed StopResolutionOutcome contract requires an exact typed retry result rather than the superseded boolean API",
     "test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving terminal attribution",
-    "test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving activity attribution",
+    "test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt": "the sealed StopResolutionOutcome contract requires an exact typed retry result; shared attempt facts, not a resolver-only listener, own activity attribution",
     "test_a_candidate_that_never_ran_is_not_recorded_as_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving no-activity attribution",
     "test_an_uninstalled_candidate_is_unavailable_not_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving unavailable attribution",
     "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
-    "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately to the next eligible candidate",
+    "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately and waits only for the shared cooldown expiry",
     "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "R0 lets the shared controller select each eligible candidate once per round for immediate fall-over, without resolver-local same-agent retries",
     "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
-    "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
+    "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately and is retried in a later round only after shared eligibility returns",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
@@ -330,7 +330,8 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
         is False
     )
     assert called[:2] == ["one", "two"]
-    assert called.count("one") == 1
+    assert called.count("one") == 3
+    assert called.count("two") == 3
 
 
 def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay(
@@ -364,7 +365,8 @@ def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_dela
         is False
     )
     assert called[:2] == ["one", "two"]
-    assert sleeps == []
+    assert sleeps
+    assert all(delay > 1.0 for delay in sleeps)
 
 
 def test_conflict_failures_call_recovery_controller_handle(
@@ -930,8 +932,8 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
     assert outcome.on_change == "resolver_agent_eligibility_changed"
     assert outcome.until is None
     assert session.last_attempt_failure == "conflict attempt failed"
-    assert session.last_attempt_saw_activity is True
-    assert session.terminal_reason is None
+    assert session.last_attempt_saw_activity is False
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXITED
 
 
 def test_a_candidate_that_never_ran_is_not_recorded_as_declining(

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.cli.commands._load_result import LoadResult
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -50,7 +49,7 @@ def _make_invoke_agent(
     monkeypatch.setattr(cli_integration, "_resolve_chain_agents", lambda *args: ["first", "second"])
     monkeypatch.setattr(cli_integration, "run_agent_attempt", run_attempt)
     scope = WorkspaceScope(tmp_path)
-    load_result = LoadResult(
+    load_result = cli_integration.LoadResult(
         config=UnifiedConfig(),
         workspace_scope=scope,
         initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
@@ -58,7 +57,7 @@ def _make_invoke_agent(
         run_id=run_id,
     )
     display_context = make_display_context()
-    return cli_integration._make_production_invoke_agent(
+    return cli_integration.make_production_invoke_agent(
         load_result,
         PipelineDeps(display_context=display_context),
         scope,
