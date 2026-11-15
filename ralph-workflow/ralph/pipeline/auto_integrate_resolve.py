@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import assert_never
 
@@ -73,14 +74,21 @@ def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
                 target=target,
                 pre_feature_sha=orig_head,
                 pre_target_sha=onto,
+                resolving_rebase=True,
             )
         except Exception:
             pass
+    from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
+
+    in_merge = False
+    with suppress(Exception):
+        in_merge = merge_state(root) == MERGE_STATE_IN_PROGRESS
     return IntegrationRecord(
         phase="integrating",
         target=target,
         pre_feature_sha=_git_value(root, "rev-parse", "--verify", "HEAD") or "",
         pre_target_sha=_git_value(root, "rev-parse", "--verify", "MERGE_HEAD"),
+        resolving_merge=in_merge,
     )
 
 

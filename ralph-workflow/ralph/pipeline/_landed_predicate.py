@@ -76,6 +76,8 @@ def _advanced_completion_proof(
     record: IntegrationRecord,
     head: str,
 ) -> tuple[bool, str]:
+    if record.is_integrating and record.integrated_feature_sha == record.pre_feature_sha:
+        return False, "feature has not advanced beyond pre_feature_sha"
     recorded = record.integrated_feature_sha
     if not recorded:
         return False, "integrated_feature_sha is unset"

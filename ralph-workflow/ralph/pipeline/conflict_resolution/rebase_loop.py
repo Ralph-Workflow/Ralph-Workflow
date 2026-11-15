@@ -121,10 +121,6 @@ _ACTIVE_GITLINK_POLICY: ContextVar[GitlinkPolicyConfig | None] = ContextVar(
     "active_gitlink_policy", default=None
 )
 
-_ACTIVE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = ContextVar(
-    "active_rebase_resolution_session", default=None
-)
-
 
 def _resolution_succeeded(result: object) -> bool:
     if isinstance(result, bool):

@@ -876,6 +876,13 @@ ralph.pipeline
 .. automodule:: ralph.pipeline
    :no-members:
 
+ralph.pipeline.agent_selection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.agent_selection
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.checkpoint
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3850,6 +3857,13 @@ ralph.recovery.canary_probe_judge
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.canary_probe_judge
+   :members:
+   :show-inheritance:
+
+ralph.recovery.canary_probe_launch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.canary_probe_launch
    :members:
    :show-inheritance:
 

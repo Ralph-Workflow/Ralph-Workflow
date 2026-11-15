@@ -263,8 +263,6 @@ def _classify_gitlink(
     ancestor: tuple[str, str] | None,
     gitlink_sight: ConflictSight = ConflictSight.GITLINK_POLICY,
 ) -> ConflictSight:
-    if _is_tree(ours_mode) or _is_tree(theirs_mode):
-        return ConflictSight.OUT_OF_REACH
     if ours_mode == theirs_mode == _GITLINK_MODE and ancestor is not None:
         _ancestor_mode, ancestor_blob = ancestor
         if ancestor_blob == ours_blob == theirs_blob:

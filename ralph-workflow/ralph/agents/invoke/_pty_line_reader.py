@@ -1222,9 +1222,11 @@ class PtyLineReader:
         )
         if terminal_startup_error is None:
             return
-        self._attempt_supervisor().teardown_subtree_for_observation(
+        outcome = self._attempt_supervisor().teardown_subtree_for_observation(
             TerminalStartupErrorObserved(terminal_startup_error)
         )
+        if outcome is None:
+            return
         raise AgentInvocationError(
             self._agent_name,
             1,

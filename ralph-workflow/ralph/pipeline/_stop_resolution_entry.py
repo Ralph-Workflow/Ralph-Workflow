@@ -165,7 +165,7 @@ def _controller_for_key(
                 invoke=PRODUCTION_INVOKE,
                 probe_runner=None,
                 workspace_probe=None,
-                output_interceptor=None,
+                connectivity=None,
             ),
         )
     except Exception:

@@ -302,15 +302,17 @@ def _authenticate_latest_snapshot(
         return None
     stored_values = cast("tuple[str, str | None, str | None, str | None, str | None]", stored)
     run_id, receipt_hmac_value, path_value, digest_value, snapshot_hmac_value = stored_values
-    if not all(
-        isinstance(value, str)
-        for value in (receipt_hmac_value, path_value, digest_value, snapshot_hmac_value)
+    if (
+        not isinstance(receipt_hmac_value, str)
+        or not isinstance(path_value, str)
+        or not isinstance(digest_value, str)
+        or not isinstance(snapshot_hmac_value, str)
     ):
         return None
-    receipt_hmac = cast("str", receipt_hmac_value)
-    path = cast("str", path_value)
-    digest = cast("str", digest_value)
-    snapshot_hmac = cast("str", snapshot_hmac_value)
+    receipt_hmac = receipt_hmac_value
+    path = path_value
+    digest = digest_value
+    snapshot_hmac = snapshot_hmac_value
     if not hmac.compare_digest(receipt_hmac, _receipt_hmac(receipt_secret, run_id, artifact_type)):
         return None
     if not hmac.compare_digest(

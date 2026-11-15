@@ -290,8 +290,7 @@ def _render_phase(
 def _render_skill_cue_macro(macro_name: str, skills: tuple[str, ...]) -> str:
     context = TemplateContext.default()
     harness = (
-        "{% from 'shared/_skill_cues.j2' import " + macro_name + " %}"
-        "{{ " + macro_name + "() }}"
+        "{% from 'shared/_skill_cues.j2' import " + macro_name + " %}{{ " + macro_name + "() }}"
     )
     return render_template(harness, skill_template_variables(skills), context.partials)
 
@@ -416,6 +415,8 @@ def test_phase_skill_cue_uses_the_shared_fragment_macros(template_name: str) -> 
 
     for macro_name in _PHASE_SKILL_CUE_MACROS[template_name]:
         assert "{{ " + macro_name + "() }}" in source
+
+
 def test_skill_installation_flags_live_only_in_shared_fragments() -> None:
     root = packaged_template_root()
     shared_root = (root / "shared").resolve()

@@ -147,8 +147,8 @@ _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_mess
 _NO_COMMIT_MESSAGE_REASON = "commit-message agent chain produced no message and no skip response"
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
+_SESSION_RETRY_ATTEMPT_NUMBER = 2
 _COMMIT_RUN_ID = "commit-plumbing"
-_FIRST_RETRY_ATTEMPT_NUMBER = 2
 
 execute_agent_effect = PRODUCTION_INVOKE
 
@@ -663,16 +663,18 @@ def _generate_commit_message_with_agent(
         else AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
     )
     attempt_number = 1
+    summary_retry_attempted = False
 
     while attempt_number < attempt_limit:
-        if recovery_controller is not None and not recovery_controller.agent_eligibility(
-            "commit", agent_name
-        ).is_eligible:
+        if (
+            recovery_controller is not None
+            and not recovery_controller.agent_eligibility("commit", agent_name).is_eligible
+        ):
             break
         attempt_number += 1
 
         if (
-            attempt_number == _FIRST_RETRY_ATTEMPT_NUMBER
+            attempt_number == _SESSION_RETRY_ATTEMPT_NUMBER
             and _is_missing_commit_artifact_failure(latest_attempt.failure_detail)
             and initial_attempt.resume_session_id
         ):
@@ -704,6 +706,9 @@ def _generate_commit_message_with_agent(
             continue
 
         if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
+            if summary_retry_attempted:
+                break
+            summary_retry_attempted = True
             summary_prompt_file = _resolve_commit_write_prompt_file()(
                 attempt_context.repo_root,
                 _summarized_retry_prompt(

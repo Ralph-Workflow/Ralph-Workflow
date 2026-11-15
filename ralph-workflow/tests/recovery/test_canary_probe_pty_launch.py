@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shlex
 import subprocess
 import sys
@@ -42,6 +43,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 
 _STUB = Path(__file__).resolve().parent / "fixtures" / "fake_trust_dialog_cli.py"
 _PRODUCTION_PRETRUST_FLAG = "--dangerously-skip-permissions"
+_PRINT_MODE_FLAGS = ("-p", "--print")
+_ARGV_RECORD_ENV = "STUB_ARGV_RECORD"
 
 
 @pytest.fixture(scope="module")
@@ -140,6 +143,50 @@ def test_trusted_parent_with_production_pretrust_flag_writes_marker_and_passes(
     assert probe_area.exists()
     assert list(probe_area.glob("canary-probe-*")) == []
     assert list(trusted_root.rglob(CANARY_MARKER_FILENAME)) == []
+
+
+@pytest.mark.timeout_seconds(8)
+def test_probe_launch_carries_the_print_mode_flag_and_the_permission_flag(
+    stub_agent_config: AgentConfig,
+    tmp_path: Path,
+) -> None:
+    trusted_root = tmp_path / "trusted-root"
+    trusted_root.mkdir()
+    argv_record = tmp_path / "launched-argv.json"
+    result = run_canary_probe(
+        stub_agent_config,
+        timeout_s=3,
+        trusted_parent=trusted_root,
+        extra_env=_probe_env(trusted_root, **{_ARGV_RECORD_ENV: str(argv_record)}),
+    )
+    assert result.outcome is ProbeOutcome.PASSED
+    launched_argv = json.loads(argv_record.read_text(encoding="utf-8"))
+    assert _PRODUCTION_PRETRUST_FLAG in launched_argv
+    assert any(flag in launched_argv for flag in _PRINT_MODE_FLAGS)
+    assert launched_argv[-1].endswith("canary_probe_prompt.md")
+
+
+@pytest.mark.timeout_seconds(8)
+def test_probe_without_a_documented_print_flag_is_inconclusive_and_benches_nothing(
+    stub_agent_config: AgentConfig,
+    tmp_path: Path,
+) -> None:
+    trusted_root = tmp_path / "trusted-root"
+    trusted_root.mkdir()
+    config = stub_agent_config.model_copy(update={"transport": AgentTransport.GENERIC})
+    result = run_canary_probe(
+        config,
+        timeout_s=3,
+        trusted_parent=trusted_root,
+        extra_env=_probe_env(trusted_root),
+    )
+    assert result.outcome is ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "probe_could_not_run"
+    assert result.marker_written is None
+    assert list(trusted_root.rglob(CANARY_MARKER_FILENAME)) == []
+    verdict = probe_outcome_verdict(result.outcome)
+    assert verdict is DeadAgentVerdict.UNKNOWN
+    assert verdict_benches_agent(verdict) is False
 
 
 @pytest.mark.timeout_seconds(8)

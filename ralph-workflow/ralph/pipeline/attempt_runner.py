@@ -143,7 +143,6 @@ def build_entry_point_recovery_controller(
     agent_max_consecutive_unproductive: int | None = None,
     agent_max_total_unproductive: int | None = None,
 ) -> RecoveryController:
-    del entry_point
     effective_ledger = (
         ledger
         if ledger is not None
@@ -154,7 +153,10 @@ def build_entry_point_recovery_controller(
         )
     )
     probe_runner = deps.probe_runner
-    if probe_runner is None:
+    if probe_runner is None and entry_point not in (
+        AgentEntryPoint.SMOKE,
+        AgentEntryPoint.CANARY_PROBE,
+    ):
         probe_runner = production_dead_agent_probe_runner(config)
     options = RecoveryControllerOptions(
         cycle_cap=cycle_cap if cycle_cap is not None else _DEFAULT_CYCLE_CAP,

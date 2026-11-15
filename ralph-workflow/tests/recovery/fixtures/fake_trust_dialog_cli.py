@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -8,9 +9,11 @@ from pathlib import Path
 MARKER_FILENAME = "ralph_canary_marker.txt"
 MARKER_CONTENT = "RALPH_CANARY_OK"
 PRODUCTION_PRETRUST_FLAG = "--dangerously-skip-permissions"
+PRINT_MODE_FLAGS = ("-p", "--print")
 TRUSTED_ROOT_ENV = "STUB_TRUSTED_ROOT"
 BLOCK_ENV = "STUB_BLOCK"
 EXIT_DELAY_ENV = "STUB_EXIT_DELAY_SECONDS"
+ARGV_RECORD_ENV = "STUB_ARGV_RECORD"
 
 _DIALOG_LINE = "Claude requested permissions to read from /etc/shadow"
 
@@ -23,16 +26,25 @@ def _within(candidate: Path, parent: Path) -> bool:
     return True
 
 
+def _record_argv() -> None:
+    record_path = os.environ.get(ARGV_RECORD_ENV)
+    if not record_path:
+        return
+    Path(record_path).write_text(json.dumps(sys.argv), encoding="utf-8")
+
+
 def main() -> int:
     if not os.isatty(0):
         sys.stdout.write("fake-trust-dialog-cli: refusing to run without a TTY\n")
         sys.stdout.flush()
         return 2
+    _record_argv()
     trusted_root = os.environ.get(TRUSTED_ROOT_ENV)
     cwd = Path.cwd()
     launch_is_pretrusted = PRODUCTION_PRETRUST_FLAG in sys.argv
+    launch_is_noninteractive = any(flag in sys.argv for flag in PRINT_MODE_FLAGS)
     cwd_is_trusted = trusted_root is not None and _within(cwd, Path(trusted_root))
-    if launch_is_pretrusted and cwd_is_trusted:
+    if launch_is_pretrusted and launch_is_noninteractive and cwd_is_trusted:
         (cwd / MARKER_FILENAME).write_text(MARKER_CONTENT, encoding="utf-8")
         sys.stdout.write("fake-trust-dialog-cli: trusted cwd, marker written\n")
         sys.stdout.flush()

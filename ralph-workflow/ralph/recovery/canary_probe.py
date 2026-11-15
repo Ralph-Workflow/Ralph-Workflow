@@ -33,6 +33,7 @@ from ralph.recovery.canary_probe_judge import (
     ProbeJudgeVerdict,
     judge_probe,
 )
+from ralph.recovery.canary_probe_launch import probe_launch_override
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -78,16 +79,17 @@ def _run_canary_probe_attempt(
         "_AttemptRunnerModule",
         import_module("ralph.pipeline.attempt_runner"),
     )
-    return runner.run_agent_attempt(
-        AgentEntryPoint.CANARY_PROBE,
-        effect=effect,
-        invocation=invocation,
-        config=config,
-        controller=controller,
-        deps=deps,
-        state=state,
-        **execute_kwargs,
-    )
+    with probe_launch_override():
+        return runner.run_agent_attempt(
+            AgentEntryPoint.CANARY_PROBE,
+            effect=effect,
+            invocation=invocation,
+            config=config,
+            controller=controller,
+            deps=deps,
+            state=state,
+            **execute_kwargs,
+        )
 
 
 CANARY_MARKER_FILENAME: Final[str] = "ralph_canary_marker.txt"
@@ -460,17 +462,18 @@ def _run_probe_attempt(
         policy_bundle=None,
         deps=deps,
     )
-    result = runner.run_agent_attempt(
-        AgentEntryPoint.CANARY_PROBE,
-        invocation=config,
-        config=unified,
-        controller=controller,
-        deps=deps,
-        phase=CANARY_PROBE_PHASE,
-        agent=agent_name,
-        prompt_file=prepared.prompt_file,
-        options=prepared.options,
-    )
+    with probe_launch_override():
+        result = runner.run_agent_attempt(
+            AgentEntryPoint.CANARY_PROBE,
+            invocation=config,
+            config=unified,
+            controller=controller,
+            deps=deps,
+            phase=CANARY_PROBE_PHASE,
+            agent=agent_name,
+            prompt_file=prepared.prompt_file,
+            options=prepared.options,
+        )
     logger.info("canary probe attempt outcome: {}", result.outcome.kind)
     return result
 

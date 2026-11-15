@@ -333,9 +333,13 @@ def execute_agent_effect(
         )
         return PipelineEvent.AGENT_FAILURE
 
-    active_rec = cast(
-        "RecoveryController | None", opts.get("recovery_controller") or opts.get("recovery")
-    ) or injected.recovery_controller
+    active_rec = (
+        cast(
+            "RecoveryController | None",
+            opts.get("recovery_controller") or opts.get("recovery"),
+        )
+        or injected.recovery_controller
+    )
     if active_rec is None:
         active_rec = pipeline_deps.recovery_controller
     resolved_attempt_finalizer = attempt_finalizer or _fallback_attempt_finalizer(

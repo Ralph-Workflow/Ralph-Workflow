@@ -416,14 +416,14 @@ def _select_after_delay(
 ) -> int | None:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
-    mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+    controller_clock = controller.clock
+    mono_before = controller_clock.monotonic()
     _driver_mod._sleep_seconds(delay / 1000.0)
-    mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+    mono_after = controller_clock.monotonic()
     if mono_after - mono_before < (delay / 1000.0) * 0.5:
-        controller_clock = getattr(controller, "clock", None)
         if isinstance(controller_clock, _AdvanceableClock):
             controller_clock.advance(delay / 1000.0)
-        store = getattr(controller, "unavailability_store", None)
+        store = controller.unavailability_store
         store_clock = store.clock if isinstance(store, _ClockProvidingStore) else None
         if store_clock is not controller_clock and isinstance(store_clock, _AdvanceableClock):
             store_clock.advance(delay / 1000.0)

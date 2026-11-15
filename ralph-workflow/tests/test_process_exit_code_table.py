@@ -72,7 +72,7 @@ _NEW_ANSWER_LABELS = (
 )
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "59564c9bf54cc3393ec0a732fa5b823d226e2fadc70deeaaa963c38774507061"
+    "b09965aff306b86e4e13f9ea4cb4bfded67b39f950e234332e95b8e2f28a40c6"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory replaces git-rebase:diff with the four "

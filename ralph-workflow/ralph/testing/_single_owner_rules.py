@@ -522,9 +522,7 @@ def _classified_failure_bindings(tree: ast.Module) -> frozenset[str]:
     return frozenset(bindings)
 
 
-def _is_classified_failure_constructor(
-    node: ast.Call, bindings: frozenset[str]
-) -> bool:
+def _is_classified_failure_constructor(node: ast.Call, bindings: frozenset[str]) -> bool:
     if isinstance(node.func, ast.Name):
         return node.func.id in bindings
     return isinstance(node.func, ast.Attribute) and node.func.attr == "ClassifiedFailure"

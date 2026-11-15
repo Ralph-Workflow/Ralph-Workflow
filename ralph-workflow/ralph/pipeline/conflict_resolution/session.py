@@ -32,7 +32,7 @@ from ralph.pipeline.effect_executor import (
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome, UnknownOutcome
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome, attempt_outcome_reason
 
@@ -140,6 +140,7 @@ class ResolutionSession:
     probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
     caller_provided: bool = False
     last_resolution_outcome: StopResolutionOutcome | None = None
+    dead_surface_agents: frozenset[str] = frozenset()
 
 
 def begin_resolution_stop(
@@ -449,10 +450,10 @@ def _record_session_failure_result(
         from ralph.recovery.unavailability_reason import UnavailabilityReason
 
         if exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START:
-            controller.record_confirmed_unavailability(
+            controller.mark_agent_unavailable(
                 PHASE_RESOLUTION,
                 agent_name,
-                UnavailabilityReason.NO_OUTPUT_AT_START,
+                reason=UnavailabilityReason.NO_OUTPUT_AT_START,
             )
 
 
@@ -572,10 +573,9 @@ def _failed_invocation_outcome(
     error: Exception,
     session: ResolutionSession | None,
     unresolved_paths: tuple[str, ...],
-) -> RetryLaterOutcome:
-    del error
-    return RetryLaterOutcome(
-        on_change="resolver_agent_eligibility_changed",
+) -> UnknownOutcome:
+    return UnknownOutcome(
+        error=error,
         terminal_reason=session.terminal_reason if session is not None else None,
         unresolved_paths=session.unresolved_paths if session is not None else unresolved_paths,
     )

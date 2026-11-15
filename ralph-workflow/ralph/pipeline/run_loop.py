@@ -804,6 +804,21 @@ def _sweep_orphaned_git_locks(workspace_scope: WorkspaceScope) -> None:
         logger.warning("startup git-lock sweep failed: {}", sweep_exc)
 
 
+def _preamble_recovery_controller(config: UnifiedConfig | None = None) -> RecoveryController:
+    return build_entry_point_recovery_controller(
+        AgentEntryPoint.MAIN_PHASE_LOOP,
+        config=config,
+        policy_bundle=None,
+        deps=AttemptRunnerDeps(
+            clock=SystemClock(),
+            invoke=PRODUCTION_INVOKE,
+            probe_runner=None,
+            workspace_probe=DefaultWorkspaceChangeProbe(),
+            connectivity=None,
+        ),
+    )
+
+
 def run_auto_integrate_recovery_preamble(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None = None,
@@ -828,6 +843,9 @@ def run_auto_integrate_recovery_preamble(
                 rebase_stop_resolver = rs
             if recovery_controller is None and ctrl is not None:
                 recovery_controller = ctrl
+
+        if recovery_controller is None:
+            recovery_controller = _preamble_recovery_controller(config)
 
         recovered = recover_incomplete_integration(
             workspace_scope,
@@ -1716,6 +1734,22 @@ def _run_owned_integration_conflict_resolution(
                 ctx.active_display,
                 "no eligible conflict resolver for this conflict;"
                 " escalating instead of re-invoking the resolver",
+            )
+        return False
+    if ledger is not None and not ledger.any_eligible(
+        "rebase_conflict_resolution",
+        installed,
+    ):
+        logger.warning(
+            "integration resolution: every conflict resolver for target '{}' is in backoff;"
+            " deferring instead of re-invoking the resolver",
+            target,
+        )
+        with suppress(Exception):
+            emit_integration_warn_line(
+                ctx.active_display,
+                "conflict resolver is in backoff for this conflict;"
+                " deferring instead of re-invoking the resolver",
             )
         return False
     return _resolve_blocking_conflict(ctx, target, rebase)

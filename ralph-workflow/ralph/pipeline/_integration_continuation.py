@@ -399,7 +399,9 @@ def continue_retained_resolution(
     target = record.pre_target_sha if record.operation_kind == "target_reconcile" else record.target
     if not target:
         return "retained resolution target unreadable; progress preserved"
-    if record.resolving_merge and merge_state(root) == MERGE_STATE_IN_PROGRESS:
+    if (record.resolving_merge or merge_state(root) == MERGE_STATE_IN_PROGRESS) and merge_state(
+        root
+    ) == MERGE_STATE_IN_PROGRESS:
         failure = _continue_merge_resolution(
             root,
             record,
@@ -415,7 +417,7 @@ def continue_retained_resolution(
         )
         if failure is not None:
             return failure
-    elif record.resolving_rebase and rebase_in_progress_at(root):
+    elif (record.resolving_rebase or rebase_in_progress_at(root)) and rebase_in_progress_at(root):
         failure = _continue_rebase_resolution(
             root,
             record,
@@ -533,6 +535,8 @@ def _stale_replay_record(root: Path, record: IntegrationRecord) -> IntegrationRe
 
 def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCompletion | None:
     if not record.resolving_rebase and not record.rebase_continue_pending:
+        return None
+    if rebase_in_progress_at(root) or merge_state(root) != MERGE_STATE_NONE:
         return None
     decision = operation_landed(root, record)
     if not decision.landed or decision.observed_head is None:
