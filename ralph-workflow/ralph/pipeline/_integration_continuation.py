@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, assert_never
 
-from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, is_ancestor, merge_state
+from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
-from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
+from ralph.pipeline._landed_predicate import operation_landed
 from ralph.pipeline._pending_merge_commit import _git_value
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
@@ -46,8 +46,6 @@ if TYPE_CHECKING:
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
-
-_REBASE_RECEIPT_ENTRIES = 2
 
 
 class ExhaustedResolutionFailure(str):
@@ -275,10 +273,20 @@ def _rebase_failure_transport(
     match outcome:
         case ResolvedOutcome():
             return None
-        case (
-            NextStrategyOutcome()
-            | RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED)
-        ):
+        case NextStrategyOutcome(strategy=strategy):
+            from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
+
+            if strategy in _LADDER_ACTION_VALUES:
+                AttemptLedger(root).charge_ladder_attempt(
+                    rebase_resolution_signature(
+                        record.pre_feature_sha,
+                        record.pre_target_sha,
+                        stop_identity or record.resolving_stop_sha,
+                    ),
+                    strategy,
+                )
+            return failure_reason
+        case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha,
@@ -458,6 +466,29 @@ def _terminal_state_refusal(root: Path) -> str | None:
     return None
 
 
+def _complete_and_save_record(
+    root: Path,
+    record: IntegrationRecord,
+    head: str,
+) -> IntegrationRecord:
+    completion = complete_commit(
+        record,
+        integrated_feature_sha=head,
+        resolving_rebase=False,
+        resolving_merge=False,
+        rebase_continue_pending=False,
+        rebase_continue_metadata=(),
+        rebase_restore_metadata=None,
+        rebase_continue_head=None,
+        rebase_continue_stop=None,
+        rebase_continue_tree=None,
+        rebase_continue_error=None,
+        merge_commit_pending=False,
+    )
+    write_record(root, completion.record)
+    return completion.record
+
+
 def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
     refusal = _terminal_state_refusal(root)
     if refusal is None and (rebase_in_progress_at(root) or merge_state(root) != MERGE_STATE_NONE):
@@ -469,14 +500,13 @@ def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> Inte
         return "retained integration ownership unreadable after continuation"
     if current.is_integrated:
         return current
+    decision = operation_landed(root, current)
+    if decision.landed and decision.observed_head is not None:
+        return _complete_and_save_record(root, current, decision.observed_head)
     if current.rebase_continue_pending:
         from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 
         return resume_pending_rebase(root, current)
-    legacy = _legacy_completed_rebase(root, current)
-    if legacy is not None:
-        write_record(root, legacy.record)
-        return legacy.record
     replay = _stale_replay_record(root, current)
     return current if replay is None else replay
 
@@ -507,32 +537,24 @@ def _stale_replay_record(root: Path, record: IntegrationRecord) -> IntegrationRe
 
 
 def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCompletion | None:
-    if not record.resolving_rebase or not record.pre_target_sha:
+    if not record.resolving_rebase and not record.rebase_continue_pending:
         return None
-    branch = _git_value(root, "symbolic-ref", "--quiet", "HEAD")
-    head = _git_value(root, "rev-parse", "--verify", "HEAD")
-    if branch is None or head is None:
-        return None
-    history = run_git(
-        ("reflog", "show", "--format=%H%x00%gs", "-2", branch),
-        cwd=root,
-        label="recovery:legacy-rebase-receipt",
-    )
-    rows = history.stdout.splitlines()
-    if history.returncode or len(rows) != _REBASE_RECEIPT_ENTRIES:
-        return None
-    latest, _, action = rows[0].partition("\0")
-    previous, _, _action = rows[1].partition("\0")
-    if (
-        latest != head
-        or previous != record.pre_feature_sha
-        or action != f"rebase (finish): {branch} onto {record.pre_target_sha}"
-        or not is_ancestor(root, record.pre_target_sha, head)
-    ):
+    decision = operation_landed(root, record)
+    if not decision.landed or decision.observed_head is None:
         return None
     return complete_commit(
         record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=False),
-        integrated_feature_sha=head,
+        integrated_feature_sha=decision.observed_head,
+        resolving_rebase=False,
+        resolving_merge=False,
+        rebase_continue_pending=False,
+        rebase_continue_metadata=(),
+        rebase_restore_metadata=None,
+        rebase_continue_head=None,
+        rebase_continue_stop=None,
+        rebase_continue_tree=None,
+        rebase_continue_error=None,
+        merge_commit_pending=False,
     )
 
 

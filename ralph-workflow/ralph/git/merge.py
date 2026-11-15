@@ -145,6 +145,10 @@ class UnmergedPathsObservation:
     paths: tuple[str, ...] = ()
     query_ok: bool = True
 
+    @property
+    def is_resolved(self) -> bool:
+        return self.query_ok and len(self.paths) == 0
+
 
 @dataclass(frozen=True)
 class MergeResult:

@@ -190,3 +190,29 @@ def test_range_containing_published_commits_lands_without_rewriting_them(
         feature=feature_sha,
         source_refs=(target_before,),
     )
+
+
+def test_many_sibling_worktrees_integrate(tmp_git_repo: Path) -> None:
+    _seed_base(tmp_git_repo)
+    git(tmp_git_repo, "checkout", "-q", "-b", "dummy")
+    shas = []
+    for index in range(4):
+        sibling = tmp_git_repo.parent / f"sibling-{index}"
+        git(tmp_git_repo, "worktree", "add", "-q", "-b", f"feature-{index}", str(sibling), "main")
+        commit_file(sibling, f"sibling-{index}.txt", f"data {index}\n", f"commit {index}")
+        shas.append(git(sibling, "rev-parse", "HEAD"))
+
+    for index in range(4):
+        sibling = tmp_git_repo.parent / f"sibling-{index}"
+        run = drive_integration(sibling)
+        assert run.error is None, f"sibling {index} must integrate: {run.error}"
+
+    git(tmp_git_repo, "checkout", "-q", "main")
+    for index, sha in enumerate(shas):
+        assert_content_equivalence(
+            tmp_git_repo,
+            contract=f"sibling {index} work must land on main",
+            target="main",
+            feature=sha,
+            source_refs=("main",),
+        )

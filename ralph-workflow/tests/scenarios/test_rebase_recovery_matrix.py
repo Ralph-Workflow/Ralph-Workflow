@@ -12,8 +12,12 @@ from tests.scenarios._rebase_recovery_harness import (
     ScenarioResult,
     run_completed_rebase_promotion,
     run_corrupted_config,
+    run_detached_head_probe_quietness,
+    run_empty_resolution_stop,
     run_marker_resolution,
+    run_marker_resolution_bounded,
     run_multi_commit_empty_stop_recovery,
+    run_spent_chain_fall_over_then_wait,
     run_spent_gate,
     run_unstaged_text_resolution,
 )
@@ -51,6 +55,10 @@ def _spent_chain(root: Path) -> ScenarioResult:
     return run_spent_gate(root, FakeClock())
 
 
+def _spent_chain_fall_over_then_wait(root: Path) -> ScenarioResult:
+    return run_spent_chain_fall_over_then_wait(root)
+
+
 def _unchanged_then_tick(root: Path) -> ScenarioResult:
     return run_spent_gate(root, FakeClock(), advance=1.0)
 
@@ -61,6 +69,18 @@ def _multi_commit_empty_stop(root: Path) -> ScenarioResult:
 
 def _unstaged_and_gitlink(root: Path) -> ScenarioResult:
     return run_unstaged_text_resolution(root)
+
+
+def _empty_resolution_stop(root: Path) -> ScenarioResult:
+    return run_empty_resolution_stop(root)
+
+
+def _detached_head_probe_quietness(root: Path) -> ScenarioResult:
+    return run_detached_head_probe_quietness(root)
+
+
+def _marker_leaving_resolver_bounded(root: Path) -> ScenarioResult:
+    return run_marker_resolution_bounded(root)
 
 
 CASES: tuple[tuple[str, ScenarioRunner, Expected], ...] = (
@@ -75,9 +95,14 @@ CASES: tuple[tuple[str, ScenarioRunner, Expected], ...] = (
         Expected(1, 1, "WARNING", "provider", "waiting"),
     ),
     (
+        "spent-chain-fall-over-then-wait",
+        _spent_chain_fall_over_then_wait,
+        Expected(0, 1, "INFO", "waiting", "waiting"),
+    ),
+    (
         "completed-rebase-is-promoted",
         _completed_rebase,
-        Expected(1, 2, "WARNING", "reclaim", "promoted"),
+        Expected(1, 0, None, None, "promoted"),
     ),
     (
         "unchanged-gate-remains-closed-after-one-second",
@@ -93,6 +118,21 @@ CASES: tuple[tuple[str, ScenarioRunner, Expected], ...] = (
         "resolved-unstaged-text-plus-gitlink",
         _unstaged_and_gitlink,
         Expected(1, 0, None, None, "resolved"),
+    ),
+    (
+        "empty-resolution-stop",
+        _empty_resolution_stop,
+        Expected(1, 0, None, None, "resolved"),
+    ),
+    (
+        "detached-head-probe-quietness",
+        _detached_head_probe_quietness,
+        Expected(0, 0, None, None, "quiet"),
+    ),
+    (
+        "marker-leaving-resolver-bounded",
+        _marker_leaving_resolver_bounded,
+        Expected(2, 2, "WARNING", "unmerged", "retained"),
     ),
 )
 

@@ -18,6 +18,7 @@ from tests._scenario_harness import (
     run_unstaged_text_resolution,
     supervisor_restart,
 )
+from tests.scenarios._rebase_recovery_harness import shared_executor_seam
 from tests.scenarios._scenario_runner import ScenarioRunner
 
 pytestmark = [
@@ -50,20 +51,24 @@ def _corrupted_config(root: Path) -> ScenarioResult:
 
 
 def _completed_rebase(root: Path) -> ScenarioResult:
-    return run_completed_rebase_promotion(root)
+    with shared_executor_seam(None):
+        return run_completed_rebase_promotion(root)
 
 
 def _spent_chain(root: Path) -> ScenarioResult:
-    return run_spent_gate(root, FakeClock())
+    with shared_executor_seam(None):
+        return run_spent_gate(root, FakeClock())
 
 
 def _unchanged_then_tick(root: Path) -> ScenarioResult:
-    return run_spent_gate(root, FakeClock(), advance=1.0)
+    with shared_executor_seam(None):
+        return run_spent_gate(root, FakeClock(), advance=1.0)
 
 
 def _moved_target_after_restart(root: Path) -> ScenarioResult:
-    result = run_completed_rebase_promotion(root)
-    restarted = supervisor_restart(root)
+    with shared_executor_seam(None):
+        result = run_completed_rebase_promotion(root)
+        restarted = supervisor_restart(root)
     terminal = "anchor_proven" if restarted["head"] == result.facts["target"] else "anchor_lost"
     return ScenarioResult(
         result.resolver_launches,
@@ -74,7 +79,8 @@ def _moved_target_after_restart(root: Path) -> ScenarioResult:
 
 
 def _unstaged_and_gitlink(root: Path) -> ScenarioResult:
-    return run_unstaged_text_resolution(root)
+    with shared_executor_seam(None):
+        return run_unstaged_text_resolution(root)
 
 
 CASES = (
@@ -132,7 +138,8 @@ def test_auto_integrate_symptom_matrix(
 
 
 def test_leaves_marker_mode_retains_the_rebase(tmp_git_repo: Path) -> None:
-    result = run_marker_resolution(tmp_git_repo)
+    with shared_executor_seam(None):
+        result = run_marker_resolution(tmp_git_repo)
 
     assert result.resolver_launches == 1
     assert result.terminal_state == "retained"

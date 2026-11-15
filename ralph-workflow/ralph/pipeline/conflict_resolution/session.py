@@ -8,7 +8,6 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
-from ralph.agents.system_clock import SystemClock
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_entry_point import (
@@ -45,7 +44,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from ralph.agents.clock import Clock
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -226,6 +224,10 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
     return agents
 
 
+class RecoveryControllerUnavailableError(RuntimeError):
+    pass
+
+
 def ensure_session_controller(
     session: ResolutionSession | None,
     policy_bundle: PolicyBundle | None = None,
@@ -233,9 +235,8 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+    del policy_bundle, config
     from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         return session.recovery_controller
@@ -250,60 +251,16 @@ def ensure_session_controller(
             session.recovery_controller = controller
             session.ledger = controller.ledger
         return controller
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-    from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
+    if session is not None and session.ledger is not None:
+        from ralph.recovery.controller import RecoveryControllerOptions
 
-    store = (
-        pipeline_deps.unavailability_store
-        if pipeline_deps is not None and pipeline_deps.unavailability_store is not None
-        else (session.unavailability_store if session is not None else None)
-    )
-    if session is not None and store is not None and session.unavailability_store is None:
-        session.unavailability_store = store
-    ledger = (
-        pipeline_deps.ledger
-        if pipeline_deps is not None and pipeline_deps.ledger is not None
-        else (session.ledger if session is not None else None)
-    )
-    if (
-        ledger is None
-        and isinstance(store, AgentUnavailabilityTracker)
-        and isinstance(store._failure_ledger, AgentFailureLedger)
-    ):
-        ledger = store._failure_ledger
-    clock: Clock = SystemClock()
-    if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
-        clock = pipeline_deps.recovery_clock
-    elif isinstance(store, AgentUnavailabilityTracker):
-        clock = store.clock
-    elif isinstance(ledger, AgentFailureLedger):
-        clock = ledger.clock
-    deps = AttemptRunnerDeps(
-        clock=clock,
-        invoke=_invoke_effect,
-        probe_runner=(
-            session.probe_runner
-            if session is not None and session.probe_runner is not None
-            else production_dead_agent_probe_runner(config)
-        ),
-        workspace_probe=None,
-        connectivity=None,
-    )
-    controller = build_entry_point_recovery_controller(
-        AgentEntryPoint.CONFLICT_RESOLUTION,
-        config=config,
-        policy_bundle=policy_bundle,
-        deps=deps,
-        ledger=ledger,
-        unavailability_store=store,
-    )
-    store_ledger_target: object = getattr(store, "_failure_ledger", None)
-    if store is not None and store_ledger_target is None and controller.ledger is not None:
-        object.__setattr__(store, "_failure_ledger", controller.ledger)
-    if session is not None:
+        controller = RecoveryController(
+            options=RecoveryControllerOptions(clock=session.ledger.clock),
+            ledger=session.ledger,
+        )
         session.recovery_controller = controller
-        session.ledger = controller.ledger
-    return controller
+        return controller
+    raise RecoveryControllerUnavailableError("recovery controller unavailable")
 
 
 def _typed_conflict_attempt_reason(

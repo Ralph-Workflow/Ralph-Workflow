@@ -328,8 +328,10 @@ def drive_integration(
 
         clock_adapter = _ClockAdapter()
 
+    from tests.scenarios._rebase_recovery_harness import shared_executor_seam
+
     token = install_executors(agent_runner=counting, clock=clock_adapter)
-    with capture_operator_lines() as lines:
+    with shared_executor_seam(inner), capture_operator_lines() as lines:
         try:
             result = integrate_before_planning(
                 effective_config,

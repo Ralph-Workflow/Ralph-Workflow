@@ -12,9 +12,6 @@ from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._pending_merge_commit import _git_value
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
-from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
-from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.config_file_fingerprint_watcher import (
     compute_config_fingerprint_for_workspace,
@@ -143,28 +140,11 @@ def _controller_for_key(
     root: Path,
     config: UnifiedConfig | None,
     recovery_controller: RecoveryController | None,
-) -> RecoveryController | KeyUnavailable | None:
-    if recovery_controller is not None or config is None:
+) -> RecoveryController | KeyUnavailable:
+    del root, config
+    if recovery_controller is not None:
         return recovery_controller
-    try:
-        from ralph.pipeline.runner import load_policy_bundle_for_run
-        from ralph.workspace.scope import WorkspaceScope
-
-        policy_bundle = load_policy_bundle_for_run(WorkspaceScope(root=root), config)
-        return build_entry_point_recovery_controller(
-            AgentEntryPoint.INTEGRATION_CONTINUATION,
-            config=config,
-            policy_bundle=policy_bundle,
-            deps=AttemptRunnerDeps(
-                clock=SystemClock(),
-                invoke=PRODUCTION_INVOKE,
-                probe_runner=None,
-                workspace_probe=None,
-                connectivity=None,
-            ),
-        )
-    except Exception as exc:
-        return KeyUnavailable(f"recovery controller unavailable: {exc}")
+    return KeyUnavailable("recovery controller unavailable")
 
 
 def compute_resolution_attempt_key(
@@ -185,7 +165,7 @@ def compute_resolution_attempt_key(
     if isinstance(controller, KeyUnavailable):
         return controller
     effective_agents = eligible_agents
-    if effective_agents is None and controller is not None:
+    if effective_agents is None:
         try:
             candidates = (
                 chain_agents if chain_agents is not None else controller.agents_for_phase(phase)
@@ -196,8 +176,6 @@ def compute_resolution_attempt_key(
             )
         except Exception as exc:
             return KeyUnavailable(f"agent eligibility unavailable: {exc}")
-    if effective_agents is None:
-        effective_agents = ()
     try:
         fingerprint = (
             config_fingerprint
@@ -566,14 +544,9 @@ def _execute_rebase_resolution(
     session: ResolutionSession,
     agent_runner: AgentRunner | None,
 ) -> bool:
-    from ralph.pipeline.conflict_resolution.rebase_loop import (
-        bind_active_rebase_resolution_session,
-    )
-
-    with bind_active_rebase_resolution_session(session):
-        if agent_runner is not None:
-            return agent_runner.resolve_rebase(root, target, resolver, session=session)
-        return production_rebase_runner().resolve_rebase(root, target, resolver, session=session)
+    if agent_runner is not None:
+        return agent_runner.resolve_rebase(root, target, resolver, session=session)
+    return production_rebase_runner().resolve_rebase(root, target, resolver, session=session)
 
 
 def _session_carried_cause(session: ResolutionSession) -> ResolutionFailureCause:

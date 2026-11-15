@@ -213,3 +213,112 @@ def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbatio
         feature=feature_sha,
         source_refs=("main",),
     )
+
+
+def test_publication_failure_lands_and_verifies(tmp_git_repo: Path) -> None:
+    commit_file(tmp_git_repo, "base.txt", "base\n", "base")
+    git(tmp_git_repo, "checkout", "-q", "-b", "feature")
+    feature_sha = commit_file(tmp_git_repo, "feature.txt", "feature\n", "feature")
+    git(tmp_git_repo, "remote", "add", "origin", str(tmp_git_repo / "missing-remote"))
+
+    run = drive_integration(tmp_git_repo)
+    assert run.error is None, f"remote rejection must not crash integration: {run.error}"
+    assert "main" in git(tmp_git_repo, "branch", "--contains", feature_sha, "main", check=False)
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="publication failure must leave local landing verified",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
+
+
+def test_cleanup_crash_after_landing_recovers_and_verifies(tmp_git_repo: Path) -> None:
+    commit_file(tmp_git_repo, "base.txt", "base\n", "base")
+    git(tmp_git_repo, "checkout", "-q", "-b", "feature")
+    feature_sha = commit_file(tmp_git_repo, "feature.txt", "feature\n", "feature")
+
+    run1 = drive_integration(tmp_git_repo)
+    assert run1.error is None
+    (tmp_git_repo / ".git" / "refs" / "ralph" / "backup").mkdir(parents=True, exist_ok=True)
+    git(tmp_git_repo, "update-ref", "refs/ralph/backup/pre-integrate", feature_sha)
+
+    run2 = drive_integration(tmp_git_repo)
+    assert run2.error is None
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="cleanup crash after landing must recover cleanly and verify",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
+
+
+def test_interleaved_human_commits_land_and_verify(tmp_git_repo: Path) -> None:
+    commit_file(tmp_git_repo, "base.txt", "base\n", "base")
+    git(tmp_git_repo, "checkout", "-q", "-b", "feature")
+    feature_sha = commit_file(tmp_git_repo, "feature.txt", "feature\n", "feature")
+
+    git(tmp_git_repo, "checkout", "-q", "main")
+    human_sha = commit_file(tmp_git_repo, "human.txt", "human work\n", "interleaved human commit")
+    git(tmp_git_repo, "checkout", "-q", "feature")
+
+    run = drive_integration(tmp_git_repo)
+    assert run.error is None, f"interleaved human commit must integrate: {run.error}"
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="interleaved human work and feature work must both land",
+        feature=feature_sha,
+        source_refs=(human_sha,),
+    )
+
+
+def test_mid_rebase_new_feature_and_target_commits_land_and_verify(tmp_git_repo: Path) -> None:
+    paused_text_rebase(tmp_git_repo)
+    feature_sha = git(tmp_git_repo, "rev-parse", "feature")
+    old_target = git(tmp_git_repo, "rev-parse", "main")
+    new_target = git(tmp_git_repo, "commit-tree", f"{old_target}^{{tree}}", "-p", old_target, "-m", "target mid-rebase")
+    git(tmp_git_repo, "update-ref", "refs/heads/main", new_target, old_target)
+
+    run = drive_integration(tmp_git_repo, resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES))
+    assert run.error is None, f"mid-rebase target/feature commits must integrate: {run.error}"
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="mid-rebase commit updates must complete and land",
+        feature=feature_sha,
+        source_refs=(new_target,),
+    )
+
+
+def test_strategy_switch_carrying_resolved_work(tmp_git_repo: Path) -> None:
+    commit_file(tmp_git_repo, "shared1.txt", "base1\n", "base1")
+    commit_file(tmp_git_repo, "shared2.txt", "base2\n", "base2")
+    git(tmp_git_repo, "checkout", "-q", "-b", "feature")
+    commit_file(tmp_git_repo, "shared1.txt", "feature1\n", "feature commit 1")
+    commit_file(tmp_git_repo, "shared2.txt", "feature2\n", "feature commit 2")
+    feature_sha = git(tmp_git_repo, "rev-parse", "HEAD")
+
+    git(tmp_git_repo, "checkout", "-q", "main")
+    commit_file(tmp_git_repo, "shared1.txt", "target1\n", "target commit 1")
+    commit_file(tmp_git_repo, "shared2.txt", "target2\n", "target commit 2")
+    git(tmp_git_repo, "checkout", "-q", "feature")
+
+    stop_counts: dict[str, int] = {}
+
+    def switching_resolver(root: Path, _target: str, stop: RebaseStop) -> bool:
+        stop_id = ",".join(stop.conflicted_files)
+        stop_counts[stop_id] = stop_counts.get(stop_id, 0) + 1
+        if "shared2.txt" in stop.conflicted_files and stop_counts[stop_id] == 1:
+            return False
+        for rel in stop.conflicted_files:
+            (root / rel).write_text(f"resolved {rel}\n", encoding="utf-8")
+        git(root, "add", "--", *stop.conflicted_files)
+        return True
+
+    run = drive_integration(tmp_git_repo, resolver=switching_resolver)
+    assert run.error is None, f"strategy switch carrying resolved work must succeed: {run.error}"
+    assert_content_equivalence(
+        tmp_git_repo,
+        contract="strategy switch must carry previously resolved work across stops",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
+

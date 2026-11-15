@@ -12,7 +12,12 @@ from ralph.git.merge import (
 )
 from ralph.git.operations import _resolve_gitdir_paths, get_head_sha
 
-__all__ = ["OperationSnapshot", "OperationState", "observe_operation_snapshot"]
+__all__ = [
+    "OperationSnapshot",
+    "OperationState",
+    "is_stop_resolved",
+    "observe_operation_snapshot",
+]
 
 _MINIMUM_REBASE_SIGNALS = 2
 
@@ -28,6 +33,18 @@ class OperationSnapshot:
     rebase_head: str | None
     index_tree: str | None
     staged_conflict_marker_paths: tuple[str, ...]
+
+    @property
+    def stop_resolved(self) -> bool:
+        return (
+            self.unmerged_query_ok
+            and not self.unmerged_paths
+            and not self.staged_conflict_marker_paths
+        )
+
+
+def is_stop_resolved(snapshot: OperationSnapshot) -> bool:
+    return snapshot.stop_resolved
 
 
 def _read_marker(gitdir: Path, name: str) -> str | None:

@@ -25,6 +25,17 @@ if TYPE_CHECKING:
     MonotonicClock = Callable[[], float]
 
 
+class _DriverEventsState:
+    last_waiting_line: str | None = None
+
+
+_state = _DriverEventsState()
+
+
+def reset_driver_events_state() -> None:
+    _state.last_waiting_line = None
+
+
 def _emit(display: ParallelDisplay | None, line: str) -> None:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
@@ -91,12 +102,14 @@ def emit_attempt_outcome(
     session: ResolutionSession | None = None,
 ) -> None:
     if isinstance(outcome, ResolvedOutcome):
+        _state.last_waiting_line = None
         return
     if session is not None and (
         session.terminal_reason is not None
         or session.last_activity_kind is not None
         or session.last_duration_seconds is not None
     ):
+        _state.last_waiting_line = None
         from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
             ResolutionTerminationReason,
         )
@@ -128,10 +141,15 @@ def emit_attempt_outcome(
     match outcome:
         case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
             line = f"waiting: {condition}; resumes_when={resumes_when}"
+            if line == _state.last_waiting_line:
+                return
+            _state.last_waiting_line = line
         case RetryLaterOutcome(until=until, on_change=on_change):
+            _state.last_waiting_line = None
             resume = f"until={until}" if until is not None else f"on_change={on_change}"
             line = f"retry later: {resume}"
         case NextStrategyOutcome(strategy=strategy):
+            _state.last_waiting_line = None
             if session is not None and (
                 session.last_activity_kind is not None
                 or session.last_activity_at is not None
@@ -160,8 +178,10 @@ def emit_attempt_outcome(
             else:
                 line = f"{strategy}: next strategy"
         case ConfigFailureOutcome(file=file, parse_error=parse_error):
+            _state.last_waiting_line = None
             line = f"configuration failure: {file}: {parse_error}"
         case UnknownOutcome(error=error):
+            _state.last_waiting_line = None
             line = f"unknown resolution failure: {error}"
         case _ as unreachable:
             assert_never(unreachable)
@@ -220,4 +240,5 @@ __all__ = [
     "emit_expired_operator_cap",
     "emit_success",
     "render_round_prompt",
+    "reset_driver_events_state",
 ]

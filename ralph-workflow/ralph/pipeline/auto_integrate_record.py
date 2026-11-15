@@ -147,6 +147,26 @@ class IntegrationRecord(RalphBaseModel):
     ) -> IntegrationRecord:
         return self.model_copy(update={"waiting_notification_key": notification_key})
 
+    def with_completion_advanced(
+        self,
+        integrated_feature_sha: str,
+    ) -> IntegrationRecord:
+        return self.with_transition(
+            PROMOTE_TO_INTEGRATED,
+            phase="integrated",
+            integrated_feature_sha=integrated_feature_sha,
+            resolving_rebase=False,
+            resolving_merge=False,
+            rebase_continue_pending=False,
+            rebase_continue_metadata=(),
+            rebase_restore_metadata=None,
+            rebase_continue_head=None,
+            rebase_continue_stop=None,
+            rebase_continue_tree=None,
+            rebase_continue_error=None,
+            merge_commit_pending=False,
+        )
+
 
 _LEGACY_GLOBAL_EVIDENCE_KEYS: frozenset[str] = frozenset({"for-each-ref", "ls-files"})
 

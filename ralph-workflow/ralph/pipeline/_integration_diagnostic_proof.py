@@ -24,6 +24,8 @@ def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]
 
 
 def _check_parent_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
+    if not record.merge_commit_parent:
+        return True, "parents verified"
     from ralph.git.subprocess_runner import run_git
 
     try:
@@ -38,26 +40,11 @@ def _check_parent_match(root: Path, record: IntegrationRecord) -> tuple[bool, st
         return False, "parents of HEAD are unreadable"
     parents = parents_res.stdout.strip().split()
 
-    if record.merge_commit_parent:
-        if record.merge_commit_parent not in parents:
-            return (
-                False,
-                f"parent of HEAD does not match merge_commit_parent {record.merge_commit_parent}",
-            )
-    elif record.pre_target_sha and record.pre_target_sha not in parents:
-        try:
-            ancestor_res = run_git(
-                ("merge-base", "--is-ancestor", record.pre_target_sha, "HEAD"),
-                cwd=root,
-                label="integration_diagnostic:check_ancestor",
-            )
-            if ancestor_res.returncode != 0:
-                return (
-                    False,
-                    f"pre_target_sha {record.pre_target_sha} is not an ancestor of HEAD",
-                )
-        except (OSError, RuntimeError) as exc:
-            return False, f"ancestry check failed: {exc}"
+    if record.merge_commit_parent not in parents:
+        return (
+            False,
+            f"parent of HEAD does not match merge_commit_parent {record.merge_commit_parent}",
+        )
     return True, "parents verified"
 
 

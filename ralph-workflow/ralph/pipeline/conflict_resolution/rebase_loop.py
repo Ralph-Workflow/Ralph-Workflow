@@ -97,10 +97,6 @@ __all__ = [
 ]
 
 
-_ACTIVE_REBASE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = ContextVar(
-    "active_rebase_resolution_session", default=None
-)
-
 _try_deterministic_resolution = try_deterministic_resolution
 _remove_ort_residue = remove_ort_residue
 _is_ralph_workspace_path = is_ralph_workspace_path
@@ -145,16 +141,14 @@ def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
 
 
 @contextmanager
-def bind_active_rebase_resolution_session(session: ResolutionSession) -> Iterator[None]:
-    token = _ACTIVE_REBASE_RESOLUTION_SESSION.set(session)
-    try:
-        yield
-    finally:
-        _ACTIVE_REBASE_RESOLUTION_SESSION.reset(token)
+def bind_active_rebase_resolution_session(
+    session: ResolutionSession | None = None,
+) -> Iterator[None]:
+    yield
 
 
 def active_rebase_resolution_session() -> ResolutionSession | None:
-    return _ACTIVE_REBASE_RESOLUTION_SESSION.get()
+    return None
 
 
 def _resolve_rebase_in_progress(
@@ -169,11 +163,10 @@ def _resolve_rebase_in_progress(
     try:
         effective_cap = _configured_stop_cap(effective_session, stop_cap)
         if effective_session is None:
-            return _resolve_stops(root, target, resolver, effective_cap)
+            return _resolve_stops(root, target, resolver, effective_cap, session=None)
         policy_token = _ACTIVE_GITLINK_POLICY.set(effective_session.gitlink_policy)
         try:
-            with bind_active_rebase_resolution_session(effective_session):
-                return _resolve_stops(root, target, resolver, effective_cap)
+            return _resolve_stops(root, target, resolver, effective_cap, session=effective_session)
         finally:
             _ACTIVE_GITLINK_POLICY.reset(policy_token)
     except Exception as exc:
@@ -198,6 +191,7 @@ def _resolve_stops(
     target: str,
     resolver: RebaseStopResolver,
     stop_cap: int,
+    session: ResolutionSession | None = None,
 ) -> bool:
     base = _rebase_base_sha(root) or target
     entry_landed = frozenset(_landed_shas_at_entry(root))
@@ -217,6 +211,7 @@ def _resolve_stops(
             entry_landed,
             skipped_entry_shas,
             resolved_shas,
+            session=session,
         ):
             return False
         if len(skipped_entry_shas) > skipped_before:
@@ -297,6 +292,7 @@ def _resolve_one_stop(
     entry_landed: frozenset[str],
     skipped_entry_shas: set[str],
     resolved_shas: list[str] | None = None,
+    session: ResolutionSession | None = None,
 ) -> bool:
     stop = _read_stop(root, stop_index, stop_cap)
     if stop is None:
@@ -326,7 +322,7 @@ def _resolve_one_stop(
             stop.stop_index,
         )
     outcome = resolver(root, target, stop)
-    _record_resolver_outcome_on_session(outcome, active_rebase_resolution_session())
+    _record_resolver_outcome_on_session(outcome, session)
     if not _resolution_succeeded(outcome):
         logger.info(
             "conflict_resolution: rebase stop {} ({}) was not resolved",

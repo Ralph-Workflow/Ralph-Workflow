@@ -1063,6 +1063,8 @@ def _finish_rung(
     else:
         value = f"failed:post-condition:{condition.value}"
         _record_evidence(ledger, _rung_key(rung), value)
+        _record_evidence(ledger, f"failed:post-condition:{_RUNG_ACTION_VALUE[rung]}", value)
+        _record_evidence(ledger, f"failed:post-condition:{rung.name.lower()}", value)
         final = LadderStepResult(
             rung,
             "failed",
@@ -1071,7 +1073,12 @@ def _finish_rung(
             preserved_sidecar=result.preserved_sidecar,
             quarantined_paths=result.quarantined_paths,
             next_rung=_next_enabled_rung(rung, frozenset(CLEANUP_LADDER_ORDER)),
-            evidence={**result.evidence, _rung_key(rung): value},
+            evidence={
+                **result.evidence,
+                _rung_key(rung): value,
+                f"failed:post-condition:{_RUNG_ACTION_VALUE[rung]}": value,
+                f"failed:post-condition:{rung.name.lower()}": value,
+            },
             post_condition=condition,
             post_condition_verified=False,
         )

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 
 EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
+    "check-merge-head": frozenset({1}),
     "check_merge_head": frozenset({1}),
     "commit:head-symbolic-ref": frozenset({1}),
     "git-branch-exists": frozenset({1}),
@@ -31,6 +32,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "git-rev-parse-local-branch": frozenset({128}),
     "git-rev-parse-remote-tracking": frozenset({128}),
     "git-stray-tracked": frozenset({1}),
+    "git-symbolic-ref": frozenset({1}),
     "git-symbolic-ref-head": frozenset({1}),
     "hooks-config": frozenset({1}),
     "integration-ladder:ref-readable": frozenset({1}),
@@ -42,6 +44,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "integration_diagnostic:diff_head": frozenset({1}),
     "integration_diagnostic:gitdir": frozenset({1}),
     "integration_diagnostic:head_parents": frozenset({1}),
+    "is-ancestor": frozenset({1}),
     "operation_evidence:merge_object_resolvable": frozenset({1}),
     "operation_evidence:rebase_object_resolvable": frozenset({1}),
     "pending-merge:identity": frozenset({128}),
@@ -49,6 +52,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "recovery:head-symbolic-ref": frozenset({1}),
     "repair:commit-controls": frozenset({1}),
     "repair:proposed-path": frozenset({1}),
+    "symbolic-ref": frozenset({1}),
 }
 
 _NO_EXPECTED_EXIT_CODES: Final[frozenset[int]] = frozenset()

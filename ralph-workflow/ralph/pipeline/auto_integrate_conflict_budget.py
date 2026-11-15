@@ -10,6 +10,7 @@ from ralph.pipeline.auto_integrate_backoff import MAX_RETRY_DEADLINE_HORIZON_SEC
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
@@ -82,22 +83,15 @@ def prior_conflict_count(
 
 def resolve_failure_ledger(
     ledger: AgentFailureLedger | None,
+    session: ResolutionSession | None = None,
 ) -> AgentFailureLedger | None:
     if ledger is not None:
         return ledger
-    try:
-        from ralph.pipeline.conflict_resolution.rebase_loop import (
-            active_rebase_resolution_session,
-        )
+    if session is not None:
+        from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 
-        session = active_rebase_resolution_session()
-    except Exception:
-        return None
-    if session is None:
-        return None
-    from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
-
-    return session_ledger(session)
+        return session_ledger(session)
+    return None
 
 
 def _is_same_conflict(
@@ -120,10 +114,11 @@ def resolver_allowed(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
     phase: str = "rebase_conflict_resolution",
+    session: ResolutionSession | None = None,
     **kwargs: object,
 ) -> bool:
     del kwargs
-    effective_ledger = resolve_failure_ledger(ledger)
+    effective_ledger = resolve_failure_ledger(ledger, session=session)
     if effective_ledger is not None and candidates:
         return not effective_ledger.all_exhausted(phase, candidates)
     return not (_is_same_conflict(state, target, identity) and state.resolution_exhausted)

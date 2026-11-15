@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -82,17 +82,6 @@ class RoundAttempt:
     candidate_offset: int = 0
     count_dropped: bool = False
     probe_changed: bool = False
-
-
-@runtime_checkable
-class _AdvanceableClock(Protocol):
-    def advance(self, seconds: float) -> None: ...
-
-
-@runtime_checkable
-class _ClockProvidingStore(Protocol):
-    @property
-    def clock(self) -> object: ...
 
 
 def _evaluate_round_attempt(
@@ -451,18 +440,8 @@ def _resolve_delayed_selection(
         return None
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
-    mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
     _driver_mod._sleep_seconds(delay / 1000.0)
-    mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-    if mono_after - mono_before < (delay / 1000.0) * 0.5:
-        controller_clock = controller.clock
-        if isinstance(controller_clock, _AdvanceableClock):
-            controller_clock.advance(delay / 1000.0)
-        store = controller.unavailability_store
-        store_clock = store.clock if isinstance(store, _ClockProvidingStore) else None
-        if store_clock is not controller_clock and isinstance(store_clock, _AdvanceableClock):
-            store_clock.advance(delay / 1000.0)
-        controller.prune_expired()
+    controller.prune_expired()
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)

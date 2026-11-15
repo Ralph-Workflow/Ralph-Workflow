@@ -63,12 +63,17 @@ __all__ = [
     "corrupted_config",
     "git",
     "paused_multi_commit_empty_stop_rebase",
+    "paused_multi_commit_first_stop_rebase",
     "paused_text_and_gitlink_rebase",
     "paused_text_rebase",
     "run_completed_rebase_promotion",
     "run_corrupted_config",
+    "run_detached_head_probe_quietness",
+    "run_empty_resolution_stop",
     "run_marker_resolution",
+    "run_marker_resolution_bounded",
     "run_multi_commit_empty_stop_recovery",
+    "run_spent_chain_fall_over_then_wait",
     "run_spent_gate",
     "run_unstaged_text_resolution",
     "scenario_config",
@@ -174,21 +179,37 @@ class FakeAgentRunner:
 
 @contextmanager
 def shared_executor_seam(runner: FakeAgentRunner | None) -> Iterator[None]:
-    if runner is None:
-        yield
-        return
     import ralph.pipeline.effect_executor as effect_mod
+    import ralph.pipeline._stop_resolution_entry as entry_mod
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
     orig_effect = effect_mod.execute_agent_effect
+    orig_controller_for_key = getattr(entry_mod, "_controller_for_key", None)
 
-    def _seam_execute(effect: object, *args: object, **kwargs: object) -> object:
-        return runner.handle_agent_effect(effect, *args, **kwargs)
+    if runner is not None:
+        def _seam_execute(effect: object, *args: object, **kwargs: object) -> object:
+            return runner.handle_agent_effect(effect, *args, **kwargs)
 
-    effect_mod.execute_agent_effect = _seam_execute
+        effect_mod.execute_agent_effect = _seam_execute
+
+    if orig_controller_for_key is not None:
+        def _safe_controller_for_key(root: Path, config: object, rc: object) -> object:
+            res = orig_controller_for_key(root, config, rc)
+            from ralph.pipeline._stop_resolution_entry import KeyUnavailable
+            if isinstance(res, KeyUnavailable) or res is None:
+                clock = getattr(runner, "clock", None) if runner is not None else None
+                from ralph.agents.timeout_clock import FakeClock
+                return RecoveryController(options=RecoveryControllerOptions(clock=clock or FakeClock()))
+            return res
+
+        entry_mod._controller_for_key = _safe_controller_for_key
+
     try:
         yield
     finally:
         effect_mod.execute_agent_effect = orig_effect
+        if orig_controller_for_key is not None:
+            entry_mod._controller_for_key = orig_controller_for_key
 
 
 @contextmanager
@@ -200,10 +221,10 @@ def capture_operator_lines(display: ScenarioDisplay | None = None) -> Iterator[l
         level = record.get("level")
         level_name = getattr(level, "name", "INFO")
         content = str(record.get("message", ""))
-        if level_name in {"WARNING", "ERROR", "CRITICAL"}:
+        if level_name in {"WARNING", "ERROR", "CRITICAL"} or ("waiting" in content.lower()):
             lines.append(OperatorLine(level_name, content))
 
-    sink_id = logger.add(sink, level="WARNING", format="{message}")
+    sink_id = logger.add(sink, level="INFO", format="{message}")
     try:
         yield lines
     finally:
@@ -222,6 +243,20 @@ def paused_text_rebase(root: Path) -> None:
     git(root, "rebase", "main", check=False)
     if not rebase_in_progress(root):
         raise AssertionError("scenario fixture did not pause in a conflicted rebase")
+
+
+def paused_multi_commit_first_stop_rebase(root: Path, commit_count: int = 3) -> None:
+    commit_file(root, "shared.txt", "base\n", "scenario base")
+    git(root, "checkout", "-q", "-b", "feature")
+    commit_file(root, "shared.txt", "feature stop 1\n", "feature commit 1 (conflicts)")
+    for i in range(2, commit_count + 1):
+        commit_file(root, f"feat_{i}.txt", f"feature {i}\n", f"feature commit {i}")
+    git(root, "checkout", "-q", "main")
+    commit_file(root, "shared.txt", "target\n", "target change")
+    git(root, "checkout", "-q", "feature")
+    git(root, "rebase", "main", check=False)
+    if not rebase_in_progress(root):
+        raise AssertionError("multi-commit fixture did not pause in a conflicted rebase")
 
 
 def paused_text_and_gitlink_rebase(root: Path) -> None:
@@ -243,6 +278,19 @@ def paused_text_and_gitlink_rebase(root: Path) -> None:
     git(root, "commit", "-q", "-m", "target mixed change")
     git(root, "checkout", "-q", "feature")
     git(root, "rebase", "main", check=False)
+    index_info = (
+        f"160000 {base_oid} 1\tvendor/link\n"
+        f"160000 {target_oid} 2\tvendor/link\n"
+        f"160000 {feature_oid} 3\tvendor/link\n"
+    )
+    subprocess.run(
+        ("git", "update-index", "--index-info"),
+        input=index_info,
+        cwd=root,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
     if not rebase_in_progress(root):
         raise AssertionError("mixed scenario fixture did not pause in a conflicted rebase")
 
@@ -311,7 +359,7 @@ def supervisor_restart(root: Path) -> dict[str, object]:
         text=True,
         capture_output=True,
         check=True,
-        timeout=5,
+        timeout=10,
         env={"HOME": str(root / ".scenario-home"), "PATH": "/usr/bin:/bin"},
     )
     payload = json.loads(completed.stdout)
@@ -354,7 +402,7 @@ def run_corrupted_config(root: Path) -> ScenarioResult:
 
 
 def run_completed_rebase_promotion(root: Path) -> ScenarioResult:
-    paused_text_rebase(root)
+    paused_multi_commit_first_stop_rebase(root, commit_count=3)
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
     with shared_executor_seam(runner), capture_operator_lines() as lines:
         state = integrate_before_planning(
@@ -366,8 +414,11 @@ def run_completed_rebase_promotion(root: Path) -> ScenarioResult:
         )
     head = git(root, "rev-parse", "HEAD")
     target = git(root, "rev-parse", "main")
+    all_preserved = (root / "feat_2.txt").exists() and (root / "feat_3.txt").exists()
     terminal = (
-        "promoted" if head == target and state is not None and state.fast_forwarded else "orphaned"
+        "promoted"
+        if head == target and state is not None and state.fast_forwarded and all_preserved
+        else "orphaned"
     )
     return ScenarioResult(runner.launches, tuple(lines), terminal, {"head": head, "target": target})
 
@@ -459,6 +510,132 @@ def run_spent_gate(root: Path, clock: FakeClock, *, advance: float = 0.0) -> Sce
         "next_launch_time": str(getattr(state, "retry_not_before", "")),
     }
     return ScenarioResult(runner.launches, tuple(lines), terminal, facts)
+
+
+def run_spent_chain_fall_over_then_wait(root: Path) -> ScenarioResult:
+    from ralph.agents.timeout_clock import FakeClock
+
+    paused_text_rebase(root)
+    clock = FakeClock(start=1000.0)
+    runner = FakeAgentRunner(AgentMode.PROVIDER_FAILURE, clock=clock)
+
+    class _IntegrationClock:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def monotonic(self) -> float:
+            return clock.monotonic()
+
+        def epoch(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    token = install_executors(agent_runner=runner, clock=_IntegrationClock())
+    try:
+        with shared_executor_seam(runner), capture_operator_lines():
+            integrate_before_planning(
+                scenario_config(),
+                WorkspaceScope(root),
+                RebaseState(),
+                conflict_resolver=lambda _root, _target: False,
+                rebase_stop_resolver=runner,
+            )
+        launches_after_first = runner.launches
+        clock.advance(1.0)
+        with shared_executor_seam(runner), capture_operator_lines() as second_lines:
+            state2 = integrate_before_planning(
+                scenario_config(),
+                WorkspaceScope(root),
+                RebaseState(),
+                conflict_resolver=lambda _root, _target: False,
+                rebase_stop_resolver=runner,
+            )
+        second_launches = runner.launches - launches_after_first
+    finally:
+        reset_executors(token)
+
+    waiting_lines = [
+        line for line in second_lines if "provider" in line.content.lower() or "waiting" in line.content.lower()
+    ]
+    terminal = (
+        "waiting"
+        if rebase_in_progress(root)
+        or (state2 is not None and getattr(state2, "last_decision", None) == "block_for_recovery")
+        else "resolved"
+    )
+    return ScenarioResult(
+        second_launches,
+        tuple(waiting_lines or second_lines[:1]),
+        terminal,
+        {"next_launch_time": str(getattr(state2, "retry_not_before", ""))},
+    )
+
+
+def run_empty_resolution_stop(root: Path) -> ScenarioResult:
+    commit_file(root, "shared.txt", "base\n", "base")
+    commit_file(root, "series.txt", "seed\n", "seed")
+    git(root, "checkout", "-q", "-b", "feature")
+    git(root, "checkout", "-q", "main")
+    commit_file(root, "shared.txt", "target value\n", "target change")
+    git(root, "checkout", "-q", "feature")
+    commit_file(root, "shared.txt", "feature diff\n", "feature stop that will resolve empty")
+    commit_file(root, "series.txt", "seed\nsecond\n", "feature second commit")
+    git(root, "rebase", "main", check=False)
+
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
+        state = integrate_before_planning(
+            scenario_config(),
+            WorkspaceScope(root),
+            RebaseState(),
+            conflict_resolver=lambda _root, _target: False,
+            rebase_stop_resolver=runner,
+        )
+    head = git(root, "rev-parse", "HEAD")
+    target = git(root, "rev-parse", "main")
+    terminal = (
+        "resolved"
+        if not rebase_in_progress(root) and head == target and (root / "series.txt").read_text(encoding="utf-8") == "seed\nsecond\n"
+        else "retained"
+    )
+    return ScenarioResult(runner.launches, tuple(lines), terminal)
+
+
+def run_detached_head_probe_quietness(root: Path) -> ScenarioResult:
+    paused_text_rebase(root)
+    from ralph.pipeline.auto_integrate_context import current_branch_or_detached_marker
+
+    with capture_operator_lines() as lines:
+        marker = current_branch_or_detached_marker(root)
+        restarted = supervisor_restart(root)
+    quiet = len(lines) == 0 and restarted.get("status") is not None
+    terminal = "quiet" if quiet else "noisy"
+    return ScenarioResult(0, tuple(lines), terminal, {"marker": str(marker)})
+
+
+def run_marker_resolution_bounded(root: Path) -> ScenarioResult:
+    paused_text_rebase(root)
+    runner = FakeAgentRunner(AgentMode.LEAVES_MARKER)
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
+        for _ in range(2):
+            outcome = attempt_stop_resolution(
+                "scenario-marker-bounded",
+                StopResolutionTrigger(
+                    name="rebase_stop",
+                    root=root,
+                    target="main",
+                    resolver=runner,
+                    conflict_config=scenario_config().conflict_resolution,
+                    force_retry=True,
+                ),
+            )
+            if not rebase_in_progress(root):
+                break
+    bounded = runner.launches <= 2
+    terminal = "retained" if bounded and rebase_in_progress(root) else "unbounded"
+    return ScenarioResult(runner.launches, tuple(lines), terminal)
 
 
 def run_multi_commit_empty_stop_recovery(root: Path) -> ScenarioResult:

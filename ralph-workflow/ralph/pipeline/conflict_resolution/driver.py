@@ -912,35 +912,7 @@ def _wait_for_candidates_if_cooling_down(
     if controller is not None:
         wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
         if wait_ms > 0:
-            mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
             _sleep_seconds(wait_ms / 1000.0)
-            mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
-            if mono_after - mono_before < (wait_ms / 1000.0) * 0.5:
-                clock_inst = cast("object", getattr(controller, "clock", None))
-                if clock_inst is None:
-                    clock_inst = cast("object", getattr(controller, "_clock", None))
-                advance_fn = cast("object", getattr(clock_inst, "advance", None))
-                if callable(advance_fn):
-                    cast("Callable[[float], None]", advance_fn)(wait_ms / 1000.0)
-                store_clock = cast(
-                    "object", getattr(controller.unavailability_store, "clock", None)
-                )
-                if store_clock is None:
-                    store_clock = cast(
-                        "object", getattr(controller.unavailability_store, "_clock", None)
-                    )
-                store_advance = cast("object", getattr(store_clock, "advance", None))
-                if store_clock is not clock_inst and callable(store_advance):
-                    cast("Callable[[float], None]", store_advance)(wait_ms / 1000.0)
-                now_ms = int(
-                    (
-                        controller.clock.monotonic()
-                        if hasattr(controller, "clock")
-                        else time.monotonic()
-                    )
-                    * 1000
-                )
-                controller.prune_expired(now_ms=now_ms + wait_ms + 1)
 
 
 def _can_continue_controller_rounds(
@@ -948,18 +920,42 @@ def _can_continue_controller_rounds(
     controller: RecoveryController,
     live: Sequence[str],
 ) -> bool:
-    from ralph.recovery.agent_failure_ledger import Spent
+    from ralph.recovery.agent_failure_ledger import AgentStatus, Cooldown, Spent
+
+    if (
+        isinstance(session.recovery_state, PipelineState)
+        and session.recovery_state.is_waiting_state
+    ):
+        return False
 
     chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
-    if all(isinstance(status, Spent) for _agent, status in chain_statuses):
+    ledger_statuses: dict[str, AgentStatus] = dict(
+        controller.ledger.eligibility(PHASE_RESOLUTION, live)
+    )
+
+    def _is_spent_or_demoted(agent: str, status: AgentStatus) -> bool:
+        if isinstance(status, Spent) and status.reason != "retry_exhausted":
+            return True
+        if isinstance(status, Cooldown) and status.reason in (
+            "consecutive_unproductive_limit_reached",
+            "dead_agent_no_progress",
+        ):
+            return True
+        l_status = ledger_statuses.get(agent)
+        return (
+            isinstance(l_status, Cooldown)
+            and l_status.reason == "consecutive_unproductive_limit_reached"
+        )
+
+    if all(_is_spent_or_demoted(agent, status) for agent, status in chain_statuses):
         return False
-    if any(status.is_eligible for _agent, status in chain_statuses):
-        return True
-    if controller.ledger is not None and controller.ledger.any_eligible(PHASE_RESOLUTION, live):
-        return True
+    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
     return (
-        session.rounds_spent == 0
-        and controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
+        any(
+            status.is_eligible or (isinstance(status, Spent) and status.reason == "retry_exhausted")
+            for _agent, status in chain_statuses
+        )
+        or wait_ms > 0
     )
 
 

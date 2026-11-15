@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.git.merge import staged_conflict_marker_paths, unmerged_paths
+from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
 from ralph.git.rebase.rebase_continuation import continue_rebase_at, rebase_in_progress_at
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
@@ -68,18 +68,18 @@ def prepare_pending_rebase(root: Path, target: str | None = None) -> None:
 
 
 def pending_rebase_identity_matches(root: Path, record: IntegrationRecord) -> bool:
+    snapshot = observe_operation_snapshot(root)
     return (
         bool(
             record.rebase_continue_head
             and record.rebase_continue_stop
             and record.rebase_continue_tree
         )
-        and rebase_in_progress_at(root)
-        and _git_value(root, "rev-parse", "--verify", "HEAD") == record.rebase_continue_head
-        and _git_value(root, "rev-parse", "--verify", "REBASE_HEAD") == record.rebase_continue_stop
-        and _git_value(root, "write-tree") == record.rebase_continue_tree
-        and not unmerged_paths(root)
-        and not staged_conflict_marker_paths(root)
+        and snapshot.operation_state is OperationState.REBASE_PAUSED
+        and snapshot.head_sha == record.rebase_continue_head
+        and snapshot.rebase_head == record.rebase_continue_stop
+        and snapshot.index_tree == record.rebase_continue_tree
+        and snapshot.stop_resolved
     )
 
 
@@ -241,9 +241,10 @@ def _complete_pending_rebase_snapshot(
 ) -> IntegrationRecord | None:
     from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
 
+    snapshot = observe_operation_snapshot(root)
     original, onto = current_rebase_identity(root)
-    head = _git_value(root, "rev-parse", "--verify", "HEAD")
-    stop = _git_value(root, "rev-parse", "--verify", "REBASE_HEAD")
+    head = snapshot.head_sha
+    stop = snapshot.rebase_head
     if (
         not head
         or not stop
@@ -253,8 +254,7 @@ def _complete_pending_rebase_snapshot(
         or onto != record.pre_target_sha
         or (record.rebase_continue_head is not None and head != record.rebase_continue_head)
         or (record.rebase_continue_stop is not None and stop != record.rebase_continue_stop)
-        or unmerged_paths(root)
-        or staged_conflict_marker_paths(root)
+        or not snapshot.stop_resolved
     ):
         return None
     prepare_pending_rebase(root)

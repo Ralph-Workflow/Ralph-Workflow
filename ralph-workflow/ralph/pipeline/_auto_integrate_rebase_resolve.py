@@ -297,17 +297,7 @@ def _rebase_run_result(
                     ),
                     strategy,
                 )
-            return RebaseRunResult(
-                rebase_outcome=RebaseConflicts(files=[]),
-                merge_attempted=False,
-                merge_outcome=None,
-                short_circuit=record_resolution_exhausted(
-                    reason=failure_reason,
-                    target=target,
-                    failure_cause=failure_cause,
-                    terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
-                ),
-            )
+            return _conflict_run(target, failure_reason, failure_cause)
         case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
             return _conflict_run(
                 target,

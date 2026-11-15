@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from loguru import logger
 
@@ -11,22 +12,136 @@ from ralph.pipeline.conflict_resolution.gitlink_policy import (
     GitlinkReviewRecord,
     choose_gitlink,
 )
-from ralph.pipeline.conflict_resolution.sight import ConflictKind
+from ralph.pipeline.conflict_resolution.sight import (
+    ConflictKind,
+    ConflictSight,
+    classify_conflict_kinds,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
 
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
+
+@runtime_checkable
+class _StopWithConflicts(Protocol):
+    @property
+    def conflicted_files(self) -> tuple[str, ...]: ...
+
 __all__ = [
+    "MixedKindResolution",
     "resolve_completion_in_place",
+    "resolve_mixed_kind_deterministic",
     "try_deterministic_resolution",
+    "try_mixed_kind_resolution",
 ]
 
 _CONFLICT_STAGE_OURS = 2
 _CONFLICT_STAGE_THEIRS = 3
+
+
+class MixedKindResolution(NamedTuple):
+    resolved_gitlink_paths: tuple[str, ...]
+    remaining_text_paths: tuple[str, ...]
+
+    @property
+    def resolved_paths(self) -> tuple[str, ...]:
+        return self.resolved_gitlink_paths
+
+    @property
+    def remaining_paths(self) -> tuple[str, ...]:
+        return self.remaining_text_paths
+
+
+def _is_gitlink_kind(kind: object) -> bool:
+    if kind is None:
+        return False
+    return (
+        kind is ConflictKind.GITLINK
+        or kind is ConflictSight.GITLINK_POLICY
+        or (isinstance(kind, str) and kind.lower() in {"gitlink", "gitlink_policy"})
+    )
+
+
+def _is_text_kind(kind: object) -> bool:
+    if kind is None:
+        return True
+    return (
+        kind is ConflictKind.TEXT
+        or kind in {ConflictSight.AGENT, ConflictSight.AGENT_DECISION}
+        or (isinstance(kind, str) and kind.lower() in {"text", "agent", "agent_decision"})
+    )
+
+
+def _extract_kinds(
+    root: Path,
+    paths: tuple[str, ...],
+    kinds: object,
+) -> Mapping[str, object]:
+    if isinstance(kinds, Mapping):
+        return kinds
+    return classify_conflict_kinds(root, paths)
+
+
+def _pick_and_stage_gitlinks(
+    root: Path,
+    gitlinks: list[str],
+    policy: GitlinkPolicyConfig | None,
+) -> tuple[str, ...]:
+    entries = conflict_stage_entries(root, tuple(gitlinks))
+    chosen: list[tuple[str, str, str]] = []
+    for path in gitlinks:
+        stage = entries.get(path, {})
+        picked = _gitlink_completion_choice(stage, path, policy)
+        if picked is not None:
+            chosen.append((picked[0], picked[1], path))
+    if not chosen:
+        return ()
+    restore_lines = [
+        f"{m} {h} {stg_num}\t{p}\n"
+        for p in gitlinks
+        for stg_num, (m, h) in entries.get(p, {}).items()
+    ]
+    if not _stage_deterministic_entries(
+        root,
+        chosen,
+        label="git-mixed-kind-gitlink",
+        restore_info="".join(restore_lines),
+    ):
+        return ()
+    return tuple(path for _mode, _sha, path in chosen)
+
+
+def resolve_mixed_kind_deterministic(
+    root: Path,
+    paths: tuple[str, ...] | _StopWithConflicts | Iterable[str],
+    kinds: Mapping[str, object] | None = None,
+    gitlink_policy: GitlinkPolicyConfig | None = None,
+) -> MixedKindResolution:
+    target_paths: tuple[str, ...]
+    if isinstance(paths, tuple):
+        target_paths = paths
+    elif isinstance(paths, _StopWithConflicts):
+        target_paths = paths.conflicted_files
+    else:
+        target_paths = tuple(paths)
+    if not target_paths:
+        return MixedKindResolution((), ())
+
+    effective_kinds = _extract_kinds(root, target_paths, kinds)
+    gitlinks = [p for p in target_paths if _is_gitlink_kind(effective_kinds.get(p))]
+    if not gitlinks:
+        remaining = tuple(p for p in target_paths if _is_text_kind(effective_kinds.get(p)))
+        return MixedKindResolution((), remaining or target_paths)
+
+    staged = _pick_and_stage_gitlinks(root, gitlinks, gitlink_policy)
+    remaining = tuple(p for p in target_paths if p not in staged)
+    return MixedKindResolution(staged, remaining)
+
+
+try_mixed_kind_resolution = resolve_mixed_kind_deterministic
 
 
 def resolve_completion_in_place(

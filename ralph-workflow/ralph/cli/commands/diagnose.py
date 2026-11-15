@@ -205,30 +205,7 @@ def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
 
 
 def integration_status_rows(status: IntegrationStatus) -> list[tuple[object, ...]]:
-    rows: list[tuple[object, ...]] = [
-        ("Summary", status.summary),
-        ("Cause", status.cause),
-        ("Paths with reasons", "\n".join(status.path_details) or "(none)"),
-        ("Operator command", status.command or "(none)"),
-        ("Agents can finish", "yes" if status.agents_can_finish else "no"),
-        ("Agent reasons", "\n".join(status.agent_reasons) or "(none)"),
-        ("Progress", status.progress),
-        ("Relation (feature vs target)", status.relation or "unknown"),
-        ("Chosen strategy", status.strategy or "unknown"),
-        (
-            "Why this strategy",
-            status.strategy_reason or "no strategy could be chosen from the observed relation",
-        ),
-        ("Done", str(status.done_count) if status.done_count is not None else "unknown"),
-        (
-            "Remaining",
-            str(status.remaining_count) if status.remaining_count is not None else "unknown",
-        ),
-        ("Human action if stopped", status.command or "none"),
-        ("At risk of loss", "\n".join(status.at_risk) or "nothing"),
-        ("Build", status.build_identity),
-    ]
-    return rows
+    return status.diagnose_rows()
 
 
 _integration_status_rows = integration_status_rows

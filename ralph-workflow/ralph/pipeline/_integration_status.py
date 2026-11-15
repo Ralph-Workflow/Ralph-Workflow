@@ -71,7 +71,10 @@ class IntegrationStatus:
 
     @property
     def path_details(self) -> tuple[str, ...]:
-        return tuple(f"{path}: {reason}" for path, reason in self.paths_with_reasons)
+        return tuple(
+            f"{path}: {reason if reason else self.cause}"
+            for path, reason in self.paths_with_reasons
+        )
 
     @property
     def progress(self) -> str:
@@ -80,6 +83,45 @@ class IntegrationStatus:
         done = self.done_count if self.done_count is not None else "unknown"
         remaining = self.remaining_count if self.remaining_count is not None else "unknown"
         return f"done={done}; remaining={remaining}"
+
+    @property
+    def scope(self) -> str:
+        details = "; ".join(self.path_details)
+        return f"{self.summary}; path reasons: {details}" if details else self.summary
+
+    @property
+    def render_log(self) -> str:
+        parts = [self.summary]
+        if self.path_details:
+            parts.append(f"path reasons: {'; '.join(self.path_details)}")
+        if self.build_identity:
+            parts.append(f"build={self.build_identity}")
+        return " — ".join(parts)
+
+    def diagnose_rows(self) -> list[tuple[object, ...]]:
+        return [
+            ("Summary", self.summary),
+            ("Cause", self.cause),
+            ("Paths with reasons", "\n".join(self.path_details) or "(none)"),
+            ("Operator command", self.command or "(none)"),
+            ("Agents can finish", "yes" if self.agents_can_finish else "no"),
+            ("Agent reasons", "\n".join(self.agent_reasons) or "(none)"),
+            ("Progress", self.progress),
+            ("Relation (feature vs target)", self.relation or "unknown"),
+            ("Chosen strategy", self.strategy or "unknown"),
+            (
+                "Why this strategy",
+                self.strategy_reason or "no strategy could be chosen from the observed relation",
+            ),
+            ("Done", str(self.done_count) if self.done_count is not None else "unknown"),
+            (
+                "Remaining",
+                str(self.remaining_count) if self.remaining_count is not None else "unknown",
+            ),
+            ("Human action if stopped", self.command or "none"),
+            ("At risk of loss", "\n".join(self.at_risk) or "nothing"),
+            ("Build", self.build_identity),
+        ]
 
 
 def build_integration_status(

@@ -101,7 +101,13 @@ def _rebased_range_proof(
     if not is_ancestor(root, onto, head):
         return False, f"HEAD {head} does not descend from the recorded onto tip {onto}"
     target_tip = _target_tip(root, record.target) or onto
-    rebased = _range_commits(root, f"{target_tip}..{head}")
+    if head == feature and (not target_tip or not is_ancestor(root, head, target_tip)):
+        return (
+            False,
+            f"HEAD is the unintegrated feature commit {head} and has not landed on {record.target}",
+        )
+    base = target_tip if target_tip and is_ancestor(root, target_tip, head) else onto
+    rebased = _range_commits(root, f"{base}..{head}")
     original = _range_commits(root, f"{onto}..{feature}")
     range_failure = _range_shape_failure(original, rebased)
     if range_failure is not None:
@@ -117,6 +123,17 @@ def _rebased_range_proof(
         root,
         target_tip,
     )
+    if failure is not None:
+        set_failure = _range_set_equivalence_failure(
+            record,
+            original,
+            rebased,
+            original_ids,
+            rebased_ids,
+            root,
+            target_tip,
+        )
+        failure = None if set_failure is None else set_failure
     return (failure is None, failure or "")
 
 
@@ -131,6 +148,15 @@ def _range_shape_failure(original: tuple[str, ...], rebased: tuple[str, ...]) ->
     return None
 
 
+def _stop_resolved_to_empty(root: Path, record: IntegrationRecord) -> bool:
+    anchor = record.rebase_continue_head
+    tree = record.rebase_continue_tree
+    if not anchor or not tree:
+        return False
+    anchor_tree = _read(root, "rev-parse", f"{anchor}^{{tree}}")
+    return bool(anchor_tree and anchor_tree == tree)
+
+
 def _range_pair_failure(
     record: IntegrationRecord,
     original: tuple[str, ...],
@@ -142,6 +168,7 @@ def _range_pair_failure(
 ) -> str | None:
     upstream = _range_commits(root, target_tip)
     upstream_patch_ids = frozenset(_patch_ids(root, upstream).values())
+    stop_is_empty = _stop_resolved_to_empty(root, record)
     replay_index = 0
     for index, old in enumerate(original):
         old_patch = original_ids.get(old)
@@ -155,11 +182,53 @@ def _range_pair_failure(
                 continue
         if old_patch is not None and old_patch in upstream_patch_ids:
             continue
+        if old == record.rebase_continue_stop and stop_is_empty:
+            continue
         return (
             f"commit {index + 1} of the recorded range was neither replayed nor upstream-equivalent"
         )
     if replay_index != len(rebased):
         return "the rebased range contains a commit outside the recorded operation"
+    return None
+
+
+def _range_set_equivalence_failure(
+    record: IntegrationRecord,
+    original: tuple[str, ...],
+    rebased: tuple[str, ...],
+    original_ids: dict[str, str],
+    rebased_ids: dict[str, str],
+    root: Path,
+    target_tip: str,
+) -> str | None:
+    upstream = _range_commits(root, target_tip)
+    upstream_patch_ids = frozenset(_patch_ids(root, upstream).values())
+    stop_is_empty = _stop_resolved_to_empty(root, record)
+    remaining_rebased = list(rebased)
+    rebased_pids = dict(rebased_ids)
+
+    for old in original:
+        old_pid = original_ids.get(old)
+        if old_pid is not None and old_pid in upstream_patch_ids:
+            continue
+        if old == record.rebase_continue_stop and stop_is_empty:
+            continue
+        matched_idx: int | None = None
+        for idx, new in enumerate(remaining_rebased):
+            new_pid = rebased_pids.get(new)
+            if old_pid is not None and old_pid == new_pid:
+                matched_idx = idx
+                break
+            if old == record.rebase_continue_stop and _is_replay_of(root, old, new):
+                matched_idx = idx
+                break
+        if matched_idx is not None:
+            remaining_rebased.pop(matched_idx)
+        else:
+            return f"non-excluded feature change {old[:8]} is absent from rebased range"
+
+    if remaining_rebased:
+        return "unrelated target change is attributed to this integration"
     return None
 
 
