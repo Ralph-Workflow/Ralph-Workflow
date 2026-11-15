@@ -148,6 +148,7 @@ _NO_COMMIT_MESSAGE_REASON = "commit-message agent chain produced no message and 
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
 _COMMIT_RUN_ID = "commit-plumbing"
+_FIRST_RETRY_ATTEMPT_NUMBER = 2
 
 execute_agent_effect = PRODUCTION_INVOKE
 
@@ -675,7 +676,7 @@ def _generate_commit_message_with_agent(
         attempt_number += 1
 
         if (
-            attempt_number == 2
+            attempt_number == _FIRST_RETRY_ATTEMPT_NUMBER
             and _is_missing_commit_artifact_failure(latest_attempt.failure_detail)
             and initial_attempt.resume_session_id
         ):

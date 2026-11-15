@@ -138,6 +138,33 @@ if TYPE_CHECKING:
     class _KwargsMaterializeMasterPromptFn(Protocol):
         def __call__(self, **kwargs: object) -> str: ...
 
+    class _AgentEffectRunner(Protocol):
+        def __call__(
+            self,
+            effect: InvokeAgentEffect,
+            config: UnifiedConfig,
+            pipeline_deps: PipelineDeps,
+            workspace_scope: WorkspaceScope,
+            *,
+            display_context: DisplayContext | None,
+            display: ParallelDisplay | None = None,
+            verbosity: Verbosity = Verbosity.VERBOSE,
+            state: PipelineState | None = None,
+            policy_bundle: PolicyBundle | None = None,
+            bridge: RestartAwareMcpBridge | None = None,
+            raw_output_sink: deque[str] | None = None,
+            rendered_output_sink: deque[str] | None = None,
+            raw_line_sink: Callable[[str], None] | None = None,
+            run_id: str | None = None,
+            required_artifact: RequiredArtifact | None = None,
+            session_id: str | None = None,
+            extra_env: dict[str, str] | None = None,
+            raise_resumable_exit: bool = False,
+            agent_invocation_error_sink: Callable[[Exception], object] | None = None,
+            attempt_finalizer: AttemptFinalizer | None = None,
+            **opts: object,
+        ) -> PipelineEvent | AgentFailureEvent | AttemptEnded: ...
+
 
 _VERBOSE_LOG_LEVEL = 2
 _FALLBACK_FINALIZER_ENTRY_POINT = "main_phase_loop"
@@ -164,7 +191,7 @@ _DEFAULT_PHASE_NAMES = frozenset(
 
 @dataclass(frozen=True)
 class AgentEffectDependencies:
-    agent_runner: Callable[..., object] | None = None
+    agent_runner: _AgentEffectRunner | None = None
     recovery_controller: RecoveryController | None = None
 
 
@@ -176,7 +203,7 @@ _AGENT_EFFECT_DEPENDENCIES: ContextVar[AgentEffectDependencies | None] = Context
 
 def install_agent_effect_dependencies(
     *,
-    agent_runner: Callable[..., object] | None = None,
+    agent_runner: _AgentEffectRunner | None = None,
     recovery_controller: RecoveryController | None = None,
 ) -> Token[AgentEffectDependencies | None]:
     return _AGENT_EFFECT_DEPENDENCIES.set(
@@ -245,31 +272,28 @@ def execute_agent_effect(
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     injected = current_agent_effect_dependencies()
     if injected.agent_runner is not None:
-        return cast(
-            "PipelineEvent | AgentFailureEvent | AttemptEnded",
-            injected.agent_runner(
-                effect,
-                config,
-                pipeline_deps,
-                workspace_scope,
-                display_context=display_context,
-                display=display,
-                verbosity=verbosity,
-                state=state,
-                policy_bundle=policy_bundle,
-                bridge=bridge,
-                raw_output_sink=raw_output_sink,
-                rendered_output_sink=rendered_output_sink,
-                raw_line_sink=raw_line_sink,
-                run_id=run_id,
-                required_artifact=required_artifact,
-                session_id=session_id,
-                extra_env=extra_env,
-                raise_resumable_exit=raise_resumable_exit,
-                agent_invocation_error_sink=agent_invocation_error_sink,
-                attempt_finalizer=attempt_finalizer,
-                **opts,
-            ),
+        return injected.agent_runner(
+            effect,
+            config,
+            pipeline_deps,
+            workspace_scope,
+            display_context=display_context,
+            display=display,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
+            bridge=bridge,
+            raw_output_sink=raw_output_sink,
+            rendered_output_sink=rendered_output_sink,
+            raw_line_sink=raw_line_sink,
+            run_id=run_id,
+            required_artifact=required_artifact,
+            session_id=session_id,
+            extra_env=extra_env,
+            raise_resumable_exit=raise_resumable_exit,
+            agent_invocation_error_sink=agent_invocation_error_sink,
+            attempt_finalizer=attempt_finalizer,
+            **opts,
         )
     verdict = inspect_integration_resolution(
         workspace_scope.root,

@@ -63,14 +63,6 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._tool_artifact_helpers import MockSession
 from tests.plan_fixtures import commit_review_markdown
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit": (
-        "the check now reads the public ledger status projection instead of the "
-        "private snapshot counters"
-    ),
-}
-
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
@@ -83,23 +75,10 @@ if TYPE_CHECKING:
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit changed": (
-        "the assertion and its message are unchanged; ruff format reflowed the long "
-        "message into parentheses, so the diff shows the single-line form as removed"
-    ),
-}
-
 pytestmark = [
     pytest.mark.timeout_seconds(15),
     pytest.mark.required_auto_integrate_e2e,
 ]
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "_submit_commit_message": (
-        "reformatted assertion across multiple lines to conform to ruff format"
-    ),
-}
 
 REVIEW_PHASES: tuple[str, ...] = (
     "development_commit_review",
