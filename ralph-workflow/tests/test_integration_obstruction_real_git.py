@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,11 +38,31 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "those pseudo-refs, and a missing pseudo-ref still reports a failing "
         "revision lookup"
     ),
+    "rev-parse direct SHA and ref resolution avoids git subprocess": (
+        "40-char SHAs, worktree gitdirs, and ref paths resolve directly from the git directory without invoking a subprocess"
+    ),
+    "shared diverged repository template reuses initial git branch setup": (
+        "interrupted merge and unknown merge observation tests reuse a clean shared template of the diverged feature and target branches, proving the exact same conflict state with zero per-test checkout and commit subprocess overhead"
+    ),
 }
 
 
+def _git_dir(root: Path) -> Path:
+    git_path = root / ".git"
+    if git_path.is_file():
+        try:
+            line = git_path.read_text(encoding="utf-8").strip()
+            if line.startswith("gitdir: "):
+                target = Path(line.removeprefix("gitdir: "))
+                return target if target.is_absolute() else (root / target).resolve()
+        except OSError:
+            pass
+    return git_path
+
+
 def _fast_branch_name(root: Path) -> str | None:
-    head_file = root / ".git" / "HEAD"
+    git_dir = _git_dir(root)
+    head_file = git_dir / "HEAD"
     try:
         head_content = head_file.read_text(encoding="utf-8").strip()
         if head_content.startswith("ref: refs/heads/"):
@@ -51,18 +73,25 @@ def _fast_branch_name(root: Path) -> str | None:
 
 
 def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
+    if len(ref_name) == 40 and all(c in "0123456789abcdefABCDEF" for c in ref_name):
+        return ref_name
+    git_dir = _git_dir(root)
     try:
         if ref_name == "HEAD":
-            head_file = root / ".git" / "HEAD"
+            head_file = git_dir / "HEAD"
             head_content = head_file.read_text(encoding="utf-8").strip()
             if head_content.startswith("ref: refs/heads/"):
-                target_ref = root / ".git" / head_content.removeprefix("ref: ")
+                target_ref = git_dir / head_content.removeprefix("ref: ")
                 if target_ref.is_file():
                     return target_ref.read_text(encoding="utf-8").strip()
             elif len(head_content) == 40:
                 return head_content
+        elif ref_name.startswith(("refs/heads/", "refs/remotes/")):
+            ref_file = git_dir / ref_name
+            if ref_file.is_file():
+                return ref_file.read_text(encoding="utf-8").strip()
         else:
-            ref_file = root / ".git" / "refs" / "heads" / ref_name
+            ref_file = git_dir / "refs" / "heads" / ref_name
             if ref_file.is_file():
                 return ref_file.read_text(encoding="utf-8").strip()
     except OSError:
@@ -77,7 +106,7 @@ _REPO_CACHE: dict[Path, tuple[tuple[int, int], Repo]] = {}
 
 def _repo_identity(root: Path) -> tuple[int, int]:
     try:
-        stat = (root / ".git").stat()
+        stat = _git_dir(root).stat()
     except OSError:
         return (0, 0)
     return (stat.st_dev, stat.st_ino)
@@ -104,13 +133,24 @@ def _close_cached_repos() -> Generator[None, None, None]:
 
 
 def _fast_verify_ref(repo_root: Path, ref_name: str) -> str | None:
-    if ref_name not in _PSEUDO_REFS:
+    git_dir = _git_dir(repo_root)
+    if ref_name in _PSEUDO_REFS:
+        try:
+            content = (git_dir / ref_name).read_text(encoding="utf-8").strip()
+            if len(content) == 40:
+                return content
+        except OSError:
+            pass
+        stopped_sha = git_dir / "rebase-merge" / "stopped-sha"
+        if ref_name == "REBASE_HEAD" and stopped_sha.is_file():
+            try:
+                content = stopped_sha.read_text(encoding="utf-8").strip()
+                if len(content) == 40:
+                    return content
+            except OSError:
+                pass
         return None
-    try:
-        content = (repo_root / ".git" / ref_name).read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    return content if len(content) == 40 else None
+    return _fast_rev_parse(repo_root, ref_name)
 
 
 def _completed(
@@ -223,6 +263,38 @@ def _base_branch(tmp_git_repo: Path) -> str:
     except OSError:
         pass
     return _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
+
+
+_DIVERGED_TEMPLATE: list[tuple[Path, str]] = []
+
+
+def _seed_diverged_repo(root: Path) -> str:
+    target = _base_branch(root)
+    if not _DIVERGED_TEMPLATE:
+        d = Path(tempfile.mkdtemp(prefix="obstruction-diverged-"))
+        shutil.copytree(
+            root,
+            d,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("hooks", "*.sample", "description", "branches"),
+        )
+        _run(d, "checkout", "-b", "feature")
+        _commit_file(d, "shared.txt", "feature\n", "feature")
+        _run(d, "checkout", target)
+        _commit_file(d, "shared.txt", "target\n", "target")
+        _run(d, "checkout", "feature")
+        _DIVERGED_TEMPLATE.append((d, target))
+    template, t = _DIVERGED_TEMPLATE[0]
+    cached = _REPO_CACHE.pop(root, None)
+    if cached is not None:
+        cached[1].close()
+    shutil.rmtree(root)
+    shutil.copytree(
+        template,
+        root,
+        ignore=shutil.ignore_patterns("hooks", "*.sample", "description", "branches"),
+    )
+    return t
 
 
 def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> str:
@@ -710,12 +782,7 @@ def test_interrupted_merge_resolver_preserves_edits_for_next_agent(
     )
 
     root = tmp_git_repo
-    target = _base_branch(root)
-    _run(root, "checkout", "-b", "feature")
-    _commit_file(root, "shared.txt", "feature\n", "feature")
-    _run(root, "checkout", target)
-    _commit_file(root, "shared.txt", "target\n", "target")
-    _run(root, "checkout", "feature")
+    target = _seed_diverged_repo(root)
 
     def interrupted(repo: Path, _target: str) -> ResolvedOutcome:
         content = (
@@ -802,12 +869,7 @@ def test_unknown_merge_observation_preserves_live_operation(
     from ralph.git.merge import MERGE_STATE_UNKNOWN
 
     root = tmp_git_repo
-    target = _base_branch(root)
-    _run(root, "checkout", "-b", "feature")
-    _commit_file(root, "shared.txt", "feature\n", "feature")
-    _run(root, "checkout", target)
-    _commit_file(root, "shared.txt", "target\n", "target")
-    _run(root, "checkout", "feature")
+    target = _seed_diverged_repo(root)
 
     def unknown(_root: Path) -> str:
         return MERGE_STATE_UNKNOWN
