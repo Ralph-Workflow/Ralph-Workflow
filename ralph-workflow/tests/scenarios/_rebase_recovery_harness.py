@@ -222,7 +222,6 @@ def shared_executor_seam(runner: FakeAgentRunner | None) -> Iterator[None]:
             entry_mod._controller_for_key = orig_controller_for_key
 
 
-
 @contextmanager
 def capture_operator_lines(display: ScenarioDisplay | None = None) -> Iterator[list[OperatorLine]]:
     lines: list[OperatorLine] = []
