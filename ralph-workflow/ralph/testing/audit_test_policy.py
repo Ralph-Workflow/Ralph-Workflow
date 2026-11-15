@@ -245,9 +245,12 @@ class TestPolicyAuditor:
         self._skip_io = stem in _IO_ALLOWLIST or self._is_subprocess_e2e
         self._skip_wall_clock = stem in _WALL_CLOCK_ALLOWLIST or self._is_subprocess_e2e
         self._skip_subprocess_network = self._is_subprocess_e2e
-        self._git_roots = _git_bound_names(parsed_tree)
         self._skip_git = self._is_subprocess_e2e or _is_registered_real_git_file(file_path)
-        self._uses_tmp_path = "tmp_path" in "\n".join(self.source_lines)
+        if not self._skip_git and "git" in source:
+            self._git_roots = _git_bound_names(parsed_tree)
+        else:
+            self._git_roots = frozenset()
+        self._uses_tmp_path = "tmp_path" in source
         self._check_calls()
 
     def _add_violation(self, node: ast.AST, category: str, detail: str) -> None:
@@ -273,7 +276,15 @@ class TestPolicyAuditor:
     def _resolve_call_name(self, written_name: str | None) -> str | None:
         if written_name is None:
             return None
-        for candidate in sorted(resolve_dotted_name(written_name, self.facts.import_aliases)):
+        if written_name in _ALIAS_RESOLVED_CALLS:
+            return written_name
+        aliases = self.facts.import_aliases
+        if not aliases:
+            return written_name
+        root = written_name.split(".", 1)[0]
+        if root not in aliases:
+            return written_name
+        for candidate in sorted(resolve_dotted_name(written_name, aliases)):
             if candidate in _ALIAS_RESOLVED_CALLS:
                 return candidate
         return written_name
@@ -446,6 +457,18 @@ def _iter_test_files(tests_root: Path) -> list[Path]:
 
 
 def _baseline_key(file_path: Path, tests_root: Path | None = None) -> str:
+    try:
+        return file_path.relative_to(_PROJECT_ROOT).as_posix()
+    except ValueError:
+        pass
+
+    if tests_root is not None:
+        try:
+            relative = file_path.relative_to(tests_root)
+            return (Path("tests") / relative).as_posix()
+        except ValueError:
+            pass
+
     resolved = file_path.resolve()
     try:
         return resolved.relative_to(_PROJECT_ROOT).as_posix()

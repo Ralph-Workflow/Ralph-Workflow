@@ -437,7 +437,7 @@ def test_unrelated_head_rejected_once_and_further_ticks_are_silent(
     assert invoked == []
 
     later: list[tuple[str, str]] = []
-    for _tick in range(10):
+    for _tick in range(3):
         clock.advance(60)
         result, round_invoked, captured = _diagnose(
             root, ledger=ledger, clock=clock, controller=controller

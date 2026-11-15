@@ -425,7 +425,7 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
         "def _slow_push(*args, **kwargs):\n"
         "    sys.stdout.write('BEFORE_PUSH\\n')\n"
         "    sys.stdout.flush()\n"
-        "    time.sleep(5)\n"
+        "    time.sleep(1)\n"
         "    return _real_push(*args, **kwargs)\n"
         "_sync.push_single_remote = _slow_push\n"
         "\n"
@@ -444,7 +444,7 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
         ")\n"
         "sys.stdout.write('LANDED\\n')\n"
         "sys.stdout.flush()\n"
-        "time.sleep(5)\n"
+        "time.sleep(1)\n"
     )
     proc = subprocess.Popen(
         [sys.executable, "-c", landing_script, str(repo)],

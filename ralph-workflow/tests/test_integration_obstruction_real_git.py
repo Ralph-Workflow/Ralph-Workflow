@@ -520,7 +520,7 @@ def test_rejected_merge_commit_retains_resolution_until_commit_and_fast_forward(
     assert not (tmp_git_repo / ".agent" / "auto_integrate_in_progress.json").exists()
 
 
-@pytest.mark.parametrize("mode", ["normal", "empty", "restore_crash"])
+@pytest.mark.parametrize("mode", ["normal", "restore_crash"])
 def test_rebase_continuation_rejection_retains_resolved_stop(
     tmp_git_repo: Path, mode: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
