@@ -23,6 +23,8 @@ class IntegrationStatus:
     strategy: str | None = None
     strategy_reason: str | None = None
     at_risk: tuple[str, ...] = ()
+    next_eligible_agent: str | None = None
+    until_when: str | None = None
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -31,18 +33,29 @@ class IntegrationStatus:
     @property
     def summary(self) -> str:
         parts = [self.cause]
+        can_finish = self.agents_can_finish or bool(self.strategy)
         if self.paths:
             count = len(self.paths)
-            if self.agents_can_finish:
+            if can_finish:
                 noun = "path" if count == 1 else "paths"
                 parts.append(f"{count} {noun}: {', '.join(self.paths)}")
             else:
                 verb = "needs" if count == 1 else "need"
                 parts.append(f"{count} {verb} operator action: {', '.join(self.paths)}")
-        if self.command:
+        if self.command and not self.strategy:
             parts.append(self.command)
         if not self.agents_can_finish:
-            if self.agent_reasons:
+            if self.strategy:
+                waiting_parts = [f"WAITING/next-strategy: {self.strategy}"]
+                extra: list[str] = []
+                if self.next_eligible_agent:
+                    extra.append(f"next-eligible: {self.next_eligible_agent}")
+                if self.until_when:
+                    extra.append(f"until-when: {self.until_when}")
+                if extra:
+                    waiting_parts.append(f"({'; '.join(extra)})")
+                parts.append(" ".join(waiting_parts))
+            elif self.agent_reasons:
                 count = len(self.agent_reasons)
                 parts.append(
                     f"all {count} resolver {'agent is' if count == 1 else 'agents are'} "
@@ -82,6 +95,8 @@ def build_integration_status(
     strategy: str | None = None,
     strategy_reason: str | None = None,
     at_risk: Sequence[str] = (),
+    next_eligible_agent: str | None = None,
+    until_when: str | None = None,
 ) -> IntegrationStatus:
     facts = tuple(paths_with_reasons)
     return IntegrationStatus(
@@ -96,6 +111,8 @@ def build_integration_status(
         strategy=strategy,
         strategy_reason=strategy_reason,
         at_risk=tuple(at_risk),
+        next_eligible_agent=next_eligible_agent,
+        until_when=until_when,
     )
 
 

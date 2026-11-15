@@ -122,6 +122,8 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/scenarios/test_lifecycle_publication_cleanup.py",
     "tests/scenarios/test_lifecycle_content_equivalence.py",
     "tests/scenarios/test_lifecycle_fault_injection.py",
+    "tests/scenarios/test_rebase_recovery_matrix.py",
+    "tests/scenarios/test_last_resort_recovery.py",
 )
 
 EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (

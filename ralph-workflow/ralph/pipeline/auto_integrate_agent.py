@@ -11,7 +11,7 @@ from ralph.config._toml_fallback import describe_config_failure, emit_config_fai
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import (
     run_conflict_resolution_pipeline,
-    run_rebase_conflict_resolution_outcome,
+    run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -49,6 +49,9 @@ def _run_auto_integrate_operation[T](operation: Callable[[], T]) -> T:
     except Exception as exc:
         raise _AutoIntegrateError(exc) from exc
 
+
+run_conflict_resolution_outcome = run_conflict_resolution_pipeline
+run_rebase_conflict_resolution_outcome = run_rebase_conflict_resolution_pipeline
 
 if TYPE_CHECKING:
     from collections.abc import Callable

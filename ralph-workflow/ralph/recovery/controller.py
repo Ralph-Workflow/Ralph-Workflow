@@ -371,6 +371,10 @@ class _RetryHintPath(Protocol):
     def __call__(self, phase: str, *, pipeline_policy: PipelinePolicy | None = None) -> str: ...
 
 
+class _PruneExpiredCallable(Protocol):
+    def __call__(self, *, now_ms: int = ...) -> None: ...
+
+
 def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], _RetryHintPath]:
     module = import_module("ralph.phases.required_artifacts")
     namespace = cast("dict[str, object]", module.__dict__)
@@ -1404,8 +1408,9 @@ class RecoveryController:
 
     def prune_expired(self, *, now_ms: int | None = None) -> None:
         effective_now_ms = now_ms if now_ms is not None else self._now_ms()
-        if isinstance(self._unavailability_tracker, _Prunable):
-            self._unavailability_tracker.prune_expired(now_ms=effective_now_ms)
+        prune_fn: object = getattr(self._unavailability_tracker, "prune_expired", None)
+        if callable(prune_fn):
+            cast("_PruneExpiredCallable", prune_fn)(now_ms=effective_now_ms)
         if self._ledger is not None:
             self._ledger.prune_expired(now_ms=effective_now_ms)
 

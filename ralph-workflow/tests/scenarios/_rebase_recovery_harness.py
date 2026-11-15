@@ -136,42 +136,39 @@ class FakeAgentRunner:
             git(root, "add", "--", *unmerged)
         return PipelineEvent.AGENT_SUCCESS
 
-    def _maybe_raise_mode_error(self) -> None:
-        if self.mode is AgentMode.NON_ZERO_EXIT:
-            raise RuntimeError("agent exited with status 7")
-        if self.mode is AgentMode.SIGNAL:
-            raise RuntimeError("agent terminated by signal 15")
-        if self.mode is AgentMode.WATCHDOG_HANG:
-            raise TimeoutError("agent idle watchdog fired")
-        if self.mode is AgentMode.PROVIDER_FAILURE:
-            raise ConnectionError("agent provider unavailable")
-
     def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
-        self.launches += 1
-        self.launch_times.append(self.clock.monotonic() if self.clock is not None else 0.0)
         stop_identity: str | None = None
         if self.fail_at_launch is not None:
             stop_identity = git(root, "rev-parse", "REBASE_HEAD")
             if stop_identity in self.completed_stops:
                 raise AssertionError("a completed stop must never be presented to the agent again")
-            if self.fail_at_launch == self.launches:
+            if self.fail_at_launch == (self.launches + 1):
                 raise ConnectionError("agent provider unavailable partway through finite work")
-        self._maybe_raise_mode_error()
-        if self.mode is AgentMode.INVALID_RESULT:
+        import ralph.pipeline.effect_executor as effect_mod
+        from ralph.agents.system_clock import SystemClock
+        from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+        from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
+        from ralph.workspace.scope import WorkspaceScope
+
+        deps = AttemptRunnerDeps(
+            clock=self.clock or SystemClock(),
+            invoke=effect_mod.execute_agent_effect,
+            probe_runner=None,
+            workspace_probe=None,
+            connectivity=None,
+        )
+        event = deps.invoke(
+            InvokeAgentEffect(
+                agent_name="scenario-rebase-resolver",
+                phase="rebase_conflict_resolution",
+                prompt_file="prompt.md",
+            ),
+            workspace_scope=WorkspaceScope(root),
+        )
+        if event == PipelineEvent.AGENT_FAILURE:
             return False
-        if self.mode is AgentMode.LEAVES_MARKER:
-            return True
-        for relative in stop.conflicted_files:
-            path = root / relative
-            if path.is_file():
-                if "empty" in getattr(stop, "subject", ""):
-                    path.write_text("target value\n", encoding="utf-8")
-                else:
-                    path.write_text("resolved by scenario agent\n", encoding="utf-8")
-        if self.mode is AgentMode.EDITS_AND_STAGES:
-            git(root, "add", "--", *stop.conflicted_files)
-            if stop_identity is not None:
-                self.completed_stops.append(stop_identity)
+        if stop_identity is not None:
+            self.completed_stops.append(stop_identity)
         return True
 
 
@@ -303,8 +300,7 @@ def supervisor_restart(root: Path) -> dict[str, object]:
         "from ralph.pipeline.rebase_state import RebaseState; "
         "from ralph.workspace.scope import WorkspaceScope; "
         "from tests.scenarios._rebase_recovery_harness import scenario_config; "
-        "s=integrate_before_planning(scenario_config(),WorkspaceScope(p),RebaseState(),"
-        "conflict_resolver=lambda *_:False,rebase_stop_resolver=lambda *_:False); "
+        "s=integrate_before_planning(scenario_config(),WorkspaceScope(p),RebaseState()); "
         "g=lambda *a: subprocess.run(('git',*a),cwd=p,text=True,capture_output=True,check=True).stdout.strip(); "
         "print(json.dumps({'head':g('rev-parse','HEAD'),'status':g('status','--porcelain'),"
         "'resumed':s is not None}))"
@@ -327,20 +323,40 @@ def supervisor_restart(root: Path) -> dict[str, object]:
 def run_corrupted_config(root: Path) -> ScenarioResult:
     from ralph.workspace.context import WorkspaceContextError, workspace_context
 
+    paused_text_rebase(root)
     config_path = corrupted_config(root)
-    with (
-        capture_operator_lines() as lines,
-        pytest.raises(WorkspaceContextError),
-        workspace_context(root),
-    ):
-        pass
-    return ScenarioResult(0, tuple(lines), "config_failure", {"config": str(config_path)})
+    with capture_operator_lines() as lines:
+        with pytest.raises(WorkspaceContextError), workspace_context(root):
+            pass
+        config_path.write_text(
+            "[general]\nauto_integrate_enabled = true\nauto_integrate_target = \"main\"\n",
+            encoding="utf-8",
+        )
+        runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+        with shared_executor_seam(runner):
+            outcome = attempt_stop_resolution(
+                "scenario-corrupted-config-repaired",
+                StopResolutionTrigger(
+                    name="rebase_stop",
+                    root=root,
+                    target="main",
+                    resolver=runner,
+                    conflict_config=scenario_config().conflict_resolution,
+                    force_retry=True,
+                ),
+            )
+            eff_outcome = (
+                outcome.outcome if isinstance(outcome, RebaseResolutionResult) else outcome
+            )
+            succeeded = isinstance(eff_outcome, ResolvedOutcome)
+    terminal = "resolved" if succeeded and not rebase_in_progress(root) else "retained"
+    return ScenarioResult(runner.launches, tuple(lines), terminal, {"config": str(config_path)})
 
 
 def run_completed_rebase_promotion(root: Path) -> ScenarioResult:
     paused_text_rebase(root)
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
-    with capture_operator_lines() as lines:
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
         state = integrate_before_planning(
             scenario_config(),
             WorkspaceScope(root),
@@ -364,7 +380,7 @@ def _resolution_succeeded(outcome: object) -> bool:
 def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
     paused_text_and_gitlink_rebase(root)
     runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
-    with capture_operator_lines() as lines:
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
         outcome = attempt_stop_resolution(
             "scenario-unstaged-gitlink",
             StopResolutionTrigger(
@@ -384,7 +400,7 @@ def run_unstaged_text_resolution(root: Path) -> ScenarioResult:
 def run_marker_resolution(root: Path) -> ScenarioResult:
     paused_text_rebase(root)
     runner = FakeAgentRunner(AgentMode.LEAVES_MARKER)
-    with capture_operator_lines() as lines:
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
         outcome = attempt_stop_resolution(
             "scenario-marker",
             StopResolutionTrigger(
@@ -422,7 +438,7 @@ def run_spent_gate(root: Path, clock: FakeClock, *, advance: float = 0.0) -> Sce
 
     token = install_executors(agent_runner=runner, clock=_IntegrationClock())
     try:
-        with capture_operator_lines() as lines:
+        with shared_executor_seam(runner), capture_operator_lines() as lines:
             state = integrate_before_planning(
                 scenario_config(),
                 WorkspaceScope(root),
@@ -432,7 +448,12 @@ def run_spent_gate(root: Path, clock: FakeClock, *, advance: float = 0.0) -> Sce
             )
     finally:
         reset_executors(token)
-    terminal = "launched" if runner.launches else "waiting"
+    terminal = (
+        "waiting"
+        if rebase_in_progress(root)
+        or (state is not None and getattr(state, "last_decision", None) == "block_for_recovery")
+        else "resolved"
+    )
     facts = {
         "launch_times": ",".join(str(item) for item in runner.launch_times),
         "next_launch_time": str(getattr(state, "retry_not_before", "")),
@@ -443,7 +464,7 @@ def run_spent_gate(root: Path, clock: FakeClock, *, advance: float = 0.0) -> Sce
 def run_multi_commit_empty_stop_recovery(root: Path) -> ScenarioResult:
     paused_multi_commit_empty_stop_rebase(root)
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
-    with capture_operator_lines() as lines:
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
         state = integrate_before_planning(
             scenario_config(),
             WorkspaceScope(root),

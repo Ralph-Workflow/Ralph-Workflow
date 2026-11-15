@@ -122,7 +122,10 @@ def resolver_allowed(
     phase: str = "rebase_conflict_resolution",
     **kwargs: object,
 ) -> bool:
-    del ledger, candidates, phase, kwargs
+    del kwargs
+    effective_ledger = resolve_failure_ledger(ledger)
+    if effective_ledger is not None and candidates:
+        return not effective_ledger.all_exhausted(phase, candidates)
     return not (_is_same_conflict(state, target, identity) and state.resolution_exhausted)
 
 

@@ -1597,9 +1597,12 @@ def _cold_capped_escalation_due(
 ) -> bool:
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 
-    if not rebase.resolution_exhausted:
-        return False
-    if resolver_allowed(rebase, target, identity):
+    if ledger is not None and candidates:
+        if ledger.any_eligible("rebase_conflict_resolution", candidates):
+            return False
+        if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
+            return False
+    elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity):
         return False
     session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
@@ -1617,6 +1620,9 @@ def _cold_capped_escalation_due(
             "escalation that re-derives live Git state",
         )
     return True
+
+
+cold_capped_escalation_due = _cold_capped_escalation_due
 
 
 def _resolve_blocking_conflict(
@@ -1684,8 +1690,23 @@ def _run_owned_integration_conflict_resolution(
         candidates=installed,
     ):
         return _run_cold_capped_escalation(ctx, target, rebase)
-    eligible = ledger is None or ledger.any_eligible("rebase_conflict_resolution", installed)
-    if rebase is not None and (not resolver_allowed(rebase, target, identity) or not eligible):
+    all_exhausted = (
+        ledger is not None
+        and installed
+        and ledger.all_exhausted("rebase_conflict_resolution", installed)
+    )
+    allowed = (
+        resolver_allowed(
+            rebase,
+            target,
+            identity,
+            ledger=ledger,
+            candidates=installed,
+        )
+        if rebase is not None
+        else True
+    )
+    if rebase is not None and (all_exhausted or not allowed):
         logger.warning(
             "integration resolution: no eligible conflict resolver for target '{}'; escalating",
             target,
@@ -2498,9 +2519,23 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         if isinstance(controller_candidate, RecoveryController)
         else None
     )
-    if resolver_allowed(rebase, target, identity) and (
-        ledger is None or ledger.any_eligible("rebase_conflict_resolution", installed)
-    ):
+    allowed = (
+        resolver_allowed(
+            rebase,
+            target,
+            identity,
+            ledger=ledger,
+            candidates=installed,
+        )
+        if rebase is not None
+        else True
+    )
+    can_resolve = allowed and (
+        ledger is None
+        or not installed
+        or not ledger.all_exhausted("rebase_conflict_resolution", installed)
+    )
+    if can_resolve:
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "
             "now on disk for '{}'; giving the resolver another attempt",

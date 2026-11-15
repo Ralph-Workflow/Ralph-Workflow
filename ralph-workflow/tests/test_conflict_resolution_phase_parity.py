@@ -81,7 +81,7 @@ def _ensure_parity_session_controller(
                     res = candidate_now()
                     if isinstance(res, (int, float)):
                         return float(res)
-                return current_clock().monotonic()
+                return 0.0
 
             def epoch(self) -> float:
                 candidate = getattr(self._inner, "epoch", None)
@@ -95,8 +95,7 @@ def _ensure_parity_session_controller(
                 candidate = getattr(self._inner, "sleep", None)
                 if callable(candidate):
                     candidate(seconds)
-                else:
-                    current_clock().sleep(seconds)
+
 
             def now_utc(self) -> datetime:
                 return datetime.now(UTC)

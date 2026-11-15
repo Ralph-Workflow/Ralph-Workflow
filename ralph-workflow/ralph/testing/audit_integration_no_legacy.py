@@ -57,16 +57,33 @@ _OUTCOME_PRODUCER_NAME_TOKENS: tuple[str, ...] = (
     "classify",
 )
 
-TRANSITIONAL_PENDING_PRODUCERS: Final[dict[str, frozenset[str]]] = {
-    "ralph/pipeline/auto_integrate_agent.py": frozenset({"ResolutionOutcome"}),
-    "ralph/pipeline/conflict_resolution/rebase_loop.py": frozenset({"ResolutionOutcome"}),
-    "ralph/pipeline/_auto_integrate_once.py": frozenset(
-        {
-            "resolution outcome typed as (bool, str) tuple",
-            "resolution outcome produced as (bool, str) tuple",
-        }
-    ),
-}
+TRANSITIONAL_PENDING_PRODUCERS: Final[dict[str, frozenset[str]]] = {}
+
+_ALLOWED_PRIVATE_RESOLVER_CALLERS: Final[frozenset[str]] = frozenset(
+    {
+        "ralph/pipeline/_stop_resolution_entry.py",
+        "ralph/pipeline/conflict_resolution/rebase_loop.py",
+    }
+)
+_PRIVATE_RESOLVER_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "_resolve_rebase_in_progress",
+        "_resolve_rebase_with_config",
+    }
+)
+_INTEGRATION_SIDE_FAILURE_CLASSIFIER_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "classify_conflict_attempt",
+        "classify_agent_failure",
+    }
+)
+_LOCAL_COOLDOWN_WRITE_TARGETS: Final[frozenset[str]] = frozenset(
+    {
+        "cooldown_until_ms",
+        "cooldown_until_epoch_ms",
+        "_cooldown_until",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -269,6 +286,14 @@ def _package_legacy_violations(rel: str, source: str) -> list[Violation]:
         *_forbidden_identifier_violations(
             rel,
             tree,
+            _INTEGRATION_SIDE_FAILURE_CLASSIFIER_NAMES,
+            "integration-side failure classification",
+            "agent failure classification is owned by ralph/recovery/agent_failure_ledger.py "
+            "and must not be re-added to integration",
+        ),
+        *_forbidden_identifier_violations(
+            rel,
+            tree,
             _REMOVED_RESOLUTION_CAP_NAMES,
             "removed resolution cap identifier reappeared",
             "'total_resolution_cap_seconds' was removed from the resolver configuration; "
@@ -320,6 +345,78 @@ def _is_transitional_allowed(violation: Violation) -> bool:
     return any(name in violation.detail for name in allowed_rules)
 
 
+def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and _resolution_call(node.value):
+            violations.extend(
+                Violation(rel, node.lineno, "tuple-shaped resolution result unpack")
+                for target in node.targets
+                if isinstance(target, ast.Tuple)
+            )
+        if (
+            isinstance(node, ast.ClassDef)
+            and node.name == "RebaseResolutionResult"
+            and _tuple_subclass(node)
+        ):
+            violations.append(
+                Violation(
+                    rel, node.lineno, "resolution result retains legacy tuple vocabulary"
+                )
+            )
+        if isinstance(node, ast.Compare) and _string_cause_match(node):
+            violations.append(
+                Violation(rel, node.lineno, "string matching on failure cause")
+            )
+        if isinstance(node, ast.Call) and rel not in _ALLOWED_PRIVATE_RESOLVER_CALLERS:
+            callee = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else (node.func.attr if isinstance(node.func, ast.Attribute) else "")
+            )
+            if callee in _PRIVATE_RESOLVER_NAMES:
+                violations.append(
+                    Violation(
+                        rel,
+                        node.lineno,
+                        "private resolver caller outside entry",
+                        detail=(
+                            f"'{callee}' is a private resolver and may only be called "
+                            "by the resolution entry"
+                        ),
+                    )
+                )
+        if (
+            isinstance(node, ast.Assign)
+            or (isinstance(node, ast.AnnAssign) and node.value is not None)
+        ):
+            targets: list[ast.AST] = []
+            if isinstance(node, ast.Assign):
+                targets.extend(node.targets)
+            else:
+                targets.append(node.target)
+            for assign_target in targets:
+                for part in ast.walk(assign_target):
+                    target_id = (
+                        part.id
+                        if isinstance(part, ast.Name)
+                        else (part.attr if isinstance(part, ast.Attribute) else None)
+                    )
+                    if target_id in _LOCAL_COOLDOWN_WRITE_TARGETS:
+                        violations.append(
+                            Violation(
+                                rel,
+                                node.lineno,
+                                "local cooldown write outside shared ledger",
+                                detail=(
+                                    f"local write to '{target_id}' violates shared "
+                                    "cooldown ownership"
+                                ),
+                            )
+                        )
+    return violations
+
+
 def audit_modules(
     modules: Mapping[str, str],
     *,
@@ -334,27 +431,7 @@ def audit_modules(
         except SyntaxError:
             continue
         if rel.startswith("ralph/pipeline/"):
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Assign) and _resolution_call(node.value):
-                    violations.extend(
-                        Violation(rel, node.lineno, "tuple-shaped resolution result unpack")
-                        for target in node.targets
-                        if isinstance(target, ast.Tuple)
-                    )
-                if (
-                    isinstance(node, ast.ClassDef)
-                    and node.name == "RebaseResolutionResult"
-                    and _tuple_subclass(node)
-                ):
-                    violations.append(
-                        Violation(
-                            rel, node.lineno, "resolution result retains legacy tuple vocabulary"
-                        )
-                    )
-                if isinstance(node, ast.Compare) and _string_cause_match(node):
-                    violations.append(
-                        Violation(rel, node.lineno, "string matching on failure cause")
-                    )
+            violations.extend(_pipeline_ast_violations(rel, tree))
         violations.extend(_package_legacy_violations(rel, source))
 
     if ignore_transitional:
@@ -393,6 +470,21 @@ def selftest() -> int:
             "ralph/pipeline/planted_classifier.py",
             "def test(): return classify_conflict_attempt()\n",
             "legacy conflict-attempt classifier reappeared",
+        ),
+        (
+            "ralph/pipeline/planted_failure_classifier.py",
+            "def classify_agent_failure(): pass\n",
+            "integration-side failure classification",
+        ),
+        (
+            "ralph/pipeline/planted_private_resolver.py",
+            "def test(): return _resolve_rebase_in_progress()\n",
+            "private resolver caller outside entry",
+        ),
+        (
+            "ralph/pipeline/planted_cooldown_write.py",
+            "def test():\n    record.cooldown_until_ms = 5000\n",
+            "local cooldown write outside shared ledger",
         ),
         (
             "ralph/pipeline/planted_cap.py",

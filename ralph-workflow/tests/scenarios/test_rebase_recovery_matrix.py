@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
     pytest.mark.timeout_seconds(10),
 ]
 
@@ -66,12 +67,12 @@ CASES: tuple[tuple[str, ScenarioRunner, Expected], ...] = (
     (
         "corrupted-config-on-target-worktree",
         _corrupted_config,
-        Expected(0, 1, "WARNING", "fix", "config_failure"),
+        Expected(1, 1, "WARNING", "fix", "resolved"),
     ),
     (
         "spent-resolver-chain-ledger",
         _spent_chain,
-        Expected(1, 1, "WARNING", "provider", "launched"),
+        Expected(1, 1, "WARNING", "provider", "waiting"),
     ),
     (
         "completed-rebase-is-promoted",
@@ -81,7 +82,7 @@ CASES: tuple[tuple[str, ScenarioRunner, Expected], ...] = (
     (
         "unchanged-gate-remains-closed-after-one-second",
         _unchanged_then_tick,
-        Expected(1, 1, "WARNING", "provider", "launched"),
+        Expected(1, 1, "WARNING", "provider", "waiting"),
     ),
     (
         "multi-commit-empty-stop-moved-target-anchor-proof",

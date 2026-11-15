@@ -47,6 +47,7 @@ def test_pending_diff_naming_another_artifact_type_does_not_break_commit_review(
     tmp_git_repo: Path,
     tmp_path: Path,
 ) -> None:
+    del tmp_path
     (tmp_git_repo / "README.md").write_text(_FOREIGN_SUBMISSION_TEXT, encoding="utf-8")
     rendered = render_commit_review_prompt(
         phase="development_commit_review",

@@ -216,9 +216,9 @@ def _continue_rebase_resolution(
         return result.reason
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 
-    actual_result = result.outcome if isinstance(result, RebaseResolutionResult) else result
+    outcome_to_check = result.outcome if isinstance(result, RebaseResolutionResult) else result
     if not isinstance(
-        actual_result,
+        outcome_to_check,
         (
             ResolvedOutcome,
             WaitingOutcome,
@@ -233,7 +233,7 @@ def _continue_rebase_resolution(
         root,
         record,
         stop_identity,
-        actual_result,
+        outcome_to_check,
         tuple(chain_agents or ()),
     )
 

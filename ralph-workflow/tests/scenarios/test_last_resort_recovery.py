@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline import build_integration_status
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_transition import DIAGNOSTIC_BUDGET_SPENT_REASON
 from ralph.pipeline.integration_attempt_ledger import (
@@ -41,6 +42,9 @@ from ralph.pipeline.integration_ladder import (
     LAST_RESORT_TERMINAL_NO_SIGNATURE,
     LAST_RESORT_WAIT_SECONDS,
     LadderStepResult,
+    default_file_quarantine,
+    default_git_plumbing,
+    last_resort_recovery,
 )
 from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.last_resort_agent_pool import LastResortAgentPool
@@ -48,7 +52,6 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.controller import RecoveryController
 from tests._integration_ladder_fakes import (
     _SIG,
-    _FakePlumbing,
     _ledger,
     _seed_budget,
     _seed_salvage,
@@ -363,12 +366,34 @@ def test_completion_in_place_handoff_record_structure() -> None:
 def test_disabled_signature_autonomous_transition_scenario(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
+    run_git(["init", "-b", "main"], cwd=root, label="test-init")
+    run_git(["config", "user.name", "Ralph Test"], cwd=root, label="test-cfg")
+    run_git(["config", "user.email", "ralph@example.com"], cwd=root, label="test-cfg")
+
+    base_file = root / "base.txt"
+    base_file.write_text("base content\n", encoding="utf-8")
+    run_git(["add", "base.txt"], cwd=root, label="test-add")
+    run_git(["commit", "-m", "initial base commit"], cwd=root, label="test-commit")
+    target_sha = run_git(["rev-parse", "main"], cwd=root, label="test-target-sha").stdout.strip()
+
+    run_git(["checkout", "-b", "feature"], cwd=root, label="test-checkout")
+    feature_file = root / "src" / "x.py"
+    feature_file.parent.mkdir(parents=True)
+    feature_file.write_text("print('feature work')\n", encoding="utf-8")
+    run_git(["add", "src/x.py"], cwd=root, label="test-add-feature")
+    run_git(["commit", "-m", "feature implementation"], cwd=root, label="test-commit-feature")
+    feature_sha = run_git(["rev-parse", "HEAD"], cwd=root, label="test-feature-sha").stdout.strip()
+
     state_dir = root / ".agent"
     state_dir.mkdir(parents=True)
     ledger = AttemptLedger(root, ledger_path=state_dir / "attempt-ledger.json")
     _seed_all_preconditions(ledger)
 
     rec = _record(
+        target="main",
+        pre_target_sha=target_sha,
+        pre_feature_sha=feature_sha,
+        integrated_feature_sha=None,
         merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
         resolution_gate_key=("rebase", ("src/x.py",), "stop1"),
     )
@@ -380,8 +405,11 @@ def test_disabled_signature_autonomous_transition_scenario(tmp_path: Path) -> No
         RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
         reason=DIAGNOSTIC_BUDGET_SPENT_REASON,
         ledger=ledger,
-        git=_FakePlumbing(changed=(), readable_refs=frozenset()),
+        git=default_git_plumbing(),
         state_dir=state_dir,
+        target="main",
+        branch="feature",
+        feature_tip=feature_sha,
         decided_signature="",
         fresh_signature="",
     )
@@ -394,7 +422,146 @@ def test_disabled_signature_autonomous_transition_scenario(tmp_path: Path) -> No
     assert disk_record is not None
     assert disk_record.resolution_terminal_marker is None
     assert disk_record.diagnostic_intervention_required is False
+    assert disk_record.integrated_feature_sha == feature_sha
+    assert not (state_dir / "terminal-marker.json").exists()
 
+    # Real git landing assertions: main has advanced to include the feature work
+    landed_target_sha = run_git(
+        ["rev-parse", "main"], cwd=root, label="test-landed-target"
+    ).stdout.strip()
+    assert landed_target_sha == feature_sha
+    assert (root / "src" / "x.py").is_file()
+
+    # Preservation evidence assertions: preservation bundle and backup refs are durably recorded
     evidence = ledger.read().ladder_evidence
     assert evidence.get("transition:autonomous") == "completion_in_place"
     assert evidence.get(COMPLETION_IN_PLACE_HANDOFF_KEY) == "autonomous_transition"
+    assert evidence.get("landing:completion_in_place") == f"landed:{feature_sha}"
+    assert "preserved:bundle" in evidence
+    manifest_path = Path(evidence["preserved:bundle"])
+    assert manifest_path.is_file()
+    preserved_refs = run_git(
+        ["for-each-ref", "refs/ralph-preserved/"], cwd=root, label="test-check-refs"
+    ).stdout
+    assert "refs/ralph-preserved/" in preserved_refs
+
+
+def test_real_git_eligible_agent_prevents_restart_scenario(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_git(["init", "-b", "main"], cwd=root, label="test-init")
+    run_git(["config", "user.name", "Ralph Test"], cwd=root, label="test-cfg")
+    run_git(["config", "user.email", "ralph@example.com"], cwd=root, label="test-cfg")
+
+    (root / "work.txt").write_text("initial commit\n", encoding="utf-8")
+    run_git(["add", "work.txt"], cwd=root, label="test-add")
+    run_git(["commit", "-m", "initial commit"], cwd=root, label="test-commit")
+    initial_sha = run_git(["rev-parse", "HEAD"], cwd=root, label="test-sha").stdout.strip()
+
+    (root / "work.txt").write_text("uncommitted work to preserve\n", encoding="utf-8")
+
+    state_dir = root / ".agent"
+    state_dir.mkdir(parents=True)
+    ledger = AttemptLedger(root, ledger_path=state_dir / "attempt-ledger.json")
+    _seed_all_preconditions(ledger)
+
+    clock = ScenarioClock(5000.0)
+    agent_ledger = AgentFailureLedger(
+        clock=clock, consecutive_limit=1, base_cooldown_seconds=1200.0
+    )
+    pools = (LastResortAgentPool("resolver", ("agent_alpha",)),)
+
+    # agent_alpha is eligible (not spent/failed yet)
+    step = last_resort_recovery(
+        root,
+        git=default_git_plumbing(),
+        fs=default_file_quarantine(),
+        ledger=ledger,
+        state_dir=state_dir,
+        clock=clock,
+        feature_tip=initial_sha,
+        target="main",
+        branch="main",
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        agent_eligibility=agent_ledger,
+        agent_pools=pools,
+        epoch_now=clock.epoch,
+    )
+
+    # An eligible agent prevents restart: hard reset never runs, outcome is waiting
+    assert step.outcome == "waiting"
+    assert step.reason.startswith("waiting:agent-eligible:resolver:agent_alpha")
+    # Verify uncommitted work was not wiped out by hard reset
+    assert (root / "work.txt").read_text(encoding="utf-8") == "uncommitted work to preserve\n"
+
+
+def test_real_git_all_agents_unavailable_named_external_wait(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_git(["init", "-b", "main"], cwd=root, label="test-init")
+    run_git(["config", "user.name", "Ralph Test"], cwd=root, label="test-cfg")
+    run_git(["config", "user.email", "ralph@example.com"], cwd=root, label="test-cfg")
+
+    (root / "work.txt").write_text("initial commit\n", encoding="utf-8")
+    run_git(["add", "work.txt"], cwd=root, label="test-add")
+    run_git(["commit", "-m", "initial commit"], cwd=root, label="test-commit")
+    initial_sha = run_git(["rev-parse", "HEAD"], cwd=root, label="test-sha").stdout.strip()
+
+    (root / "work.txt").write_text("work in progress\n", encoding="utf-8")
+
+    state_dir = root / ".agent"
+    state_dir.mkdir(parents=True)
+    ledger = AttemptLedger(root, ledger_path=state_dir / "attempt-ledger.json")
+    _seed_all_preconditions(ledger)
+
+    clock = ScenarioClock(5000.0)
+    agent_ledger = AgentFailureLedger(
+        clock=clock, consecutive_limit=1, base_cooldown_seconds=1200.0
+    )
+    agent_ledger.record(AttemptFact("resolver", "agent_alpha", artifact_valid=False))
+    pools = (LastResortAgentPool("resolver", ("agent_alpha",)),)
+
+    # All agents in cooldown: produces named external wait, restart does not run
+    step = last_resort_recovery(
+        root,
+        git=default_git_plumbing(),
+        fs=default_file_quarantine(),
+        ledger=ledger,
+        state_dir=state_dir,
+        clock=clock,
+        feature_tip=initial_sha,
+        target="main",
+        branch="main",
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        agent_eligibility=agent_ledger,
+        agent_pools=pools,
+        epoch_now=clock.epoch,
+    )
+
+    assert step.outcome == "waiting"
+    assert "waiting:all-agents-unavailable:until=" in step.reason
+    assert "next=agent_alpha" in step.reason
+    assert (root / "work.txt").read_text(encoding="utf-8") == "work in progress\n"
+
+
+def test_integration_status_autonomous_strategy_removes_operator_phrasing() -> None:
+    status = build_integration_status(
+        cause="CONFLICT",
+        paths_with_reasons=(("src/x.py", "content conflict"),),
+        command="git add -- src/x.py",
+        agents_can_finish=False,
+        strategy="completion_in_place",
+        next_eligible_agent="agent_alpha",
+        until_when="1700000",
+    )
+
+    summary = status.summary
+    assert "operator action" not in summary
+    assert "agents cannot finish this" not in summary
+    assert "git add -- src/x.py" not in summary
+    assert "WAITING/next-strategy: completion_in_place" in summary
+    assert "next-eligible: agent_alpha" in summary
+    assert "until-when: 1700000" in summary
+    assert "1 path: src/x.py" in summary

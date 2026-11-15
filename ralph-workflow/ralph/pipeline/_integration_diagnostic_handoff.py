@@ -358,10 +358,89 @@ def _write_terminal_marker(root: Path, record: IntegrationRecord) -> None:
     current = read_record(root) or record
     marker = ResolutionTerminalMarker(
         current.resolution_gate_key,
-        "NextStrategy",
+        "NeedsOperator",
         RESUME_COMMAND,
     )
     write_record(root, current.with_resolution_terminal_marker(marker.as_record_value()))
+
+
+def _handle_completion_in_place_escalation(
+    root: Path,
+    record: IntegrationRecord,
+    step: LadderStepResult,
+    ladder: AttemptLedger,
+    plumbing: GitPlumbing,
+    fs: FileQuarantine | None,
+    state_dir: Path | None,
+    effective_target: str,
+    feature_tip: str | None,
+    rung: CleanupLadderRung,
+) -> LadderStepResult | None:
+    if feature_tip is None:
+        return None
+    target_tip = plumbing.target_sha(root, effective_target)
+    candidate_tip = feature_tip or plumbing.head_sha(root)
+    landed_sha = None
+    if candidate_tip and plumbing.ref_is_readable(root, candidate_tip):
+        if target_tip is not None and candidate_tip != target_tip:
+            land_res = plumbing.land_in_worktree(
+                root, root, effective_target, expected_sha=target_tip
+            )
+            if land_res in ("landed", "landed-already"):
+                landed_sha = candidate_tip
+        elif target_tip == candidate_tip:
+            landed_sha = target_tip
+
+    if landed_sha is None:
+        return None
+
+    ensure_last_resort_preservation(
+        root,
+        state_dir=state_dir or root / ".agent",
+        target=effective_target,
+        ledger=ladder,
+    )
+    ensure_preserved_copy(
+        root,
+        ledger=ladder,
+        git=plumbing,
+        fs=fs,
+        state_dir=state_dir,
+    )
+
+    cip_record = completion_in_place_handoff_record(record, reason=step.reason)
+    cip_record = cip_record.model_copy(
+        update={
+            "integrated_feature_sha": landed_sha,
+            "phase": "integrated",
+        }
+    )
+    from ralph.pipeline.auto_integrate_record import write_record
+
+    write_record(root, cip_record)
+    _record_evidence(ladder, "transition:autonomous", "completion_in_place")
+    _record_evidence(ladder, COMPLETION_IN_PLACE_HANDOFF_KEY, "autonomous_transition")
+    _record_evidence(ladder, "landing:completion_in_place", f"landed:{landed_sha}")
+
+    logger.info(
+        "escalated autonomously to completion-in-place; resolved work preserved, "
+        "target landed={}, no terminal marker emitted",
+        landed_sha,
+    )
+    return LadderStepResult(
+        rung,
+        "failed",
+        "autonomous-transition:completion_in_place",
+        preserved_ref=step.preserved_ref,
+        preserved_sidecar=step.preserved_sidecar,
+        quarantined_paths=step.quarantined_paths,
+        evidence={
+            **step.evidence,
+            "next_strategy": "completion_in_place",
+            "transition:autonomous": "completion_in_place",
+            "landing:completion_in_place": f"landed:{landed_sha}",
+        },
+    )
 
 
 def escalate_record_fact_outcome(
@@ -391,7 +470,7 @@ def escalate_record_fact_outcome(
     if terminal_marker_blocks_attempt(record, record.resolution_gate_key):
         marker = ResolutionTerminalMarker(
             record.resolution_gate_key,
-            "NextStrategy",
+            "NeedsOperator",
             RESUME_COMMAND,
         )
         return LadderStepResult(
@@ -463,6 +542,22 @@ def escalate_record_fact_outcome(
         state_dir=state_dir,
         observed_head=observed_head,
     )
+    if is_disabled_signature_step(step) and feature_tip is not None:
+        cip_step = _handle_completion_in_place_escalation(
+            root=root,
+            record=record,
+            step=step,
+            ladder=ladder,
+            plumbing=plumbing,
+            fs=fs,
+            state_dir=state_dir,
+            effective_target=effective_target,
+            feature_tip=feature_tip,
+            rung=rung,
+        )
+        if cip_step is not None:
+            return cip_step
+
     if decision.terminal:
         terminal_step = LadderStepResult(
             rung,
@@ -473,32 +568,6 @@ def escalate_record_fact_outcome(
             quarantined_paths=step.quarantined_paths,
             evidence=step.evidence,
         )
-        if is_disabled_signature_step(step):
-            cip_record = completion_in_place_handoff_record(record, reason=step.reason)
-            from ralph.pipeline.auto_integrate_record import write_record
-
-            write_record(root, cip_record)
-            _record_evidence(ladder, "transition:autonomous", "completion_in_place")
-            _record_evidence(ladder, COMPLETION_IN_PLACE_HANDOFF_KEY, "autonomous_transition")
-            if decided_signature is not None:
-                return LadderStepResult(
-                    rung,
-                    "failed",
-                    "autonomous-transition:completion_in_place",
-                    preserved_ref=step.preserved_ref,
-                    preserved_sidecar=step.preserved_sidecar,
-                    quarantined_paths=step.quarantined_paths,
-                    evidence={**step.evidence, "next_strategy": "completion_in_place"},
-                )
-            terminal_step = LadderStepResult(
-                rung,
-                "terminal",
-                decision.reason,
-                preserved_ref=step.preserved_ref,
-                preserved_sidecar=step.preserved_sidecar,
-                quarantined_paths=step.quarantined_paths,
-                evidence={**step.evidence, "next_strategy": "completion_in_place"},
-            )
         message = terminal_operator_message(
             record,
             reason=decision.reason,
@@ -578,9 +647,15 @@ def is_last_resort_disabled_for_caller(
 
 
 def is_disabled_signature_step(step: LadderStepResult) -> bool:
-    return step.rung == CleanupLadderRung.LAST_RESORT and step.reason in (
-        LAST_RESORT_TERMINAL_NO_SIGNATURE,
-        LAST_RESORT_DISABLED_NO_SIGNATURE,
+    return step.rung == CleanupLadderRung.LAST_RESORT and (
+        step.reason
+        in (
+            LAST_RESORT_TERMINAL_NO_SIGNATURE,
+            LAST_RESORT_DISABLED_NO_SIGNATURE,
+            "autonomous-transition:completion_in_place",
+        )
+        or step.evidence.get("next_strategy") == "completion_in_place"
+        or step.evidence.get("transition:autonomous") == "completion_in_place"
     )
 
 

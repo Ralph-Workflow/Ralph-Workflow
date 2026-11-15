@@ -240,18 +240,14 @@ def _handle_sealed_outcome(
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
         case RetryLaterOutcome(until=until, on_change=on_change):
-            eff_cause = result.failure_cause
-            if eff_cause is None:
-                if on_change and "conflict" in on_change:
-                    eff_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-                else:
-                    eff_cause = ResolutionFailureCause.AGENT_FAILURE
             return MergeResult(
                 outcome=MERGE_COMMIT_PENDING,
                 reason=reason
                 or on_change
                 or (f"retry after {until}" if until is not None else _RETAINED_RESOLUTION_REASON),
-                failure_cause=eff_cause,
+                failure_cause=result.failure_cause
+                if result.failure_cause is not None
+                else ResolutionFailureCause.AGENT_FAILURE,
             )
         case NextStrategyOutcome(strategy=strategy):
             return MergeResult(

@@ -1544,9 +1544,10 @@ def _consume_attempt_output(
     get_heartbeat = pipeline_deps.heartbeat_policy_from_env_fn
 
     _raw_transport: object = getattr(ctx.agent_config, "transport", None)
-    _agent_config_transport: AgentTransport = (
-        _raw_transport if isinstance(_raw_transport, AgentTransport) else AgentTransport.GENERIC
-    )
+    if isinstance(_raw_transport, AgentTransport):
+        _agent_config_transport = _raw_transport
+    else:
+        _agent_config_transport = AgentTransport.GENERIC
     _agent_registry = AgentRegistry()
     _subagent_pid_registry, _subagent_pid_source = _agent_registry.build_subagent_pid_registry(
         _agent_config_transport
@@ -1724,16 +1725,12 @@ def _resolve_recovery_session_id(
 
 
 def recovery_attempts_for_effect(effect: InvokeAgentEffect, config: UnifiedConfig) -> int:
-    if effect.activity_only_supervision:
-        return 0
     return _same_agent_recovery_attempts(config)
 
 
 def surfaces_supervision_error(effect: InvokeAgentEffect, exc: BaseException) -> bool:
-    return bool(
-        effect.activity_only_supervision
-        and isinstance(exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError))
-    )
+    del effect
+    return isinstance(exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError))
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:

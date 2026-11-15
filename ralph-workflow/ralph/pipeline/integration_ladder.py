@@ -204,7 +204,7 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
         )
         if terminal:
             transition = _needs_operator_transition(facts.reason)
-        elif facts.outcome == "waiting":
+        elif facts.outcome == "waiting" or facts.reason.startswith("autonomous-transition:"):
             transition = LadderTransition(
                 _RUNG_STATES[facts.rung], False, facts.reason, facts.rung, ()
             )
@@ -894,11 +894,11 @@ def last_resort_recovery(
         _record_evidence(ledger, key, value)
         logger.warning(
             "integration ladder rung 6 (last resort) is disabled for this caller: no "
-            "re-observed blocking signature was supplied, so the hard reset never runs "
-            "and the ladder ends in a terminal state that needs an operator"
+            "re-observed blocking signature was supplied, so the hard reset never runs"
         )
-        outcome: LadderOutcome = "terminal" if terminal_when_disabled else "failed"
-        return LadderStepResult(rung, outcome, value, evidence={key: value})
+        return LadderStepResult(
+            rung, "terminal" if terminal_when_disabled else "failed", value, evidence={key: value}
+        )
     state = ledger.read()
     preconditions = evaluate_last_resort_preconditions(
         state, decided_signature=decided_signature, fresh_signature=fresh_signature, budget=budget

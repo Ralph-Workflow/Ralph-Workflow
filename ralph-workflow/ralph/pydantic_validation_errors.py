@@ -33,8 +33,14 @@ __all__ = [
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
-    source: _ValidationErrorSource = exc
-    return [format_validation_error_detail(_as_mapping(detail)) for detail in source.errors()]
+    raw_details: object = exc.errors()
+    if isinstance(raw_details, Sequence):
+        return [
+            format_validation_error_detail(detail)
+            for detail in raw_details
+            if isinstance(detail, Mapping)
+        ]
+    return []
 
 
 def format_validation_error_detail(detail: ValidationErrorDetail) -> str:

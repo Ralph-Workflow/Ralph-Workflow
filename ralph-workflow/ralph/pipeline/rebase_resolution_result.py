@@ -23,7 +23,9 @@ _RESULT_LEN = 3
 
 
 def _is_outcome_success(outcome: object) -> bool:
-    return isinstance(outcome, ResolvedOutcome) or outcome is True
+    if isinstance(outcome, ResolvedOutcome):
+        return True
+    return outcome is True
 
 
 @dataclass(frozen=True, slots=True, init=False)

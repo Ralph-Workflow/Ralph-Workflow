@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -429,6 +429,53 @@ def _run_one_round(
     return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
 
 
+def _resolve_delayed_selection(
+    controller: RecoveryController,
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+    eligible: list[str],
+    delay: int,
+) -> int | None:
+    if session.caller_provided:
+        return None
+    from ralph.pipeline.conflict_resolution import driver as _driver_mod
+
+    mono_before = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+    _driver_mod._sleep_seconds(delay / 1000.0)
+    mono_after = controller.clock.monotonic() if hasattr(controller, "clock") else 0.0
+    if mono_after - mono_before < (delay / 1000.0) * 0.5:
+        clock_inst: object = getattr(controller, "clock", None)
+        if clock_inst is None:
+            clock_inst = getattr(controller, "_clock", None)
+        advance_fn: object = getattr(clock_inst, "advance", None)
+        if callable(advance_fn):
+            cast("Callable[[float], None]", advance_fn)(delay / 1000.0)
+        store_clock: object = getattr(controller.unavailability_store, "clock", None)
+        if store_clock is None:
+            store_clock = getattr(controller.unavailability_store, "_clock", None)
+        store_advance: object = getattr(store_clock, "advance", None)
+        if store_clock is not clock_inst and callable(store_advance):
+            cast("Callable[[float], None]", store_advance)(delay / 1000.0)
+        controller.prune_expired()
+    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+    if selection.agent is not None:
+        return candidates.index(selection.agent)
+
+    def _candidate_wait_ms(name: str) -> int:
+        wait = controller.earliest_available_wait_ms(PHASE_RESOLUTION, (name,))
+        ledger: object = getattr(controller, "ledger", None)
+        if wait == 0 and ledger is not None:
+            earliest_wait_fn: object = getattr(ledger, "earliest_wait_ms", None)
+            if callable(earliest_wait_fn):
+                res: object = earliest_wait_fn(PHASE_RESOLUTION, (name,))
+                if isinstance(res, int):
+                    wait = res
+        return wait
+
+    shortest_agent = min(eligible, key=_candidate_wait_ms)
+    return candidates.index(shortest_agent)
+
+
 def _preferred_conflict_candidate(
     session: ResolutionSession,
     candidates: tuple[str, ...],
@@ -450,35 +497,17 @@ def _preferred_conflict_candidate(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    return _candidate_after_cooldown(session, controller, candidates, eligible)
-
-
-def _candidate_after_cooldown(
-    session: ResolutionSession,
-    controller: RecoveryController,
-    candidates: tuple[str, ...],
-    eligible: list[str],
-) -> int | None:
-    from ralph.pipeline.conflict_resolution import driver as _driver_mod
-    from ralph.pipeline.integration_actions import system_clock_active
-
-    delay_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-    if delay_ms == 0 and not session.caller_provided:
-        delay_ms = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
-    if delay_ms <= 0:
-        return None
-    _driver_mod._sleep_seconds(delay_ms / 1000.0)
-    controller.prune_expired()
-    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
-    if selection.agent is not None:
-        return candidates.index(selection.agent)
-    if not system_clock_active():
-        return None
-
-    def _wait_ms(name: str) -> int:
-        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-
-    return candidates.index(min(eligible, key=_wait_ms))
+    delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
+    if (
+        delay == 0
+        and not session.caller_provided
+        and hasattr(controller, "ledger")
+        and controller.ledger is not None
+    ):
+        delay = controller.ledger.earliest_wait_ms(PHASE_RESOLUTION, eligible) or 0
+    if delay > 0:
+        return _resolve_delayed_selection(controller, session, candidates, eligible, delay)
+    return None
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:
