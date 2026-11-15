@@ -27,9 +27,9 @@ def _effect(*, activity_only: bool) -> InvokeAgentEffect:
 
 def test_a_conflict_resolver_gets_no_executor_level_retries() -> None:
     config = UnifiedConfig.model_validate({"general": {}})
-    assert recovery_attempts_for_effect(_effect(activity_only=True), config) == recovery_attempts_for_effect(
-        _effect(activity_only=False), config
-    )
+    assert recovery_attempts_for_effect(
+        _effect(activity_only=True), config
+    ) == recovery_attempts_for_effect(_effect(activity_only=False), config)
     assert recovery_attempts_for_effect(_effect(activity_only=True), config) >= 1
 
 
@@ -38,10 +38,10 @@ def test_supervision_kills_reach_the_conflict_session_typed() -> None:
     infrastructure = SupervisionInfrastructureError("resolver", "relay died")
     ordinary = AgentInvocationError("resolver", 1, "exit 1")
 
-    assert surfaces_supervision_error(_effect(activity_only=True), inactivity) == surfaces_supervision_error(
-        _effect(activity_only=False), inactivity
-    )
-    assert surfaces_supervision_error(_effect(activity_only=True), infrastructure) == surfaces_supervision_error(
-        _effect(activity_only=False), infrastructure
-    )
+    assert surfaces_supervision_error(
+        _effect(activity_only=True), inactivity
+    ) == surfaces_supervision_error(_effect(activity_only=False), inactivity)
+    assert surfaces_supervision_error(
+        _effect(activity_only=True), infrastructure
+    ) == surfaces_supervision_error(_effect(activity_only=False), infrastructure)
     assert surfaces_supervision_error(_effect(activity_only=True), ordinary) is False

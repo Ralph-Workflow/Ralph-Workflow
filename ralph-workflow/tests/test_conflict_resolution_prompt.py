@@ -89,6 +89,12 @@ def test_the_standard_unattended_preamble_is_present(tmp_path: Path) -> None:
     assert "UNATTENDED MODE" in _render(tmp_path)
 
 
+def test_the_preamble_forbids_killing_processes_by_name_or_pattern(tmp_path: Path) -> None:
+    rendered = " ".join(_render(tmp_path).split())
+    assert "Stop only processes you started, by their process ID" in rendered
+    assert "never use `pkill`, `killall`" in rendered
+
+
 def test_the_granted_capabilities_are_stated(tmp_path: Path) -> None:
     rendered = _render(tmp_path)
     assert "SESSION CAPABILITIES (Granted by Ralph Workflow)" in rendered

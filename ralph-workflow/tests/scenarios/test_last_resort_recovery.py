@@ -425,14 +425,12 @@ def test_disabled_signature_autonomous_transition_scenario(tmp_path: Path) -> No
     assert disk_record.integrated_feature_sha == feature_sha
     assert not (state_dir / "terminal-marker.json").exists()
 
-    # Real git landing assertions: main has advanced to include the feature work
     landed_target_sha = run_git(
         ["rev-parse", "main"], cwd=root, label="test-landed-target"
     ).stdout.strip()
     assert landed_target_sha == feature_sha
     assert (root / "src" / "x.py").is_file()
 
-    # Preservation evidence assertions: preservation bundle and backup refs are durably recorded
     evidence = ledger.read().ladder_evidence
     assert evidence.get("transition:autonomous") == "completion_in_place"
     assert evidence.get(COMPLETION_IN_PLACE_HANDOFF_KEY) == "autonomous_transition"
@@ -471,7 +469,6 @@ def test_real_git_eligible_agent_prevents_restart_scenario(tmp_path: Path) -> No
     )
     pools = (LastResortAgentPool("resolver", ("agent_alpha",)),)
 
-    # agent_alpha is eligible (not spent/failed yet)
     step = last_resort_recovery(
         root,
         git=default_git_plumbing(),
@@ -489,10 +486,8 @@ def test_real_git_eligible_agent_prevents_restart_scenario(tmp_path: Path) -> No
         epoch_now=clock.epoch,
     )
 
-    # An eligible agent prevents restart: hard reset never runs, outcome is waiting
     assert step.outcome == "waiting"
     assert step.reason.startswith("waiting:agent-eligible:resolver:agent_alpha")
-    # Verify uncommitted work was not wiped out by hard reset
     assert (root / "work.txt").read_text(encoding="utf-8") == "uncommitted work to preserve\n"
 
 
@@ -522,7 +517,6 @@ def test_real_git_all_agents_unavailable_named_external_wait(tmp_path: Path) -> 
     agent_ledger.record(AttemptFact("resolver", "agent_alpha", artifact_valid=False))
     pools = (LastResortAgentPool("resolver", ("agent_alpha",)),)
 
-    # All agents in cooldown: produces named external wait, restart does not run
     step = last_resort_recovery(
         root,
         git=default_git_plumbing(),

@@ -329,7 +329,7 @@ def run_corrupted_config(root: Path) -> ScenarioResult:
         with pytest.raises(WorkspaceContextError), workspace_context(root):
             pass
         config_path.write_text(
-            "[general]\nauto_integrate_enabled = true\nauto_integrate_target = \"main\"\n",
+            '[general]\nauto_integrate_enabled = true\nauto_integrate_target = "main"\n',
             encoding="utf-8",
         )
         runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)

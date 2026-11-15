@@ -27,6 +27,10 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 _EVENTS = Path(".agent") / "watchdog-fire-events.jsonl"
 _MAX_RETRIES = 2
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_conflict_resolver_kill_with_no_retry_budget_is_still_journaled": "conflict resolvers now get the same executor recovery attempts as other phases (tests/pipeline/test_conflict_resolution_executor_retries.py), so a killed resolver is retried; every kill must still be journaled, one journal line per attempt",
+}
+
 
 class _Bridge:
     def shutdown(self) -> None:
@@ -116,5 +120,5 @@ def test_a_conflict_resolver_kill_with_no_retry_budget_is_still_journaled(
     prompts = _run_always_killed(tmp_path, monkeypatch, resolver=True)
 
     lines = (tmp_path / _EVENTS).read_text(encoding="utf-8").splitlines()
-    assert len(prompts) == 1
-    assert len(lines) == 1
+    assert len(prompts) >= 1
+    assert len(lines) == len(prompts)

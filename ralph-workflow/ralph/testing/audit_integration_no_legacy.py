@@ -360,14 +360,10 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
             and _tuple_subclass(node)
         ):
             violations.append(
-                Violation(
-                    rel, node.lineno, "resolution result retains legacy tuple vocabulary"
-                )
+                Violation(rel, node.lineno, "resolution result retains legacy tuple vocabulary")
             )
         if isinstance(node, ast.Compare) and _string_cause_match(node):
-            violations.append(
-                Violation(rel, node.lineno, "string matching on failure cause")
-            )
+            violations.append(Violation(rel, node.lineno, "string matching on failure cause"))
         if isinstance(node, ast.Call) and rel not in _ALLOWED_PRIVATE_RESOLVER_CALLERS:
             callee = (
                 node.func.id
@@ -386,9 +382,8 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
                         ),
                     )
                 )
-        if (
-            isinstance(node, ast.Assign)
-            or (isinstance(node, ast.AnnAssign) and node.value is not None)
+        if isinstance(node, ast.Assign) or (
+            isinstance(node, ast.AnnAssign) and node.value is not None
         ):
             targets: list[ast.AST] = []
             if isinstance(node, ast.Assign):

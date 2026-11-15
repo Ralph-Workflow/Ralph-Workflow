@@ -33,6 +33,11 @@ from ralph.pipeline.effect_executor import (
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    StopResolutionOutcome,
+    UnknownOutcome,
+)
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
@@ -46,7 +51,6 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
@@ -220,7 +224,6 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
             drain_binding.chain,
         )
     return agents
-
 
 
 def ensure_session_controller(
@@ -484,11 +487,7 @@ def classify_failed_resolution_attempt(
             current_index=failed_index,
             exclude_current=True,
         )
-        if (
-            selection.agent is not None
-            and selection.index is not None
-            and selection.index > bounded_index
-        ):
+        if selection.agent is not None and selection.index is not None:
             session.chain_cursor = selection.index
             next_retries = 0
         elif candidates:
@@ -583,7 +582,7 @@ def invoke_resolution_agent(
     unresolved_paths: tuple[str, ...] = (),
     session: ResolutionSession | None = None,
     require_completion_evidence: bool = False,
-) -> bool:
+) -> StopResolutionOutcome:
     if session is not None:
         session.last_attempt_evidence = None
         session.last_attempt_failure = None
@@ -603,7 +602,9 @@ def invoke_resolution_agent(
         config=conflict_config,
     )
     if _candidate_cannot_be_launched(agent_name, session):
-        return False
+        return _failed_invocation_outcome(
+            RuntimeError(f"agent {agent_name} cannot be launched"), session, ()
+        )
     observed_fault: ResolutionTerminationReason | None = None
 
     def _record_fault(reason: ResolutionTerminationReason) -> None:
@@ -662,7 +663,7 @@ def invoke_resolution_agent(
                 "conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc
             )
         _record_session_failure_result(session, controller, agent_name, exc)
-        return False
+        return _failed_invocation_outcome(exc, session, unresolved_paths)
     if session is not None:
         session.last_attempt_result = attempt
         if attempt.outcome is not None and attempt.outcome.reason:
@@ -673,8 +674,23 @@ def invoke_resolution_agent(
         failure_evidence = _failed_attempt_evidence(session, agent_name)
         _record_attempt_failure(session, failure_evidence)
         _record_attempt_without_agent_work(session)
-        return False
-    return True
+        return _failed_invocation_outcome(RuntimeError(failure_evidence), session, ())
+    return ResolvedOutcome(
+        terminal_reason=session.terminal_reason if session is not None else None,
+        unresolved_paths=session.unresolved_paths if session is not None else (),
+    )
+
+
+def _failed_invocation_outcome(
+    error: Exception,
+    session: ResolutionSession | None,
+    unresolved_paths: tuple[str, ...],
+) -> UnknownOutcome:
+    return UnknownOutcome(
+        error=error,
+        terminal_reason=session.terminal_reason if session is not None else None,
+        unresolved_paths=session.unresolved_paths if session is not None else unresolved_paths,
+    )
 
 
 def _candidate_cannot_be_launched(

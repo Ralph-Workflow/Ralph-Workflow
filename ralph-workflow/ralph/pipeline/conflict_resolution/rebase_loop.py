@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -60,13 +60,13 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
     worktree_dirty_paths,
 )
 from ralph.pipeline.resolution_outcome import (
-    STOP_RESOLUTION_OUTCOMES,
     ConfigFailureOutcome,
     NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
     UnknownOutcome,
+    is_stop_resolution_outcome,
 )
 
 if TYPE_CHECKING:
@@ -247,11 +247,14 @@ def _record_resolver_outcome_on_session(
     outcome: object,
     active_session: ResolutionSession | None,
 ) -> None:
-    if not isinstance(outcome, STOP_RESOLUTION_OUTCOMES) or active_session is None:
+    if not is_stop_resolution_outcome(outcome) or active_session is None:
         return
-    active_session.last_resolution_outcome = cast("StopResolutionOutcome", outcome)
+    active_session.last_resolution_outcome = outcome
     if isinstance(outcome, RetryLaterOutcome):
-        if outcome.failure_cause is not None and outcome.failure_cause != ResolutionFailureCause.NONE:
+        if (
+            outcome.failure_cause is not None
+            and outcome.failure_cause != ResolutionFailureCause.NONE
+        ):
             active_session.last_failure_cause = outcome.failure_cause
         if outcome.terminal_reason is not None:
             raw_reason: object = outcome.terminal_reason

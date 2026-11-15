@@ -139,9 +139,10 @@ def test_dirty_sync_dispatches_normal_commit_before_planning(
     run_inner_loop = run_loop._run_inner_loop_after_startup
 
     if pending_rollback:
-        _assert_pending_rollback_runs_before_commit_review(
-            run_inner_loop(_REJECTED, ctx, "planning"), dispatched, rollbacks
-        )
+        outcome = run_inner_loop(_REJECTED, ctx, "planning")
+        _assert_pending_rollback_runs_before_commit_review(outcome, dispatched, rollbacks)
+        assert run_loop._route_planning_commit(outcome[0], ctx) is outcome[0]
+        assert "tidy" not in dispatched
         return
 
     if commit_succeeds:

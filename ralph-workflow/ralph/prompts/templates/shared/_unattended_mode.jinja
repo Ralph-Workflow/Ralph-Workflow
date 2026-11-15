@@ -9,3 +9,6 @@ Use antislop during this session, with its mode pre-resolved for unattended work
 This run is unattended. Proceed from available evidence, make and record
 result-affecting assumptions, and do not ask the user for confirmation. Write
 under `.agent/` only when instructed; do not create status Markdown files.
+Other runs and tools share this machine. Stop only processes you started, by
+their process ID; never use `pkill`, `killall` or any kill that matches
+processes by name or pattern.

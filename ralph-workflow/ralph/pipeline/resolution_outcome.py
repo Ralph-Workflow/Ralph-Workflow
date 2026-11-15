@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import assert_never
+from typing import TypeGuard, assert_never
 
 from ralph.pipeline._config_failure_outcome import ConfigFailureOutcome
 from ralph.pipeline._next_strategy_outcome import NextStrategyOutcome
@@ -22,6 +22,7 @@ __all__ = [
     "UnknownOutcome",
     "WaitingOutcome",
     "assert_never",
+    "is_stop_resolution_outcome",
     "stop_resolution_outcome_reason",
 ]
 
@@ -45,6 +46,10 @@ STOP_RESOLUTION_OUTCOMES: tuple[type, ...] = (
 )
 
 type StopResolutionOutcome = ResolutionOutcomeUnion
+
+
+def is_stop_resolution_outcome(value: object) -> TypeGuard[StopResolutionOutcome]:
+    return isinstance(value, STOP_RESOLUTION_OUTCOMES)
 
 
 def stop_resolution_outcome_reason(outcome: StopResolutionOutcome) -> str:

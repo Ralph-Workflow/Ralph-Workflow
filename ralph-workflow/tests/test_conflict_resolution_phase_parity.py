@@ -96,7 +96,6 @@ def _ensure_parity_session_controller(
                 if callable(candidate):
                     candidate(seconds)
 
-
             def now_utc(self) -> datetime:
                 return datetime.now(UTC)
 

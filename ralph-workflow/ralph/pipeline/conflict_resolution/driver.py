@@ -922,14 +922,22 @@ def _wait_for_candidates_if_cooling_down(
                 advance_fn = cast("object", getattr(clock_inst, "advance", None))
                 if callable(advance_fn):
                     cast("Callable[[float], None]", advance_fn)(wait_ms / 1000.0)
-                store_clock = cast("object", getattr(controller.unavailability_store, "clock", None))
+                store_clock = cast(
+                    "object", getattr(controller.unavailability_store, "clock", None)
+                )
                 if store_clock is None:
-                    store_clock = cast("object", getattr(controller.unavailability_store, "_clock", None))
+                    store_clock = cast(
+                        "object", getattr(controller.unavailability_store, "_clock", None)
+                    )
                 store_advance = cast("object", getattr(store_clock, "advance", None))
                 if store_clock is not clock_inst and callable(store_advance):
                     cast("Callable[[float], None]", store_advance)(wait_ms / 1000.0)
                 now_ms = int(
-                    (controller.clock.monotonic() if hasattr(controller, "clock") else time.monotonic())
+                    (
+                        controller.clock.monotonic()
+                        if hasattr(controller, "clock")
+                        else time.monotonic()
+                    )
                     * 1000
                 )
                 controller.prune_expired(now_ms=now_ms + wait_ms + 1)
@@ -945,9 +953,13 @@ def _can_continue_controller_rounds(
     chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
     if all(isinstance(status, Spent) for _agent, status in chain_statuses):
         return False
+    if any(status.is_eligible for _agent, status in chain_statuses):
+        return True
+    if controller.ledger is not None and controller.ledger.any_eligible(PHASE_RESOLUTION, live):
+        return True
     return (
-        any(status.is_eligible for _agent, status in chain_statuses)
-        or (session.rounds_spent == 0 and controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0)
+        session.rounds_spent == 0
+        and controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
     )
 
 
@@ -968,9 +980,7 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
         if ledger.all_exhausted(PHASE_RESOLUTION, live):
             return False
         wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
-        return ledger.any_eligible(PHASE_RESOLUTION, live) or (
-            wait is not None and wait > 0
-        )
+        return ledger.any_eligible(PHASE_RESOLUTION, live) or (wait is not None and wait > 0)
     return True
 
 
@@ -1046,7 +1056,10 @@ def _handle_dead_candidate_chain(
     barred = skipped_candidates(session, tuple(candidates))
     live_candidates = [agent for agent in candidates if agent not in barred]
 
-    if session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS or session.terminal_reason is None:
+    if (
+        session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
+        or session.terminal_reason is None
+    ):
         session.terminal_reason = _dead_chain_reason(
             live_candidates,
             controller,

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     class _UnavailabilityStoreMeta(type): ...
 else:
+
     class _UnavailabilityStoreMeta(type(Protocol)):
         def __instancecheck__(cls, instance: object) -> bool:
             if super().__instancecheck__(instance):

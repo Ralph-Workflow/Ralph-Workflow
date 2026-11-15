@@ -89,6 +89,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_e26_broken_workspace_package.py",
     "tests/mcp/test_mcp_server_ignores_workspace_ralph_package.py",
     "tests/pipeline/test_parallel_worker_interpreter_isolation.py",
+    "tests/test_git_stage_resolved_paths.py",
     "tests/mcp/test_e33_listening_fd_real_child.py",
     "tests/mcp/test_e3x_transport_gap_typed_retry.py",
     "tests/mcp/test_e42_two_supervisors_one_replacement.py",

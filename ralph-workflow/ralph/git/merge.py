@@ -316,14 +316,22 @@ def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
 
 
 def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
-    if not paths:
-        return True
-    result = run_git(
-        ("add", "--", *paths),
-        cwd=Path(repo_root),
-        label="git-add-resolved",
-    )
-    return result.returncode == 0
+    root = Path(repo_root)
+    present = [path for path in paths if (root / path).exists()]
+    removed = [path for path in paths if not (root / path).exists()]
+    if present:
+        added = run_git(("add", "--", *present), cwd=root, label="git-add-resolved")
+        if added.returncode != 0:
+            return False
+    if removed:
+        deleted = run_git(
+            ("rm", "--cached", "--ignore-unmatch", "-q", "--", *removed),
+            cwd=root,
+            label="git-rm-resolved",
+        )
+        if deleted.returncode != 0:
+            return False
+    return True
 
 
 def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> list[str]:

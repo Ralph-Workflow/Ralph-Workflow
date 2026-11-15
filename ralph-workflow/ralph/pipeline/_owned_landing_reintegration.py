@@ -53,11 +53,9 @@ def replay_stale_resolution(
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
-    if not retained_resolution_is_stale(root, record):
-        return _retained_replay_outcome(
-            record,
-            "retained resolution is still owned by live Git state; replay was not started",
-        )
+    blocked = _replay_blocked_reason(root, record)
+    if blocked is not None:
+        return _retained_replay_outcome(record, blocked)
 
     try:
         head_sha = get_head_sha(root)
@@ -136,6 +134,17 @@ def replay_stale_resolution(
         conflict_resolver,
         rebase_stop_resolver,
     )
+
+
+def _replay_blocked_reason(root: Path, record: IntegrationRecord) -> str | None:
+    if not retained_resolution_is_stale(root, record):
+        return "retained resolution is still owned by live Git state; replay was not started"
+    if _has_user_work(root):
+        return (
+            "the worktree has uncommitted work; it stays in place for commit review and a "
+            "normal commit before the retained resolution is replayed"
+        )
+    return None
 
 
 def _git_shows_no_operation(root: Path) -> bool:

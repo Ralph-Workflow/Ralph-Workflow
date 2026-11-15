@@ -26,6 +26,10 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_stale_resolution_replay_preserves_work_and_retries_auto_rebase": "a dirty worktree is no longer snapshotted into a commit and integrated; the replay leaves the uncommitted work in place for commit review and integrates nothing, so the dirty case asserts the work, HEAD and the retained record are unchanged",
+}
+
 
 def _setup_stale_record(root: Path) -> tuple[str, str, str]:
     target = _git(root, "branch", "--show-current").stdout.strip()
@@ -132,6 +136,17 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
     )
 
     assert outcome is not None
+    if state == "dirty":
+        assert calls == []
+        assert outcome.recovery_record_retained is True
+        assert "commit review" in (outcome.last_reason or "")
+        assert staged_path.read_text(encoding="utf-8") == "unstaged work\n"
+        assert untracked_path.read_text(encoding="utf-8") == "untracked work\n"
+        assert _git(root, "rev-parse", "HEAD").stdout.strip() == feature
+        assert _git(root, "log", "--format=%s", "-1").stdout.strip() != (
+            "ralph stale-resolution work snapshot"
+        )
+        return
     assert calls and calls[0][0] == target
     assert switches
     assert not switches[0].get("prefer_merge")
@@ -154,10 +169,6 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
     assert len(refs) == 1
     backup_ref = refs[0]
     assert _git(root, "show", f"{backup_ref}:feature.txt").stdout == "feature work\n"
-    if state == "dirty":
-        assert _git(root, "show", f"{backup_ref}:staged.txt").stdout == "staged work\n"
-        assert _git(root, "show", f"{backup_ref}:untracked.txt").stdout == "untracked work\n"
-        assert _git(root, "show", f"{backup_ref}^2:staged.txt").stdout == "unstaged work\n"
 
 
 def _recovery_config(target: str) -> UnifiedConfig:
