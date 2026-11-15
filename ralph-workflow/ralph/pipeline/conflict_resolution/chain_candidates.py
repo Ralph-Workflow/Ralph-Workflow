@@ -19,7 +19,7 @@ __all__ = [
 def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) -> frozenset[str]:
     from ralph.recovery.agent_failure_ledger import Spent
 
-    barred: set[str] = set()
+    barred: set[str] = set(session.dead_surface_agents)
     ledger = session_ledger(session)
     if ledger is not None:
         for name in candidates:

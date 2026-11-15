@@ -860,7 +860,6 @@ tests/test_wu_c2_non_agent_recovery_paths.py|0,1,0
 tests/test_wu_c2_project_policy_recovery_ownership.py|1,0,0
 tests/unit/display/_criteria_probes.py|6,35,9
 tests/unit/display/test_brief_criteria_coverage.py|0,2,5
-tests/unit/display/test_crash_output_containment.py|0,0,1
 tests/unit/display/test_display_context.py|1,5,3
 tests/unit/display/test_frequency_tier_evidence.py|0,2,1
 tests/unit/display/test_palette.py|0,17,10

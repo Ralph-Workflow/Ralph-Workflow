@@ -1,4 +1,5 @@
 {% include 'shared/_validation_failure.j2' -%}
+{% from 'shared/_skill_cues.j2' import render_conflict_resolution_completion_cue, render_conflict_resolution_diagnosis_cue %}
 Resolve the listed in-progress rebase or merge conflicts while preserving the intended change.
 
 {% if replaying_commit_sha %}The repository at `{{ repo_root }}` has an IN-PROGRESS REBASE onto the mainline

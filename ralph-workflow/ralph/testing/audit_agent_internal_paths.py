@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.phases._agent_internal_paths import is_agent_internal_path
+from ralph.testing._runtime_checks import require
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -267,7 +268,11 @@ def _ordering_violations_for_call(
     sites: _CallSites,
 ) -> list[str]:
     problems: list[str] = []
-    if sites.prior_line is not None and lineno < sites.prior_line:
+    require(sites.prior_line is not None)
+    require(sites.later_line is not None)
+    if sites.prior_line is None or sites.later_line is None:
+        return problems
+    if lineno < sites.prior_line:
         problems.append(
             f"{rel_path}: {helper!r} call at line {lineno} is BEFORE the "
             f"{_AUTO_SEED_PRIOR_ANCHOR!r} anchor at line {sites.prior_line} -- "

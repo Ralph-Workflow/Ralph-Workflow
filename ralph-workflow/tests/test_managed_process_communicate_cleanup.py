@@ -644,10 +644,10 @@ def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_psutil = FakePsutil()
     handle = _make_handle(fake_psutil=fake_psutil, script=_timeout_script)
     seen: list[float | None] = []
-    real_terminate = type(handle).terminate
+    real_terminate = ManagedProcess.terminate
 
     def _spy_terminate(
-        self: object,
+        self: ManagedProcess,
         grace_period_s: float | None = None,
         *,
         issuer: ProcessTerminationIssuer = ProcessTerminationIssuer.OPERATOR,
@@ -662,7 +662,7 @@ def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
             reason=reason,
         )
 
-    monkeypatch.setattr(type(handle), "terminate", _spy_terminate)
+    monkeypatch.setattr(ManagedProcess, "terminate", _spy_terminate)
 
     with pytest.raises(subprocess.TimeoutExpired):
         handle.communicate_and_cleanup(cleanup_grace_period_s=0.25)

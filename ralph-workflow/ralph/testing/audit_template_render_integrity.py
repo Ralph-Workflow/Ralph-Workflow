@@ -491,12 +491,11 @@ def _duplicated_headings(lines: list[str]) -> list[str]:
 
 def _duplicated_paragraphs(rendered: str) -> list[str]:
     counts: Counter[str] = Counter()
-    raw_paragraphs: list[object] = list(re.split(r"\n\s*\n", rendered))
-    for paragraph in raw_paragraphs:
-        if isinstance(paragraph, str):
-            normalized = " ".join(paragraph.split())
-            if len(normalized) >= _MIN_DUPLICATE_PARAGRAPH_CHARS:
-                counts[normalized] += 1
+    paragraphs = [part for part in re.split(r"\n\s*\n", rendered) if isinstance(part, str)]
+    for paragraph in paragraphs:
+        normalized = " ".join(paragraph.split())
+        if len(normalized) >= _MIN_DUPLICATE_PARAGRAPH_CHARS:
+            counts[normalized] += 1
     return [
         f"duplicated paragraph (x{count}): {paragraph[:_DUPLICATION_PREVIEW_CHARS]!r}..."
         for paragraph, count in counts.items()

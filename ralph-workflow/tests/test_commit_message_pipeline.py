@@ -111,7 +111,9 @@ def test_normalization_audit_records_fresh_evidence_and_draft_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
+        commit_normalization_module,
+        "_build_evidence",
+        lambda _root, *_args: _evidence("ralph/app.py"),
     )
     (tmp_path / ".git").mkdir()
 
@@ -133,7 +135,9 @@ def test_normalization_audit_does_not_score_authored_words(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
+        commit_normalization_module,
+        "_build_evidence",
+        lambda _root, *_args: _evidence("ralph/app.py"),
     )
     (tmp_path / ".git").mkdir()
 
@@ -158,7 +162,9 @@ def test_canonical_submission_persists_first_normalization_pass_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        commit_normalization_module, "_build_evidence", lambda _root: _evidence("ralph/app.py")
+        commit_normalization_module,
+        "_build_evidence",
+        lambda _root, *_args: _evidence("ralph/app.py"),
     )
     (tmp_path / ".git").mkdir()
     content, audit = commit_normalization_module.normalize_commit_submission(

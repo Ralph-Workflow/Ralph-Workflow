@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final
 
 from ralph.git.operations import list_changed_paths
 from ralph.prompts._commit_diff import commit_generation_diff
+from ralph.prompts._commit_evidence_source import CommitEvidenceSource
 from ralph.prompts._commit_message_budget import CommitMessageBudget
+from ralph.prompts._git_commit_evidence_source import GitCommitEvidenceSource
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -23,27 +25,7 @@ _DIFF_PATH = re.compile(r"^diff --git a/(.+?) b/(.+)$", re.MULTILINE)
 _MAX_DIFF_SUMMARY_ITEMS: Final = 6
 _CHANGE_AREA_DEPTH: Final = 2
 
-
-class _CommitEvidenceSource(Protocol):
-    def list_changed_paths(self, repo_root: Path) -> list[str]: ...
-
-    def commit_generation_diff(self, repo_root: Path) -> str: ...
-
-
-CommitEvidenceSource = _CommitEvidenceSource
-
-
-@dataclass(frozen=True, slots=True)
-class _GitCommitEvidenceSource:
-    def list_changed_paths(self, repo_root: Path) -> list[str]:
-        return list_changed_paths(repo_root)
-
-    def commit_generation_diff(self, repo_root: Path) -> str:
-        return commit_generation_diff(repo_root)
-
-
-GitCommitEvidenceSource = _GitCommitEvidenceSource
-DEFAULT_COMMIT_EVIDENCE_SOURCE: Final = _GitCommitEvidenceSource()
+DEFAULT_COMMIT_EVIDENCE_SOURCE: Final = GitCommitEvidenceSource()
 
 
 @dataclass(frozen=True)

@@ -33,6 +33,14 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolver_that_failed_in_an_earlier_session_is_not_offered_first": (
+        "under shared recovery controller fallover, primary resolver falls over "
+        "to fallback candidate each round until reaching consecutive limit on round 3; "
+        "benched primary is then skipped in the second session"
+    ),
+}
+
 
 
 @pytest.fixture(autouse=True)

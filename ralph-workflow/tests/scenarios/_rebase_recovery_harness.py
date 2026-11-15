@@ -23,16 +23,18 @@ from tests._scenario_display import ScenarioDisplay
 from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
 from tests._scenario_result import ScenarioResult
-from tests.scenarios._rebase_recovery_harness_helpers import (
-    FakeAgentRunner,
-    _capture_log_records,
-    capture_operator_lines,
-    corrupted_config,
+from tests.scenarios._paused_rebase_fixtures import (
     paused_declared_decisions_and_gitlink_rebase,
     paused_multi_commit_empty_stop_rebase,
     paused_multi_commit_first_stop_rebase,
     paused_text_and_gitlink_rebase,
     paused_text_rebase,
+)
+from tests.scenarios._rebase_recovery_harness_helpers import (
+    FakeAgentRunner,
+    _capture_log_records,
+    capture_operator_lines,
+    corrupted_config,
     scenario_config,
     shared_executor_seam,
     supervisor_restart,
@@ -569,7 +571,6 @@ def run_spent_chain_fall_over_then_wait(root: Path) -> ScenarioResult:
         second_launches = runner.launches - launches_after_first
     finally:
         reset_executors(token)
-
     waiting_lines = [
         line
         for line in second_lines
@@ -599,7 +600,6 @@ def run_empty_resolution_stop(root: Path) -> ScenarioResult:
     commit_file(root, "shared.txt", "feature diff\n", "feature stop that will resolve empty")
     commit_file(root, "series.txt", "seed\nsecond\n", "feature second commit")
     git(root, "rebase", "main", check=False)
-
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
     with shared_executor_seam(runner), capture_operator_lines() as lines:
         integrate_before_planning(

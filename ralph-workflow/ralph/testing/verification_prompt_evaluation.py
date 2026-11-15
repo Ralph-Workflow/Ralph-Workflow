@@ -258,18 +258,25 @@ def score_decisions(
 def _verdicts(
     case: EvaluationCase, decision: Mapping[str, object]
 ) -> dict[str, tuple[str, str, bool, str]]:
-    entries = decision.get("criterion_verdicts")
-    identifiers = decision.get("criterion_verdict_ids")
-    if isinstance(entries, list) and isinstance(identifiers, list) and entries:
-        if not (
-            all(isinstance(v, str) for v in identifiers)
-            and all(isinstance(v, str) for v in entries)
-        ):
+    entries_val: object = decision.get("criterion_verdicts")
+    identifiers_val: object = decision.get("criterion_verdict_ids")
+    if (
+        isinstance(entries_val, (list, tuple))
+        and isinstance(identifiers_val, (list, tuple))
+        and entries_val
+    ):
+        raw_id_items: tuple[object, ...] = tuple(identifiers_val)
+        raw_entry_items: tuple[object, ...] = tuple(entries_val)
+        raw_identifiers: tuple[str, ...] = tuple(
+            item for item in raw_id_items if isinstance(item, str)
+        )
+        raw_entries: tuple[str, ...] = tuple(
+            item for item in raw_entry_items if isinstance(item, str)
+        )
+        if len(raw_identifiers) != len(raw_id_items) or len(raw_entries) != len(raw_entry_items):
             raise ValueError("criterion verdict entries must be strings")
-        str_identifiers: list[str] = [v for v in identifiers if isinstance(v, str)]
-        str_entries: list[str] = [v for v in entries if isinstance(v, str)]
         parsed: dict[str, tuple[str, str, bool, str]] = {}
-        for identifier_text, entry_text in zip(str_identifiers, str_entries, strict=True):
+        for identifier_text, entry_text in zip(raw_identifiers, raw_entries, strict=True):
             verdict = entry_text.split("Verdict:", 1)[-1].split(".", 1)[0].strip().casefold()
             evidence = "Evidence:" in entry_text and bool(
                 entry_text.split("Evidence:", 1)[1].split("Location:", 1)[0].strip()

@@ -158,7 +158,8 @@ def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_strategy_rotation_does_not_replenish_driver_round_cap": (
-        "with resolver-local retries removed, the driver advances across rounds up to the stop cap"
+        "with max_rounds_per_stop=2 and no local retry loop, driver spends both rounds "
+        "yielding rounds_called [1, 2] and rounds_spent 2 without replenish on rotation"
     ),
 }
 
