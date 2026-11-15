@@ -362,14 +362,7 @@ def classify_failed_resolution_attempt(
             context,
         )
     session.recovery_state = new_state
-    if bench:
-        from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-        controller.record_confirmed_unavailability(
-            PHASE_RESOLUTION,
-            agent_name,
-            UnavailabilityReason.PROCESS_EXITED,
-        )
+    _ = bench
     session.last_recovery_reason = (
         typed_outcome_reason(typed_outcome, unresolved_count)
         if typed_outcome is not None

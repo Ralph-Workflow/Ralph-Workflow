@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -53,7 +53,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.policy.models import PolicyBundle
-    from ralph.recovery.controller import RecoveryController
 
 __all__ = [
     "RoundAttempt",
@@ -77,17 +76,6 @@ class RoundAttempt:
     candidate_offset: int = 0
     count_dropped: bool = False
     probe_changed: bool = False
-
-
-@runtime_checkable
-class _AdvanceableClock(Protocol):
-    def advance(self, seconds: float) -> None: ...
-
-
-@runtime_checkable
-class _ClockProvidingStore(Protocol):
-    @property
-    def clock(self) -> object: ...
 
 
 def _evaluate_round_attempt(
@@ -409,45 +397,8 @@ def _run_one_round(
         )
         if succeeded:
             return attempt
-        controller = session.recovery_controller
-        if (
-            controller is not None
-            and round_index < round_cap
-            and not isinstance(invoker_result, UnknownOutcome)
-            and session.terminal_reason is not ResolutionTerminationReason.EXCEPTION
-        ):
-            status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
-            if not status.is_spent and not status.is_unavailable:
-                return attempt
         visited.add(selected)
     return attempt
-
-
-def _select_after_delay(
-    controller: RecoveryController,
-    session: ResolutionSession,
-    eligible: list[str],
-    candidates: tuple[str, ...],
-    delay: int,
-) -> int | None:
-    from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
-    controller_clock = controller.clock
-    mono_before = controller_clock.monotonic()
-    _driver_mod._sleep_seconds(delay / 1000.0)
-    mono_after = controller_clock.monotonic()
-    if mono_after - mono_before < (delay / 1000.0) * 0.5:
-        if isinstance(controller_clock, _AdvanceableClock):
-            controller_clock.advance(delay / 1000.0)
-        store = controller.unavailability_store
-        store_clock = store.clock if isinstance(store, _ClockProvidingStore) else None
-        if store_clock is not controller_clock and isinstance(store_clock, _AdvanceableClock):
-            store_clock.advance(delay / 1000.0)
-        controller.prune_expired()
-    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
-    if selection.agent is not None:
-        return candidates.index(selection.agent)
-    return None
 
 
 def _preferred_conflict_candidate(
@@ -471,8 +422,5 @@ def _preferred_conflict_candidate(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    if not visited:
-        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-        if delay > 0:
-            return _select_after_delay(controller, session, eligible, candidates, delay)
     return None
+

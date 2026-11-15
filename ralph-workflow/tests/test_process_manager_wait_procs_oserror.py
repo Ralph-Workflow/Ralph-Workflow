@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationIssuer
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationIssuer,
+)
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
     FakePsutil,
@@ -18,19 +22,15 @@ from ralph.testing.fake_process import (
 )
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_manager_types import (
-        _PsutilModuleLike,
-        _PsutilProcessLike,
-    )
 
     class _SafeWaitProcs(Protocol):
         def __call__(
             self,
-            psutil_mod: _PsutilModuleLike,
-            procs: Sequence[_PsutilProcessLike],
+            psutil_mod: object,
+            procs: Sequence[object],
             *,
             timeout: float | None,
-        ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
+        ) -> tuple[list[object], list[object]]: ...
 
 
 _FAST_POLICY = ProcessManagerPolicy(
@@ -118,11 +118,11 @@ def test_process_manager_regression_registered_descendant_einval_uses_safe_wait(
     pm: ProcessManager | None = None
 
     def counting_safe_wait(
-        psutil_mod: _PsutilModuleLike,
-        procs: Sequence[_PsutilProcessLike],
+        psutil_mod: object,
+        procs: Sequence[object],
         *,
         timeout: float | None,
-    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+    ) -> tuple[list[object], list[object]]:
         assert pm is not None
         safe_wait_pids.append([getattr(proc, "pid", None) for proc in procs])
         return pm._default_safe_wait_procs(psutil_mod, procs, timeout=timeout)
