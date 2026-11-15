@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 
 
 class ManagedAsyncProcess:
+    __slots__ = (
+        "_manager",
+        "_proc",
+        "_record",
+    )
+
     def __init__(
         self,
         proc: _AsyncProcessLike,

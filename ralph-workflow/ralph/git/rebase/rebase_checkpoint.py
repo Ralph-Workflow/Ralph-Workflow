@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.git.rebase._rebase_lock import RebaseLock
 from ralph.git.rebase._rebase_phase import RebasePhase
 from ralph.git.rebase.legacy_checkpoint import (
     LegacyCheckpointInspection,
@@ -382,7 +381,3 @@ def _is_lock_stale() -> bool:
             elapsed = datetime.now(UTC) - cutoff
             return elapsed.total_seconds() > LOCK_TIMEOUT_SECONDS
     return True
-
-
-RebaseLock._acquire_fn = acquire_rebase_lock
-RebaseLock._release_fn = release_rebase_lock

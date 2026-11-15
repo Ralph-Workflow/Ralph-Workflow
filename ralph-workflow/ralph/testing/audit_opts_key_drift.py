@@ -8,6 +8,8 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ralph.testing._runtime_checks import require
+
 _POOL_WORKER_CAP = 1
 _POOL_CONTEXT = multiprocessing.get_context("spawn")
 _PARALLEL_PAYLOAD_THRESHOLD = 32
@@ -56,21 +58,22 @@ def _module_name(path: Path, package_root: Path) -> str:
 def _index_module(name: str, tree: ast.Module) -> _Module:
     module = _Module(name=name)
     for node in ast.walk(tree):
-        if isinstance(node, _FUNC_NODES):
-            func = node
-            assert isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef)
-            module.functions.setdefault(func.name, func)
-        elif isinstance(node, ast.Call):
-            if node.keywords:
-                module.keyword_calls.append(node)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module is None or node.level:
-                continue
-            for alias in node.names:
-                module.from_imports[alias.asname or alias.name] = (node.module, alias.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                module.module_aliases[alias.asname or alias.name.split(".")[0]] = alias.name
+        match True:
+            case _ if isinstance(node, _FUNC_NODES):
+                func = node
+                require(isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef))
+                module.functions.setdefault(func.name, func)
+            case _ if isinstance(node, ast.Call):
+                if node.keywords:
+                    module.keyword_calls.append(node)
+            case _ if isinstance(node, ast.ImportFrom):
+                if node.module is None or node.level:
+                    continue
+                for alias in node.names:
+                    module.from_imports[alias.asname or alias.name] = (node.module, alias.name)
+            case _ if isinstance(node, ast.Import):
+                for alias in node.names:
+                    module.module_aliases[alias.asname or alias.name.split(".")[0]] = alias.name
     return module
 
 
@@ -134,40 +137,45 @@ def _direct_reads(fn: _FuncNode, variable: str) -> tuple[set[str], bool]:
     keys: set[str] = set()
     dynamic = False
     for node in ast.walk(fn):
-        if (
-            isinstance(node, ast.Subscript)
-            and isinstance(node.value, ast.Name)
-            and node.value.id == variable
-        ):
-            if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
-                keys.add(node.slice.value)
-            else:
-                dynamic = True
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == variable
-        ):
-            attr = node.func.attr
-            if (
-                attr in _LITERAL_READS
-                and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str)
+        match True:
+            case _ if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.value, ast.Name)
+                and (node.value.id == variable)
             ):
-                keys.add(node.args[0].value)
-            elif attr in _LITERAL_READS or attr in _OPAQUE_READS:
+                if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
+                    keys.add(node.slice.value)
+                else:
+                    dynamic = True
+            case _ if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and (node.func.value.id == variable)
+            ):
+                attr = node.func.attr
+                if (
+                    attr in _LITERAL_READS
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                ):
+                    keys.add(node.args[0].value)
+                elif attr in _LITERAL_READS or attr in _OPAQUE_READS:
+                    dynamic = True
+            case _ if isinstance(node, ast.Compare):
+                for comparator in node.comparators:
+                    if isinstance(comparator, ast.Name) and comparator.id == variable:
+                        if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str):
+                            keys.add(node.left.value)
+                        else:
+                            dynamic = True
+            case _ if (
+                isinstance(node, ast.Name)
+                and node.id == variable
+                and isinstance(node.ctx, ast.Store)
+            ):
                 dynamic = True
-        elif isinstance(node, ast.Compare):
-            for comparator in node.comparators:
-                if isinstance(comparator, ast.Name) and comparator.id == variable:
-                    if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str):
-                        keys.add(node.left.value)
-                    else:
-                        dynamic = True
-        elif isinstance(node, ast.Name) and node.id == variable and isinstance(node.ctx, ast.Store):
-            dynamic = True
     return keys, dynamic
 
 
@@ -315,15 +323,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         violations, scanned = audit_tree(package_root, roots)
     except FileNotFoundError as exc:
-        print(exc)
+        sys.stdout.write(str(exc) + "\n")
         return 2
     if not violations:
-        print(f"No silently-dropped **opts keys in {scanned} module(s) under {', '.join(roots)}.")
+        sys.stdout.write(
+            f"No silently-dropped **opts keys in {scanned} module(s) under {', '.join(roots)}.\n"
+        )
         return 0
-    print(f"SILENTLY-DROPPED **opts KEYS: {len(violations)} in {scanned} module(s)")
-    print("=" * 72)
+    sys.stdout.write(f"SILENTLY-DROPPED **opts KEYS: {len(violations)} in {scanned} module(s)\n")
+    sys.stdout.write(str("=" * 72) + "\n")
     for violation in violations:
-        print(f"  {violation}")
+        sys.stdout.write(f"  {violation}\n")
     return 1
 
 

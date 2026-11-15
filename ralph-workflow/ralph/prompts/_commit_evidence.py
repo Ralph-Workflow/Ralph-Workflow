@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
 from ralph.git.operations import list_changed_paths
 from ralph.prompts._commit_diff import commit_generation_diff
@@ -22,6 +22,24 @@ _VERIFICATION_RESULT = re.compile(r"(?m)^Ran:\s+yes\s+—\s+(passed|failed \(exi
 _DIFF_PATH = re.compile(r"^diff --git a/(.+?) b/(.+)$", re.MULTILINE)
 _MAX_DIFF_SUMMARY_ITEMS: Final = 6
 _CHANGE_AREA_DEPTH: Final = 2
+
+
+class CommitEvidenceSource(Protocol):
+    def list_changed_paths(self, repo_root: Path) -> list[str]: ...
+
+    def commit_generation_diff(self, repo_root: Path) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class GitCommitEvidenceSource:
+    def list_changed_paths(self, repo_root: Path) -> list[str]:
+        return list_changed_paths(repo_root)
+
+    def commit_generation_diff(self, repo_root: Path) -> str:
+        return commit_generation_diff(repo_root)
+
+
+DEFAULT_COMMIT_EVIDENCE_SOURCE: Final = GitCommitEvidenceSource()
 
 
 @dataclass(frozen=True)
@@ -120,9 +138,13 @@ def _summarize_diff(diff: str) -> tuple[str, ...]:
     return tuple(summaries)
 
 
-def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
-    changed_files = tuple(sorted(set(list_changed_paths(repo_root))))
-    diff = commit_generation_diff(repo_root)
+def build_commit_evidence_bundle(
+    repo_root: Path,
+    *,
+    source: CommitEvidenceSource = DEFAULT_COMMIT_EVIDENCE_SOURCE,
+) -> CommitEvidenceBundle:
+    changed_files = tuple(sorted(set(source.list_changed_paths(repo_root))))
+    diff = source.commit_generation_diff(repo_root)
     areas = tuple(sorted({_change_area(path) for path in changed_files if path}))
     public_paths = tuple(
         path
@@ -179,8 +201,11 @@ def build_commit_evidence_bundle(repo_root: Path) -> CommitEvidenceBundle:
 
 
 __all__ = [
+    "DEFAULT_COMMIT_EVIDENCE_SOURCE",
     "CommitEvidenceBundle",
+    "CommitEvidenceSource",
     "CommitMessageBudget",
+    "GitCommitEvidenceSource",
     "build_commit_evidence_bundle",
     "commit_generation_diff",
     "list_changed_paths",

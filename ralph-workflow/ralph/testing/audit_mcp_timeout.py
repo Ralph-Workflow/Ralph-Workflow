@@ -128,6 +128,8 @@ STRUCTURAL_EXEMPTIONS: dict[_ExemptionKey, str] = {
 
 
 class McpTimeoutViolation:
+    __slots__ = ("category", "detail", "file_path", "line")
+
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -191,14 +193,15 @@ def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, st
     module_aliases: dict[str, str] = {}
     from_imports: dict[str, str] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.asname is not None:
-                    module_aliases[alias.asname] = alias.name
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            for alias in node.names:
-                local = alias.asname or alias.name
-                from_imports[local] = f"{node.module}.{alias.name}"
+        match True:
+            case _ if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname is not None:
+                        module_aliases[alias.asname] = alias.name
+            case _ if isinstance(node, ast.ImportFrom) and node.module is not None:
+                for alias in node.names:
+                    local = alias.asname or alias.name
+                    from_imports[local] = f"{node.module}.{alias.name}"
     return module_aliases, from_imports
 
 
@@ -215,6 +218,19 @@ def module_identity(file_path: Path) -> str:
 
 
 class McpTimeoutAuditor(ast.NodeVisitor):
+    __slots__ = (
+        "_callable_stack",
+        "_category_counts",
+        "_exemptions",
+        "_from_imports",
+        "_function_scopes",
+        "_module",
+        "_module_aliases",
+        "file_path",
+        "used_exemptions",
+        "violations",
+    )
+
     def __init__(
         self,
         file_path: str,
@@ -450,32 +466,29 @@ def main(argv: list[str] | None = None) -> int:
     total_files = 0
     for root in roots:
         if not root.is_dir():
-            print(f"Error: audit root not found: {root}", file=sys.stderr)
+            sys.stderr.write(f"Error: audit root not found: {root}\n")
             return 2
-        print(f"Auditing bounded-subprocess contract in: {root}")
+        sys.stdout.write(f"Auditing bounded-subprocess contract in: {root}\n")
         violations, files_checked = audit_mcp_directory(root)
         all_violations.extend(violations)
         total_files += files_checked
-    print()
+    sys.stdout.write("\n")
 
     if all_violations:
-        print(
+        sys.stdout.write(
             f"BOUNDED-SUBPROCESS CONTRACT VIOLATIONS: {len(all_violations)}"
-            f" in {total_files} file(s)"
+            f" in {total_files} file(s)\n"
         )
-        print("=" * 72)
+        sys.stdout.write(str("=" * 72) + "\n")
         for v in all_violations:
-            print(f"  {v}")
-        print()
-        print(
-            "Every MCP/git operation must be bounded by a timeout and fail closed. "
-            "Add a timeout=, or register a structural exemption in "
-            "ralph/testing/audit_mcp_timeout.py when the call is genuinely "
-            "unbounded by design."
+            sys.stdout.write(f"  {v}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Every MCP/git operation must be bounded by a timeout and fail closed. Add a timeout=, or register a structural exemption in ralph/testing/audit_mcp_timeout.py when the call is genuinely unbounded by design.\n"
         )
         return 1
 
-    print(f"No bounded-subprocess violations found in {total_files} file(s).")
+    sys.stdout.write(f"No bounded-subprocess violations found in {total_files} file(s).\n")
     return 0
 
 

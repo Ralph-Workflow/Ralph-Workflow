@@ -7,6 +7,15 @@ from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 
 
 class AgentInactivityTimeoutError(AgentInvocationError):
+    __slots__ = (
+        "diagnostic",
+        "reason",
+        "resumable_session_id",
+        "runtime_event",
+        "session_resume_safe",
+        "timeout_seconds",
+    )
+
     def __init__(
         self,
         agent_name: str,

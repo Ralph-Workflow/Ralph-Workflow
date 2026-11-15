@@ -153,6 +153,17 @@ def _normalize_diff_path(raw: str) -> str:
 
 
 class _HunkBuilder:
+    __slots__ = (
+        "added",
+        "context",
+        "function_header",
+        "new_line",
+        "new_lines",
+        "old_line",
+        "old_lines",
+        "removed",
+    )
+
     def __init__(self, old_line: int, new_line: int, function_header: str) -> None:
         self.old_line = old_line
         self.new_line = new_line
@@ -191,62 +202,67 @@ class _HunkBuilder:
         )
 
 
+class _DiffParseState:
+    __slots__ = ("builder", "files", "hunks", "new_path", "old_path")
+
+    def __init__(self) -> None:
+        self.files: list[_DiffFile] = []
+        self.old_path = ""
+        self.new_path = ""
+        self.hunks: list[_Hunk] = []
+        self.builder: _HunkBuilder | None = None
+
+    def close_hunk(self) -> None:
+        if self.builder is not None:
+            self.hunks.append(self.builder.build())
+            self.builder = None
+
+    def close_file(self) -> None:
+        self.close_hunk()
+        path = self.new_path or self.old_path
+        if path and self.hunks:
+            self.files.append(_DiffFile(path=path, hunks=tuple(self.hunks)))
+        self.hunks = []
+        self.old_path = ""
+        self.new_path = ""
+
+
 def _parse_unified_diff(diff_text: str) -> list[_DiffFile]:
-    files: list[_DiffFile] = []
-    old_path = ""
-    new_path = ""
-    hunks: list[_Hunk] = []
-    builder: _HunkBuilder | None = None
-
-    def close_hunk() -> None:
-        nonlocal builder
-        if builder is not None:
-            hunks.append(builder.build())
-            builder = None
-
-    def close_file() -> None:
-        nonlocal hunks, old_path, new_path
-        close_hunk()
-        path = new_path or old_path
-        if path and hunks:
-            files.append(_DiffFile(path=path, hunks=tuple(hunks)))
-        hunks = []
-        old_path = ""
-        new_path = ""
+    state = _DiffParseState()
 
     for raw in diff_text.splitlines():
         if raw.startswith("diff --git "):
-            close_file()
+            state.close_file()
             continue
         if raw.startswith("--- "):
-            old_path = _normalize_diff_path(raw[4:])
+            state.old_path = _normalize_diff_path(raw[4:])
             continue
         if raw.startswith("+++ "):
-            new_path = _normalize_diff_path(raw[4:])
+            state.new_path = _normalize_diff_path(raw[4:])
             continue
         header = _HUNK_HEADER_RE.match(raw)
         if header is not None:
-            close_hunk()
+            state.close_hunk()
             header_suffix = raw[header.end() :].strip()
             def_match = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\b", header_suffix)
-            builder = _HunkBuilder(
+            state.builder = _HunkBuilder(
                 old_line=int(header.group(1)),
                 new_line=int(header.group(3)),
                 function_header=def_match.group(1) if def_match else "",
             )
             continue
-        if builder is None:
+        if state.builder is None:
             continue
         if raw.startswith("+"):
-            builder.add_plus(raw[1:])
+            state.builder.add_plus(raw[1:])
         elif raw.startswith("-"):
-            builder.add_minus(raw[1:])
+            state.builder.add_minus(raw[1:])
         elif raw.startswith("\\"):
             continue
         else:
-            builder.add_context(raw[1:] if raw.startswith(" ") else raw)
-    close_file()
-    return files
+            state.builder.add_context(raw[1:] if raw.startswith(" ") else raw)
+    state.close_file()
+    return state.files
 
 
 def _is_test_path(path: str) -> bool:
@@ -303,7 +319,7 @@ def _compare_ordered_str(op: ast.cmpop, left: str, right: str) -> bool:
 
 
 def _evaluate_ordered_compare(op: ast.cmpop, left: object, right: object) -> bool:
-    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+    if isinstance(left, int | float) and isinstance(right, int | float):
         return _compare_ordered_numeric(op, left, right)
     if isinstance(left, str) and isinstance(right, str):
         return _compare_ordered_str(op, left, right)
@@ -580,6 +596,14 @@ def _extract_raises(
 
 
 class _FixtureScopeTracker:
+    __slots__ = (
+        "current_fixture_indent",
+        "current_fixture_name",
+        "in_def_signature",
+        "known_fixtures",
+        "pending_fixture",
+    )
+
     def __init__(self, initial_fixture: str, known_fixtures: set[str] | None) -> None:
         self.pending_fixture = False
         self.current_fixture_name: str | None = initial_fixture if initial_fixture else None
@@ -714,7 +738,7 @@ def _is_tautological(text: str) -> bool:
     if isinstance(test, ast.Compare) and len(test.ops) == 1 and len(test.comparators) == 1:
         op = test.ops[0]
         comparator = test.comparators[0]
-        if isinstance(op, (ast.Eq, ast.Is, ast.LtE, ast.GtE)) and ast.dump(test.left) == ast.dump(
+        if isinstance(op, ast.Eq | ast.Is | ast.LtE | ast.GtE) and ast.dump(test.left) == ast.dump(
             comparator
         ):
             return True

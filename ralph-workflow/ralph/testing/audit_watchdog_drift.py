@@ -295,18 +295,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     package_root = Path(argv[0]) if argv else Path(__file__).parent.parent
 
     if not package_root.is_dir():
-        print(f"Package root not found: {package_root}", file=sys.stderr)
+        sys.stderr.write(f"Package root not found: {package_root}\n")
         return 2
 
     violations = audit_watchdog_drift(package_root)
 
     if violations:
-        print(f"WATCHDOG DRIFT VIOLATIONS: {len(violations)}")
-        print("=" * 72)
+        sys.stdout.write(f"WATCHDOG DRIFT VIOLATIONS: {len(violations)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for v in violations:
-            print(f"  {v}")
-        print()
-        print(
+            sys.stdout.write(f"  {v}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
             f"Fix the drift: delete {_LEGACY_ROOT_WATCHDOG} at the"
             " ralph-workflow root, keep exactly one top-level class"
             " IdleWatchdog at ralph/agents/idle_watchdog/idle_watchdog.py,"
@@ -314,11 +314,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             " ralph/agents/idle_watchdog/_post_exit_watchdog.py,"
             " construct WatchdogFireReason only from those two canonical"
             " owner modules, and keep exactly one top-level class"
-            f" SubagentIdentity/SubagentPidRegistry at {_SUBAGENT_COUNTING_OWNER}."
+            f" SubagentIdentity/SubagentPidRegistry at {_SUBAGENT_COUNTING_OWNER}.\n"
         )
         return 1
 
-    print("watchdog drift audit: OK")
+    sys.stdout.write("watchdog drift audit: OK\n")
     return 0
 
 

@@ -249,33 +249,34 @@ def _import_alias_names(
     direct_read_names: dict[str, str],
 ) -> None:
     for node in tree.body:
-        if isinstance(node, ast.ImportFrom):
-            if node.module == "pathlib":
+        match True:
+            case _ if isinstance(node, ast.ImportFrom):
+                if node.module == "pathlib":
+                    for alias in node.names:
+                        if alias.name in _PATHLIBS:
+                            path_names.add(alias.asname or alias.name)
+                elif node.module in {"os", "os.path", "glob"}:
+                    for alias in node.names:
+                        local_name = alias.asname or alias.name
+                        if node.module == "os" and alias.name == "path":
+                            os_names.add(local_name)
+                        elif alias.name in _RAW_READ_ATTRS:
+                            direct_read_names[local_name] = alias.name
+            case _ if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name in _PATHLIBS:
+                    if alias.name == "pathlib":
                         path_names.add(alias.asname or alias.name)
-            elif node.module in {"os", "os.path", "glob"}:
-                for alias in node.names:
-                    local_name = alias.asname or alias.name
-                    if node.module == "os" and alias.name == "path":
-                        os_names.add(local_name)
-                    elif alias.name in _RAW_READ_ATTRS:
-                        direct_read_names[local_name] = alias.name
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "pathlib":
-                    path_names.add(alias.asname or alias.name)
-                elif alias.name in {"os", "os.path"}:
-                    os_names.add(alias.asname or alias.name)
-                elif alias.name == "glob":
-                    glob_names.add(alias.asname or alias.name)
+                    elif alias.name in {"os", "os.path"}:
+                        os_names.add(alias.asname or alias.name)
+                    elif alias.name == "glob":
+                        glob_names.add(alias.asname or alias.name)
 
 
 def _scope_keys(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> tuple[int | None, ...]:
     keys: list[int | None] = []
     current: ast.AST | None = node
     while current is not None:
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
             keys.append(id(current))
         current = parents.get(current)
     keys.append(None)
@@ -315,27 +316,26 @@ def _collect_read_provenance(
     path_names: set[tuple[int | None, str]] = {(None, name) for name in imported_path_names}
     for node in nodes:
         scope = _scope_key(node, parents)
-        if isinstance(node, ast.Assign):
-            if isinstance(node.value, ast.Name) and node.value.id in constructor_names:
-                constructor_names.update(
-                    target.id for target in node.targets if isinstance(target, ast.Name)
+        match True:
+            case _ if isinstance(node, ast.Assign):
+                if isinstance(node.value, ast.Name) and node.value.id in constructor_names:
+                    constructor_names.update(
+                        target.id for target in node.targets if isinstance(target, ast.Name)
+                    )
+                for target in node.targets:
+                    _assign_target_names(
+                        node.value, target, path_names, constructor_names, scope=scope
+                    )
+            case _ if isinstance(node, ast.AnnAssign) and node.value is not None:
+                if (
+                    isinstance(node.value, ast.Name)
+                    and node.value.id in constructor_names
+                    and isinstance(node.target, ast.Name)
+                ):
+                    constructor_names.add(node.target.id)
+                _assign_target_names(
+                    node.value, node.target, path_names, constructor_names, scope=scope
                 )
-            for target in node.targets:
-                _assign_target_names(node.value, target, path_names, constructor_names, scope=scope)
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            if (
-                isinstance(node.value, ast.Name)
-                and node.value.id in constructor_names
-                and isinstance(node.target, ast.Name)
-            ):
-                constructor_names.add(node.target.id)
-            _assign_target_names(
-                node.value,
-                node.target,
-                path_names,
-                constructor_names,
-                scope=scope,
-            )
     return path_names, os_names, glob_names, direct_read_names
 
 
@@ -539,16 +539,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         argv = sys.argv[1:]
     package_root = Path(argv[0]) if argv else Path(__file__).parent.parent.parent
     if not package_root.is_dir():
-        print(f"Package root not found: {package_root}", file=sys.stderr)
+        sys.stderr.write(f"Package root not found: {package_root}\n")
         return 2
     violations = audit_filesystem_read_consolidation(package_root)
     if violations:
-        print(f"FILESYSTEM READ CONSOLIDATION VIOLATIONS: {len(violations)}")
-        print("=" * 72)
+        sys.stdout.write(f"FILESYSTEM READ CONSOLIDATION VIOLATIONS: {len(violations)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print("filesystem read consolidation audit: OK")
+    sys.stdout.write("filesystem read consolidation audit: OK\n")
     return 0
 
 

@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 
 class FakeAgentExecutor:
+    __slots__ = ("_runs", "calls", "outputs_emitted", "statuses_emitted")
+
     def __init__(self, runs: dict[str, FakeRun]) -> None:
         self._runs = runs
         self.calls: list[WorkUnit] = []

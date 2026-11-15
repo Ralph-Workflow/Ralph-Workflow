@@ -33,6 +33,8 @@ _CHILD_PART_QUERY: str = (
 
 
 class SqliteOpenCodeChildPartSource:
+    __slots__ = ("__weakref__", "_conn", "_db_path", "_monotonic", "_retry_after", "_timeout")
+
     def __init__(
         self,
         db_path: Path,

@@ -184,12 +184,13 @@ def _collect_requirement_strings(data: Mapping[str, object]) -> list[str]:
                 node = None
                 break
             node = node.get(key)
-        if isinstance(node, list):
-            requirements.extend(item for item in node if isinstance(item, str))
-        elif isinstance(node, Mapping):
-            for value in node.values():
-                if isinstance(value, list):
-                    requirements.extend(item for item in value if isinstance(item, str))
+        match True:
+            case _ if isinstance(node, list):
+                requirements.extend(item for item in node if isinstance(item, str))
+            case _ if isinstance(node, Mapping):
+                for value in node.values():
+                    if isinstance(value, list):
+                        requirements.extend(item for item in value if isinstance(item, str))
     return requirements
 
 
@@ -616,46 +617,42 @@ def main(argv: list[str] | None = None) -> int:
         current_root = Path(__file__).resolve().parents[2]
         resolved_baseline = head_tree(current_root)
         if resolved_baseline is None:
-            print(
-                "Error: no committed baseline is available for this package; "
-                "pass <baseline_root> <current_root> explicitly.",
-                file=sys.stderr,
+            sys.stderr.write(
+                "Error: no committed baseline is available for this package; pass <baseline_root> <current_root> explicitly.\n"
             )
             return 2
         args = [str(resolved_baseline), str(current_root)]
     if len(args) != REQUIRED_CLI_ROOT_ARGUMENTS:
-        print(
-            "Usage: python -m ralph.testing.audit_dependency_integrity "
-            "<baseline_root> <current_root>",
-            file=sys.stderr,
+        sys.stderr.write(
+            "Usage: python -m ralph.testing.audit_dependency_integrity <baseline_root> <current_root>\n"
         )
         return 2
     baseline_root = Path(args[0])
     current_root = Path(args[1])
     for root in (baseline_root, current_root):
         if not root.is_dir():
-            print(f"Error: audit root not found: {root}", file=sys.stderr)
+            sys.stderr.write(f"Error: audit root not found: {root}\n")
             return 2
 
-    print(f"Auditing dependency integrity: baseline={baseline_root} current={current_root}")
-    print()
+    sys.stdout.write(
+        f"Auditing dependency integrity: baseline={baseline_root} current={current_root}\n"
+    )
+    sys.stdout.write("\n")
 
     findings = audit_dependency_roots(baseline_root, current_root)
 
     if findings:
-        print(f"DEPENDENCY INTEGRITY VIOLATIONS: {len(findings)} finding(s)")
-        print("=" * 72)
+        sys.stdout.write(f"DEPENDENCY INTEGRITY VIOLATIONS: {len(findings)} finding(s)\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for finding in findings:
-            print(f"  {finding}")
-        print()
-        print(
-            "Every NEW dependency must name a resolvable source and a publisher, must be "
-            "locked with artifact hashes, and must not introduce an install script. Fix "
-            "the dependency change, not the audit."
+            sys.stdout.write(f"  {finding}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Every NEW dependency must name a resolvable source and a publisher, must be locked with artifact hashes, and must not introduce an install script. Fix the dependency change, not the audit.\n"
         )
         return 1
 
-    print("No dependency-integrity violations found.")
+    sys.stdout.write("No dependency-integrity violations found.\n")
     return 0
 
 

@@ -40,14 +40,6 @@ _TEMPLATE_CONFIG: tuple[tuple[str, str, str], ...] = (
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
 
-@pytest.fixture(autouse=True)
-def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ralph.prompts import commit_evidence
-
-    monkeypatch.setattr(commit_evidence, "commit_generation_diff", lambda _root: "")
-    monkeypatch.setattr(commit_evidence, "list_changed_paths", lambda _root: [])
-
-
 @functools.lru_cache(maxsize=1)
 def _get_commit_executor_template() -> Path:
     base = Path(tempfile.mkdtemp(prefix="commit-executor-template-"))

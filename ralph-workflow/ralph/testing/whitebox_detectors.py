@@ -134,14 +134,15 @@ def _record_import(scan: _Scan, node: ast.AST) -> None:
 
 
 def _record_assign(scan: _Scan, node: ast.AST) -> None:
-    if isinstance(node, ast.Assign):
-        targets = tuple(node.targets)
-        scan.assignments.append((targets, node.value))
-        for target in targets:
-            if isinstance(target, ast.Name) and target.id == "pytestmark":
-                scan.pytestmark_values.append(node.value)
-    elif isinstance(node, ast.AnnAssign):
-        scan.assignments.append(((node.target,), node.value))
+    match True:
+        case _ if isinstance(node, ast.Assign):
+            targets = tuple(node.targets)
+            scan.assignments.append((targets, node.value))
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id == "pytestmark":
+                    scan.pytestmark_values.append(node.value)
+        case _ if isinstance(node, ast.AnnAssign):
+            scan.assignments.append(((node.target,), node.value))
 
 
 def _record_function(scan: _Scan, node: ast.AST) -> None:
@@ -178,21 +179,22 @@ def _scan_tree(tree: ast.AST) -> _Scan:
     stack: list[ast.AST] = [tree]
     while stack:
         node = stack.pop()
-        if isinstance(node, ast.Call):
-            scan.call_sites.append((node, _dotted_name(node.func)))
-        elif isinstance(node, ast.Attribute):
-            scan.attributes.append(node)
-        else:
-            handler = _SCAN_HANDLERS.get(type(node))
-            if handler is not None:
-                handler(scan, node)
-        for field_name in reversed(node._fields):
-            value: object = getattr(node, field_name, None)
-            if isinstance(value, list):
-                items = [item for item in value if isinstance(item, ast.AST)]
-                stack.extend(reversed(items))
-            elif isinstance(value, ast.AST):
-                stack.append(value)
+        match True:
+            case _ if isinstance(node, ast.Call):
+                scan.call_sites.append((node, _dotted_name(node.func)))
+            case _ if isinstance(node, ast.Attribute):
+                scan.attributes.append(node)
+            case _:
+                handler = _SCAN_HANDLERS.get(type(node))
+                if handler is not None:
+                    handler(scan, node)
+        for _field_name, value in reversed(tuple(ast.iter_fields(node))):
+            match True:
+                case _ if isinstance(value, list):
+                    items = [item for item in value if isinstance(item, ast.AST)]
+                    stack.extend(reversed(items))
+                case _ if isinstance(value, ast.AST):
+                    stack.append(value)
     return scan
 
 
@@ -426,20 +428,21 @@ def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
 
 
 def _harvest_markers_from_value(value: ast.AST, markers: set[str]) -> None:
-    if isinstance(value, ast.Attribute):
-        if (
-            isinstance(value.value, ast.Attribute)
-            and value.value.attr == "mark"
-            and isinstance(value.value.value, ast.Name)
-            and value.value.value.id == "pytest"
-        ):
-            markers.add(value.attr)
-    elif isinstance(value, ast.Call):
-        if isinstance(value.func, ast.Attribute):
-            _harvest_markers_from_value(value.func, markers)
-    elif isinstance(value, ast.List):
-        for elt in value.elts:
-            _harvest_markers_from_value(elt, markers)
+    match True:
+        case _ if isinstance(value, ast.Attribute):
+            if (
+                isinstance(value.value, ast.Attribute)
+                and value.value.attr == "mark"
+                and isinstance(value.value.value, ast.Name)
+                and (value.value.value.id == "pytest")
+            ):
+                markers.add(value.attr)
+        case _ if isinstance(value, ast.Call):
+            if isinstance(value.func, ast.Attribute):
+                _harvest_markers_from_value(value.func, markers)
+        case _ if isinstance(value, ast.List):
+            for elt in value.elts:
+                _harvest_markers_from_value(elt, markers)
 
 
 def _collect_markers(scan: _Scan) -> set[str]:
@@ -482,14 +485,15 @@ def has_subprocess_e2e_marker(tree: ast.AST) -> bool:
     stack: list[ast.AST] = [tree]
     while stack:
         node = stack.pop()
-        if isinstance(node, ast.FunctionDef | ast.ClassDef):
-            decorators.extend(node.decorator_list)
-        elif isinstance(node, ast.Assign):
-            pytestmark_values.extend(
-                node.value
-                for target in node.targets
-                if isinstance(target, ast.Name) and target.id == "pytestmark"
-            )
+        match True:
+            case _ if isinstance(node, ast.FunctionDef | ast.ClassDef):
+                decorators.extend(node.decorator_list)
+            case _ if isinstance(node, ast.Assign):
+                pytestmark_values.extend(
+                    node.value
+                    for target in node.targets
+                    if isinstance(target, ast.Name) and target.id == "pytestmark"
+                )
         stack.extend(ast.iter_child_nodes(node))
     marker_scan = _Scan(decorators=decorators, pytestmark_values=pytestmark_values)
     return _has_subprocess_e2e_marker(marker_scan)

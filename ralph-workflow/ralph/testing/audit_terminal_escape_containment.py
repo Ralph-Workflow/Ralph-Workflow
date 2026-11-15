@@ -91,7 +91,7 @@ def _get_source_segment_from_lines(lines: list[str], node: ast.AST) -> str | Non
         last = lines[end_lineno].encode()[:end_col_offset].decode("utf-8", errors="replace")
         mid = lines[lineno + 1 : end_lineno]
         return first + "".join(mid) + last
-    except Exception:
+    except (IndexError, UnicodeError):
         return None
 
 
@@ -113,25 +113,26 @@ def _function_body(rel_path: str, *, qualname: str) -> str | None:
 
     def _walk(node: ast.AST, depth: int) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
         for child in ast.iter_child_nodes(node):
-            if (
-                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and child.name == target_name
-            ):
-                if depth == len(parts) - 1:
-                    return child
-                if depth < len(parts) - 1:
-                    inner = _walk(child, depth + 1)
-                    if inner is not None:
-                        return inner
-            elif isinstance(child, ast.ClassDef) and child.name == parts[depth]:
-                if depth < len(parts) - 1:
-                    return _walk(child, depth + 1)
-                for item in child.body:
-                    if (
-                        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                        and item.name == target_name
-                    ):
-                        return item
+            match True:
+                case _ if (
+                    isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
+                    and child.name == target_name
+                ):
+                    if depth == len(parts) - 1:
+                        return child
+                    if depth < len(parts) - 1:
+                        inner = _walk(child, depth + 1)
+                        if inner is not None:
+                            return inner
+                case _ if isinstance(child, ast.ClassDef) and child.name == parts[depth]:
+                    if depth < len(parts) - 1:
+                        return _walk(child, depth + 1)
+                    for item in child.body:
+                        if (
+                            isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef)
+                            and item.name == target_name
+                        ):
+                            return item
         return None
 
     func = _walk(tree, 0)
@@ -177,6 +178,8 @@ def _check_literal(
 
 
 class Invariant:
+    __slots__ = ("absent", "present", "rel_path")
+
     def __init__(
         self,
         *,
@@ -205,6 +208,8 @@ class Invariant:
 
 
 class FunctionBodyInvariant:
+    __slots__ = ("absent", "min_counts", "present", "qualname", "rel_path")
+
     def __init__(
         self,
         *,
@@ -246,6 +251,8 @@ class FunctionBodyInvariant:
 
 
 class CallSiteInvariant:
+    __slots__ = ("absent", "callee_name", "present", "rel_path", "require_any")
+
     def __init__(
         self,
         *,
@@ -301,6 +308,7 @@ class NarrowCsiParameterInvariant:
 
 
 class PackageWideCallSiteInvariant:
+    __slots__ = ("absent", "callee_name", "present")
     _PACKAGE_FILE_LIST_CACHE: list[str] | None = None
 
     def __init__(
@@ -385,6 +393,7 @@ _MARKUP_PARSE_ALLOWLIST: dict[str, str] = {
 
 
 class MarkupParseInvariant:
+    __slots__ = ("callee_name",)
     _PACKAGE_FILE_LIST_CACHE: list[str] | None = None
 
     def __init__(self, *, callee_name: str = "from_markup") -> None:
@@ -447,7 +456,7 @@ def logging_configurator_violations() -> list[str]:
     return [
         violation
         for invariant in _INVARIANTS
-        if isinstance(invariant, (Invariant, FunctionBodyInvariant, CallSiteInvariant))
+        if isinstance(invariant, Invariant | FunctionBodyInvariant | CallSiteInvariant)
         and invariant.rel_path in {"logging.py", "cli/main.py"}
         for violation in invariant.violations()
     ]
@@ -682,46 +691,20 @@ def main(argv: list[str] | None = None) -> int:
         problems.extend(invariant.violations())
 
     if problems:
-        print(f"TERMINAL-ESCAPE-CONTAINMENT AUDIT FAILED: {len(problems)} invariant violation(s)")
-        print("=" * 72)
+        sys.stdout.write(
+            f"TERMINAL-ESCAPE-CONTAINMENT AUDIT FAILED: {len(problems)} invariant violation(s)\n"
+        )
+        sys.stdout.write(str("=" * 72) + "\n")
         for line in problems:
-            print(f"  {line}")
-        print()
-        print(
-            "The terminal-escape containment contract from the wt-036 rework "
-            "is not satisfied. Re-read the rework plan and restore the "
-            "missing/forbidden literals -- do NOT weaken this audit."
+            sys.stdout.write(f"  {line}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "The terminal-escape containment contract from the wt-036 rework is not satisfied. Re-read the rework plan and restore the missing/forbidden literals -- do NOT weaken this audit.\n"
         )
         return 1
 
-    print(
-        "All terminal-escape containment invariants OK: "
-        "line_sanitizer has strip_terminal_control with the full CSI class and "
-        "no production narrow parameter regex; the totally-guarded strip_markup_safe choke point "
-        "(no except-ValueError narrowing); _sanitize and _strip_markup "
-        "delegate to it and no from_markup call anywhere under ralph/ "
-        "takes non-literal text outside the allowlist; "
-        "_plain_constants no longer carries the SGR-only regex; "
-        "parallel_display.strip_markup / _render_titled_lines and the "
-        "module-level emit_activity_line delegate to "
-        "strip_terminal_control with markup=False (no _ANSI_ESCAPE, no "
-        "unsanitized console.print(line)); activity_model.render_event_line "
-        "calls strip_terminal_control before truncation; _pty_runner "
-        "dropped tqdm + file=sys.stdout; _process_reader uses PIPE only for "
-        "prompt delivery and DEVNULL otherwise, while subprocess_executor "
-        "passes DEVNULL (no stdin=None/sys.stdin INHERIT); _pty_line_reader "
-        "still yields raw VT text. SpawnOptions.stdin defaults to subprocess.DEVNULL and no "
-        "SpawnOptions call anywhere under ralph/ passes stdin=None. "
-        "ralph.logging.configure_logging AND ralph.cli.main._configure_logging "
-        "route through an injected console_sink (no raw sys.stderr, "
-        "colorize=False); the CLI call site wires make_sanitizing_log_sink "
-        "for the DisplayContext Console. Both log_sink factories call "
-        "strip_terminal_control with markup=False / highlight=False and "
-        "no raw Console construction. display.excepthook strips crash output "
-        "and restores the terminal. Parent restoration shows the cursor, resets "
-        "SGR, restores saved termios, and avoids buffer/display/input destruction; "
-        "the OSC 11 probe retains its owned timeout TCIFLUSH. "
-        "ralph.process.pty.spawn_pty_process still calls os.setsid() + TIOCSCTTY."
+    sys.stdout.write(
+        "All terminal-escape containment invariants OK: line_sanitizer has strip_terminal_control with the full CSI class and no production narrow parameter regex; the totally-guarded strip_markup_safe choke point (no except-ValueError narrowing); _sanitize and _strip_markup delegate to it and no from_markup call anywhere under ralph/ takes non-literal text outside the allowlist; _plain_constants no longer carries the SGR-only regex; parallel_display.strip_markup / _render_titled_lines and the module-level emit_activity_line delegate to strip_terminal_control with markup=False (no _ANSI_ESCAPE, no unsanitized console.print(line)); activity_model.render_event_line calls strip_terminal_control before truncation; _pty_runner dropped tqdm + file=sys.stdout; _process_reader uses PIPE only for prompt delivery and DEVNULL otherwise, while subprocess_executor passes DEVNULL (no stdin=None/sys.stdin INHERIT); _pty_line_reader still yields raw VT text. SpawnOptions.stdin defaults to subprocess.DEVNULL and no SpawnOptions call anywhere under ralph/ passes stdin=None. ralph.logging.configure_logging AND ralph.cli.main._configure_logging route through an injected console_sink (no raw sys.stderr, colorize=False); the CLI call site wires make_sanitizing_log_sink for the DisplayContext Console. Both log_sink factories call strip_terminal_control with markup=False / highlight=False and no raw Console construction. display.excepthook strips crash output and restores the terminal. Parent restoration shows the cursor, resets SGR, restores saved termios, and avoids buffer/display/input destruction; the OSC 11 probe retains its owned timeout TCIFLUSH. ralph.process.pty.spawn_pty_process still calls os.setsid() + TIOCSCTTY.\n"
     )
     return 0
 

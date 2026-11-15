@@ -36,7 +36,7 @@ def _reap_subtree(
 ) -> None:
     if pid is None:
         return
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(OSError, RuntimeError, TimeoutError):
         teardown_subtree(pid, issuer=issuer, owner_label=label, pgid=pgid)
 
 
@@ -45,7 +45,7 @@ def _verified_pgid(pid: int | None) -> int | None:
         return None
     try:
         return verified_child_session_pgid(pid)
-    except Exception:
+    except (OSError, RuntimeError, TypeError, ValueError):
         return None
 
 
@@ -53,6 +53,14 @@ _POST_TERMINATE_DRAIN_SECONDS: Final[float] = 5.0
 
 
 class ProcessExecutionError(RuntimeError):
+    __slots__ = (
+        "command",
+        "stderr",
+        "stdout",
+        "timed_out",
+        "timeout",
+    )
+
     def __init__(
         self,
         command: tuple[str, ...],
@@ -285,7 +293,12 @@ def _partial_output(
     latest: subprocess.TimeoutExpired, earlier: subprocess.TimeoutExpired, stream: str
 ) -> bytes:
     for exc in (latest, earlier):
-        captured: object = getattr(exc, stream, None)
+        captured: bytes | str | None
+        if stream == "output":
+            captured = exc.output
+        else:
+            raw_stderr: object = exc.stderr
+            captured = raw_stderr if isinstance(raw_stderr, bytes | str) else None
         if isinstance(captured, bytes) and captured:
             return captured
     return b""
@@ -304,7 +317,7 @@ def _normalize_cwd(cwd: str | Path | None) -> str | None:
 def _build_env(
     env: Mapping[str, str] | None, remove: frozenset[str] = frozenset()
 ) -> dict[str, str]:
-    merged = dict(os.environ)
+    merged = os.environ.copy()
     if env is not None:
         merged.update(env)
     for name in remove:

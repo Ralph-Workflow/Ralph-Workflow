@@ -53,7 +53,7 @@ def _setup_test_environment(
     agent_dir.mkdir()
     local_main_config = agent_dir / "ralph-workflow.toml"
     local_main_config.write_text(
-        "[general]\ndeveloper_iters = 5\n",
+        '[general]\ndeveloper_iters = 5\n\n[agent_chains]\nanalysis = "mock"\ncommit = "mock"\n',
         encoding="utf-8",
     )
 
@@ -202,7 +202,7 @@ def test_check_config_and_diagnose_all_valid_files(
     agent_dir = repo_root / ".agent"
     agent_dir.mkdir()
     (agent_dir / "ralph-workflow.toml").write_text(
-        "[general]\ndeveloper_iters = 5\n",
+        '[general]\ndeveloper_iters = 5\n\n[agent_chains]\nanalysis = "mock"\ncommit = "mock"\n',
         encoding="utf-8",
     )
     (agent_dir / "mcp.toml").write_text("[mcp_servers]\n", encoding="utf-8")

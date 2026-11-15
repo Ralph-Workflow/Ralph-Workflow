@@ -8,6 +8,7 @@ _MAX_QUOTA_DETAIL_CHARS = 512
 
 
 class QuotaExhaustedError(AgentInvocationError):
+    __slots__ = ("skip_same_agent_retries",)
     typed_signal_provider_originated: bool = True
 
     def __init__(

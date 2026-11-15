@@ -4,6 +4,14 @@ from ralph.agents.invoke._errors import AgentInvocationError
 
 
 class OpenCodeResumableExitError(AgentInvocationError):
+    __slots__ = (
+        "elapsed_seconds",
+        "last_evidence_summary",
+        "last_observed_tool_call",
+        "resumable_session_id",
+        "transcript_tail",
+    )
+
     def __init__(
         self,
         agent_name: str,

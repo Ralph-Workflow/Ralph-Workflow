@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from ralph.git.rebase._invalid_transition_error import InvalidTransitionError
 from ralph.git.rebase._rebase_event import RebaseEvent
-from ralph.git.rebase._rebase_lock import RebaseLock
 from ralph.git.rebase._rebase_phase import RebasePhase
 from ralph.git.rebase._recovery_action import RecoveryAction
 
@@ -21,7 +20,6 @@ __all__ = [
     "InvalidTransitionError",
     "RebaseCheckpoint",
     "RebaseEvent",
-    "RebaseLock",
     "RebasePhase",
     "RebaseStateMachine",
     "RecoveryAction",

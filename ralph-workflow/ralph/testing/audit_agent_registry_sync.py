@@ -4,8 +4,12 @@ import ast
 import sys
 from pathlib import Path
 
+from ralph.testing._runtime_checks import require
+
 
 class RegistrySyncViolation:
+    __slots__ = ("category", "detail", "file_path", "line")
+
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -18,16 +22,17 @@ class RegistrySyncViolation:
 
 def _find_builtin_supports_tuple(tree: ast.Module) -> ast.expr | None:
     for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "_BUILTIN_AGENT_SUPPORTS":
-                    return node.value
-        elif (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == "_BUILTIN_AGENT_SUPPORTS"
-        ):
-            return node.value
+        match True:
+            case _ if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "_BUILTIN_AGENT_SUPPORTS":
+                        return node.value
+            case _ if (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and (node.target.id == "_BUILTIN_AGENT_SUPPORTS")
+            ):
+                return node.value
     return None
 
 
@@ -52,7 +57,7 @@ def _parse_support_entry(elt: ast.expr) -> tuple[str | None, str | None, bool]:
     if not is_correct_call:
         return None, None, False
 
-    assert isinstance(elt, ast.Call)
+    require(isinstance(elt, ast.Call))
     name_val: str | None = None
     cmd_val: str | None = None
 
@@ -61,18 +66,19 @@ def _parse_support_entry(elt: ast.expr) -> tuple[str | None, str | None, bool]:
         if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
             name_val = first_arg.value
     for kw in elt.keywords:
-        if (
-            kw.arg == "name"
-            and isinstance(kw.value, ast.Constant)
-            and isinstance(kw.value.value, str)
-        ):
-            name_val = kw.value.value
-        elif (
-            kw.arg == "cmd"
-            and isinstance(kw.value, ast.Constant)
-            and isinstance(kw.value.value, str)
-        ):
-            cmd_val = kw.value.value
+        match True:
+            case _ if (
+                kw.arg == "name"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                name_val = kw.value.value
+            case _ if (
+                kw.arg == "cmd"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                cmd_val = kw.value.value
 
     return name_val, cmd_val, True
 
@@ -224,10 +230,11 @@ def audit_registry_file(content: str, rel_path: str) -> list[RegistrySyncViolati
     builtin_agents_func = None
 
     for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == "AgentRegistry":
-            registry_class = node
-        elif isinstance(node, ast.FunctionDef) and node.name == "builtin_agents":
-            builtin_agents_func = node
+        match True:
+            case _ if isinstance(node, ast.ClassDef) and node.name == "AgentRegistry":
+                registry_class = node
+            case _ if isinstance(node, ast.FunctionDef) and node.name == "builtin_agents":
+                builtin_agents_func = node
 
     if registry_class is None:
         violations.append(
@@ -380,12 +387,12 @@ def main() -> int:
     package_root = Path(__file__).parent.parent
     violations = run_audit(package_root)
     if violations:
-        print("AGENT-REGISTRY-SYNC Violations Found:")
+        sys.stdout.write("AGENT-REGISTRY-SYNC Violations Found:\n")
         for v in violations:
-            print(f"  {v}")
+            sys.stdout.write(f"  {v}\n")
         return 1
 
-    print("AGENT-REGISTRY-SYNC Audit: OK")
+    sys.stdout.write("AGENT-REGISTRY-SYNC Audit: OK\n")
     return 0
 
 

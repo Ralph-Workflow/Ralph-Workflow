@@ -104,7 +104,7 @@ class _SymbolSpan:
 def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
     spans: list[_SymbolSpan] = []
     for node in tree.body:
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             spans.append(
                 _SymbolSpan(
                     qualified_name=node.name,
@@ -120,7 +120,7 @@ def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
                         end_line=child.end_lineno or child.lineno,
                     )
                     for child in node.body
-                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                    if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
                 )
     return spans
 
@@ -188,29 +188,29 @@ def _validate_owner_entries(
             )
         seen_sites.add(site)
         responsibilities = entry.get("responsibilities")
-        if not isinstance(responsibilities, list) or not responsibilities:
-            violations.append(
-                WorkspaceResourceInventoryViolation(
-                    kind="missing_field",
-                    site=site,
-                    message=("workspace_owners entry requires a non-empty 'responsibilities' list"),
-                )
-            )
-        elif isinstance(responsibilities, list):
-            invalid = [
-                str(item) for item in responsibilities if str(item) not in _OWNER_RESPONSIBILITIES
-            ]
-            if invalid:
+        match True:
+            case _ if not isinstance(responsibilities, list) or not responsibilities:
                 violations.append(
                     WorkspaceResourceInventoryViolation(
-                        kind="invalid_enum",
+                        kind="missing_field",
                         site=site,
-                        message=(
-                            f"responsibilities {invalid!r} outside the fixed enum "
-                            f"{sorted(_OWNER_RESPONSIBILITIES)}; use a valid activity"
-                        ),
+                        message="workspace_owners entry requires a non-empty 'responsibilities' list",
                     )
                 )
+            case _ if isinstance(responsibilities, list):
+                invalid = [
+                    str(item)
+                    for item in responsibilities
+                    if str(item) not in _OWNER_RESPONSIBILITIES
+                ]
+                if invalid:
+                    violations.append(
+                        WorkspaceResourceInventoryViolation(
+                            kind="invalid_enum",
+                            site=site,
+                            message=f"responsibilities {invalid!r} outside the fixed enum {sorted(_OWNER_RESPONSIBILITIES)}; use a valid activity",
+                        )
+                    )
     return violations
 
 
@@ -514,24 +514,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     package_root = Path(selected[0]) if selected else Path(__file__).parent.parent
 
     if not package_root.is_dir():
-        print(f"Package root not found: {package_root}", file=sys.stderr)
+        sys.stderr.write(f"Package root not found: {package_root}\n")
         return 2
 
     violations = audit_workspace_resource_inventory(package_root)
     if violations:
-        print(f"WORKSPACE RESOURCE INVENTORY VIOLATIONS: {len(violations)}")
-        print("=" * 72)
+        sys.stdout.write(f"WORKSPACE RESOURCE INVENTORY VIOLATIONS: {len(violations)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
-        print()
-        print(
-            "Fix the inventory: ensure workspace_resource_inventory.json covers every "
-            "discovered site and canonical primitive owner, has valid enum values, "
-            "no duplicate site keys, and no stale entries."
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Fix the inventory: ensure workspace_resource_inventory.json covers every discovered site and canonical primitive owner, has valid enum values, no duplicate site keys, and no stale entries.\n"
         )
         return 1
 
-    print("workspace resource inventory audit: OK")
+    sys.stdout.write("workspace resource inventory audit: OK\n")
     return 0
 
 

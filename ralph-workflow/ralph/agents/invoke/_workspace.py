@@ -66,6 +66,32 @@ WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, flo
 
 
 class WorkspaceMonitor:
+    __slots__ = (
+        "__weakref__",
+        "_awareness_status",
+        "_classifier",
+        "_cross_process_owner_id",
+        "_directory_counter",
+        "_event_count",
+        "_handler",
+        "_host_budget",
+        "_last_event_at",
+        "_live_watch_total",
+        "_now",
+        "_observer",
+        "_on_event",
+        "_owns_shared_awareness",
+        "_prior_lock_holder",
+        "_probe_budget_seconds",
+        "_seams",
+        "_seen_files",
+        "_shared_awareness_io_error",
+        "_shared_consumer",
+        "_shared_key",
+        "_sidecar_publisher",
+        "_started",
+        "_workspace",
+    )
     _shared_watches: ClassVar[dict[str, _SharedWorkspaceWatch]] = {}
     _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 

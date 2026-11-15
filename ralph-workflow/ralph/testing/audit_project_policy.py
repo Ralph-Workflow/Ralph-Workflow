@@ -37,11 +37,11 @@ def main(argv: list[str] | None = None) -> int:
     _ = argv
     violations = collect_violations()
     if violations:
-        print(f"Project policy readiness audit: {len(violations)} finding(s):")
+        sys.stdout.write(f"Project policy readiness audit: {len(violations)} finding(s):\n")
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print("Project policy readiness audit: OK (pack validates READY under v6)")
+    sys.stdout.write("Project policy readiness audit: OK (pack validates READY under v6)\n")
     return 0
 
 

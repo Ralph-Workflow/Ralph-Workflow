@@ -31,7 +31,7 @@ def _psutil_pid_exists_liveness(psutil_mod: _PsutilModuleLike, pid: int) -> Live
     try:
         exists = psutil_mod.pid_exists(pid)
         return LivenessResult.ALIVE if exists else LivenessResult.GONE
-    except Exception:
+    except (OSError, RuntimeError, TypeError, ValueError):
         return LivenessResult.UNKNOWN
 
 
@@ -45,7 +45,7 @@ def verify_process_liveness(
             proc = psutil_mod.process_from_pid(pid)
             if proc.status() == "zombie":
                 return LivenessResult.ZOMBIE
-        except Exception:
+        except (OSError, RuntimeError, TypeError, ValueError):
             pass
         else:
             return _psutil_pid_exists_liveness(psutil_mod, pid)

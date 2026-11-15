@@ -60,15 +60,16 @@ def _split_names(value: str) -> set[str]:
 def _git_bound_names(tree: ast.AST) -> frozenset[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "git" or alias.name.startswith("git."):
-                    names.add((alias.asname or alias.name).split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if module == "git" or module.startswith("git."):
+        match True:
+            case _ if isinstance(node, ast.Import):
                 for alias in node.names:
-                    names.add(alias.asname or alias.name)
+                    if alias.name == "git" or alias.name.startswith("git."):
+                        names.add((alias.asname or alias.name).split(".")[0])
+            case _ if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module == "git" or module.startswith("git."):
+                    for alias in node.names:
+                        names.add(alias.asname or alias.name)
     return frozenset(names)
 
 
@@ -176,6 +177,7 @@ WhiteboxBaseline = Mapping[str, Mapping[str, int]]
 
 
 class TestPolicyViolation:
+    __slots__ = ("category", "detail", "file_path", "line")
     __test__ = False
 
     def __init__(
@@ -204,6 +206,22 @@ class AuditInventory:
 
 
 class TestPolicyAuditor:
+    __slots__ = (
+        "_git_roots",
+        "_is_subprocess_e2e",
+        "_skip_git",
+        "_skip_io",
+        "_skip_sleep",
+        "_skip_subprocess_network",
+        "_skip_wall_clock",
+        "_source_read_exempt",
+        "_uses_tmp_path",
+        "facts",
+        "file_path",
+        "source_lines",
+        "violations",
+    )
+
     def __init__(
         self,
         file_path: str,
@@ -273,9 +291,9 @@ class TestPolicyAuditor:
         if node.args:
             first_arg = node.args[0]
             if isinstance(first_arg, ast.Constant):
-                if isinstance(first_arg.value, (int, float)) and first_arg.value <= 0:
+                if isinstance(first_arg.value, int | float) and first_arg.value <= 0:
                     return
-                if isinstance(first_arg.value, (int, float)) and first_arg.value > 0:
+                if isinstance(first_arg.value, int | float) and first_arg.value > 0:
                     self._add_violation(
                         node,
                         "sleep",
@@ -656,16 +674,15 @@ def main(
     emit_baseline = "--emit-baseline" in args
     positional = [argument for argument in args if argument != "--emit-baseline"]
     if len(positional) > 1 or any(argument.startswith("-") for argument in positional):
-        print(
-            "Usage: python -m ralph.testing.audit_test_policy [--emit-baseline] [tests_root]",
-            file=sys.stderr,
+        sys.stderr.write(
+            "Usage: python -m ralph.testing.audit_test_policy [--emit-baseline] [tests_root]\n"
         )
         return 2
 
     tests_root = Path(positional[0]) if positional else (_PROJECT_ROOT / "tests")
 
     if not tests_root.is_dir():
-        print(f"Error: tests directory not found: {tests_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: tests directory not found: {tests_root}\n")
         return 2
 
     if emit_baseline:
@@ -681,36 +698,40 @@ def main(
         inventory=collector,
     )
     drifts = reconcile_baseline(tests_root, collector, effective_baseline)
-    print(f"Auditing test files in: {tests_root}")
-    print(f"Subprocess/network E2E files exempt: {len(_SUBPROCESS_E2E_FILES)}")
-    print()
+    sys.stdout.write(f"Auditing test files in: {tests_root}\n")
+    sys.stdout.write(f"Subprocess/network E2E files exempt: {len(_SUBPROCESS_E2E_FILES)}\n")
+    sys.stdout.write("\n")
 
     if violations:
-        print(f"POLICY VIOLATIONS FOUND: {len(violations)} violation(s) in {files_checked} file(s)")
-        print("=" * 72)
+        sys.stdout.write(
+            f"POLICY VIOLATIONS FOUND: {len(violations)} violation(s) in {files_checked} file(s)\n"
+        )
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
-        print()
-        print("These violations are test design defects. Fix the test, not the audit.")
-        print("Guidance: docs/agents/testing-guide.md §'Test Performance Policy'")
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write("These violations are test design defects. Fix the test, not the audit.\n")
+        sys.stdout.write("Guidance: docs/agents/testing-guide.md §'Test Performance Policy'\n")
 
     if drifts:
-        print(f"WHITE-BOX BASELINE DRIFT: {len(drifts)} row(s) disagree with the frozen baseline")
-        print("=" * 72)
+        sys.stdout.write(
+            f"WHITE-BOX BASELINE DRIFT: {len(drifts)} row(s) disagree with the frozen baseline\n"
+        )
+        sys.stdout.write(str("=" * 72) + "\n")
         for drift in drifts:
-            print(f"  {drift.path}: [{drift.category}] {drift.detail}")
-        print()
-        print("Fix the FROZEN BASELINE, not the audit:")
-        print("  python -m ralph.testing.audit_test_policy --emit-baseline")
-        print("lowers the ceiling to the current count; update the matching ledger")
-        print("row in docs/agents/testing-guide.md in the SAME edit, because a")
-        print("lowered ceiling without a matching ledger row leaves the ledger")
-        print("claiming coupling the tree no longer has.")
+            sys.stdout.write(f"  {drift.path}: [{drift.category}] {drift.detail}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write("Fix the FROZEN BASELINE, not the audit:\n")
+        sys.stdout.write("  python -m ralph.testing.audit_test_policy --emit-baseline\n")
+        sys.stdout.write("lowers the ceiling to the current count; update the matching ledger\n")
+        sys.stdout.write("row in docs/agents/testing-guide.md in the SAME edit, because a\n")
+        sys.stdout.write("lowered ceiling without a matching ledger row leaves the ledger\n")
+        sys.stdout.write("claiming coupling the tree no longer has.\n")
 
     if violations or drifts:
         return 1
 
-    print(f"No policy violations found in {files_checked} file(s).")
+    sys.stdout.write(f"No policy violations found in {files_checked} file(s).\n")
     return 0
 
 

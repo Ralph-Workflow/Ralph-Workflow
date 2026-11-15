@@ -119,7 +119,7 @@ def _find_schedule_calls(nodes: Sequence[ast.AST]) -> list[ast.Call]:
 def _find_schedule_aliases(nodes: Sequence[ast.AST]) -> list[ast.expr]:
     aliases: list[ast.expr] = []
     for node in nodes:
-        if not isinstance(node, (ast.Assign, ast.NamedExpr, ast.AnnAssign)):
+        if not isinstance(node, ast.Assign | ast.NamedExpr | ast.AnnAssign):
             continue
         value = node.value
         if (isinstance(value, ast.Attribute) and value.attr == "schedule") or (
@@ -139,14 +139,14 @@ def _has_recursive_true_kwarg(call: ast.Call) -> bool:
 
 
 def _has_loop_ancestor(ancestors: list[ast.AST]) -> bool:
-    return any(isinstance(ancestor, (ast.For, ast.AsyncFor, ast.While)) for ancestor in ancestors)
+    return any(isinstance(ancestor, ast.For | ast.AsyncFor | ast.While) for ancestor in ancestors)
 
 
 def _nearest_enclosing_function(
     ancestors: list[ast.AST],
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     for ancestor in ancestors:
-        if isinstance(ancestor, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(ancestor, ast.FunctionDef | ast.AsyncFunctionDef):
             return ancestor
     return None
 
@@ -492,27 +492,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     package_root: Path = Path(argv[0]) if argv else Path(__file__).parent.parent
 
     if not package_root.is_dir():
-        print(f"Package root not found: {package_root}", file=sys.stderr)
+        sys.stderr.write(f"Package root not found: {package_root}\n")
         return 2
 
     violations: list[FseventsWatchViolation] = audit_fsevents_watch_consolidation(package_root)
 
     if violations:
-        print(f"FSEVENTS WATCH CONSOLIDATION VIOLATIONS: {len(violations)}")
-        print("=" * 72)
+        sys.stdout.write(f"FSEVENTS WATCH CONSOLIDATION VIOLATIONS: {len(violations)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
-        print()
-        print(
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
             f"Fix the drift: keep exactly one observer.schedule(..., recursive=True)"
             f" call statically inside WorkspaceMonitor.start() in"
             f" {_WORKSPACE_MONITOR_MODULE!r}; no loop ancestor; not in any other"
             " function. A single recursive root watch is the minimal-stream option"
-            " for macOS fseventsd."
+            " for macOS fseventsd.\n"
         )
         return 1
 
-    print("fsevents watch consolidation audit: OK")
+    sys.stdout.write("fsevents watch consolidation audit: OK\n")
     return 0
 
 

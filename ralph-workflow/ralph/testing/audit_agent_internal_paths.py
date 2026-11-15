@@ -4,7 +4,9 @@ import ast
 import importlib.util
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
+
+from ralph.testing._runtime_checks import require
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -17,6 +19,8 @@ def _read(rel_path: str) -> str:
 
 
 class Invariant:
+    __slots__ = ("absent", "present", "rel_path")
+
     def __init__(
         self,
         *,
@@ -63,7 +67,7 @@ def _check_fast_path_placement() -> list[str]:
 
     target: ast.FunctionDef | ast.AsyncFunctionDef | None = None
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == (
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == (
             _FAST_PATH_TARGET_FUNCTION
         ):
             target = node
@@ -160,7 +164,7 @@ def _parse_source_or_synthesize_violation(rel_path: str, source: str) -> ast.AST
 
 def _find_target_function(tree: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | list[str]:
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == (
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == (
             _AUTO_SEED_TARGET_FUNCTION
         ):
             return node
@@ -171,6 +175,14 @@ def _find_target_function(tree: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionD
 
 
 class _CallSites:
+    __slots__ = (
+        "gitexclude_lines",
+        "gitignore_lines",
+        "later_line",
+        "pre_emptive_untrack_lines",
+        "prior_line",
+    )
+
     def __init__(self) -> None:
         self.prior_line: int | None = None
         self.later_line: int | None = None
@@ -255,8 +267,8 @@ def _ordering_violations_for_call(
     sites: _CallSites,
 ) -> list[str]:
     problems: list[str] = []
-    assert sites.prior_line is not None
-    assert sites.later_line is not None
+    require(sites.prior_line is not None)
+    require(sites.later_line is not None)
     if lineno < sites.prior_line:
         problems.append(
             f"{rel_path}: {helper!r} call at line {lineno} is BEFORE the "
@@ -421,7 +433,7 @@ def _load_is_agent_internal_path() -> Callable[[str], bool]:
         raise RuntimeError(f"cannot build import spec for {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast("Callable[[str], bool]", module.is_agent_internal_path)
+    return module.is_agent_internal_path
 
 
 def _behavioral_invariants() -> list[str]:
@@ -429,13 +441,13 @@ def _behavioral_invariants() -> list[str]:
 
     try:
         is_agent_internal_path = _load_is_agent_internal_path()
-    except Exception as exc:
+    except (AttributeError, ImportError, OSError, RuntimeError) as exc:
         return [f"audit_agent_internal_paths: cannot import is_agent_internal_path: {exc}"]
 
     for path in _BEHAVIORAL_ACCEPT_PATHS:
         try:
             result = is_agent_internal_path(path)
-        except Exception as exc:
+        except (OSError, TypeError, ValueError) as exc:
             problems.append(f"is_agent_internal_path({path!r}) raised {type(exc).__name__}: {exc}")
             continue
         if result is not True:
@@ -444,7 +456,7 @@ def _behavioral_invariants() -> list[str]:
     for path in _BEHAVIORAL_REJECT_PATHS:
         try:
             result = is_agent_internal_path(path)
-        except Exception as exc:
+        except (OSError, TypeError, ValueError) as exc:
             problems.append(f"is_agent_internal_path({path!r}) raised {type(exc).__name__}: {exc}")
             continue
         if result is not False:
@@ -524,20 +536,19 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if problems:
-        print(f"AGENT-INTERNAL-PATHS AUDIT FAILED: {len(problems)} invariant violation(s)")
-        print("=" * 72)
+        sys.stdout.write(
+            f"AGENT-INTERNAL-PATHS AUDIT FAILED: {len(problems)} invariant violation(s)\n"
+        )
+        sys.stdout.write(str("=" * 72) + "\n")
         for line in problems:
-            print(f"  {line}")
-        print()
-        print(
-            "The Ralph runtime-artifact allowlist has drifted between the leaf module "
-            "(_agent_internal_paths.py), the commit_review fast-path (literal + AST placement), "
-            "and the bootstrap gitignore/exclude seed. Re-read the rework plan in PLAN.md and "
-            "restore the missing/forbidden literals and the first-statement placement."
+            sys.stdout.write(f"  {line}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "The Ralph runtime-artifact allowlist has drifted between the leaf module (_agent_internal_paths.py), the commit_review fast-path (literal + AST placement), and the bootstrap gitignore/exclude seed. Re-read the rework plan in PLAN.md and restore the missing/forbidden literals and the first-statement placement.\n"
         )
         return 1
 
-    print(
+    sys.stdout.write(
         f"audit_agent_internal_paths OK ({total} invariants checked): "
         "_agent_internal_paths.py exports the canonical frozensets + completion_seen_*.json "
         "glob + is_agent_internal_path predicate, "
@@ -554,7 +565,7 @@ def main(argv: list[str] | None = None) -> int:
         "git/operations.py _atomic_append_text staging filename is content-derived "
         "(sha256(payload).hexdigest()[:16] + os.getpid()), NOT id(payload)-derived, "
         f"behavioral check accepts all {len(_BEHAVIORAL_ACCEPT_PATHS)} canonical paths "
-        f"and rejects all {len(_BEHAVIORAL_REJECT_PATHS)} negative paths."
+        f"and rejects all {len(_BEHAVIORAL_REJECT_PATHS)} negative paths.\n"
     )
     return 0
 

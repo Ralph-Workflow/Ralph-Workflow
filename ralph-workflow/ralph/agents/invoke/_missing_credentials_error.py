@@ -5,6 +5,10 @@ from ralph.recovery.typed_signal import TypedSignal
 
 
 class MissingCredentialsError(AgentInvocationError):
+    __slots__ = (
+        "env_var",
+        "skip_same_agent_retries",
+    )
     typed_signal_provider_originated: bool = True
 
     def __init__(self, agent_name: str, detail: str) -> None:

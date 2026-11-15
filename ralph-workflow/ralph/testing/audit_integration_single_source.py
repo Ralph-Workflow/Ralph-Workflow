@@ -101,7 +101,9 @@ def selftest() -> int:
     }
     clean_violations = audit_modules(clean_modules)
     if clean_violations:
-        print(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}")
+        sys.stdout.write(
+            f"SELFTEST FAILED: clean modules produced violations: {clean_violations}\n"
+        )
         return 1
 
     planted_cases: list[tuple[str, str, str]] = [
@@ -131,11 +133,13 @@ def selftest() -> int:
         violations = audit_modules({rel: source})
         rules = [v.rule for v in violations]
         if expected_rule not in rules:
-            print(f"SELFTEST FAILED: {rel} did not produce rule '{expected_rule}', got {rules}")
+            sys.stdout.write(
+                f"SELFTEST FAILED: {rel} did not produce rule '{expected_rule}', got {rules}\n"
+            )
             return 1
 
-    print(
-        f"INTEGRATION SINGLE-SOURCE AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)"
+    sys.stdout.write(
+        f"INTEGRATION SINGLE-SOURCE AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)\n"
     )
     return 0
 
@@ -147,11 +151,13 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(root)
     if violations:
-        print(f"INTEGRATION SINGLE-SOURCE AUDIT: {len(violations)} violation(s) found:")
+        sys.stdout.write(
+            f"INTEGRATION SINGLE-SOURCE AUDIT: {len(violations)} violation(s) found:\n"
+        )
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print("INTEGRATION SINGLE-SOURCE AUDIT: OK")
+    sys.stdout.write("INTEGRATION SINGLE-SOURCE AUDIT: OK\n")
     return 0
 
 

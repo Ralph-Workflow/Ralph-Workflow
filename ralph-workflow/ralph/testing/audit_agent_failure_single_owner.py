@@ -7,6 +7,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+from ralph.testing._runtime_checks import require
 from ralph.testing._single_owner_retry_cap_rule import _check_production_retry_cap_rule
 from ralph.testing._single_owner_rules import (
     _FORBIDDEN_TRACKER_MODULES,
@@ -102,26 +103,27 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
     enclosing_functions = _enclosing_function_names(tree)
     violations: list[SingleOwnerViolation] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            violations.extend(_check_production_class(node, rel_path))
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            violations.extend(_check_production_function(node, rel_path))
-        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-            violations.extend(_check_production_assignment(node, rel_path))
-        elif isinstance(node, ast.Attribute):
-            violations.extend(_check_production_attribute(node, rel_path))
-        elif isinstance(node, ast.Subscript):
-            violations.extend(_check_production_subscript(node, rel_path))
-        elif isinstance(node, ast.Compare):
-            violations.extend(_check_production_compare(node, rel_path))
-        elif isinstance(node, (ast.If, ast.While, ast.IfExp)):
-            violations.extend(_check_production_retry_cap_rule(node, rel_path))
-        elif isinstance(node, ast.Call):
-            violations.extend(
-                _check_production_call(node, rel_path, enclosing_functions.get(id(node)))
-            )
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            violations.extend(_check_production_import(node, rel_path))
+        match True:
+            case _ if isinstance(node, ast.ClassDef):
+                violations.extend(_check_production_class(node, rel_path))
+            case _ if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                violations.extend(_check_production_function(node, rel_path))
+            case _ if isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign):
+                violations.extend(_check_production_assignment(node, rel_path))
+            case _ if isinstance(node, ast.Attribute):
+                violations.extend(_check_production_attribute(node, rel_path))
+            case _ if isinstance(node, ast.Subscript):
+                violations.extend(_check_production_subscript(node, rel_path))
+            case _ if isinstance(node, ast.Compare):
+                violations.extend(_check_production_compare(node, rel_path))
+            case _ if isinstance(node, ast.If | ast.While | ast.IfExp):
+                violations.extend(_check_production_retry_cap_rule(node, rel_path))
+            case _ if isinstance(node, ast.Call):
+                violations.extend(
+                    _check_production_call(node, rel_path, enclosing_functions.get(id(node)))
+                )
+            case _ if isinstance(node, ast.Import | ast.ImportFrom):
+                violations.extend(_check_production_import(node, rel_path))
     violations.extend(_check_ralph_authored_classifier_inputs(tree, rel_path))
     violations.extend(check_phase_local_retry_loops(tree, rel_path))
     violations.extend(check_agent_failure_ownership(tree, rel_path))
@@ -131,7 +133,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
 def _enclosing_function_names(tree: ast.Module) -> dict[int, str]:
     names: dict[int, str] = {}
     for function in ast.walk(tree):
-        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
             for child in ast.walk(function):
                 names.setdefault(id(child), function.name)
     return names
@@ -141,46 +143,47 @@ def _check_test_import(
     node: ast.Import | ast.ImportFrom, rel_path: str
 ) -> list[SingleOwnerViolation]:
     violations: list[SingleOwnerViolation] = []
-    if isinstance(node, ast.Import):
-        violations.extend(
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="test_deleted_tracker_import",
-                detail=f"Test imports deleted tracker '{alias.name}'.",
-            )
-            for alias in node.names
-            if not is_transitional_allowed(rel_path, alias.name)
-            and (
-                any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
-                or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
-            )
-        )
-    elif isinstance(node, ast.ImportFrom):
-        if (
-            node.module
-            and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
-            and not is_transitional_allowed(rel_path, node.module)
-        ):
-            violations.append(
+    match True:
+        case _ if isinstance(node, ast.Import):
+            violations.extend(
                 SingleOwnerViolation(
                     path=rel_path,
                     line=node.lineno,
                     rule="test_deleted_tracker_import",
-                    detail=f"Test imports from deleted tracker module '{node.module}'.",
+                    detail=f"Test imports deleted tracker '{alias.name}'.",
+                )
+                for alias in node.names
+                if not is_transitional_allowed(rel_path, alias.name)
+                and (
+                    any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
+                    or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
                 )
             )
-        violations.extend(
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="test_deleted_tracker_import",
-                detail=f"Test imports deleted tracker symbol '{alias.name}'.",
+        case _ if isinstance(node, ast.ImportFrom):
+            if (
+                node.module
+                and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
+                and (not is_transitional_allowed(rel_path, node.module))
+            ):
+                violations.append(
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule="test_deleted_tracker_import",
+                        detail=f"Test imports from deleted tracker module '{node.module}'.",
+                    )
+                )
+            violations.extend(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="test_deleted_tracker_import",
+                    detail=f"Test imports deleted tracker symbol '{alias.name}'.",
+                )
+                for alias in node.names
+                if not is_transitional_allowed(rel_path, alias.name)
+                and alias.name in _FORBIDDEN_TRACKER_SYMBOLS
             )
-            for alias in node.names
-            if not is_transitional_allowed(rel_path, alias.name)
-            and alias.name in _FORBIDDEN_TRACKER_SYMBOLS
-        )
     return violations
 
 
@@ -411,16 +414,17 @@ def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
 
     violations: list[SingleOwnerViolation] = []
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            violations.extend(_check_test_import(node, rel_path))
-        elif isinstance(node, ast.Attribute):
-            violations.extend(_check_test_attribute(node, rel_path))
-        elif isinstance(node, ast.Compare):
-            violations.extend(_check_production_compare(node, rel_path))
-        elif isinstance(node, ast.Call):
-            violations.extend(_check_test_call(node, rel_path))
-        elif isinstance(node, ast.Subscript):
-            violations.extend(_check_test_subscript(node, rel_path))
+        match True:
+            case _ if isinstance(node, ast.Import | ast.ImportFrom):
+                violations.extend(_check_test_import(node, rel_path))
+            case _ if isinstance(node, ast.Attribute):
+                violations.extend(_check_test_attribute(node, rel_path))
+            case _ if isinstance(node, ast.Compare):
+                violations.extend(_check_production_compare(node, rel_path))
+            case _ if isinstance(node, ast.Call):
+                violations.extend(_check_test_call(node, rel_path))
+            case _ if isinstance(node, ast.Subscript):
+                violations.extend(_check_test_subscript(node, rel_path))
     return violations
 
 
@@ -435,9 +439,10 @@ def test_sample(ledger, fact):
     assert outcome.consecutive_unproductive == 1
 """
     v1 = audit_test_source("tests/recovery/test_sample.py", src_test_attr)
-    assert any(
-        v.rule == "test_counter_access" and "consecutive_unproductive" in v.detail for v in v1
-    ), f"Expected test_counter_access violation for consecutive_unproductive, got: {v1}"
+    require(
+        any(v.rule == "test_counter_access" and "consecutive_unproductive" in v.detail for v in v1),
+        f"Expected test_counter_access violation for consecutive_unproductive, got: {v1}",
+    )
 
     src_test_total = """
 def test_sample(ledger, fact):
@@ -445,8 +450,9 @@ def test_sample(ledger, fact):
     assert outcome.total_unproductive == 1
 """
     v2 = audit_test_source("tests/recovery/test_sample.py", src_test_total)
-    assert any(v.rule == "test_counter_access" and "total_unproductive" in v.detail for v in v2), (
-        f"Expected test_counter_access violation for total_unproductive, got: {v2}"
+    require(
+        any(v.rule == "test_counter_access" and "total_unproductive" in v.detail for v in v2),
+        f"Expected test_counter_access violation for total_unproductive, got: {v2}",
     )
 
     src_prod_decl = """
@@ -455,8 +461,9 @@ class Worker:
         self.consecutive_unproductive = 0
 """
     v3 = audit_production_source("ralph/pipeline/worker.py", src_prod_decl)
-    assert any("consecutive_unproductive" in v.detail for v in v3), (
-        f"Expected violation for non-ledger counter declaration, got: {v3}"
+    require(
+        any("consecutive_unproductive" in v.detail for v in v3),
+        f"Expected violation for non-ledger counter declaration, got: {v3}",
     )
 
     src_prod_attr = """
@@ -464,8 +471,9 @@ def check(ledger):
     return ledger.consecutive_unproductive > 0
 """
     v4 = audit_production_source("ralph/pipeline/worker.py", src_prod_attr)
-    assert any("consecutive_unproductive" in v.detail for v in v4), (
-        f"Expected violation for non-ledger counter access, got: {v4}"
+    require(
+        any("consecutive_unproductive" in v.detail for v in v4),
+        f"Expected violation for non-ledger counter access, got: {v4}",
     )
 
     src_test_get = """
@@ -473,11 +481,12 @@ def test_sample(snap):
     count = snap.get("consecutive_unproductive")
 """
     v5 = audit_test_source("tests/recovery/test_sample.py", src_test_get)
-    assert any(
-        v.rule == "test_private_ledger_access" and "consecutive_unproductive" in v.detail
-        for v in v5
-    ), (
-        f"Expected test_private_ledger_access violation for .get(consecutive_unproductive), got: {v5}"
+    require(
+        any(
+            v.rule == "test_private_ledger_access" and "consecutive_unproductive" in v.detail
+            for v in v5
+        ),
+        f"Expected test_private_ledger_access violation for .get(consecutive_unproductive), got: {v5}",
     )
 
     src_rc1 = """
@@ -487,11 +496,13 @@ def handle_fault(session, agent_name):
         session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
 """
     v6 = audit_production_source("ralph/pipeline/worker.py", src_rc1)
-    assert any("ralph_fault_hits" in v.detail for v in v6), (
-        f"Expected violation for ralph_fault_hits, got: {v6}"
+    require(
+        any("ralph_fault_hits" in v.detail for v in v6),
+        f"Expected violation for ralph_fault_hits, got: {v6}",
     )
-    assert any("stop_dead_surfaces" in v.detail for v in v6), (
-        f"Expected violation for stop_dead_surfaces, got: {v6}"
+    require(
+        any("stop_dead_surfaces" in v.detail for v in v6),
+        f"Expected violation for stop_dead_surfaces, got: {v6}",
     )
 
     src_rival = """
@@ -507,14 +518,17 @@ class CustomGuard(RetryProgressGuard):
         return sig == signature and self.max_identical >= MAX_IDENTICAL_RETRY_ATTEMPTS
 """
     v7 = audit_production_source("ralph/pipeline/worker.py", src_rival)
-    assert any("RetryProgressGuard" in v.detail for v in v7), (
-        f"Expected violation for RetryProgressGuard, got: {v7}"
+    require(
+        any("RetryProgressGuard" in v.detail for v in v7),
+        f"Expected violation for RetryProgressGuard, got: {v7}",
     )
-    assert any("retry_failure_signature" in v.detail for v in v7), (
-        f"Expected violation for retry_failure_signature, got: {v7}"
+    require(
+        any("retry_failure_signature" in v.detail for v in v7),
+        f"Expected violation for retry_failure_signature, got: {v7}",
     )
-    assert any("MAX_IDENTICAL_RETRY_ATTEMPTS" in v.detail for v in v7), (
-        f"Expected violation for MAX_IDENTICAL_RETRY_ATTEMPTS, got: {v7}"
+    require(
+        any("MAX_IDENTICAL_RETRY_ATTEMPTS" in v.detail for v in v7),
+        f"Expected violation for MAX_IDENTICAL_RETRY_ATTEMPTS, got: {v7}",
     )
 
     src_rival_state = """
@@ -523,11 +537,12 @@ class AgentSession:
         self.progress_guard = None
 """
     v8 = audit_production_source("ralph/pipeline/worker.py", src_rival_state)
-    assert any("progress_guard" in v.detail for v in v8), (
-        f"Expected violation for progress_guard, got: {v8}"
+    require(
+        any("progress_guard" in v.detail for v in v8),
+        f"Expected violation for progress_guard, got: {v8}",
     )
 
-    assert "ralph" in PRODUCTION_SCAN_SUBTREES
+    require("ralph" in PRODUCTION_SCAN_SUBTREES)
     src_agents_invoke_signature = """
 def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
     return type(exc).__name__, str(exc)
@@ -536,8 +551,9 @@ def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
         "ralph/agents/invoke/_direct_mcp_recovery.py",
         src_agents_invoke_signature,
     )
-    assert any("_retry_failure_signature" in v.detail for v in v9), (
-        f"Expected violation for agents/invoke retry_failure_signature, got: {v9}"
+    require(
+        any("_retry_failure_signature" in v.detail for v in v9),
+        f"Expected violation for agents/invoke retry_failure_signature, got: {v9}",
     )
 
     src_local_retry_cap = """
@@ -549,8 +565,9 @@ def _retry_or_fall_over(state, chain):
     return None
 """
     v10 = audit_production_source("ralph/pipeline/reducer.py", src_local_retry_cap)
-    assert any(v.rule == "production_local_retry_cap_decision" for v in v10), (
-        f"Expected production_local_retry_cap_decision violation, got: {v10}"
+    require(
+        any(v.rule == "production_local_retry_cap_decision" for v in v10),
+        f"Expected production_local_retry_cap_decision violation, got: {v10}",
     )
 
     src_test_serialised = """
@@ -558,8 +575,9 @@ def test_snapshot(state):
     assert state.ledger_snapshot["entries"]["development:claude"]["is_spent"] is True
 """
     v11 = audit_test_source("tests/recovery/test_sample.py", src_test_serialised)
-    assert any(v.rule == "test_serialised_ledger_access" for v in v11), (
-        f"Expected test_serialised_ledger_access violation, got: {v11}"
+    require(
+        any(v.rule == "test_serialised_ledger_access" for v in v11),
+        f"Expected test_serialised_ledger_access violation, got: {v11}",
     )
 
     src_repo_safety_bound = """
@@ -571,7 +589,7 @@ def repair_pending_merge(record):
     return record
 """
     v12 = audit_production_source("ralph/pipeline/_pending_merge_repair.py", src_repo_safety_bound)
-    assert not v12, f"Expected no violation for a repository-safety bound, got: {v12}"
+    require(not v12, f"Expected no violation for a repository-safety bound, got: {v12}")
 
     src_public_seam = """
 def test_public_seam(ledger, fact):
@@ -585,15 +603,16 @@ def test_public_seam(ledger, fact):
     assert restored.is_available("development", "claude")
 """
     v13 = audit_test_source("tests/recovery/test_sample.py", src_public_seam)
-    assert not v13, f"Expected no violation for the public ledger seam, got: {v13}"
+    require(not v13, f"Expected no violation for the public ledger seam, got: {v13}")
 
     src_private_backoff = """
 def test_backoff(controller):
     assert controller._backoff_attempts.get("development:claude") == 2
 """
     v14 = audit_test_source("tests/recovery/test_sample.py", src_private_backoff)
-    assert any(v.rule == "test_private_failure_owner_access" for v in v14), (
-        f"Expected test_private_failure_owner_access for _backoff_attempts, got: {v14}"
+    require(
+        any(v.rule == "test_private_failure_owner_access" for v in v14),
+        f"Expected test_private_failure_owner_access for _backoff_attempts, got: {v14}",
     )
 
     src_private_tracker = """
@@ -601,8 +620,9 @@ def test_tracker(controller):
     assert controller._unavailability_tracker.is_available("development", "claude")
 """
     v15 = audit_test_source("tests/recovery/test_sample.py", src_private_tracker)
-    assert any(v.rule == "test_private_failure_owner_access" for v in v15), (
-        f"Expected test_private_failure_owner_access for _unavailability_tracker, got: {v15}"
+    require(
+        any(v.rule == "test_private_failure_owner_access" for v in v15),
+        f"Expected test_private_failure_owner_access for _unavailability_tracker, got: {v15}",
     )
 
     src_private_marker = """
@@ -610,8 +630,9 @@ def test_marker(controller):
     cooldown_ms = controller._mark_agent_unavailable("development", "claude", reason)
 """
     v16 = audit_test_source("tests/recovery/test_sample.py", src_private_marker)
-    assert any(v.rule == "test_private_failure_owner_access" for v in v16), (
-        f"Expected test_private_failure_owner_access for _mark_agent_unavailable, got: {v16}"
+    require(
+        any(v.rule == "test_private_failure_owner_access" for v in v16),
+        f"Expected test_private_failure_owner_access for _mark_agent_unavailable, got: {v16}",
     )
 
     src_private_getattr = """
@@ -619,8 +640,9 @@ def test_getattr(controller):
     attempts = getattr(controller, "_backoff_attempts")
 """
     v17 = audit_test_source("tests/recovery/test_sample.py", src_private_getattr)
-    assert any(v.rule == "test_private_failure_owner_access" for v in v17), (
-        f"Expected test_private_failure_owner_access for getattr(_backoff_attempts), got: {v17}"
+    require(
+        any(v.rule == "test_private_failure_owner_access" for v in v17),
+        f"Expected test_private_failure_owner_access for getattr(_backoff_attempts), got: {v17}",
     )
 
     _verify_controller_failure_owner_seam()
@@ -638,22 +660,23 @@ def test_controller_public_seam(controller):
     assert controller.ledger.status("development", "opencode").is_spent is False
 """
     v18 = audit_test_source("tests/recovery/test_sample.py", src_controller_public_seam)
-    assert not v18, f"Expected no violation for the public controller seam, got: {v18}"
+    require(not v18, f"Expected no violation for the public controller seam, got: {v18}")
 
     src_public_snapshot_key = """
 def test_controller_snapshot(controller):
     assert controller.snapshot()["cycle_cap"] == 5
 """
     v19 = audit_test_source("tests/recovery/test_sample.py", src_public_snapshot_key)
-    assert not v19, f"Expected no violation for a public snapshot key, got: {v19}"
+    require(not v19, f"Expected no violation for a public snapshot key, got: {v19}")
 
     src_serialised_backoff = """
 def test_snapshot(controller):
     assert controller.snapshot()["backoff_attempts"] == {}
 """
     v20 = audit_test_source("tests/recovery/test_sample.py", src_serialised_backoff)
-    assert any(v.rule == "test_serialised_failure_owner_access" for v in v20), (
-        f"Expected test_serialised_failure_owner_access for snapshot['backoff_attempts'], got: {v20}"
+    require(
+        any(v.rule == "test_serialised_failure_owner_access" for v in v20),
+        f"Expected test_serialised_failure_owner_access for snapshot['backoff_attempts'], got: {v20}",
     )
 
     src_serialised_backoff_get = """
@@ -661,9 +684,9 @@ def test_snapshot(controller):
     attempts = controller.snapshot().get("backoff_attempts")
 """
     v21 = audit_test_source("tests/recovery/test_sample.py", src_serialised_backoff_get)
-    assert any(v.rule == "test_serialised_failure_owner_access" for v in v21), (
-        f"Expected test_serialised_failure_owner_access for snapshot().get('backoff_attempts'), "
-        f"got: {v21}"
+    require(
+        any(v.rule == "test_serialised_failure_owner_access" for v in v21),
+        f"Expected test_serialised_failure_owner_access for snapshot().get('backoff_attempts'), got: {v21}",
     )
 
     src_serialised_timeouts = """
@@ -671,9 +694,9 @@ def test_snapshot(controller):
     timeouts = controller.snapshot()["unavailable_timeouts"]
 """
     v22 = audit_test_source("tests/recovery/test_sample.py", src_serialised_timeouts)
-    assert any(v.rule == "test_serialised_failure_owner_access" for v in v22), (
-        f"Expected test_serialised_failure_owner_access for snapshot['unavailable_timeouts'], "
-        f"got: {v22}"
+    require(
+        any(v.rule == "test_serialised_failure_owner_access" for v in v22),
+        f"Expected test_serialised_failure_owner_access for snapshot['unavailable_timeouts'], got: {v22}",
     )
 
     src_serialised_bare_snapshot = """
@@ -681,9 +704,9 @@ def test_snapshot():
     attempts = snapshot()["backoff_attempts"]
 """
     v23 = audit_test_source("tests/recovery/test_sample.py", src_serialised_bare_snapshot)
-    assert any(v.rule == "test_serialised_failure_owner_access" for v in v23), (
-        f"Expected test_serialised_failure_owner_access for snapshot()['backoff_attempts'], "
-        f"got: {v23}"
+    require(
+        any(v.rule == "test_serialised_failure_owner_access" for v in v23),
+        f"Expected test_serialised_failure_owner_access for snapshot()['backoff_attempts'], got: {v23}",
     )
 
 
@@ -698,8 +721,9 @@ def handoff(controller, agent):
     )
 """
     v = audit_production_source("ralph/pipeline/_scratch_wrapper.py", src_wrapper)
-    assert any(v.rule == "production_ralph_authored_classifier_input" for v in v), (
-        f"Expected production_ralph_authored_classifier_input for bench_resolver prose, got: {v}"
+    require(
+        any(v.rule == "production_ralph_authored_classifier_input" for v in v),
+        f"Expected production_ralph_authored_classifier_input for bench_resolver prose, got: {v}",
     )
 
     src_reworded = """
@@ -707,8 +731,9 @@ def handoff(controller, agent):
     bench_resolver(controller, agent, "resolver produced nothing Ralph can verify")
 """
     v = audit_production_source("ralph/pipeline/_scratch_reworded.py", src_reworded)
-    assert any(v.rule == "production_ralph_authored_classifier_input" for v in v), (
-        f"Expected production_ralph_authored_classifier_input for reworded prose, got: {v}"
+    require(
+        any(v.rule == "production_ralph_authored_classifier_input" for v in v),
+        f"Expected production_ralph_authored_classifier_input for reworded prose, got: {v}",
     )
 
     src_stored = """
@@ -722,10 +747,13 @@ class Runner:
         self._classifier.classify("candidate gave up without doing anything", phase="commit", agent="x")
 """
     v = audit_production_source("ralph/pipeline/_scratch_stored.py", src_stored)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" and "stored" not in v.detail
-        for v in v
-    ), f"Expected production_ralph_authored_classifier_input for a stored instance, got: {v}"
+    require(
+        any(
+            v.rule == "production_ralph_authored_classifier_input" and "stored" not in v.detail
+            for v in v
+        ),
+        f"Expected production_ralph_authored_classifier_input for a stored instance, got: {v}",
+    )
 
     src_local = """
 def handoff(controller, agent, failure_detail):
@@ -734,9 +762,13 @@ def handoff(controller, agent, failure_detail):
     bench_resolver(controller, agent, text, workspace_changed=False)
 """
     v = audit_production_source("ralph/pipeline/_scratch_local.py", src_local)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" and "'text'" in v.detail for v in v
-    ), f"Expected production_ralph_authored_classifier_input for a local authored value, got: {v}"
+    require(
+        any(
+            v.rule == "production_ralph_authored_classifier_input" and "'text'" in v.detail
+            for v in v
+        ),
+        f"Expected production_ralph_authored_classifier_input for a local authored value, got: {v}",
+    )
 
     src_helper = """
 def _failure_text(agent, failure_detail):
@@ -747,10 +779,13 @@ def handoff(controller, agent, failure_detail):
     bench_resolver(controller, agent, _failure_text(agent, failure_detail), workspace_changed=False)
 """
     v = audit_production_source("ralph/pipeline/_scratch_helper.py", src_helper)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" and "_failure_text" in v.detail
-        for v in v
-    ), f"Expected production_ralph_authored_classifier_input for a prose helper, got: {v}"
+    require(
+        any(
+            v.rule == "production_ralph_authored_classifier_input" and "_failure_text" in v.detail
+            for v in v
+        ),
+        f"Expected production_ralph_authored_classifier_input for a prose helper, got: {v}",
+    )
 
     src_external = """
 from ralph.recovery.failure_classifier import FailureClassifier
@@ -764,8 +799,9 @@ class Runner:
         self._classifier.classify(exc, phase="commit", agent="x")
 """
     v = audit_production_source("ralph/pipeline/_scratch_external.py", src_external)
-    assert not [x for x in v if x.rule == "production_ralph_authored_classifier_input"], (
-        f"Expected no classifier-input violation for exception objects, got: {v}"
+    require(
+        not [x for x in v if x.rule == "production_ralph_authored_classifier_input"],
+        f"Expected no classifier-input violation for exception objects, got: {v}",
     )
 
 
@@ -822,11 +858,13 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_single_owner(repo_root)
     if violations:
-        print(f"AGENT FAILURE SINGLE OWNER AUDIT: {len(violations)} violation(s) found:")
+        sys.stdout.write(
+            f"AGENT FAILURE SINGLE OWNER AUDIT: {len(violations)} violation(s) found:\n"
+        )
         for v in violations:
-            print(f"  {v}")
+            sys.stdout.write(f"  {v}\n")
         return 1
-    print("AGENT FAILURE SINGLE OWNER AUDIT: OK")
+    sys.stdout.write("AGENT FAILURE SINGLE OWNER AUDIT: OK\n")
     return 0
 
 

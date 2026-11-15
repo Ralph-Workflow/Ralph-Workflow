@@ -31,14 +31,6 @@ _MODULE_REPO_TEMPLATE: list[Path] = []
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
 
-@pytest.fixture(autouse=True)
-def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ralph.prompts import commit_evidence
-
-    monkeypatch.setattr(commit_evidence, "commit_generation_diff", lambda _root: "")
-    monkeypatch.setattr(commit_evidence, "list_changed_paths", lambda _root: [])
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _init_repo_template(tmp_path_factory: pytest.TempPathFactory) -> None:
     td = tmp_path_factory.mktemp("dhead_template")

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ast
-import os
+import sys
 from pathlib import Path
+
+from ralph.config._env import getenv
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -62,6 +64,8 @@ PASS1_DEFAULT_ROOTS: tuple[str, ...] = (
 
 
 class DiSeamViolation:
+    __slots__ = ("category", "detail", "file_path", "line")
+
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -73,7 +77,7 @@ class DiSeamViolation:
 
 
 def _is_dry_run() -> bool:
-    raw = os.environ.get("AUDIT_DI_SEAM_DRY_RUN", "false")
+    raw = getenv("AUDIT_DI_SEAM_DRY_RUN") or "false"
     return raw.strip().lower() not in {"false", "0", "no", "off"}
 
 
@@ -129,6 +133,8 @@ def _is_direct_open(call: ast.Call) -> bool:
 
 
 class _Pass1EnvOpenVisitor(ast.NodeVisitor):
+    __slots__ = ("file_path", "violations")
+
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
         self.violations: list[DiSeamViolation] = []
@@ -163,6 +169,8 @@ class _Pass1EnvOpenVisitor(ast.NodeVisitor):
 
 
 class _Pass2CastVisitor(ast.NodeVisitor):
+    __slots__ = ("file_path", "violations")
+
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
         self.violations: list[DiSeamViolation] = []
@@ -275,59 +283,64 @@ def main(argv: list[str] | None = None) -> int:
 
     dry_run = _is_dry_run()
     if dry_run:
-        print("AUDIT_DI_SEAM_DRY_RUN=true — hits are reported but the audit does not fail.")
+        sys.stdout.write(
+            "AUDIT_DI_SEAM_DRY_RUN=true — hits are reported but the audit does not fail.\n"
+        )
     else:
-        print("AUDIT_DI_SEAM_DRY_RUN=false — strict mode; any hit fails the audit.")
-    print()
+        sys.stdout.write("AUDIT_DI_SEAM_DRY_RUN=false — strict mode; any hit fails the audit.\n")
+    sys.stdout.write("\n")
 
     pass1_violations, files_checked = audit_pass1(package_root)
     pass2_violations, modules_walked = audit_pass2(package_root)
 
-    print(_format_pass1_header(files_checked, package_root, PASS1_DEFAULT_ROOTS))
+    sys.stdout.write(
+        str(_format_pass1_header(files_checked, package_root, PASS1_DEFAULT_ROOTS)) + "\n"
+    )
     if pass1_violations:
-        print(f"  hits: {len(pass1_violations)}")
+        sys.stdout.write(f"  hits: {len(pass1_violations)}\n")
         for v in pass1_violations:
-            print(f"    {v}")
+            sys.stdout.write(f"    {v}\n")
     else:
-        print("  hits: 0")
-    print()
-    print(_format_pass2_header(modules_walked, package_root, PASS2_SESSION_FACTORY_MODULES))
+        sys.stdout.write("  hits: 0\n")
+    sys.stdout.write("\n")
+    sys.stdout.write(
+        str(_format_pass2_header(modules_walked, package_root, PASS2_SESSION_FACTORY_MODULES))
+        + "\n"
+    )
     if pass2_violations:
-        print(f"  hits: {len(pass2_violations)}")
+        sys.stdout.write(f"  hits: {len(pass2_violations)}\n")
         for v in pass2_violations:
-            print(f"    {v}")
+            sys.stdout.write(f"    {v}\n")
     else:
-        print("  hits: 0")
-    print()
+        sys.stdout.write("  hits: 0\n")
+    sys.stdout.write("\n")
 
     total = len(pass1_violations) + len(pass2_violations)
     if dry_run:
-        print(
+        sys.stdout.write(
             f"DI seam audit (dry-run) — {total} potential violation(s) across "
             f"{files_checked} file(s) and {modules_walked} session-factory "
-            f"module(s). Set AUDIT_DI_SEAM_DRY_RUN=false to enforce."
+            f"module(s). Set AUDIT_DI_SEAM_DRY_RUN=false to enforce.\n"
         )
         return 0
     if total == 0:
-        print(
+        sys.stdout.write(
             f"No DI-seam violations found in {files_checked} file(s) and "
-            f"{modules_walked} session-factory module(s)."
+            f"{modules_walked} session-factory module(s).\n"
         )
         return 0
-    print(
+    sys.stdout.write(
         f"DI-SEAM CONTRACT VIOLATIONS: {total} (PASS 1: {len(pass1_violations)}, "
-        f"PASS 2: {len(pass2_violations)})"
+        f"PASS 2: {len(pass2_violations)})\n"
     )
-    print("=" * 72)
+    sys.stdout.write(str("=" * 72) + "\n")
     for v in pass1_violations:
-        print(f"  {v}")
+        sys.stdout.write(f"  {v}\n")
     for v in pass2_violations:
-        print(f"  {v}")
-    print()
-    print(
-        "Inject an EnvGetter / file-reader seam (PASS 1) or remove cast() at the "
-        "session factory boundary (PASS 2). Add inline justification to "
-        "PASS1_ALLOWLIST for composition-root reads."
+        sys.stdout.write(f"  {v}\n")
+    sys.stdout.write("\n")
+    sys.stdout.write(
+        "Inject an EnvGetter / file-reader seam (PASS 1) or remove cast() at the session factory boundary (PASS 2). Add inline justification to PASS1_ALLOWLIST for composition-root reads.\n"
     )
     return 1
 

@@ -14,6 +14,12 @@ if TYPE_CHECKING:
 
 
 class ManagedPtyProcess:
+    __slots__ = (
+        "_manager",
+        "_proc",
+        "_record",
+    )
+
     def __init__(
         self,
         proc: _PtyProcessLike,

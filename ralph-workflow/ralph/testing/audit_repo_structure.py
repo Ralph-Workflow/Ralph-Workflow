@@ -308,14 +308,13 @@ def main(argv: list[str] | None = None) -> int:
     _ = argv
     violations = collect_violations()
     if violations:
-        print("Repo-structure policy violations:")
+        sys.stdout.write("Repo-structure policy violations:\n")
         for violation in sorted(violations):
-            print(f"  {violation}")
-        print(f"\n{len(violations)} violation(s). See AGENTS.md 'Non-negotiables'.")
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write(f"\n{len(violations)} violation(s). See AGENTS.md 'Non-negotiables'.\n")
         return 1
-    print(
-        "Repo-structure audit: OK (file size, class-per-module, private imports, "
-        "bypass comments, packaging config)"
+    sys.stdout.write(
+        "Repo-structure audit: OK (file size, class-per-module, private imports, bypass comments, packaging config)\n"
     )
     return 0
 

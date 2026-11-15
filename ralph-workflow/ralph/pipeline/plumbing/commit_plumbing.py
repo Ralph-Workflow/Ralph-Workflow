@@ -97,7 +97,12 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
-from ralph.prompts.commit_evidence import CommitEvidenceBundle, build_commit_evidence_bundle
+from ralph.prompts.commit_evidence import (
+    DEFAULT_COMMIT_EVIDENCE_SOURCE,
+    CommitEvidenceBundle,
+    CommitEvidenceSource,
+    build_commit_evidence_bundle,
+)
 from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
@@ -399,9 +404,13 @@ def _resolve_effective_commit_deps(
     return effective_pipeline_deps, effective_pipeline_deps.display_context
 
 
-def _resolve_commit_evidence(repo_root: Path, fallback_diff: str) -> str | CommitEvidenceBundle:
+def _resolve_commit_evidence(
+    repo_root: Path,
+    fallback_diff: str,
+    source: CommitEvidenceSource,
+) -> str | CommitEvidenceBundle:
     if (repo_root / ".git").exists():
-        bundle = build_commit_evidence_bundle(repo_root)
+        bundle = build_commit_evidence_bundle(repo_root, source=source)
         if bundle.diff.strip():
             return bundle
     return fallback_diff
@@ -417,6 +426,7 @@ def run_commit_plumbing(
     bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
     pro_hooks: ProPipelineHooks | None = None,
+    commit_evidence_source: CommitEvidenceSource = DEFAULT_COMMIT_EVIDENCE_SOURCE,
 ) -> CommitAgentResult:
     effective_pipeline_deps, display_context = _resolve_effective_commit_deps(
         pipeline_deps=pipeline_deps,
@@ -490,7 +500,7 @@ def run_commit_plumbing(
             cfg = chain_config.registry.get(agent_name)
             if cfg is None:
                 continue
-            evidence = _resolve_commit_evidence(repo_root, diff)
+            evidence = _resolve_commit_evidence(repo_root, diff, commit_evidence_source)
             prompt = _commit_prompt_for_agent(
                 cfg,
                 evidence,

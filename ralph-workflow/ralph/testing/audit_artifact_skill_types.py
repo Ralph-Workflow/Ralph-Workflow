@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import importlib
 import re
 import sys
 from importlib.resources import files
 from pathlib import Path
 
 from ralph.mcp.artifacts.format_docs import FORMAT_DOC_ARTIFACT_TYPES
+from ralph.mcp.artifacts.markdown import specs as _artifact_specs
 from ralph.mcp.artifacts.markdown.registry import registered_specs
 
 __all__ = ["audit_artifact_skill_types", "main"]
 
-importlib.import_module("ralph.mcp.artifacts.markdown.specs")
+_ = _artifact_specs
 
 UMBRELLA_SKILL_NAME = "submit-artifact"
 
@@ -252,31 +252,29 @@ def audit_artifact_skill_types(root: Path | None = None) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     args = list(argv) if argv is not None else list(sys.argv[1:])
     if len(args) > 1:
-        print(
-            "Usage: python -m ralph.testing.audit_artifact_skill_types [content_root]",
-            file=sys.stderr,
+        sys.stderr.write(
+            "Usage: python -m ralph.testing.audit_artifact_skill_types [content_root]\n"
         )
         return 2
 
     content_root = _resolve_content_root(Path(args[0]) if args else None)
     if not content_root.is_dir():
-        print(f"Error: skills content directory not found: {content_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: skills content directory not found: {content_root}\n")
         return 2
 
     violations = audit_artifact_skill_types(Path(args[0]) if args else None)
     if violations:
-        print(f"ARTIFACT-SKILL DRIFT FOUND: {len(violations)} violation(s)")
-        print("=" * 72)
+        sys.stdout.write(f"ARTIFACT-SKILL DRIFT FOUND: {len(violations)} violation(s)\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
-        print(
-            "\nThe shipped skills must cover exactly the registered artifact types. "
-            "Fix the skill files, never the audit."
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write(
+            "\nThe shipped skills must cover exactly the registered artifact types. Fix the skill files, never the audit.\n"
         )
         return 1
 
-    print(
-        "Artifact-skill audit: OK (every registered artifact type has exactly one matching skill)"
+    sys.stdout.write(
+        "Artifact-skill audit: OK (every registered artifact type has exactly one matching skill)\n"
     )
     return 0
 

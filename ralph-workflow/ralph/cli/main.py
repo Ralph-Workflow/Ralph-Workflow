@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from ralph.cli.commands.run import RunPipelineRequest
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.display.excepthook import MainThreadExceptionBoundary
     from ralph.display.parallel_display import ParallelDisplay
 
 
@@ -96,9 +97,6 @@ if TYPE_CHECKING:
     class _ValidateCustomMcpServersFn(Protocol):
         def __call__(self, workspace_root: RuntimePath) -> int: ...
 
-
-click.rich_click.USE_RICH_MARKUP = True
-click.rich_click.USE_MARKDOWN = True
 
 app = typer.Typer(
     name="ralph",
@@ -197,6 +195,16 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
                     raise
                 exc.show()
                 sys.exit(exc.exit_code)
+            except typer.Exit:
+                raise
+            except Exception as exc:
+                boundary = _CLI_RESTORE_STATE.exception_boundary
+                if boundary is None:
+                    boundary = install_sanitizing_excepthook()
+                boundary.handle_main_thread_exception(type(exc), exc, exc.__traceback__)
+                if standalone_mode:
+                    raise SystemExit(1) from None
+                raise
 
         _set_command_main(command, patched_main)
     return command
@@ -514,6 +522,7 @@ def _dispatch_maintenance_flags(
 class _CLIRestoreState:
     registered: bool = False
     signals_registered: bool = False
+    exception_boundary: MainThreadExceptionBoundary | None = None
 
 
 _CLI_RESTORE_STATE = _CLIRestoreState()
@@ -529,7 +538,7 @@ def ensure_cli_terminal_restore(
         snapshot_terminal_modes()
         reg = register_fn if register_fn is not None else atexit.register
         reg(restore_terminal)
-        install_sanitizing_excepthook()
+        _CLI_RESTORE_STATE.exception_boundary = install_sanitizing_excepthook()
         _CLI_RESTORE_STATE.registered = True
     if (
         _CLI_RESTORE_STATE.signals_registered
@@ -570,6 +579,7 @@ def ensure_cli_terminal_restore(
 def reset_cli_restore_state() -> None:
     _CLI_RESTORE_STATE.registered = False
     _CLI_RESTORE_STATE.signals_registered = False
+    _CLI_RESTORE_STATE.exception_boundary = None
 
 
 def main(

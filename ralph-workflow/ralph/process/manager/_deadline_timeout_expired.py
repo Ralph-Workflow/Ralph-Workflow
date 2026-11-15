@@ -5,6 +5,8 @@ from typing import Literal
 
 
 class DeadlineTimeoutExpired(subprocess.TimeoutExpired):
+    __slots__ = ("timeout_cause",)
+
     def __init__(
         self,
         cmd: list[str],

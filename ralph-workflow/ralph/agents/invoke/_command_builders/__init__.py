@@ -321,6 +321,8 @@ class CommandBuilderSpec:
 
 
 class ConfigurableCommandBuilder:
+    __slots__ = ("__weakref__", "spec")
+
     def __init__(self, spec: CommandBuilderSpec) -> None:
         self.spec = spec
 

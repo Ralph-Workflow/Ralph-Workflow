@@ -79,7 +79,7 @@ def _is_retry_counter_identifier(name: str) -> bool:
 def _is_numeric_literal(node: ast.AST) -> bool:
     return (
         isinstance(node, ast.Constant)
-        and isinstance(node.value, (int, float))
+        and isinstance(node.value, int | float)
         and not isinstance(node.value, bool)
     )
 
@@ -119,14 +119,15 @@ def _names_signal_agent_fate(names: list[str]) -> bool:
 
 
 def _is_agent_fate_action_call(call: ast.Call) -> bool:
-    if isinstance(call.func, ast.Attribute):
-        name = call.func.attr
-        receiver = _expression_identifiers(call.func.value)
-    elif isinstance(call.func, ast.Name):
-        name = call.func.id
-        receiver = []
-    else:
-        return False
+    match True:
+        case _ if isinstance(call.func, ast.Attribute):
+            name = call.func.attr
+            receiver = _expression_identifiers(call.func.value)
+        case _ if isinstance(call.func, ast.Name):
+            name = call.func.id
+            receiver = []
+        case _:
+            return False
     if _names_signal_agent_fate([name]):
         return True
     if not _is_retry_name(name):
@@ -140,26 +141,28 @@ def _is_agent_fate_action_assignment(node: ast.Assign | ast.AnnAssign | ast.AugA
     targets: list[ast.expr] = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
     names: list[str] = []
     for target in targets:
-        if isinstance(target, ast.Name):
-            names.append(target.id)
-        elif isinstance(target, ast.Attribute):
-            names.append(target.attr)
+        match True:
+            case _ if isinstance(target, ast.Name):
+                names.append(target.id)
+            case _ if isinstance(target, ast.Attribute):
+                names.append(target.attr)
     return _names_signal_agent_fate(names)
 
 
 def _branch_performs_agent_fate_action(node: ast.If | ast.While | ast.IfExp) -> bool:
     branches: list[ast.AST] = []
-    if isinstance(node, ast.IfExp):
-        branches = [node.body, node.orelse]
-    elif isinstance(node, ast.If):
-        branches = [*node.body, *node.orelse]
-    else:
-        branches = [*node.body]
+    match True:
+        case _ if isinstance(node, ast.IfExp):
+            branches = [node.body, node.orelse]
+        case _ if isinstance(node, ast.If):
+            branches = [*node.body, *node.orelse]
+        case _:
+            branches = [*node.body]
     for branch in branches:
         for child in ast.walk(branch):
             if isinstance(child, ast.Call) and _is_agent_fate_action_call(child):
                 return True
-            if isinstance(child, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and (
+            if isinstance(child, ast.Assign | ast.AnnAssign | ast.AugAssign) and (
                 _is_agent_fate_action_assignment(child)
             ):
                 return True

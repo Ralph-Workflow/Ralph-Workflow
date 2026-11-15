@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from ralph.testing._audit_scope import build_parent_map, qualified_scope
+from ralph.testing._runtime_checks import require
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -349,6 +350,8 @@ _DIRECT_CHILD_PROCESS_NAMES: frozenset[str] = frozenset(
 
 
 class ResourceLifecycleViolation:
+    __slots__ = ("category", "detail", "file_path", "line")
+
     def __init__(self, file_path: str, line: int, category: str, detail: str) -> None:
         self.file_path = file_path
         self.line = line
@@ -415,14 +418,15 @@ def _collect_import_aliases(tree: ast.Module) -> tuple[dict[str, str], dict[str,
     module_aliases: dict[str, str] = {}
     from_imports: dict[str, str] = {}
     for node in tree.body:
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.asname is not None:
-                    module_aliases[alias.asname] = alias.name
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            for alias in node.names:
-                local = alias.asname or alias.name
-                from_imports[local] = f"{node.module}.{alias.name}"
+        match True:
+            case _ if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname is not None:
+                        module_aliases[alias.asname] = alias.name
+            case _ if isinstance(node, ast.ImportFrom) and node.module is not None:
+                for alias in node.names:
+                    local = alias.asname or alias.name
+                    from_imports[local] = f"{node.module}.{alias.name}"
     return module_aliases, from_imports
 
 
@@ -443,7 +447,7 @@ def _canonical_name(
 def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
     result: set[ast.Call] = set()
     for parent in ast.walk(tree):
-        if isinstance(parent, (ast.With, ast.AsyncWith)):
+        if isinstance(parent, ast.With | ast.AsyncWith):
             for item in parent.items:
                 ctx = item.context_expr
                 if isinstance(ctx, ast.Call):
@@ -452,7 +456,7 @@ def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
 
 
 def _is_static_dict_key(node: ast.expr) -> bool:
-    return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript)) or (
+    return isinstance(node, ast.Constant | ast.Name | ast.Attribute | ast.Subscript) or (
         isinstance(node, ast.Tuple) and all(_is_static_dict_key(element) for element in node.elts)
     )
 
@@ -525,6 +529,20 @@ def _is_module_level_or_self_init(
 
 
 class ResourceLifecycleAuditor(ast.NodeVisitor):
+    __slots__ = (
+        "_enclosing_class",
+        "_enclosing_function",
+        "_from_imports",
+        "_in_with_calls",
+        "_module_aliases",
+        "_parents",
+        "file_path",
+        "registry_path",
+        "rel_path",
+        "tree",
+        "violations",
+    )
+
     def __init__(
         self,
         file_path: str,
@@ -629,10 +647,11 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
 
         if canonical in _HTTP_CLIENT_NAMES:
             tree = self.tree
-            assert tree is not None, "visit_Module must run before visit_Call"
+            require(tree is not None, "visit_Module must run before visit_Call")
             in_with_calls = self._in_with_calls
-            assert in_with_calls is not None, (
-                "visit_Module must populate _in_with_calls before visit_Call"
+            require(
+                in_with_calls is not None,
+                "visit_Module must populate _in_with_calls before visit_Call",
             )
             if node not in in_with_calls:
                 self._add(
@@ -842,38 +861,33 @@ def main(argv: list[str] | None = None) -> int:
 
     for root in roots:
         if not root.is_dir():
-            print(f"Error: audit root not found: {root}", file=sys.stderr)
+            sys.stderr.write(f"Error: audit root not found: {root}\n")
             return 2
 
     all_violations: list[ResourceLifecycleViolation] = []
     total_files = 0
     for root in roots:
-        print(f"Auditing resource-lifecycle contract in: {root}")
+        sys.stdout.write(f"Auditing resource-lifecycle contract in: {root}\n")
         violations, files_checked = audit_resource_lifecycle_directory(root)
         all_violations.extend(violations)
         total_files += files_checked
-    print()
+    sys.stdout.write("\n")
 
     if all_violations:
-        print(
+        sys.stdout.write(
             f"RESOURCE-LIFECYCLE CONTRACT VIOLATIONS: {len(all_violations)} "
-            f"in {total_files} file(s)"
+            f"in {total_files} file(s)\n"
         )
-        print("=" * 72)
+        sys.stdout.write(str("=" * 72) + "\n")
         for v in all_violations:
-            print(f"  {v}")
-        print()
-        print(
-            "Production code MUST use daemon=True threads, with-managed HTTP "
-            "clients, raw os fd creation only under ralph/process/, and "
-            "long-lived mutable accumulators must carry a FIFO/size cap "
-            "(deque(maxlen=...), OrderedDict + count cap). Register a call "
-            "site in EXEMPT_CALL_SITES as (file, qualified callable, "
-            "category) when the lifecycle contract is genuinely bounded."
+            sys.stdout.write(f"  {v}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Production code MUST use daemon=True threads, with-managed HTTP clients, raw os fd creation only under ralph/process/, and long-lived mutable accumulators must carry a FIFO/size cap (deque(maxlen=...), OrderedDict + count cap). Register a call site in EXEMPT_CALL_SITES as (file, qualified callable, category) when the lifecycle contract is genuinely bounded.\n"
         )
         return 1
 
-    print(f"No resource-lifecycle violations found in {total_files} file(s).")
+    sys.stdout.write(f"No resource-lifecycle violations found in {total_files} file(s).\n")
     return 0
 
 

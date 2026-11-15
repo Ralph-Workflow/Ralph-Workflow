@@ -63,6 +63,23 @@ def record_supervisor_tick_lateness(
 
 
 class McpSupervisor:
+    __slots__ = (
+        "_agent_label_scope",
+        "_bridge",
+        "_check_interval",
+        "_done",
+        "_last_tick_at",
+        "_mcp_error",
+        "_now",
+        "_on_error",
+        "_on_restart",
+        "_record_psi_pressure",
+        "_record_tick_lateness",
+        "_shutdown_bridge",
+        "_terminate_agents",
+        "_thread",
+    )
+
     def __init__(
         self,
         bridge: RestartAwareMcpBridge,
@@ -130,7 +147,7 @@ class McpSupervisor:
         )
         try:
             self._terminate_agents(_agent_process_label_prefix(self._agent_label_scope))
-        except Exception:
+        except (OSError, RuntimeError, TimeoutError):
             logger.exception("Failed to interrupt agent processes after terminal MCP failure")
 
     def __enter__(self) -> McpSupervisor:
@@ -162,7 +179,7 @@ class McpSupervisor:
             except McpServerError as exc:
                 self._interrupt_blocked_invocation(exc)
                 return
-            except Exception:
+            except (OSError, RuntimeError, TimeoutError):
                 logger.exception("MCP supervisor health check failed; continuing to supervise")
 
 

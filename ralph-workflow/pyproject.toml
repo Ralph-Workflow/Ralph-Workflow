@@ -350,7 +350,6 @@ dev = [
     "pytest-xdist>=3.6",
     "ruff>=0.1",
     "types-tqdm>=4.67.3.20260518",
-    "types-pygments>=2.21.0.20260819",
 ]
 
 [tool.ralph.dependency-evidence.bandit]

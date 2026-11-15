@@ -113,12 +113,13 @@ def _constant_int_bindings(tree: ast.Module) -> dict[str, int]:
     for node in ast.walk(tree):
         value: ast.expr | None = None
         targets: list[ast.expr] = []
-        if isinstance(node, ast.Assign):
-            value = node.value
-            targets = node.targets
-        elif isinstance(node, ast.AnnAssign):
-            value = node.value
-            targets = [node.target]
+        match True:
+            case _ if isinstance(node, ast.Assign):
+                value = node.value
+                targets = node.targets
+            case _ if isinstance(node, ast.AnnAssign):
+                value = node.value
+                targets = [node.target]
         if not isinstance(value, ast.Constant):
             continue
         if isinstance(value.value, bool) or not isinstance(value.value, int):
@@ -134,12 +135,17 @@ def _positive_int_constant(
     bindings: dict[str, int] | None = None,
 ) -> bool:
     value: object
-    if isinstance(node, ast.Name) and bindings is not None and node.id == "_FILE_SINK_BUFFER_BYTES":
-        value = bindings.get(node.id)
-    elif isinstance(node, ast.Constant):
-        value = node.value
-    else:
-        return False
+    match True:
+        case _ if (
+            isinstance(node, ast.Name)
+            and bindings is not None
+            and (node.id == "_FILE_SINK_BUFFER_BYTES")
+        ):
+            value = bindings.get(node.id)
+        case _ if isinstance(node, ast.Constant):
+            value = node.value
+        case _:
+            return False
     if isinstance(value, bool) or not isinstance(value, int):
         return False
     return value >= _MIN_BLOCK_BUFFERING
@@ -164,7 +170,7 @@ def _find_logger_add_calls(tree: ast.Module) -> list[ast.Call]:
 def _find_buffered_file_adder_calls(tree: ast.Module) -> list[ast.Call]:
     calls: list[ast.Call] = []
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if node.name != "_add_buffered_file_sink" or not node.args.args:
             continue
@@ -261,18 +267,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     package_root: Path = Path(argv[0]) if argv else Path(__file__).parent.parent
 
     if not package_root.is_dir():
-        print(f"Package root not found: {package_root}", file=sys.stderr)
+        sys.stderr.write(f"Package root not found: {package_root}\n")
         return 2
 
     violations: list[LogSinkBufferingViolation] = audit_log_sink_buffering(package_root)
 
     if violations:
-        print(f"LOG SINK BUFFERING VIOLATIONS: {len(violations)}")
-        print("=" * 72)
+        sys.stdout.write(f"LOG SINK BUFFERING VIOLATIONS: {len(violations)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
-        print()
-        print(
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
             "Fix the drift: every logger.add(<file-path>, ...) call in"
             f" {_LOGGING_MODULE!r} MUST pass buffering={_MIN_BLOCK_BUFFERING}+"
             " (the canonical value is 8192 -- matching the buffered"
@@ -280,11 +286,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             " through ralph.logging._add_buffered_file_sink so the"
             " buffering invariant is set centrally and cannot regress."
             " Stream/callable sinks (logger.add(make_stderr_log_sink(), ...))"
-            " are exempt; the audit discriminates them by AST shape."
+            " are exempt; the audit discriminates them by AST shape.\n"
         )
         return 1
 
-    print("log sink buffering audit: OK")
+    sys.stdout.write("log sink buffering audit: OK\n")
     return 0
 
 

@@ -4,6 +4,14 @@ _E2BIG_ERRNO = 7
 
 
 class AgentLaunchError(OSError):
+    __slots__ = (
+        "agent_name",
+        "failure_origin",
+        "issuer",
+        "payload_bytes",
+        "returncode",
+    )
+
     def __init__(self, agent_name: str, exc: OSError, payload_bytes: int) -> None:
         self.agent_name = agent_name
         self.returncode = -1

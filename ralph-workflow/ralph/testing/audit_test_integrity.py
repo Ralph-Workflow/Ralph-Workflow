@@ -102,26 +102,27 @@ def _is_pytest_env_name(node: ast.AST) -> bool:
 
 
 def _module_probe_detector(node: ast.AST, sys_names: frozenset[str]) -> str | None:
-    if isinstance(node, ast.Subscript):
-        probes = _is_sys_modules(node.value, sys_names) and _is_pytest_constant(node.slice)
-    elif isinstance(node, ast.Call):
-        probes = (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "get"
-            and _is_sys_modules(node.func.value, sys_names)
-            and bool(node.args)
-            and _is_pytest_constant(node.args[0])
-        )
-    elif isinstance(node, ast.Compare):
-        probes = (
-            _is_pytest_constant(node.left)
-            and len(node.ops) == 1
-            and isinstance(node.ops[0], ast.In)
-            and len(node.comparators) == 1
-            and _is_sys_modules(node.comparators[0], sys_names)
-        )
-    else:
-        probes = False
+    match True:
+        case _ if isinstance(node, ast.Subscript):
+            probes = _is_sys_modules(node.value, sys_names) and _is_pytest_constant(node.slice)
+        case _ if isinstance(node, ast.Call):
+            probes = (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and _is_sys_modules(node.func.value, sys_names)
+                and bool(node.args)
+                and _is_pytest_constant(node.args[0])
+            )
+        case _ if isinstance(node, ast.Compare):
+            probes = (
+                _is_pytest_constant(node.left)
+                and len(node.ops) == 1
+                and isinstance(node.ops[0], ast.In)
+                and (len(node.comparators) == 1)
+                and _is_sys_modules(node.comparators[0], sys_names)
+            )
+        case _:
+            probes = False
     if probes:
         return _DETECTOR_MODULE
     return None
@@ -221,11 +222,11 @@ def _parse_arguments(args: Sequence[str]) -> tuple[str | None, str | None] | Non
     while index < len(args):
         argument = args[index]
         if argument not in {"--diff", "--root"}:
-            print(f"Error: unknown argument: {argument}", file=sys.stderr)
+            sys.stderr.write(f"Error: unknown argument: {argument}\n")
             return None
         index += 1
         if index >= len(args):
-            print(f"Error: {argument} requires a value", file=sys.stderr)
+            sys.stderr.write(f"Error: {argument} requires a value\n")
             return None
         if argument == "--diff":
             diff_path = args[index]
@@ -246,12 +247,12 @@ def _collect_findings(root: Path, diff_text: str | None) -> list[TestIntegrityFi
 def _resolve_root(root_arg: str | None) -> Path | None:
     root = Path(root_arg) if root_arg else _default_root()
     if not root.is_dir():
-        print(f"Error: audit root not found: {root}", file=sys.stderr)
+        sys.stderr.write(f"Error: audit root not found: {root}\n")
         return None
     try:
         _production_package_root(root)
     except FileNotFoundError:
-        print(f"Error: production package not found under root: {root}", file=sys.stderr)
+        sys.stderr.write(f"Error: production package not found under root: {root}\n")
         return None
     return root
 
@@ -259,11 +260,11 @@ def _resolve_root(root_arg: str | None) -> Path | None:
 def main(argv: list[str] | None = None) -> int:
     args = list(argv) if argv is not None else list(sys.argv[1:])
     if any(argument in {"-h", "--help"} for argument in args):
-        print(_USAGE)
+        sys.stdout.write(str(_USAGE) + "\n")
         return 0
     parsed = _parse_arguments(args)
     if parsed is None:
-        print(_USAGE, file=sys.stderr)
+        sys.stderr.write(str(_USAGE) + "\n")
         return 2
     diff_path, root_arg = parsed
 
@@ -276,33 +277,33 @@ def main(argv: list[str] | None = None) -> int:
         try:
             diff_text = _read_diff(diff_path)
         except (OSError, UnicodeDecodeError) as exc:
-            print(f"Error: could not read diff {diff_path}: {exc}", file=sys.stderr)
+            sys.stderr.write(f"Error: could not read diff {diff_path}: {exc}\n")
             return 2
 
     else:
         diff_text = worktree_diff(root)
 
     diff_label = diff_path if diff_path is not None else "(working-tree diff vs HEAD)"
-    print(f"Auditing test integrity: root={root} diff={diff_label}")
-    print()
+    sys.stdout.write(f"Auditing test integrity: root={root} diff={diff_label}\n")
+    sys.stdout.write("\n")
 
     findings = _collect_findings(root, diff_text)
 
     if findings:
-        print(f"TEST-INTEGRITY FINDINGS: {len(findings)} finding(s)")
-        print("=" * 72)
+        sys.stdout.write(f"TEST-INTEGRITY FINDINGS: {len(findings)} finding(s)\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for finding in findings:
-            print(f"  {finding}")
-        print()
-        print(
+            sys.stdout.write(f"  {finding}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
             "A test may not be weakened to let a change pass, and production code may not "
             "detect the test runner. Restore the check (or record why it changed with a "
             f"'{TEST_REASON_CONSTANT}' entry in the test module) and remove the "
-            "pytest detection from production code."
+            "pytest detection from production code.\n"
         )
         return 1
 
-    print("No test-integrity findings.")
+    sys.stdout.write("No test-integrity findings.\n")
     return 0
 
 

@@ -5,6 +5,12 @@ from ralph.agents.invoke._completion_termination import AttemptEnded
 
 
 class _IdleStreamTimeoutError(AttemptEnded, RuntimeError):
+    __slots__ = (
+        "diagnostic",
+        "reason",
+        "timeout_seconds",
+    )
+
     def __init__(
         self,
         timeout_seconds: float,

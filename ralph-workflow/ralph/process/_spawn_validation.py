@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Buffer
-from importlib import import_module
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.process._agent_launch_error import AgentLaunchError
@@ -15,12 +16,6 @@ type SpawnArgument = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
 _NUL_TEXT = "\x00"
 _NUL_BYTES = b"\x00"
-
-
-@runtime_checkable
-class _PromptMaterializerModule(Protocol):
-    def materialize_argv_prompt(self, prompt: str, cwd: str | None) -> str:
-        pass
 
 
 @runtime_checkable
@@ -85,11 +80,13 @@ def reduce_oversized_inline_prompt(
     prompt_index = command.index("--") + 1
     if prompt_index >= len(command) or not isinstance(command[prompt_index], str):
         return tuple(command)
-    module: object = import_module("ralph.agents.invoke._command_builders")
-    if not isinstance(module, _PromptMaterializerModule):
-        raise RuntimeError("prompt materializer is unavailable")
     prompt = command[prompt_index]
-    replacement = module.materialize_argv_prompt(prompt, cwd)
+    base = Path(cwd) if cwd is not None else Path.cwd()
+    digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
+    destination = base / ".agent" / "tmp" / f"prompt_{digest}_argv.md"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(prompt, encoding="utf-8")
+    replacement = str(destination)
     reduced = list(command)
     reduced[prompt_index] = replacement
     return tuple(reduced)

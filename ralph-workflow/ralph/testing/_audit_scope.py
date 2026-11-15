@@ -25,7 +25,7 @@ def qualified_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
     names: list[str] = []
     current: ast.AST | None = node
     while current is not None:
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             names.append(current.name)
         current = parents.get(current)
     names.reverse()

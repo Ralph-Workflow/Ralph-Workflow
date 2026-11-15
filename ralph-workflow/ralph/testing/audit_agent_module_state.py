@@ -76,7 +76,7 @@ def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
         return violations
 
     for node in tree.body:
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+        if not isinstance(node, ast.Assign | ast.AnnAssign):
             continue
         result = _is_module_level_dict_assignment(node)
         if result is None:
@@ -146,11 +146,11 @@ def main() -> int:
     package_root = Path(__file__).parent.parent
     violations = run_audit(package_root)
     if violations:
-        print("AGENT-MODULE-STATE Violations Found:")
+        sys.stdout.write("AGENT-MODULE-STATE Violations Found:\n")
         for v in violations:
-            print(f"  {v}")
+            sys.stdout.write(f"  {v}\n")
         return 1
-    print("AGENT-MODULE-STATE Audit: OK")
+    sys.stdout.write("AGENT-MODULE-STATE Audit: OK\n")
     return 0
 
 

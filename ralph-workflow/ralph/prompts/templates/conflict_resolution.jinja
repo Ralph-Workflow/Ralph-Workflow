@@ -28,7 +28,7 @@ Resolve only the conflicted paths listed below; unrelated implementation and rev
 
 {% include 'shared/_mcp_tools.j2' %}
 
-{% include 'shared/_shipped_skills.j2' %}{% from 'shared/_skill_cues.j2' import render_conflict_resolution_diagnosis_cue, render_conflict_resolution_completion_cue %}
+{% include 'shared/_shipped_skills.j2' %}
 
 Delegate independent conflicted paths to concurrent read-only subagents to
 inspect each side's intent. Brief each with its assigned listed paths, the
@@ -48,7 +48,11 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
 {{ strategy_history }}
 {% endif %}## How to resolve
 
-{{ render_conflict_resolution_diagnosis_cue() }}
+{% if SKILL_INSTALLED_SYSTEMATIC_DEBUGGING|default('') == "true" %}
+Use systematic-debugging when diagnosing conflicting changes, so resolution preserves the intended root behavior of both branches.
+{% else %}
+Analyze the root intent of conflicting changes on both branches before editing conflict regions.
+{% endif %}
 
 1. Open each conflicted file listed above.
 2. Resolve every conflict-marker region thoughtfully. {% if replaying_commit_sha %}Preserve the replayed commit's intent on top of `{{ target }}` without anticipating later commits.{% else %}Preserve the intent of both merge heads.{% endif %}
@@ -87,7 +91,11 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
 
 ## Completion contract
 
-{{ render_conflict_resolution_completion_cue() }}
+{% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
+Use verification-before-completion before declaring resolution, so resolved files are confirmed to build and pass checks cleanly.
+{% else %}
+Confirm resolved files build and pass checks cleanly before declaring resolution.
+{% endif %}
 
 When every listed file is resolved and marker-free, call the
 {{ DECLARE_COMPLETE_TOOL_REFERENCE }} MCP tool with a short

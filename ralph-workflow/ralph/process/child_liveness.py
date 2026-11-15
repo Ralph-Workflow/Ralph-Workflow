@@ -23,6 +23,11 @@ __all__ = [
 
 
 class ChildLivenessSubagentPidSource:
+    __slots__ = (
+        "_registry",
+        "_scope_prefix",
+    )
+
     def __init__(
         self,
         registry: ChildLivenessRegistry,
@@ -67,6 +72,15 @@ def classify_child_snapshot(
 
 
 class ChildLivenessRegistry:
+    __slots__ = (
+        "_exit_reconcile",
+        "_heartbeat_ttl",
+        "_now",
+        "_progress_ttl",
+        "_records",
+        "_stale_label_ttl",
+    )
+
     def __init__(
         self,
         *,

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 
 class FakeAsyncProcess:
+    __slots__ = ("_killed", "_returncode", "_stderr", "_stdin", "_stdout", "_terminated", "pid")
     _stdin: asyncio.StreamWriter | None
     _stdout: asyncio.StreamReader | None
     _stderr: asyncio.StreamReader | None

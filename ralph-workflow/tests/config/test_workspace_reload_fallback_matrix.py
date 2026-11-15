@@ -56,7 +56,7 @@ def _setup_base_workspace(root: Path) -> Path:
     agent_dir.mkdir(parents=True, exist_ok=True)
     cfg = agent_dir / "ralph-workflow.toml"
     cfg.write_text(
-        "[general]\ndeveloper_iters = 5\n",
+        '[general]\ndeveloper_iters = 5\n\n[agent_chains]\nanalysis = "claude"\ncommit = "claude"\n',
         encoding="utf-8",
     )
     return root

@@ -61,6 +61,8 @@ class _PsutilModuleLike(Protocol):
 
 
 class _PsutilProcessAdapter:
+    __slots__ = ("_proc",)
+
     def __init__(self, proc: LivenessProc) -> None:
         self._proc = proc
 
@@ -89,6 +91,11 @@ class _PsutilProcessAdapter:
 
 
 class _PsutilModuleAdapter:
+    __slots__ = (
+        "Process",
+        "_psutil",
+    )
+
     def __init__(self, psutil_mod: _PsutilModuleLike) -> None:
         self._psutil = psutil_mod
         self.Process: Callable[[int], LivenessProc] = self._get_process
@@ -236,6 +243,19 @@ def _sum_voluntary_ctx(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
 
 
 class TreeSampler:
+    __slots__ = (
+        "_child_events_history",
+        "_clock",
+        "_config",
+        "_cpu_history",
+        "_ctx_history",
+        "_io_history",
+        "_prev_child_pids",
+        "_psutil_module",
+        "_start_time",
+        "_tracked_root_pid",
+    )
+
     def __init__(
         self,
         psutil_module: _PsutilModuleLike,

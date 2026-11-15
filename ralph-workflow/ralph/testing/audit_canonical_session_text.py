@@ -115,14 +115,16 @@ def main(argv: list[str] | None = None) -> int:
     del argv
     problems = _check_canonical_session_text_patterns() + _check_interactive_pty_transports()
     if problems:
-        print(f"CANONICAL SESSION TEXT AUDIT FAILED: {len(problems)} invariant violation(s)")
+        sys.stdout.write(
+            f"CANONICAL SESSION TEXT AUDIT FAILED: {len(problems)} invariant violation(s)\n"
+        )
         for problem in problems:
-            print(problem)
+            sys.stdout.write(str(problem) + "\n")
         return 1
-    print(
+    sys.stdout.write(
         "canonical session text audit: OK "
         f"({len(_CANONICAL_SESSION_TEXT_PATTERN_SOURCES)} canonical patterns; "
-        f"interactive PTY transports={sorted(_INTERACTIVE_PTY_TRANSPORT_NAMES)})"
+        f"interactive PTY transports={sorted(_INTERACTIVE_PTY_TRANSPORT_NAMES)})\n"
     )
     return 0
 

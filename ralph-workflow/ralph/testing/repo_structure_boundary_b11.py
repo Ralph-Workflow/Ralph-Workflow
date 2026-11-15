@@ -30,7 +30,7 @@ def _target_root_names(target: ast.AST) -> set[str]:
         return {target.attr}
     if isinstance(target, ast.Starred):
         return _target_root_names(target.value)
-    if isinstance(target, (ast.Tuple, ast.List)):
+    if isinstance(target, ast.Tuple | ast.List):
         names: set[str] = set()
         for element in target.elts:
             names.update(_target_root_names(element))
@@ -93,7 +93,7 @@ def _b11_function_owners(tree: ast.Module) -> dict[int, _B11Function | None]:
     def visit(node: ast.AST, current: _B11Function | None) -> None:
         owners[id(node)] = current
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
                 owners[id(child)] = current
                 for grandchild in ast.iter_child_nodes(child):
                     visit(grandchild, child)
@@ -127,12 +127,12 @@ def _b11_local_bindings(
     bindings: dict[int, dict[str, str]] = {}
     definitions: dict[int, dict[str, ast.FunctionDef | ast.AsyncFunctionDef]] = {}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             owner = owners.get(id(node))
             definition_scope = definitions.setdefault(id(owner) if owner is not None else 0, {})
             definition_scope[node.name] = node
             continue
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+        if not isinstance(node, ast.Assign | ast.AnnAssign):
             continue
         owner = owners.get(id(node))
         binding_scope = bindings.setdefault(id(owner) if owner is not None else 0, {})

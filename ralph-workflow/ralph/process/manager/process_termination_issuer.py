@@ -1,5 +1,4 @@
 from enum import StrEnum
-from typing import cast
 
 
 class ProcessTerminationIssuer(StrEnum):
@@ -22,7 +21,7 @@ class ProcessTerminationIssuer(StrEnum):
 
 
 def unverified_issuer(raw: str) -> ProcessTerminationIssuer:
-    return cast("ProcessTerminationIssuer", raw)
+    return ProcessTerminationIssuer(raw)
 
 
 __all__ = ["ProcessTerminationIssuer", "unverified_issuer"]

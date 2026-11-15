@@ -40,7 +40,7 @@ def child_env_for_spawn(
     allow_broker_secret: bool = False,
     cwd: str | None = None,
 ) -> dict[str, str]:
-    child_env = dict(os.environ if env is None else env)
+    child_env = os.environ.copy() if env is None else dict(env)
     if cwd is not None:
         child_env["PWD"] = cwd
         child_env.pop("OLDPWD", None)
@@ -56,4 +56,11 @@ def strip_malloc_debug_noise(env: MutableMapping[str, str]) -> tuple[str, ...]:
 
 
 def sanitize_process_environment() -> tuple[str, ...]:
-    return strip_malloc_debug_noise(os.environ)
+    removed: list[str] = []
+    for name in MALLOC_DEBUG_NOISE_VARS:
+        try:
+            del os.environ[name]
+        except KeyError:
+            continue
+        removed.append(name)
+    return tuple(removed)

@@ -331,9 +331,8 @@ def main(argv: list[str] | None = None) -> int:
     sanitize_process_environment()
     args = argv if argv is not None else sys.argv[1:]
     if len(args) > MAX_CLI_ROOT_ARGUMENTS:
-        print(
-            "Usage: python -m ralph.testing.audit_sast [baseline_root] [current_root]",
-            file=sys.stderr,
+        sys.stderr.write(
+            "Usage: python -m ralph.testing.audit_sast [baseline_root] [current_root]\n"
         )
         return 2
     baseline_root: Path | None
@@ -347,50 +346,53 @@ def main(argv: list[str] | None = None) -> int:
         current_root = _default_root()
         baseline_root = head_tree(current_root)
         if baseline_root is None:
-            print(
-                "Error: no committed baseline is available for this package; "
-                "pass <baseline_root> <current_root> explicitly.",
-                file=sys.stderr,
+            sys.stderr.write(
+                "Error: no committed baseline is available for this package; pass <baseline_root> <current_root> explicitly.\n"
             )
             return 2
     for root in (baseline_root, current_root):
         if root is not None and not root.is_dir():
-            print(f"Error: audit root not found: {root}", file=sys.stderr)
+            sys.stderr.write(f"Error: audit root not found: {root}\n")
             return 2
 
     baseline_label = str(baseline_root) if baseline_root is not None else "(empty baseline)"
-    print(
-        f"Auditing static analysis (baseline diff): baseline={baseline_label} current={current_root}"
+    sys.stdout.write(
+        f"Auditing static analysis (baseline diff): baseline={baseline_label} current={current_root}\n"
     )
     config_path = _sast_config_path(current_root)
     config_label = (
         f"{config_path} [{SAST_CONFIG_SECTION}]" if config_path is not None else "Bandit defaults"
     )
-    print(f"SAST configuration: {config_label}")
-    print()
+    sys.stdout.write(f"SAST configuration: {config_label}\n")
+    sys.stdout.write("\n")
 
     try:
         new_findings, baseline_count = audit_sast_roots(baseline_root, current_root)
     except RuntimeError as exc:
-        print(f"Error: the static-analysis gate could not run: {exc}", file=sys.stderr)
+        sys.stderr.write(f"Error: the static-analysis gate could not run: {exc}\n")
         return 2
 
     if new_findings:
-        print(
+        sys.stdout.write(
             f"SAST FINDINGS: {len(new_findings)} new finding(s); "
-            f"{baseline_count} pre-existing finding(s) in the baseline"
+            f"{baseline_count} pre-existing finding(s) in the baseline\n"
         )
-        print("=" * 72)
+        sys.stdout.write(str("=" * 72) + "\n")
         for finding in new_findings:
-            print(f"  {finding}")
-        print()
-        print(
-            "A NEW static-analysis finding fails the gate: fix the cause at the "
-            "reported location. " + WAIVER_INSTRUCTION
+            sys.stdout.write(f"  {finding}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            str(
+                "A NEW static-analysis finding fails the gate: fix the cause at the "
+                "reported location. " + WAIVER_INSTRUCTION
+            )
+            + "\n"
         )
         return 1
 
-    print(f"No new static-analysis findings ({baseline_count} pre-existing finding(s)).")
+    sys.stdout.write(
+        f"No new static-analysis findings ({baseline_count} pre-existing finding(s)).\n"
+    )
     return 0
 
 

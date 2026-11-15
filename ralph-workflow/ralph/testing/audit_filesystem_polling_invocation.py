@@ -152,50 +152,53 @@ def _observer_aliases(nodes: Sequence[ast.AST]) -> set[str]:
         nodes, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
     )
     for node in nodes:
-        if isinstance(node, ast.Import):
-            aliases.update(
-                imported.asname or imported.name
-                for imported in node.names
-                if imported.name == "watchdog"
-            )
-        elif isinstance(node, ast.ImportFrom) and node.module == "watchdog":
-            aliases.update(
-                imported.asname or imported.name
-                for imported in node.names
-                if imported.name == "observers"
-            )
+        match True:
+            case _ if isinstance(node, ast.Import):
+                aliases.update(
+                    imported.asname or imported.name
+                    for imported in node.names
+                    if imported.name == "watchdog"
+                )
+            case _ if isinstance(node, ast.ImportFrom) and node.module == "watchdog":
+                aliases.update(
+                    imported.asname or imported.name
+                    for imported in node.names
+                    if imported.name == "observers"
+                )
     return aliases
 
 
 def _subprocess_aliases(nodes: Sequence[ast.AST]) -> dict[str, str]:
     aliases: dict[str, str] = {}
     for node in nodes:
-        if isinstance(node, ast.Import):
-            for imported in node.names:
-                if imported.name == "subprocess":
-                    aliases[imported.asname or imported.name] = "subprocess"
-        elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
-            for imported in node.names:
-                if imported.name in _SUBPROCESS_CALLS:
-                    aliases[imported.asname or imported.name] = imported.name
+        match True:
+            case _ if isinstance(node, ast.Import):
+                for imported in node.names:
+                    if imported.name == "subprocess":
+                        aliases[imported.asname or imported.name] = "subprocess"
+            case _ if isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+                for imported in node.names:
+                    if imported.name in _SUBPROCESS_CALLS:
+                        aliases[imported.asname or imported.name] = imported.name
     return aliases
 
 
 def _imported_names(nodes: Sequence[ast.AST], *, module: str, accepted: set[str]) -> set[str]:
     names: set[str] = set()
     for node in nodes:
-        if isinstance(node, ast.Import):
-            names.update(
-                imported.asname or imported.name
-                for imported in node.names
-                if imported.name == module and imported.name in accepted
-            )
-        elif isinstance(node, ast.ImportFrom) and node.module == module:
-            names.update(
-                imported.asname or imported.name
-                for imported in node.names
-                if imported.name in accepted
-            )
+        match True:
+            case _ if isinstance(node, ast.Import):
+                names.update(
+                    imported.asname or imported.name
+                    for imported in node.names
+                    if imported.name == module and imported.name in accepted
+                )
+            case _ if isinstance(node, ast.ImportFrom) and node.module == module:
+                names.update(
+                    imported.asname or imported.name
+                    for imported in node.names
+                    if imported.name in accepted
+                )
     return names
 
 
@@ -410,11 +413,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     package_root = Path(selected[0]) if selected else Path(__file__).parent.parent.parent
     violations = audit_filesystem_polling_invocation(package_root)
     if violations:
-        print(f"FILESYSTEM POLLING/INVOCATION VIOLATIONS: {len(violations)}")
+        sys.stdout.write(f"FILESYSTEM POLLING/INVOCATION VIOLATIONS: {len(violations)}\n")
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print("filesystem polling/invocation ownership audit: OK")
+    sys.stdout.write("filesystem polling/invocation ownership audit: OK\n")
     return 0
 
 

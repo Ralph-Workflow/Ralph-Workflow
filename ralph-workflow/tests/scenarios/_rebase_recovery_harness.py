@@ -183,25 +183,43 @@ class FakeAgentRunner:
 
 @contextmanager
 def shared_executor_seam(runner: FakeAgentRunner | None) -> Iterator[None]:
-    from ralph.agents.timeout_clock import FakeClock
-    from ralph.pipeline.effect_executor import (
-        install_agent_effect_dependencies,
-        reset_agent_effect_dependencies,
-    )
+    import ralph.pipeline._stop_resolution_entry as entry_mod
+    import ralph.pipeline.effect_executor as effect_mod
     from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
-    clock = getattr(runner, "clock", None) if runner is not None else None
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock or FakeClock()))
-    agent_runner = getattr(runner, "handle_agent_effect", None) if runner is not None else None
-    token = install_agent_effect_dependencies(
-        agent_runner=agent_runner,
-        recovery_controller=controller,
-    )
+    orig_effect = effect_mod.execute_agent_effect
+    orig_controller_for_key = getattr(entry_mod, "_controller_for_key", None)
+
+    if runner is not None:
+
+        def _seam_execute(effect: object, *args: object, **kwargs: object) -> object:
+            return runner.handle_agent_effect(effect, *args, **kwargs)
+
+        effect_mod.execute_agent_effect = _seam_execute
+
+    if orig_controller_for_key is not None:
+
+        def _safe_controller_for_key(root: Path, config: object, rc: object) -> object:
+            res = orig_controller_for_key(root, config, rc)
+            from ralph.pipeline._stop_resolution_entry import KeyUnavailable
+
+            if isinstance(res, KeyUnavailable) or res is None:
+                clock = getattr(runner, "clock", None) if runner is not None else None
+                from ralph.agents.timeout_clock import FakeClock
+
+                return RecoveryController(
+                    options=RecoveryControllerOptions(clock=clock or FakeClock())
+                )
+            return res
+
+        entry_mod._controller_for_key = _safe_controller_for_key
 
     try:
         yield
     finally:
-        reset_agent_effect_dependencies(token)
+        effect_mod.execute_agent_effect = orig_effect
+        if orig_controller_for_key is not None:
+            entry_mod._controller_for_key = orig_controller_for_key
 
 
 
@@ -916,7 +934,9 @@ def run_spent_chain_fall_over_then_wait(root: Path) -> ScenarioResult:
         reset_executors(token)
 
     waiting_lines = [
-        line for line in second_lines if "provider" in line.content.lower() or "waiting" in line.content.lower()
+        line
+        for line in second_lines
+        if "provider" in line.content.lower() or "waiting" in line.content.lower()
     ]
     terminal = (
         "waiting"
@@ -956,7 +976,9 @@ def run_empty_resolution_stop(root: Path) -> ScenarioResult:
     target = git(root, "rev-parse", "main")
     terminal = (
         "resolved"
-        if not rebase_in_progress(root) and head == target and (root / "series.txt").read_text(encoding="utf-8") == "seed\nsecond\n"
+        if not rebase_in_progress(root)
+        and head == target
+        and (root / "series.txt").read_text(encoding="utf-8") == "seed\nsecond\n"
         else "retained"
     )
     return ScenarioResult(runner.launches, tuple(lines), terminal)

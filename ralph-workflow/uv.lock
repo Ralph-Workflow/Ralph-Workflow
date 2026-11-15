@@ -1890,7 +1890,6 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "types-psutil" },
-    { name = "types-pygments" },
     { name = "types-tqdm" },
 ]
 
@@ -1955,7 +1954,6 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.1" },
     { name = "types-psutil" },
-    { name = "types-pygments", specifier = ">=2.21.0.20260819" },
     { name = "types-tqdm", specifier = ">=4.67.3.20260518" },
 ]
 
@@ -2628,15 +2626,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/44/14/279fd5defebbd560ede04aecd38f7651cccee7336f2264d0889d8c9a9d43/types_psutil-7.2.2.20260408.tar.gz", hash = "sha256:e8053450685965b8cd52afb62569073d00ea9967ae78bb45dff5f606847f97f2", size = 26556, upload-time = "2026-04-08T04:27:44.349Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/40/2fd92a4a1ee088c4dbcc44c977908d9869838d9cd2a2fa2e001352f56694/types_psutil-7.2.2.20260408-py3-none-any.whl", hash = "sha256:0c334f6f6bc9e9c24fca5c7d1f0b6971c961a0a2e3956dc5ce704722c01f9762", size = 32861, upload-time = "2026-04-08T04:27:42.929Z" },
-]
-
-[[package]]
-name = "types-pygments"
-version = "2.21.0.20260819"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/84/2b/b3e929c39fb056f0e44560acbe53a7c3f28f428af5362d043642d80b31ec/types_pygments-2.21.0.20260819.tar.gz", hash = "sha256:68e0cb27115b08b681c843e30a153b5d9850c048e1158623ada36ccd4cf7e89b", size = 21509, upload-time = "2026-08-19T02:47:15.827Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/a5/10a2de06b53a36f4334391fcf292b51877cbc71d3f6eac353e7b87a0a17e/types_pygments-2.21.0.20260819-py3-none-any.whl", hash = "sha256:85e216770d616db6a7e96fb70c2de9d9f283b746c37edb7768ce645bdbcaddb2", size = 29099, upload-time = "2026-08-19T02:47:14.81Z" },
 ]
 
 [[package]]

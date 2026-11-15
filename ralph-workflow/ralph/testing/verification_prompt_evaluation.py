@@ -4,7 +4,7 @@ import json
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
@@ -261,8 +261,8 @@ def _verdicts(
     entries = decision.get("criterion_verdicts")
     identifiers = decision.get("criterion_verdict_ids")
     if isinstance(entries, list) and isinstance(identifiers, list) and entries:
-        raw_identifiers = cast("list[object]", identifiers)
-        raw_entries = cast("list[object]", entries)
+        raw_identifiers = identifiers
+        raw_entries = entries
         if not all(isinstance(value, str) for value in (*raw_identifiers, *raw_entries)):
             raise ValueError("criterion verdict entries must be strings")
         parsed: dict[str, tuple[str, str, bool, str]] = {}

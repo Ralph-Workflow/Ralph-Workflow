@@ -10,6 +10,12 @@ class SubagentOutputCapture(Protocol):
 
 
 class FileSubagentOutputCapture:
+    __slots__ = (
+        "_encoding",
+        "_path",
+        "_position",
+    )
+
     def __init__(self, path: str, *, encoding: str = "utf-8") -> None:
         self._path = Path(path)
         self._encoding = encoding

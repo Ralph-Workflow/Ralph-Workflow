@@ -2,6 +2,14 @@ from __future__ import annotations
 
 
 class ProcessTerminationError(RuntimeError):
+    __slots__ = (
+        "descendant_pids",
+        "pgid",
+        "pid",
+        "reason",
+        "stage",
+    )
+
     def __init__(
         self,
         pid: int,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from ralph.prompts.template_registry import packaged_template_root
@@ -33,7 +34,9 @@ def collect_violations() -> list[str]:
 def main() -> int:
     violations = collect_violations()
     for statement in violations:
-        print(f"prompt single-sourcing audit: missing canonical statement: {statement}")
+        sys.stdout.write(
+            f"prompt single-sourcing audit: missing canonical statement: {statement}\n"
+        )
     return int(bool(violations))
 
 

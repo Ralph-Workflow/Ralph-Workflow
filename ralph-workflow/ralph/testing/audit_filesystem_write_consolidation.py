@@ -509,35 +509,36 @@ def _import_aliases(
     direct_fdopen_aliases: set[str] = set()
     fdopen_module_aliases: set[str] = set()
     for node in nodes:
-        if isinstance(node, ast.Import):
-            for imported in node.names:
-                root = imported.name.split(".", maxsplit=1)[0]
-                if root in _RAW_MUTATION_QUALIFIERS or root == "pathlib":
-                    local_name = imported.asname or root
-                    module_aliases[local_name] = root
-                    if root == "os":
-                        fdopen_module_aliases.add(local_name)
-                elif imported.name in {"io", "builtins"}:
-                    open_module_aliases.add(imported.asname or imported.name)
-        elif isinstance(node, ast.ImportFrom):
-            for imported in node.names:
-                local_name = imported.asname or imported.name
-                if node.module in {"io", "builtins"} and imported.name == "open":
-                    direct_open_aliases.add(local_name)
-                elif node.module == "os" and imported.name == "fdopen":
-                    direct_fdopen_aliases.add(local_name)
-                elif node.module == "pathlib" and imported.name in {
-                    "Path",
-                    "PurePath",
-                    "PosixPath",
-                    "WindowsPath",
-                }:
-                    module_aliases[local_name] = "Path"
-                elif (
-                    node.module in {"os", "shutil", "pathlib"}
-                    and imported.name in _RAW_MUTATION_ATTRS
-                ):
-                    direct_mutations[local_name] = imported.name
+        match True:
+            case _ if isinstance(node, ast.Import):
+                for imported in node.names:
+                    root = imported.name.split(".", maxsplit=1)[0]
+                    if root in _RAW_MUTATION_QUALIFIERS or root == "pathlib":
+                        local_name = imported.asname or root
+                        module_aliases[local_name] = root
+                        if root == "os":
+                            fdopen_module_aliases.add(local_name)
+                    elif imported.name in {"io", "builtins"}:
+                        open_module_aliases.add(imported.asname or imported.name)
+            case _ if isinstance(node, ast.ImportFrom):
+                for imported in node.names:
+                    local_name = imported.asname or imported.name
+                    if node.module in {"io", "builtins"} and imported.name == "open":
+                        direct_open_aliases.add(local_name)
+                    elif node.module == "os" and imported.name == "fdopen":
+                        direct_fdopen_aliases.add(local_name)
+                    elif node.module == "pathlib" and imported.name in {
+                        "Path",
+                        "PurePath",
+                        "PosixPath",
+                        "WindowsPath",
+                    }:
+                        module_aliases[local_name] = "Path"
+                    elif (
+                        node.module in {"os", "shutil", "pathlib"}
+                        and imported.name in _RAW_MUTATION_ATTRS
+                    ):
+                        direct_mutations[local_name] = imported.name
     return (
         module_aliases,
         direct_mutations,
@@ -559,7 +560,7 @@ def _raw_direct_import_mutation_call(
 def _scope_key(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> int | None:
     current: ast.AST | None = node
     while current is not None:
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
             return id(current)
         current = parents.get(current)
     return None
@@ -574,7 +575,7 @@ def _path_variable_names(
     pathlib_constructors = {"Path", "PurePath", "PosixPath", "WindowsPath"}
     workspace_path_resolvers = {"_abs", "absolute_path"}
     for node in nodes:
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+        if not isinstance(node, ast.Assign | ast.AnnAssign) or node.value is None:
             continue
         if not isinstance(node.value, ast.Call):
             continue
@@ -966,27 +967,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     package_root = Path(argv[0]) if argv else Path(__file__).parent.parent.parent
     if not package_root.is_dir():
-        print(f"Package root not found: {package_root}", file=sys.stderr)
+        sys.stderr.write(f"Package root not found: {package_root}\n")
         return 2
 
     violations = audit_filesystem_write_consolidation(package_root)
     if violations:
-        print(f"FILESYSTEM WRITE CONSOLIDATION VIOLATIONS: {len(violations)}")
-        print("=" * 72)
+        sys.stdout.write(f"FILESYSTEM WRITE CONSOLIDATION VIOLATIONS: {len(violations)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
-        print()
-        print(
-            "Fix the drift: stable full-file writes in ralph/ must route through "
-            "ralph.mcp.artifacts.idempotent_write (write_text_if_changed or "
-            "atomic_write_text_if_changed), or be registered in "
-            "EXEMPT_CALL_SITES as (file, qualified callable, kind) naming the "
-            "behavioral contract (transient scratch, deliberately timestamped, "
-            "append-only stream, etc.)."
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Fix the drift: stable full-file writes in ralph/ must route through ralph.mcp.artifacts.idempotent_write (write_text_if_changed or atomic_write_text_if_changed), or be registered in EXEMPT_CALL_SITES as (file, qualified callable, kind) naming the behavioral contract (transient scratch, deliberately timestamped, append-only stream, etc.).\n"
         )
         return 1
 
-    print("filesystem write consolidation audit: OK")
+    sys.stdout.write("filesystem write consolidation audit: OK\n")
     return 0
 
 

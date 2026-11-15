@@ -5,7 +5,7 @@ import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Protocol
 
 from jinja2 import Environment, meta, nodes
 
@@ -262,7 +262,7 @@ def _base_variables(sources: dict[str, str]) -> dict[str, str]:
 def _loaded_names(node: nodes.Node) -> set[str]:
     names: set[str] = set()
     if type(node).__name__ == "Name":
-        name_node = cast("_NameNodeView", node)
+        name_node = node
         if name_node.ctx == "load":
             names.add(name_node.name)
     for child in node.iter_child_nodes():
@@ -285,7 +285,7 @@ def _conditional_variable_groups(
             undeclared_names: set[str],
         ) -> None:
             if type(node).__name__ == "If":
-                if_node = cast("_IfNodeView", node)
+                if_node = node
                 condition_names = frozenset(_loaded_names(if_node.test) & undeclared_names)
                 path_names = (ancestors | condition_names) - _ENGINE_GLOBAL_NAMES
                 if path_names:
@@ -492,7 +492,7 @@ def _duplicated_headings(lines: list[str]) -> list[str]:
 
 def _duplicated_paragraphs(rendered: str) -> list[str]:
     counts: Counter[str] = Counter()
-    paragraphs = cast("list[str]", re.split(r"\n\s*\n", rendered))
+    paragraphs = re.split(r"\n\s*\n", rendered)
     for paragraph in paragraphs:
         normalized = " ".join(paragraph.split())
         if len(normalized) >= _MIN_DUPLICATE_PARAGRAPH_CHARS:
@@ -631,23 +631,17 @@ def main(argv: list[str] | None = None) -> int:
     del argv
     problems = collect_violations()
     if problems:
-        print(f"TEMPLATE RENDER-INTEGRITY AUDIT FAILED: {len(problems)} violation(s)")
-        print("=" * 72)
+        sys.stdout.write(f"TEMPLATE RENDER-INTEGRITY AUDIT FAILED: {len(problems)} violation(s)\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for line in problems:
-            print(f"  {line}")
-        print()
-        print(
-            "Every packaged prompt template must render without unresolved Jinja "
-            "markers, missing includes, duplicated headings/paragraphs, or doubled "
-            "label/blank-run defects, and must not reference removed template "
-            "variables. Fix the template or its realistic scenario mapping."
+            sys.stdout.write(f"  {line}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Every packaged prompt template must render without unresolved Jinja markers, missing includes, duplicated headings/paragraphs, or doubled label/blank-run defects, and must not reference removed template variables. Fix the template or its realistic scenario mapping.\n"
         )
         return 1
-    print(
-        "Template render-integrity audit OK: every packaged top-level template "
-        "and shared partial rendered across reachable scenarios with no unrendered "
-        "markers, include failures, duplicated headings/paragraphs, or "
-        "label/blank-run defects."
+    sys.stdout.write(
+        "Template render-integrity audit OK: every packaged top-level template and shared partial rendered across reachable scenarios with no unrendered markers, include failures, duplicated headings/paragraphs, or label/blank-run defects.\n"
     )
     return 0
 

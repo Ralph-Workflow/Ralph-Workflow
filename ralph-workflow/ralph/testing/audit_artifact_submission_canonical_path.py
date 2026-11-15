@@ -169,6 +169,8 @@ _assert_invariants()
 
 
 class BypassFinding:
+    __slots__ = ("category", "detail", "file_path", "line")
+
     def __init__(
         self,
         file_path: str,
@@ -187,17 +189,19 @@ class BypassFinding:
 
 def _collect_string_literals(node: ast.AST) -> list[str]:
     literals: list[str] = []
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        literals.append(node.value)
-    elif isinstance(node, ast.JoinedStr):
-        for value in node.values:
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                literals.append(value.value)
-            elif isinstance(value, ast.FormattedValue):
-                literals.extend(_collect_string_literals(value.value))
-    else:
-        for child in ast.iter_child_nodes(node):
-            literals.extend(_collect_string_literals(child))
+    match True:
+        case _ if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            literals.append(node.value)
+        case _ if isinstance(node, ast.JoinedStr):
+            for value in node.values:
+                match True:
+                    case _ if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        literals.append(value.value)
+                    case _ if isinstance(value, ast.FormattedValue):
+                        literals.extend(_collect_string_literals(value.value))
+        case _:
+            for child in ast.iter_child_nodes(node):
+                literals.extend(_collect_string_literals(child))
     return literals
 
 
@@ -209,10 +213,11 @@ def _path_segments(node: ast.AST) -> list[str | None]:
     if isinstance(node, ast.JoinedStr):
         parts: list[str | None] = []
         for value in node.values:
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                parts.append(value.value)
-            elif isinstance(value, ast.FormattedValue):
-                parts.append(None)
+            match True:
+                case _ if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    parts.append(value.value)
+                case _ if isinstance(value, ast.FormattedValue):
+                    parts.append(None)
         return parts or [None]
     if isinstance(node, ast.Call):
         func_name = _dotted_name(node.func)
@@ -542,30 +547,25 @@ def main(argv: list[str] | None = None) -> int:
     codebase_root = Path(args[0]) if args else None
 
     if codebase_root is not None and not codebase_root.is_dir():
-        print(f"Error: directory not found: {codebase_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: directory not found: {codebase_root}\n")
         return 2
 
     root_for_print = codebase_root or Path(__file__).parent.parent.parent
-    print(f"Auditing artifact-submission canonical path in: {root_for_print}")
+    sys.stdout.write(f"Auditing artifact-submission canonical path in: {root_for_print}\n")
 
     findings = audit(codebase_root)
 
     if findings:
-        print(
-            f"ARTIFACT SUBMISSION BYPASS(ES) FOUND: {len(findings)} finding(s)",
-            file=sys.stderr,
-        )
-        print("=" * 72, file=sys.stderr)
+        sys.stderr.write(f"ARTIFACT SUBMISSION BYPASS(ES) FOUND: {len(findings)} finding(s)\n")
+        sys.stderr.write(str("=" * 72) + "\n")
         for finding in findings:
-            print(f"  {finding}", file=sys.stderr)
-        print(
-            "Bypasses weaken the single-source-of-truth contract. Route through "
-            "ralph.mcp.artifacts.canonical_submit.submit_artifact_canonical instead.",
-            file=sys.stderr,
+            sys.stderr.write(f"  {finding}\n")
+        sys.stderr.write(
+            "Bypasses weaken the single-source-of-truth contract. Route through ralph.mcp.artifacts.canonical_submit.submit_artifact_canonical instead.\n"
         )
         return 1
 
-    print("No artifact-submission canonical-path bypasses found.")
+    sys.stdout.write("No artifact-submission canonical-path bypasses found.\n")
     return 0
 
 

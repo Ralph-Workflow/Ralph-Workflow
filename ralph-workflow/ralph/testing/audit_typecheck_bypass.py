@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tomllib
 from configparser import ConfigParser
+from configparser import Error as ConfigParserError
 from pathlib import Path
 
 _WEAKENING_MYPY_KEYS: dict[str, str] = {
@@ -25,6 +26,8 @@ def _mypy_value_weakens(key: str, value: str) -> bool:
 
 
 class TypecheckBypassViolation:
+    __slots__ = ("category", "detail", "file_path", "line")
+
     def __init__(
         self,
         file_path: str,
@@ -71,7 +74,7 @@ def _ini_value(config: ConfigParser, section_name: str, key: str) -> str | None:
         return None
     try:
         return config.get(section_name, key).strip()
-    except Exception:
+    except ConfigParserError:
         return None
 
 
@@ -203,7 +206,7 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:
     config = ConfigParser()
     try:
         config.read_string(content)
-    except Exception:
+    except ConfigParserError:
         return violations
 
     rel_path = str(config_path)
@@ -350,28 +353,32 @@ def main(argv: list[str] | None = None) -> int:
     codebase_root = Path(args[0]) if args else Path(__file__).parent.parent.parent
 
     if not codebase_root.is_dir():
-        print(f"Error: directory not found: {codebase_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: directory not found: {codebase_root}\n")
         return 2
 
-    print(f"Auditing typecheck bypass in: {codebase_root}")
-    print()
+    sys.stdout.write(f"Auditing typecheck bypass in: {codebase_root}\n")
+    sys.stdout.write("\n")
 
     violations, files_checked = audit_codebase(codebase_root)
 
     if violations:
-        print(
+        sys.stdout.write(
             f"TYPECHECK BYPASS VIOLATIONS FOUND: {len(violations)} violation(s) "
-            f"in {files_checked} configuration file(s)"
+            f"in {files_checked} configuration file(s)\n"
         )
-        print("=" * 72)
+        sys.stdout.write(str("=" * 72) + "\n")
         for v in violations:
-            print(f"  {v}")
-        print()
-        print("These violations weaken typecheck enforcement. Fix the violation, not the audit.")
-        print("Guidance: docs/agents/type-ignore-policy.md")
+            sys.stdout.write(f"  {v}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "These violations weaken typecheck enforcement. Fix the violation, not the audit.\n"
+        )
+        sys.stdout.write("Guidance: docs/agents/type-ignore-policy.md\n")
         return 1
 
-    print(f"No typecheck bypass violations found in {files_checked} configuration file(s).")
+    sys.stdout.write(
+        f"No typecheck bypass violations found in {files_checked} configuration file(s).\n"
+    )
     return 0
 
 

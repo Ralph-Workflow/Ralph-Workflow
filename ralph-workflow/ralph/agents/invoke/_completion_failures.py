@@ -104,6 +104,10 @@ def _raise_if_broken_agent_exit(
         )
 
 
+def _is_agent_launch_error(handle: object) -> bool:
+    return isinstance(handle, AgentLaunchError)
+
+
 def _has_interactive_completion_bypass(
     handle: ManagedProcess | ManagedPtyProcess,
     parsed_output: list[str] | None,
@@ -197,7 +201,7 @@ def _handle_non_zero_returncode(
         bounded_output,
         failure_origin=(
             "runtime_launch"
-            if isinstance(handle, AgentLaunchError)
+            if _is_agent_launch_error(handle)
             else "intentional_termination"
             if intentional
             else "agent"

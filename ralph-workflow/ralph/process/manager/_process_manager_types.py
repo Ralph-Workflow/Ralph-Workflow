@@ -19,13 +19,14 @@ def _set_defaults(
 
 if TYPE_CHECKING:
     import asyncio
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Iterable, Sequence
     from typing import IO, Protocol
 
     from ralph.process.manager._spawn_options import SpawnOptions
 
     class _PsutilProcessLike(Protocol):
-        pid: int
+        @property
+        def pid(self) -> int: ...
 
         @property
         def info(self) -> dict[str, int]: ...
@@ -41,7 +42,6 @@ if TYPE_CHECKING:
     class _PsutilModuleLike(Protocol):
         NoSuchProcess: type[BaseException]
         AccessDenied: type[BaseException]
-        Process: Callable[[int], _PsutilProcessLike]
 
         def process_from_pid(self, pid: int) -> _PsutilProcessLike: ...
         def pid_exists(self, pid: int) -> bool: ...

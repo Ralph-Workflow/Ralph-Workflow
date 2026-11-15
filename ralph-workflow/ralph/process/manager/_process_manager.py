@@ -214,6 +214,29 @@ def _default_liveness_verifier(
 
 
 class ProcessManager:
+    __slots__ = (
+        "_async_process_factory",
+        "_async_procs",
+        "_descendants",
+        "_listener_counter",
+        "_listeners",
+        "_liveness_verifier",
+        "_psutil",
+        "_pty_process_factory",
+        "_pty_procs",
+        "_reaper_thread",
+        "_records",
+        "_status_lock",
+        "_stop_event",
+        "_sync_process_factory",
+        "_sync_procs",
+        "_terminal_records",
+        "_terminate_executor",
+        "_terminate_executor_factory",
+        "_termination_outcomes",
+        "policy",
+    )
+
     def __init__(
         self,
         policy: ProcessManagerPolicy | None = None,

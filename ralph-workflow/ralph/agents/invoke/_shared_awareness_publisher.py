@@ -20,6 +20,18 @@ SIDECAR_FAILURE_CAUSE = "shared_awareness_io_failed"
 
 
 class ThrottledSidecarPublisher:
+    __slots__ = (
+        "__weakref__",
+        "_last_publish",
+        "_lock",
+        "_now",
+        "_on_failure",
+        "_open",
+        "_pending",
+        "_sidecar",
+        "_timer",
+    )
+
     def __init__(
         self,
         sidecar: Callable[[], SharedAwarenessSidecar],

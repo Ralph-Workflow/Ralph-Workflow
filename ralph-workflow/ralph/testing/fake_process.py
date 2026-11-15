@@ -25,6 +25,16 @@ if TYPE_CHECKING:
 
 
 class FakeControllableAsyncProcess:
+    __slots__ = (
+        "_completion_event",
+        "_final_returncode",
+        "_returncode",
+        "_stdout",
+        "pid",
+        "stderr",
+        "stdin",
+    )
+
     def __init__(
         self,
         pid: int,

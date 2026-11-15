@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
 
 class DroppingEventQueue(Queue[object]):
+    __slots__ = ("_on_overflow",)
+
     def __init__(self, maxsize: int) -> None:
         super().__init__(maxsize=maxsize)
         self._on_overflow: Callable[[], None] | None = None

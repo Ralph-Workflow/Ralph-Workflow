@@ -6,6 +6,7 @@ import contextlib
 import io
 import re
 import subprocess
+import sys
 import tokenize
 from dataclasses import dataclass
 from pathlib import Path
@@ -255,11 +256,13 @@ def _is_make_recipe_literal(text: str, index: int) -> bool:
     return index == 0 or not text[index - 1].isspace()
 
 
-@dataclass
 class _ScanState:
-    line: int = 1
-    quote: str = ""
-    triple: bool = False
+    __slots__ = ("line", "quote", "triple")
+
+    def __init__(self, line: int = 1, quote: str = "", triple: bool = False) -> None:
+        self.line = line
+        self.quote = quote
+        self.triple = triple
 
     def skip_string(self, text: str, index: int) -> int:
         if self.triple:
@@ -788,17 +791,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         findings = audit_paths(path_list, exclude_list) if path_list else audit_repository()
     except _InputError as error:
-        print(f"COMMENT-AUDIT INPUT ERROR: {error}")
+        sys.stdout.write(f"COMMENT-AUDIT INPUT ERROR: {error}\n")
         return 2
     if findings:
-        print(f"COMMENT-POLICY FINDINGS: {len(findings)}")
-        print("=" * 72)
+        sys.stdout.write(f"COMMENT-POLICY FINDINGS: {len(findings)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for finding in findings:
-            print(f"  {finding}")
-        print()
-        print(f"Fix every finding: {FIX_HINT}.")
+            sys.stdout.write(f"  {finding}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(f"Fix every finding: {FIX_HINT}.\n")
         return 1
-    print("No comment, docstring or documentation-decision findings.")
+    sys.stdout.write("No comment, docstring or documentation-decision findings.\n")
     return 0
 
 

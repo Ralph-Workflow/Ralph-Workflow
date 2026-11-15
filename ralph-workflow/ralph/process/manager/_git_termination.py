@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import importlib
 import os
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+from ralph.process.manager._process_manager_runtime import load_psutil_module
 from ralph.timeout_defaults import GIT_TERMINATE_GRACE_SECONDS
 
 if TYPE_CHECKING:
@@ -15,10 +15,7 @@ if TYPE_CHECKING:
 
 
 def _psutil() -> _PsutilModuleLike | None:
-    try:
-        return cast("_PsutilModuleLike", importlib.import_module("psutil"))
-    except ImportError:
-        return None
+    return load_psutil_module()
 
 
 def _psutil_process_name(pid: int) -> str:
@@ -26,7 +23,7 @@ def _psutil_process_name(pid: int) -> str:
     if module is None:
         return ""
     with suppress(Exception):
-        return module.Process(pid).name().lower()
+        return module.process_from_pid(pid).name().lower()
     return ""
 
 

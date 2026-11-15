@@ -18,6 +18,25 @@ _MAX_KNOWN_CHILDREN: int = 64
 
 
 class OpenCodeSubagentSessionProbe:
+    __slots__ = (
+        "__weakref__",
+        "_child_progress_sink",
+        "_closed",
+        "_known_children",
+        "_last_poll_at",
+        "_last_status_at",
+        "_latest_summary",
+        "_monotonic",
+        "_parent_session_id",
+        "_poll_interval",
+        "_seen",
+        "_since_ms",
+        "_source",
+        "_status_interval",
+        "_subagent_sink",
+        "_updates_since_status",
+    )
+
     def __init__(
         self,
         *,

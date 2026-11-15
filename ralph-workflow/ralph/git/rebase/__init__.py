@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from ralph.git.rebase._rebase_lock import RebaseLock
 from ralph.git.rebase._rebase_phase import RebasePhase
 
 from .rebase import (
@@ -56,7 +55,6 @@ __all__ = [
     "RebaseEvent",
     "RebaseFailed",
     "RebaseKind",
-    "RebaseLock",
     "RebaseNoOp",
     "RebasePhase",
     "RebasePreconditionError",

@@ -607,26 +607,30 @@ def _module_symbols(tree: ast.Module) -> set[str]:
     symbols: set[str] = set()
     for node in tree.body:
         name = _definition_name(node)
-        if name is not None:
-            symbols.add(name)
-        elif isinstance(node, ast.Assign):
-            for target in _assignment_targets(node):
-                if isinstance(target, ast.Name):
-                    symbols.add(target.id)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            symbols.add(node.target.id)
+        match True:
+            case _ if name is not None:
+                symbols.add(name)
+            case _ if isinstance(node, ast.Assign):
+                for target in _assignment_targets(node):
+                    if isinstance(target, ast.Name):
+                        symbols.add(target.id)
+            case _ if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                symbols.add(node.target.id)
     return symbols
 
 
 def _class_members(node: ast.ClassDef) -> set[str]:
     members: set[str] = set()
     for statement in node.body:
-        if isinstance(statement, ast.Assign):
-            for target in _assignment_targets(statement):
-                if isinstance(target, ast.Name):
-                    members.add(target.id)
-        elif isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
-            members.add(statement.target.id)
+        match True:
+            case _ if isinstance(statement, ast.Assign):
+                for target in _assignment_targets(statement):
+                    if isinstance(target, ast.Name):
+                        members.add(target.id)
+            case _ if isinstance(statement, ast.AnnAssign) and isinstance(
+                statement.target, ast.Name
+            ):
+                members.add(statement.target.id)
     return members
 
 
@@ -659,12 +663,13 @@ def _agent_eligible_container_names(modules: Mapping[str, str]) -> frozenset[str
         if tree is None:
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                targets = _assignment_targets(node)
-            elif isinstance(node, ast.AnnAssign):
-                targets = [node.target]
-            else:
-                continue
+            match True:
+                case _ if isinstance(node, ast.Assign):
+                    targets = _assignment_targets(node)
+                case _ if isinstance(node, ast.AnnAssign):
+                    targets = [node.target]
+                case _:
+                    continue
             for target in targets:
                 if isinstance(target, ast.Name) and "ELIGIBLE" in target.id.upper():
                     names.add(target.id)
@@ -896,14 +901,12 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(repo_root)
     if violations:
-        print(f"INTEGRATION INVARIANTS AUDIT: {len(violations)} violation(s) found:")
+        sys.stdout.write(f"INTEGRATION INVARIANTS AUDIT: {len(violations)} violation(s) found:\n")
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print(
-        "INTEGRATION INVARIANTS AUDIT: OK "
-        "(private-resolver containment, severity authority, terminal-emitter routing, "
-        "agent-eligibility ownership, gitlink policy ownership, watchdog cap reason)"
+    sys.stdout.write(
+        "INTEGRATION INVARIANTS AUDIT: OK (private-resolver containment, severity authority, terminal-emitter routing, agent-eligibility ownership, gitlink policy ownership, watchdog cap reason)\n"
     )
     return 0
 

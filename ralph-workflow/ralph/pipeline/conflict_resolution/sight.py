@@ -207,8 +207,7 @@ def classify_stage_map(
         return ConflictSight.AGENT_DECISION if binary else ConflictSight.AGENT
     gitlink_sight = ConflictSight.GITLINK_POLICY
     if ours is None or theirs is None:
-        present = ours if ours is not None else theirs
-        return _classify_one_sided(present, gitlink_sight)
+        return _classify_missing_side(ours, theirs, binary=binary, gitlink_sight=gitlink_sight)
 
     ours_mode, ours_blob = ours
     theirs_mode, theirs_blob = theirs
@@ -226,6 +225,19 @@ def classify_stage_map(
     if binary or (_is_tree(ours_mode) != _is_tree(theirs_mode)):
         return ConflictSight.AGENT_DECISION
     return _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
+
+
+def _classify_missing_side(
+    ours: tuple[str, str] | None,
+    theirs: tuple[str, str] | None,
+    *,
+    binary: bool,
+    gitlink_sight: ConflictSight,
+) -> ConflictSight:
+    present = ours if ours is not None else theirs
+    if present is not None and present[0] == _GITLINK_MODE:
+        return gitlink_sight
+    return ConflictSight.AGENT_DECISION if binary else _classify_one_sided(present, gitlink_sight)
 
 
 def _classify_two_sided_blob(

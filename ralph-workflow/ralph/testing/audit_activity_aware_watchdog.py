@@ -151,6 +151,16 @@ def _format_snippet(source: str, line: int) -> str:
 
 
 class _ModuleVisitor(ast.NodeVisitor):
+    __slots__ = (
+        "_function_defs",
+        "_has_set_active_sink",
+        "_has_set_subagent_sink",
+        "_tree",
+        "rel_path",
+        "source",
+        "violations",
+    )
+
     def __init__(self, rel_path: str, source: str, *, tree: ast.AST | None = None) -> None:
         self.rel_path = rel_path
         self.source = source
@@ -221,10 +231,11 @@ class _ModuleVisitor(ast.NodeVisitor):
 
     def _is_valid_two_arg_forwarder(self, node: ast.expr) -> bool:
         func_def: ast.FunctionDef | ast.Lambda | None = None
-        if isinstance(node, ast.Lambda):
-            func_def = node
-        elif isinstance(node, ast.Name):
-            func_def = self._find_function_def(node.id)
+        match True:
+            case _ if isinstance(node, ast.Lambda):
+                func_def = node
+            case _ if isinstance(node, ast.Name):
+                func_def = self._find_function_def(node.id)
         if func_def is None:
             return False
         args = func_def.args
@@ -290,7 +301,7 @@ class _ModuleVisitor(ast.NodeVisitor):
     def _scan_function_bodies_for_teardown(self) -> None:
         tree = self._tree if self._tree is not None else ast.parse(self.source)
         for func in ast.walk(tree):
-            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if not isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             terminate_calls = [
                 node
@@ -306,7 +317,7 @@ class _ModuleVisitor(ast.NodeVisitor):
     def _scan_function_bodies_for_error_path_teardown(self) -> None:
         tree = self._tree if self._tree is not None else ast.parse(self.source)
         for func in ast.walk(tree):
-            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if not isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             raise_nodes = [
                 node
@@ -520,35 +531,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     package_root = Path(argv[0]) if argv else Path(__file__).parent.parent
 
     if not package_root.is_dir():
-        print(f"Package root not found: {package_root}", file=sys.stderr)
+        sys.stderr.write(f"Package root not found: {package_root}\n")
         return 2
 
     violations = audit_activity_aware_watchdog(package_root)
 
     if violations:
-        print(f"ACTIVITY-AWARE WATCHDOG CONTRACT VIOLATIONS: {len(violations)}")
-        print("=" * 72)
+        sys.stdout.write(f"ACTIVITY-AWARE WATCHDOG CONTRACT VIOLATIONS: {len(violations)}\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for v in violations:
-            print(f"  {v}")
-        print()
-        print(
-            "Fix the wiring: pass process_monitor= to IdleWatchdog, wire "
-            "set_active_sink/set_subagent_sink, bind WorkspaceMonitor.set_on_event "
-            "with a 2-arg (kind, weight) forwarding lambda, call teardown_subtree "
-            "after self._handle.terminate, call teardown_subtree "
-            "before raise AgentInvocationError "
-            "on error/crash paths, and construct DefaultProcessMonitor with "
-            "role_classifier=role_classifier_for_transport(...), discovery_strategy=, "
-            "and subagent_pid_source=. Reader corroborators (_corroborate in "
-            "_process_reader.py / _pty_line_reader.py) MUST read "
-            "process_monitor.spawned_subagent_count() (or the legacy alias "
-            "live_subagent_count()) for scoped_child_active -- the broader "
-            "handle.descendant_snapshot() count must NEVER be used for "
-            "deferral decisions (R1)."
+            sys.stdout.write(f"  {v}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Fix the wiring: pass process_monitor= to IdleWatchdog, wire set_active_sink/set_subagent_sink, bind WorkspaceMonitor.set_on_event with a 2-arg (kind, weight) forwarding lambda, call teardown_subtree after self._handle.terminate, call teardown_subtree before raise AgentInvocationError on error/crash paths, and construct DefaultProcessMonitor with role_classifier=role_classifier_for_transport(...), discovery_strategy=, and subagent_pid_source=. Reader corroborators (_corroborate in _process_reader.py / _pty_line_reader.py) MUST read process_monitor.spawned_subagent_count() (or the legacy alias live_subagent_count()) for scoped_child_active -- the broader handle.descendant_snapshot() count must NEVER be used for deferral decisions (R1).\n"
         )
         return 1
 
-    print("activity-aware watchdog audit: OK")
+    sys.stdout.write("activity-aware watchdog audit: OK\n")
     return 0
 
 

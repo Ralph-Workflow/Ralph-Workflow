@@ -8,7 +8,7 @@ import psutil
 
 from ralph.timeout_defaults import SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS
 
-from ._process_monitor import ProcessMonitor, ProcessRole
+from ._process_monitor import ProcessRole
 from ._role_classifier import _conservative_role_classifier
 
 if TYPE_CHECKING:
@@ -26,7 +26,18 @@ class _ClassifiedProcess:
     cmdline: list[str] | None
 
 
-class DefaultProcessMonitor(ProcessMonitor):
+class DefaultProcessMonitor:
+    __slots__ = (
+        "_discovery_strategy",
+        "_host_pid",
+        "_last_refresh_at",
+        "_now",
+        "_poll_interval_seconds",
+        "_processes",
+        "_role_classifier",
+        "_subagent_pid_source",
+    )
+
     def __init__(
         self,
         host_pid: int,
@@ -79,7 +90,7 @@ class DefaultProcessMonitor(ProcessMonitor):
         if self._subagent_pid_source is not None:
             try:
                 known_subagent_pids = self._subagent_pid_source.known_subagent_pids()
-            except Exception:
+            except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
                 known_subagent_pids = set()
 
         for proc in descendants:
@@ -112,5 +123,5 @@ class DefaultProcessMonitor(ProcessMonitor):
             return {}
         try:
             return self._discovery_strategy.discover_subagent_outputs(self._host_pid)
-        except Exception:
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
             return {}

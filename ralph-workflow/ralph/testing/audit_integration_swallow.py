@@ -29,7 +29,7 @@ def _is_broad(handler: ast.ExceptHandler) -> bool:
 
 def _normal_return(node: ast.Return) -> bool:
     value = node.value
-    empty_sequence = isinstance(value, (ast.Tuple, ast.List, ast.Set)) and not value.elts
+    empty_sequence = isinstance(value, ast.Tuple | ast.List | ast.Set) and not value.elts
     empty_mapping = isinstance(value, ast.Dict) and not value.keys
     default_constant = isinstance(value, ast.Constant) and value.value in {None, False, ""}
     return value is None or empty_sequence or empty_mapping or default_constant
@@ -123,7 +123,9 @@ def selftest() -> int:
     }
     clean_violations = audit_modules(clean_modules)
     if clean_violations:
-        print(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}")
+        sys.stdout.write(
+            f"SELFTEST FAILED: clean modules produced violations: {clean_violations}\n"
+        )
         return 1
 
     planted_cases: list[tuple[str, str]] = [
@@ -158,13 +160,13 @@ def selftest() -> int:
         violations = audit_modules({path: source})
         rules = [v.rule for v in violations]
         if expected_rule not in rules:
-            print(
-                f"SELFTEST FAILED: case {index} did not produce rule '{expected_rule}', got {rules}"
+            sys.stdout.write(
+                f"SELFTEST FAILED: case {index} did not produce rule '{expected_rule}', got {rules}\n"
             )
             return 1
 
-    print(
-        f"INTEGRATION SWALLOW AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)"
+    sys.stdout.write(
+        f"INTEGRATION SWALLOW AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)\n"
     )
     return 0
 
@@ -176,11 +178,11 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(root)
     if violations:
-        print(f"INTEGRATION SWALLOW AUDIT: {len(violations)} violation(s) found:")
+        sys.stdout.write(f"INTEGRATION SWALLOW AUDIT: {len(violations)} violation(s) found:\n")
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print("INTEGRATION SWALLOW AUDIT: OK")
+    sys.stdout.write("INTEGRATION SWALLOW AUDIT: OK\n")
     return 0
 
 

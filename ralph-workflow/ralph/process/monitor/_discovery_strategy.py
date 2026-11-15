@@ -20,6 +20,16 @@ class NullDiscoveryStrategy:
 
 
 class RegistryBackedSubagentOutputCapture:
+    __slots__ = (
+        "_child_id",
+        "_last_heartbeat_at",
+        "_last_progress_at",
+        "_last_progress_phase",
+        "_last_terminal_state",
+        "_registry",
+        "_scope_prefix",
+    )
+
     def __init__(
         self,
         registry: ChildLivenessRegistry,
@@ -69,6 +79,11 @@ class RegistryBackedSubagentOutputCapture:
 
 
 class OpenCodeRegistryDiscoveryStrategy:
+    __slots__ = (
+        "_registry",
+        "_scope_prefix",
+    )
+
     def __init__(
         self,
         registry: ChildLivenessRegistry,

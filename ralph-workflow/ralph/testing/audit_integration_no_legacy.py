@@ -148,14 +148,15 @@ def _tuple_subclass(node: ast.ClassDef) -> bool:
 def _node_identifier(node: ast.AST) -> tuple[str, int] | None:
     identifier: str | None = None
     line = 0
-    if isinstance(node, ast.Name):
-        identifier, line = node.id, node.lineno
-    elif isinstance(node, ast.Attribute):
-        identifier, line = node.attr, node.lineno
-    elif isinstance(node, (ast.arg, ast.keyword)):
-        identifier, line = node.arg, node.lineno
-    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        identifier, line = node.name, node.lineno
+    match True:
+        case _ if isinstance(node, ast.Name):
+            identifier, line = (node.id, node.lineno)
+        case _ if isinstance(node, ast.Attribute):
+            identifier, line = (node.attr, node.lineno)
+        case _ if isinstance(node, ast.arg | ast.keyword):
+            identifier, line = (node.arg, node.lineno)
+        case _ if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            identifier, line = (node.name, node.lineno)
     if identifier is None:
         return None
     return identifier, line
@@ -215,12 +216,13 @@ def _bool_str_tuple_literal(node: ast.Tuple) -> bool:
         return False
     kinds: set[str] = set()
     for element in node.elts:
-        if isinstance(element, ast.Constant) and isinstance(element.value, bool):
-            kinds.add("bool")
-        elif isinstance(element, ast.Constant) and isinstance(element.value, str):
-            kinds.add("str")
-        else:
-            return False
+        match True:
+            case _ if isinstance(element, ast.Constant) and isinstance(element.value, bool):
+                kinds.add("bool")
+            case _ if isinstance(element, ast.Constant) and isinstance(element.value, str):
+                kinds.add("str")
+            case _:
+                return False
     return kinds == {"bool", "str"}
 
 
@@ -457,7 +459,9 @@ def selftest() -> int:
     }
     clean_violations = audit_modules(clean_modules, ignore_transitional=True)
     if clean_violations:
-        print(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}")
+        sys.stdout.write(
+            f"SELFTEST FAILED: clean modules produced violations: {clean_violations}\n"
+        )
         return 1
 
     planted_cases: list[tuple[str, str, str]] = [
@@ -527,11 +531,13 @@ def selftest() -> int:
         violations = audit_modules({rel: source}, ignore_transitional=True)
         rules = [v.rule for v in violations]
         if expected_rule not in rules:
-            print(f"SELFTEST FAILED: {rel} did not produce rule '{expected_rule}', got {rules}")
+            sys.stdout.write(
+                f"SELFTEST FAILED: {rel} did not produce rule '{expected_rule}', got {rules}\n"
+            )
             return 1
 
-    print(
-        f"INTEGRATION NO-LEGACY AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)"
+    sys.stdout.write(
+        f"INTEGRATION NO-LEGACY AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)\n"
     )
     return 0
 
@@ -543,11 +549,11 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(root)
     if violations:
-        print(f"INTEGRATION NO-LEGACY AUDIT: {len(violations)} violation(s) found:")
+        sys.stdout.write(f"INTEGRATION NO-LEGACY AUDIT: {len(violations)} violation(s) found:\n")
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print("INTEGRATION NO-LEGACY AUDIT: OK")
+    sys.stdout.write("INTEGRATION NO-LEGACY AUDIT: OK\n")
     return 0
 
 

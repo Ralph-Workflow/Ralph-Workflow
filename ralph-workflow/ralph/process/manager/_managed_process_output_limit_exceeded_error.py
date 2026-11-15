@@ -2,6 +2,12 @@ from __future__ import annotations
 
 
 class ManagedProcessOutputLimitExceededError(RuntimeError):
+    __slots__ = (
+        "output_limit_bytes",
+        "stderr",
+        "stdout",
+    )
+
     def __init__(self, *, output_limit_bytes: int, stdout: bytes, stderr: bytes) -> None:
         super().__init__(f"process output exceeded {output_limit_bytes} bytes")
         self.output_limit_bytes = output_limit_bytes

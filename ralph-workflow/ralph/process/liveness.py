@@ -6,6 +6,12 @@ from ralph.process.child_liveness import ChildActivitySnapshot
 
 
 class FakeLivenessProbe:
+    __slots__ = (
+        "_active",
+        "_active_labels",
+        "_snapshot",
+    )
+
     def __init__(
         self,
         *,

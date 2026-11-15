@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 
 
 class ManagedProcess:
+    __slots__ = (
+        "_manager",
+        "_proc",
+        "_record",
+    )
+
     def __init__(
         self,
         proc: _SyncProcessLike,
@@ -638,8 +644,7 @@ class ManagedProcess:
                 grace_period_s=2.0,
                 issuer=ProcessTerminationIssuer.CONTEXT_EXIT,
             )
-        for attr in ("stdout", "stderr", "stdin"):
-            pipe: IO[bytes] | IO[str] | None = getattr(self._proc, attr, None)
+        for pipe in (self._proc.stdout, self._proc.stderr, self._proc.stdin):
             if pipe is not None:
                 with contextlib.suppress(Exception):
                     pipe.close()

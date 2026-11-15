@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import signal
+import threading
 import time
-from dataclasses import dataclass
 
 from ralph.process._suppress_close_error import _SuppressCloseError
 from ralph.process._suppress_missing_process import _SuppressMissingProcess
@@ -11,13 +11,23 @@ from ralph.process._suppress_missing_process import _SuppressMissingProcess
 _READ_CHUNK_SIZE = 4096
 
 
-@dataclass
 class PtyProcess:
-    pid: int
-    master_fd: int
-    slave_fd: int
-    _returncode: int | None = None
-    _closed: bool = False
+    __slots__ = ("_closed", "_returncode", "_wait_event", "master_fd", "pid", "slave_fd")
+
+    def __init__(
+        self,
+        pid: int,
+        master_fd: int,
+        slave_fd: int,
+        _returncode: int | None = None,
+        _closed: bool = False,
+    ) -> None:
+        self.pid = pid
+        self.master_fd = master_fd
+        self.slave_fd = slave_fd
+        self._returncode = _returncode
+        self._closed = _closed
+        self._wait_event = threading.Event()
 
     @property
     def returncode(self) -> int | None:
@@ -60,7 +70,7 @@ class PtyProcess:
                 return rc
             if time.monotonic() >= deadline:
                 raise TimeoutError from None
-            time.sleep(0.01)
+            self._wait_event.wait(0.01)
 
     def terminate(self) -> None:
         with _SuppressMissingProcess():

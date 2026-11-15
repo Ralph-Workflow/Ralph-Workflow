@@ -5,6 +5,18 @@ from typing import IO
 
 
 class FakeTimeoutPopen:
+    __slots__ = (
+        "_communicate_count",
+        "_killed",
+        "_partial_stdout",
+        "_returncode",
+        "_terminated",
+        "pid",
+        "stderr",
+        "stdin",
+        "stdout",
+    )
+
     def __init__(
         self,
         pid: int,

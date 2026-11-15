@@ -15,6 +15,21 @@ MAX_PENDING_CHANGES = 4096
 
 
 class WorkspaceChangeCoalescer:
+    __slots__ = (
+        "__weakref__",
+        "_closed",
+        "_deliver",
+        "_drain_finished",
+        "_draining",
+        "_is_within",
+        "_lock",
+        "_max_pending",
+        "_on_overflow",
+        "_overflowed",
+        "_pending",
+        "_timer",
+    )
+
     def __init__(
         self,
         deliver: Callable[[str], None],

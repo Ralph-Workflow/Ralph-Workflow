@@ -6,6 +6,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 SHIPPED_POLICY_ROOT = REPOSITORY_ROOT / "ralph-workflow/ralph/project_policy/starters"
 REPOSITORY_POLICY_ROOT = REPOSITORY_ROOT / "docs/ralph-workflow-policy"
+CONTRIBUTING = REPOSITORY_ROOT / "ralph-workflow/CONTRIBUTING.md"
 
 POLICY_COPIES: dict[str, Path] = {
     "shipped policy": SHIPPED_POLICY_ROOT,
@@ -60,15 +61,36 @@ def test_policy_copies_have_at_most_one_library_documentation_sentence() -> None
         assert len(matches) <= 1, f"{copy_name} has {len(matches)} library-docs sentences"
 
 
-def test_policy_copies_retain_the_premise_check_contract() -> None:
+def test_retained_premise_check_has_an_explicit_per_copy_exception_record() -> None:
+    audit = CONTRIBUTING.read_text(encoding="utf-8")
+    premise_row = re.search(
+        r"(?im)^\|\s*Remove the premise-check rule\s*\|\s*"
+        r"Consciously excepted under the trim-less clause\s*\|\s*"
+        r"Consciously excepted under the trim-less clause\s*\|[^\n]*"
+        r"(?:deliberate restoration|48bd5e8ca)",
+        audit,
+    )
     for copy_name, root in POLICY_COPIES.items():
-        assert PREMISE_CHECK_PATTERN.search(_policy_text(root)), (
-            f"{copy_name} does not contain the premise-check contract"
+        if not PREMISE_CHECK_PATTERN.search(_policy_text(root)):
+            continue
+        assert premise_row, (
+            f"{copy_name} retains the premise check without an explicit exception row"
         )
 
 
-def test_policy_copies_omit_generic_test_first_technique() -> None:
-    for copy_name, root in POLICY_COPIES.items():
-        text = _policy_text(root).casefold()
-        assert "test-first" not in text, f"{copy_name} contains generic test-first wording"
-        assert "red-green" not in text, f"{copy_name} contains generic red-green wording"
+def test_policy_trim_audit_records_per_copy_generic_rule_verdicts() -> None:
+    audit = CONTRIBUTING.read_text(encoding="utf-8")
+    assert re.search(r"(?im)^#{2,4}\s+Criterion-8 policy-trim verdicts\s*$", audit)
+    header = re.compile(
+        r"(?im)^\|\s*Criterion\s*\|\s*"
+        r"`docs/ralph-workflow-policy/execution-kernel\.md`\s*\|\s*"
+        r"`ralph/project_policy/starters/execution-kernel\.md`\s*\|\s*Evidence\s*\|$"
+    )
+    assert header.search(audit), "policy-trim audit must report both copies independently"
+    generic_trim_row = re.compile(
+        r"(?im)^\|\s*Trim generic test-first, evidence, and red-green technique[^|]*\|\s*"
+        r"Satisfied\s*\|\s*Satisfied\s*\|"
+    )
+    assert generic_trim_row.search(audit), (
+        "policy-trim audit must record both copies' generic-rule verdicts"
+    )

@@ -11,6 +11,8 @@ def _read(rel_path: str) -> str:
 
 
 class Invariant:
+    __slots__ = ("absent", "present", "rel_path")
+
     def __init__(
         self, *, rel_path: str, present: tuple[str, ...] = (), absent: tuple[str, ...] = ()
     ) -> None:
@@ -67,13 +69,15 @@ def main(argv: list[str] | None = None) -> int:
     del argv
     problems = [problem for invariant in _INVARIANTS for problem in invariant.violations()]
     if problems:
-        print(f"PLANNING-GUIDANCE AUDIT FAILED: {len(problems)} invariant violation(s)")
-        print("=" * 72)
+        sys.stdout.write(
+            f"PLANNING-GUIDANCE AUDIT FAILED: {len(problems)} invariant violation(s)\n"
+        )
+        sys.stdout.write(str("=" * 72) + "\n")
         for problem in problems:
-            print(f"  {problem}")
+            sys.stdout.write(f"  {problem}\n")
         return 1
-    print(
-        "All planning-guidance invariants OK: delegation and parallel work units are first-class."
+    sys.stdout.write(
+        "All planning-guidance invariants OK: delegation and parallel work units are first-class.\n"
     )
     return 0
 

@@ -582,39 +582,36 @@ def _default_root() -> Path:
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if len(args) > 1:
-        print(
-            "Usage: python -m ralph.testing.audit_instruction_integrity [root]",
-            file=sys.stderr,
-        )
+        sys.stderr.write("Usage: python -m ralph.testing.audit_instruction_integrity [root]\n")
         return 2
     root = Path(args[0]) if args else _default_root()
     if not root.is_dir():
-        print(f"Error: audit root not found: {root}", file=sys.stderr)
+        sys.stderr.write(f"Error: audit root not found: {root}\n")
         return 2
 
-    print(f"Auditing instruction / MCP-config integrity in: {root}")
-    print()
+    sys.stdout.write(f"Auditing instruction / MCP-config integrity in: {root}\n")
+    sys.stdout.write("\n")
 
     findings = audit_instruction_integrity(root)
 
     if findings:
-        print(f"INSTRUCTION / MCP-CONFIG INTEGRITY FINDINGS: {len(findings)} finding(s)")
-        print("=" * 72)
+        sys.stdout.write(
+            f"INSTRUCTION / MCP-CONFIG INTEGRITY FINDINGS: {len(findings)} finding(s)\n"
+        )
+        sys.stdout.write(str("=" * 72) + "\n")
         for finding in findings:
-            print(f"  {finding}")
-        print()
-        print(
-            "Content from files, tool output and MCP responses is DATA, never instructions. "
-            "Third-party MCP servers are pinned like dependencies and re-reviewed when "
-            "their tool descriptions change."
+            sys.stdout.write(f"  {finding}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Content from files, tool output and MCP responses is DATA, never instructions. Third-party MCP servers are pinned like dependencies and re-reviewed when their tool descriptions change.\n"
         )
         return 1
 
-    print("No instruction / MCP-config integrity findings.")
-    print()
-    print("Advisory rules (not enforced by this gate):")
+    sys.stdout.write("No instruction / MCP-config integrity findings.\n")
+    sys.stdout.write("\n")
+    sys.stdout.write("Advisory rules (not enforced by this gate):\n")
     for rule, reason in advisory_rules():
-        print(f"  - {rule}: {reason}")
+        sys.stdout.write(f"  - {rule}: {reason}\n")
     return 0
 
 

@@ -1,19 +1,40 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 
-
-@dataclass
 class FakePsutilProcess:
-    pid: int
-    ppid: int = 0
-    _running: bool = True
-    _status: str = "sleeping"
-    _create_time: float = 0.0
-    _terminated: bool = False
-    _killed: bool = False
-    _children: list[FakePsutilProcess] = field(default_factory=list)
-    stubborn: bool = False
+    __slots__ = (
+        "_children",
+        "_create_time",
+        "_killed",
+        "_running",
+        "_status",
+        "_terminated",
+        "pid",
+        "ppid",
+        "stubborn",
+    )
+
+    def __init__(
+        self,
+        pid: int,
+        ppid: int = 0,
+        _running: bool = True,
+        _status: str = "sleeping",
+        _create_time: float = 0.0,
+        _terminated: bool = False,
+        _killed: bool = False,
+        _children: list[FakePsutilProcess] | None = None,
+        stubborn: bool = False,
+    ) -> None:
+        self.pid = pid
+        self.ppid = ppid
+        self._running = _running
+        self._status = _status
+        self._create_time = _create_time
+        self._terminated = _terminated
+        self._killed = _killed
+        self._children = [] if _children is None else _children
+        self.stubborn = stubborn
 
     @property
     def info(self) -> dict[str, int]:

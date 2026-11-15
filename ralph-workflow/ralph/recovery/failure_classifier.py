@@ -11,7 +11,6 @@ from loguru import logger
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 
 from .classified_failure import ClassifiedFailure
-from .conflict_attempt_outcome import ConflictAttemptOutcome, attempt_outcome_reason
 from .failure_category import FailureCategory
 from .failure_details import FailureDetailParts, contains_casefolded_marker, failure_detail_parts
 from .unavailability_reason import UnavailabilityReason
@@ -587,63 +586,7 @@ def _connectivity_unavailability_reason(
     return None
 
 
-_TYPED_OUTCOME_CLASSIFICATION: dict[
-    ConflictAttemptOutcome,
-    tuple[FailureCategory, bool, UnavailabilityReason | None],
-] = {
-    ConflictAttemptOutcome.NO_ACTIVITY: (
-        FailureCategory.AGENT,
-        True,
-        UnavailabilityReason.NO_OUTPUT_AT_START,
-    ),
-    ConflictAttemptOutcome.STALLED: (
-        FailureCategory.AGENT,
-        True,
-        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
-    ),
-    ConflictAttemptOutcome.STALLED_NO_PROGRESS: (
-        FailureCategory.AGENT,
-        True,
-        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
-    ),
-    ConflictAttemptOutcome.UNRESOLVED_REMAINING: (FailureCategory.AGENT, True, None),
-    ConflictAttemptOutcome.ATTEMPT_FAILED: (FailureCategory.AGENT, False, None),
-}
-
-
 class FailureClassifier:
-    def classify_outcome(
-        self,
-        outcome: ConflictAttemptOutcome,
-        *,
-        phase: str,
-        agent: str | None,
-        unresolved_count: int = 0,
-        raw_failure: BaseException | str | None = None,
-    ) -> ClassifiedFailure:
-        category, counts, unavailability_reason = _TYPED_OUTCOME_CLASSIFICATION[outcome]
-        if isinstance(raw_failure, BaseException):
-            original: BaseException | None = raw_failure
-            raw_message = str(raw_failure)
-        elif isinstance(raw_failure, str):
-            original = None
-            raw_message = raw_failure
-        else:
-            original = None
-            raw_message = ""
-        return ClassifiedFailure(
-            category=category,
-            reason=attempt_outcome_reason(outcome, unresolved_count),
-            attributed_agent=agent,
-            attributed_phase=phase,
-            counts_against_budget=counts,
-            original_exception=original,
-            raw_message=raw_message,
-            is_unavailable=unavailability_reason is not None,
-            unavailability_reason=unavailability_reason,
-            must_charge_ledger=counts,
-        )
-
     def classify(
         self,
         exc: BaseException | str,

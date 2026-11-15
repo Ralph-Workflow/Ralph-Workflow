@@ -25,6 +25,8 @@ _SKILL_ROOT_PREFIXES: frozenset[str] = frozenset(
 
 
 class Invariant:
+    __slots__ = ("absent", "present", "rel_path")
+
     def __init__(
         self,
         *,
@@ -338,17 +340,19 @@ def main(argv: list[str] | None = None) -> int:
     problems.extend(_check_skill_root_prefixes_constant_matches())
 
     if problems:
-        print(f"SKILL-AUTO-COMMIT AUDIT FAILED: {len(problems)} invariant violation(s)")
+        sys.stdout.write(
+            f"SKILL-AUTO-COMMIT AUDIT FAILED: {len(problems)} invariant violation(s)\n"
+        )
         for problem in problems:
-            print(problem)
+            sys.stdout.write(str(problem) + "\n")
         return 1
 
     invariants_checked = len(_INVARIANTS) + len(_FILE_EXISTENCE_CHECKS) + 2
-    print(
+    sys.stdout.write(
         f"audit_skill_auto_commit OK ({invariants_checked} invariants checked): "
         f"subject={_SKILL_AUTO_COMMIT_SUBJECT!r}, "
         f"skill_roots={len(_SKILL_ROOT_PREFIXES)}, "
-        "ast_placement=pinned, helper_module=present"
+        "ast_placement=pinned, helper_module=present\n"
     )
     return 0
 

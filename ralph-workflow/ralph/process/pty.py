@@ -64,7 +64,7 @@ def spawn_pty_process(
             child_env.setdefault("TERM", "xterm-256color")
             stage = _STAGE_EXEC
             os.execvpe(command[0], list(command), child_env)
-        except BaseException as exc:
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
             _report_child_failure(ready_write_fd, stage, exc)
         os._exit(127)
 

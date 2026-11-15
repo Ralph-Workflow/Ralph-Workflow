@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import importlib
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
+import psutil
 from loguru import logger
 
 from ralph.process.manager._process_status import ProcessStatus
@@ -75,23 +75,76 @@ def expected_exit_codes(label: str | None) -> frozenset[int]:
     )
 
 
+class _PsutilProcessAdapter:
+    __slots__ = ("raw",)
+
+    def __init__(self, raw: psutil.Process) -> None:
+        self.raw = raw
+
+    @property
+    def pid(self) -> int:
+        return self.raw.pid
+
+    @property
+    def info(self) -> dict[str, int]:
+        return {
+            str(key): int(value) for key, value in self.raw.info.items() if isinstance(value, int)
+        }
+
+    def children(self, recursive: bool = False) -> Sequence[_PsutilProcessLike]:
+        return tuple(_PsutilProcessAdapter(proc) for proc in self.raw.children(recursive=recursive))
+
+    def terminate(self) -> None:
+        self.raw.terminate()
+
+    def kill(self) -> None:
+        self.raw.kill()
+
+    def is_running(self) -> bool:
+        return self.raw.is_running()
+
+    def status(self) -> str:
+        return self.raw.status()
+
+    def name(self) -> str:
+        return self.raw.name()
+
+    def create_time(self) -> float:
+        return self.raw.create_time()
+
+
 class _PsutilModuleAdapter:
-    def __init__(self, module: _PsutilModuleLike) -> None:
-        self._module = module
+    __slots__ = ("AccessDenied", "NoSuchProcess")
+
+    def __init__(self) -> None:
+        self.NoSuchProcess: type[BaseException] = psutil.NoSuchProcess
+        self.AccessDenied: type[BaseException] = psutil.AccessDenied
 
     def process_from_pid(self, pid: int) -> _PsutilProcessLike:
-        return self._module.Process(pid)
+        return _PsutilProcessAdapter(psutil.Process(pid))
 
-    def __getattr__(self, name: str) -> object:
-        return cast("object", getattr(self._module, name))
+    def pid_exists(self, pid: int) -> bool:
+        return psutil.pid_exists(pid)
+
+    def process_iter(self, attrs: Sequence[str] | None = None) -> Sequence[_PsutilProcessLike]:
+        selected = tuple(attrs) if attrs else None
+        return tuple(_PsutilProcessAdapter(proc) for proc in psutil.process_iter(attrs=selected))
+
+    def wait_procs(
+        self,
+        procs: Sequence[_PsutilProcessLike],
+        timeout: float | None = None,
+    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+        raw = [proc.raw for proc in procs if isinstance(proc, _PsutilProcessAdapter)]
+        gone, alive = psutil.wait_procs(raw, timeout=timeout)
+        return (
+            [_PsutilProcessAdapter(proc) for proc in gone],
+            [_PsutilProcessAdapter(proc) for proc in alive],
+        )
 
 
 def load_psutil_module() -> _PsutilModuleLike | None:
-    try:
-        psutil_import = importlib.import_module("psutil")
-    except ModuleNotFoundError:
-        return None
-    return cast("_PsutilModuleLike", _PsutilModuleAdapter(cast("_PsutilModuleLike", psutil_import)))
+    return _PsutilModuleAdapter()
 
 
 def redacted_command(command: Sequence[str]) -> str:

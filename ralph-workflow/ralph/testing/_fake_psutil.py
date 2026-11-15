@@ -19,6 +19,7 @@ class _FakeAccessDeniedError(Exception):
 
 
 class FakePsutil:
+    __slots__ = ("Process", "_processes")
     NoSuchProcess: type[BaseException] = _FakeNoSuchProcessError
     AccessDenied: type[BaseException] = _FakeAccessDeniedError
     Process: Callable[[int], _PsutilProcessLike]

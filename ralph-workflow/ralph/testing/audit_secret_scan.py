@@ -247,9 +247,8 @@ def _default_root() -> Path:
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if len(args) > MAX_CLI_ROOT_ARGUMENTS:
-        print(
-            "Usage: python -m ralph.testing.audit_secret_scan [baseline_root] [current_root]",
-            file=sys.stderr,
+        sys.stderr.write(
+            "Usage: python -m ralph.testing.audit_secret_scan [baseline_root] [current_root]\n"
         )
         return 2
     baseline_root: Path | None
@@ -263,41 +262,39 @@ def main(argv: list[str] | None = None) -> int:
         baseline_root = None
         current_root = _default_root()
     if not current_root.is_dir():
-        print(f"Error: audit root not found: {current_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: audit root not found: {current_root}\n")
         return 2
     if baseline_root is None:
         resolved_baseline = head_tree(current_root)
         if resolved_baseline is None:
-            print(
-                "Error: no committed baseline is available for this tree; "
-                "pass <baseline_root> <current_root> explicitly.",
-                file=sys.stderr,
+            sys.stderr.write(
+                "Error: no committed baseline is available for this tree; pass <baseline_root> <current_root> explicitly.\n"
             )
             return 2
         baseline_root = resolved_baseline
     if not baseline_root.is_dir():
-        print(f"Error: audit root not found: {baseline_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: audit root not found: {baseline_root}\n")
         return 2
 
-    print(f"Auditing secret scan (baseline diff): baseline={baseline_root} current={current_root}")
-    print()
+    sys.stdout.write(
+        f"Auditing secret scan (baseline diff): baseline={baseline_root} current={current_root}\n"
+    )
+    sys.stdout.write("\n")
 
     findings = audit_secret_roots(baseline_root, current_root)
 
     if findings:
-        print(f"SECRET-SCAN FINDINGS: {len(findings)} finding(s)")
-        print("=" * 72)
+        sys.stdout.write(f"SECRET-SCAN FINDINGS: {len(findings)} finding(s)\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for finding in findings:
-            print(f"  {finding}")
-        print()
-        print(
-            "Secrets MUST NOT be committed. Remove the credential, rotate it, and inject it "
-            "at runtime through the environment or a secret manager. Register a known false "
-            "positive in SECRET_SCAN_EXEMPTIONS as (file, category, value fingerprint)."
+            sys.stdout.write(f"  {finding}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Secrets MUST NOT be committed. Remove the credential, rotate it, and inject it at runtime through the environment or a secret manager. Register a known false positive in SECRET_SCAN_EXEMPTIONS as (file, category, value fingerprint).\n"
         )
         return 1
 
-    print("No secret-scan findings.")
+    sys.stdout.write("No secret-scan findings.\n")
     return 0
 
 

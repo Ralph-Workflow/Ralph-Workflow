@@ -10,6 +10,15 @@ if TYPE_CHECKING:
 
 
 class AgentInvocationError(AttemptEnded, Exception):
+    __slots__ = (
+        "agent_name",
+        "failure_origin",
+        "issuer",
+        "parsed_output",
+        "returncode",
+        "stderr",
+    )
+
     def __init__(
         self,
         agent_name: str,

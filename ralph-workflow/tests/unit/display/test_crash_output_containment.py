@@ -5,12 +5,7 @@ from io import StringIO
 from ralph.display import excepthook
 
 
-def _reset_state() -> None:
-    excepthook._STATE.installed = False
-
-
 def test_crash_output_regression_sanitizes_terminal_control_and_restores_terminal() -> None:
-    _reset_state()
     stderr = StringIO()
     installed: list[object] = []
     restores: list[None] = []
@@ -41,7 +36,6 @@ def test_crash_output_regression_sanitizes_terminal_control_and_restores_termina
 
 
 def test_worker_crash_regression_uses_same_sanitized_restore_boundary() -> None:
-    _reset_state()
     stderr = StringIO()
     installed: list[object] = []
     restores: list[None] = []

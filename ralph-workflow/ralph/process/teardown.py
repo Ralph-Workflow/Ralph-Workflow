@@ -151,6 +151,11 @@ class ProcessTeardown(Protocol):
 
 
 class DefaultProcessTeardown:
+    __slots__ = (
+        "_kill_escalation_ms",
+        "_record_lookup",
+    )
+
     def __init__(
         self,
         kill_escalation_ms: float = KILL_ESCALATION_CEILING_MS,

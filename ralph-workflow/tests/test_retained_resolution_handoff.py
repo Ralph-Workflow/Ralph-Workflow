@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from ralph.agents.invoke import InvokeOptions
     from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.pipeline.conflict_resolution import RebaseStop
+    from ralph.prompts.commit_evidence import CommitEvidenceSource
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
@@ -97,12 +98,15 @@ def _stage(root: Path, *paths: str) -> None:
     _repo(root).index.add(list(paths))
 
 
-@pytest.fixture(autouse=True)
-def _without_unobserved_commit_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ralph.prompts import commit_evidence
+class _EmptyCommitEvidenceSource:
+    def list_changed_paths(self, _repo_root: Path) -> list[str]:
+        return []
 
-    monkeypatch.setattr(commit_evidence, "commit_generation_diff", lambda _root: "")
-    monkeypatch.setattr(commit_evidence, "list_changed_paths", lambda _root: [])
+    def commit_generation_diff(self, _repo_root: Path) -> str:
+        return ""
+
+
+_EMPTY_COMMIT_EVIDENCE_SOURCE: CommitEvidenceSource = _EmptyCommitEvidenceSource()
 
 
 def _fresh_git_repo(base: Path, template: Path, name: str) -> Path:
@@ -256,6 +260,7 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
         ),
         display_context=context,
         pipeline_deps=make_test_pipeline_deps(context),
+        commit_evidence_source=_EMPTY_COMMIT_EVIDENCE_SOURCE,
     )
     if receipt == "integrated":
         assert result.message == "fix: preserved pending work"
@@ -440,6 +445,7 @@ def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_
         ),
         display_context=context,
         pipeline_deps=make_test_pipeline_deps(context, bridge_factory=race),
+        commit_evidence_source=_EMPTY_COMMIT_EVIDENCE_SOURCE,
     )
     assert not result.message and result.failure_details
     assert "integration" in result.failure_details[0]

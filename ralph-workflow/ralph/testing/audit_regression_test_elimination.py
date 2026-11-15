@@ -120,14 +120,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         argv = sys.argv[1:]
     repo_root = Path(argv[0]) if argv else Path(__file__).parent.parent.parent
     if not repo_root.is_dir():
-        print(f"Repository root not found: {repo_root}", file=sys.stderr)
+        sys.stderr.write(f"Repository root not found: {repo_root}\n")
         return 2
     violations = audit_regression_test_elimination(repo_root)
     if violations:
         for violation in violations:
-            print(violation)
+            sys.stdout.write(str(violation) + "\n")
         return 1
-    print("regression-test elimination audit: OK")
+    sys.stdout.write("regression-test elimination audit: OK\n")
     return 0
 
 

@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 
 
 class DefaultLivenessProbe:
+    __slots__ = ("_registry",)
+
     def __init__(self, registry: ChildLivenessRegistry | None = None) -> None:
         self._registry = registry
 

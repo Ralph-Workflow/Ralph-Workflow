@@ -642,23 +642,13 @@ class RecoveryController:
         effective_facts = facts
         if effective_facts is None:
             effective_facts = context.facts
-        failure = context.classified_failure
-        if failure is None and context.outcome is not None:
-            failure = self._classifier.classify_outcome(
-                context.outcome,
-                phase=phase,
-                agent=agent,
-                unresolved_count=context.unresolved_count,
-                raw_failure=raw_failure,
-            )
-        if failure is None:
-            failure = self._classifier.classify(
-                raw_failure,
-                phase=phase,
-                agent=agent,
-                connectivity_state=state.last_connectivity_state,
-                facts=effective_facts,
-            )
+        failure = context.classified_failure or self._classifier.classify(
+            raw_failure,
+            phase=phase,
+            agent=agent,
+            connectivity_state=state.last_connectivity_state,
+            facts=effective_facts,
+        )
         if effective_facts is None:
             effective_facts = failure.facts
         chain = state.chain_for_phase(phase)

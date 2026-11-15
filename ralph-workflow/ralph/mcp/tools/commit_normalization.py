@@ -3,18 +3,28 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.commit_message_normalizer import normalize_commit_message_draft
-from ralph.prompts.commit_evidence import CommitEvidenceBundle, build_commit_evidence_bundle
+from ralph.prompts.commit_evidence import (
+    DEFAULT_COMMIT_EVIDENCE_SOURCE,
+    CommitEvidenceBundle,
+    CommitEvidenceSource,
+    build_commit_evidence_bundle,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
 def normalize_commit_submission(
-    artifact_type: str, content: str, workspace_root: Path, *, draft_revision: int = 0
+    artifact_type: str,
+    content: str,
+    workspace_root: Path,
+    *,
+    draft_revision: int = 0,
+    commit_evidence_source: CommitEvidenceSource = DEFAULT_COMMIT_EVIDENCE_SOURCE,
 ) -> tuple[str, dict[str, object] | None]:
     if artifact_type != "commit_message" or not (workspace_root / ".git").exists():
         return content, None
-    evidence = _build_evidence(workspace_root)
+    evidence = _build_evidence(workspace_root, commit_evidence_source)
     result = normalize_commit_message_draft(content, evidence, draft_revision=draft_revision)
     return result.content, {
         "content": result.content,
@@ -34,23 +44,46 @@ def normalize_commit_submission(
     }
 
 
-def normalize_commit_content(artifact_type: str, content: str, workspace_root: Path) -> str:
-    normalized, _ = normalize_commit_submission(artifact_type, content, workspace_root)
+def normalize_commit_content(
+    artifact_type: str,
+    content: str,
+    workspace_root: Path,
+    *,
+    commit_evidence_source: CommitEvidenceSource = DEFAULT_COMMIT_EVIDENCE_SOURCE,
+) -> str:
+    normalized, _ = normalize_commit_submission(
+        artifact_type,
+        content,
+        workspace_root,
+        commit_evidence_source=commit_evidence_source,
+    )
     return normalized
 
 
 def commit_normalization_audit(
-    artifact_type: str, content: str, workspace_root: Path
+    artifact_type: str,
+    content: str,
+    workspace_root: Path,
+    *,
+    commit_evidence_source: CommitEvidenceSource = DEFAULT_COMMIT_EVIDENCE_SOURCE,
 ) -> dict[str, object] | None:
     try:
-        _, audit = normalize_commit_submission(artifact_type, content, workspace_root)
+        _, audit = normalize_commit_submission(
+            artifact_type,
+            content,
+            workspace_root,
+            commit_evidence_source=commit_evidence_source,
+        )
     except ValueError as exc:
         return {"status": "regeneration_required", "diagnostic": str(exc)}
     return audit
 
 
-def _build_evidence(workspace_root: Path) -> CommitEvidenceBundle:
-    return build_commit_evidence_bundle(workspace_root)
+def _build_evidence(
+    workspace_root: Path,
+    source: CommitEvidenceSource,
+) -> CommitEvidenceBundle:
+    return build_commit_evidence_bundle(workspace_root, source=source)
 
 
 __all__ = ["commit_normalization_audit", "normalize_commit_content", "normalize_commit_submission"]

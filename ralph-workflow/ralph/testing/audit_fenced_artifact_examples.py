@@ -3,10 +3,8 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass
-from importlib import import_module
-from typing import cast
 
-from jinja2 import Environment, StrictUndefined, TemplateError, Undefined, meta
+from jinja2 import Environment, StrictUndefined, TemplateError, meta
 
 from ralph.mcp.artifacts.format_docs import (
     FORMAT_DOC_ARTIFACT_TYPES,
@@ -14,6 +12,7 @@ from ralph.mcp.artifacts.format_docs import (
     load_bundled_format_index,
 )
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate
+from ralph.mcp.artifacts.markdown import specs as _artifact_specs
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from ralph.prompts.template_registry import packaged_template_root
 
@@ -78,7 +77,7 @@ class _PlanUnit:
 
 
 def _registered_artifact_types() -> frozenset[str]:
-    import_module("ralph.mcp.artifacts.markdown.specs")
+    _ = _artifact_specs
     return frozenset(spec.artifact_type for spec in registered_specs())
 
 
@@ -105,12 +104,12 @@ def _literal_fenced_examples(
         if opening is None:
             index += 1
             continue
-        marker = cast("str", opening.group("fence"))
+        marker = opening.group("fence")
         closing_index = index + 1
         while closing_index < len(lines) and not _is_closing_fence(lines[closing_index], marker):
             closing_index += 1
         if closing_index == len(lines):
-            info = cast("str", opening.group("info")).strip()
+            info = opening.group("info").strip()
             if info.startswith(("markdown", "md")):
                 violations.append(f"{source_name}:{index + 1} unterminated markdown fence")
             break
@@ -119,7 +118,7 @@ def _literal_fenced_examples(
                 source_name=source_name,
                 first_content_line=index + 2,
                 markdown="\n".join(lines[index + 1 : closing_index]) + "\n",
-                fence_info=cast("str", opening.group("info")).strip(),
+                fence_info=opening.group("info").strip(),
             )
         )
         index = closing_index + 1
@@ -129,11 +128,11 @@ def _literal_fenced_examples(
 def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
     blocks: list[_SetBlock] = []
     for match in _SET_BLOCK_RE.finditer(source):
-        body = cast("str", match.group("body"))
+        body = match.group("body")
         leading_newlines = len(body) - len(body.lstrip("\n"))
         blocks.append(
             _SetBlock(
-                name=cast("str", match.group("name")),
+                name=match.group("name"),
                 body=body,
                 first_content_line=(
                     source.count("\n", 0, match.start("body")) + leading_newlines + 1
@@ -145,7 +144,7 @@ def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
 
 
 def _render_example_body(body: str) -> str:
-    strict_undefined = cast("type[Undefined]", StrictUndefined)
+    strict_undefined = StrictUndefined
     environment = Environment(
         autoescape=False,
         undefined=strict_undefined,
@@ -210,7 +209,7 @@ def _frontmatter_type(markdown: str) -> tuple[bool, str | None]:
     match = _FRONTMATTER_TYPE_RE.search(frontmatter)
     return (
         True,
-        None if match is None else cast("str", match.group("artifact_type")).strip(),
+        None if match is None else match.group("artifact_type").strip(),
     )
 
 
@@ -399,7 +398,7 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     units: list[_PlanUnit] = []
     for index, heading in enumerate(headings):
-        title = cast("str", heading.group("title"))
+        title = heading.group("title")
         if not (
             re.fullmatch(
                 r"(?:Sub(?:[\s-]?plan)(?:\s*[:\-\u2013\u2014]\s*|\s+).+|"
@@ -421,7 +420,7 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
 def _plan_main_fan_in(markdown: str) -> _PlanUnit | None:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     for index, heading in enumerate(headings):
-        title = cast("str", heading.group("title"))
+        title = heading.group("title")
         lowered = title.casefold()
         if "integration" not in lowered or "verif" not in lowered:
             continue
@@ -434,7 +433,7 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
     steps = list(re.finditer(r"^### \[(?P<step_id>S-\d+)\]", body, re.MULTILINE))
     if not steps:
         return None
-    own_step_ids = {cast("str", step.group("step_id")) for step in steps}
+    own_step_ids = {step.group("step_id") for step in steps}
     dependencies: list[str] = []
     for index, step in enumerate(steps):
         end = steps[index + 1].start() if index + 1 < len(steps) else len(body)
@@ -444,14 +443,14 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
             step_body,
             re.MULTILINE,
         ):
-            dependency_text = cast("str", match.group("ids"))
+            dependency_text = match.group("ids")
             dependencies.extend(
                 part.strip()
                 for part in dependency_text.split(",")
                 if part.strip() not in own_step_ids
             )
     return _PlanUnit(
-        cast("str", steps[-1].group("step_id")),
+        steps[-1].group("step_id"),
         title,
         tuple(dependencies),
         len(steps),
@@ -504,7 +503,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 f"{source_name}:1 plan examples must include example-size={example_size}"
             )
     for example in by_size["tiny"]:
-        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
+        step_count = len(_PLAN_STEP_HEADING_RE.findall(example.markdown))
         if step_count not in {1, 2}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -516,7 +515,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 "example-size=tiny must not declare parallel work units"
             )
     for example in by_size["medium"]:
-        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
+        step_count = len(_PLAN_STEP_HEADING_RE.findall(example.markdown))
         if step_count not in {3, 4}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -570,21 +569,17 @@ def main(argv: list[str] | None = None) -> int:
     del argv
     violations = collect_violations()
     if violations:
-        print(f"FENCED ARTIFACT EXAMPLE AUDIT FAILED: {len(violations)} violation(s)")
-        print("=" * 72)
+        sys.stdout.write(f"FENCED ARTIFACT EXAMPLE AUDIT FAILED: {len(violations)} violation(s)\n")
+        sys.stdout.write(str("=" * 72) + "\n")
         for violation in violations:
-            print(f"  {violation}")
-        print()
-        print(
-            "Every artifact example in prompt templates and format docs must "
-            "resolve to a registered artifact type and pass parse_and_validate. "
-            "Fix the example or declare its registered spec with "
-            "'artifact=<type>' on the opening markdown fence."
+            sys.stdout.write(f"  {violation}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "Every artifact example in prompt templates and format docs must resolve to a registered artifact type and pass parse_and_validate. Fix the example or declare its registered spec with 'artifact=<type>' on the opening markdown fence.\n"
         )
         return 1
-    print(
-        "Fenced artifact example audit OK: every prompt-template and "
-        "format-doc artifact example passed its registered markdown spec."
+    sys.stdout.write(
+        "Fenced artifact example audit OK: every prompt-template and format-doc artifact example passed its registered markdown spec.\n"
     )
     return 0
 

@@ -10,6 +10,13 @@ _VALID_REASONS = frozenset({"no_output", "prompt_echo", "no_llm_activity"})
 
 
 class BrokenAgentExitError(AgentInvocationError):
+    __slots__ = (
+        "elapsed_seconds",
+        "grace_seconds",
+        "reason",
+        "skip_same_agent_retries",
+    )
+
     def __init__(
         self,
         agent_name: str,

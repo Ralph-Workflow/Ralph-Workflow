@@ -180,23 +180,25 @@ def _b8_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
     violations: list[str] = []
     for node in nodes:
         reasons: list[str] = []
-        if isinstance(node, ast.Import):
-            imports_process_layer = any(
-                alias.name == _B8_PROCESS_IMPORT_PREFIX
-                or alias.name.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
-                for alias in node.names
-            )
-            if imports_process_layer:
-                reasons.append("process-layer import in detector module")
-        elif isinstance(node, ast.ImportFrom):
-            if node.module == _B8_PROCESS_IMPORT_PREFIX or (
-                node.module is not None and node.module.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
+        match True:
+            case _ if isinstance(node, ast.Import):
+                imports_process_layer = any(
+                    alias.name == _B8_PROCESS_IMPORT_PREFIX
+                    or alias.name.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
+                    for alias in node.names
+                )
+                if imports_process_layer:
+                    reasons.append("process-layer import in detector module")
+            case _ if isinstance(node, ast.ImportFrom):
+                if node.module == _B8_PROCESS_IMPORT_PREFIX or (
+                    node.module is not None
+                    and node.module.startswith(f"{_B8_PROCESS_IMPORT_PREFIX}.")
+                ):
+                    reasons.append("process-layer import in detector module")
+            case _ if (isinstance(node, ast.Name) and node.id == _B8_PROCESS_NAME) or (
+                isinstance(node, ast.Attribute) and node.attr == _B8_PROCESS_NAME
             ):
-                reasons.append("process-layer import in detector module")
-        elif (isinstance(node, ast.Name) and node.id == _B8_PROCESS_NAME) or (
-            isinstance(node, ast.Attribute) and node.attr == _B8_PROCESS_NAME
-        ):
-            reasons.append("ManagedProcess reference in detector module")
+                reasons.append("ManagedProcess reference in detector module")
         violations.extend(_violation(relative_path, node, "B8", reason) for reason in reasons)
     return violations
 
@@ -229,7 +231,7 @@ def _call_name(func: ast.AST) -> str | None:
 def _contains_manager_factory(node: ast.AST) -> bool:
     return any(
         isinstance(child, ast.Call)
-        and isinstance(child.func, (ast.Name, ast.Attribute))
+        and isinstance(child.func, ast.Name | ast.Attribute)
         and _call_name(child.func) in _B9_MANAGER_FACTORIES
         for child in ast.walk(node)
     )
@@ -238,14 +240,15 @@ def _contains_manager_factory(node: ast.AST) -> bool:
 def _manager_bound_names(tree: ast.Module) -> frozenset[str]:
     bound: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            targets: tuple[ast.AST, ...] = tuple(node.targets)
-            value: ast.AST | None = node.value
-        elif isinstance(node, ast.AnnAssign):
-            targets = (node.target,)
-            value = node.value
-        else:
-            continue
+        match True:
+            case _ if isinstance(node, ast.Assign):
+                targets: tuple[ast.AST, ...] = tuple(node.targets)
+                value: ast.AST | None = node.value
+            case _ if isinstance(node, ast.AnnAssign):
+                targets = (node.target,)
+                value = node.value
+            case _:
+                continue
         if value is None or not _contains_manager_factory(value):
             continue
         for target in targets:
@@ -260,7 +263,7 @@ def _target_root_names(target: ast.AST) -> set[str]:
         return {target.attr}
     if isinstance(target, ast.Starred):
         return _target_root_names(target.value)
-    if isinstance(target, (ast.Tuple, ast.List)):
+    if isinstance(target, ast.Tuple | ast.List):
         names: set[str] = set()
         for element in target.elts:
             names.update(_target_root_names(element))
@@ -332,7 +335,7 @@ def _b9b_in_scope(relative_path: str) -> bool:
 def _b9b_enclosing_parameter(node: ast.AST, parents: dict[int, ast.AST]) -> bool:
     current = parents.get(id(node))
     while current is not None:
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
             arguments = current.args
             params = {
                 param.arg
@@ -364,48 +367,49 @@ def _b9b_violations(
     for node in nodes:
         if id(node) in guarded:
             continue
-        if isinstance(node, ast.ImportFrom):
-            imports_teardown_module = node.module == _B9B_TEARDOWN_MODULE or (
-                node.module is not None and node.module.startswith(f"{_B9B_TEARDOWN_MODULE}.")
-            )
-            if imports_teardown_module and any(
-                alias.name == _B9B_TEARDOWN_NAME for alias in node.names
+        match True:
+            case _ if isinstance(node, ast.ImportFrom):
+                imports_teardown_module = node.module == _B9B_TEARDOWN_MODULE or (
+                    node.module is not None and node.module.startswith(f"{_B9B_TEARDOWN_MODULE}.")
+                )
+                if imports_teardown_module and any(
+                    alias.name == _B9B_TEARDOWN_NAME for alias in node.names
+                ):
+                    violations.append(
+                        _violation(
+                            relative_path,
+                            node,
+                            "B9b",
+                            "runtime teardown_subtree import outside attempt supervision",
+                        )
+                    )
+            case _ if isinstance(node, ast.Import):
+                if any(
+                    alias.name == _B9B_TEARDOWN_MODULE
+                    or alias.name.startswith(f"{_B9B_TEARDOWN_MODULE}.")
+                    for alias in node.names
+                ):
+                    violations.append(
+                        _violation(
+                            relative_path,
+                            node,
+                            "B9b",
+                            "runtime teardown_subtree import outside attempt supervision",
+                        )
+                    )
+            case _ if (
+                isinstance(node, ast.Name)
+                and node.id == _B9B_TEARDOWN_NAME
+                and (not _b9b_enclosing_parameter(node, parents))
             ):
                 violations.append(
                     _violation(
                         relative_path,
                         node,
                         "B9b",
-                        "runtime teardown_subtree import outside attempt supervision",
+                        "teardown_subtree reference outside attempt supervision",
                     )
                 )
-        elif isinstance(node, ast.Import):
-            if any(
-                alias.name == _B9B_TEARDOWN_MODULE
-                or alias.name.startswith(f"{_B9B_TEARDOWN_MODULE}.")
-                for alias in node.names
-            ):
-                violations.append(
-                    _violation(
-                        relative_path,
-                        node,
-                        "B9b",
-                        "runtime teardown_subtree import outside attempt supervision",
-                    )
-                )
-        elif (
-            isinstance(node, ast.Name)
-            and node.id == _B9B_TEARDOWN_NAME
-            and not _b9b_enclosing_parameter(node, parents)
-        ):
-            violations.append(
-                _violation(
-                    relative_path,
-                    node,
-                    "B9b",
-                    "teardown_subtree reference outside attempt supervision",
-                )
-            )
     return violations
 
 
@@ -414,41 +418,30 @@ def _b10_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
         return []
     violations: list[str] = []
     for node in nodes:
-        if isinstance(node, ast.ImportFrom) and any(
-            alias.name in _B10_DELETED_NAMES for alias in node.names
-        ):
-            violations.append(
-                _violation(
-                    relative_path,
-                    node,
-                    "B10",
-                    "deleted attempt-facts helper reference",
-                )
-            )
-        elif isinstance(node, ast.Call) and _call_name(node.func) in {"setattr", "getattr"}:
-            if any(
-                isinstance(arg, ast.Constant) and arg.value == _B10_FACTS_ATTRIBUTE
-                for arg in node.args
+        match True:
+            case _ if isinstance(node, ast.ImportFrom) and any(
+                alias.name in _B10_DELETED_NAMES for alias in node.names
             ):
                 violations.append(
-                    _violation(
-                        relative_path,
-                        node,
-                        "B10",
-                        "dynamic attempt_facts transport",
+                    _violation(relative_path, node, "B10", "deleted attempt-facts helper reference")
+                )
+            case _ if isinstance(node, ast.Call) and _call_name(node.func) in {
+                "setattr",
+                "getattr",
+            }:
+                if any(
+                    isinstance(arg, ast.Constant) and arg.value == _B10_FACTS_ATTRIBUTE
+                    for arg in node.args
+                ):
+                    violations.append(
+                        _violation(relative_path, node, "B10", "dynamic attempt_facts transport")
                     )
+            case _ if (isinstance(node, ast.Name) and node.id in _B10_DELETED_NAMES) or (
+                isinstance(node, ast.Attribute) and node.attr in _B10_DELETED_NAMES
+            ):
+                violations.append(
+                    _violation(relative_path, node, "B10", "deleted attempt-facts helper reference")
                 )
-        elif (isinstance(node, ast.Name) and node.id in _B10_DELETED_NAMES) or (
-            isinstance(node, ast.Attribute) and node.attr in _B10_DELETED_NAMES
-        ):
-            violations.append(
-                _violation(
-                    relative_path,
-                    node,
-                    "B10",
-                    "deleted attempt-facts helper reference",
-                )
-            )
     return violations
 
 
@@ -533,7 +526,7 @@ def _parent_map(tree: ast.Module) -> dict[int, ast.AST]:
 def _enclosing_function_name(node: ast.AST, parents: dict[int, ast.AST]) -> str | None:
     current = parents.get(id(node))
     while current is not None:
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
             return current.name
         current = parents.get(id(current))
     return None
@@ -703,7 +696,7 @@ def _b2_controller_violations(
         if (
             isinstance(parent, ast.Subscript)
             and parent.value is attribute
-            and isinstance(parent.ctx, (ast.Store, ast.Del))
+            and isinstance(parent.ctx, ast.Store | ast.Del)
         ):
             violations.append(
                 _violation(
@@ -762,24 +755,31 @@ def _b4_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
         receiver = node.func.value
-        if isinstance(receiver, ast.Name) and receiver.id == "os" and node.func.attr == "killpg":
-            violations.append(_violation(relative_path, node, "B4", "raw process-group signal"))
-        elif (
-            isinstance(receiver, ast.Name)
-            and receiver.id == "os"
-            and node.func.attr == "kill"
-            and len(node.args) > 1
-            and not (isinstance(node.args[1], ast.Constant) and node.args[1].value == 0)
-        ):
-            violations.append(_violation(relative_path, node, "B4", "raw non-zero process signal"))
-        elif node.func.attr == "send_signal":
-            violations.append(_violation(relative_path, node, "B4", "raw process signal"))
-        elif (
-            node.func.attr in {"terminate", "kill"}
-            and isinstance(receiver, ast.Name)
-            and "psutil" in receiver.id.lower()
-        ):
-            violations.append(_violation(relative_path, node, "B4", "raw psutil termination"))
+        match True:
+            case _ if (
+                isinstance(receiver, ast.Name)
+                and receiver.id == "os"
+                and (node.func.attr == "killpg")
+            ):
+                violations.append(_violation(relative_path, node, "B4", "raw process-group signal"))
+            case _ if (
+                isinstance(receiver, ast.Name)
+                and receiver.id == "os"
+                and (node.func.attr == "kill")
+                and (len(node.args) > 1)
+                and (not (isinstance(node.args[1], ast.Constant) and node.args[1].value == 0))
+            ):
+                violations.append(
+                    _violation(relative_path, node, "B4", "raw non-zero process signal")
+                )
+            case _ if node.func.attr == "send_signal":
+                violations.append(_violation(relative_path, node, "B4", "raw process signal"))
+            case _ if (
+                node.func.attr in {"terminate", "kill"}
+                and isinstance(receiver, ast.Name)
+                and ("psutil" in receiver.id.lower())
+            ):
+                violations.append(_violation(relative_path, node, "B4", "raw psutil termination"))
     return violations
 
 
@@ -814,13 +814,14 @@ def _b5_bindings(tree: ast.Module, guarded: set[int]) -> tuple[set[str], set[str
     for node in ast.walk(tree):
         if id(node) in guarded:
             continue
-        if isinstance(node, ast.ImportFrom):
-            _b5_import_from_bindings(node, functions, modules, imports)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "ralph.pipeline.effect_executor":
-                    modules.add(alias.asname or alias.name.split(".")[0])
-                    imports.append(node)
+        match True:
+            case _ if isinstance(node, ast.ImportFrom):
+                _b5_import_from_bindings(node, functions, modules, imports)
+            case _ if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "ralph.pipeline.effect_executor":
+                        modules.add(alias.asname or alias.name.split(".")[0])
+                        imports.append(node)
     return functions, modules, imports
 
 
@@ -858,71 +859,80 @@ def _b5_violations(relative_path: str, tree: ast.Module, nodes: list[ast.AST]) -
 def _b6_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
     violations: list[str] = []
     for node in nodes:
-        if (isinstance(node, ast.Import) and any(alias.name == "re" for alias in node.names)) or (
-            isinstance(node, ast.ImportFrom) and node.module == "re"
-        ):
-            violations.append(
-                _violation(relative_path, node, "B6", "regular-expression import in decision layer")
-            )
-        elif isinstance(node, ast.Attribute) and node.attr == "args":
-            violations.append(
-                _violation(relative_path, node, "B6", "exception args read in decision layer")
-            )
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "str"
-            and node.args
-            and isinstance(node.args[0], ast.Name)
-            and (node.args[0].id in {"exc", "err", "error"} or "exception" in node.args[0].id)
-        ):
-            violations.append(
-                _violation(
-                    relative_path, node, "B6", "exception converted to text in decision layer"
+        match True:
+            case _ if (
+                isinstance(node, ast.Import) and any(alias.name == "re" for alias in node.names)
+            ) or (isinstance(node, ast.ImportFrom) and node.module == "re"):
+                violations.append(
+                    _violation(
+                        relative_path, node, "B6", "regular-expression import in decision layer"
+                    )
                 )
-            )
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"lower", "casefold", "startswith", "endswith", "find"}
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id in _TEXT_NAMES
-        ):
-            violations.append(
-                _violation(relative_path, node, "B6", "message text inspected in decision layer")
-            )
-        elif (
-            isinstance(node, ast.Compare)
-            and any(isinstance(op, (ast.In, ast.NotIn)) for op in node.ops)
-            and any(
-                isinstance(item, ast.Name) and item.id in _TEXT_NAMES for item in node.comparators
-            )
-        ):
-            violations.append(
-                _violation(relative_path, node, "B6", "message membership test in decision layer")
-            )
+            case _ if isinstance(node, ast.Attribute) and node.attr == "args":
+                violations.append(
+                    _violation(relative_path, node, "B6", "exception args read in decision layer")
+                )
+            case _ if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and (node.func.id == "str")
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and (node.args[0].id in {"exc", "err", "error"} or "exception" in node.args[0].id)
+            ):
+                violations.append(
+                    _violation(
+                        relative_path, node, "B6", "exception converted to text in decision layer"
+                    )
+                )
+            case _ if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and (node.func.attr in {"lower", "casefold", "startswith", "endswith", "find"})
+                and isinstance(node.func.value, ast.Name)
+                and (node.func.value.id in _TEXT_NAMES)
+            ):
+                violations.append(
+                    _violation(
+                        relative_path, node, "B6", "message text inspected in decision layer"
+                    )
+                )
+            case _ if (
+                isinstance(node, ast.Compare)
+                and any(isinstance(op, ast.In | ast.NotIn) for op in node.ops)
+                and any(
+                    isinstance(item, ast.Name) and item.id in _TEXT_NAMES
+                    for item in node.comparators
+                )
+            ):
+                violations.append(
+                    _violation(
+                        relative_path, node, "B6", "message membership test in decision layer"
+                    )
+                )
     return violations
 
 
 def _b7_violations(relative_path: str, tree: ast.Module, nodes: list[ast.AST]) -> list[str]:
     violations: list[str] = []
     for node in nodes:
-        if isinstance(node, ast.Global):
-            violations.append(
-                _violation(relative_path, node, "B7", "global statement in decision layer")
-            )
-        elif (
-            isinstance(node, ast.Attribute)
-            and isinstance(node.value, ast.Name)
-            and node.value.id == "os"
-            and node.attr in {"environ", "getenv"}
-        ) or _is_call(node, "getenv"):
-            violations.append(
-                _violation(relative_path, node, "B7", "environment read in decision layer")
-            )
+        match True:
+            case _ if isinstance(node, ast.Global):
+                violations.append(
+                    _violation(relative_path, node, "B7", "global statement in decision layer")
+                )
+            case _ if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and (node.value.id == "os")
+                and (node.attr in {"environ", "getenv"})
+            ) or _is_call(node, "getenv"):
+                violations.append(
+                    _violation(relative_path, node, "B7", "environment read in decision layer")
+                )
     for node in tree.body:
-        value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
-        mutable = isinstance(value, (ast.Dict, ast.List, ast.Set)) or (
+        value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
+        mutable = isinstance(value, ast.Dict | ast.List | ast.Set) or (
             isinstance(value, ast.Call)
             and isinstance(value.func, ast.Name)
             and value.func.id in _MUTABLE_CONSTRUCTORS

@@ -182,18 +182,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         violations, scanned = audit_tree(package_root, roots)
     except FileNotFoundError as exc:
-        print(exc)
+        sys.stdout.write(str(exc) + "\n")
         return 2
     except AuditParseError as exc:
-        print(f"Could not parse a file under audit: {exc}")
+        sys.stdout.write(f"Could not parse a file under audit: {exc}\n")
         return 1
     if not violations:
-        print(f"No duplicate-keyword forwarding in {scanned} file(s) under {', '.join(roots)}.")
+        sys.stdout.write(
+            f"No duplicate-keyword forwarding in {scanned} file(s) under {', '.join(roots)}.\n"
+        )
         return 0
-    print(f"DUPLICATE-KEYWORD FORWARDING VIOLATIONS: {len(violations)} in {scanned} file(s)")
-    print("=" * 72)
+    sys.stdout.write(
+        f"DUPLICATE-KEYWORD FORWARDING VIOLATIONS: {len(violations)} in {scanned} file(s)\n"
+    )
+    sys.stdout.write(str("=" * 72) + "\n")
     for violation in violations:
-        print(f"  {violation}")
+        sys.stdout.write(f"  {violation}\n")
     return 1
 
 

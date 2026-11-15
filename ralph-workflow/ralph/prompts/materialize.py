@@ -48,7 +48,11 @@ from ralph.prompts._commit_diff import _UNTRACKED_HEADER, _is_inside_git_repo
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
-from ralph.prompts.commit_evidence import build_commit_evidence_bundle
+from ralph.prompts.commit_evidence import (
+    DEFAULT_COMMIT_EVIDENCE_SOURCE,
+    CommitEvidenceSource,
+    build_commit_evidence_bundle,
+)
 from ralph.prompts.commit_review import render_commit_review_prompt
 from ralph.prompts.debug_dump import (
     clear_multimodal_sidecar,
@@ -147,6 +151,7 @@ Repo: _RepoFactoryProtocol | None = None
 @dataclass(frozen=True)
 class PromptPhaseOptions:
     artifacts_policy: ArtifactsPolicy | None = None
+    commit_evidence_source: CommitEvidenceSource = DEFAULT_COMMIT_EVIDENCE_SOURCE
 
     worker_namespace: Path | None = None
     previous_phase: str | None = None
@@ -224,6 +229,7 @@ def materialize_prompt_for_phase(
     else:
         opts = PromptPhaseOptions(
             artifacts_policy=options.artifacts_policy,
+            commit_evidence_source=options.commit_evidence_source,
             worker_namespace=options.worker_namespace,
             previous_phase=options.previous_phase,
             resume_existing_phase=options.resume_existing_phase,
@@ -373,7 +379,10 @@ def _render_prompt_for_phase(
         )
     if phase_role == "commit":
         evidence = (
-            build_commit_evidence_bundle(workspace_root)
+            build_commit_evidence_bundle(
+                workspace_root,
+                source=options.commit_evidence_source,
+            )
             if (workspace_root / ".git").exists()
             else _pending_diff(workspace_root)
         )

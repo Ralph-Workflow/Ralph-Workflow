@@ -6,6 +6,8 @@ from pathlib import Path
 
 
 class BoundaryViolation:
+    __slots__ = ("detail", "line", "path")
+
     def __init__(self, path: Path, line: int, detail: str) -> None:
         self.path = path
         self.line = line
@@ -58,7 +60,7 @@ def audit_source(path: Path, source: str) -> list[BoundaryViolation]:
     violations: list[BoundaryViolation] = []
     for node in ast.walk(tree):
         if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
             and node.name == "reset_tool_registry_callback"
         ):
             violations.append(
@@ -141,15 +143,15 @@ def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     root = Path(args[0]) if args else Path(__file__).parent.parent
     if not root.is_dir():
-        print(f"Error: audit root not found: {root}", file=sys.stderr)
+        sys.stderr.write(f"Error: audit root not found: {root}\n")
         return 2
     violations = audit(root)
     if violations:
-        print("MCP-AGENT BOUNDARY VIOLATIONS:")
+        sys.stdout.write("MCP-AGENT BOUNDARY VIOLATIONS:\n")
         for violation in violations:
-            print(f"  {violation}")
+            sys.stdout.write(f"  {violation}\n")
         return 1
-    print("No MCP-agent boundary violations found.")
+    sys.stdout.write("No MCP-agent boundary violations found.\n")
     return 0
 
 

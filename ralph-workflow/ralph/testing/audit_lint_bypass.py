@@ -274,6 +274,8 @@ _TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset(
 
 
 class LintBypassViolation:
+    __slots__ = ("category", "detail", "file_path", "line")
+
     def __init__(
         self,
         file_path: str,
@@ -485,28 +487,30 @@ def main(argv: list[str] | None = None) -> int:
     codebase_root = Path(args[0]) if args else Path(__file__).parent.parent.parent
 
     if not codebase_root.is_dir():
-        print(f"Error: directory not found: {codebase_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: directory not found: {codebase_root}\n")
         return 2
 
-    print(f"Auditing lint bypass in: {codebase_root}")
-    print()
+    sys.stdout.write(f"Auditing lint bypass in: {codebase_root}\n")
+    sys.stdout.write("\n")
 
     violations, files_checked = audit_codebase(codebase_root)
 
     if violations:
-        print(
+        sys.stdout.write(
             f"LINT BYPASS VIOLATIONS FOUND: {len(violations)} violation(s) "
-            f"in {files_checked} file(s)"
+            f"in {files_checked} file(s)\n"
         )
-        print("=" * 72)
+        sys.stdout.write(str("=" * 72) + "\n")
         for v in violations:
-            print(f"  {v}")
-        print()
-        print("These violations weaken lint enforcement. Fix the violation, not the audit.")
-        print("Guidance: AGENTS.md §'Non-negotiables' — no weakening checks.")
+            sys.stdout.write(f"  {v}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
+            "These violations weaken lint enforcement. Fix the violation, not the audit.\n"
+        )
+        sys.stdout.write("Guidance: AGENTS.md §'Non-negotiables' — no weakening checks.\n")
         return 1
 
-    print(f"No lint bypass violations found in {files_checked} file(s).")
+    sys.stdout.write(f"No lint bypass violations found in {files_checked} file(s).\n")
     return 0
 
 

@@ -122,25 +122,26 @@ def _catches(handler_type: ast.expr | None, catchers: frozenset[str]) -> bool:
 
 def _evaluated_expressions(node: ast.stmt) -> list[ast.expr]:
     evaluated: list[ast.expr] = []
-    if isinstance(node, (ast.Assign, ast.AugAssign, ast.Expr)) or (
-        isinstance(node, ast.AnnAssign) and node.value is not None
-    ):
-        evaluated = [node.value] if node.value is not None else []
-    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
-        evaluated = [*node.decorator_list, *defaults]
-    elif isinstance(node, ast.ClassDef):
-        evaluated = [*node.decorator_list, *node.bases, *(k.value for k in node.keywords)]
-    elif isinstance(node, ast.Return) and node.value is not None:
-        evaluated = [node.value]
-    elif isinstance(node, (ast.If, ast.While)):
-        evaluated = [node.test]
-    elif isinstance(node, (ast.For, ast.AsyncFor)):
-        evaluated = [node.iter]
-    elif isinstance(node, (ast.With, ast.AsyncWith)):
-        evaluated = [item.context_expr for item in node.items]
-    elif isinstance(node, ast.Match):
-        evaluated = [node.subject]
+    match True:
+        case _ if isinstance(node, ast.Assign | ast.AugAssign | ast.Expr) or (
+            isinstance(node, ast.AnnAssign) and node.value is not None
+        ):
+            evaluated = [node.value] if node.value is not None else []
+        case _ if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
+            evaluated = [*node.decorator_list, *defaults]
+        case _ if isinstance(node, ast.ClassDef):
+            evaluated = [*node.decorator_list, *node.bases, *(k.value for k in node.keywords)]
+        case _ if isinstance(node, ast.Return) and node.value is not None:
+            evaluated = [node.value]
+        case _ if isinstance(node, ast.If | ast.While):
+            evaluated = [node.test]
+        case _ if isinstance(node, ast.For | ast.AsyncFor):
+            evaluated = [node.iter]
+        case _ if isinstance(node, ast.With | ast.AsyncWith):
+            evaluated = [item.context_expr for item in node.items]
+        case _ if isinstance(node, ast.Match):
+            evaluated = [node.subject]
     return evaluated
 
 
@@ -191,7 +192,7 @@ def _is_main_guard(test: ast.expr) -> bool:
 def _target_names(target: ast.expr) -> list[str]:
     if isinstance(target, ast.Name):
         return [target.id]
-    if isinstance(target, (ast.Tuple, ast.List)):
+    if isinstance(target, ast.Tuple | ast.List):
         return [name for element in target.elts for name in _target_names(element)]
     if isinstance(target, ast.Starred):
         return _target_names(target.value)
@@ -204,45 +205,69 @@ def _resolve_relative(module: str, is_package: bool, level: int, name: str | Non
     return ".".join([*base, name] if name else base)
 
 
-@dataclass
 class _OpCollector:
-    module: str
-    is_package: bool
-    ops: list[_Op] = field(default_factory=list)
-    guarded: bool = False
-    attribute_guarded: bool = False
-    functions: dict[str, ast.FunctionDef] = field(default_factory=dict)
-    importlib_names: set[str] = field(default_factory=set)
-    import_module_names: set[str] = field(default_factory=set)
-    calling: frozenset[str] = frozenset()
+    __slots__ = (
+        "attribute_guarded",
+        "calling",
+        "functions",
+        "guarded",
+        "import_module_names",
+        "importlib_names",
+        "is_package",
+        "module",
+        "ops",
+    )
+
+    def __init__(
+        self,
+        module: str,
+        is_package: bool,
+        ops: list[_Op] | None = None,
+        guarded: bool = False,
+        attribute_guarded: bool = False,
+        functions: dict[str, ast.FunctionDef] | None = None,
+        importlib_names: set[str] | None = None,
+        import_module_names: set[str] | None = None,
+        calling: frozenset[str] = frozenset(),
+    ) -> None:
+        self.module = module
+        self.is_package = is_package
+        self.ops = [] if ops is None else ops
+        self.guarded = guarded
+        self.attribute_guarded = attribute_guarded
+        self.functions = {} if functions is None else functions
+        self.importlib_names = set() if importlib_names is None else importlib_names
+        self.import_module_names = set() if import_module_names is None else import_module_names
+        self.calling = calling
 
     def statements(self, body: Iterable[ast.stmt]) -> None:
         for statement in body:
             self.statement(statement)
 
     def statement(self, node: ast.stmt) -> None:
-        if not isinstance(node, (ast.Try, ast.TryStar)):
+        if not isinstance(node, ast.Try | ast.TryStar):
             self.reads(node)
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.asname:
-                    self.ops.append(_Import(alias.name, alias.asname, alias.name))
-                    self.rebind(alias.asname, importlib=alias.name == "importlib")
-                else:
-                    root = alias.name.split(".")[0]
-                    self.ops.append(_Import(alias.name, root, root))
-                    self.rebind(root, importlib=root == "importlib")
-        elif isinstance(node, ast.ImportFrom):
-            self.from_import(node)
-        elif isinstance(node, ast.If):
-            self.conditional(node)
-        elif isinstance(node, (ast.Try, ast.TryStar)):
-            self.try_block(node)
-        elif isinstance(node, ast.ClassDef):
-            self.class_body(node)
-        else:
-            self.binds(node)
-            self.nested(node)
+        match True:
+            case _ if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname:
+                        self.ops.append(_Import(alias.name, alias.asname, alias.name))
+                        self.rebind(alias.asname, importlib=alias.name == "importlib")
+                    else:
+                        root = alias.name.split(".")[0]
+                        self.ops.append(_Import(alias.name, root, root))
+                        self.rebind(root, importlib=root == "importlib")
+            case _ if isinstance(node, ast.ImportFrom):
+                self.from_import(node)
+            case _ if isinstance(node, ast.If):
+                self.conditional(node)
+            case _ if isinstance(node, ast.Try | ast.TryStar):
+                self.try_block(node)
+            case _ if isinstance(node, ast.ClassDef):
+                self.class_body(node)
+            case _:
+                self.binds(node)
+                self.nested(node)
 
     def rebind(self, name: str, *, importlib: bool = False, import_module: bool = False) -> None:
         self.functions.pop(name, None)
@@ -263,7 +288,7 @@ class _OpCollector:
         for expression in expressions:
             for call in _calls(expression):
                 self.call(call.func, call)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             for decorator in reversed(node.decorator_list):
                 if isinstance(decorator, ast.Name):
                     self.call(decorator, None)
@@ -300,34 +325,36 @@ class _OpCollector:
 
     def binds(self, node: ast.stmt) -> None:
         targets: list[ast.expr] = []
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            self.ops.append(_Bind(node.name))
-            self.rebind(node.name)
-            if isinstance(node, ast.FunctionDef):
-                self.functions[node.name] = node
-        elif isinstance(node, ast.TypeAlias):
-            targets.append(node.name)
-        elif isinstance(node, ast.Assign):
-            targets.extend(node.targets)
-        elif isinstance(node, (ast.AugAssign, ast.For, ast.AsyncFor)) or (
-            isinstance(node, ast.AnnAssign) and node.value is not None
-        ):
-            targets.append(node.target)
-        elif isinstance(node, (ast.With, ast.AsyncWith)):
-            targets.extend(item.optional_vars for item in node.items if item.optional_vars)
+        match True:
+            case _ if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                self.ops.append(_Bind(node.name))
+                self.rebind(node.name)
+                if isinstance(node, ast.FunctionDef):
+                    self.functions[node.name] = node
+            case _ if isinstance(node, ast.TypeAlias):
+                targets.append(node.name)
+            case _ if isinstance(node, ast.Assign):
+                targets.extend(node.targets)
+            case _ if isinstance(node, ast.AugAssign | ast.For | ast.AsyncFor) or (
+                isinstance(node, ast.AnnAssign) and node.value is not None
+            ):
+                targets.append(node.target)
+            case _ if isinstance(node, ast.With | ast.AsyncWith):
+                targets.extend(item.optional_vars for item in node.items if item.optional_vars)
         for name in [name for target in targets for name in _target_names(target)]:
             self.ops.append(_Bind(name))
             self.rebind(name)
 
     def nested(self, node: ast.stmt) -> None:
-        if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
-            self.statements(node.body)
-            self.statements(node.orelse)
-        elif isinstance(node, (ast.With, ast.AsyncWith)):
-            self.statements(node.body)
-        elif isinstance(node, ast.Match):
-            for case in node.cases:
-                self.statements(case.body)
+        match True:
+            case _ if isinstance(node, ast.For | ast.AsyncFor | ast.While):
+                self.statements(node.body)
+                self.statements(node.orelse)
+            case _ if isinstance(node, ast.With | ast.AsyncWith):
+                self.statements(node.body)
+            case _ if isinstance(node, ast.Match):
+                for case in node.cases:
+                    self.statements(case.body)
 
     def class_body(self, node: ast.ClassDef) -> None:
         body = _OpCollector(
@@ -440,26 +467,27 @@ class _Simulation:
             self.aliases[module][name] = alias
 
     def run(self, module: str, op: _Op) -> None:
-        if isinstance(op, _Bind):
-            self.bind(module, op.name)
-        elif isinstance(op, _Import):
-            parts = op.module.split(".")
-            for depth in range(1, len(parts) + 1):
-                self.import_module(".".join(parts[:depth]))
-            self.bind(module, op.local, op.alias)
-        elif isinstance(op, _AttrRead):
-            self.read(module, op)
-        elif isinstance(op, _DynamicImport):
-            parts = op.module.split(".")
-            for depth in range(1, len(parts) + 1):
-                self.import_module(".".join(parts[:depth]))
-        elif isinstance(op, _Call):
-            self.frames.append({})
-            for nested in op.ops:
-                self.run(module, nested)
-            self.frames.pop()
-        else:
-            self.from_import(module, op)
+        match True:
+            case _ if isinstance(op, _Bind):
+                self.bind(module, op.name)
+            case _ if isinstance(op, _Import):
+                parts = op.module.split(".")
+                for depth in range(1, len(parts) + 1):
+                    self.import_module(".".join(parts[:depth]))
+                self.bind(module, op.local, op.alias)
+            case _ if isinstance(op, _AttrRead):
+                self.read(module, op)
+            case _ if isinstance(op, _DynamicImport):
+                parts = op.module.split(".")
+                for depth in range(1, len(parts) + 1):
+                    self.import_module(".".join(parts[:depth]))
+            case _ if isinstance(op, _Call):
+                self.frames.append({})
+                for nested in op.ops:
+                    self.run(module, nested)
+                self.frames.pop()
+            case _:
+                self.from_import(module, op)
 
     def from_import(self, module: str, op: _FromImport) -> None:
         self.import_module(op.module)
@@ -556,21 +584,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         violations, scanned = audit_tree(Path.cwd())
     except FileNotFoundError as exc:
-        print(exc)
+        sys.stdout.write(str(exc) + "\n")
         return 1
     except AuditParseError as exc:
-        print(f"Could not parse a file under audit: {exc}")
+        sys.stdout.write(f"Could not parse a file under audit: {exc}\n")
         return 1
     if not violations:
-        print(f"All {scanned} module(s) under {PACKAGE}/ import cleanly when imported first.")
+        sys.stdout.write(
+            f"All {scanned} module(s) under {PACKAGE}/ import cleanly when imported first.\n"
+        )
         return 0
-    print(f"IMPORT-ORDER VIOLATIONS: {len(violations)} in {scanned} module(s)")
-    print("=" * 72)
+    sys.stdout.write(f"IMPORT-ORDER VIOLATIONS: {len(violations)} in {scanned} module(s)\n")
+    sys.stdout.write(str("=" * 72) + "\n")
     for violation in violations:
-        print(f"  {violation}")
-    print(
-        "\nBreak the cycle at the edge that points the wrong way between layers, or "
-        "bind the module (`from pkg import mod`) and read the name at call time."
+        sys.stdout.write(f"  {violation}\n")
+    sys.stdout.write(
+        "\nBreak the cycle at the edge that points the wrong way between layers, or bind the module (`from pkg import mod`) and read the name at call time.\n"
     )
     return 1
 

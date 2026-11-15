@@ -46,6 +46,8 @@ class WorkspaceWatchSeams:
 
 
 class _SharedWorkspaceWatch:
+    __slots__ = ("__weakref__", "cross_process_owner_id", "handler", "monitors", "observer")
+
     def __init__(
         self,
         observer: _WatchObserverProtocol,
