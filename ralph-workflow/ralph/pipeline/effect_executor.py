@@ -1170,10 +1170,12 @@ def _invoke_agent_with_recovery(
                     ctx, resolved_required_artifact, exc, baseline=state.artifact_baseline
                 ):
                     _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
+                    terminal_facts = replace(
+                        attempt_facts_for_failure(exc),
+                        artifact_valid=True,
+                    )
                     return _AttemptResult(
-                        AttemptEnded(
-                            facts=replace(attempt_facts_for_failure(exc), artifact_valid=True)
-                        ),
+                        AttemptEnded(facts=terminal_facts),
                         state.prompt_file,
                         session_id,
                     )

@@ -148,7 +148,7 @@ def integrate_before_planning(
             config=config,
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
-            force_retry=True,
+            force_retry=False,
         )
         if recovery_retained_record(recovered) or (
             recovered is not None and recovered.fast_forwarded
