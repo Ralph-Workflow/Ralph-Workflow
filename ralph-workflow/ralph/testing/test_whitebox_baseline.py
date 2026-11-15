@@ -33,6 +33,7 @@ tests/agents/invoke/test_kimi_session_id_extraction.py|0,1,0
 tests/agents/invoke/test_line_reader_queue_bound.py|0,4,8
 tests/agents/invoke/test_missing_credentials_preflight.py|0,1,0
 tests/agents/invoke/test_native_mcp_private_root_concurrency.py|0,1,0
+tests/agents/invoke/test_opencode_child_store_replay.py|0,1,1
 tests/agents/invoke/test_opencode_prompt_delivered_on_stdin.py|0,1,0
 tests/agents/invoke/test_opencode_child_store_replay.py|0,1,1
 tests/agents/invoke/test_pending_subagents_turn_end.py|0,4,0
@@ -427,6 +428,7 @@ tests/test_commit_message_pipeline.py|3,0,0
 tests/test_commit_plumbing_transport_tools.py|0,2,0
 tests/test_commit_plumbing_uses_canonical_submit.py|0,1,4
 tests/test_commit_retry_cooldown.py|0,2,0
+tests/test_commit_retry_recovery_owned_bound.py|0,0,2
 tests/test_commit_review_artifact.py|0,3,0
 tests/test_commit_review_diff.py|0,2,0
 tests/test_commit_review_invariants.py|0,2,0
@@ -571,6 +573,7 @@ tests/test_integration_record_legacy_migration.py|0,2,0
 tests/test_integration_record_rewrite_back.py|0,0,2
 tests/test_integration_remote_ops.py|0,2,0
 tests/test_integration_resolution.py|0,0,1
+tests/test_integration_status.py|0,4,6
 tests/test_integration_success_state.py|0,1,0
 tests/test_integration_status.py|0,4,6
 tests/test_internal_skills_mcp_prompts.py|0,2,0
@@ -696,6 +699,7 @@ tests/test_pro_support_state_query.py|2,0,0
 tests/test_pro_support_watcher.py|0,0,2
 tests/test_process_cross_platform_hardening.py|0,1,3
 tests/test_process_hardening.py|0,1,4
+tests/test_process_manager_expected_exits.py|0,1,0
 tests/test_process_manager_failure_state.py|0,1,0
 tests/test_process_manager_expected_exits.py|0,1,0
 tests/test_process_manager_pty.py|0,0,4

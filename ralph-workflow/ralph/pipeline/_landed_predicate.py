@@ -83,7 +83,7 @@ def _advanced_completion_proof(
         return False, "integrated_feature_sha is unset"
     if head == recorded:
         return True, ""
-    if is_ancestor(root, recorded, head):
+    if record.is_integrated and is_ancestor(root, recorded, head):
         return True, ""
     return (
         False,

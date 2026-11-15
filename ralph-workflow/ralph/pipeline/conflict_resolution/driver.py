@@ -918,7 +918,7 @@ def _can_continue_controller_rounds(
     )
 
     def _is_spent_or_demoted(agent: str, status: AgentStatus) -> bool:
-        if isinstance(status, Spent) and status.reason != "retry_exhausted":
+        if isinstance(status, Spent):
             return True
         if isinstance(status, Cooldown) and status.reason in (
             "consecutive_unproductive_limit_reached",
@@ -937,12 +937,8 @@ def _can_continue_controller_rounds(
     provider_fallover_pending = len(live) > 1 and any(
         status.reason == "provider_unavailable" for _agent, status in chain_statuses
     )
-    return (
-        any(
-            status.is_eligible or (isinstance(status, Spent) and status.reason == "retry_exhausted")
-            for _agent, status in chain_statuses
-        )
-        or (wait_ms > 0 and not provider_fallover_pending)
+    return any(status.is_eligible for _agent, status in chain_statuses) or (
+        wait_ms > 0 and not provider_fallover_pending
     )
 
 

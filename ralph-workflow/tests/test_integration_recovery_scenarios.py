@@ -9,6 +9,7 @@ import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.loader import ConfigTomlError, load_toml
 from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery_record import (
@@ -31,6 +32,9 @@ from tests._integration_ladder_fakes import _seed_terminal_rungs
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_spent_resolver_chain_records_exhaustion_and_escalates_once": (
         "ruff format collapsed the multi-line assertion into a single line without altering any assertion logic"
+    ),
+    "test_config_corrupt_agents_toml_surfaces_file_and_check_config": (
+        "verify corrupt config with load_toml so ConfigFailureOutcome is returned on syntax error"
     ),
 }
 
@@ -245,10 +249,12 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
     def _resolver(resolver_root: Path, _target: str, _stop: RebaseStop):
         consulted.append(str(resolver_root))
         try:
+            load_toml(agents_toml)
             with workspace_context(resolver_root):
                 pass
-        except WorkspaceContextError as exc:
-            return ConfigFailureOutcome(exc.file, exc.reason)
+        except (WorkspaceContextError, ConfigTomlError) as exc:
+            file = getattr(exc, "file", agents_toml)
+            return ConfigFailureOutcome(file, str(exc))
         return NextStrategyOutcome("completion_in_place")
 
     reset_continuation_gate_state()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, assert_never
 
+from loguru import logger
+
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
@@ -301,7 +303,10 @@ def _rebase_failure_transport(
             )
         case WaitingOutcome() | RetryLaterOutcome():
             return failure_reason
-        case ConfigFailureOutcome() | UnknownOutcome():
+        case ConfigFailureOutcome():
+            logger.warning("{}", failure_reason)
+            return failure_reason
+        case UnknownOutcome():
             return failure_reason
         case _ as unreachable:
             assert_never(unreachable)
@@ -391,10 +396,19 @@ def continue_retained_resolution(
     force_retry: bool = False,
     stop_identity: str | None = None,
 ) -> IntegrationRecord | str:
+    if recovery_controller is None:
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        recovery_controller = current_agent_effect_dependencies().recovery_controller
     if recovery_controller is not None:
+        resolver_available = (
+            conflict_resolver is not None
+            if record.resolving_merge
+            else rebase_stop_resolver is not None
+        )
         recovery_controller.set_phase_launch_gate(
             phase,
-            available=rebase_stop_resolver is not None and conflict_resolver is not None,
+            available=resolver_available,
         )
     target = record.pre_target_sha if record.operation_kind == "target_reconcile" else record.target
     if not target:
@@ -497,7 +511,12 @@ def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> Inte
         return "retained integration ownership unreadable after continuation"
     if current.is_integrated:
         return current
-    decision = operation_landed(root, current)
+    landing_record = (
+        current
+        if current.rebase_continue_stop or not current.resolving_stop_sha
+        else current.model_copy(update={"rebase_continue_stop": current.resolving_stop_sha})
+    )
+    decision = operation_landed(root, landing_record)
     if decision.landed and decision.observed_head is not None:
         return _complete_and_save_record(root, current, decision.observed_head)
     if current.rebase_continue_pending:
@@ -534,11 +553,18 @@ def _stale_replay_record(root: Path, record: IntegrationRecord) -> IntegrationRe
 
 
 def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCompletion | None:
+    if rebase_in_progress_at(root):
+        return None
     if not record.resolving_rebase and not record.rebase_continue_pending:
         return None
     if rebase_in_progress_at(root) or merge_state(root) != MERGE_STATE_NONE:
         return None
-    decision = operation_landed(root, record)
+    landing_record = (
+        record
+        if record.rebase_continue_stop or not record.resolving_stop_sha
+        else record.model_copy(update={"rebase_continue_stop": record.resolving_stop_sha})
+    )
+    decision = operation_landed(root, landing_record)
     if not decision.landed or decision.observed_head is None:
         return None
     return complete_commit(

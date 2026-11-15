@@ -566,6 +566,7 @@ class RecoveryController:
         self._claimed_attempt_outcome_keys: set[str] = set()
         self._peer_failure_signatures: dict[str, dict[str, tuple[object, ...]]] = {}
         self._attempt_ordinals: dict[tuple[str, str], int] = {}
+        self._attempt_counts: dict[tuple[str, str], int] = {}
         self._spent_agents: dict[str, set[str]] = {
             k: set(v) for k, v in (opts.spent_agents or {}).items()
         }
@@ -736,6 +737,16 @@ class RecoveryController:
         ordinal = self._attempt_ordinals.get(key, 0) + 1
         self._attempt_ordinals[key] = ordinal
         return ordinal
+
+    def record_attempt(self, phase: str, agent: str | None) -> int:
+        key = (phase, agent or "")
+        count = self._attempt_counts.get(key, 0) + 1
+        self._attempt_counts[key] = count
+        return count
+
+    def attempt_count(self, phase: str, agent: str | None) -> int:
+        key = (phase, agent or "")
+        return self._attempt_counts.get(key, 0)
 
     def finalize_attempt(
         self,
@@ -1440,7 +1451,7 @@ class RecoveryController:
         window = windows.get(agent)
         if agent in spent:
             return self._ledger.spent_status(_SPENT_RETRY_EXHAUSTED_REASON)
-        return self._ledger.agent_eligibility(
+        status = self._ledger.agent_eligibility(
             phase,
             agent,
             cooldown=window,
@@ -1451,6 +1462,11 @@ class RecoveryController:
                 else _STORE_BENCHED_REASON
             ),
         )
+        if not status.is_eligible:
+            return status
+        if self.attempt_count(phase, agent) >= self._ledger.consecutive_limit:
+            return self._ledger.spent_status(_SPENT_RETRY_EXHAUSTED_REASON)
+        return status
 
     def chain_eligibility(
         self,
@@ -1584,6 +1600,7 @@ class RecoveryController:
     def reset_backoff(self, phase: str, agent: str | None) -> None:
         key = f"{phase}:{agent}" if agent else phase
         self._backoff_attempts.pop(key, None)
+        self._attempt_counts.pop((phase, agent or ""), None)
         self._spent_agents.pop(phase, None)
         self._last_selection_state.pop(phase, None)
         if agent is not None:

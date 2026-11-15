@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.git.merge import MERGE_STATE_NONE
+from ralph.pipeline import run_loop
 from ralph.pipeline.integration_resolution import (
     UnknownKind,
     correct_overtaken_persisted_record,
@@ -148,7 +149,6 @@ def test_gate_pass_persists_correction_through_the_checkpoint_seam(
     from unittest.mock import MagicMock
 
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline import run_loop
     from ralph.pipeline.checkpoint import Checkpoint
     from ralph.pipeline.state import PipelineState
     from ralph.policy.loader import load_policy

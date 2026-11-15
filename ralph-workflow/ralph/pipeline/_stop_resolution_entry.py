@@ -170,7 +170,7 @@ def _controller_for_key(
         )
     except Exception:
         pass
-    return KeyUnavailable("recovery controller unavailable")
+    return None
 
 
 def compute_resolution_attempt_key(

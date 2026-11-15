@@ -108,14 +108,14 @@ def _startup_recovery_route(
     action: IntegrationAction | RecordFactOutcome,
     record: IntegrationRecord,
 ) -> _StartupRecoveryRoute:
+    if record.phase == "integrated":
+        return _StartupRecoveryRoute.LANDING_CONTINUATION
     if (
         classify_git_operation(record) is not GitOperationKind.NONE
         or record.operation_kind == "target_reconcile"
         or record.reintegrate_pending
     ):
         return _StartupRecoveryRoute.RECOVERY_OWNS_OPERATION
-    if record.phase == "integrated":
-        return _StartupRecoveryRoute.LANDING_CONTINUATION
     if isinstance(action, RecordFactOutcome):
         return _StartupRecoveryRoute.DEFER_INTERVENTION
     if action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:

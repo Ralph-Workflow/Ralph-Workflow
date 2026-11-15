@@ -105,7 +105,6 @@ from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
     should_reset_tool_registry,
 )
-from ralph.timeout_defaults import AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -600,6 +599,46 @@ def _submit_artifact_tool_names_for_transport(
     return (submit_artifact_tool_name_for_transport(transport),)
 
 
+def _resolve_commit_recovery_controller(
+    agent: AgentConfig,
+    attempt_context: CommitAttemptContext,
+    display_context: DisplayContext,
+    materializer: MaterializeMasterPromptFn | None,
+    pipeline_deps: PipelineDeps | None,
+    recovery_controller: RecoveryController | None,
+    recovery_deps: AttemptRunnerDeps | None,
+) -> tuple[UnifiedConfig, PipelineDeps, AttemptRunnerDeps, RecoveryController]:
+    general_cfg = attempt_context.general_config
+    if general_cfg is None:
+        effective_general_config = UnifiedConfig(agents={agent.cmd: agent})
+    elif isinstance(general_cfg, GeneralConfig):
+        effective_general_config = UnifiedConfig(
+            general=general_cfg,
+            agents={agent.cmd: agent},
+        )
+    else:
+        effective_general_config = general_cfg
+    effective_pipeline_deps = pipeline_deps or _commit_pipeline_deps(
+        effective_general_config,
+        display_context,
+        materializer,
+        pro_hooks=None,
+    )
+    if recovery_deps is None:
+        recovery_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
+        recovery_deps = dataclasses.replace(
+            recovery_deps,
+            probe_runner=_lazy_commit_probe_runner(effective_general_config),
+        )
+    if recovery_controller is None:
+        recovery_controller = _attempt_controller(
+            effective_general_config,
+            effective_pipeline_deps,
+            recovery_deps,
+        )
+    return effective_general_config, effective_pipeline_deps, recovery_deps, recovery_controller
+
+
 def _generate_commit_message_with_agent(
     agent_name: str,
     agent: AgentConfig,
@@ -632,6 +671,20 @@ def _generate_commit_message_with_agent(
             raw_max_retries = getattr(general_cfg.general, "max_same_agent_retries", None)
     max_retries = default_direct_mcp_retry_limit(raw_max_retries)
     (
+        _effective_general_config,
+        pipeline_deps,
+        recovery_deps,
+        recovery_controller,
+    ) = _resolve_commit_recovery_controller(
+        agent,
+        attempt_context,
+        display_context,
+        materializer,
+        pipeline_deps,
+        recovery_controller,
+        recovery_deps,
+    )
+    (
         initial_attempt,
         last_session_id,
         last_error,
@@ -657,24 +710,11 @@ def _generate_commit_message_with_agent(
     failure_details.append(initial_attempt.failure_detail)
 
     latest_attempt = initial_attempt
-    attempt_limit = (
-        recovery_controller.ledger.consecutive_limit
-        if recovery_controller is not None
-        else AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
-    )
-    attempt_number = 1
     summary_retry_attempted = False
 
-    while attempt_number < attempt_limit:
+    while recovery_controller.agent_eligibility("commit", agent_name).is_eligible:
         if (
-            recovery_controller is not None
-            and not recovery_controller.agent_eligibility("commit", agent_name).is_eligible
-        ):
-            break
-        attempt_number += 1
-
-        if (
-            attempt_number == _SESSION_RETRY_ATTEMPT_NUMBER
+            recovery_controller.attempt_count("commit", agent_name) == 1
             and _is_missing_commit_artifact_failure(latest_attempt.failure_detail)
             and initial_attempt.resume_session_id
         ):
@@ -742,7 +782,7 @@ def _generate_commit_message_with_agent(
                 )
             failure_details.append(summary_retry.failure_detail)
             latest_attempt = summary_retry
-            continue
+            break
 
         (
             latest_attempt,
@@ -831,35 +871,22 @@ def _run_commit_agent_attempt_with_recovery(
             drain="commit",
         )
         workspace_scope = WorkspaceScope(attempt_context.repo_root)
-        general_cfg = attempt_context.general_config
-        if general_cfg is None:
-            effective_general_config: UnifiedConfig = UnifiedConfig(agents={agent.cmd: agent})
-        elif isinstance(general_cfg, GeneralConfig):
-            effective_general_config = UnifiedConfig(
-                general=general_cfg,
-                agents={agent.cmd: agent},
-            )
-        else:
-            effective_general_config = general_cfg
-        effective_pipeline_deps = pipeline_deps or _commit_pipeline_deps(
+        (
             effective_general_config,
+            effective_pipeline_deps,
+            recovery_deps,
+            recovery_controller,
+        ) = _resolve_commit_recovery_controller(
+            agent,
+            attempt_context,
             display_context,
             materializer,
-            pro_hooks=None,
+            pipeline_deps,
+            recovery_controller,
+            recovery_deps,
         )
         invoke = _commit_invoke_agent(commit_module)
-        if recovery_deps is None:
-            recovery_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
-            recovery_deps = dataclasses.replace(
-                recovery_deps,
-                probe_runner=_lazy_commit_probe_runner(effective_general_config),
-            )
-        if recovery_controller is None:
-            recovery_controller = _attempt_controller(
-                effective_general_config,
-                effective_pipeline_deps,
-                recovery_deps,
-            )
+        recovery_controller.record_attempt("commit", agent_name)
         attempt = registered_runners()[AgentEntryPoint.COMMIT_GENERATION](
             effect=effect,
             config=effective_general_config,

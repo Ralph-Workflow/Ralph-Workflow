@@ -78,9 +78,9 @@ _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory replaces git-rebase:diff with the four "
     "git-rebase:set-aside-* operations, removes the retired integration-gate:* "
     "probe, and adds operation-snapshot:index-tree, auto-integrate:update-feature-ref, "
-    "git-completion-in-place, git-append-only-attributes, and git-rm-resolved. These are "
-    "real recovery and conflict-resolution operations whose nonzero exits must retain the "
-    "loud default."
+    "git-completion-in-place, git-append-only-attributes, git-rm-resolved, and "
+    "git-mixed-kind-gitlink. These are real recovery and conflict-resolution "
+    "operations whose nonzero exits must retain the loud default."
 )
 
 
