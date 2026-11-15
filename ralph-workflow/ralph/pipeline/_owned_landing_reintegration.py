@@ -87,14 +87,7 @@ def replay_stale_resolution(
         )
 
     try:
-        cleared = record
-        if cleared.resolving_rebase or cleared.resolving_merge:
-            cleared = cleared.with_transition(
-                MARK_RESOLVING_REBASE,
-                resolving_rebase=False,
-                resolving_merge=False,
-            )
-        replay_record = cleared.with_transition(
+        replay_record = record.with_transition(
             START_INTEGRATING,
             phase="integrating",
             pre_feature_sha=feature_sha,
