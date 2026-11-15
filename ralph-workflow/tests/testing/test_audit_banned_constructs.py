@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -326,6 +327,26 @@ def test_pyproject_extend_ignore_reenabling_banned_rule_is_a_config_bypass(
     assert "CONFIG-BYPASS" in output
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        '[tool.ruff.lint]\nextend-ignore = ["ALL"]\n',
+        '[tool.ruff.lint.per-file-ignores]\n"tests/*.py" = ["ALL"]\n',
+    ],
+)
+def test_pyproject_universal_ignore_reenabling_banned_rules_is_a_config_bypass(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    source: str,
+) -> None:
+    config = _write(tmp_path, "pyproject.toml", source)
+
+    code, output, _error = _run([config], capsys)
+
+    assert code == 1
+    assert "CONFIG-BYPASS" in output
+
+
 def test_mypy_per_module_ignore_errors_is_a_config_bypass(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -581,27 +602,28 @@ def test_json_output_carries_machine_readable_finding_codes(
     assert first["fix_hint"] == FIX_HINT
 
 
-def test_default_governed_paths_scanned_when_no_paths_specified(
+def test_default_run_audits_tracked_python_outside_governed_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert "ralph/checkpoint" in DEFAULT_GOVERNED_PATHS
-    assert "ralph/files" in DEFAULT_GOVERNED_PATHS
-    expected_governed_paths = (
-        "pyproject.toml",
-        "ralph/checkpoint",
-        "ralph/files",
-        "ralph/pipeline/conflict_resolution/_driver_rounds.py",
-        "ralph/pydantic_validation_errors.py",
-        "ralph/testing/audit_banned_constructs.py",
-        "ralph/testing/_banned_constructs_config.py",
-        "ralph/testing/_banned_constructs_model.py",
-        "ralph/testing/_banned_constructs_scope.py",
-        "ralph/testing/_banned_constructs_source.py",
-    )
-    for path in expected_governed_paths:
-        assert path in DEFAULT_GOVERNED_PATHS
+    target = _write(tmp_path, "ralph/outside_governed.py", "eval('value')\n")
+    assert "ralph/outside_governed.py" not in DEFAULT_GOVERNED_PATHS
+    del target
+
+    def _fake_run_process(cmd: str, args: tuple[str, ...], options: object = None) -> object:
+        if args == ("rev-parse", "--show-toplevel"):
+            return SimpleNamespace(returncode=0, stdout=str(tmp_path), stderr="")
+        if args == ("ls-files", "-z", "--", "*.py"):
+            return SimpleNamespace(returncode=0, stdout="ralph/outside_governed.py\0", stderr="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="")
+
+    monkeypatch.setattr("ralph.testing._banned_constructs_scope.run_process", _fake_run_process)
+    monkeypatch.chdir(tmp_path)
+
     code = main([])
     captured = capsys.readouterr()
-    assert code == 0
-    assert "Banned constructs audit (advisory)" not in captured.out
-    assert "No banned constructs found." in captured.out
+
+    assert code == 1
+    assert "ralph/outside_governed.py" in captured.out
+    assert "eval call" in captured.out

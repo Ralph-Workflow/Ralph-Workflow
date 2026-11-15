@@ -13,6 +13,12 @@ __all__ = ["Clock", "FakeClock", "SystemClock"]
 
 
 class FakeClock:
+    __slots__ = (
+        "__dict__",
+        "_epoch_offset",
+        "_now",
+    )
+
     def __init__(
         self,
         start: float = 0.0,

@@ -84,6 +84,7 @@ class _CliOptions:
     paths: tuple[str, ...]
     json_output: bool
     enforce: bool = False
+    governed: bool = False
 
 
 def _finding_key(finding: Finding) -> tuple[str, int, str, str]:
@@ -138,6 +139,7 @@ def _parse_cli(argv: Sequence[str]) -> _CliOptions:
     paths: list[str] = []
     json_output = False
     enforce = False
+    governed = False
     index = 0
     while index < len(argv):
         argument = argv[index]
@@ -147,6 +149,10 @@ def _parse_cli(argv: Sequence[str]) -> _CliOptions:
             continue
         if argument in {"--enforce", "--strict"}:
             enforce = True
+            index += 1
+            continue
+        if argument == "--governed":
+            governed = True
             index += 1
             continue
         if argument == "--paths":
@@ -159,7 +165,10 @@ def _parse_cli(argv: Sequence[str]) -> _CliOptions:
                 raise _AuditInputError("--paths requires at least one path")
             continue
         raise _AuditInputError(f"unrecognized argument: {argument}")
-    return _CliOptions(tuple(paths), json_output, enforce)
+    selected_scopes = int(bool(paths)) + int(enforce) + int(governed)
+    if selected_scopes > 1:
+        raise _AuditInputError("choose only one of --paths, --enforce, or --governed")
+    return _CliOptions(tuple(paths), json_output, enforce, governed)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -167,10 +176,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         options = _parse_cli(tuple(sys.argv[1:] if argv is None else argv))
         if options.paths:
             findings = audit_paths(options.paths)
-        elif options.enforce:
-            findings = audit_repository()
-        else:
+        elif options.governed:
             findings = audit_paths(DEFAULT_GOVERNED_PATHS)
+        else:
+            findings = audit_repository()
     except _AuditInputError as error:
         sys.stderr.write(f"BANNED-CONSTRUCT AUDIT INPUT ERROR: {error}\n")
         return 2

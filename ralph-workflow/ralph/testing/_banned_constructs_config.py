@@ -123,6 +123,9 @@ def _matching_banned_rules(selectors: Iterable[str]) -> tuple[str, ...]:
         normalized = selector.strip().upper()
         if not normalized:
             continue
+        if normalized == "ALL":
+            matched.update(_BANNED_RUFF_RULES)
+            continue
         matched.update(rule for rule in _BANNED_RUFF_RULES if rule.startswith(normalized))
     return tuple(sorted(matched))
 

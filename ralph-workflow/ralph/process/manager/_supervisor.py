@@ -98,6 +98,12 @@ def _termination_handler(holder_pid: int) -> Callable[[int, FrameType | None], N
         del frame
         if os.getppid() != holder_pid:
             _kill_tree_and_exit()
+        if signum == _SIGTERM:
+            try:
+                os.kill(holder_pid, 0)
+                return
+            except OSError:
+                _kill_tree_and_exit()
         _forward_to_group(signum)
 
     return handle
