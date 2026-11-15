@@ -81,7 +81,6 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
         {
             "dead_tool_surfaces",
             "skip_same_agent_retries",
-            "last_retry_delay_ms",
         }
     ),
     "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(
@@ -90,6 +89,24 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
         }
     ),
 }
+
+_CONFLICT_RESOLUTION_PATH_PREFIX = "ralph/pipeline/conflict_resolution/"
+
+_CONFLICT_RESOLUTION_CLASSIFICATION_RULE = (
+    "production_conflict_resolution_classification_construction"
+)
+
+_CONFLICT_RESOLUTION_CLASSIFICATION_MESSAGE = (
+    "Conflict-resolution code constructs ClassifiedFailure; typed attempt facts must be "
+    "classified by the shared FailureClassifier recovery path."
+)
+
+_CONFLICT_RESOLUTION_BUDGET_BINDING_RULE = "production_conflict_resolution_budget_binding"
+
+_CONFLICT_RESOLUTION_BUDGET_BINDING_MESSAGE = (
+    "Conflict-resolution code binds counts_against_budget to a statically falsy value; "
+    "budget classification belongs to the shared FailureClassifier recovery path."
+)
 
 
 def is_transitional_allowed(rel_path: str, name: str) -> bool:
@@ -470,6 +487,112 @@ def _call_name(node: ast.Call) -> str | None:
     if isinstance(node.func, ast.Attribute):
         return node.func.attr
     return None
+
+
+def _is_conflict_resolution_path(rel_path: str) -> bool:
+    return rel_path.startswith(_CONFLICT_RESOLUTION_PATH_PREFIX)
+
+
+def _static_expression_truth(node: ast.AST) -> bool | None:
+    if isinstance(node, ast.Constant):
+        result: bool | None = bool(node.value)
+    elif isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        result = bool(node.elts)
+    elif isinstance(node, ast.Dict):
+        result = bool(node.keys)
+    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        operand_truth = _static_expression_truth(node.operand)
+        result = None if operand_truth is None else not operand_truth
+    elif isinstance(node, ast.BoolOp):
+        values = [_static_expression_truth(value) for value in node.values]
+        if isinstance(node.op, ast.And):
+            if any(value is False for value in values):
+                result = False
+            else:
+                result = True if all(value is True for value in values) else None
+        elif all(value is False for value in values):
+            result = False
+        else:
+            result = True if any(value is True for value in values) else None
+    elif isinstance(node, ast.IfExp):
+        body_truth = _static_expression_truth(node.body)
+        orelse_truth = _static_expression_truth(node.orelse)
+        result = body_truth if body_truth is not None and body_truth == orelse_truth else None
+    else:
+        result = None
+    return result
+
+
+def _is_statically_falsy_expression(node: ast.AST) -> bool:
+    return _static_expression_truth(node) is False
+
+
+def _classified_failure_bindings(tree: ast.Module) -> frozenset[str]:
+    bindings: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        for alias in node.names:
+            if alias.name == "ClassifiedFailure":
+                bindings.add(alias.asname or alias.name)
+    return frozenset(bindings)
+
+
+def _is_classified_failure_constructor(
+    node: ast.Call, bindings: frozenset[str]
+) -> bool:
+    if isinstance(node.func, ast.Name):
+        return node.func.id in bindings
+    return isinstance(node.func, ast.Attribute) and node.func.attr == "ClassifiedFailure"
+
+
+def _check_conflict_resolution_classification_ownership(
+    tree: ast.Module, rel_path: str
+) -> list[SingleOwnerViolation]:
+    if not _is_conflict_resolution_path(rel_path):
+        return []
+    bindings = _classified_failure_bindings(tree)
+    violations: list[SingleOwnerViolation] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if _is_classified_failure_constructor(node, bindings):
+                violations.append(
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule=_CONFLICT_RESOLUTION_CLASSIFICATION_RULE,
+                        detail=_CONFLICT_RESOLUTION_CLASSIFICATION_MESSAGE,
+                    )
+                )
+                continue
+            violations.extend(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=keyword.value.lineno,
+                    rule=_CONFLICT_RESOLUTION_BUDGET_BINDING_RULE,
+                    detail=_CONFLICT_RESOLUTION_BUDGET_BINDING_MESSAGE,
+                )
+                for keyword in node.keywords
+                if keyword.arg == "counts_against_budget"
+                and _is_statically_falsy_expression(keyword.value)
+            )
+            continue
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+        if any(
+            isinstance(target, ast.Attribute) and target.attr == "counts_against_budget"
+            for target in targets
+        ) and _is_statically_falsy_expression(node.value):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule=_CONFLICT_RESOLUTION_BUDGET_BINDING_RULE,
+                    detail=_CONFLICT_RESOLUTION_BUDGET_BINDING_MESSAGE,
+                )
+            )
+    return violations
 
 
 def _is_false_constant(node: ast.AST | None) -> bool:
@@ -1250,7 +1373,8 @@ def _invocation_routes_through_owner(node: ast.Call) -> bool:
 
 def check_agent_failure_ownership(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
     context = _build_ownership_context(tree)
-    violations = _check_unguarded_agent_invocation(tree, rel_path, context)
+    violations = _check_conflict_resolution_classification_ownership(tree, rel_path)
+    violations.extend(_check_unguarded_agent_invocation(tree, rel_path, context))
     violations.extend(_check_runner_ownership(tree, rel_path, context))
     for node in ast.walk(tree):
         if isinstance(node, ast.Try):

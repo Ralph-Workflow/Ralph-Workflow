@@ -8,7 +8,7 @@ from rich.console import Console
 from ralph.cli.commands.diagnose import integration_status_rows
 from ralph.display.context import make_display_context
 from ralph.display.status_bar import StatusBarModel, render_status_bar
-from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
+from ralph.pipeline._integration_status import build_integration_status
 from ralph.pipeline.agent_selection import (
     agent_availability,
     format_selection_evidence,

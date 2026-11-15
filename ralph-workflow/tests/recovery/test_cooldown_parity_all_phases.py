@@ -15,14 +15,11 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.auto_integrate_record import record_path
-from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import cached_default_policy_bundle
 from ralph.recovery.agent_failure_ledger import Cooldown, Eligible
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.classifier import FailureContext
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,

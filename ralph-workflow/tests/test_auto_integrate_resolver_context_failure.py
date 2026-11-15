@@ -11,6 +11,7 @@ from ralph.pipeline.conflict_resolution.driver import (
     run_rebase_conflict_resolution_outcome,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop, RebaseStopResolver
+
 builtins.run_conflict_resolution_outcome = run_conflict_resolution_outcome
 builtins.run_rebase_conflict_resolution_outcome = run_rebase_conflict_resolution_outcome
 

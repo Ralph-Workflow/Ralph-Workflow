@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections import deque
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from inspect import signature
 from pathlib import Path
@@ -114,6 +115,7 @@ from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangePr
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
+    from contextvars import Token
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -158,6 +160,38 @@ _DEFAULT_PHASE_NAMES = frozenset(
         "failed_terminal",
     }
 )
+
+
+@dataclass(frozen=True)
+class AgentEffectDependencies:
+    agent_runner: Callable[..., object] | None = None
+    recovery_controller: RecoveryController | None = None
+
+
+_AGENT_EFFECT_DEPENDENCIES: ContextVar[AgentEffectDependencies | None] = ContextVar(
+    "ralph_agent_effect_dependencies",
+    default=None,
+)
+
+
+def install_agent_effect_dependencies(
+    *,
+    agent_runner: Callable[..., object] | None = None,
+    recovery_controller: RecoveryController | None = None,
+) -> Token[AgentEffectDependencies | None]:
+    return _AGENT_EFFECT_DEPENDENCIES.set(
+        AgentEffectDependencies(agent_runner, recovery_controller)
+    )
+
+
+def reset_agent_effect_dependencies(
+    token: Token[AgentEffectDependencies | None],
+) -> None:
+    _AGENT_EFFECT_DEPENDENCIES.reset(token)
+
+
+def current_agent_effect_dependencies() -> AgentEffectDependencies:
+    return _AGENT_EFFECT_DEPENDENCIES.get() or AgentEffectDependencies()
 
 
 def _record_successful_attempt_session(
@@ -209,6 +243,34 @@ def execute_agent_effect(
     attempt_finalizer: AttemptFinalizer | None = None,
     **opts: object,
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
+    injected = current_agent_effect_dependencies()
+    if injected.agent_runner is not None:
+        return cast(
+            "PipelineEvent | AgentFailureEvent | AttemptEnded",
+            injected.agent_runner(
+                effect,
+                config,
+                pipeline_deps,
+                workspace_scope,
+                display_context=display_context,
+                display=display,
+                verbosity=verbosity,
+                state=state,
+                policy_bundle=policy_bundle,
+                bridge=bridge,
+                raw_output_sink=raw_output_sink,
+                rendered_output_sink=rendered_output_sink,
+                raw_line_sink=raw_line_sink,
+                run_id=run_id,
+                required_artifact=required_artifact,
+                session_id=session_id,
+                extra_env=extra_env,
+                raise_resumable_exit=raise_resumable_exit,
+                agent_invocation_error_sink=agent_invocation_error_sink,
+                attempt_finalizer=attempt_finalizer,
+                **opts,
+            ),
+        )
     verdict = inspect_integration_resolution(
         workspace_scope.root,
         state.rebase if state is not None else RebaseState(),
@@ -231,7 +293,7 @@ def execute_agent_effect(
 
     active_rec = cast(
         "RecoveryController | None", opts.get("recovery_controller") or opts.get("recovery")
-    )
+    ) or injected.recovery_controller
     if active_rec is None:
         active_rec = pipeline_deps.recovery_controller
     resolved_attempt_finalizer = attempt_finalizer or _fallback_attempt_finalizer(

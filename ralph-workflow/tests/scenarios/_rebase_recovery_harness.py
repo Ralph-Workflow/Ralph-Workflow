@@ -117,11 +117,17 @@ class FakeAgentRunner:
         if self.mode is AgentMode.PROVIDER_FAILURE:
             raise ConnectionError("agent provider unavailable")
         if self.mode is AgentMode.WATCHDOG_HANG:
-            raise TimeoutError("agent idle watchdog fired")
+            from ralph.agents.invoke import AgentInactivityTimeoutError
+
+            raise AgentInactivityTimeoutError("scenario-rebase-resolver", 30.0)
         if self.mode is AgentMode.NON_ZERO_EXIT:
-            raise RuntimeError("agent exited with status 7")
+            from ralph.agents.invoke import AgentInvocationError
+
+            raise AgentInvocationError("scenario-rebase-resolver", 7, "agent exited")
         if self.mode is AgentMode.SIGNAL:
-            raise RuntimeError("agent terminated by signal 15")
+            from ralph.agents.invoke import AgentInvocationError
+
+            raise AgentInvocationError("scenario-rebase-resolver", 143, "terminated")
         if self.mode is AgentMode.INVALID_RESULT:
             return PipelineEvent.AGENT_FAILURE
         if self.mode is AgentMode.LEAVES_MARKER:
@@ -149,15 +155,18 @@ class FakeAgentRunner:
                 raise AssertionError("a completed stop must never be presented to the agent again")
             if self.fail_at_launch == (self.launches + 1):
                 raise ConnectionError("agent provider unavailable partway through finite work")
-        import ralph.pipeline.effect_executor as effect_mod
         from ralph.agents.system_clock import SystemClock
         from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
         from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
         from ralph.workspace.scope import WorkspaceScope
 
+        injected = current_agent_effect_dependencies().agent_runner
+        if injected is None:
+            raise RuntimeError("scenario agent runner dependency unavailable")
         deps = AttemptRunnerDeps(
             clock=self.clock or SystemClock(),
-            invoke=effect_mod.execute_agent_effect,
+            invoke=injected,
             probe_runner=None,
             workspace_probe=None,
             connectivity=None,
@@ -179,37 +188,55 @@ class FakeAgentRunner:
 
 @contextmanager
 def shared_executor_seam(runner: FakeAgentRunner | None) -> Iterator[None]:
-    import ralph.pipeline.effect_executor as effect_mod
-    import ralph.pipeline._stop_resolution_entry as entry_mod
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
     from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
-    orig_effect = effect_mod.execute_agent_effect
-    orig_controller_for_key = getattr(entry_mod, "_controller_for_key", None)
-
-    if runner is not None:
-        def _seam_execute(effect: object, *args: object, **kwargs: object) -> object:
-            return runner.handle_agent_effect(effect, *args, **kwargs)
-
-        effect_mod.execute_agent_effect = _seam_execute
-
-    if orig_controller_for_key is not None:
-        def _safe_controller_for_key(root: Path, config: object, rc: object) -> object:
-            res = orig_controller_for_key(root, config, rc)
-            from ralph.pipeline._stop_resolution_entry import KeyUnavailable
-            if isinstance(res, KeyUnavailable) or res is None:
-                clock = getattr(runner, "clock", None) if runner is not None else None
-                from ralph.agents.timeout_clock import FakeClock
-                return RecoveryController(options=RecoveryControllerOptions(clock=clock or FakeClock()))
-            return res
-
-        entry_mod._controller_for_key = _safe_controller_for_key
+    clock = getattr(runner, "clock", None) if runner is not None else None
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock or FakeClock()))
+    agent_runner = getattr(runner, "handle_agent_effect", None) if runner is not None else None
+    token = install_agent_effect_dependencies(
+        agent_runner=agent_runner,
+        recovery_controller=controller,
+    )
 
     try:
         yield
     finally:
-        effect_mod.execute_agent_effect = orig_effect
-        if orig_controller_for_key is not None:
-            entry_mod._controller_for_key = orig_controller_for_key
+        reset_agent_effect_dependencies(token)
+
+
+def test_shared_executor_seam_injects_runner_and_shared_controller(tmp_path: Path) -> None:
+    from ralph.pipeline._stop_resolution_entry import compute_resolution_attempt_key
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
+
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    with shared_executor_seam(runner):
+        dependencies = current_agent_effect_dependencies()
+        assert dependencies.agent_runner is not None
+        assert dependencies.recovery_controller is not None
+        dependencies.recovery_controller.register_phase_chain(
+            "rebase_conflict_resolution", ("shared-controller-agent",)
+        )
+        key = compute_resolution_attempt_key(
+            tmp_path,
+            IntegrationRecord(
+                phase="integrating",
+                target="main",
+                pre_feature_sha="feature",
+                pre_target_sha="target",
+            ),
+            stop_identity="stop",
+            config_fingerprint="config",
+        )
+
+    assert isinstance(key, ResolutionAttemptKey)
+    assert tuple(key) == ("stop", ("shared-controller-agent",), "config")
 
 
 @contextmanager
@@ -586,7 +613,7 @@ def run_empty_resolution_stop(root: Path) -> ScenarioResult:
 
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
     with shared_executor_seam(runner), capture_operator_lines() as lines:
-        state = integrate_before_planning(
+        integrate_before_planning(
             scenario_config(),
             WorkspaceScope(root),
             RebaseState(),
@@ -620,7 +647,7 @@ def run_marker_resolution_bounded(root: Path) -> ScenarioResult:
     runner = FakeAgentRunner(AgentMode.LEAVES_MARKER)
     with shared_executor_seam(runner), capture_operator_lines() as lines:
         for _ in range(2):
-            outcome = attempt_stop_resolution(
+            attempt_stop_resolution(
                 "scenario-marker-bounded",
                 StopResolutionTrigger(
                     name="rebase_stop",

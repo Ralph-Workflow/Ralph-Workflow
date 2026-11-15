@@ -144,6 +144,11 @@ def _controller_for_key(
     del root, config
     if recovery_controller is not None:
         return recovery_controller
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+    injected = current_agent_effect_dependencies().recovery_controller
+    if injected is not None:
+        return injected
     return KeyUnavailable("recovery controller unavailable")
 
 
