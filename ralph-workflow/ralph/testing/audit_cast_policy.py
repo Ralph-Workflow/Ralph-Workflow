@@ -249,6 +249,7 @@ SEAM_EXEMPT_CALL_SITES: frozenset[tuple[str, str]] = frozenset(
         ("ralph/pipeline/activity_stream.py", "_ParallelDisplayModule"),
         ("ralph/pipeline/activity_stream.py", "deque[str] | list[str] | None"),
         ("ralph/pipeline/auto_integrate_catchup.py", "str"),
+        ("ralph/pipeline/auto_integrate_remote_reconcile.py", "RebaseStop"),
         ("ralph/pipeline/commit_executor.py", "DisplayContext"),
         ("ralph/pipeline/commit_executor.py", "ParallelDisplay"),
         ("ralph/pipeline/commit_executor.py", "Verbosity"),

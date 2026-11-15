@@ -166,11 +166,9 @@ def begin_resolution_stop(
     *,
     is_strategy_rotation: bool = False,
 ) -> None:
-    from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
 
     session.out_of_reach_paths = ()
-    session.skip_same_agent_retries = session.skip_same_agent_retries
     session.last_attempt_evidence = None
     session.last_attempt_failure = None
     session.last_attempt_outcome = None
@@ -233,7 +231,6 @@ def ensure_session_controller(
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
     from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
-    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
@@ -457,8 +454,9 @@ def classify_failed_resolution_attempt(
     )
 
     agent_available = controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
+    max_conflict_retries = conflict_chain_max_retries(policy_bundle)
     recovery_chain = recovery_state.chain_for_phase(PHASE_RESOLUTION) if recovery_state else None
-    current_retries = (
+    current_conflict_retries = (
         recovery_chain.retries
         if recovery_chain is not None and recovery_chain.current_index == bounded_index
         else 0
@@ -469,9 +467,14 @@ def classify_failed_resolution_attempt(
         ResolutionTerminationReason.TOOL_SURFACE_DEAD,
     )
 
-    if not session.skip_same_agent_retries and not candidate_unavailable and agent_available:
+    if (
+        not session.skip_same_agent_retries
+        and not candidate_unavailable
+        and agent_available
+        and (workspace_changed or current_conflict_retries < max_conflict_retries)
+    ):
         session.chain_cursor = failed_index
-        next_retries = 0 if workspace_changed else current_retries + 1
+        next_retries = 0 if workspace_changed else current_conflict_retries + 1
     else:
         session.skip_same_agent_retries = False
         candidates_tuple = tuple(candidates) if candidates else (agent_name,)
@@ -648,16 +651,16 @@ def invoke_resolution_agent(
             policy_bundle=policy_bundle,
             run_id=None,
         )
-    except (AgentInactivityTimeoutError, SupervisionInfrastructureError) as exc:
-        _record_attempt_failure(session, exc)
-        _record_resolution_termination(session, exc)
-        _log_resolution_termination(exc, unresolved_paths)
-        _record_session_failure_result(session, controller, agent_name, exc)
-        return False
     except Exception as exc:
         _record_attempt_failure(session, exc)
-        _record_resolution_exception(session)
-        logger.warning("conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc)
+        if isinstance(exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError)):
+            _record_resolution_termination(session, exc)
+            _log_resolution_termination(exc, unresolved_paths)
+        else:
+            _record_resolution_exception(session)
+            logger.warning(
+                "conflict_resolution: agent '{}' could not be launched: {}", agent_name, exc
+            )
         _record_session_failure_result(session, controller, agent_name, exc)
         return False
     if session is not None:

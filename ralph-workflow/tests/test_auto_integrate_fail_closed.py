@@ -254,6 +254,9 @@ def test_is_retryable_fast_forward_failure_returns_false_for_non_retryable_outco
         )
         is True
     )
+    assert is_retryable_fast_forward_failure(object()) is False
+    assert is_retryable_fast_forward_failure(None) is False
+    assert is_retryable_fast_forward_failure(123) is False
 
 
 def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(

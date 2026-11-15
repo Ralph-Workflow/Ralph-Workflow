@@ -94,6 +94,10 @@ def _legacy_identities(source: _LegacyGuardSource) -> tuple[tuple[str, str], ...
     return ((source.phase, LEGACY_DEFAULT_AGENT),)
 
 
+_KEY_CONSECUTIVE = "consecutive_unproductive"
+_KEY_TOTAL = "total_unproductive"
+
+
 def _failed_closed_entry(
     phase: str,
     agent: str,
@@ -105,8 +109,8 @@ def _failed_closed_entry(
     return {
         "phase": phase,
         "agent": agent,
-        "consecutive_unproductive": consecutive_limit,
-        "total_unproductive": total_limit,
+        _KEY_CONSECUTIVE: consecutive_limit,
+        _KEY_TOTAL: total_limit,
         "cooldown_until_ms": None,
         "cooldown_reason": None,
         "cooldown_count": 0,
@@ -157,8 +161,8 @@ def translate_legacy_entry(
     return {
         "phase": phase,
         "agent": agent,
-        "consecutive_unproductive": consecutive,
-        "total_unproductive": min(consecutive, total_limit),
+        _KEY_CONSECUTIVE: consecutive,
+        _KEY_TOTAL: min(consecutive, total_limit),
         "cooldown_until_ms": None,
         "cooldown_reason": None,
         "cooldown_count": 0,

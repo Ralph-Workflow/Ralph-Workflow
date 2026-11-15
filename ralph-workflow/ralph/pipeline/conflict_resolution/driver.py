@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents.clock import Clock as AgentClock
 from ralph.git.merge import (
     conflict_stage_entries,
     paths_with_conflict_markers,
@@ -95,7 +96,7 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
-from ralph.pipeline.integration_actions import Clock as ActionClock
+from ralph.pipeline.integration_actions import Clock as IntegrationClock
 from ralph.pipeline.integration_actions import current_clock, install_executors
 from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
@@ -163,6 +164,8 @@ def emit_conflict_phase_line(
 
 
 if TYPE_CHECKING:
+    import threading
+    from datetime import datetime
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -188,6 +191,30 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
         ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
     }
 )
+
+
+class _IntegrationClockAdapter:
+    def __init__(self, clock: AgentClock) -> None:
+        self._clock = clock
+
+    def now(self) -> float:
+        return self._clock.monotonic()
+
+    def monotonic(self) -> float:
+        return self._clock.monotonic()
+
+    def epoch(self) -> float:
+        return self._clock.epoch()
+
+    def now_utc(self) -> datetime:
+        return self._clock.now_utc()
+
+    def sleep(self, seconds: float) -> None:
+        self._clock.sleep(seconds)
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        return self._clock.wait_for_event(event, seconds)
+
 
 __all__ = [
     "MonotonicClock",
@@ -276,8 +303,18 @@ def run_conflict_resolution_outcome(
     previous_model = capture_status_bar_model(display)
     clock_candidate: object = _extract_clock_candidate(active_session, pipeline_deps)
     token = None
-    if isinstance(clock_candidate, ActionClock):
-        token = install_executors(clock=clock_candidate)
+    if clock_candidate is not None and hasattr(clock_candidate, "sleep"):
+        exec_clock: IntegrationClock | None = (
+            clock_candidate
+            if isinstance(clock_candidate, IntegrationClock)
+            else (
+                _IntegrationClockAdapter(clock_candidate)
+                if isinstance(clock_candidate, AgentClock)
+                else None
+            )
+        )
+        if exec_clock is not None:
+            token = install_executors(clock=exec_clock)
     _ACTIVE_SESSION[0] = active_session
     try:
         resolved = _run_rounds(
@@ -342,7 +379,7 @@ def run_rebase_conflict_resolution_outcome(
     active_session.caller_provided = session_provided
     clock_candidate: object = _extract_clock_candidate(active_session, pipeline_deps)
     token = None
-    if isinstance(clock_candidate, ActionClock):
+    if isinstance(clock_candidate, IntegrationClock):
         token = install_executors(clock=clock_candidate)
     _ACTIVE_SESSION[0] = active_session
     try:
@@ -840,7 +877,11 @@ def _execute_round_loop(
                     return True
                 break
             if not attempt.invoked:
-                if session.rounds_spent > 0 and last_invoked_reason is not None:
+                if (
+                    session.rounds_spent > 0
+                    and last_invoked_reason is not None
+                    and last_invoked_reason not in _CHAIN_STATE_TERMINATION_REASONS
+                ):
                     session.terminal_reason = last_invoked_reason
                     session.charge_conflict_budget = last_invoked_charge
                 else:

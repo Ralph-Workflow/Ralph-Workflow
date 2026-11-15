@@ -40,6 +40,14 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ac12_unavailability_store_snapshot_restore_round_trip": (
+        "assert prune_expired via public return code rather than inspecting private "
+        "serialized snapshot timeouts key per single owner policy"
+    ),
+}
+
+
 _ENTRY_POINT_MODULES = (
     "ralph.pipeline.runner",
     "ralph.pipeline.parallel.worker_runtime",
@@ -561,14 +569,6 @@ def test_ac12_success_resets_active_cooldown_and_next_failure_returns_to_base_ba
     assert wait == _BENCH_POLICY.base_backoff_ms
 
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_ac12_unavailability_store_snapshot_restore_round_trip": (
-        "observe the pruned bench through the store's public availability answers "
-        "instead of indexing the serialised failure-owner snapshot"
-    ),
-}
-
-
 @pytest.mark.parametrize(
     "entry_point",
     NON_PROBE_ENTRY_POINTS,
@@ -598,9 +598,8 @@ def test_ac12_unavailability_store_snapshot_restore_round_trip(
     clock.advance((wait_before / 1000.0) + 1.0)
     assert restored_store.is_available(PHASE, AGENT_A) is True
     assert restored_store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) == 0
-    restored_store.prune_expired()
-    assert restored_store.is_available(PHASE, AGENT_A) is True
-    assert restored_store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) == 0
+    assert restored_store.prune_expired() == 1
+    assert restored_store.prune_expired() == 0
 
 
 @pytest.mark.parametrize(

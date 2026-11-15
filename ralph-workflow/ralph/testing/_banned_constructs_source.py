@@ -233,11 +233,10 @@ def _loads_name(node: ast.AST, name: str) -> bool:
 
 
 def _node_line(node: ast.AST) -> int:
-    match node:
-        case ast.stmt() | ast.expr() | ast.arg() | ast.keyword() | ast.ExceptHandler():
-            return node.lineno
-        case _:
-            return 1
+    lineno: object = getattr(node, "lineno", None)
+    if isinstance(lineno, int):
+        return lineno
+    return 1
 
 
 class _SourceAuditor(ast.NodeVisitor):

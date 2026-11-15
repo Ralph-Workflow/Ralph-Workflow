@@ -232,6 +232,8 @@ def is_retryable_fast_forward_failure(
             | UnknownOutcome()
         ):
             return False
+        case _:
+            return False
 
 
 __all__ = [
