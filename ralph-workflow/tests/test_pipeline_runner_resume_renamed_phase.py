@@ -21,6 +21,10 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resume_preflight_refuses_retired_phase_before_any_agent_invocation": "loading retired phase now raises CheckpointRetiredPhaseError instead of returning state",
+}
+
 _RETIRED_ARTIFACT_TYPE = "commit_" + "cleanup"
 _CURRENT_ARTIFACT_TYPE = "commit_review"
 _RETIRED_PHASE = f"development_{_RETIRED_ARTIFACT_TYPE}"
@@ -55,9 +59,8 @@ def test_resume_preflight_refuses_retired_phase_before_any_agent_invocation(
     persisted_payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
     assert persisted_payload["phase"] == _RETIRED_PHASE
 
-    reloaded_state = checkpoint.load()
-    assert reloaded_state is not None
-    assert reloaded_state.phase == _RETIRED_PHASE
+    with pytest.raises(ckpt.CheckpointRetiredPhaseError):
+        checkpoint.load()
 
     persisted_checkpoint = checkpoint_path.read_bytes()
 
@@ -104,6 +107,5 @@ def test_resume_preflight_refuses_retired_phase_before_any_agent_invocation(
     assert named_phases == set(default_bundle.pipeline.phases) | {_RETIRED_PHASE}, rendered
     assert _CURRENT_PHASE in named_phases, rendered
     assert checkpoint_path.read_bytes() == persisted_checkpoint
-    final_state = checkpoint.load()
-    assert final_state is not None
-    assert final_state.phase == _RETIRED_PHASE
+    with pytest.raises(ckpt.CheckpointRetiredPhaseError):
+        checkpoint.load()

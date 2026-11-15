@@ -12,6 +12,7 @@ from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState
 
+from ._checkpoint_retired_phase_error import CheckpointRetiredPhaseError
 from ._wait_reason import WaitReason
 from .state_models import (
     AgentChainState,
@@ -188,6 +189,44 @@ def _normalize_fallover_history_for_cap(
     return records[-cap:]
 
 
+_RETIRED_REVIEW_PHASE = "development_commit_" + "cleanup"
+_RETIRED_REVIEW_FINAL_PHASE = "development_final_commit_" + "cleanup"
+_RETIRED_REVIEW_ARTIFACT = "commit_" + "cleanup"
+
+_RETIRED_PHASES: frozenset[str] = frozenset(
+    {
+        _RETIRED_REVIEW_PHASE,
+        _RETIRED_REVIEW_FINAL_PHASE,
+    }
+)
+
+
+def _check_retired_phase(phase: str) -> None:
+    if phase in _RETIRED_PHASES:
+        raise CheckpointRetiredPhaseError(phase)
+
+
+def validate_no_retired_phases(data: dict[str, object] | PipelineState) -> None:
+    if isinstance(data, PipelineState):
+        _check_retired_phase(data.phase)
+        if data.policy_entry_phase not in (_UNSET_PHASE, ""):
+            _check_retired_phase(data.policy_entry_phase)
+        for chain_phase in data.phase_chains:
+            _check_retired_phase(chain_phase)
+        return
+    raw_phase = data.get("phase")
+    if isinstance(raw_phase, str):
+        _check_retired_phase(raw_phase)
+    raw_entry = data.get("policy_entry_phase")
+    if isinstance(raw_entry, str) and raw_entry not in (_UNSET_PHASE, ""):
+        _check_retired_phase(raw_entry)
+    raw_chains = data.get("phase_chains")
+    if isinstance(raw_chains, dict):
+        for chain_phase in raw_chains:
+            if isinstance(chain_phase, str):
+                _check_retired_phase(chain_phase)
+
+
 class PipelineState(_FrozenPipelineStateModel):
     state_version: int = PIPELINE_STATE_VERSION
     phase: PipelinePhase = _UNSET_PHASE
@@ -293,6 +332,7 @@ class PipelineState(_FrozenPipelineStateModel):
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
+        validate_no_retired_phases(d)
         _validated_state_version(d)
         d["state_version"] = PIPELINE_STATE_VERSION
 
@@ -538,10 +578,12 @@ PipelineState.model_rebuild(
 __all__ = [
     "PIPELINE_STATE_VERSION",
     "AgentChainState",
+    "CheckpointRetiredPhaseError",
     "CommitState",
     "FalloverRecord",
     "PipelineState",
     "RebaseState",
     "RunMetrics",
     "WaitReason",
+    "validate_no_retired_phases",
 ]

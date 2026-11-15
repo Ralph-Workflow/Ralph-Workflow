@@ -58,19 +58,7 @@ def _split_names(value: str) -> set[str]:
 
 
 def _git_bound_names(tree: ast.AST) -> frozenset[str]:
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        match True:
-            case _ if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name == "git" or alias.name.startswith("git."):
-                        names.add((alias.asname or alias.name).split(".")[0])
-            case _ if isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                if module == "git" or module.startswith("git."):
-                    for alias in node.names:
-                        names.add(alias.asname or alias.name)
-    return frozenset(names)
+    return analyze_module(tree).git_bound_names
 
 
 def _is_git_crossing_root(root: str) -> bool:
@@ -247,7 +235,7 @@ class TestPolicyAuditor:
         self._skip_subprocess_network = self._is_subprocess_e2e
         self._skip_git = self._is_subprocess_e2e or _is_registered_real_git_file(file_path)
         if not self._skip_git and "git" in source:
-            self._git_roots = _git_bound_names(parsed_tree)
+            self._git_roots = self.facts.git_bound_names
         else:
             self._git_roots = frozenset()
         self._uses_tmp_path = "tmp_path" in source

@@ -8,7 +8,11 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import (
+    CheckpointRetiredPhaseError,
+    PipelineState,
+    validate_no_retired_phases,
+)
 
 CHECKPOINT_PATH = Path(".agent") / "checkpoint.json"
 
@@ -151,15 +155,20 @@ def load(
         data = backend.read_text(path, encoding="utf-8")
         parsed: object = json.loads(data)
         if isinstance(parsed, dict) and "state" in parsed and isinstance(parsed["state"], dict):
+            validate_no_retired_phases(parsed["state"])
             state = PipelineState.model_validate(parsed["state"])
         elif isinstance(parsed, dict):
+            validate_no_retired_phases(parsed)
             state = PipelineState.model_validate(parsed)
         else:
             state = PipelineState.model_validate_json(data)
+            validate_no_retired_phases(state)
         state = _normalize_recovery_state(state)
         state = _sanitize_last_error(state)
         logger.debug("Checkpoint loaded from {}", path)
         return state
+    except CheckpointRetiredPhaseError:
+        raise
     except (ValueError, TypeError, KeyError) as exc:
         logger.warning("Corrupt checkpoint at {}: {}", path, exc)
         return None
@@ -209,3 +218,19 @@ def remove(
     if backend.exists(path):
         backend.unlink(path)
         logger.debug("Checkpoint removed from {}", path)
+
+
+__all__ = [
+    "CHECKPOINT_PATH",
+    "Checkpoint",
+    "CheckpointRetiredPhaseError",
+    "exists",
+    "inspect",
+    "load",
+    "load_async",
+    "remove",
+    "save",
+    "save_async",
+    "validate_no_retired_phases",
+    "worker_checkpoint_path",
+]

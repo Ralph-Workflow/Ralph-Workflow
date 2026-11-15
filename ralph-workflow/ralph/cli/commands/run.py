@@ -261,7 +261,11 @@ def _load_configuration(
             return _EXIT_PREFLIGHT
 
     if resume:
-        initial_state = ckpt.load()
+        try:
+            initial_state = ckpt.load()
+        except CheckpointPolicyMismatchError as e:
+            display.emit_warning(_checkpoint_mismatch_text(str(e)).plain)
+            return _EXIT_PREFLIGHT
         if initial_state is None:
             display.emit_warning("No checkpoint found to resume from")
 

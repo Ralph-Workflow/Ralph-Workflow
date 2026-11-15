@@ -56,6 +56,7 @@ class ModuleFacts:
     markers: frozenset[str]
     has_subprocess_e2e_marker: bool
     import_aliases: ImportAliases
+    git_bound_names: frozenset[str] = frozenset()
 
 
 def _is_dunder(name: str) -> bool:
@@ -511,6 +512,22 @@ def has_subprocess_e2e_marker(tree: ast.AST) -> bool:
     return _has_subprocess_e2e_marker(marker_scan)
 
 
+def _git_bound_names_from_imports(imports: list[ast.Import | ast.ImportFrom]) -> frozenset[str]:
+    names: set[str] = set()
+    for node in imports:
+        match True:
+            case _ if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "git" or alias.name.startswith("git."):
+                        names.add((alias.asname or alias.name).split(".")[0])
+            case _ if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module == "git" or module.startswith("git."):
+                    for alias in node.names:
+                        names.add(alias.asname or alias.name)
+    return frozenset(names)
+
+
 def analyze_module(
     tree: ast.AST,
     *,
@@ -531,6 +548,7 @@ def analyze_module(
         markers=frozenset(_collect_markers(scan)),
         has_subprocess_e2e_marker=_has_subprocess_e2e_marker(scan),
         import_aliases=aliases,
+        git_bound_names=_git_bound_names_from_imports(scan.imports),
     )
 
 
