@@ -365,6 +365,55 @@ startup grace period. A later nonzero credential error remains a normal
 recoverable invocation failure, because it can be a transient loss during an
 otherwise active run.
 
+## Dead-agent detection
+
+Attempts that end without a valid artifact undergo dead-agent evaluation before any cooldown is applied.
+
+### Attempt facts and attribution
+
+Every attempt records structured facts (`AttemptFacts`):
+
+- Ordered event kinds, tool-call records, and subagent store updates.
+- Workspace changes as a tri-state value (`true`, `false`, or `unknown`).
+- Terminal status, artifact validity, and elapsed time to terminal state.
+- A termination record with the observed process return code, the return code reported upward, and the typed termination issuer (`agent_exit`, `supervisor_idle`, `quota_detector`, `post_exit_watchdog`, `recovery_timeout`, `operator`, or `unknown`).
+
+Attribution rules classify the exit as `agent`, `runtime`, `task_or_environment`, or `unknown`. Attribution rules clear an agent; they never convict one:
+
+- Runtime-issued terminations (`quota_detector`, `supervisor_idle`, `recovery_timeout`, `post_exit_watchdog`, `operator`) and unattributed terminations of active sessions do not convict an agent and never count toward cooldown or spent state.
+- Interactive turn ends with pending subagents (stop-hook sentinel with missing artifact) resolve as `runtime_kill_unattributed` (`not_agent_fault`) and never bench.
+- Workspace modifications, mid-run tool activity, or identical failures across chain peers attribute the failure to the task or environment.
+
+### Canary probe
+
+When attribution leaves an agent as suspect, Ralph Workflow runs a canary probe before issuing a dead-agent verdict:
+
+- **Task and isolation**: The probe executes the identical CLI, model, credentials, and environment on a fixed trivial marker-writing task inside a designated probe directory (`<repo-root>/.agent/tmp/canary-probe-<uuid>/`).
+- **Time and budget limits**: The probe enforces a 30-second timeout and a budget cap of at most 3 canary probes per pipeline run.
+- **Positive proof**: The probe passes only when the expected marker file is written with exact content.
+- **Failures and unknowns**: A probe convicts an agent (`failed_reproducing_no_work`) only when positive evidence shows the agent ran (tool use, stream deltas, tool calls, or subagent activity) but failed to produce the marker. Any failure to run, timeout, crash, prompt-only output, or exhausted probe budget resolves to inconclusive (`unknown`). An unknown result never benches an agent.
+
+Typed provider signals (`QuotaExhaustedError`, `MissingCredentialsError`, and `BrokenAgentExitError` prompt echoes) bench on first failure without running a canary probe.
+
+### Cooldown and bench duration
+
+When a dead-agent verdict is confirmed, the agent is placed on cooldown with `UnavailabilityReason.DEAD_AGENT_NO_PROGRESS`:
+
+- **Backoff schedule**: Initial backoff is 10 seconds, doubling on each consecutive repeat failure.
+- **Universal ceiling**: Backoff is capped at the 5-hour universal ceiling (`_UNIVERSAL_COOLDOWN_CAP_MS = 18_000_000` ms).
+- **Cooldown vs. Spent**: A bench is an unavailability cooldown, never the `Spent` state. Ledger limits (3 consecutive, 9 total unproductive attempts) remain the sole path to `Spent`. During cooldown, chain selection skips the agent in favor of eligible alternatives.
+
+### Clearing backoff
+
+When an agent's cooldown expires, its next invocation serves as a production probe:
+
+- A successful attempt producing a valid artifact resets backoff history via `reset_backoff`.
+- A repeat failure re-benches the agent with exponential cooldown progression.
+
+### Persisted verdicts and false-bench measurement
+
+Every dead-agent verdict is recorded in the checkpoint with its underlying facts, attribution, probe outcome, and termination log (`PersistedVerdict`). Each bench opens a candidate metric keyed by the agent configuration fingerprint (agent name, binary, model, parser, transport). A subsequent success under that same configuration closes the candidate and increments the false-bench count. The run-time report displays false-bench counts to surface verdict accuracy.
+
 ## Integration lifecycle authority
 
 Ralph Workflow coordinates Git integration, conflict resolution, and crash recovery

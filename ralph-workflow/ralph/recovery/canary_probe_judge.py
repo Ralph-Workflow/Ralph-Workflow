@@ -5,10 +5,11 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from ralph.agents.agent_activity_kind import AgentActivityKind
+from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.canary_marker_state import CanaryMarkerState
 
 if TYPE_CHECKING:
-    from ralph.recovery.attempt_facts import AttemptFacts
+    from ralph.recovery.attempt_facts import AttemptFacts, TerminationRecord
 
 __all__ = [
     "AGENT_RAN_EVIDENCE_KINDS",
@@ -60,6 +61,17 @@ class ProbeJudgeVerdict:
     marker_written: bool | None = None
 
 
+def _format_runtime_termination_detail(termination: TerminationRecord) -> str:
+    rc = (
+        termination.observed_returncode
+        if termination.observed_returncode is not None
+        else termination.reported_returncode
+    )
+    if rc is not None:
+        return f"probe_terminated_by_runtime:{termination.issuer.value}:rc={rc}"
+    return f"probe_terminated_by_runtime:{termination.issuer.value}"
+
+
 def judge_probe(
     marker_state: CanaryMarkerState,
     facts: AttemptFacts | None,
@@ -77,11 +89,20 @@ def judge_probe(
             marker_written=None,
         )
     if facts is not None and _agent_ran(facts):
-        return ProbeJudgeVerdict(
-            outcome=ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
-            detail=marker_state.value,
-            marker_written=False,
-        )
+        termination = facts.termination
+        if termination is not None:
+            if termination.issuer is not TerminationIssuer.AGENT_EXIT:
+                return ProbeJudgeVerdict(
+                    outcome=ProbeJudgeOutcome.INCONCLUSIVE,
+                    detail=_format_runtime_termination_detail(termination),
+                    marker_written=None,
+                )
+            if not termination.return_code_discrepancy:
+                return ProbeJudgeVerdict(
+                    outcome=ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
+                    detail=marker_state.value,
+                    marker_written=False,
+                )
     return ProbeJudgeVerdict(
         outcome=ProbeJudgeOutcome.INCONCLUSIVE,
         detail="probe_could_not_run",
