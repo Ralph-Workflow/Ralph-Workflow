@@ -3,9 +3,12 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from jinja2 import Environment, StrictUndefined, TemplateError, Undefined, meta
+from jinja2 import Environment, StrictUndefined, TemplateError, meta
+
+if TYPE_CHECKING:
+    from jinja2 import Undefined
 
 from ralph.mcp.artifacts.format_docs import (
     FORMAT_DOC_ARTIFACT_TYPES,
@@ -216,9 +219,10 @@ def _frontmatter_type(markdown: str) -> tuple[bool, str | None]:
         return True, None
     frontmatter = "\n".join(lines[first_nonempty + 1 : closing])
     match = _FRONTMATTER_TYPE_RE.search(frontmatter)
+    art_type: str | None = None if match is None else _group_str(match, "artifact_type").strip()
     return (
         True,
-        None if match is None else _group_str(match, "artifact_type").strip(),
+        art_type,
     )
 
 
@@ -512,7 +516,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 f"{source_name}:1 plan examples must include example-size={example_size}"
             )
     for example in by_size["tiny"]:
-        step_count = len(list(_PLAN_STEP_HEADING_RE.finditer(example.markdown)))
+        step_count = sum(1 for _ in _PLAN_STEP_HEADING_RE.finditer(example.markdown))
         if step_count not in {1, 2}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -524,7 +528,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 "example-size=tiny must not declare parallel work units"
             )
     for example in by_size["medium"]:
-        step_count = len(list(_PLAN_STEP_HEADING_RE.finditer(example.markdown)))
+        step_count = sum(1 for _ in _PLAN_STEP_HEADING_RE.finditer(example.markdown))
         if step_count not in {3, 4}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "

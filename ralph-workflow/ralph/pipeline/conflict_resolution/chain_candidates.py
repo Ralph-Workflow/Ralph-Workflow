@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.conflict_resolution.session import remember_dead_surface, session_ledger
 
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 __all__ = [
     "next_unvisited",
@@ -17,23 +14,6 @@ __all__ = [
     "session_ledger",
     "skipped_candidates",
 ]
-
-
-def session_ledger(session: ResolutionSession | None) -> AgentFailureLedger | None:
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-
-    if session is None:
-        return None
-    ledger = session.ledger
-    if isinstance(ledger, AgentFailureLedger):
-        return ledger
-    controller = session.recovery_controller
-    if controller is None:
-        return None
-    controller_ledger: object = controller.ledger
-    if isinstance(controller_ledger, AgentFailureLedger):
-        return controller_ledger
-    return None
 
 
 def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) -> frozenset[str]:
@@ -52,17 +32,6 @@ def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) 
                 barred.add(name)
     barred.update(name for name in candidates if name in session.dead_surface_agents)
     return frozenset(name for name in candidates if name in barred)
-
-
-def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
-    if session.terminal_reason is not ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
-        return
-    session.dead_surface_agents = session.dead_surface_agents | {agent_name}
-    controller = session.recovery_controller
-    if controller is not None:
-        controller.mark_agent_unavailable(
-            PHASE_RESOLUTION, agent_name, reason="candidate_unavailable"
-        )
 
 
 def next_unvisited(offset: int, total: int, visited: set[int]) -> int:

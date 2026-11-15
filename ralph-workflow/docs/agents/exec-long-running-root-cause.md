@@ -176,13 +176,13 @@ is entered only when a caller injects a custom runner or replaces
 it. The rule table for the production kills is under
 "Cause 1 — production liveness subsystem (CURRENT)" below.
 
-- `ralph-workflow/ralph/process/manager/_managed_process.py:283` resets
+- `ralph-workflow/ralph/process/manager/_managed_process.py:290` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
   only when a non-empty `chunk` arrives from the child's `stdout`/`stderr`.
-- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:341-372`
+- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:348-379`
   computes `inactivity_deadline = last_output_at_ref[0] + timeout`
-  (`:351-353`) and arms the kill with `timeout_cause = "inactivity"` and
-  `timeout_value = timeout` (`:362-363`); the terminate-then-raise is at
+  (`:358-360`) and arms the kill with `timeout_cause = "inactivity"` and
+  `timeout_value = timeout` (`:369-370`); the terminate-then-raise is at
   `:367-372`.
 - `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:37`)
   — the inactivity window the exec seam applies when the caller passes no

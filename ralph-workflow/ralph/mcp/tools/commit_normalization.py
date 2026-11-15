@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.artifacts.commit_message_normalizer import normalize_commit_message_draft
 from ralph.prompts.commit_evidence import (
@@ -11,8 +11,25 @@ from ralph.prompts.commit_evidence import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
+
+
+class _EvidenceBuilder(Protocol):
+    def __call__(self, root: Path, *args: object, **kwargs: object) -> CommitEvidenceBundle: ...
+
+
+def _invoke_evidence_builder(
+    builder: object,
+    root: Path,
+    source: CommitEvidenceSource,
+) -> CommitEvidenceBundle:
+    if callable(builder):
+        fn = cast("_EvidenceBuilder", builder)
+        try:
+            return fn(root, source)
+        except TypeError:
+            return fn(root)
+    raise TypeError(f"expected callable evidence builder, got {type(builder).__name__}")
 
 
 def normalize_commit_submission(
@@ -25,11 +42,7 @@ def normalize_commit_submission(
 ) -> tuple[str, dict[str, object] | None]:
     if artifact_type != "commit_message" or not (workspace_root / ".git").exists():
         return content, None
-    try:
-        evidence = _build_evidence(workspace_root, commit_evidence_source)
-    except TypeError:
-        evidence_fn = cast("Callable[[Path], CommitEvidenceBundle]", _build_evidence)
-        evidence = evidence_fn(workspace_root)
+    evidence = _invoke_evidence_builder(_build_evidence, workspace_root, commit_evidence_source)
     result = normalize_commit_message_draft(content, evidence, draft_revision=draft_revision)
     return result.content, {
         "content": result.content,

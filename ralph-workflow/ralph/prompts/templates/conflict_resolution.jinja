@@ -22,6 +22,8 @@ Round {{ round_index }} of {{ round_cap }}.
 {% endif %}
 Resolve only the conflicted paths listed below; unrelated implementation and review are out of scope.
 
+{% from 'shared/_skill_cues.j2' import render_conflict_resolution_diagnosis_cue, render_conflict_resolution_completion_cue %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 {% include 'shared/_session_capabilities.j2' %}

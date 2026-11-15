@@ -223,8 +223,7 @@ _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
     (
         "nanocoder",
         "tool_calls",
-        "nanocoder runs GenericExecutionStrategy, which classifies every"
-        " captured line as output_line",
+        "nanocoder capture terminating before a subsequent event flushes the pending tool",
     ),
     (
         "nanocoder",

@@ -27,7 +27,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     classify_ralph_origin_fault,
 )
-from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.effect_executor import (
     AGENT_NOT_FOUND_REASON,
@@ -69,7 +68,9 @@ __all__ = [
     "classify_failed_resolution_attempt",
     "ensure_session_controller",
     "invoke_resolution_agent",
+    "remember_dead_surface",
     "resolution_chain_agents",
+    "session_ledger",
 ]
 
 
@@ -107,6 +108,8 @@ ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 @dataclass
 class ResolutionSession:
     started_at: float | None = None
+    inactivity_timeout_seconds: float | None = None
+    last_retry_delay_ms: int = 0
     unresolved_paths: tuple[str, ...] = ()
     inactivity_timeout_seconds: float | None = None
     max_rounds_per_stop: int | None = None
@@ -669,7 +672,11 @@ def invoke_resolution_agent(
         )
     if session is not None:
         session.last_attempt_result = attempt
-        if attempt.outcome is not None and attempt.outcome.reason:
+        if (
+            attempt.outcome is not None
+            and attempt.outcome.reason
+            and attempt.outcome.reason != "no_rule_fired"
+        ):
             session.last_recovery_reason = attempt.outcome.reason
     if attempt.event != PipelineEvent.AGENT_SUCCESS:
         failure_evidence = _failed_attempt_evidence(session, agent_name)
@@ -897,3 +904,25 @@ def wrap_activity_listener(
             listener(event)
 
     return _observe
+
+
+def session_ledger(session: ResolutionSession | None) -> AgentFailureLedger | None:
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+    if session is None:
+        return None
+    ledger = session.ledger
+    if isinstance(ledger, AgentFailureLedger):
+        return ledger
+    controller = session.recovery_controller
+    return controller.ledger if controller is not None else None
+
+
+def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
+    if session.terminal_reason is not ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
+        return
+    ledger = session.ledger or (
+        session.recovery_controller.ledger if session.recovery_controller is not None else None
+    )
+    if ledger is not None:
+        ledger.mark_unavailable(PHASE_RESOLUTION, agent_name, reason="candidate_unavailable")

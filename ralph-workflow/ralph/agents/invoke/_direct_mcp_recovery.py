@@ -42,10 +42,8 @@ def _exception_agent_name(exc: Exception) -> str | None:
 
 
 def _exception_parsed_output(exc: Exception) -> tuple[str, ...]:
-    if isinstance(exc, AgentInvocationError):
-        return tuple(exc.parsed_output) if exc.parsed_output is not None else ()
     raw: object = getattr(exc, "parsed_output", ())
-    if not isinstance(raw, (list, tuple)):
+    if not isinstance(raw, list | tuple):
         return ()
     return tuple(str(line) for line in raw)
 

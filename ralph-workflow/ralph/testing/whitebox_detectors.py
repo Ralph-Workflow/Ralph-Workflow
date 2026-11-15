@@ -504,7 +504,7 @@ def has_subprocess_e2e_marker(tree: ast.AST) -> bool:
     while stack:
         node = stack.pop()
         match True:
-            case _ if isinstance(node, ast.FunctionDef | ast.ClassDef):
+            case _ if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
                 decorators.extend(node.decorator_list)
             case _ if isinstance(node, ast.Assign):
                 pytestmark_values.extend(

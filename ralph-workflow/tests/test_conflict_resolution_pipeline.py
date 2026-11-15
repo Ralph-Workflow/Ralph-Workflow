@@ -50,6 +50,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
         "under max_rounds_per_stop=1 each eligible candidate is invoked once per round without resolver-local retries"
     ),
+    "test_a_file_the_resolver_destroyed_is_not_a_resolution": (
+        "clean unsuccessful resolution attempts do not trigger dead-agent canary probes"
+    ),
 }
 
 
