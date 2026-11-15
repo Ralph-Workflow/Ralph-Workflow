@@ -51,6 +51,7 @@ from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
 )
+from ralph.pipeline._integration_log_dedupe import integration_outcome_log
 from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
@@ -275,6 +276,7 @@ __all__ = [
     "heartbeat_policy_from_env",
     "install_signal_handlers",
     "install_width_refresher",
+    "log_auto_integrate_outcome",
     "make_display_context",
     "materialize_master_prompt",
     "materialize_prompt_for_phase",
@@ -932,7 +934,9 @@ def _coarse_outcome_for_event(event: Event | CommitReviewEvent) -> str:
     return "failure"
 
 
-def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) -> None:
+def log_auto_integrate_outcome(
+    display: ParallelDisplay, outcome: RebaseState, *, root: Path
+) -> None:
     message = format_auto_integrate_message(
         outcome.last_action,
         outcome.last_target,
@@ -944,7 +948,14 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
         remote=outcome.last_remote,
         freshness_verdict=outcome.freshness_verdict,
     )
-    if outcome.is_skipped() or outcome.last_outcome == RebaseOutcomeKind.CONFLICT:
+    if outcome.is_skipped():
+        integration_outcome_log().record(
+            lambda line: display.emit_warn_line("run", "auto-integrate", line),
+            message,
+            key=f"{root}\0{message}",
+        )
+        return
+    if outcome.last_outcome == RebaseOutcomeKind.CONFLICT:
         display.emit_warn_line("run", "auto-integrate", message)
         return
     if outcome.is_rebasing_or_merging() and not outcome.fast_forwarded and outcome.last_reason:
@@ -1210,7 +1221,7 @@ def _maybe_auto_integrate(
         )
         return None
     if outcome is not None:
-        _log_auto_integrate_outcome(display, outcome)
+        log_auto_integrate_outcome(display, outcome, root=workspace_scope.root)
     return outcome
 
 
@@ -1349,7 +1360,7 @@ def _integrate_on_phase_transition(
         )
         return None
     if outcome is not None:
-        _log_auto_integrate_outcome(display, outcome)
+        log_auto_integrate_outcome(display, outcome, root=workspace_scope.root)
     return outcome
 
 

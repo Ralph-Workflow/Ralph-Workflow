@@ -862,7 +862,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_auto_integrate_drift_recovery.py` | 1 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_fail_closed_e2e.py` | 4 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_gates.py` | 3 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
-| `tests/test_auto_integrate_log_routing.py` | 0 | 0 | 3 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_non_main_target.py` | 8 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_parallel_wiring.py` | 0 | 0 | 7 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_parallel_worker_seam.py` | 1 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |

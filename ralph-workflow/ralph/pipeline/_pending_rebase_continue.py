@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
+from ralph.git.merge import is_ancestor
 from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
 from ralph.git.rebase.rebase_continuation import continue_rebase_at, rebase_in_progress_at
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
@@ -12,6 +15,7 @@ from ralph.pipeline._landed_predicate import (
     operation_landed,
 )
 from ralph.pipeline._pending_merge_commit import _git_value
+from ralph.pipeline.auto_integrate_backup_refs import create_stale_resolution_snapshot
 from ralph.pipeline.auto_integrate_record import (
     MARK_PENDING_REBASE_CONTINUE,
     MARK_RESOLVING_REBASE,
@@ -87,16 +91,14 @@ def finish_pending_rebase(root: Path) -> None:
     record = read_record(root)
     if record is not None:
         if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE:
+            if not rebase_in_progress_at(root):
+                promoted = _promote_completed_rebase(root, record)
+                if isinstance(promoted, str):
+                    raise ValueError(promoted)
+                return
             decision = operation_landed(root, record)
             if not decision.landed:
                 raise ValueError(_landing_failure(decision))
-        if classify_git_operation(
-            record
-        ) is GitOperationKind.AWAITING_CONTINUE and not rebase_in_progress_at(root):
-            promoted = _promote_completed_rebase(root, record)
-            if isinstance(promoted, str):
-                raise ValueError(promoted)
-            return
         write_record(
             root,
             record.with_transition(
@@ -178,11 +180,15 @@ def _promote_completed_rebase(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> CommitCompletion | str:
     decision = operation_landed(root, record)
-    if not decision.landed:
-        return _landing_failure(decision)
-    head = decision.observed_head
-    if head is None:
-        return "completed rebase HEAD is unreadable; landing withheld"
+    if decision.landed:
+        head = decision.observed_head
+        if head is None:
+            return "completed rebase HEAD is unreadable; landing withheld"
+    else:
+        landed = _land_interrupted_continuation(root, record)
+        if landed is None:
+            return _landing_failure(decision)
+        head = landed
     completion = complete_commit(
         record,
         integrated_feature_sha=head,
@@ -197,6 +203,81 @@ def _promote_completed_rebase(
     )
     write_record(root, completion.record, backend=backend)
     return completion
+
+
+def _land_interrupted_continuation(root: Path, record: IntegrationRecord) -> str | None:
+    anchor = record.rebase_continue_head
+    tree = record.rebase_continue_tree
+    onto = record.pre_target_sha
+    if not (
+        record.rebase_continue_pending
+        and anchor
+        and tree
+        and onto
+        and anchor == record.pre_feature_sha
+        and not rebase_in_progress_at(root)
+    ):
+        return None
+    snapshot = observe_operation_snapshot(root)
+    if not (
+        snapshot.operation_state is OperationState.NONE
+        and snapshot.merge_head is None
+        and snapshot.head_sha == anchor
+        and snapshot.index_tree == tree
+        and snapshot.stop_resolved
+        and _git_value(root, "cat-file", "-t", onto) == "commit"
+        and _git_value(root, "rev-list", f"{onto}..{anchor}") == anchor
+        and len((_git_value(root, "show", "-s", "--format=%P", anchor) or "").split()) == 1
+        and not is_ancestor(root, onto, anchor)
+    ):
+        return None
+    landed = _commit_continuation(root, anchor, tree, onto)
+    if landed is None:
+        return None
+    branch = _git_value(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    try:
+        create_stale_resolution_snapshot(root, branch, anchor, record.owning_worktree)
+    except RuntimeError:
+        return None
+    moved = run_git(
+        (
+            "update-ref",
+            "-m",
+            "ralph: land interrupted rebase continuation",
+            "HEAD",
+            landed,
+            anchor,
+        ),
+        cwd=root,
+        label="pending-rebase:land-ref",
+    )
+    return landed if moved.returncode == 0 else None
+
+
+def _commit_continuation(root: Path, anchor: str, tree: str, onto: str) -> str | None:
+    identity = _git_value(root, "show", "-s", "--format=%an%x00%ae%x00%ad", "--date=raw", anchor)
+    raw = _git_value(root, "cat-file", "commit", anchor)
+    if identity is None or raw is None:
+        return None
+    name, email, date = identity.split("\0")
+    headers, _separator, message = raw.partition("\n\n")
+    if any(line.startswith("encoding ") for line in headers.splitlines()):
+        return None
+    created = run_git(
+        (*COMMIT_PIN_CONFIG_ARGS, "commit-tree", tree, "-p", onto),
+        cwd=root,
+        label="pending-rebase:land-commit",
+        options=GitRunOptions(
+            env={
+                "GIT_AUTHOR_NAME": name,
+                "GIT_AUTHOR_EMAIL": email,
+                "GIT_AUTHOR_DATE": date,
+            },
+            input_data=f"{message}\n",
+        ),
+    )
+    commit = created.stdout.strip()
+    return commit if created.returncode == 0 and commit else None
 
 
 def promote_completed_pending_rebase(

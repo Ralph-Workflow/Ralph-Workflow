@@ -647,11 +647,14 @@ def clear_record(
         from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
 
         post_attempt_verify(workspace_root, expected_head_sha=None, owns_resolution=False)
+        landed = record.integrated_feature_sha
         if (
             record.phase != "integrated"
-            or record.integrated_feature_sha is None
-            or branch_sha(workspace_root, record.target) != record.integrated_feature_sha
-            or get_head_sha(workspace_root) != record.integrated_feature_sha
+            or landed is None
+            or not _landing_reached(
+                workspace_root, landed, branch_sha(workspace_root, record.target)
+            )
+            or not _landing_reached(workspace_root, landed, get_head_sha(workspace_root))
         ):
             raise RuntimeError("owned reintegration cannot release its unfinished target landing")
     record_file = record_path(workspace_root)
@@ -659,6 +662,12 @@ def clear_record(
         backend.unlink(record_file, missing_ok=True)
     except FileNotFoundError:
         return
+
+
+def _landing_reached(workspace_root: Path, landed: str, tip: str | None) -> bool:
+    from ralph.git.merge_obstructions import ancestry_state
+
+    return tip is not None and ancestry_state(workspace_root, landed, tip) is True
 
 
 def clear_record_on_containment(

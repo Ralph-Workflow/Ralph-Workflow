@@ -911,7 +911,9 @@ def _run_startup_integration(
         return None
     with suppress(Exception):
         if outcome is not None:
-            _runner_module._log_auto_integrate_outcome(ctx.active_display, outcome)
+            _runner_module.log_auto_integrate_outcome(
+                ctx.active_display, outcome, root=ctx.workspace_scope.root
+            )
         else:
             ctx.active_display.emit(
                 "run",

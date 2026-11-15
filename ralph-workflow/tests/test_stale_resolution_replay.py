@@ -342,3 +342,43 @@ def test_a_dirty_worktree_releases_a_stale_record_with_a_pending_owned_landing(
     assert "uncommitted tracked changes" in (outcome.last_reason or "")
     assert (root / "untracked.txt").read_text(encoding="utf-8") == "untracked work\n"
     assert _git(root, "rev-parse", "HEAD").stdout.strip() == feature
+
+
+def test_recovery_releases_an_integrated_landing_whose_target_moved_past_it_with_a_stale_rebase_head(
+    tmp_git_repo: Path,
+) -> None:
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "base.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    landed = _commit(root, "feature.txt", "feature work\n")
+    assert _git(root, "switch", target).returncode == 0
+    assert _git(root, "merge", "--ff-only", "feature").returncode == 0
+    later = _commit(root, "later.txt", "later target work\n")
+    assert _git(root, "switch", "feature").returncode == 0
+    assert _git(root, "merge", "--ff-only", target).returncode == 0
+    git_dir = Path(_git(root, "rev-parse", "--absolute-git-dir").stdout.strip())
+    (git_dir / "REBASE_HEAD").write_text(f"{landed}\n", encoding="utf-8")
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrated",
+            target=target,
+            pre_feature_sha=base,
+            pre_target_sha=landed,
+            integrated_feature_sha=landed,
+            reintegrate_pending=True,
+        ),
+    )
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=_recovery_config(target),
+    )
+
+    assert outcome is not None
+    assert not outcome.recovery_record_retained
+    assert "still owned by live Git state" not in (outcome.last_reason or "")
+    assert read_record(root) is None
+    assert _git(root, "rev-parse", "HEAD").stdout.strip() == later
+    assert _git(root, "rev-parse", target).stdout.strip() == later

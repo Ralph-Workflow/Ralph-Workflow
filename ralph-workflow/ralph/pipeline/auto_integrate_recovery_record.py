@@ -27,6 +27,7 @@ from ralph.pipeline._integration_continuation import (
 from ralph.pipeline._integration_continuation import (
     continue_retained_resolution as _continue_retained_resolution,
 )
+from ralph.pipeline._integration_log_dedupe import integration_outcome_log
 from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
 )
@@ -95,7 +96,10 @@ def _completed_rebase_receipt_head(
 ) -> str | None:
     if not record.resolving_rebase or not record.pre_target_sha:
         return None
-    if rebase_in_progress_at(root) or classify_git_operation(record) is not GitOperationKind.RESOLVING_REBASE:
+    if (
+        rebase_in_progress_at(root)
+        or classify_git_operation(record) is not GitOperationKind.RESOLVING_REBASE
+    ):
         return None
     branch = run_git(
         ("symbolic-ref", "--quiet", "HEAD"),
@@ -198,16 +202,7 @@ def _continue_fast_forward_from_record(
 ) -> RebaseState:
     feature_sha = record.integrated_feature_sha
     if feature_sha is None or not _head_matches_sha(workspace_root, feature_sha):
-        return _record_skip(
-            reason=(
-                "recovery: malformed integrated record; verified feature SHA missing"
-                if feature_sha is None
-                else "recovery: feature tip changed or unreadable; landing withheld"
-            ),
-            target=record.target,
-            retention_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
-            record_retained=True,
-        )
+        return _withheld_landing(workspace_root, record, config)
     refresh, pointer_is_fresh = _refresh_before_verdict(config, workspace_root, record.target)
     if not pointer_is_fresh:
         return record_refresh(
@@ -261,6 +256,25 @@ def _continue_fast_forward_from_record(
             rebase_stop_resolver,
         )
     return _rec_mod._land_and_reconcile(workspace_root, record, feature_sha, refresh, config)
+
+
+def _withheld_landing(
+    workspace_root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+) -> RebaseState:
+    if record.integrated_feature_sha is None:
+        reason = "recovery: malformed integrated record; verified feature SHA missing"
+    elif record.reintegrate_pending and _recorded_work_is_verifiably_landed(workspace_root, record):
+        return _release_verifiably_landed_record(workspace_root, record, config)
+    else:
+        reason = "recovery: feature tip changed or unreadable; landing withheld"
+    return _record_skip(
+        reason=reason,
+        target=record.target,
+        retention_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
+        record_retained=True,
+    )
 
 
 def _head_matches_sha(workspace_root: Path, expected_sha: str) -> bool:
@@ -484,11 +498,14 @@ def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -
     target_sha = _get_branch_sha(root, record.target)
     if target_sha is None:
         return False
-    work_sha = record.integrated_feature_sha or _read_head_sha_or_none(root)
-    if work_sha is None:
+    head_sha = _read_head_sha_or_none(root)
+    work_sha = record.integrated_feature_sha or head_sha
+    if work_sha is None or head_sha is None:
         return False
-    ancestry = ancestry_state(root, work_sha, target_sha)
-    return ancestry is True
+    return (
+        ancestry_state(root, work_sha, target_sha) is True
+        and ancestry_state(root, work_sha, head_sha) is True
+    )
 
 
 def _read_head_sha_or_none(root: Path) -> str | None:
@@ -611,6 +628,7 @@ def _recover_pending_merge(
             resumed.terminal_reason if isinstance(resumed, ExhaustedResolutionFailure) else None
         )
         return _resumed_failure_outcome(
+            root,
             latest_record,
             resumed,
             terminal_reason=terminal_reason,
@@ -635,7 +653,12 @@ def _recover_pending_merge(
 recover_pending_merge = _recover_pending_merge
 
 
+def _emit_critical(message: str) -> None:
+    critical("CRITICAL: {}", message)
+
+
 def _resumed_failure_outcome(
+    root: Path,
     record: IntegrationRecord,
     reason: str,
     *,
@@ -648,7 +671,7 @@ def _resumed_failure_outcome(
     if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 
-        critical("CRITICAL: {}", reason)
+        integration_outcome_log().record(_emit_critical, reason, key=f"{root}\0{reason}")
         return record_resolution_exhausted(
             reason=reason,
             target=record.target,
@@ -660,7 +683,7 @@ def _resumed_failure_outcome(
         not reason.startswith("WAITING:")
         and effective_cause != ResolutionFailureCause.CONFIG_FAILURE
     ):
-        critical("CRITICAL: {}", reason)
+        integration_outcome_log().record(_emit_critical, reason, key=f"{root}\0{reason}")
     if is_in_active_resolution_state(record):
         from ralph.pipeline.auto_integrate_outcome import record_conflict
 

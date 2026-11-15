@@ -27,24 +27,25 @@ class IntegrationOutcomeLog:
         self._records: OrderedDict[str, tuple[float, int]] = OrderedDict()
         self._lock = threading.Lock()
 
-    def record(self, emit: OutcomeEmit, message: str) -> bool:
+    def record(self, emit: OutcomeEmit, message: str, *, key: str | None = None) -> bool:
         now = self._clock()
         summary: str | None = None
+        identity = message if key is None else key
         with self._lock:
-            entry = self._records.get(message)
+            entry = self._records.get(identity)
             if entry is None:
-                self._records[message] = (now, 1)
-                self._records.move_to_end(message)
+                self._records[identity] = (now, 1)
+                self._records.move_to_end(identity)
                 self._evict_oldest()
                 summary = message
             else:
                 last_emitted_at, count = entry
                 repeats = count + 1
                 if now - last_emitted_at < self._repeat_log_interval_seconds:
-                    self._records[message] = (last_emitted_at, repeats)
+                    self._records[identity] = (last_emitted_at, repeats)
                     return False
-                self._records[message] = (now, 1)
-                self._records.move_to_end(message)
+                self._records[identity] = (now, 1)
+                self._records.move_to_end(identity)
                 summary = f"{message} (repeated {repeats}x since the last update)"
         emit(summary)
         return True

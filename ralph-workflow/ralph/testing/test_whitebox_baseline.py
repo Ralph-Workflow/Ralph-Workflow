@@ -367,7 +367,6 @@ tests/test_auto_integrate_default_policy_seam.py|0,0,2
 tests/test_auto_integrate_drift_recovery.py|1,1,1
 tests/test_auto_integrate_fail_closed_e2e.py|4,0,0
 tests/test_auto_integrate_gates.py|3,1,4
-tests/test_auto_integrate_log_routing.py|0,0,3
 tests/test_auto_integrate_non_main_target.py|8,1,1
 tests/test_auto_integrate_parallel_wiring.py|0,0,7
 tests/test_auto_integrate_parallel_worker_seam.py|1,0,0

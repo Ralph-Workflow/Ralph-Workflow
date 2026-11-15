@@ -32,7 +32,6 @@ from ralph.pipeline.integration_strategy import (
     StrategyDecision,
     choose_integration_strategy,
 )
-from tests._scenario_display import ScenarioDisplay
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_waiting_lines_emitted_once_per_change_never_per_tick": (

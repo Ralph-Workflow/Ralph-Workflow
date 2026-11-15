@@ -28,7 +28,6 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 from tests._conflict_resolution_phase_parity_seams import _policy_bundle
