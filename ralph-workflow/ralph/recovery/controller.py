@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
@@ -519,13 +520,13 @@ def _attempt_cooldown_reasons(
     effective_signal: TypedSignal | None,
     exc: BaseException | None,
     failure: ClassifiedFailure | None,
-) -> tuple[UnavailabilityReason | None, UnavailabilityReason | None, UnavailabilityReason | None]:
+) -> tuple[UnavailabilityReason | None, UnavailabilityReason | None]:
     cooldown_reason = typed_signal_unavailability_reason(effective_signal)
-    watchdog_cooldown = watchdog_unavailability_reason(exc)
+    resumable = failure is not None and bool(failure.resumable_session_id)
+    watchdog_cooldown = None if resumable else watchdog_unavailability_reason(exc)
     if cooldown_reason is None:
         cooldown_reason = watchdog_cooldown
-    failure_reason = failure.unavailability_reason if failure is not None else None
-    return cooldown_reason, watchdog_cooldown, failure_reason
+    return cooldown_reason, watchdog_cooldown
 
 
 class RecoveryController:
@@ -753,6 +754,8 @@ class RecoveryController:
         if (
             isinstance(raw_failure, ConnectionError)
             and current_agent is not None
+            and chain is not None
+            and len(chain.agents) > 1
             and not failure.is_unavailable
             and failure.unavailability_reason is None
             and self.agent_eligibility(phase, current_agent).is_eligible
@@ -957,7 +960,7 @@ class RecoveryController:
             fingerprint = f"agent:{agent}"
         demoted_reason: str | None = None
         self._last_attempt_cooldown_reason = None
-        cooldown_reason, watchdog_cooldown, failure_reason = _attempt_cooldown_reasons(
+        cooldown_reason, watchdog_cooldown = _attempt_cooldown_reasons(
             effective_signal,
             exc,
             failure,
@@ -984,11 +987,7 @@ class RecoveryController:
             if preserved_reason is not None:
                 self._last_attempt_cooldown_reason = preserved_reason
         elif (
-            attempt_failed
-            and cooldown_reason is not None
-            and not probe_mode
-            and agent is not None
-            and failure_reason != cooldown_reason
+            attempt_failed and cooldown_reason is not None and not probe_mode and agent is not None
         ):
             self._mark_agent_unavailable(phase, agent, reason=cooldown_reason)
             self._last_attempt_cooldown_reason = cooldown_reason
@@ -1067,7 +1066,7 @@ class RecoveryController:
     ) -> bool:
         if signal_name is not None:
             return True
-        if facts is None or facts.artifact_valid:
+        if facts is not None and facts.artifact_valid:
             return False
         return attempt_ended
 
@@ -1099,8 +1098,10 @@ class RecoveryController:
         effective_facts = facts
         if effective_facts is None and failure is not None:
             effective_facts = failure.facts
-        attempt_ended = exc is not None or (
-            effective_facts is not None and effective_facts.termination is not None
+        attempt_ended = (
+            exc is not None
+            or failure is not None
+            or (effective_facts is not None and effective_facts.termination is not None)
         )
         if not self._is_dead_agent_candidate(
             signal_name,
@@ -1601,8 +1602,19 @@ class RecoveryController:
         statuses = [status for _agent, status in self.chain_eligibility(phase, agents)]
         return eligibility_wait_from_statuses(statuses, now_ms=now_ms)
 
-    def mark_agent_unavailable(self, phase: str, agent: str, *, reason: str) -> None:
-        self._ledger.mark_unavailable(phase, agent, reason=reason)
+    def mark_agent_unavailable(
+        self, phase: str, agent: str, *, reason: str | UnavailabilityReason
+    ) -> None:
+        raw_reason = reason.value if isinstance(reason, UnavailabilityReason) else reason
+        self._ledger.mark_unavailable(phase, agent, reason=raw_reason)
+        unavail_reason: UnavailabilityReason | None = None
+        if isinstance(reason, UnavailabilityReason):
+            unavail_reason = reason
+        else:
+            with contextlib.suppress(ValueError):
+                unavail_reason = UnavailabilityReason(reason)
+        if unavail_reason is not None:
+            self._mark_agent_unavailable(phase, agent, reason=unavail_reason)
 
     def _is_agent_spent(self, phase: str, agent: str) -> bool:
         return self.agent_eligibility(phase, agent).is_spent

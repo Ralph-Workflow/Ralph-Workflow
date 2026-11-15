@@ -16,6 +16,13 @@ from ralph.recovery.failure_classifier import FailureClassifier
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.testing.audit_agent_failure_single_owner import audit_production_source
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_shared_classifier_regression_owns_every_typed_conflict_outcome": (
+        "a no-progress success that went quiet after activity cools its resolver with the "
+        "typed no_output_after_activity reason, like a stalled attempt"
+    ),
+}
+
 _OWNED_CLASSIFICATIONS = (
     (
         ConflictAttemptOutcome.NO_ACTIVITY,
@@ -35,8 +42,8 @@ _OWNED_CLASSIFICATIONS = (
         ConflictAttemptOutcome.STALLED_NO_PROGRESS,
         FailureCategory.AGENT,
         True,
-        False,
-        None,
+        True,
+        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
     ),
     (
         ConflictAttemptOutcome.UNRESOLVED_REMAINING,

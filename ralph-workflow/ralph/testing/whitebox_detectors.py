@@ -174,6 +174,24 @@ _SCAN_HANDLERS: dict[type, Callable[[_Scan, ast.AST], None]] = {
 }
 
 
+def _iter_fields(
+    node: ast.AST,
+) -> tuple[tuple[str, ast.AST | list[ast.AST] | None], ...]:
+    fields: list[tuple[str, ast.AST | list[ast.AST] | None]] = []
+    for field_name in node._fields:
+        try:
+            val: object = getattr(node, field_name)
+        except AttributeError:
+            continue
+        if isinstance(val, ast.AST):
+            fields.append((field_name, val))
+        elif isinstance(val, list):
+            fields.append((field_name, [item for item in val if isinstance(item, ast.AST)]))
+        elif val is None:
+            fields.append((field_name, None))
+    return tuple(fields)
+
+
 def _scan_tree(tree: ast.AST) -> _Scan:
     scan = _Scan()
     stack: list[ast.AST] = [tree]
@@ -188,7 +206,7 @@ def _scan_tree(tree: ast.AST) -> _Scan:
                 handler = _SCAN_HANDLERS.get(type(node))
                 if handler is not None:
                     handler(scan, node)
-        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        stack.extend(reversed(tuple(ast.iter_child_nodes(node))))
     return scan
 
 
@@ -480,7 +498,7 @@ def has_subprocess_e2e_marker(tree: ast.AST) -> bool:
     while stack:
         node = stack.pop()
         match True:
-            case _ if isinstance(node, ast.FunctionDef | ast.ClassDef):
+            case _ if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
                 decorators.extend(node.decorator_list)
             case _ if isinstance(node, ast.Assign):
                 pytestmark_values.extend(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from ralph.git.operations import list_changed_paths
 from ralph.prompts._commit_diff import commit_generation_diff
@@ -17,8 +17,3 @@ class GitCommitEvidenceSource:
 
     def commit_generation_diff(self, repo_root: Path) -> str:
         return commit_generation_diff(repo_root)
-
-
-DEFAULT_COMMIT_EVIDENCE_SOURCE: Final = GitCommitEvidenceSource()
-
-__all__ = ["DEFAULT_COMMIT_EVIDENCE_SOURCE", "GitCommitEvidenceSource"]

@@ -135,8 +135,6 @@ def run(argv: list[str]) -> int:
     while True:
         try:
             _, status = os.waitpid(pid, 0)
-        except InterruptedError:
-            continue
         except OSError:
             return 1
         if os.WIFEXITED(status):

@@ -9,10 +9,7 @@ import psutil
 import pytest
 
 from ralph.process.manager import ProcessRecord, ProcessStatus
-from ralph.process.manager.process_termination_issuer import (
-    ProcessTerminationIssuer,
-    unverified_issuer,
-)
+from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 from ralph.process.teardown import DefaultProcessTeardown, teardown_subtree
 
 
@@ -51,6 +48,10 @@ def _install_own_tree(monkeypatch: pytest.MonkeyPatch, kills: list[int]) -> None
     monkeypatch.setattr(psutil, "Process", fake_process)
 
 
+class _ArbitraryIssuer(str):
+    __slots__ = ()
+
+
 def _raise_no_such(pid: int) -> NoReturn:
     raise psutil.NoSuchProcess(pid)
 
@@ -69,19 +70,19 @@ def _record(label: str) -> ProcessRecord:
 
 def test_module_teardown_subtree_rejects_plain_str_issuer() -> None:
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown_subtree(4242, issuer=unverified_issuer("invoke:process"))
+        teardown_subtree(4242, issuer="invoke:process")
 
 
 def test_default_teardown_rejects_plain_str_issuer() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=0.0)
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown.teardown_subtree(4242, issuer=unverified_issuer("invoke:pty"))
+        teardown.teardown_subtree(4242, issuer="invoke:pty")
 
 
 def test_default_teardown_rejects_arbitrary_str_subclass_issuer() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=0.0)
     with pytest.raises(TypeError, match="ProcessTerminationIssuer"):
-        teardown.teardown_subtree(4242, issuer=unverified_issuer("operator"))
+        teardown.teardown_subtree(4242, issuer=_ArbitraryIssuer("operator"))
 
 
 def test_owner_label_family_mismatch_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -429,6 +429,22 @@ def _record_session_failure_result(
             )
 
 
+def _conflict_config_with_inactivity(
+    config: UnifiedConfig,
+    inactivity_timeout_seconds: float | None,
+) -> UnifiedConfig:
+    effective_timeout = (
+        inactivity_timeout_seconds
+        if inactivity_timeout_seconds is not None
+        else config.conflict_resolution.inactivity_timeout_seconds
+    )
+    conflict_limits = config.conflict_resolution.model_copy(
+        update={"inactivity_timeout_seconds": effective_timeout}
+    )
+    general = config.general.model_copy(update={"agent_idle_timeout_seconds": effective_timeout})
+    return config.model_copy(update={"conflict_resolution": conflict_limits, "general": general})
+
+
 def invoke_resolution_agent(
     *,
     agent_name: str,
@@ -449,6 +465,8 @@ def invoke_resolution_agent(
         session.last_attempt_outcome = None
         session.last_attempt_result = None
         session.last_attempt_saw_activity = False
+    inactivity_timeout = session.inactivity_timeout_seconds if session is not None else None
+    config = _conflict_config_with_inactivity(config, inactivity_timeout)
     if display_context is None:
         from ralph.display.context import make_display_context
 

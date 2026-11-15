@@ -457,14 +457,23 @@ def _evaluate_protected_directory_deletions(
     return findings
 
 
-def _manifest_hard_finding(
+def _is_destructive_manifest_change(
+    content: object,
+    new_mode: object,
+    is_binary: bool,
+) -> bool:
+    return bool(
+        is_binary or new_mode == "120000" or (content is not None and not str(content).strip())
+    )
+
+
+def _evaluate_manifest_hard_entry(
     norm: PurePosixPath,
     norm_str: str,
     deleted: bool,
-    new_mode: str,
-    is_binary: bool,
     content: object,
-    base_paths: frozenset[str] | None,
+    new_mode: object,
+    is_binary: bool,
 ) -> Finding | None:
     if norm.name not in DEFAULT_LOCKFILE_BASENAMES and norm.name not in DEFAULT_MANIFEST_BASENAMES:
         return None
@@ -474,13 +483,10 @@ def _manifest_hard_finding(
             message=f"Protected project manifest or lockfile deleted: {norm_str}",
             path=norm_str,
         )
-    destructive = (
-        (content is not None and not str(content).strip()) or new_mode == "120000" or is_binary
-    )
-    if base_paths is not None and norm_str in base_paths and destructive:
+    if _is_destructive_manifest_change(content, new_mode, is_binary):
         return Finding(
             category="protected_overwrite",
-            message=f"Protected project manifest or lockfile destructively overwritten: {norm_str}",
+            message=f"Protected project manifest or lockfile overwritten destructively: {norm_str}",
             path=norm_str,
         )
     return None
@@ -491,12 +497,12 @@ def _evaluate_hard_entry(
     norm_str: str,
     deleted: bool,
     old_mode: object,
-    new_mode: str,
-    is_binary: bool,
-    content: object,
     custom_protected: set[str],
     protected_top_level_dirs: frozenset[str],
-    base_paths: frozenset[str] | None,
+    *,
+    content: object = None,
+    new_mode: object = None,
+    is_binary: bool = False,
 ) -> Finding | None:
     if _is_git_path(norm):
         action = "deleted" if deleted else "modified or overwritten"
@@ -525,8 +531,8 @@ def _evaluate_hard_entry(
             path=norm_str,
         )
 
-    manifest_finding = _manifest_hard_finding(
-        norm, norm_str, deleted, new_mode, is_binary, content, base_paths
+    manifest_finding = _evaluate_manifest_hard_entry(
+        norm, norm_str, deleted, content, new_mode, is_binary
     )
     if manifest_finding is not None:
         return manifest_finding
@@ -550,7 +556,7 @@ def _evaluate_soft_entry(
     norm_str: str,
     deleted: bool,
     size: int,
-    new_mode: str,
+    new_mode: object,
     is_binary: bool,
     content: object,
     allowed_dirs: Sequence[str] | set[str] | None,
@@ -560,18 +566,20 @@ def _evaluate_soft_entry(
     findings: list[Finding] = []
 
     is_manifest = norm.name in DEFAULT_LOCKFILE_BASENAMES or norm.name in DEFAULT_MANIFEST_BASENAMES
-    if not deleted and is_manifest and base_paths is not None and norm_str in base_paths:
-        is_destructive = (
-            (content is not None and not str(content).strip()) or new_mode == "120000" or is_binary
-        )
-        if not is_destructive:
-            findings.append(
-                Finding(
-                    category="protected_overwrite",
-                    message=f"Protected project manifest or lockfile modified: {norm_str}",
-                    path=norm_str,
-                )
+    is_bin = _is_binary_entry(entry, norm)
+    new_mode = _get_entry_attr(entry, "new_mode", None)
+    if (
+        not deleted
+        and is_manifest
+        and not _is_destructive_manifest_change(content, new_mode, is_bin)
+    ):
+        findings.append(
+            Finding(
+                category="protected_overwrite",
+                message=f"Protected project manifest or lockfile modified: {norm_str}",
+                path=norm_str,
             )
+        )
 
     if allowed_dirs and not _is_path_in_allowed_dirs(norm, allowed_dirs):
         findings.append(
@@ -646,25 +654,25 @@ def evaluate_tripwires(
         status = str(_get_entry_attr(entry, "status", ""))
         size = int(str(_get_entry_attr(entry, "size", 0) or 0))
         old_mode = _get_entry_attr(entry, "old_mode", None)
-        new_mode = str(_get_entry_attr(entry, "new_mode", "") or "")
+        new_mode = _get_entry_attr(entry, "new_mode", None)
         content = _get_entry_attr(entry, "content", None)
         is_binary = bool(_get_entry_attr(entry, "is_binary", False))
 
         norm = PurePosixPath(raw_path.replace("\\", "/"))
         norm_str = norm.as_posix()
         deleted = _is_deleted(status)
+        is_binary = _is_binary_entry(entry, norm)
 
         hard_finding = _evaluate_hard_entry(
             norm,
             norm_str,
             deleted,
             old_mode,
-            new_mode,
-            is_binary,
-            content,
             custom_protected,
             protected_dirs,
-            base_paths,
+            content=content,
+            new_mode=new_mode,
+            is_binary=is_binary,
         )
         if hard_finding is not None:
             hard_findings.append(hard_finding)

@@ -4,7 +4,9 @@ import os
 import sys
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING
+
+import psutil
 
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
@@ -14,35 +16,9 @@ from ralph.verify_timeout import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-
     import pytest
 
-    class _PsutilProcess(Protocol):
-        def children(self, *, recursive: bool = ...) -> list[_PsutilProcess]: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
 
-    class _PsutilMod(Protocol):
-        Error: type[BaseException]
-        Process: Callable[[int], _PsutilProcess]
-
-        def wait_procs(
-            self,
-            procs: Sequence[_PsutilProcess],
-            timeout: float | None = ...,
-        ) -> tuple[list[_PsutilProcess], list[_PsutilProcess]]: ...
-
-
-_psutil: _PsutilMod | None
-try:
-    import psutil as _psutil_imported
-
-    _psutil = cast("_PsutilMod", _psutil_imported)
-except ImportError:
-    _psutil = None
-
-_WATCHDOG_ATTR = "_ralph_suite_watchdog"
 _TIMEOUT_EXIT_CODE = 124
 
 
@@ -50,6 +26,9 @@ _TIMEOUT_EXIT_CODE = 124
 class _SuiteWatchdog:
     cancel_event: threading.Event
     thread: threading.Thread
+
+
+_ACTIVE_WATCHDOG: list[_SuiteWatchdog] = []
 
 
 def _is_xdist_worker(config: pytest.Config) -> bool:
@@ -64,29 +43,25 @@ def _emit_timeout_message(timeout_seconds: float) -> None:
 
 
 def _terminate_descendants() -> None:
-    psutil_mod = _psutil
-    if psutil_mod is None:
-        return
-
     try:
-        current_process = psutil_mod.Process(os.getpid())
+        current_process = psutil.Process(os.getpid())
         descendants = current_process.children(recursive=True)
-    except psutil_mod.Error:
+    except (psutil.Error, OSError):
         return
 
     for descendant in descendants:
         try:
             descendant.terminate()
-        except psutil_mod.Error:
+        except (psutil.Error, OSError):
             continue
 
-    _gone, alive = psutil_mod.wait_procs(descendants, timeout=0.2)
+    _gone, alive = psutil.wait_procs(descendants, timeout=0.2)
     for descendant in alive:
         try:
             descendant.kill()
-        except psutil_mod.Error:
+        except (psutil.Error, OSError):
             continue
-    psutil_mod.wait_procs(alive, timeout=0.2)
+    psutil.wait_procs(alive, timeout=0.2)
 
 
 def _watchdog_main(timeout_seconds: float, cancel_event: threading.Event) -> None:
@@ -111,13 +86,13 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         name="ralph-pytest-suite-watchdog",
         daemon=True,
     )
-    setattr(config, _WATCHDOG_ATTR, _SuiteWatchdog(cancel_event=cancel_event, thread=thread))
+    _ACTIVE_WATCHDOG.append(_SuiteWatchdog(cancel_event=cancel_event, thread=thread))
     thread.start()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    del exitstatus
-    watchdog = cast("_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None))
+    del session, exitstatus
+    watchdog = _ACTIVE_WATCHDOG.pop() if _ACTIVE_WATCHDOG else None
     if watchdog is None:
         return
     watchdog.cancel_event.set()

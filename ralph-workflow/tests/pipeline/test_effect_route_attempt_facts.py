@@ -33,6 +33,13 @@ from tests._session_registry_factory import _RegistryFactory
 _PHASE = "development"
 _AGENT = "claude"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_effect_route_returns_the_carried_attempt_ended": (
+        "a verified successful attempt carries the recorder facts with artifact_valid marked "
+        "true so the shared attempt runner does not read the success as a failure"
+    ),
+}
+
 
 def _carrying_invoke(facts: AttemptFacts) -> object:
     def invoke(
@@ -85,7 +92,9 @@ def test_effect_route_returns_the_carried_attempt_ended(
     )
 
     assert isinstance(result, AttemptEnded)
-    assert result.facts is carried_facts
+    assert result.facts.event_kinds == carried_facts.event_kinds
+    assert result.facts.tool_calls == carried_facts.tool_calls
+    assert result.facts.artifact_valid is True
 
 
 def test_effect_route_carries_success_facts_into_the_attempt_result(tmp_path: Path) -> None:

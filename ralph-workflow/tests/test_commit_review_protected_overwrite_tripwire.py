@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from ralph.git.diff_entry import DiffEntry
 from ralph.phases.commit_review import (
+    DiffEntry,
+    TripwireReport,
     TripwireThresholds,
     evaluate_tripwires,
 )
@@ -43,7 +44,7 @@ def _entry(
     )
 
 
-def _report(entry: DiffEntry):
+def _report(entry: DiffEntry) -> TripwireReport:
     return evaluate_tripwires([entry], len(_TRACKED_PATHS), TripwireThresholds())
 
 

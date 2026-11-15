@@ -27,19 +27,38 @@ def _posix_liveness(pid: int) -> LivenessResult:
     return LivenessResult.ALIVE
 
 
+def _is_gone_error(psutil_mod: _PsutilModuleLike, exc: BaseException) -> bool:
+    if isinstance(exc, ProcessLookupError):
+        return True
+    try:
+        nsp = psutil_mod.NoSuchProcess
+        return isinstance(exc, nsp)
+    except (AttributeError, TypeError):
+        return False
+
+
+def _is_access_denied_error(psutil_mod: _PsutilModuleLike, exc: BaseException) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    try:
+        denied = psutil_mod.AccessDenied
+        return isinstance(exc, denied)
+    except (AttributeError, TypeError):
+        return False
+
+
 def _psutil_pid_exists_liveness(psutil_mod: _PsutilModuleLike, pid: int) -> LivenessResult:
     try:
         exists = psutil_mod.pid_exists(pid)
         return LivenessResult.ALIVE if exists else LivenessResult.GONE
-    except (
-        psutil_mod.NoSuchProcess,
-        psutil_mod.AccessDenied,
-        OSError,
-        RuntimeError,
-        TypeError,
-        ValueError,
-    ):
-        return LivenessResult.UNKNOWN
+    except BaseException as exc:
+        if _is_gone_error(psutil_mod, exc):
+            return LivenessResult.GONE
+        if _is_access_denied_error(psutil_mod, exc):
+            return LivenessResult.ALIVE
+        if isinstance(exc, (OSError, RuntimeError, TypeError, ValueError)):
+            return LivenessResult.UNKNOWN
+        raise
 
 
 def verify_process_liveness(
@@ -52,15 +71,13 @@ def verify_process_liveness(
             proc = psutil_mod.process_from_pid(pid)
             if proc.status() == "zombie":
                 return LivenessResult.ZOMBIE
-        except (
-            psutil_mod.NoSuchProcess,
-            psutil_mod.AccessDenied,
-            OSError,
-            RuntimeError,
-            TypeError,
-            ValueError,
-        ):
-            pass
+        except BaseException as exc:
+            if _is_gone_error(psutil_mod, exc):
+                return LivenessResult.GONE
+            if _is_access_denied_error(psutil_mod, exc):
+                return LivenessResult.ALIVE
+            if not isinstance(exc, (OSError, RuntimeError, TypeError, ValueError)):
+                raise
         else:
             return _psutil_pid_exists_liveness(psutil_mod, pid)
 

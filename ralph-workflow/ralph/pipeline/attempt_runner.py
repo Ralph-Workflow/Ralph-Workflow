@@ -312,7 +312,7 @@ def _attempt_facts(
     elif carried is not None:
         facts = replace(
             carried,
-            artifact_valid=carried.artifact_valid and not finalization.attempt_failed,
+            artifact_valid=not finalization.attempt_failed,
         )
     else:
         facts = AttemptFacts(artifact_valid=not finalization.attempt_failed)

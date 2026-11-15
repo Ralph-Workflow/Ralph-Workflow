@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
@@ -37,15 +37,15 @@ def default_direct_mcp_retry_limit(raw_limit: object) -> int:
 
 
 def _exception_agent_name(exc: Exception) -> str | None:
-    attributes = cast("dict[str, object]", vars(exc))
-    raw = attributes.get("agent_name")
+    raw: object = getattr(exc, "agent_name", None)
     return raw if isinstance(raw, str) and raw else None
 
 
 def _exception_parsed_output(exc: Exception) -> tuple[str, ...]:
-    if isinstance(exc, AgentInvocationError):
-        return tuple(exc.parsed_output) if exc.parsed_output is not None else ()
-    return ()
+    raw: object = getattr(exc, "parsed_output", ())
+    if not isinstance(raw, list | tuple):
+        return ()
+    return tuple(str(line) for line in raw)
 
 
 def _retry_budget_exhausted_error(

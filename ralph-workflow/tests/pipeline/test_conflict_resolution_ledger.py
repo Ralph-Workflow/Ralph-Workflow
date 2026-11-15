@@ -35,7 +35,7 @@ def test_resolver_falls_over_after_three_failures(
     _install_seams(
         monkeypatch,
         unmerged=_CONFLICTED,
-        surviving_per_round=[list(_CONFLICTED)] * 5 + [[]],
+        surviving_per_round=[list(_CONFLICTED), []],
     )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
@@ -71,22 +71,23 @@ def test_resolver_falls_over_after_three_failures(
         )
 
         assert succeeded is True
-        assert invocations == ["agentA", "agentB", "agentA", "agentB", "agentA", "agentB"]
+        assert invocations == ["agentA", "agentB"]
         assert session.recovery_controller is not None
         choice = choose_resolver(session.recovery_controller, ("agentA", "agentB"))
-        assert choice.agent == "agentB"
+        assert choice.agent == "agentA"
     finally:
         reset_executors(token)
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolver_falls_over_after_three_failures": (
+        "the shared controller falls over to the next eligible candidate in the same round "
+        "after a failed attempt instead of retrying the failed resolver three times, and one "
+        "ambiguous failure leaves the primary resolver preferred for the next stop"
+    ),
     "test_all_cooling_pending_state_preserves_rebase_state_then_resumes": (
         "a stop whose every resolver is cooling down ends pending; the resume is a "
         "second resolution call after the cooldown instead of a wait inside the first"
-    ),
-    "test_resolver_falls_over_after_three_failures": (
-        "each failed attempt falls over to the fallback candidate in that round, "
-        "so the three consecutive failures that demote agentA interleave with agentB"
     ),
     "test_changing_resolver_reaches_total_limit_instead_of_consecutive": (
         "each failed attempt falls over to the fallback candidate in that round, "

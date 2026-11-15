@@ -47,6 +47,13 @@ import_module("ralph.pipeline.runner")
 
 _PHASE = "development"
 _AGENT = "fake"
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_raw_attempt_invoke_returns_the_carried_attempt_ended": (
+        "a raw attempt that returns normally carries the recorder facts with artifact_valid "
+        "marked true so the shared attempt runner does not read the success as a failure"
+    ),
+}
 _FINGERPRINT = agent_config_fingerprint(
     _AGENT,
     cmd="/opt/bin/fake-agent --secret-not-hashed",
@@ -549,7 +556,9 @@ def test_raw_attempt_invoke_returns_the_carried_attempt_ended() -> None:
     )
 
     assert isinstance(carried, AttemptEnded)
-    assert carried.facts is recorder_facts
+    assert carried.facts.event_kinds == recorder_facts.event_kinds
+    assert carried.facts.termination == recorder_facts.termination
+    assert carried.facts.artifact_valid is True
 
 
 def test_raw_attempt_invoke_without_a_carried_value_returns_agent_success() -> None:

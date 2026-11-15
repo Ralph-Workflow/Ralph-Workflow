@@ -28,7 +28,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "exclusively through the adapter and no longer names "
         "execute_agent_effect( in its source; the parallel-worker seam forwards "
         "through worker_runtime's module-level effect seam, which the inventory "
-        "now lists as a live caller."
+        "now lists as a live caller. The conflict-resolution session likewise reaches "
+        "the effect runner only through the effect_attempt_invoke adapter."
     ),
 }
 

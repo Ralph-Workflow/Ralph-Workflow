@@ -457,9 +457,43 @@ def attempt_stop_resolution(
 def _adopt_owned_rebase(trigger: StopResolutionTrigger) -> None:
     if trigger.record is not None:
         return
-    from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
+    _adopt_active_rebase_record(trigger.root, trigger.target)
 
-    adopt_active_rebase_record(trigger.root, trigger.target)
+
+def _adopt_active_rebase_record(
+    workspace_root: Path,
+    target: str,
+) -> IntegrationRecord | None:
+    if not target.strip():
+        return None
+    try:
+        if read_record(workspace_root) is not None:
+            return None
+        from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
+
+        if not rebase_in_progress_at(workspace_root):
+            return None
+        original, onto = current_rebase_identity(workspace_root)
+        if not original or not onto:
+            return None
+        record = IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=original,
+            pre_target_sha=onto,
+        )
+        write_record(workspace_root, record)
+    except Exception as exc:
+        logger.warning(
+            "auto_integrate: could not adopt the active rebase on '{}' into the durable record: {}",
+            target,
+            exc,
+        )
+        return None
+    return record
+
+
+adopt_active_rebase_record = _adopt_active_rebase_record
 
 
 def _record_post_attempt(
@@ -575,6 +609,7 @@ def _create_resolution_session(
     if config is None:
         return ResolutionSession()
     return ResolutionSession(
+        inactivity_timeout_seconds=config.inactivity_timeout_seconds,
         max_rounds_per_stop=config.max_rounds_per_stop,
         max_rebase_conflict_stops=config.max_rebase_conflict_stops,
         max_fallback_agents=config.max_fallback_agents,

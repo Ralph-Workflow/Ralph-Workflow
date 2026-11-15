@@ -1,7 +1,10 @@
 {% include 'shared/_validation_failure.j2' -%}
+{% from 'shared/_skill_cues.j2' import render_policy_remediation_failures_cue, render_policy_remediation_gates_cue %}
 You are a documentation agent. Make the policy corpus under {{ canonical_dir }} describe verified project reality and pass the readiness validator.
 
-{% include 'shared/_unattended_mode.j2' %}{% from 'shared/_skill_cues.j2' import render_policy_remediation_gates_cue, render_policy_remediation_failures_cue %}
+{% from 'shared/_skill_cues.j2' import render_policy_remediation_gates_cue, render_policy_remediation_failures_cue %}
+
+{% include 'shared/_unattended_mode.j2' %}
 
 ## Authoritative findings
 

@@ -133,7 +133,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
 def _enclosing_function_names(tree: ast.Module) -> dict[int, str]:
     names: dict[int, str] = {}
     for function in ast.walk(tree):
-        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for child in ast.walk(function):
                 names.setdefault(id(child), function.name)
     return names
@@ -415,7 +415,7 @@ def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
     violations: list[SingleOwnerViolation] = []
     for node in ast.walk(tree):
         match True:
-            case _ if isinstance(node, ast.Import | ast.ImportFrom):
+            case _ if isinstance(node, (ast.Import, ast.ImportFrom)):
                 violations.extend(_check_test_import(node, rel_path))
             case _ if isinstance(node, ast.Attribute):
                 violations.extend(_check_test_attribute(node, rel_path))

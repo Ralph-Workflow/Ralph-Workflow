@@ -26,6 +26,29 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.memory import MemoryWorkspace
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_production_closure_falls_back_across_chain_agents": (
+        "project-policy invocation runs one shared-owner-selected attempt per call; the "
+        "owner cools the failing agent at its consecutive limit and later calls fall over "
+        "to the next chain agent"
+    ),
+    "test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain": (
+        "project-policy invocation runs one shared-owner-selected attempt per call; the "
+        "owner cools the failing agent at its consecutive limit and later calls fall over "
+        "to the next chain agent"
+    ),
+    "test_a_chain_where_every_agent_crashes_reports_a_launch_failure": (
+        "project-policy invocation runs one shared-owner-selected attempt per call; the "
+        "owner cools the failing agent at its consecutive limit and later calls fall over "
+        "to the next chain agent"
+    ),
+    "test_policy_invocation_regression_launch_crashes_use_owner_cooldown_and_fallover": (
+        "project-policy invocation runs one shared-owner-selected attempt per call; the "
+        "owner cools the failing agent at its consecutive limit and later calls fall over "
+        "to the next chain agent"
+    ),
+}
+
 
 @functools.lru_cache(maxsize=1)
 def _default_bundle() -> PolicyBundle:
@@ -197,8 +220,9 @@ def test_production_closure_falls_back_across_chain_agents(
         None,
         make_display_context(),
     )
-    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
-    assert invoked_agents == ["dev-agent", "codex"]
+    results = [invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") for _call in range(4)]
+    assert results == [False, False, False, True]
+    assert invoked_agents == ["dev-agent", "dev-agent", "dev-agent", "codex"]
 
 
 def test_ready_preflight_triggers_policy_auto_commit(
@@ -439,8 +463,16 @@ def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
         make_display_context(),
     )
 
+    for _call in range(3):
+        with pytest.raises(
+            remediation.RemediationInvocationError,
+            match="this agent's binary is missing",
+        ):
+            invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
     assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
-    assert invoked == ["dev-agent", "codex"], "the crash must not abort the chain"
+    assert invoked == ["dev-agent", "dev-agent", "dev-agent", "codex"], (
+        "the crash must not abort the chain"
+    )
 
 
 def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
@@ -461,11 +493,12 @@ def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
         make_display_context(),
     )
 
-    with pytest.raises(
-        remediation.RemediationInvocationError,
-        match="no agent binaries at all",
-    ):
-        invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
+    for _call in range(4):
+        with pytest.raises(
+            remediation.RemediationInvocationError,
+            match="no agent binaries at all",
+        ):
+            invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
     assert probed, "the crashed launch must still reach the recovery probe boundary"
 
 
@@ -493,14 +526,15 @@ def test_policy_invocation_regression_launch_crashes_use_owner_cooldown_and_fall
         make_display_context(),
     )
 
-    for _attempt in range(4):
-        assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    for _attempt in range(3):
+        with pytest.raises(remediation.RemediationInvocationError, match="missing agent binary"):
+            invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
 
     assert invoked == [
         "dev-agent",
-        "codex",
         "dev-agent",
-        "codex",
         "dev-agent",
         "codex",
         "codex",

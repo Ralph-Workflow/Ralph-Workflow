@@ -4,20 +4,11 @@ import time
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server._mcp_health_event import record_host_contention_signal
+from ralph.process.manager._process_manager_runtime import load_psutil_module
 
-if TYPE_CHECKING:
-    from ralph.process.manager._process_manager_types import _PsutilModuleLike
-
-psutil: _PsutilModuleLike | None
-try:
-    import psutil as _psutil_imported
-
-    psutil = cast("_PsutilModuleLike", _psutil_imported)
-except Exception:
-    psutil = None
+psutil = load_psutil_module()
 
 PSI_AVG10_THRESHOLD = 50.0
 

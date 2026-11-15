@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import IO
 
@@ -31,6 +31,29 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 class _PsutilProcessWithReturncode(FakePsutilProcess):
     returncode: int | None = None
+
+
+_WaitProcsFn = Callable[
+    [Sequence[object], float | None],
+    tuple[list[FakePsutilProcess], list[FakePsutilProcess]],
+]
+
+
+class _ScriptedWaitPsutil(FakePsutil):
+    __slots__ = ("wait_procs_fn",)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.wait_procs_fn: _WaitProcsFn | None = None
+
+    def wait_procs(
+        self,
+        procs: Sequence[object],
+        timeout: float | None = None,
+    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
+        if self.wait_procs_fn is None:
+            raise AssertionError("scripted wait_procs was not configured")
+        return self.wait_procs_fn(procs, timeout)
 
 
 def _make_record(manager: ProcessManager, pid: int) -> ProcessRecord:
@@ -113,9 +136,7 @@ def test_reap_async_in_sync_decodes_waitpid_status(
     assert record.returncode == -15
 
 
-def test_terminate_by_pid_harvests_gone_list(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_terminate_by_pid_harvests_gone_list() -> None:
     manager = ProcessManager(policy=_FAST_POLICY, psutil=FakePsutil())
     record = _make_record(manager, pid=7)
 
@@ -123,7 +144,7 @@ def test_terminate_by_pid_harvests_gone_list(
     fake_root._terminated = True
     fake_root.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {7: fake_root}
 
     def fake_wait_procs_with_dead(
@@ -131,7 +152,7 @@ def test_terminate_by_pid_harvests_gone_list(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [fake_root], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+    fake_psutil.wait_procs_fn = fake_wait_procs_with_dead
     manager._psutil = fake_psutil
 
     manager._terminate_by_pid(record, grace_period_s=0.01)
@@ -226,9 +247,7 @@ class _FakeSyncProc:
             self._callback.append(rc)
 
 
-def test_escalate_termination_sync_harvests_psutil_returncode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_escalate_termination_sync_harvests_psutil_returncode() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=5)
     manager.record_terminal_reason(record.pid, "interactive_completion", "test")
@@ -237,7 +256,7 @@ def test_escalate_termination_sync_harvests_psutil_returncode(
     fake_root._terminated = True
     fake_root.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {5: fake_root}
     manager._psutil = fake_psutil
 
@@ -249,16 +268,14 @@ def test_escalate_termination_sync_harvests_psutil_returncode(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [fake_root], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+    fake_psutil.wait_procs_fn = fake_wait_procs_with_dead
 
     manager._escalate_termination_sync(record, fake_proc, grace_period_s=0.01)
     assert record.returncode == -15
     assert -15 in note_called_with
 
 
-def test_terminate_psutil_wave_harvests_dead_rc(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_terminate_psutil_wave_harvests_dead_rc() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=11)
 
@@ -266,7 +283,7 @@ def test_terminate_psutil_wave_harvests_dead_rc(
     fake_root._terminated = True
     fake_root.returncode = -9
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {11: fake_root}
 
     managed_proc = ManagedProcess.__new__(ManagedProcess)
@@ -279,7 +296,7 @@ def test_terminate_psutil_wave_harvests_dead_rc(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [fake_root], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+    fake_psutil.wait_procs_fn = fake_wait_procs_with_dead
 
     survivors = managed_proc._terminate_psutil_wave(
         fake_psutil,
@@ -290,9 +307,7 @@ def test_terminate_psutil_wave_harvests_dead_rc(
     assert len(survivors) == 0
 
 
-def test_kill_psutil_wave_harvests_dead_rc(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_kill_psutil_wave_harvests_dead_rc() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=12)
 
@@ -300,7 +315,7 @@ def test_kill_psutil_wave_harvests_dead_rc(
     fake_root._terminated = True
     fake_root.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {12: fake_root}
 
     managed_proc = ManagedProcess.__new__(ManagedProcess)
@@ -313,7 +328,7 @@ def test_kill_psutil_wave_harvests_dead_rc(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [fake_root], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+    fake_psutil.wait_procs_fn = fake_wait_procs_with_dead
 
     survivors = managed_proc._kill_psutil_wave(
         fake_psutil,
@@ -513,9 +528,7 @@ def test_harvest_and_mark_descendant_ignores_mismatched_pid_in_gone() -> None:
     assert parent_record.returncode is None
 
 
-def test_terminate_registered_descendants_propagation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_terminate_registered_descendants_propagation() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     parent_called_with: list[int] = []
@@ -540,7 +553,7 @@ def test_terminate_registered_descendants_propagation(
     fake_recorded._terminated = True
     fake_recorded.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {201: fake_unrecorded, 202: fake_recorded}
     manager._psutil = fake_psutil
 
@@ -549,7 +562,7 @@ def test_terminate_registered_descendants_propagation(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [p for p in procs if isinstance(p, FakePsutilProcess)], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs)
+    fake_psutil.wait_procs_fn = fake_wait_procs
 
     terminated = manager._terminate_registered_descendants(parent_record, grace_period_s=0.01)
 
@@ -562,9 +575,7 @@ def test_terminate_registered_descendants_propagation(
 
 
 @pytest.mark.asyncio
-async def test_escalate_termination_async_harvests_psutil_returncode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_escalate_termination_async_harvests_psutil_returncode() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=50)
     manager.record_terminal_reason(record.pid, "interactive_completion", "test")
@@ -573,7 +584,7 @@ async def test_escalate_termination_async_harvests_psutil_returncode(
     fake_root._terminated = False
     fake_root.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {50: fake_root}
     manager._psutil = fake_psutil
 
@@ -585,7 +596,7 @@ async def test_escalate_termination_async_harvests_psutil_returncode(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [fake_root], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+    fake_psutil.wait_procs_fn = fake_wait_procs_with_dead
 
     try:
         await manager._escalate_termination_async(record, fake_proc, grace_period_s=0.01)
@@ -596,9 +607,7 @@ async def test_escalate_termination_async_harvests_psutil_returncode(
         manager.shutdown_all(grace_period_s=0.0)
 
 
-def test_escalate_with_psutil_harvests_psutil_returncode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_escalate_with_psutil_harvests_psutil_returncode() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=60)
     manager.record_terminal_reason(record.pid, "interactive_completion", "test")
@@ -607,7 +616,7 @@ def test_escalate_with_psutil_harvests_psutil_returncode(
     fake_root._terminated = True
     fake_root.returncode = -9
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {60: fake_root}
     manager._psutil = fake_psutil
 
@@ -619,7 +628,7 @@ def test_escalate_with_psutil_harvests_psutil_returncode(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [fake_root], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+    fake_psutil.wait_procs_fn = fake_wait_procs_with_dead
 
     manager._escalate_with_psutil(record, fake_proc, fake_psutil, grace_period_s=0.01)
     assert record.returncode == -9
@@ -627,9 +636,7 @@ def test_escalate_with_psutil_harvests_psutil_returncode(
     assert fake_proc.returncode == -9
 
 
-def test_escalate_termination_sync_cross_harvests_owned_child(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_escalate_termination_sync_cross_harvests_owned_child() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=100)
     child_record = _make_record(manager, pid=202)
@@ -653,7 +660,7 @@ def test_escalate_termination_sync_cross_harvests_owned_child(
     fake_parent._terminated = True
     fake_parent.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {100: fake_parent, 202: fake_child}
     manager._psutil = fake_psutil
 
@@ -662,7 +669,7 @@ def test_escalate_termination_sync_cross_harvests_owned_child(
     ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
         return [fake_parent, fake_child], []
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs_with_dead)
+    fake_psutil.wait_procs_fn = fake_wait_procs_with_dead
 
     manager._escalate_termination_sync(parent_record, parent_proc, grace_period_s=0.01)
 
@@ -675,9 +682,7 @@ def test_escalate_termination_sync_cross_harvests_owned_child(
     assert child_handle.returncode == -15
 
 
-def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_terminate_by_pid_persists_harvested_root_when_child_zombie() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     record = _make_record(manager, pid=10)
 
@@ -688,7 +693,7 @@ def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
     fake_root._terminated = True
     fake_root.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {10: fake_root, 20: fake_child}
     manager._psutil = fake_psutil
 
@@ -705,7 +710,7 @@ def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
             return [fake_root], [fake_child]
         return [], [fake_child]
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs)
+    fake_psutil.wait_procs_fn = fake_wait_procs
 
     manager._terminate_by_pid(record, grace_period_s=0.01)
 
@@ -713,9 +718,7 @@ def test_terminate_by_pid_persists_harvested_root_when_child_zombie(
     assert record.returncode == -15
 
 
-def test_escalate_termination_sync_persists_harvested_root_when_child_zombie(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_escalate_termination_sync_persists_harvested_root_when_child_zombie() -> None:
     manager = ProcessManager(policy=_FAST_POLICY)
     parent_record = _make_record(manager, pid=30)
     manager.record_terminal_reason(parent_record.pid, "interactive_completion", "test")
@@ -732,7 +735,7 @@ def test_escalate_termination_sync_persists_harvested_root_when_child_zombie(
     fake_parent._terminated = True
     fake_parent.returncode = -15
 
-    fake_psutil = FakePsutil()
+    fake_psutil = _ScriptedWaitPsutil()
     fake_psutil._processes = {30: fake_parent, 40: fake_child}
     manager._psutil = fake_psutil
 
@@ -749,7 +752,7 @@ def test_escalate_termination_sync_persists_harvested_root_when_child_zombie(
             return [fake_parent], [fake_child]
         return [], [fake_child]
 
-    monkeypatch.setattr(fake_psutil, "wait_procs", fake_wait_procs)
+    fake_psutil.wait_procs_fn = fake_wait_procs
 
     manager._escalate_termination_sync(parent_record, parent_proc, grace_period_s=0.01)
 

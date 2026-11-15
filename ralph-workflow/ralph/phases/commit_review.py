@@ -967,6 +967,8 @@ __all__ = [
     "CommitReviewGateFailed",
     "CommitReviewLoopback",
     "CommitReviewRejected",
+    "DiffEntry",
+    "TripwireReport",
     "TripwireThresholds",
     "apply_commit_review_actions",
     "build_commit_review_retry_hint",

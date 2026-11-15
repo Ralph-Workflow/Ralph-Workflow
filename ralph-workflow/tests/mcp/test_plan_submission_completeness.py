@@ -5,9 +5,16 @@ from pathlib import Path
 from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.mcp.artifacts.completion_receipts import write_artifact_receipt
 from ralph.mcp.artifacts.state_db import RunStateDB
+from ralph.mcp.tools.coordination import ARTIFACT_PLAN_WRITE_CAPABILITY
 from ralph.mcp.tools.md_artifact import handle_stage_md_artifact, handle_submit_md_artifact
 from ralph.phases.required_artifacts import RequiredArtifact
 from tests.test_md_artifact_staging import MockSession, _workspace
+
+
+class _PlanningSession(MockSession):
+    def check_capability(self, capability: str) -> object:
+        return capability == ARTIFACT_PLAN_WRITE_CAPABILITY or super().check_capability(capability)
+
 
 _PLAN = """---
 type: plan
@@ -24,7 +31,7 @@ Location: ralph/mcp/artifacts/completion_receipts.py
 def test_plan_submission_regression_unsubmitted_staged_draft_blocks_completion(
     tmp_path: Path,
 ) -> None:
-    session = MockSession()
+    session = _PlanningSession()
     session.run_id = "plan-run"
     workspace = _workspace(tmp_path)
     handle_submit_md_artifact(session, workspace, {"artifact_type": "plan", "content": _PLAN})

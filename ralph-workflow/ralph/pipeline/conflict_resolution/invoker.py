@@ -49,7 +49,7 @@ def default_invoker(
             from ralph.pipeline.factory import DefaultPipelineFactory
 
             deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
-        outcome = patched(
+        return patched(
             agent_name=agent_name,
             prompt_path=prompt_path,
             config=config,
@@ -62,7 +62,6 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
-        return outcome
 
     return _invoke
 

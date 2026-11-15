@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from loguru import logger
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline import attempt_stop_resolution
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
-from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import RebaseState
@@ -27,23 +23,27 @@ from tests._scenario_display import ScenarioDisplay
 from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
 from tests._scenario_result import ScenarioResult
-from tests.scenarios._rebase_recovery_setup import (
-    corrupted_config,
+from tests.scenarios._paused_rebase_fixtures import (
     paused_declared_decisions_and_gitlink_rebase,
     paused_multi_commit_empty_stop_rebase,
     paused_multi_commit_first_stop_rebase,
     paused_text_and_gitlink_rebase,
     paused_text_rebase,
+)
+from tests.scenarios._rebase_recovery_harness_helpers import (
+    FakeAgentRunner,
+    _capture_log_records,
+    capture_operator_lines,
+    corrupted_config,
     scenario_config,
+    shared_executor_seam,
     supervisor_restart,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Sequence
 
     from ralph.agents.timeout_clock import FakeClock
-    from ralph.pipeline.conflict_resolution import RebaseStop
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -90,174 +90,6 @@ __all__ = [
     "shared_executor_seam",
     "supervisor_restart",
 ]
-
-
-@dataclass
-class FakeAgentRunner:
-    mode: AgentMode
-    launches: int = 0
-    launch_times: list[float] = field(default_factory=list)
-    completed_stops: list[str] = field(default_factory=list)
-    clock: FakeClock | None = None
-    fail_at_launch: int | None = None
-
-    def resolve_rebase(
-        self,
-        root: Path,
-        target: str,
-        resolver: object,
-        *,
-        session: ResolutionSession | None = None,
-    ) -> bool:
-        from ralph.pipeline.integration_actions import default_agent_runner
-
-        effective_resolver = resolver if callable(resolver) else self
-        return default_agent_runner().resolve_rebase(
-            root, target, effective_resolver, session=session
-        )
-
-    def handle_agent_effect(self, effect: object, *args: object, **kwargs: object) -> object:
-        self.launches += 1
-        self.launch_times.append(self.clock.monotonic() if self.clock is not None else 0.0)
-        workspace_scope = kwargs.get("workspace_scope")
-        if workspace_scope is None and len(args) > 2:
-            workspace_scope = args[2]
-        root = getattr(workspace_scope, "root", Path.cwd())
-
-        if self.mode is AgentMode.PROVIDER_FAILURE:
-            raise ConnectionError("agent provider unavailable")
-        if self.mode is AgentMode.WATCHDOG_HANG:
-            raise TimeoutError("agent idle watchdog fired")
-        if self.mode is AgentMode.NON_ZERO_EXIT:
-            raise RuntimeError("agent exited with status 7")
-        if self.mode is AgentMode.SIGNAL:
-            raise RuntimeError("agent terminated by signal 15")
-        if self.mode is AgentMode.INVALID_RESULT:
-            return PipelineEvent.AGENT_FAILURE
-        if self.mode is AgentMode.LEAVES_MARKER:
-            return PipelineEvent.AGENT_SUCCESS
-
-        from ralph.git.merge import unmerged_paths
-
-        unmerged = unmerged_paths(root)
-        for relative in unmerged:
-            path = root / relative
-            if path.is_file():
-                if relative == "shared.txt" and (root / "series.txt").exists():
-                    path.write_text("target value\n", encoding="utf-8")
-                else:
-                    path.write_text("resolved by scenario agent\n", encoding="utf-8")
-        if self.mode is AgentMode.EDITS_AND_STAGES and unmerged:
-            git(root, "add", "--", *unmerged)
-        return PipelineEvent.AGENT_SUCCESS
-
-    def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
-        stop_identity: str | None = None
-        if self.fail_at_launch is not None:
-            stop_identity = git(root, "rev-parse", "REBASE_HEAD")
-            if stop_identity in self.completed_stops:
-                raise AssertionError("a completed stop must never be presented to the agent again")
-            if self.fail_at_launch == (self.launches + 1):
-                raise ConnectionError("agent provider unavailable partway through finite work")
-        import ralph.pipeline.effect_executor as effect_mod
-        from ralph.agents.system_clock import SystemClock
-        from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
-        from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
-        from ralph.workspace.scope import WorkspaceScope
-
-        deps = AttemptRunnerDeps(
-            clock=self.clock or SystemClock(),
-            invoke=effect_mod.execute_agent_effect,
-            probe_runner=None,
-            workspace_probe=None,
-            connectivity=None,
-        )
-        event = deps.invoke(
-            InvokeAgentEffect(
-                agent_name="scenario-rebase-resolver",
-                phase="rebase_conflict_resolution",
-                prompt_file="prompt.md",
-            ),
-            workspace_scope=WorkspaceScope(root),
-        )
-        if event == PipelineEvent.AGENT_FAILURE:
-            return False
-        if stop_identity is not None:
-            self.completed_stops.append(stop_identity)
-        return True
-
-
-@contextmanager
-def shared_executor_seam(runner: FakeAgentRunner | None) -> Iterator[None]:
-    import ralph.pipeline.effect_executor as effect_mod
-    from ralph.agents.timeout_clock import FakeClock
-    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-
-    orig_effect = effect_mod.execute_agent_effect
-
-    if runner is not None:
-
-        def _seam_execute(effect: object, *args: object, **kwargs: object) -> object:
-            return runner.handle_agent_effect(effect, *args, **kwargs)
-
-        effect_mod.execute_agent_effect = _seam_execute
-
-    controller = (
-        getattr(runner, "_shared_recovery_controller", None) if runner is not None else None
-    )
-    if controller is None:
-        clock = getattr(runner, "clock", None) if runner is not None else None
-        controller = RecoveryController(
-            options=RecoveryControllerOptions(clock=clock or FakeClock())
-        )
-        if runner is not None:
-            runner._shared_recovery_controller = controller
-
-    token = effect_mod.install_agent_effect_dependencies(
-        recovery_controller=controller,
-    )
-
-    try:
-        yield
-    finally:
-        effect_mod.reset_agent_effect_dependencies(token)
-        effect_mod.execute_agent_effect = orig_effect
-
-
-@contextmanager
-def capture_operator_lines(display: ScenarioDisplay | None = None) -> Iterator[list[OperatorLine]]:
-    lines: list[OperatorLine] = []
-
-    def sink(message: object) -> None:
-        record = getattr(message, "record", {})
-        level = record.get("level")
-        level_name = getattr(level, "name", "INFO")
-        content = str(record.get("message", ""))
-        if level_name in {"WARNING", "ERROR", "CRITICAL"} or ("waiting" in content.lower()):
-            lines.append(OperatorLine(level_name, content))
-
-    sink_id = logger.add(sink, level="INFO", format="{message}")
-    try:
-        yield lines
-    finally:
-        logger.remove(sink_id)
-        if display is not None:
-            lines.extend(display.lines)
-
-
-@contextmanager
-def _capture_log_records() -> Iterator[list[tuple[str, str]]]:
-    records: list[tuple[str, str]] = []
-
-    def sink(message: object) -> None:
-        record = getattr(message, "record", {})
-        records.append((str(record.get("name", "")), str(record.get("message", ""))))
-
-    sink_id = logger.add(sink, level="DEBUG", format="{message}")
-    try:
-        yield records
-    finally:
-        logger.remove(sink_id)
 
 
 def run_corrupted_config(root: Path) -> ScenarioResult:
@@ -739,7 +571,6 @@ def run_spent_chain_fall_over_then_wait(root: Path) -> ScenarioResult:
         second_launches = runner.launches - launches_after_first
     finally:
         reset_executors(token)
-
     waiting_lines = [
         line
         for line in second_lines
@@ -769,7 +600,6 @@ def run_empty_resolution_stop(root: Path) -> ScenarioResult:
     commit_file(root, "shared.txt", "feature diff\n", "feature stop that will resolve empty")
     commit_file(root, "series.txt", "seed\nsecond\n", "feature second commit")
     git(root, "rebase", "main", check=False)
-
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
     with shared_executor_seam(runner), capture_operator_lines() as lines:
         integrate_before_planning(

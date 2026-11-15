@@ -20,8 +20,4 @@ class ProcessTerminationIssuer(StrEnum):
     DIAGNOSTICS = "diagnostics"
 
 
-def unverified_issuer(raw: str) -> ProcessTerminationIssuer:
-    return ProcessTerminationIssuer(raw)
-
-
-__all__ = ["ProcessTerminationIssuer", "unverified_issuer"]
+__all__ = ["ProcessTerminationIssuer"]

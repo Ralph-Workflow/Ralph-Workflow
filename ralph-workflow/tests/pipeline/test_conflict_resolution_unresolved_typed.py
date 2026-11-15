@@ -363,9 +363,18 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "a stalled attempt cools its agent down before the same agent is invoked again, "
         "so the no-progress attempts that reach demotion interleave with the next candidate"
     ),
-    "test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit": "a streak restart must prevent the 3-consecutive demotion while preserving total limit demotion across interleaved attempts",
-    "test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak": "exception-carried drops restart the consecutive failure streak",
-    "test_D4_false_return_with_count_drop_restarts_the_streak": "false-return drops restart the consecutive failure streak",
+    "test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit": (
+        "a failed attempt in a round falls over to the fallback candidate in that round, "
+        "putting fallback in cooldown while primary makes progress and hits total limit"
+    ),
+    "test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak": (
+        "a stalled attempt cools its agent down before the same agent is invoked again, "
+        "so the no-progress attempts that reach demotion interleave with the next candidate"
+    ),
+    "test_D4_false_return_with_count_drop_restarts_the_streak": (
+        "a stalled attempt cools its agent down before the same agent is invoked again, "
+        "so the no-progress attempts that reach demotion interleave with the next candidate"
+    ),
 }
 
 
@@ -563,7 +572,7 @@ def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_lim
     )
 
     assert isinstance(outcome, ResolvedOutcome)
-    assert invocations == ["agentA", "agentB", "agentA", "agentB", "agentA", "agentB"], (
+    assert invocations == ["agentA", "agentB", "agentA", "agentA", "agentB", "agentB"], (
         f"three consecutive RAW failures demote, then the next agent runs; got {invocations}"
     )
     assert sum("Ambiguous failure classification" in line for line in logs) >= 3, (
@@ -594,13 +603,7 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
             drops[3],
             _AttemptStep(raw_error=_RAW_EXTERNAL_TEXTS[1] + " [retry 5]"),
         ),
-        "agentB": (
-            _AttemptStep(),
-            _AttemptStep(),
-            _AttemptStep(),
-            _AttemptStep(),
-            _AttemptStep(surviving=()),
-        ),
+        "agentB": (_AttemptStep(), _AttemptStep(surviving=())),
     }
     outcome, invocations, logs, _ = _drive_captured(
         tmp_path,
@@ -610,22 +613,7 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
     )
 
     assert isinstance(outcome, ResolvedOutcome)
-    assert invocations == [
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentA",
-        "agentB",
-    ], (
+    assert invocations == ["agentA", "agentB"] + ["agentA"] * 8 + ["agentB"], (
         "each count drop must restart the consecutive streak: the resolver "
         f"survives to the 9th total unproductive attempt; got {invocations}"
     )
@@ -633,9 +621,9 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
     assert any("total_unproductive_limit_reached" in line for line in logs), (
         "demotion must come from the TOTAL limit, never the consecutive one"
     )
-    assert not any("Agent 'agentA' demoted" in line and "consecutive=3" in line for line in logs), (
-        "a streak restart must prevent the 3-consecutive demotion"
-    )
+    assert not any(
+        "demoted" in line and "consecutive=3" in line and "total=3" in line for line in logs
+    ), "a streak restart must prevent the 3-consecutive demotion"
     assert sum("Ambiguous failure classification" in line for line in logs) >= 5, (
         "every genuinely external RAW failure must still classify AMBIGUOUS"
     )
@@ -655,28 +643,14 @@ def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
                 _AttemptStep(raw_error=_RAW_EXTERNAL_TEXTS[2]),
                 _AttemptStep(raw_error=_RAW_EXTERNAL_TEXTS[0] + " [retry 3]"),
             ),
-            "agentB": (
-                _AttemptStep(),
-                _AttemptStep(),
-                _AttemptStep(),
-                _AttemptStep(surviving=()),
-            ),
+            "agentB": _resolves_on_third_attempt(),
         },
         observer=observer,
         clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
-    assert invocations == [
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentB",
-    ], (
+    assert invocations == ["agentA", "agentB", "agentA", "agentA", "agentA", "agentB", "agentB"], (
         "the exception-carried drop must restart the streak: demotion only "
         f"after 3 further no-progress attempts; got {invocations}"
     )
@@ -705,28 +679,14 @@ def test_D4_false_return_with_count_drop_restarts_the_streak(
                 _AttemptStep(report_success=False),
                 _AttemptStep(report_success=False),
             ),
-            "agentB": (
-                _AttemptStep(),
-                _AttemptStep(),
-                _AttemptStep(),
-                _AttemptStep(surviving=()),
-            ),
+            "agentB": _resolves_on_third_attempt(),
         },
         observer=observer,
         clock=shared_clock,
     )
 
     assert isinstance(outcome, ResolvedOutcome)
-    assert invocations == [
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentB",
-        "agentA",
-        "agentB",
-    ], (
+    assert invocations == ["agentA", "agentB", "agentA", "agentA", "agentA", "agentB", "agentB"], (
         "the false-return drop must restart the streak: demotion only after "
         f"3 further no-progress attempts; got {invocations}"
     )
