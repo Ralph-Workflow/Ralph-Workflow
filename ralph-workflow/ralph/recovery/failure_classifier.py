@@ -646,10 +646,11 @@ def typed_outcome_reason(outcome: ConflictAttemptOutcome, unresolved_count: int 
         return "candidate produced no activity before it exited"
     return "conflict attempt failed"
 
+
 class FailureClassifier:
     def classify_outcome(
         self,
-        outcome: ConflictAttemptOutcome,
+        outcome: ConflictAttemptOutcome | str,
         *,
         phase: str,
         agent: str | None,
@@ -657,6 +658,20 @@ class FailureClassifier:
         raw_failure: BaseException | str | None = None,
         facts: AttemptFacts | None = None,
     ) -> ClassifiedFailure:
+        if not isinstance(outcome, ConflictAttemptOutcome):
+            try:
+                outcome = ConflictAttemptOutcome(outcome)
+            except ValueError:
+                outcome = ConflictAttemptOutcome.ATTEMPT_FAILED
+
+        if outcome is ConflictAttemptOutcome.RAW:
+            return self.classify(
+                raw_failure if raw_failure is not None else "conflict attempt failed",
+                phase=phase,
+                agent=agent,
+                facts=facts,
+            )
+
         classification = _TYPED_OUTCOME_CLASSIFICATION.get(outcome)
         if classification is None:
             msg = f"conflict attempt outcome '{outcome.value}' is not a typed outcome"
@@ -682,7 +697,6 @@ class FailureClassifier:
             must_charge_ledger=counts,
             facts=facts,
         )
-
     def classify(
         self,
         exc: BaseException | str,

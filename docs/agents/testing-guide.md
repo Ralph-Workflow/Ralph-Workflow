@@ -446,13 +446,13 @@ a ledger row is a defect, and so is a ledger row without a retained entry.
 The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
-| root | 466 | 396 | 862 | 855 | 2113 | follow-up: backlog white-box conversion unit |
+| root | 465 | 395 | 851 | 853 | 2099 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 265 | 141 | 429 | follow-up: mcp public-seam unit |
 | agents | 100 | 34 | 281 | 100 | 415 | follow-up: agent public-seam unit |
 | auto-integrate | 41 | 162 | 38 | 54 | 254 | follow-up: auto-integrate public-seam unit |
 | project-policy | 28 | 4 | 53 | 158 | 215 | follow-up: policy public-seam unit |
 | run-loop | 17 | 102 | 29 | 88 | 219 | follow-up: run-loop public-seam unit |
-| display | 21 | 22 | 85 | 75 | 182 | follow-up: display public-seam unit |
+| display | 20 | 22 | 85 | 74 | 181 | follow-up: display public-seam unit |
 | pipeline | 32 | 72 | 33 | 80 | 185 | follow-up: pipeline public-seam unit |
 | integration | 22 | 21 | 40 | 98 | 159 | follow-up: integration public-seam unit |
 | property | 11 | 0 | 58 | 32 | 90 | follow-up: property public-seam unit |
@@ -925,6 +925,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_commit_review_artifact.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_review_diff.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_review_invariants.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_commit_review_protected_overwrite_tripwire.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_review_tripwires.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_review_verify_gate.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_completion_invocation_exit_logging.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

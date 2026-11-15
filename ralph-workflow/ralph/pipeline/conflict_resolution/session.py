@@ -319,11 +319,6 @@ def classify_failed_resolution_attempt(
     effective_outcome = outcome
     if not workspace_changed and outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
         effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
-    typed_outcome = (
-        effective_outcome
-        if effective_outcome is not None and effective_outcome is not ConflictAttemptOutcome.RAW
-        else None
-    )
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
     recovery_state: PipelineState
@@ -346,8 +341,9 @@ def classify_failed_resolution_attempt(
         phase=PHASE_RESOLUTION,
         agent=agent_name,
         facts=facts,
-        outcome=typed_outcome,
+        outcome=effective_outcome,
         unresolved_count=unresolved_count,
+        raw_failure=raw_failure,
     )
     try:
         new_state, _effects, _failure_event = controller.handle(
@@ -366,8 +362,8 @@ def classify_failed_resolution_attempt(
         )
     session.recovery_state = new_state
     session.last_recovery_reason = (
-        typed_outcome_reason(typed_outcome, unresolved_count)
-        if typed_outcome is not None
+        context.classified_failure.reason
+        if context.classified_failure is not None
         else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
     candidates_tuple = tuple(candidates) if candidates else (agent_name,)

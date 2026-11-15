@@ -777,7 +777,7 @@ stale, and the fastest drift check is a re-read of:
   and `:39` (`EXEC_MAX_TIMEOUT_MS`), plus `:169`
   (`EXEC_SOFT_REPLY_BUDGET_MS`), `:171` (`EXEC_JOB_CEILING_S`), `:173`
   (`EXEC_JOB_CEILING_MAX_S`) — the Cause 1 / Cause 2 constants.
-- `ralph-workflow/ralph/process/manager/_managed_process.py:291` (the
+- `ralph-workflow/ralph/process/manager/_managed_process.py:292` (the
   output-only `last_output_at_ref` reset) and `:349-380` (the poll
   loop that computes `inactivity_deadline` and arms the kill)
 - ralph-workflow/ralph/mcp/tools/exec.py:558-571 (the injected-runner
