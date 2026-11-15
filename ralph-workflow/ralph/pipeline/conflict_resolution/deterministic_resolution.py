@@ -30,6 +30,7 @@ class _StopWithConflicts(Protocol):
     @property
     def conflicted_files(self) -> tuple[str, ...]: ...
 
+
 __all__ = [
     "MixedKindResolution",
     "resolve_completion_in_place",

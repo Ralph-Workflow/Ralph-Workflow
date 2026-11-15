@@ -24,7 +24,7 @@ def test_invoke_resolution_agent_does_not_require_declare_complete(
         raise RuntimeError("stop after capturing")
 
     monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
+        "ralph.pipeline.conflict_resolution.session._invoke_effect",
         _capture_execute,
     )
     monkeypatch.setattr(

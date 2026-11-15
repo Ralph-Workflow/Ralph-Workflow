@@ -137,9 +137,7 @@ def charge_failed_attempt(
 
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     count = (
-        min(attempts, carried + 1)
-        if skip.last_outcome == RebaseOutcomeKind.CONFLICT
-        else carried
+        min(attempts, carried + 1) if skip.last_outcome == RebaseOutcomeKind.CONFLICT else carried
     )
     updated = skip.record_consecutive_conflicts(count, cap=attempts)
     return updated.model_copy(

@@ -243,7 +243,10 @@ def test_ladder_postcondition_failure_records_evidence_and_escalates(tmp_path: P
 
     # Evidence recorded under both rung key and failed:post-condition:<rung>
     evidence = ledger.read().ladder_evidence
-    assert evidence.get("failed:post-condition:quarantine") == "failed:post-condition:blocking_observation_changed"
+    assert (
+        evidence.get("failed:post-condition:quarantine")
+        == "failed:post-condition:blocking_observation_changed"
+    )
     assert (
         evidence.get("failed:post-condition:quarantine_and_restore")
         == "failed:post-condition:blocking_observation_changed"
@@ -263,7 +266,8 @@ def test_ladder_postcondition_failure_records_evidence_and_escalates(tmp_path: P
     assert transition.state is LadderState.FRESH_WORKTREE
     assert transition.next_rung is CleanupLadderRung.FRESH_WORKTREE
     assert any(
-        eff.kind is LadderEffectKind.EMIT_ESCALATION and eff.rung is CleanupLadderRung.FRESH_WORKTREE
+        eff.kind is LadderEffectKind.EMIT_ESCALATION
+        and eff.rung is CleanupLadderRung.FRESH_WORKTREE
         for eff in transition.effects
     )
 
@@ -382,7 +386,10 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
             "ralph.pipeline.conflict_resolution.rebase_loop.current_rebase_identity",
             return_value=("feat_sha", "onto_sha"),
         ),
-        patch("ralph.pipeline.auto_integrate_planning._evaluate_paused_resolution", return_value=(True, MagicMock())),
+        patch(
+            "ralph.pipeline.auto_integrate_planning._evaluate_paused_resolution",
+            return_value=(True, MagicMock()),
+        ),
     ):
         _finish_paused_rebase(
             config=MagicMock(),
@@ -420,7 +427,9 @@ def test_entry_sites_ast_order_verification() -> None:
     site1_names = [n.func.id for n in site1_calls if isinstance(n.func, ast.Name)]
     assert "finish_resolved_rebase_stops" in site1_names
     assert "attempt_stop_resolution" in site1_names
-    assert site1_names.index("finish_resolved_rebase_stops") < site1_names.index("attempt_stop_resolution")
+    assert site1_names.index("finish_resolved_rebase_stops") < site1_names.index(
+        "attempt_stop_resolution"
+    )
 
     # Site 2: auto_integrate_planning.py
     site2_path = root_repo / "ralph" / "pipeline" / "auto_integrate_planning.py"
@@ -438,4 +447,6 @@ def test_entry_sites_ast_order_verification() -> None:
     site2_names = [n.func.id for n in site2_calls if isinstance(n.func, ast.Name)]
     assert "finish_resolved_rebase_stops" in site2_names
     assert "attempt_stop_resolution" in site2_names
-    assert site2_names.index("finish_resolved_rebase_stops") < site2_names.index("attempt_stop_resolution")
+    assert site2_names.index("finish_resolved_rebase_stops") < site2_names.index(
+        "attempt_stop_resolution"
+    )

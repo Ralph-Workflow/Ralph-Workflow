@@ -392,8 +392,7 @@ def _run_one_round(
                 probe_changed=progress.probe_changed,
             )
         agent_saw = bool(
-            session.last_attempt_saw_activity
-            or not isinstance(_invoker_result, ResolvedOutcome)
+            session.last_attempt_saw_activity or not isinstance(_invoker_result, ResolvedOutcome)
         )
         agent_ran = agent_ran or agent_saw
         if _check_worktree_repair(

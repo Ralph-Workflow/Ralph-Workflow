@@ -13,7 +13,6 @@ __all__ = ["ResolvedOutcome"]
 _TUPLE_PAIR_LEN = 2
 
 
-
 @dataclass(frozen=True, slots=True)
 class ResolvedOutcome:
     terminal_reason: object | None = None

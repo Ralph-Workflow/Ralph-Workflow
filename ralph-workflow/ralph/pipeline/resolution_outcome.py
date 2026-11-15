@@ -27,7 +27,6 @@ __all__ = [
 ]
 
 
-
 ResolutionOutcomeUnion = (
     ResolvedOutcome
     | WaitingOutcome

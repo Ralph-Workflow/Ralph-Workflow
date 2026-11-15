@@ -835,4 +835,3 @@ def test_incident_5_live_session_without_completion_evidence_records_unknown_iss
     assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
         "an unknown verdict must never bench the agent"
     )
-

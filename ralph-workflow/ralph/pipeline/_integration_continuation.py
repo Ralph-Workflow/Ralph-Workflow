@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-
 class ExhaustedResolutionFailure(str):
     terminal_reason: ResolutionTerminationReason
 

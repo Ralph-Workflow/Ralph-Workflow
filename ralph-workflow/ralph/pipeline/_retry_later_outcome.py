@@ -15,7 +15,6 @@ __all__ = ["RetryLaterOutcome"]
 _TUPLE_PAIR_LEN = 2
 
 
-
 @dataclass(frozen=True, slots=True)
 class RetryLaterOutcome:
     until: float | None = None

@@ -275,7 +275,15 @@ def test_mid_rebase_new_feature_and_target_commits_land_and_verify(tmp_git_repo:
     paused_text_rebase(tmp_git_repo)
     feature_sha = git(tmp_git_repo, "rev-parse", "feature")
     old_target = git(tmp_git_repo, "rev-parse", "main")
-    new_target = git(tmp_git_repo, "commit-tree", f"{old_target}^{{tree}}", "-p", old_target, "-m", "target mid-rebase")
+    new_target = git(
+        tmp_git_repo,
+        "commit-tree",
+        f"{old_target}^{{tree}}",
+        "-p",
+        old_target,
+        "-m",
+        "target mid-rebase",
+    )
     git(tmp_git_repo, "update-ref", "refs/heads/main", new_target, old_target)
 
     run = drive_integration(tmp_git_repo, resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES))
@@ -321,4 +329,3 @@ def test_strategy_switch_carrying_resolved_work(tmp_git_repo: Path) -> None:
         feature=feature_sha,
         source_refs=("main",),
     )
-

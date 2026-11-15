@@ -218,10 +218,6 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
     return agents
 
 
-class RecoveryControllerUnavailableError(RuntimeError):
-    pass
-
-
 def ensure_session_controller(
     session: ResolutionSession | None,
     policy_bundle: PolicyBundle | None = None,
