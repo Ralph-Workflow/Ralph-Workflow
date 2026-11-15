@@ -8,8 +8,6 @@ from pathlib import Path
 
 MARKER_FILENAME = "ralph_canary_marker.txt"
 MARKER_CONTENT = "RALPH_CANARY_OK"
-PRODUCTION_PRETRUST_FLAG = "--dangerously-skip-permissions"
-PRINT_MODE_FLAGS = ("-p", "--print")
 TRUSTED_ROOT_ENV = "STUB_TRUSTED_ROOT"
 BLOCK_ENV = "STUB_BLOCK"
 EXIT_DELAY_ENV = "STUB_EXIT_DELAY_SECONDS"
@@ -41,10 +39,7 @@ def main() -> int:
     _record_argv()
     trusted_root = os.environ.get(TRUSTED_ROOT_ENV)
     cwd = Path.cwd()
-    launch_is_pretrusted = PRODUCTION_PRETRUST_FLAG in sys.argv
-    launch_is_noninteractive = any(flag in sys.argv for flag in PRINT_MODE_FLAGS)
-    cwd_is_trusted = trusted_root is not None and _within(cwd, Path(trusted_root))
-    if launch_is_pretrusted and launch_is_noninteractive and cwd_is_trusted:
+    if trusted_root and _within(cwd, Path(trusted_root)):
         (cwd / MARKER_FILENAME).write_text(MARKER_CONTENT, encoding="utf-8")
         sys.stdout.write("fake-trust-dialog-cli: trusted cwd, marker written\n")
         sys.stdout.flush()

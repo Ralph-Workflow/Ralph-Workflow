@@ -19,31 +19,11 @@ from ralph.recovery.canary_probe import (
     ProbeResult,
     run_canary_probe,
 )
-from ralph.recovery.dead_agent_verdict import (
-    DeadAgentVerdict,
-    probe_outcome_verdict,
-    verdict_benches_agent,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.agents.invoke import InvokeOptions
-
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_canary_probe_regression_untrusted_temp_workspace_fails_open": (
-        "the never-trusted temp-directory fallback was removed, so a probe with no "
-        "trusted parent now fails open as probe_could_not_run and benches nothing. "
-        "The removed checks asserted that removed fallback: outcome equals "
-        "ProbeOutcome.PASSED, exactly one invocation, options is not None, "
-        "workspace_path is not None, workspace_path name starts with "
-        "ralph-canary-probe-, and the workspace path no longer exists. The test now "
-        "asserts the fail-open contract instead: outcome is ProbeOutcome.INCONCLUSIVE, "
-        "detail equals probe_could_not_run, no marker written, no invocations, an "
-        "empty temp directory, and the unknown verdict that benches no agent"
-    ),
-}
 
 
 class _FakeInvoke(Protocol):
@@ -310,29 +290,27 @@ def test_probe_places_scratch_under_the_trusted_parent_and_removes_it(
     assert not (workspace_path / CANARY_MARKER_FILENAME).exists()
 
 
-def test_canary_probe_regression_untrusted_temp_workspace_fails_open(
+def test_probe_falls_back_to_mkdtemp_when_trusted_parent_resolution_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def _failing_find_repo_root(start: Path) -> Path:
         raise RuntimeError("not inside a git repository")
 
-    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("ralph.recovery.canary_probe.find_repo_root", _failing_find_repo_root)
     calls: list[_Call] = []
     result = run_canary_probe(
         _agent_config(),
         invoke_fn=_make_invoke("write_marker", calls),
-        trusted_parent=None,
     )
-    assert result.outcome is ProbeOutcome.INCONCLUSIVE
-    assert result.detail == "probe_could_not_run"
-    assert result.marker_written is None
-    assert calls == []
-    assert list(tmp_path.iterdir()) == []
-    verdict = probe_outcome_verdict(result.outcome)
-    assert verdict is DeadAgentVerdict.UNKNOWN
-    assert verdict_benches_agent(verdict) is False
+    assert result.outcome == ProbeOutcome.PASSED
+    assert len(calls) == 1
+    options = calls[0].options
+    assert options is not None
+    workspace_path = options.workspace_path
+    assert workspace_path is not None
+    assert workspace_path.name.startswith("ralph-canary-probe-")
+    assert not workspace_path.exists()
 
 
 def test_inconclusive_maps_to_the_unknown_verdict_hint(tmp_path: Path) -> None:

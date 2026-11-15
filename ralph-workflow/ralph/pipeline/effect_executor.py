@@ -121,6 +121,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.pipeline._agent_effect_runner import AgentEffectRunner
     from ralph.pipeline.agent_execution_deps import (
         _InvokeAgentFn,
         _ShowPhaseStartFn,
@@ -137,16 +138,6 @@ if TYPE_CHECKING:
 
     class _KwargsMaterializeMasterPromptFn(Protocol):
         def __call__(self, **kwargs: object) -> str: ...
-
-    class _InjectedAgentRunner(Protocol):
-        def __call__(
-            self,
-            effect: InvokeAgentEffect,
-            config: UnifiedConfig,
-            pipeline_deps: PipelineDeps,
-            workspace_scope: WorkspaceScope,
-            **options: object,
-        ) -> PipelineEvent | AgentFailureEvent | AttemptEnded: ...
 
 
 _VERBOSE_LOG_LEVEL = 2
@@ -174,7 +165,7 @@ _DEFAULT_PHASE_NAMES = frozenset(
 
 @dataclass(frozen=True)
 class AgentEffectDependencies:
-    agent_runner: _InjectedAgentRunner | None = None
+    agent_runner: AgentEffectRunner | None = None
     recovery_controller: RecoveryController | None = None
     pipeline_deps: PipelineDeps | None = None
 
@@ -187,7 +178,7 @@ _AGENT_EFFECT_DEPENDENCIES: ContextVar[AgentEffectDependencies | None] = Context
 
 def install_agent_effect_dependencies(
     *,
-    agent_runner: _InjectedAgentRunner | None = None,
+    agent_runner: AgentEffectRunner | None = None,
     recovery_controller: RecoveryController | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> Token[AgentEffectDependencies | None]:
@@ -334,10 +325,7 @@ def execute_agent_effect(
         return PipelineEvent.AGENT_FAILURE
 
     active_rec = (
-        cast(
-            "RecoveryController | None",
-            opts.get("recovery_controller") or opts.get("recovery"),
-        )
+        cast("RecoveryController | None", opts.get("recovery_controller") or opts.get("recovery"))
         or injected.recovery_controller
     )
     if active_rec is None:

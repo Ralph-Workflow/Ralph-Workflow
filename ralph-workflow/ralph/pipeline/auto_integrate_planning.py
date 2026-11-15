@@ -147,6 +147,7 @@ def integrate_before_planning(
             config=config,
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
+            force_retry=True,
         )
         if recovery_retained_record(recovered) or (
             recovered is not None and recovered.fast_forwarded
@@ -157,7 +158,7 @@ def integrate_before_planning(
     )
     if target is None:
         return None
-    unfinished = finish_paused_rebase(config, root, target, rebase_stop_resolver)
+    unfinished = _finish_paused_rebase(config, root, target, rebase_stop_resolver)
     if unfinished is not None:
         return unfinished
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
@@ -268,7 +269,7 @@ def _abort_and_fallback_merge(
     return None
 
 
-def finish_paused_rebase(
+def _finish_paused_rebase(
     config: UnifiedConfig,
     root: Path,
     target: str,
@@ -309,6 +310,7 @@ def finish_paused_rebase(
             resolver=resolver,
             record=read_record(root) or resolution_gate_record(root, target),
             conflict_config=config.conflict_resolution,
+            force_retry=True,
         ),
     )
     handled, state = _evaluate_paused_resolution(result, target)

@@ -87,17 +87,10 @@ def resolve_failure_ledger(
 ) -> AgentFailureLedger | None:
     if ledger is not None:
         return ledger
-    effective_session = session
-    if effective_session is None:
-        from ralph.pipeline.conflict_resolution.rebase_loop import (
-            active_rebase_resolution_session,
-        )
-
-        effective_session = active_rebase_resolution_session()
-    if effective_session is not None:
+    if session is not None:
         from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 
-        return session_ledger(effective_session)
+        return session_ledger(session)
     return None
 
 

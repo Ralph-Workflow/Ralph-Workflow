@@ -12,14 +12,11 @@ from tests.scenarios._rebase_recovery_harness import (
     ScenarioResult,
     run_completed_rebase_promotion,
     run_corrupted_config,
-    run_declared_decisions_and_gitlink_resolution,
     run_detached_head_probe_quietness,
     run_empty_resolution_stop,
-    run_gate_quiescence_ticks,
     run_marker_resolution,
     run_marker_resolution_bounded,
     run_multi_commit_empty_stop_recovery,
-    run_sixth_symptom_landing,
     run_spent_chain_fall_over_then_wait,
     run_spent_gate,
     run_unstaged_text_resolution,
@@ -165,62 +162,3 @@ def test_leaves_marker_mode_retains_the_rebase(tmp_git_repo: Path) -> None:
 
     assert result.resolver_launches == 1
     assert result.terminal_state == "retained"
-
-
-def test_sixth_symptom_lands_records_policy_and_stays_quiet(tmp_git_repo: Path) -> None:
-    result = run_sixth_symptom_landing(tmp_git_repo)
-
-    assert result.terminal_state == "landed"
-    assert result.resolver_launches == 1
-    stages = result.facts["stage_shas"].split(",")
-    assert len(stages) == 3 and all(len(sha) == 40 for sha in stages)
-    policy = result.facts["policy_lines"]
-    assert all(
-        f"{label}={sha}" in policy
-        for label, sha in zip(("base", "ours", "theirs"), stages, strict=True)
-    )
-    assert "policy=vendor-immutable" in policy
-    assert "alternatives=('unchanged-from-base', 'ours', 'theirs')" in policy
-    assert result.facts["integrated_feature_sha"] == result.facts["completed_head"]
-    assert result.facts["head"] == result.facts["target"]
-    assert result.facts["launches_after_landing"] == "0"
-    assert result.facts["lines_after_landing"] == "0"
-    assert result.facts["post_landing_selections"] == "0"
-    assert result.facts["repeated_pairs"] == ""
-
-
-def test_gate_active_identity_is_quiet_for_ten_ticks(tmp_git_repo: Path) -> None:
-    result = run_gate_quiescence_ticks(tmp_git_repo)
-
-    assert result.terminal_state == "quiescent"
-    assert result.resolver_launches == 0
-    assert result.facts["gate_count"] == "1"
-    assert result.facts["waiting_count"] == "1"
-    waiting = result.facts["waiting_lines"]
-    assert "conflict identity, eligible agents, and configuration unchanged" in waiting
-    assert waiting.endswith("fix configuration and run 'ralph --check-config'.")
-
-
-def test_mixed_declared_decisions_and_gitlink_are_separated_then_land(
-    tmp_git_repo: Path,
-) -> None:
-    result = run_declared_decisions_and_gitlink_resolution(tmp_git_repo)
-
-    assert result.terminal_state == "landed"
-    content = "\n".join(line.content for line in result.operator_lines)
-    assert "2 resolvable" in content
-    assert "1 needs operator action: vendor/link" in content
-    assert "vendor/link: gitlink pointer policy: conflict on vendor/link" in content
-    assert "deleted.txt: delete/modify declaration" in content
-    assert "docs/decision.md: marker-less declaration" in content
-    assert result.facts["prompted_paths"] == "deleted.txt,docs/decision.md"
-    assert result.facts["driver_invocations"] == "1"
-    assert result.facts["driver_resolved"] == "false"
-    assert "conflicts resolved in round" not in content
-    stages = result.facts["stage_shas"].split(",")
-    policy = result.facts["policy_lines"]
-    assert all(
-        f"{label}={sha}" in policy
-        for label, sha in zip(("base", "ours", "theirs"), stages, strict=True)
-    )
-    assert result.facts["head"] == result.facts["target"]

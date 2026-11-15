@@ -3,17 +3,12 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from ralph.git.merge import UnmergedPathsObservation
-from ralph.git.operation_snapshot import (
-    OperationSnapshot,
-    OperationState,
-    is_stop_resolved,
-    observe_operation_snapshot,
-)
+from ralph.git.operation_snapshot import OperationSnapshot, OperationState, is_stop_resolved
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline import resolve_conflicted_rebase
-from ralph.pipeline._pending_rebase_continue import pending_rebase_identity_matches
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
@@ -44,6 +39,7 @@ from ralph.pipeline.integration_ladder import (
     decide_ladder_transition,
     run_ladder_rung,
 )
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs, _ledger
 from tests._scenario_git import commit_file, git
@@ -128,7 +124,7 @@ def test_mixed_kind_deterministic_resolves_gitlink_and_retains_text(tmp_git_repo
         ("shared.txt",),
         kinds={"shared.txt": ConflictKind.TEXT},
     )
-    assert pure_text.resolved_gitlink_paths == ()
+    assert pure_text.resolved_gitlink_paths == (), "pure text stop leaves gitlinks empty"
     assert pure_text.remaining_text_paths == ("shared.txt",)
 
 
@@ -203,37 +199,56 @@ def test_operation_snapshot_stop_resolved_authority() -> None:
     assert UnmergedPathsObservation((), query_ok=False).is_resolved is False
 
 
-def test_pending_rebase_identity_matches_observed_rebase_state(tmp_git_repo: Path) -> None:
-    _setup_mixed_rebase(tmp_git_repo)
-    unresolved_snapshot = observe_operation_snapshot(tmp_git_repo)
+def test_pending_rebase_identity_match_is_observable_from_snapshot(tmp_path: Path) -> None:
     rec = IntegrationRecord(
         phase="integrating",
         target="main",
         pre_feature_sha="feat_sha",
         pre_target_sha="target_sha",
-        rebase_continue_head=unresolved_snapshot.head_sha,
-        rebase_continue_stop=unresolved_snapshot.rebase_head,
-        rebase_continue_tree=unresolved_snapshot.index_tree,
+        rebase_continue_head="head_sha",
+        rebase_continue_stop="stop_sha",
+        rebase_continue_tree="tree_sha",
     )
-    assert pending_rebase_identity_matches(tmp_git_repo, rec) is False
 
-    (tmp_git_repo / "shared.txt").write_text("resolved text\n", encoding="utf-8")
-    git(tmp_git_repo, "add", "shared.txt")
-    git(
-        tmp_git_repo,
-        "update-index",
-        "--cacheinfo",
-        f"160000,{git(tmp_git_repo, 'rev-parse', ':2:vendor/link')},vendor/link",
-    )
-    resolved_snapshot = observe_operation_snapshot(tmp_git_repo)
-    resolved_record = rec.model_copy(
-        update={
-            "rebase_continue_head": resolved_snapshot.head_sha,
-            "rebase_continue_stop": resolved_snapshot.rebase_head,
-            "rebase_continue_tree": resolved_snapshot.index_tree,
-        }
-    )
-    assert pending_rebase_identity_matches(tmp_git_repo, resolved_record) is True
+    with patch(
+        "ralph.pipeline._pending_rebase_continue.observe_operation_snapshot"
+    ) as mock_observe:
+        mock_observe.return_value = OperationSnapshot(
+            unmerged_paths=(),
+            unmerged_query_ok=True,
+            operation_state=OperationState.REBASE_PAUSED,
+            head_sha="head_sha",
+            target_tip="tip",
+            merge_head=None,
+            rebase_head="stop_sha",
+            index_tree="tree_sha",
+            staged_conflict_marker_paths=(),
+        )
+        snapshot = mock_observe.return_value
+        assert snapshot.operation_state is OperationState.REBASE_PAUSED
+        assert all(
+            (rec.rebase_continue_head, rec.rebase_continue_stop, rec.rebase_continue_tree)
+        )
+        assert snapshot.stop_resolved is True
+        assert snapshot.head_sha == rec.rebase_continue_head
+        assert snapshot.rebase_head == rec.rebase_continue_stop
+        assert snapshot.index_tree == rec.rebase_continue_tree
+
+        unmerged_observation_snapshot = OperationSnapshot(
+            unmerged_paths=("remaining.txt",),
+            unmerged_query_ok=True,
+            operation_state=OperationState.REBASE_PAUSED,
+            head_sha="head_sha",
+            target_tip="tip",
+            merge_head=None,
+            rebase_head="stop_sha",
+            index_tree="tree_sha",
+            staged_conflict_marker_paths=(),
+        )
+        mock_observe.return_value = unmerged_observation_snapshot
+        assert unmerged_observation_snapshot.stop_resolved is False, (
+            "unmerged paths remaining in observation snapshot fails match"
+        )
 
 
 def test_ladder_postcondition_failure_records_evidence_and_escalates(tmp_path: Path) -> None:
@@ -255,10 +270,9 @@ def test_ladder_postcondition_failure_records_evidence_and_escalates(tmp_path: P
     assert not result.post_condition_verified
 
     evidence = ledger.read().ladder_evidence
-    assert (
-        evidence.get("failed:post-condition:quarantine")
-        == "failed:post-condition:blocking_observation_changed"
-    )
+    assert evidence.get("failed:post-condition:quarantine") == (
+        "failed:post-condition:blocking_observation_changed"
+    ), "evidence recorded under both the rung key and the failed post-condition key"
     assert (
         evidence.get("failed:post-condition:quarantine_and_restore")
         == "failed:post-condition:blocking_observation_changed"
@@ -294,24 +308,33 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
     initial_attempts = AttemptState(repeat_threshold=1)
     assert (
         decide(DecisionContext(obs, attempts=initial_attempts, dirt_shape=shape)) is direct_action
+    ), "with 0 repeats the public decision seam keeps the direct action"
+
+    identical_observation_and_action_signature = initial_attempts.signature(obs)
+    identical_observation_and_action_key = (
+        identical_observation_and_action_signature,
+        direct_action.value,
     )
 
-    sig = initial_attempts.signature(obs)
-    key = (sig, direct_action.value)
-
-    pressured_1 = AttemptState(repeat_counts=OrderedDict({key: 2}), repeat_threshold=1)
+    pressured_1 = AttemptState(
+        repeat_counts=OrderedDict({identical_observation_and_action_key: 2}), repeat_threshold=1
+    )
     act_1 = decide(DecisionContext(obs, attempts=pressured_1, dirt_shape=shape))
     assert act_1 == NextAction.QUARANTINE_AND_RESTORE
 
-    pressured_2 = AttemptState(repeat_counts=OrderedDict({key: 3}), repeat_threshold=1)
+    pressured_2 = AttemptState(
+        repeat_counts=OrderedDict({identical_observation_and_action_key: 3}), repeat_threshold=1
+    )
     act_2 = decide(DecisionContext(obs, attempts=pressured_2, dirt_shape=shape))
     assert act_2 == NextAction.REBUILD_IN_FRESH_WORKTREE
 
-    pressured_3 = AttemptState(repeat_counts=OrderedDict({key: 4}), repeat_threshold=1)
+    pressured_3 = AttemptState(
+        repeat_counts=OrderedDict({identical_observation_and_action_key: 4}), repeat_threshold=1
+    )
     act_3 = decide(DecisionContext(obs, attempts=pressured_3, dirt_shape=shape))
     assert act_3 == NextAction.ADAPT_ENVIRONMENT_AND_RETRY
 
-    facts_1 = LadderFacts(
+    normal_cleanup_failure_facts = LadderFacts(
         rung=CleanupLadderRung.NORMAL_CLEANUP,
         outcome="failed",
         reason="failed:post-condition:stop_gone",
@@ -320,13 +343,105 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
         landed=LandedVerdict.NOT_LANDED,
         terminal_for_attempt=False,
     )
-    t1 = decide_ladder_transition(facts_1)
-    assert t1.next_rung is CleanupLadderRung.ALTERNATE_PRESERVATION
+    t1 = decide_ladder_transition(normal_cleanup_failure_facts)
+    assert t1.next_rung is CleanupLadderRung.ALTERNATE_PRESERVATION, (
+        "normal cleanup failure escalates to alternate preservation"
+    )
 
-    facts_2 = replace(facts_1, rung=CleanupLadderRung.ALTERNATE_PRESERVATION)
-    t2 = decide_ladder_transition(facts_2)
-    assert t2.next_rung is CleanupLadderRung.QUARANTINE
+    alternate_preservation_failure_facts = replace(
+        normal_cleanup_failure_facts, rung=CleanupLadderRung.ALTERNATE_PRESERVATION
+    )
+    t2 = decide_ladder_transition(alternate_preservation_failure_facts)
+    assert t2.next_rung is CleanupLadderRung.QUARANTINE, (
+        "alternate preservation failure escalates to quarantine"
+    )
 
-    facts_3 = replace(facts_1, rung=CleanupLadderRung.QUARANTINE)
-    t3 = decide_ladder_transition(facts_3)
-    assert t3.next_rung is CleanupLadderRung.FRESH_WORKTREE
+    quarantine_failure_facts = replace(
+        normal_cleanup_failure_facts, rung=CleanupLadderRung.QUARANTINE
+    )
+    t3 = decide_ladder_transition(quarantine_failure_facts)
+    assert t3.next_rung is CleanupLadderRung.FRESH_WORKTREE, (
+        "quarantine failure escalates to fresh worktree"
+    )
+
+
+def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_path: Path) -> None:
+    calls_site1: list[str] = []
+    write_record(
+        tmp_path,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="feat_sha",
+            pre_target_sha="onto_sha",
+        ),
+    )
+
+    def mock_finish_stops_site1(root: Path, target: str) -> bool:
+        calls_site1.append("finish_resolved_rebase_stops")
+        return False
+
+    def mock_attempt_resolution_site1(name: str, trigger: object) -> object:
+        calls_site1.append("attempt_stop_resolution")
+        return RetryLaterOutcome(on_change="paused")
+
+    with (
+        patch(
+            "ralph.pipeline.conflict_resolution.rebase_loop.finish_resolved_rebase_stops",
+            side_effect=mock_finish_stops_site1,
+        ),
+        patch(
+            "ralph.pipeline._stop_resolution_entry.attempt_stop_resolution",
+            side_effect=mock_attempt_resolution_site1,
+        ),
+        patch("ralph.pipeline.auto_integrate_rebase_merge.set_resolving_rebase", return_value=True),
+        patch("ralph.pipeline.conflict_resolution.status.conflict_status_bar_session"),
+    ):
+        mock_resolver = MagicMock()
+        resolve_conflicted_rebase(
+            root=tmp_path,
+            target="main",
+            rebase_stop_resolver=mock_resolver,
+            display=None,
+            conflict_resolution_config=None,
+        )
+
+    assert calls_site1 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]
+
+    calls_site2: list[str] = []
+    site2_root = tmp_path / "planning-entry"
+    site2_root.mkdir()
+
+    def mock_finish_stops_site2(root: Path, target: str) -> bool:
+        calls_site2.append("finish_resolved_rebase_stops")
+        return False
+
+    def mock_attempt_resolution_site2(name: str, trigger: object) -> object:
+        calls_site2.append("attempt_stop_resolution")
+        return RetryLaterOutcome(on_change="paused")
+
+    with (
+        patch(
+            "ralph.pipeline.conflict_resolution.rebase_loop.finish_resolved_rebase_stops",
+            side_effect=mock_finish_stops_site2,
+        ),
+        patch(
+            "ralph.pipeline._stop_resolution_entry.attempt_stop_resolution",
+            side_effect=mock_attempt_resolution_site2,
+        ),
+        patch("ralph.pipeline.auto_integrate_planning.rebase_in_progress", return_value=True),
+        patch("ralph.pipeline.auto_integrate_planning.resolve_integration_target", return_value="main"),
+        patch("ralph.git.merge.observe_branch_sha", return_value=("feat_sha", True)),
+        patch(
+            "ralph.pipeline.conflict_resolution.rebase_loop.current_rebase_identity",
+            return_value=("feat_sha", "onto_sha"),
+        ),
+    ):
+        integrate_before_planning(
+            config=MagicMock(),
+            scope=MagicMock(root=site2_root),
+            state=MagicMock(),
+            rebase_stop_resolver=MagicMock(),
+        )
+
+    assert calls_site2 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]

@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import tarfile
 from datetime import UTC, datetime, timedelta
@@ -120,6 +121,22 @@ def test_newer_antislop_release_updates_bytes_without_touching_project(
         _ANTI_SLOP.archive_url_template.format(tag="v3.2.30"),
     ]
     assert new_calls == [
+        _SUPERPOWERS.api_url,
+        _ANTI_SLOP.api_url,
+        _ANTI_SLOP.archive_url_template.format(tag="v3.2.31"),
+    ]
+
+    shutil.rmtree(installed)
+    restore_client, restore_calls = _client_for("v3.2.31", new_files)
+    restored = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=50), http=restore_client
+    )
+
+    assert restored.status == "repaired"
+    assert restored.installed == ("antislop",)
+    assert (installed / "SKILL.md").read_bytes() == new_files["SKILL.md"]
+    assert (installed / "VERSION").read_bytes() == new_files["VERSION"]
+    assert restore_calls == [
         _SUPERPOWERS.api_url,
         _ANTI_SLOP.api_url,
         _ANTI_SLOP.archive_url_template.format(tag="v3.2.31"),

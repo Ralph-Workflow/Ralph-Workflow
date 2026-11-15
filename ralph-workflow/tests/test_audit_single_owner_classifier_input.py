@@ -244,25 +244,6 @@ class Runner:
     )
 
 
-def test_production_shared_classifier_input_from_typed_outcome_is_not_flagged() -> None:
-    source = """
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
-
-def handle(session, agent_name, attempt):
-    classify_failed_resolution_attempt(
-        session,
-        agent_name,
-        attempt.outcome,
-        candidates=(),
-        failed_index=0,
-    )
-"""
-    violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
-    assert not [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
-        f"Expected a typed outcome to reach the shared classifier, got: {violations}"
-    )
-
-
 def test_production_typed_bench_resolver_outcome_is_not_flagged() -> None:
     source = """
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome

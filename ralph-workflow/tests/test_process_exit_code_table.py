@@ -72,15 +72,16 @@ _NEW_ANSWER_LABELS = (
 )
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "b09965aff306b86e4e13f9ea4cb4bfded67b39f950e234332e95b8e2f28a40c6"
+    "d19fbd24bea43b39ecc3f3ebed8198a4cdacd56e91d09c62d0d86eb394dadb17"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory replaces git-rebase:diff with the four "
     "git-rebase:set-aside-* operations, removes the retired integration-gate:* "
     "probe, and adds operation-snapshot:index-tree, auto-integrate:update-feature-ref, "
     "git-completion-in-place, git-append-only-attributes, git-rm-resolved, and "
-    "git-mixed-kind-gitlink. These are real recovery and conflict-resolution "
-    "operations whose nonzero exits must retain the loud default."
+    "the recovery:completed-rebase-* receipt checks. These are "
+    "real recovery and conflict-resolution operations whose nonzero exits must retain the "
+    "loud default."
 )
 
 

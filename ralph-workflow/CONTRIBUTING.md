@@ -698,6 +698,54 @@ per-concern skill that holds the code-comment technique. Ralph Workflow does not
 it: `ralph/skills/upstream.py:95-109` selects only the core `antislop` skill
 from that upstream.
 
+### Upstream check-first evidence
+
+The check-first step confirmed the exact repository, its release tags, its
+license, its file layout and its maintenance before either upstream was wired
+in. Both are read through their release API, and the only archive URLs
+Ralph Workflow builds are tag-scoped, so the moving default branch is never
+fetched (`ralph/skills/upstream.py:68-80`).
+
+| Field | `obra/superpowers` | `miqdadbadjuber/anti-slop` |
+|---|---|---|
+| Confirmed repository | `obra/superpowers` | `miqdadbadjuber/anti-slop` |
+| Release source | `https://api.github.com/repos/obra/superpowers/releases/latest` | `https://api.github.com/repos/miqdadbadjuber/anti-slop/releases/latest` |
+| Tag-scoped archive | `https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/<tag>` | `https://codeload.github.com/miqdadbadjuber/anti-slop/tar.gz/refs/tags/<tag>` |
+| Release stream | ten tagged releases from `v6.0.3` (2026-06-18) to `v7.0.2` (2026-11-03) on the upstream tag list | ten consecutive tagged releases `v3.2.21` … `v3.2.30` on the upstream tag list, the latest published 2026-11-13 |
+| Maintenance | actively maintained: ten releases published between 2026-06-18 and 2026-11-03 | actively maintained: ten releases published through 2026-11-13 |
+| License | MIT | MIT |
+| File layout | flat `skills/<skill-name>/` directories, each holding `SKILL.md` and its companion files | `skills/<skill-name>/SKILL.md` plus companion files inside the skill directory; the release publishes six skills |
+| What Ralph Workflow ships | three named skills | the core `antislop` skill only |
+| Redistribution | MIT permits redistribution | MIT permits redistribution |
+
+Release streams, the `v3.2.30` publication date and the maintenance verdicts
+were read from the two upstream tag and release pages on 2026-11-14; the MIT
+license of both upstreams is stated in `docs/sphinx/configuration.md:398-411`.
+The updater resolves the newest release at run time through the same release
+API, so the release stream is what keeps the installed copy current.
+
+### Per-agent discovery mode
+
+Every supported agent both discovers skills from their description and accepts
+an explicit invocation by name, so a Ralph Workflow prompt cue that names the
+skill behaves the same on all four agents and never depends on the agent
+matching the skill's description (`docs/sphinx/configuration.md:310-318,
+325-333`).
+
+| Agent | Root ids | Discovery mode | Source |
+|---|---|---|---|
+| Claude Code | `claude` (canonical) | description-based autonomous discovery and explicit invocation | <https://code.claude.com/docs/en/skills> |
+| OpenAI Codex | `codex-agents`; `codex` is the legacy installer root only, where current Codex does not discover skills | description-based autonomous discovery and explicit invocation | <https://learn.chatgpt.com/docs/build-skills> |
+| OpenCode | `opencode`; the `claude` and `codex-agents` compatibility roots are read as well | description-based autonomous discovery and explicit invocation | <https://opencode.ai/docs/skills/> |
+| Antigravity | `agy-config`; `agy` is the CLI root | description-based autonomous discovery and explicit invocation | <https://antigravity.google/docs/skills/> |
+
+Discovery mode is a property of the agent, not of the skill, so the record
+above applies unchanged to all four universal skills: each is installed
+user-global, is discoverable from its description, and is named by the prompt
+cue at the step it supports. Pi has no user-global skill location and receives
+skills per invocation instead, so it is outside this record
+(`docs/sphinx/configuration.md:335-340`).
+
 ### Template and phase skill mapping
 
 The following table records the prompt-template audit: for every phase
@@ -705,7 +753,7 @@ template, the universal skills that template names, and the evidence for the
 verdict. The unattended-mode partial is stored on disk as
 `shared/_unattended_mode.jinja` and referenced in Jinja templates by the include
 name `shared/_unattended_mode.j2` (via the template loader's extension
-normalization). Top-level phase templates include the fragment across 14 direct
+normalization). Top-level phase templates include the fragment across 15 direct
 template includes + 1 via `_developer_iteration_guidance.j2`. That fragment
 defines `render_antislop_unattended_mode()`; the mode-resolution line renders
 only where `shared/_developer_iteration_guidance.j2:47` invokes the macro. The
@@ -718,8 +766,8 @@ phase's work.
 | `developer_iteration.jinja` via `shared/_verification_commitments.j2` | Development | `verification-before-completion` (before claiming completion or submitting results) | `_verification_commitments.j2:8-9`; same test |
 | `developer_iteration_continuation.jinja` | Development | the same four, through the same shared fragments | includes `_development_skills.j2`, `_verification_commitments.j2`, `_developer_iteration_guidance.j2` |
 | `developer_iteration_fallback.jinja` | Development | the same four, through the same shared fragments | same includes, so a fallback run behaves like the primary one |
-| `development_analysis.jinja` | Development analysis | `verification-before-completion` (judging the developer's evidence), `systematic-debugging` (judging a failing check) | `development_analysis.jinja:27,48`; `tests/test_prompts_skills_cues.py::test_phase_prompt_names_only_its_installed_universal_skills` |
-| `planning.jinja` via `shared/_planning_thinking.jinja` | Planning | `test-driven-development`, `systematic-debugging`, `verification-before-completion` — named as the executor skills for the plan's own steps | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning.jinja:7`; `tests/test_prompts_skills_cues.py::test_phase_prompt_names_only_its_installed_universal_skills` |
+| `development_analysis.jinja` | Development analysis | `verification-before-completion` (judging the developer's evidence), `systematic-debugging` (judging a failing check) | `shared/_skill_cues.j2::render_development_analysis_evidence_cue`, `shared/_skill_cues.j2::render_development_analysis_failures_cue`; `tests/test_prompts_skills_cues.py::test_skill_cue_macro_follows_only_its_own_installed_flag` |
+| `planning.jinja` via `shared/_planning_thinking.jinja` | Planning | `test-driven-development`, `systematic-debugging`, `verification-before-completion` — named as the executor skills for the plan's own steps | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning.jinja:7`; `planning.jinja:22` also pulls `shared/_verification_commitments.j2:8-9`, which names `verification-before-completion` a second time in the same phase prompt; `tests/test_prompts_skills_cues.py::test_phase_prompt_names_only_its_installed_universal_skills` |
 | `planning_edit.jinja` via `shared/_planning_thinking.jinja` | Planning edit | the same three executor skills | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning_edit.jinja:10`; same test |
 | `planning_fallback.jinja` via `shared/_planning_thinking.jinja` | Planning fallback | the same three executor skills | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning_fallback.jinja:5` |
 | `planning_edit_fallback.jinja` via `shared/_planning_thinking.jinja` | Planning edit fallback | the same three executor skills | `shared/_planning_thinking.jinja:23-28,40-42`, included by `planning_edit_fallback.jinja:5` |
@@ -730,6 +778,57 @@ phase's work.
 | `commit_message.jinja` | Commit | none, because the phase only authors the commit-message artifact from the recorded diff and verification facts; no shipped skill teaches that | the template carries no `SKILL_INSTALLED_*` gate |
 | `commit_simplified.jinja` | Commit | none, because the phase only authors the compact commit-message artifact | the template carries no `SKILL_INSTALLED_*` gate |
 | `commit_review.jinja` | Commit review | none, because the phase classifies the pending diff against the safety tripwires and performs its own housekeeping edits; the `commit_review` artifact pointer already carries that format | the template carries no `SKILL_INSTALLED_*` gate |
+
+The shared fragments are inventoried the same way, so every template and every
+fragment that reaches a phase is classified. A fragment that carries no skill
+reference names none.
+
+| Shared fragment | Skills named | Reason |
+|---|---|---|
+| `shared/_skill_cues.j2` | `systematic-debugging`, `verification-before-completion` | the consolidated home of the per-phase cue macros; each macro gates its cue on one `SKILL_INSTALLED_<NAME>` flag and keeps a generic fallback for the absent case (`shared/_skill_cues.j2:1-71`) |
+| `shared/_developer_iteration_guidance.j2` | `test-driven-development` (behavior change), `systematic-debugging` (failing test or gate), `antislop` (user interfaces) | the development phase's three step cues, each gated on its own flag (`shared/_developer_iteration_guidance.j2:34,39,48`) |
+| `shared/_verification_commitments.j2` | `verification-before-completion` (before claiming completion) | the development phase's completion cue (`shared/_verification_commitments.j2:8-9`) |
+| `shared/_planning_thinking.jinja` | `test-driven-development`, `systematic-debugging`, `verification-before-completion` (the executor skills the planner names) | the planning phase's step-4 and step-7 cues (`shared/_planning_thinking.jinja:23-28,40-42`) |
+| `shared/_unattended_mode.jinja` | `antislop` session-mode resolution | resolves the skill's mode question so an unattended run does not stall; it is a mode line, not a step cue (`shared/_unattended_mode.jinja:1-5`) |
+| `shared/_shipped_skills.j2` | none by name | states the policy-wins precedence line and the generic "use only task-relevant skills" instruction; it never names a universal skill (`shared/_shipped_skills.j2:1-20`) |
+| `shared/_development_skills.j2` | none by name | sets `shipped_skills_mode` so the shipped-skills fragment adds the plan-named-skill instruction (`shared/_development_skills.j2:1-2`) |
+| `shared/_optional_artifact_skill_pointer.jinja` | artifact skills only, as an optional aid | points at an artifact skill by name without an installation gate, because artifact skills ship with Ralph Workflow (`shared/_optional_artifact_skill_pointer.jinja:1-4`) |
+| `shared/_analysis_context.jinja` | none | carries analysis-phase context; no shipped skill teaches that context |
+| `shared/_artifact_history.jinja` | none | carries artifact history |
+| `shared/_artifact_submission.j2` | none | carries the artifact-submission contract, which is Ralph Workflow-specific and unchanged by the skill set |
+| `shared/_commit_review_rejection.j2` | none | carries commit-review rejection handling |
+| `shared/_criterion_verification_procedure.j2` | none | carries the criterion-verification procedure, a Ralph Workflow-specific floor that must hold with no skill installed |
+| `shared/_development_execution_envelope.j2` | none | carries the developer execution envelope |
+| `shared/_development_result_proof.jinja` | none | carries the `development_result` artifact contract, which is Ralph Workflow-specific and unchanged by the skill set |
+| `shared/_docs_lookup.jinja` | none | carries the library-documentation lookup rule, a policy floor |
+| `shared/_mcp_tools.jinja` | none | carries the MCP tool inventory |
+| `shared/_no_exemption_for_failures.j2` | none | carries the no-exemption rule, a policy floor |
+| `shared/_no_git_commit.jinja` | none | carries the no-commit rule, a policy floor |
+| `shared/_parallel_execution.jinja` | none | carries the parallel-execution dispatch rules |
+| `shared/_payload_section.jinja` | none | carries the artifact payload section |
+| `shared/_planning_submission_mechanics.j2` | none | carries plan-submission mechanics |
+| `shared/_run_budget.j2` | none | carries the run-budget contract |
+| `shared/_session_capabilities.jinja` | none | carries the session-capability list |
+| `shared/_subagents.j2` | none | carries the delegation guidance |
+| `shared/_validation_failure.j2` | none | carries the last retry error into the phase prompt |
+
+The development phase names four universal skills, one more than the
+two-or-three ceiling the audit's prompt-engineering rules set. That ceiling
+guards against over-cueing, and the development phase is the one phase whose
+own audit mapping enumerates four: `test-driven-development` for a behavior
+change, `systematic-debugging` for a failing test or gate,
+`verification-before-completion` before the completion claim, and `antislop`
+for user-interface work, which is the domain of the core skill Ralph Workflow
+ships. Each cue attaches to a different workflow step and no step names a
+skill that does not apply to it, so the phase carries the largest set its
+mapping allows. `antislop` appears twice in the development prompt because
+the session-mode line and the user-interface step cue are different
+statements, and the planning phase names `verification-before-completion`
+twice for the same reason: once as an executor skill the planner names for
+the plan's final verification step, and once through
+`shared/_verification_commitments.j2`.
+The `antislop` line in `shared/_unattended_mode.jinja` is a session-mode
+resolution, not a step cue, and renders only inside the visual-review lane.
 
 ### Criterion-8 policy-trim verdicts
 

@@ -19,9 +19,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
-from ralph.recovery.canary_marker_state import CanaryMarkerState
 from ralph.recovery.canary_probe import ProbeOutcome
-from ralph.recovery.canary_probe_judge import judge_probe
 from ralph.recovery.connectivity_state import ConnectivityState
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -141,15 +139,6 @@ class MatrixScenario:
                 tuple(sorted(self.unavailability_reasons.items())),
             )
 
-    @dataclass(frozen=True)
-    class ProbeAttempt:
-        marker_state: CanaryMarkerState = CanaryMarkerState.MISSING
-        issuer: TerminationIssuer = TerminationIssuer.AGENT_EXIT
-        observed_returncode: int | None = 1
-        reported_returncode: int | None = 1
-        event_kinds: tuple[str, ...] = ()
-        tool_calls: tuple[str, ...] = ()
-
     name: str
     acceptance: tuple[str, ...]
     attempts: tuple[MatrixScenario.Script, ...]
@@ -161,7 +150,6 @@ class MatrixScenario:
     expected_reason: str | None = None
     no_ledger_charge: bool = False
     corpus_id: str | None = None
-    probe_attempt: MatrixScenario.ProbeAttempt | None = None
 
 
 SCENARIOS = (
@@ -260,56 +248,6 @@ SCENARIOS = (
         ProbeOutcome.INCONCLUSIVE,
         expected_kind="unknown",
         no_ledger_charge=True,
-    ),
-    MatrixScenario(
-        "probe_runtime_terminated",
-        ("AC16",),
-        (
-            MatrixScenario.Script(
-                facts=termination_facts(
-                    TerminationIssuer.AGENT_EXIT,
-                    observed=1,
-                    reported=1,
-                    liveness=False,
-                ),
-                returncode=1,
-            ),
-        ),
-        probe_attempt=MatrixScenario.ProbeAttempt(
-            marker_state=CanaryMarkerState.MISSING,
-            issuer=TerminationIssuer.POST_EXIT_WATCHDOG,
-            observed_returncode=143,
-            reported_returncode=143,
-            event_kinds=("tool_use",),
-            tool_calls=("write_file",),
-        ),
-        probe_outcome=None,
-        expected_kind="unknown",
-    ),
-    MatrixScenario(
-        "probe_agent_exited_missing_marker",
-        ("AC16",),
-        (
-            MatrixScenario.Script(
-                facts=termination_facts(
-                    TerminationIssuer.AGENT_EXIT,
-                    observed=1,
-                    reported=1,
-                    liveness=False,
-                ),
-                returncode=1,
-            ),
-        ),
-        probe_attempt=MatrixScenario.ProbeAttempt(
-            marker_state=CanaryMarkerState.MISSING,
-            issuer=TerminationIssuer.AGENT_EXIT,
-            observed_returncode=1,
-            reported_returncode=1,
-            event_kinds=("tool_use",),
-            tool_calls=("write_file",),
-        ),
-        probe_outcome=None,
-        expected_kind="agent_dead",
     ),
     MatrixScenario(
         "runtime_live_end",
@@ -572,23 +510,6 @@ SCENARIOS = (
 )
 
 
-def _probe_attempt_facts(probe_attempt: MatrixScenario.ProbeAttempt) -> AttemptFacts:
-    return AttemptFacts(
-        event_kinds=probe_attempt.event_kinds,
-        tool_calls=probe_attempt.tool_calls,
-        termination=TerminationRecord.create(
-            probe_attempt.issuer,
-            observed_returncode=probe_attempt.observed_returncode,
-            reported_returncode=probe_attempt.reported_returncode,
-        ),
-    )
-
-
-def _judged_probe_outcome(probe_attempt: MatrixScenario.ProbeAttempt) -> ProbeOutcome:
-    verdict = judge_probe(probe_attempt.marker_state, _probe_attempt_facts(probe_attempt))
-    return ProbeOutcome(verdict.outcome.value)
-
-
 def corpus_cases() -> tuple[CorpusCase, ...]:
     return load_corpus()
 
@@ -655,8 +576,6 @@ def run_matrix_scenario(
         probe_calls.append(agent)
         if scenario.probe_raises:
             raise RuntimeError("probe infrastructure unavailable")
-        if scenario.probe_attempt is not None:
-            return _judged_probe_outcome(scenario.probe_attempt)
         return scenario.probe_outcome
 
     def invoke(target: object, *_args: object, **kwargs: object) -> object:
@@ -730,8 +649,6 @@ def run_matrix_scenario_with_selection(
 
     def probe_runner(_phase: str, agent: str) -> ProbeOutcome | None:
         probe_calls.append(agent)
-        if scenario.probe_attempt is not None:
-            return _judged_probe_outcome(scenario.probe_attempt)
         return scenario.probe_outcome
 
     def invoke(target: object, *_args: object, **kwargs: object) -> object:
@@ -805,8 +722,6 @@ def run_via_finalize_attempt(
         probe_calls.append(agent)
         if scenario.probe_raises:
             raise RuntimeError("probe infrastructure unavailable")
-        if scenario.probe_attempt is not None:
-            return _judged_probe_outcome(scenario.probe_attempt)
         return scenario.probe_outcome
 
     def unreachable_invoke(target: object, *_args: object, **_kwargs: object) -> object:

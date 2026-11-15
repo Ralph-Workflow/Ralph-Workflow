@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import shutil
 import tarfile
 import tracemalloc
 from datetime import UTC, datetime, timedelta
@@ -426,13 +427,15 @@ def test_a_truncated_archive_keeps_the_installed_skills(sandbox: Path) -> None:
     client, _calls = _client_for("v-test-1", _SKILL_FILES)
     assert maybe_update_universal_skills(enabled=True, now=_NOW, http=client).status == "updated"
     root = _canonical_root()
+    removed = root / "test-driven-development"
+    shutil.rmtree(removed)
     before = _tree_snapshot(root)
-    archive = _release_archive("v-test-2", _SKILL_FILES)
+    archive = _release_archive("v-test-1", _SKILL_FILES)
     truncated = archive[: len(archive) // 2]
     failing = _fake_client(
         {
-            RELEASES_API_URL: (200, _release_body("v-test-2")),
-            _archive_url("v-test-2"): (200, truncated),
+            RELEASES_API_URL: (200, _release_body("v-test-1")),
+            _archive_url("v-test-1"): (200, truncated),
         },
         [],
     )
@@ -444,6 +447,7 @@ def test_a_truncated_archive_keeps_the_installed_skills(sandbox: Path) -> None:
     assert outcome.status == "failed"
     assert outcome.error is not None
     assert _tree_snapshot(root) == before
+    assert not removed.exists()
 
 
 def test_an_oversize_archive_is_refused(sandbox: Path) -> None:

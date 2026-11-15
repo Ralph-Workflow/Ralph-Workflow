@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,6 +8,18 @@ import pytest
 if TYPE_CHECKING:
     from ralph.git.git_run_result import GitRunResult
 from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.pipeline._auto_integrate_rebase_resolve import _rebase_run_result
+from ralph.pipeline._integration_continuation import (
+    ExhaustedResolutionFailure,
+    _promote_completed_resolution,
+    _rebase_failure_transport,
+)
+from ralph.pipeline._integration_diagnostic_proof import (
+    _check_ancestry_proof,
+    _check_head_match,
+    _check_parent_match,
+)
+from ralph.pipeline._landed_predicate import operation_landed
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     read_record,
@@ -22,20 +33,6 @@ from ralph.pipeline.resolution_outcome import (
 
 pytestmark = [pytest.mark.timeout_seconds(15), pytest.mark.subprocess_e2e]
 _OPTIONS = GitRunOptions(timeout=10)
-
-_rebase_resolve = import_module("ralph.pipeline._auto_integrate_rebase_resolve")
-_continuation = import_module("ralph.pipeline._integration_continuation")
-_diagnostic_proof = import_module("ralph.pipeline._integration_diagnostic_proof")
-_landed_predicate = import_module("ralph.pipeline._landed_predicate")
-
-operation_landed = _landed_predicate.operation_landed
-ExhaustedResolutionFailure = _continuation.ExhaustedResolutionFailure
-_promote_completed_resolution = _continuation.promote_completed_resolution
-_rebase_failure_transport = _continuation._rebase_failure_transport
-_rebase_run_result = _rebase_resolve._rebase_run_result
-_check_ancestry_proof = _diagnostic_proof._check_ancestry_proof
-_check_head_match = _diagnostic_proof._check_head_match
-_check_parent_match = _diagnostic_proof._check_parent_match
 
 
 def _git(root: Path, *args: str) -> GitRunResult:

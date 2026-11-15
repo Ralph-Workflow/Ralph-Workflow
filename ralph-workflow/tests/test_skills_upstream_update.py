@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import shutil
 import tarfile
 import threading
 from datetime import UTC, datetime, timedelta
@@ -389,15 +390,25 @@ def test_the_upgrade_installs_the_changed_companion_set(
 def test_the_disabled_switch_makes_no_request_and_writes_nothing(
     sandbox: Path, tmp_path: Path
 ) -> None:
-    client, calls = _client_for("v-test-1", _SKILL_FILES)
+    install_client, _install_calls = _client_for("v-test-1", _SKILL_FILES)
+    assert (
+        maybe_update_universal_skills(enabled=True, now=_NOW, http=install_client).status
+        == "updated"
+    )
+    removed = _canonical_root() / "test-driven-development"
+    shutil.rmtree(removed)
     before = _tree_snapshot(tmp_path)
+    client, calls = _client_for("v-test-1", _SKILL_FILES)
 
-    outcome = maybe_update_universal_skills(enabled=False, now=_NOW, http=client)
+    outcome = maybe_update_universal_skills(
+        enabled=False, now=_NOW + timedelta(hours=25), http=client
+    )
 
     assert outcome.status == "disabled"
     assert outcome.attempted is False
     assert calls == []
     assert _tree_snapshot(tmp_path) == before
+    assert not removed.exists()
 
 
 def test_a_user_edited_skill_is_preserved_and_reported(sandbox: Path) -> None:

@@ -49,6 +49,10 @@ B5_ALLOWLIST: Final[Mapping[str, str]] = MappingProxyType(
         "ralph/pipeline/attempt_runner.py": "canonical invocation boundary",
         "ralph/pipeline/attempt_runner_deps.py": "canonical dependency seam",
         "ralph/pipeline/effect_executor.py": "function definition and invoke dependency",
+        "ralph/pipeline/conflict_resolution/session.py": (
+            "conflict-resolution session dispatches agent effects through the canonical "
+            "effect-attempt adapter from the registered conflict-resolution entry point"
+        ),
         "ralph/agents/__init__.py": "public re-export shim",
         "ralph/cli/commands/commit.py": "compatibility re-export shim",
     }
@@ -75,9 +79,19 @@ _SPENT_AGENTS_WRITE_METHOD = "setdefault"
 _SPENT_AGENTS_WRITE_SUFFIX = "add"
 _SPENT_AGENTS_WRITE_HOLDER = "note_retry_exhaustion"
 _CONSTRUCTOR_NAME = "__init__"
-_B3_ALLOWED_PATHS = frozenset(
-    {"ralph/recovery/controller.py", "ralph/recovery/unavailability_reason.py"}
+_B3_ALLOWED_PATH_JUSTIFICATIONS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "ralph/pipeline/conflict_resolution/session.py": (
+            "conflict-resolution session records confirmed unavailability through the recovery "
+            "controller's public mutation API"
+        ),
+        "ralph/recovery/controller.py": "recovery controller owns unavailability state mutation",
+        "ralph/recovery/unavailability_reason.py": (
+            "unavailability reason definitions own the reason values referenced by the boundary"
+        ),
+    }
 )
+_B3_ALLOWED_PATHS = frozenset(_B3_ALLOWED_PATH_JUSTIFICATIONS)
 _ATTEMPT_RUNNER_PATH = "ralph/pipeline/attempt_runner.py"
 _MUTABLE_CONSTRUCTORS = frozenset({"dict", "list", "set"})
 _B8_DETECTOR_PATHS = frozenset(
@@ -130,7 +144,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/effect_executor.py",
         "_consume_attempt_output",
-        1673,
+        1628,
         "effect executor dispatch owned by the registered effect route",
     ),
     (

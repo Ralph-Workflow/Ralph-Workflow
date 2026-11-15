@@ -46,8 +46,7 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
         "with skip_same_agent_retries=True primary runs once without retries and "
-        "fallback retries until exhaustion, yielding four total candidate calls; "
-        "chain index resets to 0 upon exhaustion"
+        "fallback retries until exhaustion, leaving chain cursor wrapped to index 0"
     ),
 }
 
@@ -345,7 +344,9 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
-        config=_config(),
+        config=UnifiedConfig.model_validate(
+            {"general": {}, "conflict_resolution": {"max_rounds_per_stop": 1}}
+        ),
         pipeline_deps=_probe_reachable_deps(_policy_bundle()),
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
@@ -380,7 +381,9 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
-        config=_config(),
+        config=UnifiedConfig.model_validate(
+            {"general": {}, "conflict_resolution": {"max_rounds_per_stop": 1}}
+        ),
         pipeline_deps=_probe_reachable_deps(_policy_bundle()),
         workspace_scope=None,
         policy_bundle=_policy_bundle(),

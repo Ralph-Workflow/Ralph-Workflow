@@ -231,7 +231,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
 | `max_backoff_ms` | `60000` | Maximum retry backoff delay |
 | `max_cycles` | `3` | Maximum full fallback cycles through a drain |
-| `agent_idle_timeout_seconds` | `300.0` | Shared maximum idle seconds before an ordinary or conflict-resolution agent is terminated |
+| `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and count stdout-only activity. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who want log-file activity counted can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
 | `agent_max_consecutive_unproductive` | `3` | Maximum consecutive unproductive attempts (attempts that end without an accepted artifact) by the same agent in a phase before the agent enters cooldown and the chain falls over to the next candidate; minimum 1. A workspace change resets this counter. |
@@ -261,20 +261,22 @@ ralph --check-config
 
 ### `[conflict_resolution]`
 
-Use this section to tune **routing limits** for merge and rebase conflict resolution. Resolver invocations use the shared `general.agent_idle_timeout_seconds` idle limit.
+Use this section to tune **routing limits** for merge and rebase conflict resolution. It does not turn normal session ceilings into conflict limits: an active resolver is supervised only by its fixed inactivity window.
 
 | Key | Default | Valid values | Effect |
 |-----|---------|--------------|--------|
-| `max_rounds_per_stop` | `3` | integer `>= 1` | Resolution rounds allowed for one merge or paused rebase stop. Each round gives every shared-eligible candidate at most one turn; a later round resumes with the next candidate the shared recovery path reports eligible. The shared failure ledger can cool candidates and reduce the number of invocations. |
+| `inactivity_timeout_seconds` | `900.0` | finite number `> 0` | Fixed silence window for every conflict attempt. It never shrinks because earlier rounds or rebase stops took time. |
+| `status_interval_seconds` | `30.0` | finite number `> 0` | Low-cadence status interval for a long-running resolver. |
+| `max_rounds_per_stop` | `3` | integer `>= 1` | Resolution ROUNDS allowed for one merge or paused rebase stop. A round spends the bound chain -- each live candidate gets one turn, plus the chain's `max_retries` on a transient failure -- and a later round starts at the candidate after the last one tried, wrapping to the head of the chain once every candidate has had a turn. The worst-case invocations for one stop are therefore `max_rounds_per_stop x live candidates x max_retries`, not `max_rounds_per_stop`. |
 | `max_rebase_conflict_stops` | `10` | integer `>= 1` | Paused rebase stops that Ralph Workflow may route through resolution. |
 | `max_fallback_agents` | `2` | integer `>= 1` | Retained for compatibility. It does **not** truncate the bound chain. How many agents run, and in what order, is the `rebase_conflict_resolution` chain in `agents.toml`. A one-agent chain is warned at load because this phase then has no fallback. |
 | `gitlink_policy.pointer_preference` | `"vendor-immutable"` | `"ours"`, `"theirs"` or `"vendor-immutable"` | Which side of a submodule (gitlink) conflict wins. `vendor-immutable` prefers the side unchanged from the merge base, then `ours`, then `theirs`. The selected pointer, the base/ours/theirs SHAs and the alternatives considered are recorded, and the conflict is completed in place without invoking a resolver agent. |
 
-The `max_consecutive_resolver_attempts` setting is rejected; use `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`. The retired `conflict_resolution.inactivity_timeout_seconds` setting is also rejected; remove it and configure `general.agent_idle_timeout_seconds` instead. Those general limits are enforced by the shared agent path: the recorded conflict count is repository bookkeeping and never suppresses an agent.
+The `max_consecutive_resolver_attempts` setting is rejected; use `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`. Those two limits are enforced by the agent failure ledger, which is the single owner of resolver eligibility: the recorded conflict count is repository bookkeeping and never suppresses an agent.
 
 No elapsed-time cap can stop active conflict work: an active resolver is supervised by the shared watchdog's inactivity window, and the agent-failure ledger owns when a resolver may run again.
 
-The `rebase_conflict_resolution` drain binds the `rebase_conflict_resolution` chain in `agents.toml`. Its bundled default is `claude`. The chain declares ordered candidates; the shared recovery path owns retry eligibility, backoff, cooldown, and fallover. Add fallback agents to that chain when needed. `max_fallback_agents` is compatibility-only and cannot narrow the chain. A one-agent chain is valid but produces a configuration-load warning because no fallback remains.
+The `rebase_conflict_resolution` drain binds the `rebase_conflict_resolution` chain in `agents.toml`. Its bundled default is `claude`, with `max_retries = 2` and `retry_delay_ms = 1000`. The chain alone owns ordered candidates, retries, backoff, and fallover; add fallback agents to that chain when needed. `max_fallback_agents` is compatibility-only and cannot narrow the chain. A one-agent chain is valid but produces a configuration-load warning because no fallback remains.
 
 If your configuration declares its own agent chains but no `rebase_conflict_resolution` chain, the resolver follows your `development` chain rather than the bundled default; declare `[agent_chains.rebase_conflict_resolution]` to choose resolvers explicitly. Every path that invokes a resolver (conflict resolution, retained-integration diagnosis, pending-commit repair) shares one cooldown ledger for the run. A resolver that exits without a verified result is benched with an exponentially growing cooldown, longer when the failure is a recognised quota or auth error, and is not called again until the cooldown elapses. While every resolver is cooling down, Ralph Workflow waits and spends no repair attempt.
 

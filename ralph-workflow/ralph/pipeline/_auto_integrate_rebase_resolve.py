@@ -48,7 +48,6 @@ __all__ = [
     "RebaseRunResult",
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
-    "rebase_run_result",
     "resolve_conflicted_rebase",
     "verify_terminal_state",
 ]
@@ -126,22 +125,19 @@ def resolve_conflicted_rebase(
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
-        trigger = StopResolutionTrigger(
-            name="rebase_stop",
-            root=root,
-            target=target,
-            resolver=rebase_stop_resolver,
-            record=resolution_gate_record(root, target),
-            conflict_config=conflict_resolution_config,
-            agent_runner=agent_runner or production_rebase_runner(),
-            key_provider=lambda: ResolutionAttemptKey(None, (), "direct-resolution"),
+        outcome = attempt_stop_resolution(
+            None,
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=root,
+                target=target,
+                resolver=rebase_stop_resolver,
+                record=resolution_gate_record(root, target),
+                conflict_config=conflict_resolution_config,
+                agent_runner=agent_runner or production_rebase_runner(),
+                key_provider=lambda: ResolutionAttemptKey(None, (), "direct-resolution"),
+            ),
         )
-        if agent_runner is None and _merge_mod.read_record(root) is not None:
-            outcome = attempt_stop_resolution(None, trigger)
-        else:
-            from ralph.pipeline._stop_resolution_entry import _execute_trigger
-
-            outcome = _execute_trigger(trigger)
         res: StopResolutionOutcome
         deferred_cause = ResolutionFailureCause.NONE
         if isinstance(outcome, StopResolutionBlocked):
@@ -178,13 +174,9 @@ def resolve_conflicted_rebase(
     record = _merge_mod.read_record(root)
     if blocked_reason is not None:
         return _blocked_run(record, target, blocked_reason, carried_cause=deferred_cause)
-    if isinstance(res, RetryLaterOutcome) and (
-        res.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-    ):
-        return _rebase_run_result(root, record, target, res)
     if record is not None and record.rebase_continue_pending:
         return _pending_continue_run(record, target)
-    return rebase_run_result(root, record, target, res)
+    return _rebase_run_result(root, record, target, res)
 
 
 def _blocked_run(
@@ -250,7 +242,7 @@ def _conflict_run(
     )
 
 
-def rebase_run_result(
+def _rebase_run_result(
     root: Path,
     record: IntegrationRecord | None,
     target: str,
@@ -354,9 +346,6 @@ def rebase_run_result(
             )
         case _ as unreachable:
             assert_never(unreachable)
-
-
-_rebase_run_result = rebase_run_result
 
 
 def _outcome_reason(outcome: StopResolutionOutcome) -> str:

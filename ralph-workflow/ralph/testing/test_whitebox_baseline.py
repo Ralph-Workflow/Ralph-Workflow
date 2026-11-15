@@ -850,8 +850,8 @@ tests/test_tool_unsafe_exec_handle.py|0,3,0
 tests/test_tool_workspace_handle_read_media.py|0,1,1
 tests/test_transport_breaker_false_positives.py|0,6,0
 tests/test_transport_multimodal_status.py|0,3,0
-tests/test_u3_git_owned_resolution.py|0,4,0
-tests/test_u4_landed_predicate.py|0,9,0
+tests/test_u3_git_owned_resolution.py|0,7,0
+tests/test_u4_landed_predicate.py|0,10,0
 tests/test_u4_rendering_and_severity.py|1,2,1
 tests/test_unreadable_record_entry_points.py|0,4,17
 tests/test_unsafe_exec_stderr_and_timeout_consistency.py|0,1,5
@@ -869,7 +869,7 @@ tests/test_workspace_memory_memory_workspace_init.py|0,0,3
 tests/test_workspace_memory_memory_workspace_normalize.py|0,0,3
 tests/test_workspace_monitor_never_delays_the_agent.py|0,2,0
 tests/test_wu_c2_non_agent_recovery_paths.py|0,1,0
-tests/test_wu_c2_project_policy_recovery_ownership.py|1,1,0
+tests/test_wu_c2_project_policy_recovery_ownership.py|1,0,0
 tests/unit/display/_criteria_probes.py|6,35,9
 tests/unit/display/test_brief_criteria_coverage.py|0,2,5
 tests/unit/display/test_crash_output_containment.py|0,0,1

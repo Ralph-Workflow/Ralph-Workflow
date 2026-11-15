@@ -112,7 +112,7 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
-        "ralph.pipeline.effect_executor.execute_agent_effect",
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         _fake_execute,
     )
 
@@ -197,7 +197,7 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
-        "ralph.pipeline.effect_executor.execute_agent_effect",
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         _fake_execute,
     )
 
@@ -345,7 +345,7 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
-        "ralph.pipeline.effect_executor.execute_agent_effect",
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         _fake_execute,
     )
 

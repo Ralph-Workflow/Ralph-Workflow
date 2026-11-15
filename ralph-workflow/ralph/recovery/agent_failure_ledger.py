@@ -424,6 +424,25 @@ class AgentFailureLedger:
                 entry.cooldown_reason = None
                 entry.consecutive_unproductive = 0
 
+    def _status_locked(self, phase: str, agent: str, now_ms: int) -> AgentStatus:
+        entry = self._entries.get((phase, agent))
+        if entry is None:
+            return Eligible()
+
+        if entry.is_spent:
+            return Spent(reason=entry.spent_reason or _SPENT_REASON_TOTAL)
+
+        self._sync_cooldown_expiry(entry, now_ms)
+
+        return _projected_status(
+            is_spent=False,
+            spent_reason=None,
+            cooldown_until_ms=entry.cooldown_until_ms,
+            cooldown_reason=entry.cooldown_reason,
+            unavailable_reason=entry.unavailable_reason,
+            now_ms=now_ms,
+        )
+
     def status(self, phase: str, agent: str) -> AgentStatus:
         with self._lock:
             now_ms = int(self._clock.monotonic() * 1000)

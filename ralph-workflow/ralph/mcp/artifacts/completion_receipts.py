@@ -6,7 +6,7 @@ import hmac
 import json
 import sqlite3
 from pathlib import Path
-from typing import cast
+from typing import TypeGuard, cast
 
 from ralph.checked_accessors import as_str, optional_str_list
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -21,6 +21,10 @@ class ReceiptPersistenceError(RuntimeError):
 
 
 type ArtifactSubmissionSnapshot = tuple[str, str]
+
+
+def _all_strings(values: tuple[object, ...]) -> TypeGuard[tuple[str, ...]]:
+    return all(isinstance(value, str) for value in values)
 
 
 def _receipt_dir(workspace_root: Path, run_id: str) -> Path:
@@ -298,21 +302,13 @@ def _authenticate_latest_snapshot(
     artifact_type: str,
     receipt_secret: str,
 ) -> tuple[str, ArtifactSubmissionSnapshot] | None:
-    if stored is MISSING:
+    if not isinstance(stored, tuple):
         return None
-    stored_values = cast("tuple[str, str | None, str | None, str | None, str | None]", stored)
-    run_id, receipt_hmac_value, path_value, digest_value, snapshot_hmac_value = stored_values
-    if (
-        not isinstance(receipt_hmac_value, str)
-        or not isinstance(path_value, str)
-        or not isinstance(digest_value, str)
-        or not isinstance(snapshot_hmac_value, str)
-    ):
+    run_id = stored[0]
+    authenticated_values: tuple[object, ...] = stored[1:]
+    if not _all_strings(authenticated_values):
         return None
-    receipt_hmac = receipt_hmac_value
-    path = path_value
-    digest = digest_value
-    snapshot_hmac = snapshot_hmac_value
+    receipt_hmac, path, digest, snapshot_hmac = authenticated_values
     if not hmac.compare_digest(receipt_hmac, _receipt_hmac(receipt_secret, run_id, artifact_type)):
         return None
     if not hmac.compare_digest(

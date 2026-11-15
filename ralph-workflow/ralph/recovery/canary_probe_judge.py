@@ -5,7 +5,6 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from ralph.agents.agent_activity_kind import AgentActivityKind
-from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.canary_marker_state import CanaryMarkerState
 
 if TYPE_CHECKING:
@@ -77,18 +76,12 @@ def judge_probe(
             detail="probe_could_not_run",
             marker_written=None,
         )
-    if facts is not None:
-        termination = facts.termination
-        if termination is not None and (
-            termination.issuer is TerminationIssuer.AGENT_EXIT
-            and not termination.return_code_discrepancy
-            and _agent_ran(facts)
-        ):
-            return ProbeJudgeVerdict(
-                outcome=ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
-                detail=marker_state.value,
-                marker_written=False,
-            )
+    if facts is not None and _agent_ran(facts):
+        return ProbeJudgeVerdict(
+            outcome=ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
+            detail=marker_state.value,
+            marker_written=False,
+        )
     return ProbeJudgeVerdict(
         outcome=ProbeJudgeOutcome.INCONCLUSIVE,
         detail="probe_could_not_run",

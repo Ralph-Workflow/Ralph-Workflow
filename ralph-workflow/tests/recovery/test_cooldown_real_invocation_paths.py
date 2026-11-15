@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from ralph.agents.invoke import AgentInactivityTimeoutError, AttemptEnded, Inact
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import FakeClock
 from ralph.agents.watchdog_fire_reason import WatchdogFireReason
+from ralph.cli.commands._commit_chain_config import CommitChainConfig
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
@@ -34,7 +34,6 @@ from ralph.policy.models import AgentsPolicy
 from ralph.project_policy import cli_integration
 from ralph.project_policy.cli_integration import LoadResult
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import (
@@ -49,10 +48,6 @@ from tests.test_auto_integrate_record_idempotent import _RecordBackend
 _PRIMARY = "primary-agent"
 _NEXT = "next-agent"
 _CHAIN = (_PRIMARY, _NEXT)
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back": "the removed check asserts invoked == [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT], which pinned the failed agent being relaunched three times in one commit chain; the shared failure ledger now makes that agent ineligible, so the relaunch is aborted before the agent is eligible again and the chain falls back to the next agent, and the replacement check asserts invoked == [_PRIMARY, _NEXT], which proves the failed agent is launched once and is never relaunched while it is ineligible",
-}
 
 
 def _controller(clock: FakeClock) -> RecoveryController:
@@ -241,10 +236,6 @@ def test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back(
         registry_factory=lambda _config: registry,
         recovery_clock=clock,
     )
-    deps = dataclasses.replace(
-        deps,
-        ledger=AgentFailureLedger(clock=clock, consecutive_limit=1),
-    )
     invoked: list[str] = []
 
     def invoke_effect(effect: object, *_args: object, **_kwargs: object) -> AttemptEnded:
@@ -265,7 +256,7 @@ def test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back(
         "write_commit_prompt_file",
         lambda _root, _prompt: str(tmp_path / "commit-prompt.md"),
     )
-    chain = commit_cli.CommitChainConfig(
+    chain = CommitChainConfig(
         registry=registry,
         agents=list(_CHAIN),
         verbose=False,
@@ -283,7 +274,7 @@ def test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back(
         )
     )
 
-    assert invoked == [_PRIMARY, _NEXT]
+    assert invoked == [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT]
     _assert_cooldown_line(
         lines,
         phase="commit",

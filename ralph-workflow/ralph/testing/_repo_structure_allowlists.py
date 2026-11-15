@@ -1215,5 +1215,20 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.server.lifecycle",
             ("_DEFERRAL_COUNT_CEILING",),
         ),
+        (
+            "tests/test_u3_git_owned_resolution.py",
+            "ralph.pipeline._auto_integrate_rebase_resolve",
+            ("_resolve_conflicted_rebase",),
+        ),
+        (
+            "tests/test_u3_git_owned_resolution.py",
+            "ralph.pipeline.auto_integrate_planning",
+            ("_finish_paused_rebase",),
+        ),
+        (
+            "tests/test_u4_landed_predicate.py",
+            "ralph.pipeline._auto_integrate_rebase_resolve",
+            ("_rebase_run_result",),
+        ),
     }
 )

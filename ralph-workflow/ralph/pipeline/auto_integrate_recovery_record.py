@@ -11,6 +11,8 @@ from ralph.git.merge import (
 )
 from ralph.git.merge_obstructions import ancestry_state
 from ralph.git.operations import get_head_sha
+from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._git_operation_authority import (
     GitOperationKind,
     classify_git_operation,
@@ -20,8 +22,10 @@ from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import (
     ExhaustedResolutionFailure,
     compute_continuation_retry_gate_key,
-    continue_retained_resolution,
     reset_continuation_gate_state,
+)
+from ralph.pipeline._integration_continuation import (
+    continue_retained_resolution as _continue_retained_resolution,
 )
 from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
@@ -51,6 +55,7 @@ from ralph.pipeline.auto_integrate_record import (
     _read_record_raw,
     read_record_outcome,
     record_path,
+    write_record,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
@@ -80,6 +85,90 @@ __all__ = [
     "recover_pending_merge",
     "reset_continuation_gate_state",
 ]
+
+_REBASE_RECEIPT_ENTRIES = 2
+
+
+def _completed_rebase_receipt_head(
+    root: Path,
+    record: IntegrationRecord,
+) -> str | None:
+    if not record.resolving_rebase or not record.pre_target_sha:
+        return None
+    if rebase_in_progress_at(root) or classify_git_operation(record) is not GitOperationKind.RESOLVING_REBASE:
+        return None
+    branch = run_git(
+        ("symbolic-ref", "--quiet", "HEAD"),
+        cwd=root,
+        label="recovery:completed-rebase-branch",
+    )
+    head = _read_head_sha_or_none(root)
+    if branch.returncode != 0 or not branch.stdout.strip() or head is None:
+        return None
+    branch_ref = branch.stdout.strip()
+    history = run_git(
+        ("reflog", "show", "--format=%H%x00%gs", "-2", branch_ref),
+        cwd=root,
+        label="recovery:completed-rebase-receipt",
+    )
+    rows = history.stdout.splitlines()
+    if history.returncode != 0 or len(rows) != _REBASE_RECEIPT_ENTRIES:
+        return None
+    latest, separator, action = rows[0].partition("\0")
+    previous, previous_separator, _ = rows[1].partition("\0")
+    if (
+        not separator
+        or not previous_separator
+        or latest != head
+        or previous != record.pre_feature_sha
+        or action != f"rebase (finish): {branch_ref} onto {record.pre_target_sha}"
+        or ancestry_state(root, record.pre_target_sha, head) is not True
+    ):
+        return None
+    return head
+
+
+def continue_retained_resolution(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    *,
+    recovery_controller: RecoveryController | None = None,
+    phase: str = "rebase_conflict_resolution",
+    chain_agents: list[str] | tuple[str, ...] | None = None,
+    config_path: Path | None = None,
+    force_retry: bool = False,
+    stop_identity: str | None = None,
+) -> IntegrationRecord | str:
+    completed_head = _completed_rebase_receipt_head(root, record)
+    if completed_head is not None:
+        completed = record.with_completion_advanced(completed_head)
+        write_record(root, completed)
+        return completed
+    effective_controller = recovery_controller
+    if effective_controller is None:
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        effective_controller = current_agent_effect_dependencies().recovery_controller
+    if effective_controller is None:
+        from ralph.recovery._controller_factory import build_recovery_controller
+
+        effective_controller = build_recovery_controller()
+    return _continue_retained_resolution(
+        root,
+        record,
+        config,
+        conflict_resolver,
+        rebase_stop_resolver,
+        recovery_controller=effective_controller,
+        phase=phase,
+        chain_agents=chain_agents,
+        config_path=config_path,
+        force_retry=force_retry,
+        stop_identity=stop_identity,
+    )
 
 
 def _refresh_before_verdict(
@@ -310,6 +399,7 @@ def _recover_unresolved_integrating(
     config: UnifiedConfig | None,
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
+    force_retry: bool = False,
 ) -> RebaseState:
     import ralph.pipeline.auto_integrate_recovery as _rec_mod
 
@@ -336,6 +426,7 @@ def _recover_unresolved_integrating(
         config,
         conflict_resolver,
         rebase_stop_resolver,
+        force_retry=force_retry,
     )
 
 
@@ -499,6 +590,7 @@ def _recover_pending_merge(
                 config,
                 conflict_resolver,
                 rebase_stop_resolver,
+                force_retry=force_retry,
             )
         resumed = continue_retained_resolution(
             root,

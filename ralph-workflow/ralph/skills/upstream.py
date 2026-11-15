@@ -42,7 +42,9 @@ from ralph.skills._upstream_install import (
     _StagedSkill,
     discard_staged,
     discard_tree,
+    entry_references_canonical,
     extract_archive,
+    mirror_references_canonical,
     payload_refusal,
     publish_sibling_mirrors,
     publish_staged,
@@ -174,6 +176,12 @@ class _InstallPlan:
     messages: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class _InstallDecision:
+    names: tuple[str, ...]
+    restored: bool
+
+
 def maybe_update_universal_skills(
     *, enabled: bool, now: datetime, http: HttpClient
 ) -> UpdateOutcome:
@@ -256,7 +264,8 @@ def _update_source(
             error=error,
             messages=(f"{source.slug}: the upstream release could not be read",),
         )
-    if not _needs_update(tag, state, source):
+    decision = _install_decision(tag, state, source)
+    if not decision.names:
         return _settle_mirrors(source, tag)
     payload, error = _load_release_payload(http, source, tag)
     if payload is None:
@@ -267,7 +276,7 @@ def _update_source(
             error=error,
             messages=(f"{source.slug}: the upstream skill archive could not be installed",),
         )
-    return _install_release(source, tag, payload)
+    return _install_release(source, tag, payload, decision)
 
 
 def _aggregate_outcomes(outcomes: tuple[UpdateOutcome, ...]) -> UpdateOutcome:
@@ -539,12 +548,23 @@ def _migrate_state(state: Mapping[str, object]) -> dict[str, object]:
     return migrated
 
 
-def _needs_update(
+def _install_decision(
     tag: str,
     state: Mapping[str, object],
     source: str | UpstreamSource = UPSTREAM_REPO,
-) -> bool:
+) -> _InstallDecision:
     migrated = _migrate_state(state)
+    if _release_advanced(tag, migrated, source):
+        return _InstallDecision(names=_source_skills(source), restored=False)
+    removed = _removed_managed_skills(source)
+    return _InstallDecision(names=removed, restored=bool(removed))
+
+
+def _release_advanced(
+    tag: str,
+    migrated: Mapping[str, object],
+    source: str | UpstreamSource = UPSTREAM_REPO,
+) -> bool:
     source_entry = _mapping(_mapping(migrated.get("sources")).get(_source_slug(source)))
     installed_tag = source_entry.get("installed_tag")
     if not isinstance(installed_tag, str) or not installed_tag or _is_newer_tag(tag, installed_tag):
@@ -555,6 +575,20 @@ def _needs_update(
         if not isinstance(stag, str) or not stag or _is_newer_tag(tag, stag):
             return True
     return False
+
+
+def _removed_managed_skills(source: str | UpstreamSource = UPSTREAM_REPO) -> tuple[str, ...]:
+    canonical_root = canonical_skills_root()
+    sibling_roots = sibling_skills_roots()
+    removed: list[str] = []
+    for name in _source_skills(source):
+        canonical_dir = canonical_root / name
+        if canonical_dir.exists():
+            continue
+        if not mirror_references_canonical(canonical_dir, sibling_roots, name):
+            continue
+        removed.append(name)
+    return tuple(removed)
 
 
 def _is_newer_tag(candidate: str, installed: str) -> bool:
@@ -610,21 +644,30 @@ def _repair_publications(canonical_root: Path) -> None:
 
 
 def _user_owned_skills() -> frozenset[str]:
-    return frozenset(
-        name
-        for name in UNIVERSAL_SKILL_NAMES
-        if any(is_skill_present_for_agent(name, entry.agent) for entry in agent_skill_roots())
-    )
+    canonical_root = canonical_skills_root()
+    owned: set[str] = set()
+    for name in UNIVERSAL_SKILL_NAMES:
+        for entry in agent_skill_roots():
+            if not is_skill_present_for_agent(name, entry.agent):
+                continue
+            if entry_references_canonical(entry.resolve() / name, canonical_root / name):
+                continue
+            owned.add(name)
+            break
+    return frozenset(owned)
 
 
 def _install_release(
-    source: UpstreamSource, tag: str, payload: Mapping[str, _SkillPayload]
+    source: UpstreamSource,
+    tag: str,
+    payload: Mapping[str, _SkillPayload],
+    decision: _InstallDecision,
 ) -> UpdateOutcome:
     canonical_root = canonical_skills_root()
     user_owned = _user_owned_skills()
     with _advisory_lock(publication_lock_path()):
         sweep_staging(canonical_root)
-        plan = _plan_install(canonical_root, source, tag, payload, user_owned)
+        plan = _plan_install(canonical_root, tag, payload, user_owned, decision.names)
         if not plan.skills:
             return UpdateOutcome(
                 status="preserved",
@@ -648,9 +691,19 @@ def _install_release(
         canonical_root, tuple(installed), sibling_skills_roots()
     )
     messages.extend(mirror_messages)
+    if decision.restored:
+        messages.extend(
+            f"{name}: the removed canonical installation was restored ({tag})" for name in installed
+        )
     _write_state(source, tag, digests)
+    if failed_skills:
+        status = "incomplete"
+    elif decision.restored:
+        status = "repaired"
+    else:
+        status = "updated"
     return UpdateOutcome(
-        status="incomplete" if failed_skills else "updated",
+        status=status,
         attempted=True,
         tag=tag,
         installed=tuple(installed),
@@ -661,15 +714,15 @@ def _install_release(
 
 def _plan_install(
     canonical_root: Path,
-    source: UpstreamSource,
     tag: str,
     payload: Mapping[str, _SkillPayload],
     user_owned: frozenset[str],
+    names: tuple[str, ...],
 ) -> _InstallPlan:
     skills: list[tuple[str, _SkillPayload]] = []
     preserved: list[str] = []
     messages: list[str] = []
-    for name in source.skill_names:
+    for name in names:
         content = payload.get(name)
         if name in user_owned:
             preserved.append(name)
@@ -753,12 +806,7 @@ def _settle_mirrors(source: UpstreamSource, tag: str) -> UpdateOutcome:
     source_entry = _mapping(sources.get(source.slug))
     source_tag = source_entry.get("installed_tag")
     effective_tag = str(source_tag) if isinstance(source_tag, str) and source_tag else tag
-    if not effective_tag:
-        return UpdateOutcome(status="up-to-date", attempted=True, tag=tag or None)
     canonical_root = canonical_skills_root()
-    has_canonical = any((canonical_root / name).exists() for name in source.skill_names)
-    if not has_canonical and not source_tag and source.slug != UPSTREAM_REPO:
-        return UpdateOutcome(status="up-to-date", attempted=True, tag=tag or None)
     settlement = settle_mirrors(
         canonical_root, source.skill_names, sibling_skills_roots(), effective_tag
     )

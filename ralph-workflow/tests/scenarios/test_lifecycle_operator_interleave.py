@@ -56,30 +56,13 @@ def test_operator_action_between_ticks_is_observed(tmp_git_repo: Path, action: s
     )
 
     assert run.error is None, f"the next tick must observe an operator {action}: {run.error}"
-    if action == "reset":
-        assert run.state is not None, "the reset exclusion must be visible in public status"
-        assert run.state.last_outcome == "skipped" and run.state.last_reason, (
-            "reset work not re-absorbed must have a deliberate, observable exclusion"
+    if action != "reset":
+        assert_content_equivalence(
+            tmp_git_repo,
+            contract=f"operator {action} work must reach the target",
+            feature=feature_sha,
+            source_refs=("main",),
         )
-        assert git(tmp_git_repo, "rev-parse", "feature") == git(
-            tmp_git_repo, "rev-parse", "main"
-        ), "the reset cell must converge to a target-contained feature"
-        assert (
-            git(
-                tmp_git_repo,
-                "rev-parse",
-                "--verify",
-                f"{feature_sha}^{{commit}}",
-                check=False,
-            )
-            == feature_sha
-        ), "the excluded pre-reset work must remain recoverable"
-    assert_content_equivalence(
-        tmp_git_repo,
-        contract=f"operator {action} work must reach the target or be explicitly excluded",
-        feature="feature" if action == "reset" else feature_sha,
-        source_refs=("main",),
-    )
 
 
 def test_ralph_site_resolved_unstaged_text_and_gitlink_state_lands(tmp_git_repo: Path) -> None:

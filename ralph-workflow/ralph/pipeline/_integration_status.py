@@ -42,14 +42,8 @@ class IntegrationStatus:
             else:
                 verb = "needs" if count == 1 else "need"
                 parts.append(f"{count} {verb} operator action: {', '.join(self.paths)}")
-        parts.append(f"relation={self.relation or 'unknown'}")
-        parts.append(f"strategy={self.strategy or 'unknown'}")
-        parts.append(
-            "strategy-reason="
-            + (self.strategy_reason or "no strategy could be chosen from the observed relation")
-        )
-        parts.append(f"finish-now={self.command or 'none'}")
-        parts.append(f"at-risk={'; '.join(self.risk_details) or 'nothing'}")
+        if self.command and not self.strategy:
+            parts.append(self.command)
         if not self.agents_can_finish:
             if self.strategy:
                 waiting_parts = [f"WAITING/next-strategy: {self.strategy}"]
@@ -91,13 +85,6 @@ class IntegrationStatus:
         return f"done={done}; remaining={remaining}"
 
     @property
-    def risk_details(self) -> tuple[str, ...]:
-        reasons = dict(self.paths_with_reasons)
-        return tuple(
-            f"{path}: {reasons[path]}" if reasons.get(path) else path for path in self.at_risk
-        )
-
-    @property
     def scope(self) -> str:
         details = "; ".join(self.path_details)
         return f"{self.summary}; path reasons: {details}" if details else self.summary
@@ -128,20 +115,11 @@ class IntegrationStatus:
             ),
             ("Done", str(self.done_count) if self.done_count is not None else "unknown"),
             (
-                "Done (paths resolved)",
-                str(self.done_count) if self.done_count is not None else "unknown",
-            ),
-            (
                 "Remaining",
-                str(self.remaining_count) if self.remaining_count is not None else "unknown",
-            ),
-            (
-                "Remaining (paths unresolved)",
                 str(self.remaining_count) if self.remaining_count is not None else "unknown",
             ),
             ("Human action if stopped", self.command or "none"),
             ("At risk of loss", "\n".join(self.at_risk) or "nothing"),
-            ("At risk", "\n".join(self.risk_details) or "nothing"),
             ("Build", self.build_identity),
         ]
 

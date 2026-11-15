@@ -19,6 +19,7 @@ from ralph.pipeline.agent_entry_point import (
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller, run_agent_attempt
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
+from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ATTEMPT_FAILED_EVIDENCE",
+    "RecoveryControllerUnavailableError",
     "ResolutionSession",
     "ResolutionTerminationReason",
     "begin_resolution_stop",
@@ -523,10 +525,6 @@ def invoke_resolution_agent(
         session.last_attempt_outcome = None
         session.last_attempt_result = None
         session.last_attempt_saw_activity = False
-    if display is None and display_context is None:
-        from ralph.display.context import make_display_context
-
-        display_context = make_display_context()
     if display_context is None:
         from ralph.display.context import make_display_context
 

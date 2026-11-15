@@ -32,13 +32,11 @@ pytestmark = pytest.mark.subprocess_e2e
 
 __all__ = [
     "ContentEquivalence",
-    "ContentSnapshot",
     "CountingResolver",
     "FastImportCommit",
     "IntegrationRun",
     "assert_content_equivalence",
     "build_feature_branch",
-    "capture_content_snapshot",
     "commit_file",
     "content_equivalence",
     "drive_integration",
@@ -157,17 +155,6 @@ class ContentEquivalence:
         return "; ".join(parts) if parts else "content equivalence holds"
 
 
-@dataclass(frozen=True)
-class ContentSnapshot:
-    base: str
-    feature: str
-    source: str
-    base_tree: tuple[tuple[str, str], ...]
-    feature_tree: tuple[tuple[str, str], ...]
-    source_tree: tuple[tuple[str, str], ...]
-    preserved: tuple[tuple[str, bytes], ...] = ()
-
-
 def _tree_entries(root: Path, ref: str) -> dict[str, str]:
     output = git(root, "ls-tree", "-r", ref, check=False)
     entries: dict[str, str] = {}
@@ -195,77 +182,6 @@ def snapshot_uncommitted(root: Path, paths: Iterable[str]) -> dict[str, bytes]:
         if candidate.is_file():
             snapshot[relative] = candidate.read_bytes()
     return snapshot
-
-
-def capture_content_snapshot(
-    root: Path,
-    *,
-    target: str = "main",
-    feature: str = "HEAD",
-    preserved_paths: Iterable[str] = (),
-) -> ContentSnapshot:
-    source = git(root, "rev-parse", target)
-    feature_tip = git(root, "rev-parse", feature)
-    base = _merge_base(root, source, feature_tip)
-    return ContentSnapshot(
-        base=base,
-        feature=feature_tip,
-        source=source,
-        base_tree=tuple(sorted(_tree_entries(root, base).items())) if base else (),
-        feature_tree=tuple(sorted(_tree_entries(root, feature_tip).items())),
-        source_tree=tuple(sorted(_tree_entries(root, source).items())),
-        preserved=tuple(sorted(snapshot_uncommitted(root, preserved_paths).items())),
-    )
-
-
-def _snapshot_report(
-    root: Path,
-    target: str,
-    snapshot: ContentSnapshot,
-    excluded: set[str],
-) -> ContentEquivalence:
-    base_tree = dict(snapshot.base_tree)
-    feature_tree = dict(snapshot.feature_tree)
-    source_tree = dict(snapshot.source_tree)
-    target_tree = _tree_entries(root, target)
-    feature_paths = {
-        relative
-        for relative in base_tree.keys() | feature_tree.keys()
-        if base_tree.get(relative) != feature_tree.get(relative)
-    }
-    missing: list[str] = []
-    unexpected: list[str] = []
-
-    for relative in sorted(feature_paths - excluded):
-        base_blob = base_tree.get(relative)
-        feature_blob = feature_tree.get(relative)
-        source_blob = source_tree.get(relative)
-        target_blob = target_tree.get(relative)
-        source_also_changed = source_blob != base_blob
-        if source_also_changed:
-            if target_blob == base_blob and target_blob != feature_blob:
-                missing.append(f"{relative} (the target still carries the pre-feature content)")
-            continue
-        if feature_blob is None:
-            if target_blob is not None:
-                missing.append(f"{relative} (the feature deleted it; the target kept it)")
-        elif target_blob is None:
-            missing.append(f"{relative} (absent on the target)")
-        elif target_blob != feature_blob:
-            missing.append(f"{relative} (the target still carries the pre-feature content)")
-
-    allowed = (source_tree.keys() | feature_tree.keys()) - excluded
-    unexpected.extend(sorted(target_tree.keys() - allowed - excluded))
-    for relative in sorted((source_tree.keys() - feature_paths) - excluded):
-        if target_tree.get(relative) != source_tree[relative]:
-            unexpected.append(f"{relative} (content differs from the pre-integration source tree)")
-
-    lost = [
-        relative
-        for relative, payload in snapshot.preserved
-        if not (root / relative).is_file() or (root / relative).read_bytes() != payload
-    ]
-    return ContentEquivalence(tuple(missing), tuple(unexpected), tuple(lost))
 
 
 def _find_missing_paths(
@@ -310,11 +226,8 @@ def content_equivalence(
     excluded_paths: Sequence[str] = (),
     source_refs: Sequence[str] = (),
     preserved: Mapping[str, bytes] | None = None,
-    snapshot: ContentSnapshot | None = None,
 ) -> ContentEquivalence:
     excluded = set(excluded_paths)
-    if snapshot is not None:
-        return _snapshot_report(root, target, snapshot, excluded)
     resolved_base = base if base is not None else _merge_base(root, target, feature)
     unexpected: list[str] = []
     lost: list[str] = []
@@ -370,7 +283,6 @@ def assert_content_equivalence(
     excluded_paths: Sequence[str] = (),
     source_refs: Sequence[str] = (),
     preserved: Mapping[str, bytes] | None = None,
-    snapshot: ContentSnapshot | None = None,
 ) -> ContentEquivalence:
     report = content_equivalence(
         root,
@@ -380,7 +292,6 @@ def assert_content_equivalence(
         excluded_paths=excluded_paths,
         source_refs=source_refs,
         preserved=preserved,
-        snapshot=snapshot,
     )
     assert report.satisfied, f"{contract} -- {report.describe()}"
     return report

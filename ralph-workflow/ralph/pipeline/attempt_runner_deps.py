@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Protocol
 from ralph.agents.invoke import AttemptEnded, InvokeOptions
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
-from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.attempt_runner import AttemptInvoke
+from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import AgentFailureEvent, PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
@@ -152,25 +152,6 @@ def raw_attempt_invoke(invoke: _RawAgentInvoke) -> AttemptInvoke:
     return _invoke
 
 
-if TYPE_CHECKING:
-
-    class _EffectExecutorModule(Protocol):
-        def execute_agent_effect(
-            self,
-            effect: InvokeAgentEffect,
-            config: UnifiedConfig,
-            pipeline_deps: PipelineDeps,
-            workspace_scope: WorkspaceScope,
-            *,
-            display_context: DisplayContext | None,
-            **opts: object,
-        ) -> PipelineEvent | AgentFailureEvent | AttemptEnded: ...
-
-    _effect_executor: _EffectExecutorModule
-else:
-    _effect_executor = _effect_executor_module
-
-
 @dataclass(frozen=True)
 class AttemptRunnerDeps:
     clock: Clock
@@ -180,26 +161,8 @@ class AttemptRunnerDeps:
     connectivity: Callable[[], ConnectivityState | None] | None
 
 
-def _production_effect_runner(
-    effect: InvokeAgentEffect,
-    config: UnifiedConfig,
-    pipeline_deps: PipelineDeps,
-    workspace_scope: WorkspaceScope,
-    *,
-    display_context: DisplayContext | None,
-    **kwargs: object,
-) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
-    return _effect_executor.execute_agent_effect(
-        effect,
-        config,
-        pipeline_deps,
-        workspace_scope,
-        display_context=display_context,
-        **kwargs,
-    )
+PRODUCTION_INVOKE: AttemptInvoke = effect_attempt_invoke(execute_agent_effect)
 
-
-PRODUCTION_INVOKE: AttemptInvoke = effect_attempt_invoke(_production_effect_runner)
 
 __all__ = (
     "PRODUCTION_INVOKE",

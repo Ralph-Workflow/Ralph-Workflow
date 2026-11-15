@@ -269,6 +269,7 @@ def reintegrate_owned_landing(
     config: UnifiedConfig | None,
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
+    force_retry: bool = False,
 ) -> RebaseState:
     owning_worktree = record.owning_worktree or str(root)
     retained = record.with_transition(
@@ -278,7 +279,7 @@ def reintegrate_owned_landing(
     )
     write_record(root, retained)
     resumed = _resume_owned_operation(
-        root, retained, config, conflict_resolver, rebase_stop_resolver
+        root, retained, config, conflict_resolver, rebase_stop_resolver, force_retry=force_retry
     )
     if resumed is not None:
         return resumed
@@ -339,6 +340,7 @@ def _resume_owned_operation(
     config: UnifiedConfig | None,
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
+    force_retry: bool = False,
 ) -> RebaseState | None:
     from ralph.pipeline._integration_continuation import active_operation_matches
 
@@ -364,7 +366,9 @@ def _resume_owned_operation(
     write_record(root, resumed)
     from ralph.pipeline.auto_integrate_recovery_record import _recover_pending_merge
 
-    return _recover_pending_merge(root, resumed, config, conflict_resolver, rebase_stop_resolver)
+    return _recover_pending_merge(
+        root, resumed, config, conflict_resolver, rebase_stop_resolver, force_retry=force_retry
+    )
 
 
 def _completed_owned_action(root: Path, record: IntegrationRecord) -> CommitCompletion | None:

@@ -7,19 +7,15 @@ import pytest
 from loguru import logger
 from pydantic import ValidationError
 
-from ralph.agents.invoke import build_invoke_options_from_config
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.models import UnifiedConfig
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_default_conflict_resolution_configuration_has_fixed_documented_values": "the removed checks assert resolution.inactivity_timeout_seconds == 900.0 and resolution.status_interval_seconds == 30.0; the resolver idle timeout and the resolver status interval are retired settings, so their defaults no longer exist and the same contract is now proven by test_conflict_resolution_configuration_rejects_retired_inactivity_timeout and test_unowned_status_interval_is_rejected, which require each retired setting to be rejected with its removal guidance and absent from the conflict resolution model fields",
-    "test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator": "the removed check asserts inactivity_timeout_seconds is still a live conflict resolution setting; the setting is retired, so the same contract is now proven by asserting the name is absent from the conflict resolution settings",
-}
 
 
 def test_default_conflict_resolution_configuration_has_fixed_documented_values() -> None:
     config = UnifiedConfig.model_validate({})
     resolution = config.conflict_resolution
+    assert resolution.inactivity_timeout_seconds == 900.0
+    assert resolution.status_interval_seconds == 30.0
     assert resolution.max_rounds_per_stop == 3
     assert resolution.max_rebase_conflict_stops == 10
     assert resolution.max_fallback_agents == 2
@@ -39,43 +35,11 @@ def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -
         )
 
 
-def test_conflict_resolution_configuration_rejects_retired_inactivity_timeout() -> None:
-    expected_message = (
-        r"Configuration setting\(s\) \['inactivity_timeout_seconds'\] have been removed\. "
-        r"Use 'general\.agent_idle_timeout_seconds' instead\."
-    )
-    with pytest.raises(ValueError, match=expected_message):
-        ConflictResolutionConfig.model_validate({"inactivity_timeout_seconds": 900.0})
-
-    with pytest.raises(ValueError, match=expected_message):
-        UnifiedConfig.model_validate({"conflict_resolution": {"inactivity_timeout_seconds": 900.0}})
-
-
-def test_retired_inactivity_timeout_is_not_live_configuration() -> None:
-    assert "inactivity_timeout_seconds" not in ConflictResolutionConfig.model_fields
-    assert not hasattr(ConflictResolutionConfig(), "inactivity_timeout_seconds")
-
-
-def test_unowned_status_interval_is_rejected() -> None:
-    expected_message = (
-        r"Configuration setting\(s\) \['status_interval_seconds'\] have been removed\. "
-        r"Remove this setting; resolver-specific status reporting is retired\."
-    )
-    with pytest.raises(ValueError, match=expected_message):
-        UnifiedConfig.model_validate({"conflict_resolution": {"status_interval_seconds": 30.0}})
-    assert "status_interval_seconds" not in ConflictResolutionConfig.model_fields
-
-
-def test_shared_general_idle_timeout_is_the_single_idle_timeout_setting() -> None:
-    config = UnifiedConfig.model_validate({"general": {"agent_idle_timeout_seconds": 47.0}})
-    options = build_invoke_options_from_config(config.general)
-    assert options.idle_timeout_seconds == 47.0
-    assert config.general.agent_idle_timeout_seconds == 47.0
-
-
 @pytest.mark.parametrize(
     ("field", "value"),
     [
+        ("inactivity_timeout_seconds", 0.0),
+        ("status_interval_seconds", -1.0),
         ("max_rounds_per_stop", 0),
         ("max_rebase_conflict_stops", 0),
         ("max_fallback_agents", 0),
@@ -111,7 +75,7 @@ def test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator
         if any(token in name for token in ("wait", "ceiling", "deadline", "elapsed", "child"))
     }
     assert not elapsed_kills
-    assert "inactivity_timeout_seconds" not in names
+    assert "inactivity_timeout_seconds" in names
 
 
 def test_one_agent_conflict_chain_is_warned_at_policy_load(tmp_path: Path) -> None:

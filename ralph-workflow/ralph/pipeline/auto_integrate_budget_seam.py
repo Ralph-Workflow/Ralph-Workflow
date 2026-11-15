@@ -133,6 +133,7 @@ def charge_failed_attempt(
     identity: ConflictIdentity,
     attempts: int = MAX_TRACKED_CONFLICT_ATTEMPTS,
 ) -> RebaseState:
+
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     updated = skip.record_consecutive_conflicts(carried, cap=attempts)
     return updated.model_copy(

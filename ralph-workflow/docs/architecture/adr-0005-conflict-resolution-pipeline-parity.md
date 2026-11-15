@@ -4,14 +4,13 @@
 
 1. Conflict resolution remains an out-of-graph drain bound to
    `rebase_conflict_resolution` in `agents.toml`. Its default chain is the
-   development-style `claude` chain; operators may add ordered fallback
-   candidates.
+   development-style `claude` chain with `max_retries = 2` and
+   `retry_delay_ms = 1000`; operators may add ordered fallback candidates.
 2. A failed invocation is classified and routed through
    `RecoveryController.handle` using `rebase_conflict_resolution` pipeline
-   state. The chain declares candidate ordering. The shared recovery path
-   owns same-agent retry eligibility, backoff, availability, cooldown, and
-   fallover. `max_fallback_agents` remains compatibility-only and never limits
-   the declared chain.
+   state. The chain owns candidate ordering, same-agent retries, backoff,
+   availability/cooldown behavior, and fallover. `max_fallback_agents` remains
+   compatibility-only and never limits the declared chain.
 3. One durable conflict context (`ConflictIdentity`) identifies work by observed
    feature and target tips, conflicted paths, index-stage object IDs, and a path
    scope. Feature integration and remote reconciliation have distinct scopes, so
@@ -35,8 +34,7 @@
 A conflict attempt follows the same chain recovery contract as normal agent
 work, while Git remains under Ralph Workflow control. A single-agent chain is
 valid but produces a load-time warning because no fallback remains. Operators
-configure ordered candidate breadth on the chain; retry eligibility, backoff,
-and failure limits come from the shared agent recovery settings, not a second
+configure candidate breadth and retry behavior on the chain, not with a second
 conflict-only cap.
 
 The durable identity prevents repeated payment for unchanged work and preserves

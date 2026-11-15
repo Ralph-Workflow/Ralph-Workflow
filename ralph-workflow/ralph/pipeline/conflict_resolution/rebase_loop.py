@@ -132,6 +132,7 @@ def _resolution_succeeded(result: object) -> bool:
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
     limits = config.conflict_resolution
     return ResolutionSession(
+        inactivity_timeout_seconds=limits.inactivity_timeout_seconds,
         max_rounds_per_stop=limits.max_rounds_per_stop,
         max_rebase_conflict_stops=limits.max_rebase_conflict_stops,
         max_fallback_agents=limits.max_fallback_agents,
@@ -139,24 +140,15 @@ def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
     )
 
 
-_ACTIVE_REBASE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = ContextVar(
-    "active_rebase_resolution_session", default=None
-)
-
-
 @contextmanager
 def bind_active_rebase_resolution_session(
     session: ResolutionSession | None = None,
 ) -> Iterator[None]:
-    token = _ACTIVE_REBASE_RESOLUTION_SESSION.set(session)
-    try:
-        yield
-    finally:
-        _ACTIVE_REBASE_RESOLUTION_SESSION.reset(token)
+    yield
 
 
 def active_rebase_resolution_session() -> ResolutionSession | None:
-    return _ACTIVE_REBASE_RESOLUTION_SESSION.get()
+    return None
 
 
 def _resolve_rebase_in_progress(

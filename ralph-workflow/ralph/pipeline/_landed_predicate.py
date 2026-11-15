@@ -171,7 +171,6 @@ def _range_pair_failure(
     upstream = _range_commits(root, target_tip)
     upstream_patch_ids = frozenset(_patch_ids(root, upstream).values())
     stop_is_empty = _stop_resolved_to_empty(root, record)
-    stop_shas = {s for s in (record.rebase_continue_stop, record.resolving_stop_sha) if s}
     replay_index = 0
     for index, old in enumerate(original):
         old_patch = original_ids.get(old)
@@ -180,12 +179,12 @@ def _range_pair_failure(
             if old_patch is not None and old_patch == rebased_ids.get(new):
                 replay_index += 1
                 continue
-            if old in stop_shas and _is_replay_of(root, old, new):
+            if old == record.rebase_continue_stop and _is_replay_of(root, old, new):
                 replay_index += 1
                 continue
         if old_patch is not None and old_patch in upstream_patch_ids:
             continue
-        if old in stop_shas and stop_is_empty:
+        if old == record.rebase_continue_stop and stop_is_empty:
             continue
         return (
             f"commit {index + 1} of the recorded range was neither replayed nor upstream-equivalent"
@@ -207,7 +206,6 @@ def _range_set_equivalence_failure(
     upstream = _range_commits(root, target_tip)
     upstream_patch_ids = frozenset(_patch_ids(root, upstream).values())
     stop_is_empty = _stop_resolved_to_empty(root, record)
-    stop_shas = {s for s in (record.rebase_continue_stop, record.resolving_stop_sha) if s}
     remaining_rebased = list(rebased)
     rebased_pids = dict(rebased_ids)
 
@@ -215,7 +213,7 @@ def _range_set_equivalence_failure(
         old_pid = original_ids.get(old)
         if old_pid is not None and old_pid in upstream_patch_ids:
             continue
-        if old in stop_shas and stop_is_empty:
+        if old == record.rebase_continue_stop and stop_is_empty:
             continue
         matched_idx: int | None = None
         for idx, new in enumerate(remaining_rebased):
@@ -223,7 +221,7 @@ def _range_set_equivalence_failure(
             if old_pid is not None and old_pid == new_pid:
                 matched_idx = idx
                 break
-            if old in stop_shas and _is_replay_of(root, old, new):
+            if old == record.rebase_continue_stop and _is_replay_of(root, old, new):
                 matched_idx = idx
                 break
         if matched_idx is not None:

@@ -674,11 +674,6 @@ def settle_mirrors(
         canonical_dir = canonical_root / skill_name
         canonical_digest = _managed_digest(canonical_dir)
         if canonical_digest is None:
-            if not canonical_dir.exists() and _mirror_entry_exists(sibling_roots, skill_name):
-                missing.append(skill_name)
-                messages.append(
-                    f"{skill_name}: the canonical installation is missing and cannot be mirrored"
-                )
             continue
         for sibling_root in sibling_roots:
             if _mirror_is_current(canonical_dir, sibling_root / skill_name, canonical_digest):
@@ -713,12 +708,6 @@ def settle_mirrors(
         repaired=_unique_names(repaired),
         preserved=_unique_names(preserved),
         messages=tuple(messages),
-    )
-
-
-def _mirror_entry_exists(sibling_roots: tuple[Path, ...], skill_name: str) -> bool:
-    return any(
-        (root / skill_name).exists() or (root / skill_name).is_symlink() for root in sibling_roots
     )
 
 
@@ -762,6 +751,26 @@ def _is_own_mirror(entry: Path) -> bool:
     if recorded is None:
         return False
     return managed_content_matches(entry, recorded)
+
+
+def entry_references_canonical(entry: Path, canonical_dir: Path) -> bool:
+    if entry.is_symlink():
+        try:
+            target = entry.readlink()
+        except OSError:
+            return False
+        if not target.is_absolute():
+            target = entry.parent / target
+        return target == canonical_dir
+    return _is_own_mirror(entry)
+
+
+def mirror_references_canonical(
+    canonical_dir: Path, sibling_roots: tuple[Path, ...], skill_name: str
+) -> bool:
+    return any(
+        entry_references_canonical(root / skill_name, canonical_dir) for root in sibling_roots
+    )
 
 
 def _link_skill(sibling_dir: Path, canonical_dir: Path) -> None:

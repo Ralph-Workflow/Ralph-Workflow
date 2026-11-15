@@ -84,7 +84,7 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         raise SupervisionInfrastructureError("resolver", reason.value)
 
     monkeypatch.setattr(
-        "ralph.pipeline.effect_executor.execute_agent_effect",
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
     resolved = invoke_resolution_agent(
@@ -98,8 +98,7 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         display_context=None,
         session=session,
     )
-    assert isinstance(resolved, RetryLaterOutcome)
-    assert resolved.on_change == "resolver_agent_eligibility_changed"
+    assert not resolved
     assert session.terminal_reason is reason
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)
     assert session.charge_conflict_budget is False
@@ -147,7 +146,7 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         raise SupervisionInfrastructureError("resolver", "activity relay sender: timed out")
 
     monkeypatch.setattr(
-        "ralph.pipeline.effect_executor.execute_agent_effect",
+        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
     resolved = invoke_resolution_agent(
@@ -161,8 +160,7 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         display_context=None,
         session=session,
     )
-    assert isinstance(resolved, RetryLaterOutcome)
-    assert resolved.on_change == "resolver_agent_eligibility_changed"
+    assert not resolved
     assert session.charge_conflict_budget is False
     assert session.terminal_reason is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)

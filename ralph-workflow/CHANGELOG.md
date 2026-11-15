@@ -45,7 +45,6 @@ tag exists yet — a link to one would be a dead link.
 ## [Unreleased]
 ### Removed
 
-- **fix(config)!: remove the resolver-only inactivity timeout** — `conflict_resolution.inactivity_timeout_seconds` is rejected with a migration message; ordinary and resolver invocations use `general.agent_idle_timeout_seconds`. Locked by `tests/config/test_conflict_resolution_config.py` and `tests/agents/invoke/test_conflict_resolution_activity_profile.py`.
 - **chore(repo): remove the tracked scratch directories left under the package root** — `ralph-workflow/tmp_p/`, `ralph-workflow/tmp_split/` and `ralph-workflow/tmp_split_g/` held sixteen scratch text fragments from earlier development work; no test, script, workflow or document referenced them, and the repository keeps scratch files under the repository-root `tmp/` instead. Locked by `ralph/testing/audit_repo_structure.py`.
 - **docs(skills): strip the retired default-skill references from the legacy planning and spec documents** — the legacy plan and spec trees still presented the retired mirrored bundle, its `superpowers:executing-plans` / `superpowers:subagent-driven-development` banners, and the namespaced Open Design bundle as current; the banners and bundle claims are stripped from the retained documents and the two superseded bundle documents are deleted. Locked by `tests/test_repository_urls.py`.
 

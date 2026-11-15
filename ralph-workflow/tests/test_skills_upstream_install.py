@@ -84,6 +84,9 @@ RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
     "test_preexisting_copy_in_alternate_agent_root_suppresses_install": (
         "the alternate-agent-root checks now run through the public update seam ralph.skills.upstream.maybe_update_universal_skills instead of the private presence-detection helpers, so this module asserts that a pre-existing copy in an alternate agent root suppresses the install"
     ),
+    "test_a_missing_canonical_skill_is_reported_as_incomplete": (
+        "the legacy test id is retained for the required focused command, but the assertions now replace the obsolete incomplete outcome with the corrected full-payload canonical restoration contract"
+    ),
     "test_a_sibling_symlink_pointing_elsewhere_is_preserved_and_reported": (
         "the sibling-symlink checks moved verbatim into tests/test_skills_upstream_install_siblings.py so this module stays under the repository's 1000-line file limit; every assertion is unchanged and the moved module asserts the same behavior"
     ),
@@ -306,17 +309,38 @@ def test_a_publication_left_half_finished_is_repaired_before_the_attempt_window(
 
 def test_a_missing_canonical_skill_is_reported_as_incomplete(sandbox: Path) -> None:
     root = _install_fixture_release()
-    shutil.rmtree(root / "test-driven-development")
+    removed = root / "test-driven-development"
+    shutil.rmtree(removed)
+    edited = root / "systematic-debugging" / "SKILL.md"
+    edited.write_text("# my own debugging notes\n", encoding="utf-8")
     client, calls = _client_for("v-test-1", _SKILL_FILES)
 
     outcome = upstream.maybe_update_universal_skills(
         enabled=True, now=_NOW + timedelta(hours=25), http=client
     )
 
-    assert outcome.status == "incomplete"
-    assert calls == [upstream.RELEASES_API_URL, upstream.UNIVERSAL_UPSTREAMS[1].api_url]
+    assert outcome.status == "repaired"
+    assert outcome.installed == ("test-driven-development",)
+    assert outcome.preserved == ()
+    assert calls == [
+        upstream.RELEASES_API_URL,
+        upstream.ARCHIVE_URL_TEMPLATE.format(tag="v-test-1"),
+        upstream.UNIVERSAL_UPSTREAMS[1].api_url,
+    ]
+    skill_files = _SKILL_FILES["test-driven-development"]
+    assert (removed / "SKILL.md").read_bytes() == skill_files["SKILL.md"]
+    assert (removed / "test-first.md").read_bytes() == skill_files["test-first.md"]
+    for sibling in upstream.sibling_skills_roots():
+        assert (sibling / "test-driven-development" / "SKILL.md").read_bytes() == (
+            skill_files["SKILL.md"]
+        )
+        assert (sibling / "test-driven-development" / "test-first.md").read_bytes() == (
+            skill_files["test-first.md"]
+        )
+    assert edited.read_text(encoding="utf-8") == "# my own debugging notes\n"
+    assert not any("missing" in message for message in outcome.messages), outcome.messages
     assert any(
-        "test-driven-development" in message and "missing" in message
+        "test-driven-development" in message and "restored" in message
         for message in outcome.messages
     ), outcome.messages
 
@@ -573,3 +597,18 @@ def test_preexisting_copy_in_alternate_agent_root_suppresses_install(sandbox: Pa
     root = upstream.canonical_skills_root()
     assert not (root / "antislop").exists()
     assert not (root / "test-driven-development").exists()
+
+    own_debugging = sandbox / ".agents" / "skills" / "systematic-debugging"
+    own_debugging.unlink()
+    own_debugging.mkdir()
+    (own_debugging / "SKILL.md").write_text("# My debugging skill\n", encoding="utf-8")
+    shutil.rmtree(root / "systematic-debugging")
+    retry_client, _retry_calls = _client_for("v-test-1", _SKILL_FILES)
+
+    retry = upstream.maybe_update_universal_skills(
+        enabled=True, now=_NOW + timedelta(hours=25), http=retry_client
+    )
+
+    assert "systematic-debugging" in retry.preserved
+    assert not (root / "systematic-debugging").exists()
+    assert (own_debugging / "SKILL.md").read_text(encoding="utf-8") == ("# My debugging skill\n")

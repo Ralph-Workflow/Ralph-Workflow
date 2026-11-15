@@ -806,6 +806,8 @@ def _execute_round_loop(
         round_index = session.rounds_spent
         last_invoked_reason: ResolutionTerminationReason | None = session.terminal_reason
         last_invoked_charge: bool = session.charge_conflict_budget
+        if round_index >= round_cap:
+            _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
         while round_index < round_cap:
             if not _can_continue_rounds(session, candidates):
                 _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
@@ -913,6 +915,9 @@ def _wait_for_candidates_if_cooling_down(
         wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
         if wait_ms > 0:
             _sleep_seconds(wait_ms / 1000.0)
+            controller.prune_expired()
+            if isinstance(session.recovery_state, PipelineState):
+                session.recovery_state = session.recovery_state.clear_waiting()
 
 
 def _can_continue_controller_rounds(

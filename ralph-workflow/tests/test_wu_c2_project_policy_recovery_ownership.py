@@ -12,6 +12,7 @@ from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import default_dir, load_policy
 from ralph.project_policy import cli_integration
+from ralph.project_policy.cli_integration import LoadResult, make_production_invoke_agent
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.workspace.scope import WorkspaceScope
@@ -57,7 +58,7 @@ def _make_invoke_agent(
         run_id=run_id,
     )
     display_context = make_display_context()
-    return cli_integration.make_production_invoke_agent(
+    return make_production_invoke_agent(
         load_result,
         PipelineDeps(display_context=display_context),
         scope,

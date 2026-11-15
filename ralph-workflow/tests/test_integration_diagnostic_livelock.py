@@ -224,12 +224,13 @@ def test_ralph_moves_real_head_does_not_block(tmp_path: Path) -> None:
     repo.index.add(["README.md"])
     repo.index.commit("initial", author=actor, committer=actor)
     repo.git.branch("-M", "main")
+    pre_target_sha = repo.branches.main.commit.hexsha
+    repo.git.checkout("-b", "feature")
     feature_file = tmp_path / "feature.txt"
     feature_file.write_text("feature\n", encoding="utf-8")
     repo.index.add(["feature.txt"])
     repo.index.commit("feature base", author=actor, committer=actor)
     feature_sha = repo.head.commit.hexsha
-    pre_target_sha = repo.branches.main.commit.hexsha
     (tmp_path / "main.md").write_text("main change\n", encoding="utf-8")
     repo.git.checkout("main")
     repo.index.add(["main.md"])
