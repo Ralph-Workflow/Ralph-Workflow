@@ -112,9 +112,7 @@ class _MainPhaseHarness:
             )
         )
         self.controller.register_phase_chain(phase, self.agents)
-        self.config = UnifiedConfig(
-            agents={name: AgentConfig(cmd=name) for name in self.agents}
-        )
+        self.config = UnifiedConfig(agents={name: AgentConfig(cmd=name) for name in self.agents})
         self.registry = AgentRegistry.from_config(self.config)
         self.display_context = make_display_context()
         self.display = ParallelDisplay(

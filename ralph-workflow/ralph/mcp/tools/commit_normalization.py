@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def normalize_commit_submission(
     artifact_type: str,
     content: str,

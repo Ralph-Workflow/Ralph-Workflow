@@ -697,6 +697,7 @@ class FailureClassifier:
             must_charge_ledger=counts,
             facts=facts,
         )
+
     def classify(
         self,
         exc: BaseException | str,
