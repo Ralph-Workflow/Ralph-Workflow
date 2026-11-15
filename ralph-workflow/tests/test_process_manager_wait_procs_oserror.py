@@ -3,6 +3,8 @@ from __future__ import annotations
 import errno
 import itertools
 import sys
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
@@ -14,6 +16,22 @@ from ralph.testing.fake_process import (
     make_async_process_factory,
     make_sync_process_factory,
 )
+
+if TYPE_CHECKING:
+    from ralph.process.manager._process_manager_types import (
+        _PsutilModuleLike,
+        _PsutilProcessLike,
+    )
+
+    class _SafeWaitProcs(Protocol):
+        def __call__(
+            self,
+            psutil_mod: _PsutilModuleLike,
+            procs: Sequence[_PsutilProcessLike],
+            *,
+            timeout: float | None,
+        ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
+
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3,
@@ -46,13 +64,16 @@ class _EinvalWaitPsutil(FakePsutil):
         raise OSError(errno.EINVAL, "Invalid argument")
 
 
-def _make_manager() -> tuple[ProcessManager, _EinvalWaitPsutil]:
+def _make_manager(
+    safe_wait_procs: _SafeWaitProcs | None = None,
+) -> tuple[ProcessManager, _EinvalWaitPsutil]:
     fake_psutil = _EinvalWaitPsutil()
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=None),
         async_process_factory=make_async_process_factory(itertools.count(100)),
         psutil=fake_psutil,
+        safe_wait_procs=safe_wait_procs,
     )
     return pm, fake_psutil
 
@@ -93,7 +114,20 @@ def test_safe_wait_procs_fallback_keeps_unprovable_procs_alive() -> None:
 
 
 def test_process_manager_regression_registered_descendant_einval_uses_safe_wait() -> None:
-    pm, fake_psutil = _make_manager()
+    safe_wait_pids: list[list[int | None]] = []
+    pm: ProcessManager | None = None
+
+    def counting_safe_wait(
+        psutil_mod: _PsutilModuleLike,
+        procs: Sequence[_PsutilProcessLike],
+        *,
+        timeout: float | None,
+    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+        safe_wait_pids.append([getattr(proc, "pid", None) for proc in procs])
+        assert pm is not None
+        return pm._default_safe_wait_procs(psutil_mod, procs, timeout=timeout)
+
+    pm, fake_psutil = _make_manager(safe_wait_procs=counting_safe_wait)
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
     descendant_pid = 4242

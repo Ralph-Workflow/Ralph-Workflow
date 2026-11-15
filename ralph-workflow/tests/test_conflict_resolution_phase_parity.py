@@ -75,26 +75,36 @@ def _ensure_parity_session_controller(
         class _ClockWrapper(Clock):
             def __init__(self, inner: object) -> None:
                 self._inner = inner
+                self._offset: float = 0.0
+
+            def advance(self, seconds: float) -> None:
+                candidate = getattr(self._inner, "advance", None)
+                if callable(candidate):
+                    candidate(seconds)
+                else:
+                    self._offset += seconds
 
             def monotonic(self) -> float:
                 candidate = getattr(self._inner, "monotonic", None)
+                base = 0.0
                 if callable(candidate):
                     res = candidate()
                     if isinstance(res, (int, float)):
-                        return float(res)
-                candidate_now = getattr(self._inner, "now", None)
-                if callable(candidate_now):
-                    res = candidate_now()
-                    if isinstance(res, (int, float)):
-                        return float(res)
-                return 0.0
+                        base = float(res)
+                else:
+                    candidate_now = getattr(self._inner, "now", None)
+                    if callable(candidate_now):
+                        res = candidate_now()
+                        if isinstance(res, (int, float)):
+                            base = float(res)
+                return base + self._offset
 
             def epoch(self) -> float:
                 candidate = getattr(self._inner, "epoch", None)
                 if callable(candidate):
                     res = candidate()
                     if isinstance(res, (int, float)):
-                        return float(res)
+                        return float(res) + self._offset
                 return self.monotonic()
 
             def sleep(self, seconds: float) -> None:

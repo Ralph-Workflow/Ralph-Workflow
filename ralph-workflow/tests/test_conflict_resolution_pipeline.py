@@ -45,12 +45,10 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_bounded_at_max_resolution_rounds": (
-        "calls == [1, 2, 3] reflects the default 3 max_rounds_per_stop in UnifiedConfig"
+        "with max_rounds_per_stop=3 the pipeline runs up to 3 rounds when unmerged paths persist"
     ),
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
-        "with shared recovery controller owning candidate selection, each candidate in "
-        "the chain is attempted without local session retries, leaving current_index=1 "
-        "and retries=0 on chain exhaustion"
+        "fallback resolver attempt failure records typed terminal evidence with retries set to 0 under the shared controller"
     ),
     "test_failed_resolver_attempt_uses_the_next_fallback_candidate": (
         "when primary candidate fails, cursor advances to fallback candidate at "

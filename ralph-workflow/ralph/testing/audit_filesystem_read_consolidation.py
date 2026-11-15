@@ -180,6 +180,11 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/testing/audit_comments.py", "_slice_files", "raw_path_is_dir"),
         ("ralph/testing/audit_comments.py", "_slice_files", "raw_path_is_file"),
         ("ralph/testing/audit_comments.py", "_slice_files", "raw_path_rglob"),
+        (
+            "ralph/testing/audit_integration_no_legacy.py",
+            "_iter_scannable_files",
+            "raw_walk",
+        ),
         ("ralph/testing/audit_opts_key_drift.py", "_parse_module_payload", "raw_path_read_bytes"),
         ("ralph/testing/audit_secret_scan.py", "main", "raw_path_is_dir"),
         (

@@ -912,7 +912,21 @@ def _wait_for_candidates_if_cooling_down(
 ) -> None:
     controller = session.recovery_controller
     if controller is not None:
+        from ralph.recovery.agent_failure_ledger import Cooldown
+
+        now_ms = controller._now_ms()
+        statuses = dict(controller.chain_eligibility(PHASE_RESOLUTION, list(candidates)))
         wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
+        if session.rounds_spent > 0 and candidates:
+            primary_agent = candidates[0]
+            primary_status = statuses.get(primary_agent)
+            if isinstance(primary_status, Cooldown) and primary_status.reason not in (
+                "consecutive_unproductive_limit_reached",
+                "dead_agent_no_progress",
+            ):
+                primary_wait = primary_status.until_ms - now_ms
+                if primary_wait > 0:
+                    wait_ms = primary_wait
         if wait_ms > 0:
             wait_s = wait_ms / 1000.0
             start_s = (
@@ -927,7 +941,8 @@ def _wait_for_candidates_if_cooling_down(
             remaining_s = wait_s - elapsed_s
             if remaining_s > 0 and hasattr(controller._clock, "advance"):
                 controller._clock.advance(remaining_s)
-            controller.prune_expired()
+            prune_now_ms = controller._now_ms() + max(0, int(remaining_s * 1000))
+            controller.prune_expired(now_ms=prune_now_ms)
             if isinstance(session.recovery_state, PipelineState):
                 session.recovery_state = session.recovery_state.clear_waiting()
 
@@ -961,11 +976,21 @@ def _can_continue_controller_rounds(
     if all(_is_spent_or_demoted(agent, status) for agent, status in chain_statuses):
         return False
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
-    provider_fallover_pending = len(live) > 1 and any(
-        status.reason == "provider_unavailable" for _agent, status in chain_statuses
+    provider_fallover_pending = (
+        len(live) > 1
+        and any(status.reason == "provider_unavailable" for _agent, status in chain_statuses)
+        and any(status.is_eligible for _agent, status in chain_statuses)
     )
-    return any(status.is_eligible for _agent, status in chain_statuses) or (
-        wait_ms > 0 and not provider_fallover_pending
+    primary_cooling = False
+    if session.rounds_spent > 0 and live:
+        c_status = dict(chain_statuses).get(live[0])
+        primary_cooling = isinstance(c_status, Cooldown) and not _is_spent_or_demoted(
+            live[0], c_status
+        )
+    return (
+        any(status.is_eligible for _agent, status in chain_statuses)
+        or (wait_ms > 0 and not provider_fallover_pending)
+        or primary_cooling
     )
 
 

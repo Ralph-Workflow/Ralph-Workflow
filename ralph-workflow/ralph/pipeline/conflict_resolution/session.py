@@ -145,6 +145,7 @@ class ResolutionSession:
     inactivity_timeout_seconds: float | None = None
     last_retry_delay_ms: float | None = None
 
+
 def begin_resolution_stop(
     session: ResolutionSession,
     *,
@@ -316,6 +317,11 @@ def classify_failed_resolution_attempt(
     effective_outcome = outcome
     if not workspace_changed and outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
         effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
+    typed_outcome = (
+        effective_outcome
+        if effective_outcome is not None and effective_outcome is not ConflictAttemptOutcome.RAW
+        else None
+    )
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
     recovery_state: PipelineState
@@ -338,9 +344,8 @@ def classify_failed_resolution_attempt(
         phase=PHASE_RESOLUTION,
         agent=agent_name,
         facts=facts,
-        outcome=effective_outcome,
+        outcome=typed_outcome,
         unresolved_count=unresolved_count,
-        raw_failure=raw_failure,
     )
     try:
         new_state, _effects, _failure_event = controller.handle(
@@ -359,9 +364,17 @@ def classify_failed_resolution_attempt(
         )
     session.recovery_state = new_state
     session.last_retry_delay_ms = new_state.last_retry_delay_ms
+    if bench:
+        from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+        controller.record_confirmed_unavailability(
+            PHASE_RESOLUTION,
+            agent_name,
+            UnavailabilityReason.PROCESS_EXITED,
+        )
     session.last_recovery_reason = (
-        context.classified_failure.reason
-        if context.classified_failure is not None
+        typed_outcome_reason(typed_outcome, unresolved_count)
+        if typed_outcome is not None
         else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
     candidates_tuple = tuple(candidates) if candidates else (agent_name,)

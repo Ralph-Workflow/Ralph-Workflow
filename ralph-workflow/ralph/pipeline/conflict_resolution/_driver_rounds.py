@@ -409,6 +409,16 @@ def _run_one_round(
         )
         if succeeded:
             return attempt
+        controller = session.recovery_controller
+        if (
+            controller is not None
+            and round_index < round_cap
+            and not isinstance(invoker_result, UnknownOutcome)
+            and session.terminal_reason is not ResolutionTerminationReason.EXCEPTION
+        ):
+            status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
+            if not status.is_spent and not status.is_unavailable:
+                return attempt
         visited.add(selected)
     return attempt
 
@@ -473,7 +483,4 @@ def _preferred_conflict_candidate(
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-    delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-    if delay > 0:
-        return _select_after_delay(controller, session, eligible, candidates, delay)
     return None
