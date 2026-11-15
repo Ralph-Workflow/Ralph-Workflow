@@ -52,6 +52,10 @@ class _SuiteWatchdog:
     thread: threading.Thread
 
 
+class _WatchdogConfig(Protocol):
+    _ralph_suite_watchdog: _SuiteWatchdog | None
+
+
 def _is_xdist_worker(config: pytest.Config) -> bool:
     return hasattr(config, "workerinput")
 
@@ -111,13 +115,15 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         name="ralph-pytest-suite-watchdog",
         daemon=True,
     )
-    setattr(config, _WATCHDOG_ATTR, _SuiteWatchdog(cancel_event=cancel_event, thread=thread))
+    watchdog_config: _WatchdogConfig = cast("_WatchdogConfig", config)
+    watchdog_config._ralph_suite_watchdog = _SuiteWatchdog(cancel_event=cancel_event, thread=thread)
     thread.start()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     del exitstatus
-    watchdog = cast("_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None))
+    watchdog_config: _WatchdogConfig = cast("_WatchdogConfig", session.config)
+    watchdog = watchdog_config._ralph_suite_watchdog
     if watchdog is None:
         return
     watchdog.cancel_event.set()

@@ -44,9 +44,11 @@ from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, Pr
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_failed_resolver_attempt_uses_the_next_fallback_candidate": (
+        "shared recovery controller falls over immediately to each eligible candidate once per round without resolver-local retries"
+    ),
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
-        "with skip_same_agent_retries=True primary runs once without retries and "
-        "fallback retries until exhaustion, leaving chain cursor wrapped to index 0"
+        "under max_rounds_per_stop=1 each eligible candidate is invoked once per round without resolver-local retries"
     ),
 }
 
@@ -319,7 +321,7 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=0, retries=1)
+    assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
 
 
 def test_exhausted_resolver_chain_reports_typed_terminal_evidence(

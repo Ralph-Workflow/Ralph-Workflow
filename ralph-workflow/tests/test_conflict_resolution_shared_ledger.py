@@ -25,14 +25,14 @@ from tests.test_conflict_resolution_pipeline import (
 if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
 
-pytestmark = pytest.mark.timeout_seconds(5)
-
-
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_resolver_that_failed_in_an_earlier_session_is_not_offered_first": (
-        "resolver-local retries were deleted in favor of single-pass handover through shared recovery"
+        "shared recovery controller falls over immediately to each eligible candidate once per round without resolver-local retries"
     ),
 }
+
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 
 @pytest.fixture(autouse=True)
@@ -40,9 +40,15 @@ def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
 
 
-def _deps(store: AgentUnavailabilityTracker) -> PipelineDeps:
+def _deps(store: AgentUnavailabilityTracker, *, consecutive_limit: int = 1) -> PipelineDeps:
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
     context = make_display_context(console=Console(file=StringIO()))
-    return dataclasses.replace(make_test_pipeline_deps(context), unavailability_store=store)
+    return dataclasses.replace(
+        make_test_pipeline_deps(context, recovery_clock=store.clock),
+        unavailability_store=store,
+        ledger=AgentFailureLedger(clock=store.clock, consecutive_limit=consecutive_limit),
+    )
 
 
 def _resolve(tmp_path: Path, deps: PipelineDeps, calls: list[str]) -> bool:
@@ -70,11 +76,7 @@ def _resolve(tmp_path: Path, deps: PipelineDeps, calls: list[str]) -> bool:
 def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_seams(
-        monkeypatch,
-        unmerged=_CONFLICTED,
-        surviving_per_round=[list(_CONFLICTED), []],
-    )
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[list(_CONFLICTED), []])
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )

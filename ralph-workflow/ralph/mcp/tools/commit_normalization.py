@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.commit_message_normalizer import normalize_commit_message_draft
 from ralph.prompts.commit_evidence import (
@@ -11,6 +11,7 @@ from ralph.prompts.commit_evidence import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -27,7 +28,8 @@ def normalize_commit_submission(
     try:
         evidence = _build_evidence(workspace_root, commit_evidence_source)
     except TypeError:
-        evidence = _build_evidence(workspace_root)
+        evidence_fn = cast("Callable[[Path], CommitEvidenceBundle]", _build_evidence)
+        evidence = evidence_fn(workspace_root)
     result = normalize_commit_message_draft(content, evidence, draft_revision=draft_revision)
     return result.content, {
         "content": result.content,

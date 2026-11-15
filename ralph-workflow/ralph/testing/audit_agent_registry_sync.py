@@ -35,35 +35,33 @@ def _find_builtin_supports_tuple(tree: ast.Module) -> ast.expr | None:
 
 
 def _parse_support_entry(elt: ast.expr) -> tuple[str | None, str | None, bool]:
-    is_correct_call = (
-        isinstance(elt, ast.Call)
-        and isinstance(elt.func, ast.Attribute)
-        and (
-            (
-                elt.func.attr == "from_registration_kwargs"
-                and isinstance(elt.func.value, ast.Name)
-                and elt.func.value.id == "AgentSupport"
-            )
-            or (
-                elt.func.attr == "to_support"
-                and isinstance(elt.func.value, ast.Call)
-                and isinstance(elt.func.value.func, ast.Name)
-                and elt.func.value.func.id == "BuiltinAgentSpec"
-            )
+    if not isinstance(elt, ast.Call):
+        return None, None, False
+    call_node: ast.Call = elt
+    is_correct_call = isinstance(call_node.func, ast.Attribute) and (
+        (
+            call_node.func.attr == "from_registration_kwargs"
+            and isinstance(call_node.func.value, ast.Name)
+            and call_node.func.value.id == "AgentSupport"
+        )
+        or (
+            call_node.func.attr == "to_support"
+            and isinstance(call_node.func.value, ast.Call)
+            and isinstance(call_node.func.value.func, ast.Name)
+            and call_node.func.value.func.id == "BuiltinAgentSpec"
         )
     )
     if not is_correct_call:
         return None, None, False
 
-    assert isinstance(elt, ast.Call)
     name_val: str | None = None
     cmd_val: str | None = None
 
-    if elt.args:
-        first_arg = elt.args[0]
+    if call_node.args:
+        first_arg = call_node.args[0]
         if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
             name_val = first_arg.value
-    for kw in elt.keywords:
+    for kw in call_node.keywords:
         match True:
             case _ if (
                 kw.arg == "name"

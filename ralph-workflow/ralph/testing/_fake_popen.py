@@ -9,6 +9,7 @@ from ralph.testing._process_streams import ProcessStreams
 
 class FakePopen:
     __slots__ = (
+        "__dict__",
         "_final_returncode",
         "_killed",
         "_returncode",
@@ -58,7 +59,7 @@ class FakePopen:
         self._killed = True
 
 
-class FakeStubbornPopen(FakePopen):
+class _FakeStubbornPopen(FakePopen):
     __slots__ = ()
 
     def __init__(self, pid: int, *, final_returncode: int = -9) -> None:
@@ -75,7 +76,10 @@ class FakeStubbornPopen(FakePopen):
         return
 
 
-class FakeImmortalPopen(FakePopen):
+FakeStubbornPopen = _FakeStubbornPopen
+
+
+class _FakeImmortalPopen(FakePopen):
     __slots__ = ()
 
     def wait(self, timeout: float | None = None) -> int:
@@ -86,6 +90,9 @@ class FakeImmortalPopen(FakePopen):
 
     def kill(self) -> None:
         return
+
+
+FakeImmortalPopen = _FakeImmortalPopen
 
 
 __all__ = ["FakeImmortalPopen", "FakePopen", "FakeStubbornPopen"]

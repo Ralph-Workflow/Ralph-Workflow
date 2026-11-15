@@ -158,7 +158,7 @@ def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_strategy_rotation_does_not_replenish_driver_round_cap": (
-        "with shared eligibility each round invokes the candidate once and round cap stops after 2 rounds"
+        "with resolver-local retries removed, the driver advances across rounds up to the stop cap"
     ),
 }
 

@@ -50,15 +50,19 @@ def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) 
                 or (session.recovery_controller is None and not status.is_eligible)
             ):
                 barred.add(name)
+    barred.update(name for name in candidates if name in session.dead_surface_agents)
     return frozenset(name for name in candidates if name in barred)
 
 
 def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
     if session.terminal_reason is not ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
         return
-    ledger = session_ledger(session)
-    if ledger is not None:
-        ledger.mark_unavailable(PHASE_RESOLUTION, agent_name, reason="candidate_unavailable")
+    session.dead_surface_agents = session.dead_surface_agents | {agent_name}
+    controller = session.recovery_controller
+    if controller is not None:
+        controller.mark_agent_unavailable(
+            PHASE_RESOLUTION, agent_name, reason="candidate_unavailable"
+        )
 
 
 def next_unvisited(offset: int, total: int, visited: set[int]) -> int:

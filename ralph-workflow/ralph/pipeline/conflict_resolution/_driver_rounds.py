@@ -280,6 +280,8 @@ def _execute_single_candidate(
         session.unresolved_paths = unresolved_after
         count_dropped = len(unresolved_after) < unresolved_before
     probe_changed = bool(probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace))
+    if workspace is not None and any(not workspace.exists(p) for p in session.unresolved_paths):
+        probe_changed = False
     agent_ran = bool(session.last_attempt_saw_activity) if not succeeded else True
     progress = RoundAttempt(
         succeeded=False,

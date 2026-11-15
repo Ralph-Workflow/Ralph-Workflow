@@ -24,14 +24,17 @@ _MAX_DIFF_SUMMARY_ITEMS: Final = 6
 _CHANGE_AREA_DEPTH: Final = 2
 
 
-class CommitEvidenceSource(Protocol):
+class _CommitEvidenceSource(Protocol):
     def list_changed_paths(self, repo_root: Path) -> list[str]: ...
 
     def commit_generation_diff(self, repo_root: Path) -> str: ...
 
 
+CommitEvidenceSource = _CommitEvidenceSource
+
+
 @dataclass(frozen=True, slots=True)
-class GitCommitEvidenceSource:
+class _GitCommitEvidenceSource:
     def list_changed_paths(self, repo_root: Path) -> list[str]:
         return list_changed_paths(repo_root)
 
@@ -39,7 +42,8 @@ class GitCommitEvidenceSource:
         return commit_generation_diff(repo_root)
 
 
-DEFAULT_COMMIT_EVIDENCE_SOURCE: Final = GitCommitEvidenceSource()
+GitCommitEvidenceSource = _GitCommitEvidenceSource
+DEFAULT_COMMIT_EVIDENCE_SOURCE: Final = _GitCommitEvidenceSource()
 
 
 @dataclass(frozen=True)

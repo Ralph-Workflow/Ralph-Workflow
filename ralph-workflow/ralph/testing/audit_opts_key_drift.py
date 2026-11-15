@@ -19,7 +19,6 @@ _LITERAL_READS = frozenset({"get", "pop", "setdefault"})
 _OPAQUE_READS = frozenset({"update", "keys", "items", "values"})
 
 _FuncNode = ast.FunctionDef | ast.AsyncFunctionDef
-_FUNC_NODES: tuple[type[ast.AST], ...] = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 @dataclass(frozen=True)

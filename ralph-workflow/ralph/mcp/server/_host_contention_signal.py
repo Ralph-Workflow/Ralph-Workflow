@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.server._mcp_health_event import record_host_contention_signal
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_manager_types import _PsutilModuleLike
+    from typing import Protocol
+
+    from ralph.process.manager._process_manager_types import _PsutilProcessLike
+
+    class _PsutilModuleLike(Protocol):
+        Process: Callable[[int], _PsutilProcessLike]
+
 
 psutil: _PsutilModuleLike | None
 try:

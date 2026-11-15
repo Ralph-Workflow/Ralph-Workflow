@@ -427,7 +427,6 @@ tests/test_commit_message_pipeline.py|3,0,0
 tests/test_commit_plumbing_transport_tools.py|0,2,0
 tests/test_commit_plumbing_uses_canonical_submit.py|0,1,4
 tests/test_commit_retry_cooldown.py|0,2,0
-tests/test_commit_retry_recovery_owned_bound.py|0,0,2
 tests/test_commit_review_artifact.py|0,3,0
 tests/test_commit_review_diff.py|0,2,0
 tests/test_commit_review_invariants.py|0,2,0

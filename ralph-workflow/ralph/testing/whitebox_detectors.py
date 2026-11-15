@@ -174,6 +174,24 @@ _SCAN_HANDLERS: dict[type, Callable[[_Scan, ast.AST], None]] = {
 }
 
 
+def _iter_fields(
+    node: ast.AST,
+) -> tuple[tuple[str, ast.AST | list[ast.AST] | None], ...]:
+    fields: list[tuple[str, ast.AST | list[ast.AST] | None]] = []
+    for field_name in node._fields:
+        try:
+            val: object = getattr(node, field_name)
+        except AttributeError:
+            continue
+        if isinstance(val, ast.AST):
+            fields.append((field_name, val))
+        elif isinstance(val, list):
+            fields.append((field_name, [item for item in val if isinstance(item, ast.AST)]))
+        elif val is None:
+            fields.append((field_name, None))
+    return tuple(fields)
+
+
 def _scan_tree(tree: ast.AST) -> _Scan:
     scan = _Scan()
     stack: list[ast.AST] = [tree]
@@ -188,7 +206,13 @@ def _scan_tree(tree: ast.AST) -> _Scan:
                 handler = _SCAN_HANDLERS.get(type(node))
                 if handler is not None:
                     handler(scan, node)
-        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        for _field_name, value in reversed(_iter_fields(node)):
+            match True:
+                case _ if isinstance(value, list):
+                    items = [item for item in value if isinstance(item, ast.AST)]
+                    stack.extend(reversed(items))
+                case _ if isinstance(value, ast.AST):
+                    stack.append(value)
     return scan
 
 

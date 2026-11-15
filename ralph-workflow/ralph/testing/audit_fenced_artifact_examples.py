@@ -77,6 +77,14 @@ class _PlanUnit:
     step_count: int = 1
 
 
+def _group_str(match: re.Match[str], group: int | str) -> str:
+    value = match.group(group)
+    if not isinstance(value, str):
+        msg = "expected regex capture group to be str"
+        raise TypeError(msg)
+    return value
+
+
 def _registered_artifact_types() -> frozenset[str]:
     _ = _artifact_specs
     return frozenset(spec.artifact_type for spec in registered_specs())
@@ -105,12 +113,12 @@ def _literal_fenced_examples(
         if opening is None:
             index += 1
             continue
-        marker = cast("str", opening.group("fence"))
+        marker = _group_str(opening, "fence")
         closing_index = index + 1
         while closing_index < len(lines) and not _is_closing_fence(lines[closing_index], marker):
             closing_index += 1
         if closing_index == len(lines):
-            info = cast("str", opening.group("info")).strip()
+            info = _group_str(opening, "info").strip()
             if info.startswith(("markdown", "md")):
                 violations.append(f"{source_name}:{index + 1} unterminated markdown fence")
             break
@@ -119,7 +127,7 @@ def _literal_fenced_examples(
                 source_name=source_name,
                 first_content_line=index + 2,
                 markdown="\n".join(lines[index + 1 : closing_index]) + "\n",
-                fence_info=cast("str", opening.group("info")).strip(),
+                fence_info=_group_str(opening, "info").strip(),
             )
         )
         index = closing_index + 1
@@ -129,11 +137,11 @@ def _literal_fenced_examples(
 def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
     blocks: list[_SetBlock] = []
     for match in _SET_BLOCK_RE.finditer(source):
-        body = cast("str", match.group("body"))
+        body = _group_str(match, "body")
         leading_newlines = len(body) - len(body.lstrip("\n"))
         blocks.append(
             _SetBlock(
-                name=cast("str", match.group("name")),
+                name=_group_str(match, "name"),
                 body=body,
                 first_content_line=(
                     source.count("\n", 0, match.start("body")) + leading_newlines + 1
@@ -167,7 +175,7 @@ def _macro_generated_examples(
     examples: list[_ArtifactExample] = []
     violations: list[str] = []
     for call in _SUBMISSION_CALL_RE.finditer(source):
-        name = call.group("example_name")
+        name = _group_str(call, "example_name")
         eligible = [block for block in blocks if block.name == name and block.start < call.start()]
         if not eligible:
             violations.append(
@@ -189,7 +197,7 @@ def _macro_generated_examples(
                 source_name=source_name,
                 first_content_line=block.first_content_line,
                 markdown=rendered,
-                declared_artifact_type=call.group("artifact_type"),
+                declared_artifact_type=_group_str(call, "artifact_type"),
             )
         )
     return examples, violations
@@ -210,18 +218,18 @@ def _frontmatter_type(markdown: str) -> tuple[bool, str | None]:
     match = _FRONTMATTER_TYPE_RE.search(frontmatter)
     return (
         True,
-        None if match is None else cast("str", match.group("artifact_type")).strip(),
+        None if match is None else _group_str(match, "artifact_type").strip(),
     )
 
 
 def _declared_fence_type(info: str) -> str | None:
     match = _FENCE_ARTIFACT_TYPE_RE.search(info)
-    return None if match is None else match.group("artifact_type")
+    return None if match is None else _group_str(match, "artifact_type")
 
 
 def _declared_example_size(info: str) -> str | None:
     match = _FENCE_EXAMPLE_SIZE_RE.search(info)
-    return None if match is None else match.group("example_size")
+    return None if match is None else _group_str(match, "example_size")
 
 
 def _inferred_spec_type(frontmatter_type: str, registered: frozenset[str]) -> str | None:
@@ -374,8 +382,8 @@ def _plan_units(markdown: str) -> tuple[_PlanUnit, ...]:
                         current_dependencies,
                     )
                 )
-            current_id = item_match.group("unit_id")
-            current_description = item_match.group("description")
+            current_id = _group_str(item_match, "unit_id")
+            current_description = _group_str(item_match, "description")
             current_dependencies = ()
             continue
         if current_id is not None and line.startswith("  Depends on:"):
@@ -399,7 +407,7 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     units: list[_PlanUnit] = []
     for index, heading in enumerate(headings):
-        title = cast("str", heading.group("title"))
+        title = _group_str(heading, "title")
         if not (
             re.fullmatch(
                 r"(?:Sub(?:[\s-]?plan)(?:\s*[:\-\u2013\u2014]\s*|\s+).+|"
@@ -421,7 +429,7 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
 def _plan_main_fan_in(markdown: str) -> _PlanUnit | None:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     for index, heading in enumerate(headings):
-        title = cast("str", heading.group("title"))
+        title = _group_str(heading, "title")
         lowered = title.casefold()
         if "integration" not in lowered or "verif" not in lowered:
             continue
@@ -434,7 +442,7 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
     steps = list(re.finditer(r"^### \[(?P<step_id>S-\d+)\]", body, re.MULTILINE))
     if not steps:
         return None
-    own_step_ids = {cast("str", step.group("step_id")) for step in steps}
+    own_step_ids = {_group_str(step, "step_id") for step in steps}
     dependencies: list[str] = []
     for index, step in enumerate(steps):
         end = steps[index + 1].start() if index + 1 < len(steps) else len(body)
@@ -444,14 +452,14 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
             step_body,
             re.MULTILINE,
         ):
-            dependency_text = cast("str", match.group("ids"))
+            dependency_text = _group_str(match, "ids")
             dependencies.extend(
                 part.strip()
                 for part in dependency_text.split(",")
                 if part.strip() not in own_step_ids
             )
     return _PlanUnit(
-        cast("str", steps[-1].group("step_id")),
+        _group_str(steps[-1], "step_id"),
         title,
         tuple(dependencies),
         len(steps),
@@ -504,7 +512,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 f"{source_name}:1 plan examples must include example-size={example_size}"
             )
     for example in by_size["tiny"]:
-        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
+        step_count = len(list(_PLAN_STEP_HEADING_RE.finditer(example.markdown)))
         if step_count not in {1, 2}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -516,7 +524,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 "example-size=tiny must not declare parallel work units"
             )
     for example in by_size["medium"]:
-        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
+        step_count = len(list(_PLAN_STEP_HEADING_RE.finditer(example.markdown)))
         if step_count not in {3, 4}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "

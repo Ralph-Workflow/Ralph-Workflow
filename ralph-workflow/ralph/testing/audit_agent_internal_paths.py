@@ -6,8 +6,15 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.testing._runtime_checks import require
+
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
+
+    class _InternalPathsModule(Protocol):
+        is_agent_internal_path: Callable[[str], bool]
+
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -265,18 +272,22 @@ def _ordering_violations_for_call(
     sites: _CallSites,
 ) -> list[str]:
     problems: list[str] = []
-    assert sites.prior_line is not None
-    assert sites.later_line is not None
-    if lineno < sites.prior_line:
+    prior_line = sites.prior_line
+    later_line = sites.later_line
+    require(prior_line is not None)
+    require(later_line is not None)
+    if prior_line is None or later_line is None:
+        return problems
+    if lineno < prior_line:
         problems.append(
             f"{rel_path}: {helper!r} call at line {lineno} is BEFORE the "
-            f"{_AUTO_SEED_PRIOR_ANCHOR!r} anchor at line {sites.prior_line} -- "
+            f"{_AUTO_SEED_PRIOR_ANCHOR!r} anchor at line {prior_line} -- "
             "auto-seed must run AFTER ensure_git_initialized"
         )
-    if lineno > sites.later_line:
+    if lineno > later_line:
         problems.append(
             f"{rel_path}: {helper!r} call at line {lineno} is AFTER the "
-            f"{_AUTO_SEED_LATER_ANCHOR!r} anchor at line {sites.later_line} -- "
+            f"{_AUTO_SEED_LATER_ANCHOR!r} anchor at line {later_line} -- "
             "auto-seed must run BEFORE the artifact load"
         )
     return problems
@@ -431,7 +442,8 @@ def _load_is_agent_internal_path() -> Callable[[str], bool]:
         raise RuntimeError(f"cannot build import spec for {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast("Callable[[str], bool]", module.is_agent_internal_path)
+    typed_mod = cast("_InternalPathsModule", module)
+    return typed_mod.is_agent_internal_path
 
 
 def _behavioral_invariants() -> list[str]:

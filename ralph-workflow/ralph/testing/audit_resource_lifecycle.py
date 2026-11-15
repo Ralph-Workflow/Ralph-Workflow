@@ -653,8 +653,7 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
                 in_with_calls is not None,
                 "visit_Module must populate _in_with_calls before visit_Call",
             )
-            assert in_with_calls is not None
-            if node not in in_with_calls:
+            if in_with_calls is not None and node not in in_with_calls:
                 self._add(
                     node,
                     "bare_http_client",
