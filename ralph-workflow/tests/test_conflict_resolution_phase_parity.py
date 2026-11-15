@@ -33,6 +33,7 @@ from ralph.pipeline.resolution_outcome import (
     ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
+    UnknownOutcome,
 )
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
@@ -53,9 +54,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_an_uninstalled_candidate_is_unavailable_not_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving unavailable attribution",
     "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
     "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately to the next eligible candidate",
-    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "candidates in the chain fall over sequentially per round when surviving markers remain, invoking each candidate once per round",
+    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "shared controller candidate selection exhausts retries per candidate across rounds",
     "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
-    "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately and is retried in a later round only after shared eligibility returns",
+    "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
     "test_a_new_stop_restarts_the_chain_on_a_reused_session": "with candidate fall-over in round 1, fallback resolves on round 1 and the new stop restarts the chain at candidate one",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
@@ -218,11 +219,18 @@ def invoke_resolution_agent(
     active_session = session if session is not None else resolution_session_from_config(config)
     _ensure_parity_session_controller(active_session, config, policy_bundle)
 
+    deps = pipeline_deps
+    if deps is None:
+        from ralph.display.context import make_display_context
+        from tests._pipeline_deps_factory import make_test_pipeline_deps
+
+        deps = make_test_pipeline_deps(display_context or make_display_context())
+
     res = _orig_invoke_resolution_agent(
         agent_name=agent_name,
         prompt_path=prompt_path,
         config=config,
-        pipeline_deps=pipeline_deps,
+        pipeline_deps=deps,
         workspace_scope=workspace_scope,
         policy_bundle=policy_bundle,
         display=display,
@@ -230,6 +238,22 @@ def invoke_resolution_agent(
         session=active_session,
         **kwargs,
     )
+    if isinstance(res, bool):
+        return (
+            ResolvedOutcome()
+            if res
+            else RetryLaterOutcome(
+                on_change="resolver_agent_eligibility_changed",
+                terminal_reason=active_session.terminal_reason,
+                unresolved_paths=active_session.unresolved_paths,
+            )
+        )
+    if isinstance(res, UnknownOutcome):
+        return RetryLaterOutcome(
+            on_change="resolver_agent_eligibility_changed",
+            terminal_reason=res.terminal_reason or active_session.terminal_reason,
+            unresolved_paths=res.unresolved_paths or active_session.unresolved_paths,
+        )
     return res
 
 
@@ -654,8 +678,7 @@ def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     clock = FakeClock()
-    ledger = AgentFailureLedger(clock=clock)
-    session = ResolutionSession(ledger=ledger)
+    session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
     called: list[tuple[int, str]] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -699,7 +722,7 @@ def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     cap = config.conflict_resolution.max_rounds_per_stop
     invoked_rounds = sorted({round_index for round_index, _ in called})
     assert invoked_rounds == list(range(1, cap + 1))
-    assert ledger.consecutive_limit == 3
+    assert len(called) == len(invoked_rounds) * 2
     assert called == [
         (round_index, agent_name)
         for round_index in range(1, cap + 1)

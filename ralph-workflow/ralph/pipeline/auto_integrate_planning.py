@@ -136,6 +136,7 @@ def integrate_before_planning(
     readiness: TreeReadinessAssessment | None = None,
     sleep: Callable[[float], None] | None = None,
     jitter: Callable[[], float] | None = None,
+    force_retry: bool = False,
 ) -> RebaseState | None:
     root = scope.root
     if retained_integration_reason(root) is not None:

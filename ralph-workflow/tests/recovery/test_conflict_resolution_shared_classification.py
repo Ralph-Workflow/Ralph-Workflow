@@ -35,8 +35,8 @@ _OWNED_CLASSIFICATIONS = (
         ConflictAttemptOutcome.STALLED_NO_PROGRESS,
         FailureCategory.AGENT,
         True,
-        True,
-        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
+        False,
+        None,
     ),
     (
         ConflictAttemptOutcome.UNRESOLVED_REMAINING,

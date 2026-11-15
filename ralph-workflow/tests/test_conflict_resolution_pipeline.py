@@ -45,7 +45,7 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_bounded_at_max_resolution_rounds": (
-        "resolver runs up to max_rounds_per_stop which defaults to 3 rounds"
+        "calls == [1, 2, 3] reflects the default 3 max_rounds_per_stop in UnifiedConfig"
     ),
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
         "with shared recovery controller owning candidate selection, each candidate in "

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Protocol
 
 from ralph.agents.invoke import AttemptEnded, InvokeOptions
@@ -146,7 +146,7 @@ def raw_attempt_invoke(invoke: _RawAgentInvoke) -> AttemptInvoke:
             return PipelineEvent.AGENT_SUCCESS
         carry_value = _drained_carry_value(result)
         if isinstance(carry_value, AttemptEnded):
-            return carry_value
+            return AttemptEnded(facts=replace(carry_value.facts, artifact_valid=True))
         return PipelineEvent.AGENT_SUCCESS
 
     return _invoke

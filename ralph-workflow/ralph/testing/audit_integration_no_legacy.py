@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import ast
-import os
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Final
+
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -545,11 +546,12 @@ def audit_modules(
 
 
 def _iter_scannable_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
-    for dirpath, dirnames, filenames in os.walk(repo_root):
-        dirnames[:] = sorted(name for name in dirnames if name not in _SKIP_DIR_NAMES)
-        rel_dir = PurePath(os.path.relpath(dirpath, repo_root))
-        for filename in sorted(filenames):
-            yield (rel_dir / filename).as_posix(), Path(dirpath) / filename
+    ws = FsWorkspace(repo_root)
+    for rel_str in sorted(ws.iter_files("")):
+        rel_path = PurePath(rel_str)
+        if any(part in _SKIP_DIR_NAMES for part in rel_path.parts):
+            continue
+        yield rel_path.as_posix(), repo_root / rel_str
 
 
 def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Violation]:

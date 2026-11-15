@@ -24,8 +24,7 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_process_manager_regression_registered_descendant_einval_uses_safe_wait": (
-        "asserted safe wait behavior through public fake psutil call records rather than "
-        "monkeypatching private manager implementation details"
+        "use fake_psutil.wait_procs_pids to verify safe wait without monkeypatching private pm._safe_wait_procs"
     ),
 }
 
@@ -108,8 +107,9 @@ def test_process_manager_regression_registered_descendant_einval_uses_safe_wait(
     assert pm.list_active() == []
     assert not descendant.is_running()
     assert handle.pid not in pm._descendants
-    assert fake_psutil.wait_procs_calls >= 1
-    assert any(descendant_pid in pids for pids in fake_psutil.wait_procs_pids if pids is not None)
+    assert fake_psutil.wait_procs_calls == len(fake_psutil.wait_procs_pids)
+    assert len(fake_psutil.wait_procs_pids) >= 1
+    assert any(pids == [descendant_pid] for pids in fake_psutil.wait_procs_pids)
 
 
 @pytest.mark.parametrize("grace", [0.0, 0.01], ids=["zero-grace", "short-grace"])
