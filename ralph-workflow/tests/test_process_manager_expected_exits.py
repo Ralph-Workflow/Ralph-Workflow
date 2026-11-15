@@ -51,7 +51,7 @@ def _capture_emitted_logs(
 ) -> list[str]:
     records: list[str] = []
     sink_id = logger.add(
-        lambda msg: records.append(str(msg)),
+        records.append,
         level="DEBUG",
         format="{level}:{message}",
     )

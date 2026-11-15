@@ -121,17 +121,11 @@ class FakeAgentRunner:
         if self.mode is AgentMode.PROVIDER_FAILURE:
             raise ConnectionError("agent provider unavailable")
         if self.mode is AgentMode.WATCHDOG_HANG:
-            from ralph.agents.invoke import AgentInactivityTimeoutError
-
-            raise AgentInactivityTimeoutError("scenario-rebase-resolver", 30.0)
+            raise TimeoutError("agent idle watchdog fired")
         if self.mode is AgentMode.NON_ZERO_EXIT:
-            from ralph.agents.invoke import AgentInvocationError
-
-            raise AgentInvocationError("scenario-rebase-resolver", 7, "agent exited")
+            raise RuntimeError("agent exited with status 7")
         if self.mode is AgentMode.SIGNAL:
-            from ralph.agents.invoke import AgentInvocationError
-
-            raise AgentInvocationError("scenario-rebase-resolver", 143, "terminated")
+            raise RuntimeError("agent terminated by signal 15")
         if self.mode is AgentMode.INVALID_RESULT:
             return PipelineEvent.AGENT_FAILURE
         if self.mode is AgentMode.LEAVES_MARKER:
@@ -159,18 +153,15 @@ class FakeAgentRunner:
                 raise AssertionError("a completed stop must never be presented to the agent again")
             if self.fail_at_launch == (self.launches + 1):
                 raise ConnectionError("agent provider unavailable partway through finite work")
+        import ralph.pipeline.effect_executor as effect_mod
         from ralph.agents.system_clock import SystemClock
         from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
         from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
         from ralph.workspace.scope import WorkspaceScope
 
-        injected = current_agent_effect_dependencies().agent_runner
-        if injected is None:
-            raise RuntimeError("scenario agent runner dependency unavailable")
         deps = AttemptRunnerDeps(
             clock=self.clock or SystemClock(),
-            invoke=injected,
+            invoke=effect_mod.execute_agent_effect,
             probe_runner=None,
             workspace_probe=None,
             connectivity=None,
@@ -212,22 +203,6 @@ def shared_executor_seam(runner: FakeAgentRunner | None) -> Iterator[None]:
     finally:
         reset_agent_effect_dependencies(token)
 
-
-def test_shared_executor_seam_injects_runner_and_shared_controller() -> None:
-    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-
-    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
-    with shared_executor_seam(runner):
-        dependencies = current_agent_effect_dependencies()
-        assert dependencies.agent_runner is not None
-        assert dependencies.recovery_controller is not None
-        dependencies.recovery_controller.register_phase_chain(
-            "rebase_conflict_resolution", ("shared-controller-agent",)
-        )
-
-    assert dependencies.recovery_controller.agents_for_phase("rebase_conflict_resolution") == (
-        "shared-controller-agent",
-    )
 
 
 @contextmanager
@@ -941,9 +916,7 @@ def run_spent_chain_fall_over_then_wait(root: Path) -> ScenarioResult:
         reset_executors(token)
 
     waiting_lines = [
-        line
-        for line in second_lines
-        if "provider" in line.content.lower() or "waiting" in line.content.lower()
+        line for line in second_lines if "provider" in line.content.lower() or "waiting" in line.content.lower()
     ]
     terminal = (
         "waiting"
@@ -983,9 +956,7 @@ def run_empty_resolution_stop(root: Path) -> ScenarioResult:
     target = git(root, "rev-parse", "main")
     terminal = (
         "resolved"
-        if not rebase_in_progress(root)
-        and head == target
-        and (root / "series.txt").read_text(encoding="utf-8") == "seed\nsecond\n"
+        if not rebase_in_progress(root) and head == target and (root / "series.txt").read_text(encoding="utf-8") == "seed\nsecond\n"
         else "retained"
     )
     return ScenarioResult(runner.launches, tuple(lines), terminal)

@@ -7,6 +7,7 @@ from rich.console import Console
 
 from ralph.cli.commands.diagnose import integration_status_rows
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBarModel, render_status_bar
 from ralph.pipeline import (
     IntegrationStatus,
@@ -167,7 +168,13 @@ def test_waiting_status_preserves_the_full_cause_and_action_once() -> None:
 
 
 def test_declared_decisions_announcement_names_cause_per_file() -> None:
-    display = ScenarioDisplay()
+    output = StringIO()
+    display = ParallelDisplay(
+        make_display_context(
+            console=Console(file=output, width=200, force_terminal=False, color_system=None),
+            env={},
+        )
+    )
     status = build_integration_status(
         cause="DECLARED_DECISION",
         paths_with_reasons=(
@@ -178,10 +185,10 @@ def test_declared_decisions_announcement_names_cause_per_file() -> None:
 
     announce_declared_decisions(display, status)
 
-    emitted: list[str] = [line.content for line in display.lines]
-    assert len(emitted) == 1
-    assert "deleted.txt: delete/modify" in emitted[0]
-    assert "asset.bin: binary" in emitted[0]
+    rendered = output.getvalue()
+    assert rendered.count("conflict(s) git could not write markers into") == 1
+    assert "deleted.txt: delete/modify" in rendered
+    assert "asset.bin: binary" in rendered
 
 
 def test_agent_selection_reasons_name_compared_agent() -> None:

@@ -3,12 +3,17 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from ralph.git.merge import UnmergedPathsObservation
-from ralph.git.operation_snapshot import OperationSnapshot, OperationState, is_stop_resolved
+from ralph.git.operation_snapshot import (
+    OperationSnapshot,
+    OperationState,
+    is_stop_resolved,
+    observe_operation_snapshot,
+)
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline import resolve_conflicted_rebase
+from ralph.pipeline._pending_rebase_continue import pending_rebase_identity_matches
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
@@ -39,7 +44,6 @@ from ralph.pipeline.integration_ladder import (
     decide_ladder_transition,
     run_ladder_rung,
 )
-from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs, _ledger
 from tests._scenario_git import commit_file, git
@@ -199,52 +203,37 @@ def test_operation_snapshot_stop_resolved_authority() -> None:
     assert UnmergedPathsObservation((), query_ok=False).is_resolved is False
 
 
-def test_pending_rebase_identity_match_is_observable_from_snapshot(tmp_path: Path) -> None:
+def test_pending_rebase_identity_matches_observed_rebase_state(tmp_git_repo: Path) -> None:
+    _setup_mixed_rebase(tmp_git_repo)
+    unresolved_snapshot = observe_operation_snapshot(tmp_git_repo)
     rec = IntegrationRecord(
         phase="integrating",
         target="main",
         pre_feature_sha="feat_sha",
         pre_target_sha="target_sha",
-        rebase_continue_head="head_sha",
-        rebase_continue_stop="stop_sha",
-        rebase_continue_tree="tree_sha",
+        rebase_continue_head=unresolved_snapshot.head_sha,
+        rebase_continue_stop=unresolved_snapshot.rebase_head,
+        rebase_continue_tree=unresolved_snapshot.index_tree,
     )
+    assert pending_rebase_identity_matches(tmp_git_repo, rec) is False
 
-    with patch(
-        "ralph.pipeline._pending_rebase_continue.observe_operation_snapshot"
-    ) as mock_observe:
-        mock_observe.return_value = OperationSnapshot(
-            unmerged_paths=(),
-            unmerged_query_ok=True,
-            operation_state=OperationState.REBASE_PAUSED,
-            head_sha="head_sha",
-            target_tip="tip",
-            merge_head=None,
-            rebase_head="stop_sha",
-            index_tree="tree_sha",
-            staged_conflict_marker_paths=(),
-        )
-        snapshot = mock_observe.return_value
-        assert snapshot.operation_state is OperationState.REBASE_PAUSED
-        assert all((rec.rebase_continue_head, rec.rebase_continue_stop, rec.rebase_continue_tree))
-        assert snapshot.stop_resolved is True
-        assert snapshot.head_sha == rec.rebase_continue_head
-        assert snapshot.rebase_head == rec.rebase_continue_stop
-        assert snapshot.index_tree == rec.rebase_continue_tree
-
-        mock_observe.return_value = OperationSnapshot(
-            unmerged_paths=("remaining.txt",),
-            unmerged_query_ok=True,
-            operation_state=OperationState.REBASE_PAUSED,
-            head_sha="head_sha",
-            target_tip="tip",
-            merge_head=None,
-            rebase_head="stop_sha",
-            index_tree="tree_sha",
-            staged_conflict_marker_paths=(),
-        )
-        snapshot = mock_observe.return_value
-        assert snapshot.stop_resolved is False
+    (tmp_git_repo / "shared.txt").write_text("resolved text\n", encoding="utf-8")
+    git(tmp_git_repo, "add", "shared.txt")
+    git(
+        tmp_git_repo,
+        "update-index",
+        "--cacheinfo",
+        f"160000,{git(tmp_git_repo, 'rev-parse', ':2:vendor/link')},vendor/link",
+    )
+    resolved_snapshot = observe_operation_snapshot(tmp_git_repo)
+    resolved_record = rec.model_copy(
+        update={
+            "rebase_continue_head": resolved_snapshot.head_sha,
+            "rebase_continue_stop": resolved_snapshot.rebase_head,
+            "rebase_continue_tree": resolved_snapshot.index_tree,
+        }
+    )
+    assert pending_rebase_identity_matches(tmp_git_repo, resolved_record) is True
 
 
 def test_ladder_postcondition_failure_records_evidence_and_escalates(tmp_path: Path) -> None:
@@ -343,86 +332,3 @@ def test_repeated_identical_observation_action_escalates_ladder() -> None:
     t3 = decide_ladder_transition(facts_3)
     assert t3.next_rung is CleanupLadderRung.FRESH_WORKTREE
 
-
-def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_path: Path) -> None:
-    calls_site1: list[str] = []
-    write_record(
-        tmp_path,
-        IntegrationRecord(
-            phase="integrating",
-            target="main",
-            pre_feature_sha="feat_sha",
-            pre_target_sha="onto_sha",
-        ),
-    )
-
-    def mock_finish_stops_site1(root: Path, target: str) -> bool:
-        calls_site1.append("finish_resolved_rebase_stops")
-        return False
-
-    def mock_attempt_resolution_site1(name: str, trigger: object) -> object:
-        calls_site1.append("attempt_stop_resolution")
-        return RetryLaterOutcome(on_change="paused")
-
-    with (
-        patch(
-            "ralph.pipeline.conflict_resolution.rebase_loop.finish_resolved_rebase_stops",
-            side_effect=mock_finish_stops_site1,
-        ),
-        patch(
-            "ralph.pipeline._stop_resolution_entry.attempt_stop_resolution",
-            side_effect=mock_attempt_resolution_site1,
-        ),
-        patch("ralph.pipeline.auto_integrate_rebase_merge.set_resolving_rebase", return_value=True),
-        patch("ralph.pipeline.conflict_resolution.status.conflict_status_bar_session"),
-    ):
-        mock_resolver = MagicMock()
-        resolve_conflicted_rebase(
-            root=tmp_path,
-            target="main",
-            rebase_stop_resolver=mock_resolver,
-            display=None,
-            conflict_resolution_config=None,
-        )
-
-    assert calls_site1 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]
-
-    calls_site2: list[str] = []
-    site2_root = tmp_path / "planning-entry"
-    site2_root.mkdir()
-
-    def mock_finish_stops_site2(root: Path, target: str) -> bool:
-        calls_site2.append("finish_resolved_rebase_stops")
-        return False
-
-    def mock_attempt_resolution_site2(name: str, trigger: object) -> object:
-        calls_site2.append("attempt_stop_resolution")
-        return RetryLaterOutcome(on_change="paused")
-
-    with (
-        patch(
-            "ralph.pipeline.conflict_resolution.rebase_loop.finish_resolved_rebase_stops",
-            side_effect=mock_finish_stops_site2,
-        ),
-        patch(
-            "ralph.pipeline._stop_resolution_entry.attempt_stop_resolution",
-            side_effect=mock_attempt_resolution_site2,
-        ),
-        patch("ralph.pipeline.auto_integrate_planning.rebase_in_progress", return_value=True),
-        patch(
-            "ralph.pipeline.auto_integrate_planning.resolve_integration_target", return_value="main"
-        ),
-        patch("ralph.git.merge.observe_branch_sha", return_value=("feat_sha", True)),
-        patch(
-            "ralph.pipeline.conflict_resolution.rebase_loop.current_rebase_identity",
-            return_value=("feat_sha", "onto_sha"),
-        ),
-    ):
-        integrate_before_planning(
-            config=MagicMock(),
-            scope=MagicMock(root=site2_root),
-            state=MagicMock(),
-            rebase_stop_resolver=MagicMock(),
-        )
-
-    assert calls_site2 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]

@@ -731,19 +731,6 @@ phase's work.
 | `commit_simplified.jinja` | Commit | none, because the phase only authors the compact commit-message artifact | the template carries no `SKILL_INSTALLED_*` gate |
 | `commit_review.jinja` | Commit review | none, because the phase classifies the pending diff against the safety tripwires and performs its own housekeeping edits; the `commit_review` artifact pointer already carries that format | the template carries no `SKILL_INSTALLED_*` gate |
 
-### Criterion-8 policy-trim verdicts
-
-| Criterion | `docs/ralph-workflow-policy/execution-kernel.md` | `ralph/project_policy/starters/execution-kernel.md` | Evidence |
-|---|---|---|---|
-| Trim generic test-first, evidence, and red-green technique while retaining Ralph Workflow-specific obligations | Satisfied | Satisfied | Neither copy contains generic `test-first` or `red-green` wording; each retains its phase, artifact, runtime, and commit contracts in `## Kernel rules`, `## Agent rules`, and the rule-to-phase and rule-to-enforcer tables. |
-| Remove the premise-check rule | Consciously excepted under the trim-less clause | Consciously excepted under the trim-less clause | Both copies retain the runtime-owned repeated-failure premise-check rule and a `Premise-check retry line` guard-inventory row. Removing them would change the v6 policy enforcement inventory and the retry contract in `ralph/recovery/retry_prompt.py`; commit `48bd5e8ca` records the deliberate restoration for repeated identical failure fingerprints. |
-| Keep checked rules and Ralph Workflow phase, artifact, runtime, and commit rules | Satisfied | Satisfied | The current rule, role-slice, enforcement, and guard-inventory tables retain those contracts. |
-| Keep one “shipped skills are technique, policy wins” line | Satisfied: one line | Satisfied: one line | Each copy contains one `Shipped skills hold technique` precedence statement. |
-| Keep at most one library-documentation sentence | Satisfied: one sentence | Satisfied: one sentence | Each copy states once that the third-party library's own documentation is the spec. |
-| Apply the trim to both policy copies | Satisfied | Satisfied | Both current copies carry the same criterion-8 bounds and exception. |
-| Avoid forcing a policy schema upgrade; trim less if required | Satisfied through the premise-check exception | Satisfied through the premise-check exception | Both files remain schema v6, matching `ralph/project_policy/markers.py::SCHEMA_VERSION`; the premise-check guard remains part of the v6 enforcement inventory and retry contract. |
-| Adjudicate developer-prompt overlap with universal skills | Not applicable: the overlap sits in the prompt fragments, not the policy copies | Not applicable: the overlap sits in the prompt fragments, not the policy copies | Satisfied in the prompt fragments: `shared/_verification_commitments.j2` keeps Ralph Workflow's gate and partial-result obligations and states proof as the result carrying fresh evidence, leaving the evidence-before-claim technique to `verification-before-completion`. `shared/_developer_iteration_guidance.j2` keeps the check-named-before-implementation and gate obligations, and leaves red-green, hypothesis selection, and root-cause technique to `test-driven-development` and `systematic-debugging`. Each cue keeps its generic action for the branch where the skill is absent. |
-
 ### Choosing a universal skill
 
 A universal skill must be **language- and framework-agnostic**, must **work

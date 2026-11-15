@@ -203,36 +203,29 @@ def classify_stage_map(
 ) -> ConflictSight:
     ours = stages.get(2)
     theirs = stages.get(3)
-    gitlink_sight = ConflictSight.GITLINK_POLICY
     if ours is None and theirs is None:
-        result = ConflictSight.AGENT_DECISION if binary else ConflictSight.AGENT
-    elif ours is None or theirs is None:
+        return ConflictSight.AGENT_DECISION if binary else ConflictSight.AGENT
+    gitlink_sight = ConflictSight.GITLINK_POLICY
+    if ours is None or theirs is None:
         present = ours if ours is not None else theirs
-        if present is not None and present[0] == _GITLINK_MODE:
-            result = gitlink_sight
-        else:
-            result = (
-                ConflictSight.AGENT_DECISION
-                if binary
-                else _classify_one_sided(present, gitlink_sight)
-            )
-    else:
-        ours_mode, ours_blob = ours
-        theirs_mode, theirs_blob = theirs
-        if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
-            result = _classify_gitlink(
-                ours_mode,
-                ours_blob,
-                theirs_mode,
-                theirs_blob,
-                stages.get(1),
-                gitlink_sight=gitlink_sight,
-            )
-        elif binary or (_is_tree(ours_mode) != _is_tree(theirs_mode)):
-            result = ConflictSight.AGENT_DECISION
-        else:
-            result = _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
-    return result
+        return _classify_one_sided(present, gitlink_sight)
+
+    ours_mode, ours_blob = ours
+    theirs_mode, theirs_blob = theirs
+    if ours_mode in {_GITLINK_MODE} or theirs_mode in {_GITLINK_MODE}:
+        if _is_tree(ours_mode) or _is_tree(theirs_mode):
+            return ConflictSight.OUT_OF_REACH
+        return _classify_gitlink(
+            ours_mode,
+            ours_blob,
+            theirs_mode,
+            theirs_blob,
+            stages.get(1),
+            gitlink_sight=gitlink_sight,
+        )
+    if binary or (_is_tree(ours_mode) != _is_tree(theirs_mode)):
+        return ConflictSight.AGENT_DECISION
+    return _classify_two_sided_blob(ours_blob, theirs_blob, has_markers=has_markers)
 
 
 def _classify_two_sided_blob(
