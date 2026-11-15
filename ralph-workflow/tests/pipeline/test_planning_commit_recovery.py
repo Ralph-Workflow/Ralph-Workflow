@@ -18,6 +18,10 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_dirty_sync_dispatches_normal_commit_before_planning": "the new pending-rollback case continues without the branch landing because the refused rollback stops the commit route; the landed check still holds for every other case",
+}
+
 
 def _policy() -> PipelinePolicy:
     return PipelinePolicy(
@@ -38,9 +42,12 @@ def _policy() -> PipelinePolicy:
     )
 
 
-@pytest.mark.parametrize("commit_succeeds, obstructs", [(True, True), (False, True), (True, False)])
+@pytest.mark.parametrize(
+    "commit_succeeds, obstructs, pending_rollback",
+    [(True, True, False), (False, True, False), (True, False, False), (True, True, True)],
+)
 def test_dirty_sync_dispatches_normal_commit_before_planning(
-    monkeypatch: pytest.MonkeyPatch, commit_succeeds: bool, obstructs: bool
+    monkeypatch: pytest.MonkeyPatch, commit_succeeds: bool, obstructs: bool, pending_rollback: bool
 ) -> None:
     workspace = MemoryWorkspace()
     workspace.write("work", "completed change")
@@ -77,7 +84,7 @@ def test_dirty_sync_dispatches_normal_commit_before_planning(
                 workspace.delete("work")
             return state.copy_with(phase="complete")
         assert state.phase == "planning"
-        assert landed
+        assert landed or pending_rollback
         return 0
 
     def sleep(delay: float) -> None:
@@ -122,11 +129,23 @@ def test_dirty_sync_dispatches_normal_commit_before_planning(
         runner, "emit_phase_transition_if_changed", lambda *_args, **_kwargs: "planning"
     )
     monkeypatch.setattr(runner, "run_pipeline_step", step)
+    rollbacks: list[str | None] = []
+
+    def refuse_rollback(state: PipelineState, *_args: object, **_kwargs: object) -> PipelineState:
+        rollbacks.append(state.rollback_ref)
+        return state.copy_with(rollback_pending=False, last_error="rollback refused")
+
+    monkeypatch.setattr(runner, "execute_pending_rollback", refuse_rollback)
+    run_inner_loop = run_loop._run_inner_loop_after_startup
+
+    if pending_rollback:
+        _assert_pending_rollback_runs_before_commit_review(
+            run_inner_loop(_REJECTED, ctx, "planning"), dispatched, rollbacks
+        )
+        return
 
     if commit_succeeds:
-        state, _previous, code = run_loop._run_inner_loop_after_startup(
-            PipelineState(phase="planning"), ctx, "planning"
-        )
+        state, _previous, code = run_inner_loop(PipelineState(phase="planning"), ctx, "planning")
         assert code == 0
         assert state.phase == "planning"
         assert dispatched == (["tidy", "package", "planning"] if obstructs else ["planning"])
@@ -137,9 +156,26 @@ def test_dirty_sync_dispatches_normal_commit_before_planning(
         )
     else:
         with pytest.raises(_ObservedCooldownError):
-            run_loop._run_inner_loop_after_startup(PipelineState(phase="planning"), ctx, "planning")
+            run_inner_loop(PipelineState(phase="planning"), ctx, "planning")
         assert waits and all(delay > 0 for delay in waits)
         assert landed is False
+
+
+_REJECTED_REF = "refs/ralph/proposals/run/1-1"
+_REJECTED = PipelineState(phase="planning", rollback_pending=True, rollback_ref=_REJECTED_REF)
+
+
+def _assert_pending_rollback_runs_before_commit_review(
+    outcome: tuple[PipelineState, str, int | None],
+    dispatched: list[str],
+    rollbacks: list[str | None],
+) -> None:
+    state, _previous, code = outcome
+    assert code == 0
+    assert "tidy" not in dispatched
+    assert rollbacks == [_REJECTED_REF]
+    assert state.rollback_ref == _REJECTED_REF
+    assert state.rollback_pending is False
 
 
 class _ObservedCooldownError(Exception):

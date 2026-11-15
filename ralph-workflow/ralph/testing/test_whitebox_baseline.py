@@ -231,7 +231,7 @@ tests/pipeline/test_interrupt_reports_the_state_reached.py|2,0,3
 tests/pipeline/test_kimi_smoke_harness.py|0,3,0
 tests/pipeline/test_next_attempt_gets_fresh_bridge.py|0,1,1
 tests/pipeline/test_phase_close_failed_no_artifact.py|2,1,3
-tests/pipeline/test_planning_commit_recovery.py|4,0,5
+tests/pipeline/test_planning_commit_recovery.py|4,0,4
 tests/pipeline/test_planning_requires_target_sync.py|3,0,10
 tests/pipeline/test_reducer_lock_retry.py|0,1,0
 tests/pipeline/test_run_loop_cleanup_shutdown.py|0,2,0

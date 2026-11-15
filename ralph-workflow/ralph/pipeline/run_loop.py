@@ -2135,6 +2135,14 @@ def _route_planning_commit(state: PipelineState, ctx: LoopContext) -> PipelineSt
     )
     from ralph.pipeline.progress import advance_phase
 
+    if (
+        state.rollback_pending is True
+        and isinstance(state.rollback_ref, str)
+        and state.rollback_ref
+    ):
+        return _runner_module.execute_pending_rollback(
+            state, ctx.workspace_scope.root, ctx.policy_bundle.pipeline
+        )
     kind_str = state.rebase.last_planning_obstruction
     if kind_str:
         try:
