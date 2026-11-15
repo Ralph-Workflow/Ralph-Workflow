@@ -33,6 +33,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_failed_attempt_is_charged_to_recovery_exactly_once": (
         "the shared one-attempt/one-charge contract attributes each failed candidate exactly once"
     ),
+    "test_an_unavailable_candidate_does_not_answer_for_the_one_after_it": (
+        "the unavailable candidate is followed once by the next shared-eligible candidate without resolver-local retries"
+    ),
 }
 
 if TYPE_CHECKING:
@@ -303,7 +306,7 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
         )
         is False
     )
-    assert called == ["ghost"] + ["healthy"] * 3
+    assert called == ["ghost", "healthy"]
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
     assert session.exhaustion_reason is not None

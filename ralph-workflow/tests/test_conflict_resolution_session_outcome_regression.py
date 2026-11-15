@@ -13,25 +13,35 @@ from ralph.pipeline.conflict_resolution.session import (
     invoke_resolution_agent,
 )
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.policy.models import PolicyBundle
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+
+RALPH_TEST_CHANGE_REASONS = {
+    "test_conflict_resolution_session_regression_returns_canonical_outcome": (
+        "a known resolver agent failure now uses the sealed RetryLaterOutcome contract instead "
+        "of the superseded UnknownOutcome result"
+    ),
+    "test_conflict_resolution_session_legacy_boolean_compatibility": (
+        "the sealed RetryLaterOutcome failure contract replaces the superseded literal False result"
+    ),
+}
 
 
 @pytest.mark.parametrize(
     ("event", "expected_type"),
     (
         (PipelineEvent.AGENT_SUCCESS, ResolvedOutcome),
-        (PipelineEvent.AGENT_FAILURE, UnknownOutcome),
+        (PipelineEvent.AGENT_FAILURE, RetryLaterOutcome),
     ),
 )
 def test_conflict_resolution_session_regression_returns_canonical_outcome(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     event: PipelineEvent,
-    expected_type: type[ResolvedOutcome] | type[UnknownOutcome],
+    expected_type: type[ResolvedOutcome] | type[RetryLaterOutcome],
 ) -> None:
     def fake_run_agent_attempt(*args: object, **kwargs: object) -> object:
         del args, kwargs
@@ -62,6 +72,10 @@ def test_conflict_resolution_session_regression_returns_canonical_outcome(
     )
 
     assert isinstance(outcome, expected_type)
+    if event is PipelineEvent.AGENT_FAILURE:
+        assert isinstance(outcome, RetryLaterOutcome)
+        assert outcome.until is None
+        assert outcome.on_change == "resolver_agent_eligibility_changed"
 
 
 def test_conflict_resolution_session_legacy_boolean_compatibility(
@@ -89,4 +103,7 @@ def test_conflict_resolution_session_legacy_boolean_compatibility(
         session=session,
     )
 
-    assert outcome is False
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert bool(outcome) is False
+    assert outcome.until is None
+    assert outcome.on_change == "resolver_agent_eligibility_changed"

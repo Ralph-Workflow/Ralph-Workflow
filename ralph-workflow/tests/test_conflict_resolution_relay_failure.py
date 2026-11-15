@@ -27,6 +27,7 @@ from ralph.pipeline.conflict_resolution.session import (
     wrap_activity_listener,
 )
 from ralph.pipeline.effect_executor import execute_agent_effect
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
@@ -37,10 +38,10 @@ from tests._session_registry_instance import _RegistryInstance
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_output": (
-        "invoke_resolution_agent returns bool and records failure details on session post-659311ca2"
+        "invoke_resolution_agent returns the sealed RetryLaterOutcome and records failure details on the session"
     ),
     "test_silent_infrastructure_failure_does_not_charge_conflict_budget": (
-        "invoke_resolution_agent returns bool and records failure details on session post-659311ca2"
+        "invoke_resolution_agent returns the sealed RetryLaterOutcome and records failure details on the session"
     ),
 }
 
@@ -78,38 +79,9 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
     session = ResolutionSession()
 
     def execute(effect: InvokeAgentEffect, *_args: object, **_kwargs: object) -> PipelineEvent:
-        assert effect.activity_status_listener is not None
-        health = effect.supervision_health_error
-        assert health is not None
-        clock = FakeClock()
-        watchdog = IdleWatchdog(
-            TimeoutPolicy(
-                profile=TimeoutProfile.ACTIVITY_ONLY,
-                idle_timeout_seconds=900.0,
-                activity_only_status_interval_seconds=1.0,
-            ),
-            clock,
-            listener=effect.activity_status_listener,
-        )
-        watchdog.record_invocation_start()
-        from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
-        from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
-
-        fault_event = WaitingStatusEvent(
-            kind=next(iter(WaitingStatusKind)),
-            cumulative_seconds=1.0,
-            current_run_seconds=1.0,
-            idle_elapsed_seconds=1.0,
-            ceiling_seconds=900.0,
-            suspect_threshold_seconds=None,
-            diagnostic={"last_activity_kind": reason.value},
-            subagent_activity="working",
-            stall_active=False,
-        )
-        effect.activity_status_listener(fault_event)
-        detail = health()
-        assert detail is not None
-        raise SupervisionInfrastructureError("resolver", detail)
+        assert effect.activity_status_listener is None
+        assert effect.supervision_health_error is None
+        raise SupervisionInfrastructureError("resolver", reason.value)
 
     monkeypatch.setattr(
         "ralph.pipeline.effect_executor.execute_agent_effect",
@@ -126,7 +98,8 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         display_context=None,
         session=session,
     )
-    assert resolved is False
+    assert isinstance(resolved, RetryLaterOutcome)
+    assert resolved.on_change == "resolver_agent_eligibility_changed"
     assert session.terminal_reason is reason
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)
     assert session.charge_conflict_budget is False
@@ -188,7 +161,8 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         display_context=None,
         session=session,
     )
-    assert resolved is False
+    assert isinstance(resolved, RetryLaterOutcome)
+    assert resolved.on_change == "resolver_agent_eligibility_changed"
     assert session.charge_conflict_budget is False
     assert session.terminal_reason is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)

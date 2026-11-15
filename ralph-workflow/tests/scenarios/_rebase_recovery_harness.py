@@ -669,10 +669,9 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
         round_cap: int,
         session: ResolutionSession,
         stop: RebaseStop | None,
-        strategy_history: tuple[str, ...] = (),
+        strategy_history: tuple[str, ...],
     ) -> Path | None:
-        if isinstance(conflicted_paths, (list, tuple)):
-            prompted.append(tuple(str(path) for path in conflicted_paths))
+        prompted.append(tuple(str(path) for path in conflicted_paths))
         return materialize_round_prompt(
             root=root,
             target=target,

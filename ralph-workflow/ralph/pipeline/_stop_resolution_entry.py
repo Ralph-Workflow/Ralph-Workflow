@@ -51,9 +51,10 @@ if TYPE_CHECKING:
     from ralph.recovery.controller import RecoveryController
 
 _WAITING_ACTION_MESSAGE = (
-    "WAITING: continuation resolution deferred; conflict identity, eligible agents, and "
-    "configuration unchanged. Operator action: run 'ralph --retry' to retry resolution, "
-    "reset agent backoff, or fix configuration and run 'ralph --check-config'."
+    "WAITING: continuation retry gate active; continuation resolution deferred; conflict "
+    "identity, eligible agents, and configuration unchanged. Operator action: run "
+    "'ralph --retry' to retry resolution, reset agent backoff, or fix configuration and "
+    "run 'ralph --check-config'."
 )
 _GATE_ACTIVE_REASON = (
     "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"

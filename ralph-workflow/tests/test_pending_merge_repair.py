@@ -19,6 +19,13 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_commit_repair_uses_supervised_resolution_session_and_retains_pending_state": (
+        "resolver repair now uses the ordinary shared supervision profile instead of the retired "
+        "resolver-only activity-only profile"
+    ),
+}
+
 if TYPE_CHECKING:
     from ralph.pipeline import run_loop
 
@@ -220,7 +227,8 @@ def test_commit_repair_uses_supervised_resolution_session_and_retains_pending_st
     assert received[0].agent_name == "repair-agent"
     assert received[0].phase == "rebase_conflict_resolution"
     assert received[0].requires_completion_evidence
-    assert received[0].activity_only_supervision
+    assert not received[0].activity_only_supervision
+    assert received[0].activity_only_status_interval_seconds is None
     persisted = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
     assert persisted.merge_commit_pending
     assert persisted.merge_commit_tree == "tree"

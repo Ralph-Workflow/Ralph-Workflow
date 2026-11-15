@@ -9,6 +9,13 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution.session import invoke_resolution_agent
 from ralph.policy.models import PolicyBundle
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_a_markerless_decision_demands_declared_completion": (
+        "the resolver-local conflict_chain_max_retries seam was deleted because shared recovery "
+        "owns retry eligibility and timing"
+    ),
+}
+
 if TYPE_CHECKING:
     from ralph.git.git_call_policy import GitCallClass
     from ralph.git.subprocess_runner import GitRunOptions
@@ -130,7 +137,6 @@ def test_a_markerless_decision_demands_declared_completion(
     )
     monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _root, _kinds: ())
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
-    monkeypatch.setattr(driver_module, "conflict_chain_max_retries", lambda _bundle: 1)
     monkeypatch.setattr(
         driver_module,
         "classify_failed_resolution_attempt",
