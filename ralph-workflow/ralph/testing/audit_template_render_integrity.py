@@ -5,7 +5,7 @@ import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast
 
 from jinja2 import Environment, meta, nodes
 
@@ -32,13 +32,11 @@ _DEPRECATED_WORKER_ROLE_VARIABLE = "IS_" + "WORKER"
 _FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 
 
-@runtime_checkable
 class _NameNodeView(Protocol):
     name: str
     ctx: str
 
 
-@runtime_checkable
 class _IfNodeView(Protocol):
     test: nodes.Node
     body: list[nodes.Node]
@@ -263,8 +261,10 @@ def _base_variables(sources: dict[str, str]) -> dict[str, str]:
 
 def _loaded_names(node: nodes.Node) -> set[str]:
     names: set[str] = set()
-    if isinstance(node, _NameNodeView) and node.ctx == "load":
-        names.add(node.name)
+    if type(node).__name__ == "Name":
+        name_node = cast("_NameNodeView", node)
+        if name_node.ctx == "load":
+            names.add(name_node.name)
     for child in node.iter_child_nodes():
         names.update(_loaded_names(child))
     return names
@@ -284,16 +284,17 @@ def _conditional_variable_groups(
             ancestors: frozenset[str],
             undeclared_names: set[str],
         ) -> None:
-            if isinstance(node, _IfNodeView):
-                condition_names = frozenset(_loaded_names(node.test) & undeclared_names)
+            if type(node).__name__ == "If":
+                if_node = cast("_IfNodeView", node)
+                condition_names = frozenset(_loaded_names(if_node.test) & undeclared_names)
                 path_names = (ancestors | condition_names) - _ENGINE_GLOBAL_NAMES
                 if path_names:
                     groups.add(path_names)
-                for child in node.body:
+                for child in if_node.body:
                     walk(child, path_names, undeclared_names)
-                for child in node.elif_:
+                for child in if_node.elif_:
                     walk(child, path_names, undeclared_names)
-                for child in node.else_:
+                for child in if_node.else_:
                     walk(child, path_names, undeclared_names)
                 return
             for child in node.iter_child_nodes():
@@ -491,7 +492,7 @@ def _duplicated_headings(lines: list[str]) -> list[str]:
 
 def _duplicated_paragraphs(rendered: str) -> list[str]:
     counts: Counter[str] = Counter()
-    paragraphs = [part for part in re.split(r"\n\s*\n", rendered) if isinstance(part, str)]
+    paragraphs = cast("list[str]", re.split(r"\n\s*\n", rendered))
     for paragraph in paragraphs:
         normalized = " ".join(paragraph.split())
         if len(normalized) >= _MIN_DUPLICATE_PARAGRAPH_CHARS:

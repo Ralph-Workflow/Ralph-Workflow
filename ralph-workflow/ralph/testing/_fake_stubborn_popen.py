@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import subprocess
-
+from ralph.process.manager import DeadlineTimeoutExpired
 from ralph.testing._fake_popen_base import FakePopen
 
 
@@ -16,7 +15,10 @@ class FakeStubbornPopen(FakePopen):
         if self._killed:
             self._returncode = self._final_returncode
             return self._final_returncode
-        raise subprocess.TimeoutExpired(cmd="fake-stubborn", timeout=timeout or 0.0)
+        raise DeadlineTimeoutExpired(["fake-stubborn"], timeout or 0.0, timeout_cause="hard_cap")
 
     def terminate(self) -> None:
         return
+
+
+__all__ = ["FakeStubbornPopen"]

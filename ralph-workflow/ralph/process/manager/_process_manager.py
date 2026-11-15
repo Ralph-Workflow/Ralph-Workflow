@@ -67,15 +67,6 @@ if TYPE_CHECKING:
 
     from ralph.process.manager.liveness_verifier import LivenessVerifier
 
-    class _SafeWaitProcsCallable(Protocol):
-        def __call__(
-            self,
-            psutil_mod: _PsutilModuleLike,
-            procs: Sequence[_PsutilProcessLike],
-            *,
-            timeout: float | None,
-        ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
-
 
 def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int | None:
     for p in procs:
@@ -236,7 +227,6 @@ class ProcessManager:
         "_pty_procs",
         "_reaper_thread",
         "_records",
-        "_safe_wait_procs_fn",
         "_status_lock",
         "_stop_event",
         "_sync_process_factory",
@@ -257,7 +247,6 @@ class ProcessManager:
         psutil: _PsutilModuleLike | None = None,
         terminate_executor_factory: Callable[[], ThreadPoolExecutor] | None = None,
         liveness_verifier: LivenessVerifier | None = None,
-        safe_wait_procs: _SafeWaitProcsCallable | None = None,
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         self._records: dict[int, ProcessRecord] = {}
@@ -305,7 +294,6 @@ class ProcessManager:
         self._async_process_factory: _AsyncProcessFactory = af
         self._pty_process_factory: _PtyProcessFactory = pf
         self._psutil = psutil
-        self._safe_wait_procs_fn: _SafeWaitProcsCallable | None = safe_wait_procs
         if self.policy.log_events:
             self.register_listener(loguru_event_listener)
 
@@ -1342,7 +1330,7 @@ class ProcessManager:
                 ) from None
         self._mark_killed(record, rc)
 
-    def _default_safe_wait_procs(
+    def _safe_wait_procs(
         self,
         psutil_mod: _PsutilModuleLike,
         procs: Sequence[_PsutilProcessLike],
@@ -1365,17 +1353,6 @@ class ProcessManager:
                 else:
                     alive.append(proc)
             return dead, alive
-
-    def _safe_wait_procs(
-        self,
-        psutil_mod: _PsutilModuleLike,
-        procs: Sequence[_PsutilProcessLike],
-        *,
-        timeout: float | None,
-    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
-        if self._safe_wait_procs_fn is not None:
-            return self._safe_wait_procs_fn(psutil_mod, procs, timeout=timeout)
-        return self._default_safe_wait_procs(psutil_mod, procs, timeout=timeout)
 
     def _reap_untracked_psutil_zombie(
         self,

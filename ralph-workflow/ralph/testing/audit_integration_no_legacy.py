@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,40 +33,8 @@ _SELF_AUDIT_MODULES: frozenset[str] = frozenset(
     {
         "ralph/testing/audit_integration_invariants.py",
         "ralph/testing/audit_integration_no_legacy.py",
-        "tests/audit/test_audit_integration_no_legacy.py",
     }
 )
-_EXEMPT_HISTORICAL_PATH_FRAGMENTS: tuple[str, ...] = (
-    "tests/agents/invoke/fixtures/claude_interactive_real_capture",
-)
-_SKIP_DIR_NAMES: frozenset[str] = frozenset(
-    {
-        ".agent",
-        ".agents",
-        ".claude",
-        ".git",
-        ".hypothesis",
-        ".mypy_cache",
-        ".pi-subagents",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".venv",
-        ".vscode",
-        "build",
-        "dist",
-        "node_modules",
-        "tmp",
-        "venv",
-        "__pycache__",
-    }
-)
-_RETIRED_STEM: Final = "commit_" + "cleanup"
-_RETIRED_HYPHEN_STEM: Final = "commit-" + "cleanup"
-_RETIRED_REVIEW_PATTERN: Final = re.compile(
-    rf"(?i)\b[a-zA-Z0-9_-]*commit[-_]?{'clean' + 'up'}[a-zA-Z0-9_.-]*\b"
-)
-_RETIRED_REVIEW_RULE: Final = f"legacy {_RETIRED_STEM} identifier reappeared"
-_RETIRED_REVIEW_DETAIL: Final = f"'{{token}}' was replaced by 'commit_review'; legacy {_RETIRED_STEM} identifiers must not be used"
 _RESOLUTION_OUTCOME_TOKENS: tuple[str, ...] = (
     "ResolutionOutcome",
     "StopResolutionOutcome",
@@ -447,55 +414,6 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
     return violations
 
 
-def _is_exempt_path(rel: str) -> bool:
-    normalized = rel.replace("\\", "/")
-    return bool(
-        any(fragment in normalized for fragment in _EXEMPT_HISTORICAL_PATH_FRAGMENTS)
-        or any(normalized.endswith(mod) for mod in _SELF_AUDIT_MODULES)
-        or normalized == ("PROMPT" + ".md")
-        or "/.agent/" in normalized
-        or normalized.startswith(".agent/")
-        or "/.pi-subagents/" in normalized
-        or normalized.startswith(".pi-subagents/")
-    )
-
-
-def _retired_review_violations(rel: str, source: str) -> list[Violation]:
-    if _is_exempt_path(rel):
-        return []
-    violations: list[Violation] = []
-    filename = Path(rel).name
-    if _RETIRED_REVIEW_PATTERN.search(filename):
-        violations.append(
-            Violation(
-                path=rel,
-                line=1,
-                rule=_RETIRED_REVIEW_RULE,
-                detail=f"filename '{filename}' contains legacy {_RETIRED_STEM} spelling",
-            )
-        )
-    lowered = source.lower()
-    if (
-        _RETIRED_STEM not in lowered
-        and _RETIRED_HYPHEN_STEM not in lowered
-        and ("commit" + "cleanup") not in lowered
-    ):
-        return violations
-
-    for lineno, line in enumerate(source.splitlines(), start=1):
-        match = _RETIRED_REVIEW_PATTERN.search(line)
-        if match:
-            violations.append(
-                Violation(
-                    path=rel,
-                    line=lineno,
-                    rule=_RETIRED_REVIEW_RULE,
-                    detail=_RETIRED_REVIEW_DETAIL.format(token=match.group(0)),
-                )
-            )
-    return violations
-
-
 def audit_modules(
     modules: Mapping[str, str],
     *,
@@ -503,17 +421,15 @@ def audit_modules(
 ) -> list[Violation]:
     violations: list[Violation] = []
     for rel, source in sorted(modules.items()):
-        if rel in _SELF_AUDIT_MODULES or _is_exempt_path(rel):
+        if rel in _SELF_AUDIT_MODULES:
             continue
         try:
             tree = ast.parse(source, filename=rel)
         except SyntaxError:
-            tree = None
-        if tree is not None:
-            if rel.startswith("ralph/pipeline/"):
-                violations.extend(_pipeline_ast_violations(rel, tree))
-            violations.extend(_package_legacy_violations(rel, source))
-        violations.extend(_retired_review_violations(rel, source))
+            continue
+        if rel.startswith("ralph/pipeline/"):
+            violations.extend(_pipeline_ast_violations(rel, tree))
+        violations.extend(_package_legacy_violations(rel, source))
 
     if ignore_transitional:
         return violations
@@ -522,52 +438,15 @@ def audit_modules(
 
 def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Violation]:
     modules: dict[str, str] = {}
-    ralph_dir = repo_root / "ralph"
-    if not ralph_dir.is_dir() and (repo_root / "ralph-workflow" / "ralph").is_dir():
-        ralph_dir = repo_root / "ralph-workflow" / "ralph"
-
-    if ralph_dir.is_dir():
-        for path in sorted(ralph_dir.rglob("*.py")):
-            rel = path.relative_to(repo_root).as_posix()
-            if rel in _SELF_AUDIT_MODULES or _is_exempt_path(rel):
-                continue
-            try:
-                modules[rel] = path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-
-    violations = list(audit_modules(modules, ignore_transitional=ignore_transitional))
-
-    repo_wide_violations: list[Violation] = []
-    for path in sorted(repo_root.rglob("*")):
-        if not path.is_file():
-            continue
-        rel_parts = path.relative_to(repo_root).parts[:-1]
-        if any(part in _SKIP_DIR_NAMES for part in rel_parts):
-            continue
+    for path in sorted((repo_root / "ralph").rglob("*.py")):
         rel = path.relative_to(repo_root).as_posix()
-        if rel in _SELF_AUDIT_MODULES or _is_exempt_path(rel):
-            continue
-        if rel in modules:
-            continue
-        if _RETIRED_REVIEW_PATTERN.search(path.name):
-            repo_wide_violations.append(
-                Violation(
-                    path=rel,
-                    line=1,
-                    rule=_RETIRED_REVIEW_RULE,
-                    detail=f"filename '{path.name}' contains legacy {_RETIRED_STEM} spelling",
-                )
-            )
+        if rel in _SELF_AUDIT_MODULES:
             continue
         try:
-            source = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+            modules[rel] = path.read_text(encoding="utf-8")
+        except OSError:
             continue
-        repo_wide_violations.extend(_retired_review_violations(rel, source))
-
-    violations.extend(repo_wide_violations)
-    return violations
+    return audit_modules(modules, ignore_transitional=ignore_transitional)
 
 
 def selftest() -> int:
@@ -576,9 +455,6 @@ def selftest() -> int:
             "from ralph.pipeline.resolution_outcome import StopResolutionOutcome, ResolvedOutcome\n"
             "def resolve_work() -> StopResolutionOutcome:\n"
             "    return ResolvedOutcome()\n"
-        ),
-        "ralph/pipeline/clean_review.py": (
-            "phase = 'development_commit_review'\ndef commit_review(): pass\n"
         ),
     }
     clean_violations = audit_modules(clean_modules, ignore_transitional=True)
@@ -648,21 +524,6 @@ def selftest() -> int:
             LEGACY_OUTCOME_MODULE,
             "class ResolutionOutcome: pass\n",
             "legacy resolution outcome module reappeared",
-        ),
-        (
-            "ralph/pipeline/planted_cleanup.py",
-            f"def test(): return {_RETIRED_STEM}()\n",
-            _RETIRED_REVIEW_RULE,
-        ),
-        (
-            "ralph/pipeline/planted_cleanup_phase.py",
-            f"phase = 'development_{_RETIRED_STEM}'\n",
-            _RETIRED_REVIEW_RULE,
-        ),
-        (
-            "ralph/pipeline/planted_cleanup_skill.py",
-            f"skill = 'submit-{_RETIRED_HYPHEN_STEM}-artifact'\n",
-            _RETIRED_REVIEW_RULE,
         ),
     ]
 

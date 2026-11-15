@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import json
 import subprocess
+import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from tests._scenario_git import commit_file, git
 
+if TYPE_CHECKING:
+    from ralph.config.models import UnifiedConfig
+
 pytestmark = pytest.mark.subprocess_e2e
+
+__all__ = [
+    "corrupted_config",
+    "paused_declared_decisions_and_gitlink_rebase",
+    "paused_multi_commit_empty_stop_rebase",
+    "paused_multi_commit_first_stop_rebase",
+    "paused_text_and_gitlink_rebase",
+    "paused_text_rebase",
+    "scenario_config",
+    "supervisor_restart",
+]
 
 
 def paused_text_rebase(root: Path) -> None:
@@ -149,3 +166,56 @@ def paused_multi_commit_empty_stop_rebase(root: Path) -> None:
     git(root, "rebase", "main", check=False)
     if not rebase_in_progress(root):
         raise AssertionError("multi-commit fixture did not pause in a conflicted rebase")
+
+
+def scenario_config() -> UnifiedConfig:
+    from ralph.config.models import UnifiedConfig
+
+    return UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": True,
+                "auto_integrate_target": "main",
+                "auto_integrate_remote_enabled": False,
+            },
+            "conflict_resolution": {
+                "max_rounds_per_stop": 2,
+                "max_rebase_conflict_stops": 4,
+            },
+        }
+    )
+
+
+def corrupted_config(root: Path) -> Path:
+    config = root / ".agent" / "ralph-workflow.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("[general\nauto_integrate_enabled = true\n", encoding="utf-8")
+    return config
+
+
+def supervisor_restart(root: Path) -> dict[str, object]:
+    script = (
+        "import json,pathlib,subprocess,sys; "
+        "p=pathlib.Path(sys.argv[1]);sys.path.insert(0,sys.argv[2]); "
+        "from ralph.pipeline.auto_integrate_planning import integrate_before_planning; "
+        "from ralph.pipeline.rebase_state import RebaseState; "
+        "from ralph.workspace.scope import WorkspaceScope; "
+        "from tests.scenarios._rebase_recovery_setup import scenario_config; "
+        "s=integrate_before_planning(scenario_config(),WorkspaceScope(p),RebaseState()); "
+        "g=lambda *a: subprocess.run(('git',*a),cwd=p,text=True,capture_output=True,check=True).stdout.strip(); "
+        "print(json.dumps({'head':g('rev-parse','HEAD'),'status':g('status','--porcelain'),"
+        "'resumed':s is not None}))"
+    )
+    package_root = Path(__file__).resolve().parents[2]
+    completed = subprocess.run(
+        (sys.executable, "-I", "-c", script, str(root), str(package_root)),
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=10,
+        env={"HOME": str(root / ".scenario-home"), "PATH": "/usr/bin:/bin"},
+    )
+    payload = json.loads(completed.stdout)
+    if not isinstance(payload, dict):
+        raise AssertionError("restart probe returned a non-object payload")
+    return payload

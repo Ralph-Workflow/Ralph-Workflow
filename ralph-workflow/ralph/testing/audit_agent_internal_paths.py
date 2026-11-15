@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-from ralph.phases._agent_internal_paths import is_agent_internal_path
-from ralph.testing._runtime_checks import require
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -268,17 +265,15 @@ def _ordering_violations_for_call(
     sites: _CallSites,
 ) -> list[str]:
     problems: list[str] = []
-    require(sites.prior_line is not None)
-    require(sites.later_line is not None)
-    if sites.prior_line is None or sites.later_line is None:
-        return problems
+    assert sites.prior_line is not None
+    assert sites.later_line is not None
     if lineno < sites.prior_line:
         problems.append(
             f"{rel_path}: {helper!r} call at line {lineno} is BEFORE the "
             f"{_AUTO_SEED_PRIOR_ANCHOR!r} anchor at line {sites.prior_line} -- "
             "auto-seed must run AFTER ensure_git_initialized"
         )
-    if sites.later_line is not None and lineno > sites.later_line:
+    if lineno > sites.later_line:
         problems.append(
             f"{rel_path}: {helper!r} call at line {lineno} is AFTER the "
             f"{_AUTO_SEED_LATER_ANCHOR!r} anchor at line {sites.later_line} -- "
@@ -428,7 +423,15 @@ _BEHAVIORAL_REJECT_PATHS: tuple[str, ...] = (
 
 
 def _load_is_agent_internal_path() -> Callable[[str], bool]:
-    return is_agent_internal_path
+    module_path = _PACKAGE_ROOT / "phases" / "_agent_internal_paths.py"
+    spec = importlib.util.spec_from_file_location(
+        "ralph_phases_agent_internal_paths_audit_target", module_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot build import spec for {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return cast("Callable[[str], bool]", module.is_agent_internal_path)
 
 
 def _behavioral_invariants() -> list[str]:

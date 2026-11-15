@@ -1159,17 +1159,15 @@ def _invoke_agent_with_recovery(
                     return _AttemptResult(missing_artifact, state.prompt_file, session_id)
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 if carried_ended is not None:
-                    facts = replace(carried_ended.facts, artifact_valid=True)
-                    return _AttemptResult(AttemptEnded(facts=facts), state.prompt_file, session_id)
+                    return _AttemptResult(carried_ended, state.prompt_file, session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
                 if has_valid_terminal_artifact(
                     ctx, resolved_required_artifact, exc, baseline=state.artifact_baseline
                 ):
                     _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
-                    facts = replace(attempt_facts_for_failure(exc), artifact_valid=True)
                     return _AttemptResult(
-                        AttemptEnded(facts=facts),
+                        AttemptEnded(facts=attempt_facts_for_failure(exc)),
                         state.prompt_file,
                         session_id,
                     )

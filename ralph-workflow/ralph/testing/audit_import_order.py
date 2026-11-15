@@ -134,11 +134,11 @@ def _evaluated_expressions(node: ast.stmt) -> list[ast.expr]:
             evaluated = [*node.decorator_list, *node.bases, *(k.value for k in node.keywords)]
         case _ if isinstance(node, ast.Return) and node.value is not None:
             evaluated = [node.value]
-        case _ if isinstance(node, (ast.If, ast.While)):
+        case _ if isinstance(node, ast.If | ast.While):
             evaluated = [node.test]
-        case _ if isinstance(node, (ast.For, ast.AsyncFor)):
+        case _ if isinstance(node, ast.For | ast.AsyncFor):
             evaluated = [node.iter]
-        case _ if isinstance(node, (ast.With, ast.AsyncWith)):
+        case _ if isinstance(node, ast.With | ast.AsyncWith):
             evaluated = [item.context_expr for item in node.items]
         case _ if isinstance(node, ast.Match):
             evaluated = [node.subject]
@@ -192,7 +192,7 @@ def _is_main_guard(test: ast.expr) -> bool:
 def _target_names(target: ast.expr) -> list[str]:
     if isinstance(target, ast.Name):
         return [target.id]
-    if isinstance(target, (ast.Tuple, ast.List)):
+    if isinstance(target, ast.Tuple | ast.List):
         return [name for element in target.elts for name in _target_names(element)]
     if isinstance(target, ast.Starred):
         return _target_names(target.value)
@@ -245,7 +245,7 @@ class _OpCollector:
             self.statement(statement)
 
     def statement(self, node: ast.stmt) -> None:
-        if not isinstance(node, (ast.Try, ast.TryStar)):
+        if not isinstance(node, ast.Try | ast.TryStar):
             self.reads(node)
         match True:
             case _ if isinstance(node, ast.Import):
@@ -261,7 +261,7 @@ class _OpCollector:
                 self.from_import(node)
             case _ if isinstance(node, ast.If):
                 self.conditional(node)
-            case _ if isinstance(node, (ast.Try, ast.TryStar)):
+            case _ if isinstance(node, ast.Try | ast.TryStar):
                 self.try_block(node)
             case _ if isinstance(node, ast.ClassDef):
                 self.class_body(node)

@@ -1106,9 +1106,11 @@ def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
     wait_called = {"called": False}
     real_wait = sync_proc.wait
 
-    def _spy_wait(self: object, timeout: float | None = None) -> int:
+    def _spy_wait(timeout: float | None = None) -> int:
         wait_called["called"] = True
         return real_wait(timeout=timeout)
+
+    sync_proc.wait = _spy_wait
 
     real_verify = pm_mod.verify_process_liveness
 
@@ -1134,7 +1136,6 @@ def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
         real_mark_killed(rec, returncode, cause=cause)
 
     with (
-        patch.object(type(sync_proc), "wait", _spy_wait),
         patch.object(pm_mod, "verify_process_liveness", _fake_verify),
         patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
     ):

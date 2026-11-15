@@ -44,14 +44,13 @@ from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, Pr
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_failed_resolver_attempt_uses_the_next_fallback_candidate": (
-        "shared recovery controller falls over immediately to each eligible candidate once per round without resolver-local retries"
-    ),
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
-        "under max_rounds_per_stop=1 each eligible candidate is invoked once per round without resolver-local retries"
+        "with skip_same_agent_retries=True primary runs once without retries and "
+        "fallback retries until exhaustion, leaving chain cursor wrapped to index 0"
     ),
-    "test_a_file_the_resolver_destroyed_is_not_a_resolution": (
-        "clean unsuccessful resolution attempts do not trigger dead-agent canary probes"
+    "test_failed_resolver_attempt_uses_the_next_fallback_candidate": (
+        "when primary candidate fails, cursor advances to fallback candidate at "
+        "current_index=1 with retries reset to 0 instead of staying on primary"
     ),
 }
 
@@ -336,6 +335,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     )
     session = ResolutionSession(
         max_rounds_per_stop=1,
+        skip_same_agent_retries=True,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
     )
     calls: list[str] = []
@@ -380,6 +380,7 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     session = ResolutionSession(
         max_rounds_per_stop=1,
         recovery_controller=_probe_reachable_deps(_policy_bundle()).recovery_controller,
+        skip_same_agent_retries=True,
     )
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,

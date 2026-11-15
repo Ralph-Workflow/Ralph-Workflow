@@ -47,7 +47,6 @@ class ManagedProcess:
         self._proc = proc
         self._record = record
         self._manager = manager
-        self._ralph_bounded_stderr: str = ""
 
     @property
     def record(self) -> ProcessRecord:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -30,7 +29,7 @@ _STUB = Path(__file__).resolve().parent / "fixtures" / "fake_trust_dialog_cli.py
 
 
 @pytest.fixture(scope="module")
-def stub_agent_config() -> Iterator[AgentConfig]:
+def stub_agent_config() -> AgentConfig:
     config = AgentConfig(
         cmd=f"{shlex.quote(sys.executable)} {shlex.quote(str(_STUB))}",
         transport=AgentTransport.CLAUDE_INTERACTIVE,
@@ -48,15 +47,9 @@ def stub_agent_config() -> Iterator[AgentConfig]:
         config=config,
     )
     catalog = default_catalog()
-    added = False
     if catalog.get("fake-trust-dialog-cli") is None:
         catalog.add(support)
-        added = True
-    try:
-        yield config
-    finally:
-        if added:
-            catalog.remove("fake-trust-dialog-cli")
+    return config
 
 
 def _probe_env(trusted_root: Path, **extra: str) -> dict[str, str]:

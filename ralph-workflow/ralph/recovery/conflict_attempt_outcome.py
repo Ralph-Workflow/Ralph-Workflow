@@ -27,4 +27,3 @@ def attempt_outcome_reason(
     if outcome is ConflictAttemptOutcome.NO_ACTIVITY:
         return "candidate produced no activity before it exited"
     return "conflict attempt failed"
-

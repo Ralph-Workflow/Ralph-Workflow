@@ -17,7 +17,6 @@ class ManagedPtyProcess:
     __slots__ = (
         "_manager",
         "_proc",
-        "_ralph_bounded_stderr",
         "_record",
     )
 

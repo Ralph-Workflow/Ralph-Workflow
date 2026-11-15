@@ -26,17 +26,6 @@ from ralph.phases.commit_review import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.workspace.fs import FsWorkspace
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_legitimate_small_deletions_and_edits_pass": (
-        "ordinary manifest modifications now surface as soft protected_overwrite evidence while "
-        "still passing tripwires"
-    ),
-    "test_protected_manifest_and_lockfile_deletion": (
-        "ordinary manifest modifications now surface as soft protected_overwrite evidence while "
-        "still passing tripwires"
-    ),
-}
-
 
 def test_thresholds_defaults() -> None:
     thresholds = TripwireThresholds()
@@ -117,8 +106,8 @@ def test_legitimate_small_deletions_and_edits_pass() -> None:
         tracked_count=100,
         thresholds=TripwireThresholds(),
     )
+    assert report.is_clean is True
     assert report.passed is True
-    assert [finding.category for finding in report.soft] == ["protected_overwrite"]
 
 
 def test_mass_deletion_count_threshold() -> None:
@@ -215,8 +204,7 @@ def test_protected_prompt_and_agents_md() -> None:
 def test_protected_manifest_and_lockfile_deletion() -> None:
     edit_diff = [DiffEntry(path="pyproject.toml", status="M")]
     edit_report = evaluate_tripwires(edit_diff, 10, TripwireThresholds())
-    assert edit_report.passed is True
-    assert [finding.category for finding in edit_report.soft] == ["protected_overwrite"]
+    assert edit_report.is_clean is True
 
     del_diff = [DiffEntry(path="pyproject.toml", status="D")]
     del_report = evaluate_tripwires(del_diff, 10, TripwireThresholds())
@@ -463,12 +451,12 @@ def test_staged_secret_content_scanning() -> None:
         DiffEntry(
             path="config/tokens.py",
             status="A",
-            content="AWS_KEY = '" + "AKIA" + "IOSFODNN7EXAMPLE" + "'\n",
+            content="AWS_KEY = 'AKIAIOSFODNN7EXAMPLE'\n",
         ),
         DiffEntry(
             path="auth/github.py",
             status="M",
-            content="TOKEN = '" + "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" + "'\n",
+            content="TOKEN = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'\n",
         ),
     ]
     report = evaluate_tripwires(secret_diff, 10, TripwireThresholds())

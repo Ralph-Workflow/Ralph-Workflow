@@ -49,7 +49,7 @@ def default_invoker(
             from ralph.pipeline.factory import DefaultPipelineFactory
 
             deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
-        return patched(
+        outcome = patched(
             agent_name=agent_name,
             prompt_path=prompt_path,
             config=config,
@@ -62,7 +62,16 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
+        outcome_obj: object = outcome
+        if isinstance(outcome_obj, bool):
+            from ralph.pipeline.resolution_outcome import UnknownOutcome
 
+            return UnknownOutcome(
+                error=RuntimeError(f"agent {agent_name} did not launch"),
+                terminal_reason=session.terminal_reason,
+                unresolved_paths=session.unresolved_paths,
+            )
+        return outcome
 
     return _invoke
 

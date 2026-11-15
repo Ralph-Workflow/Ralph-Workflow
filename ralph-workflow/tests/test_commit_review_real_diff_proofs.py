@@ -148,7 +148,7 @@ def test_a_staged_secret_is_detected_by_content_in_a_real_diff(tmp_git_repo: Pat
     _init_repo(repo_root, {"config.txt": "placeholder\n"})
 
     (repo_root / "config.txt").write_text(
-        "AWS_ACCESS_KEY_ID=" + "AKIA" + "IOSFODNN7EXAMPLE\n",
+        "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n",
         encoding="utf-8",
     )
     seal = seal_pending(repo_root, "run-secret", 1)

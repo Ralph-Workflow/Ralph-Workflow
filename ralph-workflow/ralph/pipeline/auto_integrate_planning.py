@@ -136,7 +136,6 @@ def integrate_before_planning(
     readiness: TreeReadinessAssessment | None = None,
     sleep: Callable[[float], None] | None = None,
     jitter: Callable[[], float] | None = None,
-    force_retry: bool = False,
 ) -> RebaseState | None:
     root = scope.root
     if retained_integration_reason(root) is not None:
@@ -159,9 +158,7 @@ def integrate_before_planning(
     )
     if target is None:
         return None
-    unfinished = _finish_paused_rebase(
-        config, root, target, rebase_stop_resolver, force_retry=force_retry
-    )
+    unfinished = _finish_paused_rebase(config, root, target, rebase_stop_resolver)
     if unfinished is not None:
         return unfinished
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
@@ -277,8 +274,6 @@ def _finish_paused_rebase(
     root: Path,
     target: str,
     resolver: RebaseStopResolver | None,
-    *,
-    force_retry: bool = False,
 ) -> RebaseState | None:
     try:
         if not rebase_in_progress(root):

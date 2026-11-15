@@ -35,40 +35,48 @@ def _find_builtin_supports_tuple(tree: ast.Module) -> ast.expr | None:
 
 
 def _parse_support_entry(elt: ast.expr) -> tuple[str | None, str | None, bool]:
-    if not isinstance(elt, ast.Call):
-        return None, None, False
-    is_correct_call = isinstance(elt.func, ast.Attribute) and (
-        (
-            elt.func.attr == "from_registration_kwargs"
-            and isinstance(elt.func.value, ast.Name)
-            and elt.func.value.id == "AgentSupport"
-        )
-        or (
-            elt.func.attr == "to_support"
-            and isinstance(elt.func.value, ast.Call)
-            and isinstance(elt.func.value.func, ast.Name)
-            and elt.func.value.func.id == "BuiltinAgentSpec"
+    is_correct_call = (
+        isinstance(elt, ast.Call)
+        and isinstance(elt.func, ast.Attribute)
+        and (
+            (
+                elt.func.attr == "from_registration_kwargs"
+                and isinstance(elt.func.value, ast.Name)
+                and elt.func.value.id == "AgentSupport"
+            )
+            or (
+                elt.func.attr == "to_support"
+                and isinstance(elt.func.value, ast.Call)
+                and isinstance(elt.func.value.func, ast.Name)
+                and elt.func.value.func.id == "BuiltinAgentSpec"
+            )
         )
     )
     if not is_correct_call:
         return None, None, False
 
+    assert isinstance(elt, ast.Call)
     name_val: str | None = None
     cmd_val: str | None = None
 
     if elt.args:
         first_arg = elt.args[0]
-        if isinstance(first_arg, ast.Constant):
-            first_val: object = first_arg.value
-            if isinstance(first_val, str):
-                name_val = first_val
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            name_val = first_arg.value
     for kw in elt.keywords:
-        if isinstance(kw.value, ast.Constant):
-            kw_val: object = kw.value.value
-            if kw.arg == "name" and isinstance(kw_val, str):
-                name_val = kw_val
-            elif kw.arg == "cmd" and isinstance(kw_val, str):
-                cmd_val = kw_val
+        match True:
+            case _ if (
+                kw.arg == "name"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                name_val = kw.value.value
+            case _ if (
+                kw.arg == "cmd"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                cmd_val = kw.value.value
 
     return name_val, cmd_val, True
 

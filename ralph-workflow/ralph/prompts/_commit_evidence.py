@@ -8,7 +8,10 @@ from ralph.git.operations import list_changed_paths
 from ralph.prompts._commit_diff import commit_generation_diff
 from ralph.prompts._commit_evidence_source import CommitEvidenceSource
 from ralph.prompts._commit_message_budget import CommitMessageBudget
-from ralph.prompts._git_commit_evidence_source import GitCommitEvidenceSource
+from ralph.prompts._git_commit_evidence_source import (
+    DEFAULT_COMMIT_EVIDENCE_SOURCE,
+    GitCommitEvidenceSource,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -24,8 +27,6 @@ _VERIFICATION_RESULT = re.compile(r"(?m)^Ran:\s+yes\s+—\s+(passed|failed \(exi
 _DIFF_PATH = re.compile(r"^diff --git a/(.+?) b/(.+)$", re.MULTILINE)
 _MAX_DIFF_SUMMARY_ITEMS: Final = 6
 _CHANGE_AREA_DEPTH: Final = 2
-
-DEFAULT_COMMIT_EVIDENCE_SOURCE: Final = GitCommitEvidenceSource()
 
 
 @dataclass(frozen=True)
