@@ -480,6 +480,12 @@ def _record_post_attempt(
         ),
     ):
         if not isinstance(eff_outcome, ResolvedOutcome):
+            if (
+                isinstance(result, RebaseResolutionResult)
+                and result.terminal_reason is None
+                and result.failure_cause == ResolutionFailureCause.NONE
+            ):
+                return
             _record_outcome_attempt(trigger, post_key, eff_outcome)
     else:
         from ralph.git.merge import MergeResult
@@ -494,6 +500,8 @@ def _record_post_attempt(
 
 
 def _warn_chain_not_spent(target: str, session: ResolutionSession) -> None:
+    if session.terminal_reason is None:
+        return
     if session.charge_conflict_budget and (
         session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
     ):

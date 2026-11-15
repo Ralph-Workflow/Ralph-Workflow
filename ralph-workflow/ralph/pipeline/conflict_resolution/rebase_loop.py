@@ -140,15 +140,24 @@ def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
     )
 
 
+_ACTIVE_REBASE_RESOLUTION_SESSION: ContextVar[ResolutionSession | None] = ContextVar(
+    "active_rebase_resolution_session", default=None
+)
+
+
 @contextmanager
 def bind_active_rebase_resolution_session(
     session: ResolutionSession | None = None,
 ) -> Iterator[None]:
-    yield
+    token = _ACTIVE_REBASE_RESOLUTION_SESSION.set(session)
+    try:
+        yield
+    finally:
+        _ACTIVE_REBASE_RESOLUTION_SESSION.reset(token)
 
 
 def active_rebase_resolution_session() -> ResolutionSession | None:
-    return None
+    return _ACTIVE_REBASE_RESOLUTION_SESSION.get()
 
 
 def _resolve_rebase_in_progress(
@@ -242,7 +251,12 @@ def _record_resolver_outcome_on_session(
     outcome: object,
     active_session: ResolutionSession | None,
 ) -> None:
-    if not is_stop_resolution_outcome(outcome) or active_session is None:
+    if active_session is None:
+        return
+    if outcome is False:
+        active_session.charge_conflict_budget = False
+        return
+    if not is_stop_resolution_outcome(outcome):
         return
     active_session.last_resolution_outcome = outcome
     if isinstance(outcome, RetryLaterOutcome):
@@ -251,14 +265,10 @@ def _record_resolver_outcome_on_session(
             and outcome.failure_cause != ResolutionFailureCause.NONE
         ):
             active_session.last_failure_cause = outcome.failure_cause
-        if outcome.terminal_reason is not None:
-            raw_reason: object = outcome.terminal_reason
-            if isinstance(raw_reason, ResolutionTerminationReason):
-                active_session.terminal_reason = raw_reason
-            elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
-                active_session.exhaustion_reason = raw_reason
-        elif outcome.reason is not None:
-            raw_reason = outcome.reason
+        raw_reason: object = (
+            outcome.terminal_reason if outcome.terminal_reason is not None else outcome.reason
+        )
+        if raw_reason is not None:
             if isinstance(raw_reason, ResolutionTerminationReason):
                 active_session.terminal_reason = raw_reason
             elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:

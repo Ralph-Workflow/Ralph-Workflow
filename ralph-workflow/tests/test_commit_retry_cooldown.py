@@ -35,6 +35,9 @@ _COMMIT_SESSION_ID = "commit-session-1"
 _COMMIT_COOLDOWN_REASON = "consecutive_unproductive_limit_reached"
 _MIN_OUTER_ATTEMPTS = 2
 
+COMMIT_PHASE = _COMMIT_PHASE
+COMMIT_AGENT_NAME = _COMMIT_AGENT_NAME
+
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_commit_outer_retry_regression_owner_controller_preserves_cooldown": (
         "the check no longer records two attempt facts on a hand-built controller; "
@@ -189,7 +192,7 @@ def test_complete_commit_rejects_missing_or_empty_sha() -> None:
         complete_commit(record, integrated_feature_sha="   ")
 
 
-def _run_failing_commit_route(
+def run_failing_commit_route(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
     *,
@@ -311,6 +314,9 @@ def _run_failing_commit_route(
         agent_invocations=agent_invocations,
         benched_reinvocations=benched_reinvocations,
     )
+
+
+_run_failing_commit_route = run_failing_commit_route
 
 
 def test_commit_outer_retry_regression_owner_controller_preserves_cooldown(
