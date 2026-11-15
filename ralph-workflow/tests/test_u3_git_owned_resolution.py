@@ -445,3 +445,42 @@ def test_finish_resolved_rebase_stops_runs_before_attempt_stop_resolution(tmp_pa
         )
 
     assert calls_site2 == ["finish_resolved_rebase_stops", "attempt_stop_resolution"]
+
+
+def test_integrate_before_planning_retained_integration_reason_forces_retry(
+    tmp_path: Path,
+) -> None:
+    expected_state = MagicMock(recovery_record_retained=True, fast_forwarded=False)
+    with (
+        patch(
+            "ralph.pipeline.auto_integrate_planning.retained_integration_reason",
+            return_value="observed_retained_on_disk",
+        ),
+        patch(
+            "ralph.pipeline.auto_integrate_planning.recover_incomplete_integration",
+            return_value=expected_state,
+        ) as mock_recover,
+    ):
+        mock_scope = MagicMock(root=tmp_path)
+        mock_config = MagicMock()
+        mock_config.general.auto_integrate_enabled = True
+        mock_state = MagicMock()
+        mock_conflict_resolver = MagicMock()
+        mock_stop_resolver = MagicMock()
+
+        result = integrate_before_planning(
+            mock_config,
+            mock_scope,
+            mock_state,
+            conflict_resolver=mock_conflict_resolver,
+            rebase_stop_resolver=mock_stop_resolver,
+        )
+
+        assert result is expected_state
+        mock_recover.assert_called_once_with(
+            mock_scope,
+            config=mock_config,
+            conflict_resolver=mock_conflict_resolver,
+            rebase_stop_resolver=mock_stop_resolver,
+            force_retry=True,
+        )

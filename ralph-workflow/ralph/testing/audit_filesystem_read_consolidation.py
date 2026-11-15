@@ -156,6 +156,7 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/testing/audit_activity_aware_watchdog.py", "_iter_py_files", "raw_walk"),
         ("ralph/testing/audit_agent_failure_single_owner.py", "_collect_payloads", "raw_walk"),
         ("ralph/testing/audit_agent_module_state.py", "_collect_py_files", "raw_walk"),
+        ("ralph/testing/audit_integration_no_legacy.py", "_iter_scannable_files", "raw_walk"),
         (
             "ralph/testing/audit_integration_no_legacy.py",
             "_iter_scannable_files",

@@ -44,6 +44,9 @@ from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, Pr
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_bounded_at_max_resolution_rounds": (
+        "resolver runs up to max_rounds_per_stop which defaults to 3 rounds"
+    ),
     "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
         "with shared recovery controller owning candidate selection, each candidate in "
         "the chain is attempted without local session retries, leaving current_index=1 "
@@ -277,7 +280,7 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
         return True
 
     assert _run(tmp_path, invoke=_invoke) is False
-    assert calls == [1, 2]
+    assert calls == [1, 2, 3]
 
 
 def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
