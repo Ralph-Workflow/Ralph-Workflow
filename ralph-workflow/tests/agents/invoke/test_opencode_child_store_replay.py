@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import OpenCodeExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import ProcessReaderCtx
-from ralph.agents.invoke._process_reader import ProcessLineReader
+from ralph.agents.invoke import ProcessLineReader, ProcessReaderCtx
 from ralph.agents.invoke.opencode_subagent_sessions import SqliteOpenCodeChildPartSource
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport

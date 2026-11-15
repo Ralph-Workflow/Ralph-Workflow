@@ -33,9 +33,8 @@ tests/agents/invoke/test_kimi_session_id_extraction.py|0,1,0
 tests/agents/invoke/test_line_reader_queue_bound.py|0,4,8
 tests/agents/invoke/test_missing_credentials_preflight.py|0,1,0
 tests/agents/invoke/test_native_mcp_private_root_concurrency.py|0,1,0
-tests/agents/invoke/test_opencode_child_store_replay.py|0,1,1
+tests/agents/invoke/test_opencode_child_store_replay.py|0,0,1
 tests/agents/invoke/test_opencode_prompt_delivered_on_stdin.py|0,1,0
-tests/agents/invoke/test_opencode_child_store_replay.py|0,1,1
 tests/agents/invoke/test_pending_subagents_turn_end.py|0,4,0
 tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py|0,2,0
 tests/agents/invoke/test_prompt_echo_line_reader.py|0,2,1
@@ -306,6 +305,7 @@ tests/recovery/test_two_state_invariant.py|0,2,0
 tests/recovery/test_unavailability_reason.py|0,3,0
 tests/recovery/test_user_interrupt.py|2,0,3
 tests/recovery/test_watchdog_fire_record.py|0,1,0
+tests/scenarios/_rebase_recovery_harness_helpers.py|0,1,2
 tests/test_activity_feed_paths_converge.py|0,0,1
 tests/test_activity_router_subagent_progress_dispatch.py|0,1,0
 tests/test_agent_internal_paths.py|0,2,0
@@ -696,7 +696,7 @@ tests/test_process_cross_platform_hardening.py|0,1,3
 tests/test_process_hardening.py|0,1,4
 tests/test_process_manager_failure_state.py|0,1,0
 tests/test_process_manager_pty.py|0,0,4
-tests/test_process_manager_wait_procs_oserror.py|1,4,1
+tests/test_process_manager_wait_procs_oserror.py|0,4,1
 tests/test_process_termination_outcomes_bound.py|0,1,0
 tests/test_product_criteria_idempotent.py|0,0,4
 tests/test_prompt_change_detection.py|0,1,7

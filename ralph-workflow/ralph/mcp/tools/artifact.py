@@ -8,6 +8,7 @@ from ralph.mcp.artifacts._artifact_persistence import (
     DEFAULT_ARTIFACT_PERSISTENCE,
     ArtifactPersistence,
 )
+from ralph.mcp.artifacts._artifact_types import KNOWN_ARTIFACT_TYPES
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.policy.loader import load_policy
 
@@ -34,25 +35,6 @@ class ArtifactHandlerDeps:
 
 
 DEFAULT_ARTIFACT_HANDLER_DEPS = ArtifactHandlerDeps()
-
-KNOWN_ARTIFACT_TYPES: frozenset[str] = frozenset(
-    {
-        "plan",
-        "planning_analysis_decision",
-        "development_analysis_decision",
-        "review_analysis_decision",
-        "policy_remediation_analysis_decision",
-        "development_result",
-        "product_spec",
-        "issues",
-        "fix_result",
-        "design_verdict",
-        "smoke_test_result",
-        "run_time_report",
-        "commit_review",
-        "commit_message",
-    }
-)
 
 
 def _artifact_dir(workspace: WorkspaceLike) -> Path:

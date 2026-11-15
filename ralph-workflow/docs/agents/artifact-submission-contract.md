@@ -272,8 +272,10 @@ ralph/evil.py:42: [ARTIFACT-BYPASS] receipt_write: direct write to .agent/receip
 ## Adding a new canonical artifact type
 
 1. Add the type to ``KNOWN_ARTIFACT_TYPES`` in
-   ``ralph/mcp/tools/artifact.py``. The audit's ``_CANONICAL_TYPES`` is
-   derived from this set via import, so no separate audit update is needed.
+   ``ralph/mcp/artifacts/_artifact_types.py``. The public
+   ``ralph.mcp.tools.artifact.KNOWN_ARTIFACT_TYPES`` re-export and the
+   audit's ``_CANONICAL_TYPES`` are derived from that set, so no separate
+   audit update is needed.
 2. Declare an ``MdArtifactSpec`` for the type under
    ``ralph/mcp/artifacts/markdown/specs/`` and register it (the specs
    package registers every spec on import via

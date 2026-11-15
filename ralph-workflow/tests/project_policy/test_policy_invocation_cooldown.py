@@ -1,21 +1,31 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
+from loguru import logger
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
-from ralph.config.models import UnifiedConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.state import PipelineState
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.project_policy import cli_integration, remediation
 from ralph.project_policy.cli_integration import LoadResult
-from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
+from ralph.project_policy.pipeline_graph import PHASE_ANALYSIS, PHASE_REMEDIATION
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.scope import WorkspaceScope
 from tests.project_policy.policy_corpus import policy_invocation_bundle
+
+_PRIMARY = "primary-agent"
+_NEXT = "next-agent"
+_ANALYSIS_CHAIN = (_PRIMARY, _NEXT)
 
 
 def _load_result() -> LoadResult:
@@ -26,6 +36,43 @@ def _load_result() -> LoadResult:
         policy_bundle=policy_invocation_bundle(),
         run_id="test-run-id",
     )
+
+
+def _analysis_load_result() -> LoadResult:
+    bundle = policy_invocation_bundle()
+    chain = AgentChainConfig(agents=list(_ANALYSIS_CHAIN))
+    analysis_bundle = bundle.model_copy(
+        update={
+            "agents": bundle.agents.model_copy(
+                update={
+                    "agent_chains": {**bundle.agents.agent_chains, PHASE_ANALYSIS: chain},
+                    "agent_drains": {
+                        **bundle.agents.agent_drains,
+                        PHASE_ANALYSIS: AgentDrainConfig(chain=PHASE_ANALYSIS),
+                    },
+                }
+            )
+        }
+    )
+    return LoadResult(
+        config=UnifiedConfig(
+            agents={name: AgentConfig(cmd=name) for name in _ANALYSIS_CHAIN},
+        ),
+        workspace_scope=WorkspaceScope(root="/test/project", allowed_roots=["/test/project"]),
+        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
+        policy_bundle=analysis_bundle,
+        run_id="test-analysis-run-id",
+    )
+
+
+def _capture_cooldown_lines(run: Callable[[], object]) -> list[str]:
+    lines: list[str] = []
+    sink = logger.add(lines.append, level="WARNING", format="{message}")
+    try:
+        run()
+    finally:
+        logger.remove(sink)
+    return [line.strip() for line in lines if "cooldown_decision" in line]
 
 
 def test_real_policy_invoker_waits_for_owner_cooldown_across_rounds(
@@ -59,6 +106,52 @@ def test_real_policy_invoker_waits_for_owner_cooldown_across_rounds(
 
     assert invocations == ["test-agent"] * 4
     assert clock.monotonic() == 60.0
+
+
+def test_real_policy_analysis_invoker_cools_failed_agent_and_selects_next_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    invocations: list[str] = []
+
+    def invoke_effect(effect: object, *_args: object, **_kwargs: object) -> PipelineEvent:
+        if isinstance(effect, InvokeAgentEffect):
+            invocations.append(effect.agent_name)
+        return PipelineEvent.AGENT_FAILURE
+
+    monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    load_result = _analysis_load_result()
+    workspace_scope = load_result.workspace_scope
+    assert workspace_scope is not None
+    display_context = make_display_context()
+    invoke = cli_integration.make_production_invoke_agent(
+        load_result,
+        PipelineDeps(display_context=display_context),
+        workspace_scope,
+        None,
+        display_context,
+    )
+
+    def run_rounds() -> None:
+        for _round in range(4):
+            assert invoke(phase=PHASE_ANALYSIS, prompt_path="prompt.md") is False
+
+    lines = _capture_cooldown_lines(run_rounds)
+    duration_ms = int(AgentFailureLedger(clock=clock).base_cooldown_seconds * 1000)
+
+    assert invocations == [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT]
+    assert clock.monotonic() == 0.0
+    matching = [
+        line
+        for line in lines
+        if f"phase={PHASE_ANALYSIS}" in line
+        and f"agent={_PRIMARY}" in line
+        and f"reason={UnavailabilityReason.DEAD_AGENT_NO_PROGRESS}" in line
+        and f"duration_ms={duration_ms}" in line
+        and f"expiry_ms={duration_ms}" in line
+    ]
+    assert len(matching) == 1
 
 
 def test_real_policy_invoker_routes_caught_launch_failure_through_owner(

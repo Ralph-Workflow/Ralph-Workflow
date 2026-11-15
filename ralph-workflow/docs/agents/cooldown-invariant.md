@@ -53,7 +53,7 @@ agent, the `UnavailabilityReason`, the duration and the expiry
 | Main pipeline phases (`ralph/pipeline/effect_executor.py`, `ralph/pipeline/runner.py`) | uses owner | the registered production runner receives a `RecoveryController`, and the reducer routes classified outcomes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py`, `tests/pipeline/test_reducer_single_owner.py` |
 | Reducer and session runtime (`ralph/pipeline/reducer.py`, `ralph/_session_runtime_runtime.py`) | uses owner | failed attempts reach the shared recovery handler; `tests/pipeline/test_reducer_single_owner.py` |
 | Parallel phase workers (`ralph/pipeline/parallel/worker_runtime.py`) | uses owner | the worker returns the attempt outcome to the phase handler, which the reducer routes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Conflict resolution (`ralph/pipeline/conflict_resolution/`) | uses owner | `ralph/pipeline/conflict_resolution/session.py` classifies typed outcomes through `RecoveryController.classify_conflict_attempt`; `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_phase_parity_cooldown.py`, `tests/test_conflict_stalled_attempt_cooldown.py`, `tests/recovery/test_conflict_progress_classification.py` |
+| Conflict resolution (`ralph/pipeline/conflict_resolution/`) | uses owner | `ralph/pipeline/conflict_resolution/session.py` passes typed outcomes to the shared owner's `FailureClassifier.classify_outcome` path, and `RecoveryController.handle` applies the cooldown, budget, and selection policy; `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_phase_parity_cooldown.py`, `tests/test_conflict_stalled_attempt_cooldown.py`, `tests/recovery/test_conflict_progress_classification.py` |
 | Rebase and auto-integrate recovery (`ralph/pipeline/_pending_merge_repair.py`, `ralph/pipeline/_integration_diagnostic.py`, `ralph/pipeline/_integration_continuation.py`) | uses owner | resolution failures resolve through `ralph/pipeline/resolution_outcome_producer.py` into the owner's classification; `tests/recovery/test_cooldown_parity_all_phases.py` |
 | Smoke-test plumbing (`ralph/pipeline/plumbing/smoke_plumbing.py`) | uses owner | the attempt outcome reaches the ledger through the shared owner; `tests/recovery/test_cooldown_parity_all_phases.py` |
 | Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | uses owner | the chain retains one `RecoveryController` across outer retries, so bench state survives; `tests/test_commit_retry_cooldown.py` |
@@ -120,8 +120,9 @@ the agent owner by construction. They are exemptions, not gaps.
   all-unavailable chain to wait through `earliest_available_wait_ms` and a
   caught launch failure to reach the owner.
 - **Conflict-resolution contract.** A no-progress attempt has a typed
-  outcome and is benched with `dead_agent_no_progress` or
-  `no_output_at_start`; it counts against the owner budget. Selection and
+  outcome and is benched with its typed reason, including
+  `no_output_at_start`, `no_output_after_activity`, or
+  `dead_agent_no_progress`; it counts against the owner budget. Selection and
   waiting remain owner decisions, and the driver does not replace a
   no-selectable-agent result with a local choice. `max_rounds_per_stop`
   bounds resolution rounds and reaching the cap escalates instead of

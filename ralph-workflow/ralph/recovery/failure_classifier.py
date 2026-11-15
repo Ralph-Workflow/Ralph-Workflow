@@ -11,7 +11,7 @@ from loguru import logger
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 
 from .classified_failure import ClassifiedFailure
-from .conflict_attempt_outcome import ConflictAttemptOutcome, attempt_outcome_reason
+from .conflict_attempt_outcome import ConflictAttemptOutcome
 from .failure_category import FailureCategory
 from .failure_details import FailureDetailParts, contains_casefolded_marker, failure_detail_parts
 from .unavailability_reason import UnavailabilityReason
@@ -611,6 +611,41 @@ _TYPED_OUTCOME_CLASSIFICATION: dict[
 }
 
 
+_WATCHDOG_REASON_UNAVAILABILITY: dict[str, UnavailabilityReason] = {
+    "no_output_at_start": UnavailabilityReason.NO_OUTPUT_AT_START,
+    "no_progress_quiet": UnavailabilityReason.STALE_CHILD_QUIET,
+    "strictly_stuck": UnavailabilityReason.STRICTLY_STUCK,
+    "children_persist_too_long": UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT,
+}
+
+
+def watchdog_reason_of(exc: BaseException | None) -> str | None:
+    if exc is None or type(exc).__name__ != "AgentInactivityTimeoutError":
+        return None
+    raw = cast("object", getattr(exc, "reason", None))
+    if raw is None:
+        return None
+    return str(raw)
+
+
+def watchdog_unavailability_reason(exc: BaseException | None) -> UnavailabilityReason | None:
+    reason = watchdog_reason_of(exc)
+    if reason is None:
+        return None
+    return _WATCHDOG_REASON_UNAVAILABILITY.get(reason)
+
+
+def typed_outcome_reason(outcome: ConflictAttemptOutcome, unresolved_count: int = 0) -> str:
+    if outcome in (
+        ConflictAttemptOutcome.UNRESOLVED_REMAINING,
+        ConflictAttemptOutcome.STALLED,
+        ConflictAttemptOutcome.STALLED_NO_PROGRESS,
+    ):
+        return f"agent reported success but {unresolved_count} conflicted path(s) remain"
+    if outcome is ConflictAttemptOutcome.NO_ACTIVITY:
+        return "candidate produced no activity before it exited"
+    return "conflict attempt failed"
+
 class FailureClassifier:
     def classify_outcome(
         self,
@@ -620,20 +655,23 @@ class FailureClassifier:
         agent: str | None,
         unresolved_count: int = 0,
         raw_failure: BaseException | str | None = None,
+        facts: AttemptFacts | None = None,
     ) -> ClassifiedFailure:
-        category, counts, unavailability_reason = _TYPED_OUTCOME_CLASSIFICATION[outcome]
+        classification = _TYPED_OUTCOME_CLASSIFICATION.get(outcome)
+        if classification is None:
+            msg = f"conflict attempt outcome '{outcome.value}' is not a typed outcome"
+            raise ValueError(msg)
+        category, counts, unavailability_reason = classification
+        original: BaseException | None = None
+        raw_message = ""
         if isinstance(raw_failure, BaseException):
-            original: BaseException | None = raw_failure
+            original = raw_failure
             raw_message = str(raw_failure)
         elif isinstance(raw_failure, str):
-            original = None
             raw_message = raw_failure
-        else:
-            original = None
-            raw_message = ""
         return ClassifiedFailure(
             category=category,
-            reason=attempt_outcome_reason(outcome, unresolved_count),
+            reason=typed_outcome_reason(outcome, unresolved_count),
             attributed_agent=agent,
             attributed_phase=phase,
             counts_against_budget=counts,
@@ -642,6 +680,7 @@ class FailureClassifier:
             is_unavailable=unavailability_reason is not None,
             unavailability_reason=unavailability_reason,
             must_charge_ledger=counts,
+            facts=facts,
         )
 
     def classify(

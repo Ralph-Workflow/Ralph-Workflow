@@ -58,6 +58,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "persisted receipt store, so a submit-to-receipt mapping defect can no longer be masked "
         "by a receipt written from the assertion's own input"
     ),
+    "RALPH_TEST_CHANGE_REASONS test_same_name_override_mismatch_is_loud_before_invocation_and_not_charged": (
+        "the fixture now overrides the commit drain with a gradeable but wrong artifact type; "
+        "an ungradeable type is rejected earlier, at policy load, and that earlier layer is "
+        "pinned by tests/policy/test_artifact_type_closed_set.py, so this test keeps covering "
+        "the phase-entry layer that reports the mismatch to the agent as a loud configuration "
+        "error before any invocation and without charging the agent"
+    ),
 }
 
 
@@ -121,7 +128,7 @@ def test_same_name_override_mismatch_is_loud_before_invocation_and_not_charged(
     (policy_dir / "artifacts.toml").write_text(
         "[artifacts.development_commit_review_artifact]\n"
         'drain = "commit"\n'
-        'artifact_type = "stale_review"\n'
+        'artifact_type = "commit_message"\n'
         "decision_vocabulary = []\n",
         encoding="utf-8",
     )
@@ -187,10 +194,10 @@ def test_same_name_override_mismatch_is_loud_before_invocation_and_not_charged(
 
     assert caught.value.phase == phase
     assert caught.value.prompted_type == "commit_review"
-    assert caught.value.graded_type == "stale_review"
+    assert caught.value.graded_type == "commit_message"
     assert phase in str(caught.value)
     assert "commit_review" in str(caught.value)
-    assert "stale_review" in str(caught.value)
+    assert "commit_message" in str(caught.value)
     assert invocation_count == 0
     assert controller.ledger.status(phase, "reviewer").is_eligible
 

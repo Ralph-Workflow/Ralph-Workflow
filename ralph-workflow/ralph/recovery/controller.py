@@ -60,7 +60,10 @@ from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
-from ralph.recovery.failure_classifier import typed_signal_unavailability_reason
+from ralph.recovery.failure_classifier import (
+    typed_signal_unavailability_reason,
+    watchdog_unavailability_reason,
+)
 from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -88,6 +91,13 @@ _ENGINE_ORIGIN_MESSAGE_MARKERS: tuple[str, ...] = (
     "is not defined",
     "Checkpoint was saved at phase",
     "no longer exists in pipeline.toml",
+)
+
+_TYPED_NO_ACTIVITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
+    {
+        UnavailabilityReason.NO_OUTPUT_AT_START,
+        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
+    }
 )
 
 
@@ -504,6 +514,19 @@ def _failure_for_attempt_outcome(
     return _without_unavailability_reason(failure)
 
 
+def _attempt_cooldown_reasons(
+    effective_signal: TypedSignal | None,
+    exc: BaseException | None,
+    failure: ClassifiedFailure | None,
+) -> tuple[UnavailabilityReason | None, UnavailabilityReason | None, UnavailabilityReason | None]:
+    cooldown_reason = typed_signal_unavailability_reason(effective_signal)
+    watchdog_cooldown = watchdog_unavailability_reason(exc)
+    if cooldown_reason is None:
+        cooldown_reason = watchdog_cooldown
+    failure_reason = failure.unavailability_reason if failure is not None else None
+    return cooldown_reason, watchdog_cooldown, failure_reason
+
+
 class RecoveryController:
     def __init__(
         self,
@@ -517,6 +540,7 @@ class RecoveryController:
             reset_hint_backend if reset_hint_backend is not None else DEFAULT_FILE_BACKEND
         )
         self._phase_chains: dict[str, tuple[str, ...]] = {}
+        self._phase_cursor: dict[str, str] = {}
         self._last_selection_state: dict[
             str, tuple[str | None, tuple[tuple[str, bool, bool, bool, str | None], ...]]
         ] = {}
@@ -653,6 +677,7 @@ class RecoveryController:
                 agent=agent,
                 unresolved_count=context.unresolved_count,
                 raw_failure=raw_failure,
+                facts=effective_facts,
             )
         if failure is None:
             failure = self._classifier.classify(
@@ -667,6 +692,8 @@ class RecoveryController:
         chain = state.chain_for_phase(phase)
         if chain is not None and chain.agents:
             self._phase_chains[phase] = tuple(chain.agents)
+            if chain.current_index < len(chain.agents):
+                self._phase_cursor[phase] = chain.agents[chain.current_index]
         current_agent = agent or (
             chain.agents[chain.current_index]
             if chain is not None and chain.agents and chain.current_index < len(chain.agents)
@@ -689,6 +716,7 @@ class RecoveryController:
                 else (raw_failure if isinstance(raw_failure, str) else None)
             ),
             charge_ledger=failure.must_charge_ledger or not failure.is_unavailable,
+            failure=failure,
         )
         if (
             failure.must_charge_ledger
@@ -702,17 +730,41 @@ class RecoveryController:
                 workspace_changed=workspace_changed,
             )
         bench_applied = outcome.benches_agent
+        cooldown_reason = self._last_attempt_cooldown_reason
         if bench_applied:
+            preserved = (
+                failure.unavailability_reason
+                if failure.unavailability_reason in _TYPED_NO_ACTIVITY_REASONS
+                else None
+            )
+            if preserved is None and cooldown_reason in _TYPED_NO_ACTIVITY_REASONS:
+                preserved = cooldown_reason
             failure = replace(
                 failure,
                 is_unavailable=True,
-                unavailability_reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+                unavailability_reason=preserved or UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
             )
         elif self._last_resolved_verdict is not None:
             failure = _failure_for_attempt_outcome(failure, self._last_resolved_verdict)
-        cooldown_reason = self._last_attempt_cooldown_reason
         if not bench_applied and cooldown_reason is not None:
             failure = replace(failure, is_unavailable=True, unavailability_reason=cooldown_reason)
+        if (
+            isinstance(raw_failure, ConnectionError)
+            and current_agent is not None
+            and not failure.is_unavailable
+            and failure.unavailability_reason is None
+            and self.agent_eligibility(phase, current_agent).is_eligible
+        ):
+            self.record_confirmed_unavailability(
+                phase,
+                current_agent,
+                UnavailabilityReason.PROVIDER_UNAVAILABLE,
+            )
+            failure = replace(
+                failure,
+                is_unavailable=True,
+                unavailability_reason=UnavailabilityReason.PROVIDER_UNAVAILABLE,
+            )
 
         if failure.category == FailureCategory.INTEGRATION:
             return self._handle_integration_continuation(state, failure, phase)
@@ -769,6 +821,7 @@ class RecoveryController:
         config_fingerprint: str | None = None,
         session_ref: Mapping[str, str] | None = None,
         charge_ledger: bool = True,
+        failure: ClassifiedFailure | None = None,
     ) -> AttemptOutcome:
         if attempt_key is not None:
             memoized = self._attempt_outcome_memo.get(attempt_key)
@@ -794,6 +847,7 @@ class RecoveryController:
             config_fingerprint=config_fingerprint,
             session_ref=session_ref,
             charge_ledger=effective_charge_ledger,
+            failure=failure,
         )
         self._last_attempt_outcome = outcome
         self._last_demoted_reason = demoted_reason
@@ -857,6 +911,7 @@ class RecoveryController:
         config_fingerprint: str | None,
         session_ref: Mapping[str, str] | None,
         charge_ledger: bool,
+        failure: ClassifiedFailure | None = None,
     ) -> tuple[AttemptOutcome, str | None, PersistedVerdict | None]:
         attempt_facts = facts if facts is not None else AttemptFacts()
         peer_failures_identical = self._peer_failures_identical(phase, agent, attempt_facts)
@@ -874,6 +929,7 @@ class RecoveryController:
             resolved_verdict = self._resolve_dead_agent_verdict(
                 phase,
                 agent,
+                failure=failure,
                 facts=facts,
                 exc=exc,
                 signal_name=signal_name,
@@ -898,29 +954,39 @@ class RecoveryController:
         if fingerprint is None and agent is not None:
             fingerprint = f"agent:{agent}"
         demoted_reason: str | None = None
+        self._last_attempt_cooldown_reason = None
+        cooldown_reason, watchdog_cooldown, failure_reason = _attempt_cooldown_reasons(
+            effective_signal,
+            exc,
+            failure,
+        )
+        preserved_reason = (
+            cooldown_reason if cooldown_reason in _TYPED_NO_ACTIVITY_REASONS else None
+        )
         if outcome.benches_agent and not probe_mode and agent is not None:
+            bench_reason = preserved_reason or UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
             self.record_confirmed_unavailability(
                 phase,
                 agent,
-                UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+                bench_reason,
                 outcome.verdict,
             )
             self._false_bench_feedback.note_bench(
                 phase,
                 agent,
-                str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
+                str(bench_reason),
                 config_fingerprint=fingerprint or "",
                 verdict_ref=self._last_verdict_record or {},
                 session_ref=session_ref or {},
             )
-        self._last_attempt_cooldown_reason = None
-        cooldown_reason = typed_signal_unavailability_reason(effective_signal)
-        if (
+            if preserved_reason is not None:
+                self._last_attempt_cooldown_reason = preserved_reason
+        elif (
             attempt_failed
             and cooldown_reason is not None
-            and not outcome.benches_agent
             and not probe_mode
             and agent is not None
+            and failure_reason != cooldown_reason
         ):
             self._mark_agent_unavailable(phase, agent, reason=cooldown_reason)
             self._last_attempt_cooldown_reason = cooldown_reason
@@ -930,6 +996,7 @@ class RecoveryController:
             and not probe_mode
             and charge_ledger
             and agent is not None
+            and watchdog_cooldown is None
         ):
             self._last_attempt_charged_ledger = True
             demoted_reason = self.record_attempt_fact(
@@ -1056,19 +1123,19 @@ class RecoveryController:
                 ),
             )
         probe_outcome: ProbeOutcome | None = None
+        if self._dead_agent_probe_runner is not None and agent is not None:
+            probe_outcome = self._run_probe_fail_open(phase, agent)
         if self._dead_agent_verdict_runner is None and effective_facts is not None:
             preliminary = build_dead_agent_verdict(
                 effective_facts,
                 attribution=attribution,
-                probe_outcome=None,
+                probe_outcome=probe_outcome,
                 typed_signal=typed_signal,
             )
             if _verdict_benches_agent(preliminary) or not _verdict_counts_toward_agent_state(
                 preliminary
             ):
                 return preliminary
-        if self._dead_agent_probe_runner is not None and agent is not None:
-            probe_outcome = self._run_probe_fail_open(phase, agent)
         if self._dead_agent_verdict_runner is not None:
             return self._dead_agent_verdict_runner(
                 facts=effective_facts,
@@ -1103,6 +1170,9 @@ class RecoveryController:
         verdict: PersistedVerdict | None = None,
     ) -> int:
         return self._mark_agent_unavailable(phase, agent, reason, verdict=verdict)
+
+    def mark_candidate_unavailable(self, phase: str, agent: str) -> None:
+        self._ledger.mark_unavailable(phase, agent, reason="candidate_unavailable")
 
     def record_confirmed_dead_agent(
         self,
@@ -1166,10 +1236,15 @@ class RecoveryController:
         if outcome.demoted:
             if isinstance(outcome.status, Cooldown):
                 now_ms = self._now_ms()
+                demotion_reason = self._last_attempt_cooldown_reason
+                if not isinstance(demotion_reason, UnavailabilityReason) or (
+                    demotion_reason not in _TYPED_NO_ACTIVITY_REASONS
+                ):
+                    demotion_reason = UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
                 self._log_cooldown_decision(
                     phase,
                     agent,
-                    UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+                    demotion_reason,
                     duration_ms=max(0, outcome.status.until_ms - now_ms),
                     expiry_ms=outcome.status.until_ms,
                     demotion=(

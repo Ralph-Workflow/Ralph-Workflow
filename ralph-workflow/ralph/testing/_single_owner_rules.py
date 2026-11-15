@@ -48,14 +48,6 @@ PHASE_FAILURE_STATE_ALLOWLIST: dict[tuple[str, str], str] = {
         "ralph/pipeline/conflict_resolution/session.py",
         "dead_tool_surfaces",
     ): "Transitional compatibility with legacy conflict candidate dead surface tracking.",
-    (
-        "ralph/pipeline/conflict_resolution/session.py",
-        "last_retry_delay_ms",
-    ): "Transitional compatibility with conflict resolution retry delay tracking.",
-    (
-        "ralph/pipeline/conflict_resolution/session.py",
-        "skip_same_agent_retries",
-    ): "Transitional compatibility with conflict resolution retry loop.",
 }
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
@@ -80,7 +72,6 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
     "ralph/pipeline/conflict_resolution/session.py": frozenset(
         {
             "dead_tool_surfaces",
-            "skip_same_agent_retries",
         }
     ),
     "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(

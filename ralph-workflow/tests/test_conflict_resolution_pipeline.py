@@ -276,7 +276,7 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
         return True
 
     assert _run(tmp_path, invoke=_invoke) is False
-    assert calls == [1, 2, 3]
+    assert calls == [1, 2]
 
 
 def test_failed_resolver_attempt_uses_the_next_fallback_candidate(

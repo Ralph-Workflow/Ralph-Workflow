@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import ast
+import os
+import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
 
 _BOOL_STR_TUPLE_ARITY: Final = 2
+
+_PACKAGE_PROJECT_DIR_NAME: Final = "ralph-workflow"
+_PACKAGE_DIR_NAME: Final = "ralph"
 
 _RESOLUTION_CALLS = frozenset(
     {
@@ -33,8 +38,40 @@ _SELF_AUDIT_MODULES: frozenset[str] = frozenset(
     {
         "ralph/testing/audit_integration_invariants.py",
         "ralph/testing/audit_integration_no_legacy.py",
+        "tests/audit/test_audit_integration_no_legacy.py",
     }
 )
+_EXEMPT_HISTORICAL_PATH_FRAGMENTS: tuple[str, ...] = (
+    "tests/agents/invoke/fixtures/claude_interactive_real_capture",
+)
+_SKIP_DIR_NAMES: frozenset[str] = frozenset(
+    {
+        ".agent",
+        ".agents",
+        ".claude",
+        ".git",
+        ".hypothesis",
+        ".mypy_cache",
+        ".pi-subagents",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        ".vscode",
+        "build",
+        "dist",
+        "node_modules",
+        "tmp",
+        "venv",
+        "__pycache__",
+    }
+)
+_RETIRED_STEM: Final = "commit_" + "cleanup"
+_RETIRED_HYPHEN_STEM: Final = "commit-" + "cleanup"
+_RETIRED_REVIEW_PATTERN: Final = re.compile(
+    rf"(?i)\b[a-zA-Z0-9_-]*commit[-_]?{'clean' + 'up'}[a-zA-Z0-9_.-]*\b"
+)
+_RETIRED_REVIEW_RULE: Final = f"legacy {_RETIRED_STEM} identifier reappeared"
+_RETIRED_REVIEW_DETAIL: Final = f"'{{token}}' was replaced by 'commit_review'; legacy {_RETIRED_STEM} identifiers must not be used"
 _RESOLUTION_OUTCOME_TOKENS: tuple[str, ...] = (
     "ResolutionOutcome",
     "StopResolutionOutcome",
@@ -162,36 +199,42 @@ def _node_identifier(node: ast.AST) -> tuple[str, int] | None:
     return identifier, line
 
 
-def _identifier_occurrences(tree: ast.Module, names: frozenset[str]) -> list[tuple[int, str]]:
-    found: set[tuple[int, str]] = set()
+def _record_identifier_line(lines: dict[str, int], name: str, line: int) -> None:
+    current = lines.get(name)
+    if current is None or line < current:
+        lines[name] = line
+
+
+def _identifier_lines(tree: ast.Module) -> dict[str, int]:
+    lines: dict[str, int] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.alias):
-            imported = node.name.rsplit(".", 1)[-1]
-            if imported in names:
-                found.add((node.lineno, imported))
-            if node.asname is not None and node.asname in names:
-                found.add((node.lineno, node.asname))
+            _record_identifier_line(lines, node.name.rsplit(".", 1)[-1], node.lineno)
+            if node.asname is not None:
+                _record_identifier_line(lines, node.asname, node.lineno)
             continue
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if node.value in names:
-                found.add((node.lineno, node.value))
+            _record_identifier_line(lines, node.value, node.lineno)
             continue
         identifier = _node_identifier(node)
-        if identifier is not None and identifier[0] in names:
-            found.add((identifier[1], identifier[0]))
-    return sorted(found)
+        if identifier is not None:
+            _record_identifier_line(lines, identifier[0], identifier[1])
+    return lines
 
 
 def _forbidden_identifier_violations(
     path: str,
-    tree: ast.Module,
+    identifier_lines: Mapping[str, int],
     names: frozenset[str],
     rule: str,
     detail: str,
 ) -> list[Violation]:
     violations: list[Violation] = []
     reported: set[str] = set()
-    for line, name in _identifier_occurrences(tree, names):
+    occurrences = sorted(
+        (identifier_lines[name], name) for name in names if name in identifier_lines
+    )
+    for line, name in occurrences:
         if name in reported:
             continue
         reported.add(name)
@@ -271,15 +314,13 @@ def _legacy_tuple_violations(path: str, tree: ast.Module) -> list[Violation]:
     return violations
 
 
-def _package_legacy_violations(rel: str, source: str) -> list[Violation]:
-    try:
-        tree = ast.parse(source, filename=rel)
-    except SyntaxError:
-        return []
+def _package_legacy_violations(rel: str, source: str, tree: ast.Module) -> list[Violation]:
+    package_key = _package_key(rel)
+    identifier_lines = _identifier_lines(tree)
     violations = [
         *_forbidden_identifier_violations(
             rel,
-            tree,
+            identifier_lines,
             _LEGACY_CONFLICT_CLASSIFIER_NAMES,
             "legacy conflict-attempt classifier reappeared",
             "'classify_conflict_attempt' was deleted; conflict attempts are classified by "
@@ -287,7 +328,7 @@ def _package_legacy_violations(rel: str, source: str) -> list[Violation]:
         ),
         *_forbidden_identifier_violations(
             rel,
-            tree,
+            identifier_lines,
             _INTEGRATION_SIDE_FAILURE_CLASSIFIER_NAMES,
             "integration-side failure classification",
             "agent failure classification is owned by ralph/recovery/agent_failure_ledger.py "
@@ -295,7 +336,7 @@ def _package_legacy_violations(rel: str, source: str) -> list[Violation]:
         ),
         *_forbidden_identifier_violations(
             rel,
-            tree,
+            identifier_lines,
             _REMOVED_RESOLUTION_CAP_NAMES,
             "removed resolution cap identifier reappeared",
             "'total_resolution_cap_seconds' was removed from the resolver configuration; "
@@ -303,18 +344,18 @@ def _package_legacy_violations(rel: str, source: str) -> list[Violation]:
         ),
         *_forbidden_identifier_violations(
             rel,
-            tree,
+            identifier_lines,
             _LEGACY_GITLINK_ESCALATION_NAMES,
             "legacy gitlink escalation hook reappeared",
             "'escalate_gitlink_on_sight' was removed; gitlink conflicts are resolved in place by "
             "ralph/pipeline/conflict_resolution/deterministic_resolution.py",
         ),
     ]
-    if rel.startswith("ralph/pipeline/"):
+    if package_key.startswith("ralph/pipeline/"):
         violations.extend(
             _forbidden_identifier_violations(
                 rel,
-                tree,
+                identifier_lines,
                 _LEGACY_OUTCOME_CLASS_NAMES,
                 "legacy resolution outcome vocabulary reappeared",
                 "'ResolutionOutcome' was replaced by the sealed StopResolutionOutcome union in "
@@ -323,7 +364,7 @@ def _package_legacy_violations(rel: str, source: str) -> list[Violation]:
         )
         if any(token in source for token in _RESOLUTION_OUTCOME_TOKENS):
             violations.extend(_legacy_tuple_violations(rel, tree))
-    if rel == LEGACY_OUTCOME_MODULE:
+    if package_key == LEGACY_OUTCOME_MODULE:
         violations.append(
             Violation(
                 path=rel,
@@ -347,8 +388,24 @@ def _is_transitional_allowed(violation: Violation) -> bool:
     return any(name in violation.detail for name in allowed_rules)
 
 
+def _package_key(rel: str) -> str:
+    return rel.removeprefix(_PACKAGE_PROJECT_DIR_NAME + "/")
+
+
+def resolve_repository_root(start: Path) -> Path:
+    current = start.resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / _PACKAGE_PROJECT_DIR_NAME / _PACKAGE_DIR_NAME).is_dir():
+            return candidate
+    for candidate in (current, *current.parents):
+        if (candidate / _PACKAGE_DIR_NAME).is_dir():
+            return candidate
+    return current
+
+
 def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
     violations: list[Violation] = []
+    package_key = _package_key(rel)
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and _resolution_call(node.value):
             violations.extend(
@@ -366,7 +423,7 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
             )
         if isinstance(node, ast.Compare) and _string_cause_match(node):
             violations.append(Violation(rel, node.lineno, "string matching on failure cause"))
-        if isinstance(node, ast.Call) and rel not in _ALLOWED_PRIVATE_RESOLVER_CALLERS:
+        if isinstance(node, ast.Call) and package_key not in _ALLOWED_PRIVATE_RESOLVER_CALLERS:
             callee = (
                 node.func.id
                 if isinstance(node.func, ast.Name)
@@ -414,6 +471,55 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
     return violations
 
 
+def _is_exempt_path(rel: str) -> bool:
+    normalized = rel.replace("\\", "/")
+    return bool(
+        any(fragment in normalized for fragment in _EXEMPT_HISTORICAL_PATH_FRAGMENTS)
+        or any(normalized.endswith(mod) for mod in _SELF_AUDIT_MODULES)
+        or normalized == ("PROMPT" + ".md")
+        or "/.agent/" in normalized
+        or normalized.startswith(".agent/")
+        or "/.pi-subagents/" in normalized
+        or normalized.startswith(".pi-subagents/")
+    )
+
+
+def _retired_review_violations(rel: str, source: str) -> list[Violation]:
+    if _is_exempt_path(rel):
+        return []
+    violations: list[Violation] = []
+    filename = Path(rel).name
+    if _RETIRED_REVIEW_PATTERN.search(filename):
+        violations.append(
+            Violation(
+                path=rel,
+                line=1,
+                rule=_RETIRED_REVIEW_RULE,
+                detail=f"filename '{filename}' contains legacy {_RETIRED_STEM} spelling",
+            )
+        )
+    lowered = source.lower()
+    if (
+        _RETIRED_STEM not in lowered
+        and _RETIRED_HYPHEN_STEM not in lowered
+        and ("commit" + "cleanup") not in lowered
+    ):
+        return violations
+
+    for lineno, line in enumerate(source.splitlines(), start=1):
+        match = _RETIRED_REVIEW_PATTERN.search(line)
+        if match:
+            violations.append(
+                Violation(
+                    path=rel,
+                    line=lineno,
+                    rule=_RETIRED_REVIEW_RULE,
+                    detail=_RETIRED_REVIEW_DETAIL.format(token=match.group(0)),
+                )
+            )
+    return violations
+
+
 def audit_modules(
     modules: Mapping[str, str],
     *,
@@ -421,32 +527,74 @@ def audit_modules(
 ) -> list[Violation]:
     violations: list[Violation] = []
     for rel, source in sorted(modules.items()):
-        if rel in _SELF_AUDIT_MODULES:
+        if rel in _SELF_AUDIT_MODULES or _is_exempt_path(rel):
             continue
         try:
             tree = ast.parse(source, filename=rel)
         except SyntaxError:
-            continue
-        if rel.startswith("ralph/pipeline/"):
-            violations.extend(_pipeline_ast_violations(rel, tree))
-        violations.extend(_package_legacy_violations(rel, source))
+            tree = None
+        if tree is not None:
+            if _package_key(rel).startswith("ralph/pipeline/"):
+                violations.extend(_pipeline_ast_violations(rel, tree))
+            violations.extend(_package_legacy_violations(rel, source, tree))
+        violations.extend(_retired_review_violations(rel, source))
 
     if ignore_transitional:
         return violations
     return [v for v in violations if not _is_transitional_allowed(v)]
 
 
+def _iter_scannable_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        dirnames[:] = sorted(name for name in dirnames if name not in _SKIP_DIR_NAMES)
+        rel_dir = PurePath(os.path.relpath(dirpath, repo_root))
+        for filename in sorted(filenames):
+            yield (rel_dir / filename).as_posix(), Path(dirpath) / filename
+
+
 def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Violation]:
     modules: dict[str, str] = {}
-    for path in sorted((repo_root / "ralph").rglob("*.py")):
-        rel = path.relative_to(repo_root).as_posix()
-        if rel in _SELF_AUDIT_MODULES:
+    ralph_dir = repo_root / _PACKAGE_DIR_NAME
+    package_dir = repo_root / _PACKAGE_PROJECT_DIR_NAME / _PACKAGE_DIR_NAME
+    if not ralph_dir.is_dir() and package_dir.is_dir():
+        ralph_dir = package_dir
+
+    if ralph_dir.is_dir():
+        for path in sorted(ralph_dir.rglob("*.py")):
+            rel = path.relative_to(repo_root).as_posix()
+            if rel in _SELF_AUDIT_MODULES or _is_exempt_path(rel):
+                continue
+            try:
+                modules[rel] = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+
+    violations = list(audit_modules(modules, ignore_transitional=ignore_transitional))
+
+    repo_wide_violations: list[Violation] = []
+    for rel, path in _iter_scannable_files(repo_root):
+        if rel in _SELF_AUDIT_MODULES or _is_exempt_path(rel):
+            continue
+        if rel in modules:
+            continue
+        if _RETIRED_REVIEW_PATTERN.search(path.name):
+            repo_wide_violations.append(
+                Violation(
+                    path=rel,
+                    line=1,
+                    rule=_RETIRED_REVIEW_RULE,
+                    detail=f"filename '{path.name}' contains legacy {_RETIRED_STEM} spelling",
+                )
+            )
             continue
         try:
-            modules[rel] = path.read_text(encoding="utf-8")
-        except OSError:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
             continue
-    return audit_modules(modules, ignore_transitional=ignore_transitional)
+        repo_wide_violations.extend(_retired_review_violations(rel, source))
+
+    violations.extend(repo_wide_violations)
+    return violations
 
 
 def selftest() -> int:
@@ -455,6 +603,9 @@ def selftest() -> int:
             "from ralph.pipeline.resolution_outcome import StopResolutionOutcome, ResolvedOutcome\n"
             "def resolve_work() -> StopResolutionOutcome:\n"
             "    return ResolvedOutcome()\n"
+        ),
+        "ralph/pipeline/clean_review.py": (
+            "phase = 'development_commit_review'\ndef commit_review(): pass\n"
         ),
     }
     clean_violations = audit_modules(clean_modules, ignore_transitional=True)
@@ -525,6 +676,21 @@ def selftest() -> int:
             "class ResolutionOutcome: pass\n",
             "legacy resolution outcome module reappeared",
         ),
+        (
+            "ralph/pipeline/planted_cleanup.py",
+            f"def test(): return {_RETIRED_STEM}()\n",
+            _RETIRED_REVIEW_RULE,
+        ),
+        (
+            "ralph/pipeline/planted_cleanup_phase.py",
+            f"phase = 'development_{_RETIRED_STEM}'\n",
+            _RETIRED_REVIEW_RULE,
+        ),
+        (
+            "ralph/pipeline/planted_cleanup_skill.py",
+            f"skill = 'submit-{_RETIRED_HYPHEN_STEM}-artifact'\n",
+            _RETIRED_REVIEW_RULE,
+        ),
     ]
 
     for rel, source, expected_rule in planted_cases:
@@ -546,7 +712,7 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if "--selftest" in args:
         return selftest()
-    root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
+    root = Path(args[0]) if args else resolve_repository_root(Path.cwd())
     violations = audit_tree(root)
     if violations:
         sys.stdout.write(f"INTEGRATION NO-LEGACY AUDIT: {len(violations)} violation(s) found:\n")

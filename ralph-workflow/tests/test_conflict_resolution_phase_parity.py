@@ -52,8 +52,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_candidate_that_never_ran_is_not_recorded_as_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving no-activity attribution",
     "test_an_uninstalled_candidate_is_unavailable_not_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving unavailable attribution",
     "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
-    "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately and waits only for the shared cooldown expiry",
-    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "R0 lets the shared controller select each eligible candidate once per round for immediate fall-over, without resolver-local same-agent retries",
+    "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately to the next eligible candidate",
+    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "the previous expectation of two candidate invocations in every round was wrong: the shared owner keeps the still-eligible candidate selected until the shared consecutive-unproductive bound, so the pinned behavior is one 'one' invocation per round up to that bound and the owner's next candidate 'two' in the bound-reaching round itself",
     "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
     "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately and is retried in a later round only after shared eligibility returns",
 }
@@ -654,7 +654,8 @@ def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     clock = FakeClock()
-    session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
     called: list[tuple[int, str]] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -698,11 +699,12 @@ def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     cap = config.conflict_resolution.max_rounds_per_stop
     invoked_rounds = sorted({round_index for round_index, _ in called})
     assert invoked_rounds == list(range(1, cap + 1))
-    assert len(called) == len(invoked_rounds) * 2
+    assert ledger.consecutive_limit == 3
     assert called == [
-        (round_index, agent_name)
-        for round_index in range(1, cap + 1)
-        for agent_name in ("one", "two")
+        (1, "one"),
+        (2, "one"),
+        (3, "one"),
+        (3, "two"),
     ]
 
 

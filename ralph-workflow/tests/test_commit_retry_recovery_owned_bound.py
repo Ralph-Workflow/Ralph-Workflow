@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
 from tests import test_commit_retry_cooldown as commit_retry_spec
+from tests.test_commit_retry_cooldown import _COMMIT_AGENT_NAME, _COMMIT_PHASE
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -57,8 +58,8 @@ def test_rebuilt_owner_outer_attempt_bound_tracks_recovery_policy(
     assert all(
         not isinstance(
             owner.ledger.status(
-                commit_retry_spec._COMMIT_PHASE,
-                commit_retry_spec._COMMIT_AGENT_NAME,
+                _COMMIT_PHASE,
+                _COMMIT_AGENT_NAME,
             ),
             Cooldown,
         )

@@ -43,6 +43,7 @@ from ralph.policy.models import (
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 from ralph.policy.validation import (
     PolicyValidationError,
+    validate_artifact_types_supported,
     validate_drain_contracts,
     validate_policy_completeness,
 )
@@ -599,6 +600,14 @@ def load_agents_policy_for_workspace_scope(
     )
 
 
+def _phases_by_drain(pipeline_policy: PipelinePolicy) -> Mapping[str, str]:
+    by_drain: dict[str, str] = {}
+    for phase_name in sorted(pipeline_policy.phases):
+        phase_def = pipeline_policy.phases[phase_name]
+        by_drain.setdefault(phase_def.drain, phase_name)
+    return by_drain
+
+
 def _load_policy_from_paths(
     *,
     agents_path: Path,
@@ -650,6 +659,15 @@ def _load_policy_from_paths(
         global_artifacts_path=global_artifacts_path,
         strict_optional_files=strict_optional_files,
     )
+
+    try:
+        validate_artifact_types_supported(
+            artifacts_policy,
+            default_artifacts_policy=cached_default_artifacts_policy(),
+            phases_by_drain=_phases_by_drain(pipeline_policy),
+        )
+    except PolicyValidationError as exc:
+        raise PolicyValidationError(exc.message, source="artifacts") from exc
 
     agents_policy = _load_agents_policy_from_path(
         agents_path, config=config, strict_optional_files=strict_optional_files

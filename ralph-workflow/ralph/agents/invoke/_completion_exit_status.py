@@ -54,14 +54,24 @@ _MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
 
 
 @runtime_checkable
-class _CapturedStderrHandle(Protocol):
-    @property
-    def _ralph_bounded_stderr(self) -> str: ...
+class _ReadableTextPipe(Protocol):
+    def read(self, size: int = -1, /) -> str: ...
 
 
 @runtime_checkable
-class _ReadableTextPipe(Protocol):
-    def read(self, size: int = -1, /) -> str: ...
+class _BoundedStderrHolder(Protocol):
+    @property
+    def _ralph_bounded_stderr(self) -> object: ...
+
+
+def _bounded_stderr_text(handle: object) -> str | None:
+    if not isinstance(handle, _BoundedStderrHolder):
+        return None
+    try:
+        captured = handle._ralph_bounded_stderr
+    except AttributeError:
+        return None
+    return captured if isinstance(captured, str) else None
 
 
 def _truncation_marker(capped_bytes: int) -> str:
@@ -78,8 +88,9 @@ def _bounded_read(pipe: _ReadableTextPipe) -> str:
 
 
 def read_bounded_stderr(handle: object) -> str:
-    if isinstance(handle, _CapturedStderrHandle):
-        return handle._ralph_bounded_stderr
+    captured = _bounded_stderr_text(handle)
+    if captured is not None:
+        return captured
     try:
         stderr_pipe: object = getattr(handle, "stderr", None)
         return _bounded_read(stderr_pipe) if isinstance(stderr_pipe, _ReadableTextPipe) else ""

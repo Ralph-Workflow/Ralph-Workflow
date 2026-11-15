@@ -13,6 +13,10 @@ from ralph.policy.validation._api import (
     validate_recovery_config,
     validate_required_inputs,
 )
+from ralph.policy.validation._artifact_type_closed_set import (
+    supported_artifact_types,
+    validate_artifact_types_supported,
+)
 from ralph.policy.validation._checkpoint_policy_mismatch_error import (
     CheckpointPolicyMismatchError,
 )
@@ -24,7 +28,9 @@ __all__ = [
     "CheckpointPolicyMismatchError",
     "PolicyValidationError",
     "get_drain_resolution_matrix",
+    "supported_artifact_types",
     "validate_agent_chains_satisfiable",
+    "validate_artifact_types_supported",
     "validate_chain_agents_on_path",
     "validate_chain_exists",
     "validate_checkpoint_against_policy",

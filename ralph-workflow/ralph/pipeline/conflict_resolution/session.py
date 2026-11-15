@@ -39,8 +39,9 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import _NO_RULE_FIRED_REASON
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome, attempt_outcome_reason
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController
+from ralph.recovery.failure_classifier import typed_outcome_reason
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -130,7 +131,6 @@ class ResolutionSession:
     recovery_state: object | None = None
     exhaustion_reason: str | None = None
     operator_action_message: str | None = None
-    skip_same_agent_retries: bool = False
     last_attempt_evidence: str | None = None
     last_attempt_failure: BaseException | str | None = None
     last_attempt_outcome: ConflictAttemptOutcome | None = None
@@ -145,7 +145,6 @@ class ResolutionSession:
     last_resolution_outcome: StopResolutionOutcome | None = None
     dead_surface_agents: frozenset[str] = frozenset()
 
-    last_retry_delay_ms: float | None = None
 
 
 def begin_resolution_stop(
@@ -263,44 +262,14 @@ def ensure_session_controller(
     return controller
 
 
-_MAX_SAME_AGENT_RETRIES = 2
-
 
 def _advance_conflict_chain_cursor(
     session: ResolutionSession,
     controller: RecoveryController,
-    agent_name: str,
     candidates: Sequence[str],
     candidates_tuple: tuple[str, ...],
     failed_index: int,
-    agent_available: bool,
-    effective_outcome: ConflictAttemptOutcome | None,
-    current_conflict_retries: int,
-    max_conflict_retries: int,
-    workspace_changed: bool,
-    bench: bool,
 ) -> int:
-    if (
-        not bench
-        and not session.skip_same_agent_retries
-        and agent_available
-        and effective_outcome is not ConflictAttemptOutcome.STALLED_NO_PROGRESS
-        and current_conflict_retries < max_conflict_retries
-    ):
-        session.chain_cursor = failed_index
-        return 0 if workspace_changed else current_conflict_retries + 1
-
-    session.skip_same_agent_retries = False
-    if (
-        bench
-        and session.unavailability_store is not None
-        and controller.unavailability_store.is_available(PHASE_RESOLUTION, agent_name)
-    ):
-        from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-        controller.unavailability_store.mark_unavailable(
-            PHASE_RESOLUTION, agent_name, UnavailabilityReason.PROCESS_EXITED
-        )
     selection = controller.preferred_agent_index(
         PHASE_RESOLUTION,
         candidates_tuple,
@@ -308,14 +277,12 @@ def _advance_conflict_chain_cursor(
         exclude_current=True,
     )
     if selection.agent is not None and selection.index is not None:
-        session.chain_cursor = candidates_tuple.index(selection.agent)
-    elif candidates:
-        session.chain_cursor = controller.next_conflict_candidate(
-            candidates, failed_index=failed_index
-        )
-    else:
-        session.chain_cursor = failed_index
-    return 0
+        if selection.index < failed_index:
+            return failed_index
+        return selection.index
+    if candidates:
+        return controller.next_conflict_candidate(candidates, failed_index=failed_index)
+    return failed_index
 
 
 def classify_failed_resolution_attempt(
@@ -333,7 +300,7 @@ def classify_failed_resolution_attempt(
     unresolved_count: int = 0,
 ) -> None:
     if outcome is not None and outcome != ConflictAttemptOutcome.RAW:
-        reason = attempt_outcome_reason(outcome, unresolved_count)
+        reason = typed_outcome_reason(outcome, unresolved_count)
         logger.info(
             "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
             outcome.value,
@@ -383,7 +350,7 @@ def classify_failed_resolution_attempt(
         unresolved_count=unresolved_count,
     )
     try:
-        new_state, _effects, _event = controller.handle(
+        new_state, _effects, _failure_event = controller.handle(
             recovery_state,
             handle_failure,
             context,
@@ -392,71 +359,37 @@ def classify_failed_resolution_attempt(
             facts=facts,
         )
     except TypeError:
-        new_state, _effects, _event = controller.handle(
+        new_state, _effects, _failure_event = controller.handle(
             recovery_state,
             handle_failure,
             context,
         )
     session.recovery_state = new_state
     session.last_recovery_reason = (
-        attempt_outcome_reason(typed_outcome, unresolved_count)
+        typed_outcome_reason(typed_outcome, unresolved_count)
         if typed_outcome is not None
         else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
-
-    if (
-        isinstance(raw_failure, ConnectionError)
-        and controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
-    ):
-        from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-        controller.record_confirmed_unavailability(
-            PHASE_RESOLUTION,
-            agent_name,
-            UnavailabilityReason.PROVIDER_UNAVAILABLE,
-        )
-
     candidates_tuple = tuple(candidates) if candidates else (agent_name,)
-    agent_status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
-    agent_available = agent_status.is_eligible
-    recovery_chain = recovery_state.chain_for_phase(PHASE_RESOLUTION) if recovery_state else None
-    current_conflict_retries = (
-        recovery_chain.retries
-        if recovery_chain is not None and recovery_chain.current_index == bounded_index
-        else 0
-    )
-    from ralph.pipeline.conflict_resolution.driver import conflict_chain_max_retries
-
-    policy_retries = conflict_chain_max_retries(policy_bundle)
-    max_conflict_retries = (
-        min(_MAX_SAME_AGENT_RETRIES, policy_retries)
-        if policy_retries > 0
-        else _MAX_SAME_AGENT_RETRIES
-    )
-    next_retries = _advance_conflict_chain_cursor(
+    next_cursor = _advance_conflict_chain_cursor(
         session,
         controller,
-        agent_name,
         candidates,
         candidates_tuple,
         failed_index,
-        agent_available,
-        effective_outcome,
-        current_conflict_retries,
-        max_conflict_retries,
-        workspace_changed,
-        bench,
     )
-
+    session.chain_cursor = next_cursor
     chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
     chain_agents: list[str] = (
         list(chain_state.agents) if chain_state is not None else list(candidates)
     )
+    same_candidate = chain_state is not None and chain_state.current_index == next_cursor
+    next_retries = chain_state.retries if (chain_state is not None and same_candidate) else 0
     session.recovery_state = new_state.with_phase_chain(
         PHASE_RESOLUTION,
         AgentChainState(
             agents=chain_agents,
-            current_index=min(session.chain_cursor, max(len(chain_agents) - 1, 0)),
+            current_index=min(next_cursor, max(len(chain_agents) - 1, 0)),
             retries=next_retries,
         ),
     )
@@ -866,10 +799,5 @@ def session_ledger(session: ResolutionSession | None) -> AgentFailureLedger | No
 def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
     if session.terminal_reason is not ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
         return
-    session.dead_surface_agents = session.dead_surface_agents | frozenset((agent_name,))
-    if session.recovery_controller is not None:
-        session.recovery_controller.mark_agent_unavailable(
-            PHASE_RESOLUTION,
-            agent_name,
-            reason="candidate_unavailable",
-        )
+    controller = ensure_session_controller(session)
+    controller.mark_candidate_unavailable(PHASE_RESOLUTION, agent_name)
