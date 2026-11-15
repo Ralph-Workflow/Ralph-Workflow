@@ -26,7 +26,7 @@ from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
 from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
-from ralph.pipeline.resolution_outcome import UnknownOutcome
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.pipeline.runner import load_policy_bundle_for_run
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import cli_integration
@@ -62,7 +62,11 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_terminal_mcp_error_converts_to_typed_failure_on_every_entry_path": "invoke_resolution_agent reports a typed outcome instead of a boolean; the conflict-session case asserts the UnknownOutcome that carries the MCP server error",
+    "test_terminal_mcp_error_converts_to_typed_failure_on_every_entry_path": (
+        "invoke_resolution_agent reports a typed outcome instead of a boolean; "
+        "the conflict-session case asserts the RetryLaterOutcome that carries "
+        "the MCP server error"
+    ),
 }
 
 
@@ -477,8 +481,8 @@ def _drive_conflict_session(
 
 def _assert_conflict_outcome(outcome: object) -> None:
     assert isinstance(outcome, _ConflictOutcome)
-    assert isinstance(outcome.launched, UnknownOutcome)
-    assert str(outcome.launched.error) == "McpServerError"
+    assert isinstance(outcome.launched, RetryLaterOutcome)
+    assert outcome.launched.on_change == "resolver_agent_eligibility_changed"
     assert outcome.last_attempt_evidence == "McpServerError"
 
 

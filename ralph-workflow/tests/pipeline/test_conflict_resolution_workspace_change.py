@@ -26,17 +26,19 @@ def _policy_bundle() -> PolicyBundle:
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate({"general": {}})
+    return UnifiedConfig.model_validate(
+        {"general": {}, "conflict_resolution": {"max_rounds_per_stop": 15}}
+    )
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_conflict_resolution_observes_workspace_changes_allowing_total_limit": (
-        "observe the charged attempts through the invocation order and the public ledger "
-        "status instead of replacing the read-only AgentFailureLedger.record method"
+        "under per-round candidate fallover, fallback candidate interleaves each round "
+        "until primary candidate reaches total limit and fallback candidate resolves"
     ),
     "test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limit": (
-        "observe the charged attempts through the invocation order and the public ledger "
-        "status instead of replacing the read-only AgentFailureLedger.record method"
+        "under per-round candidate fallover, fallback candidate interleaves each round "
+        "until primary candidate reaches consecutive limit and fallback candidate resolves"
     ),
 }
 
@@ -69,13 +71,15 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         del prompt_path, round_index
         nonlocal markers_remaining
         invocations.append(agent_name)
+        progress_file = tmp_path / f"change_{len(invocations)}.txt"
+        progress_file.write_text(f"work done in invocation {len(invocations)}")
         if agent_name == "agentA":
-            progress_file = tmp_path / f"change_{len(invocations)}.txt"
-            progress_file.write_text(f"work done in invocation {len(invocations)}")
             return False
 
-        markers_remaining = False
-        return True
+        if ledger.status(PHASE_RESOLUTION, "agentA").is_spent:
+            markers_remaining = False
+            return True
+        return False
 
     clock = FakeClock()
     token = install_executors(clock=clock)
@@ -107,7 +111,7 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         agent_a_invocations = [name for name in invocations if name == "agentA"]
         assert len(agent_a_invocations) == 9
 
-        assert invocations == ["agentA"] * 9 + ["agentB"]
+        assert invocations == ["agentA", "agentB"] * 9
 
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
         assert agent_a_status.is_spent is True
@@ -146,8 +150,10 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
         if agent_name == "agentA":
             return False
 
-        markers_remaining = False
-        return True
+        if ledger.status(PHASE_RESOLUTION, "agentA").is_cooldown:
+            markers_remaining = False
+            return True
+        return False
 
     clock = FakeClock()
     token = install_executors(clock=clock)
@@ -176,7 +182,7 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
 
         assert succeeded is True
 
-        assert invocations == ["agentA"] * 3 + ["agentB"]
+        assert invocations == ["agentA", "agentB"] * 3
 
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
         assert agent_a_status.is_cooldown is True

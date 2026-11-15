@@ -732,11 +732,11 @@ def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     cap = config.conflict_resolution.max_rounds_per_stop
     invoked_rounds = sorted({round_index for round_index, _ in called})
     assert invoked_rounds == list(range(1, cap + 1))
-    assert len(called) == len(invoked_rounds) * 2
     assert called == [
-        (round_index, agent_name)
-        for round_index in range(1, cap + 1)
-        for agent_name in ("one", "two")
+        (1, "one"),
+        (1, "two"),
+        (2, "one"),
+        (3, "one"),
     ]
 
 

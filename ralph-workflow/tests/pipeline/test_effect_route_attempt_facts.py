@@ -69,6 +69,7 @@ def test_effect_route_returns_the_carried_attempt_ended(
     carried_facts = AttemptFacts(
         event_kinds=("tool_use", "tool_result"),
         tool_calls=("read_file",),
+        artifact_valid=True,
     )
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")
@@ -93,6 +94,7 @@ def test_effect_route_carries_success_facts_into_the_attempt_result(tmp_path: Pa
     carried_facts = AttemptFacts(
         event_kinds=("tool_use", "tool_result"),
         tool_calls=("read_file",),
+        artifact_valid=True,
     )
     attempt_deps = AttemptRunnerDeps(
         SystemClock(),

@@ -38,6 +38,10 @@ _RESOLUTION_PHASE = "rebase_conflict_resolution"
 _OTHER_PHASES = ("development", "review")
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves": (
+        "each failed attempt falls over to the fallback candidate in that round, "
+        "so the three consecutive failures that demote agentA interleave with agentB"
+    ),
     "test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase": (
         "align outcome assertion with typed AGENT_FAILURE failure cause preserved across recovery"
     ),
@@ -87,6 +91,7 @@ def _run_integration(
     candidates: Sequence[str],
     resolving_agents: Sequence[str],
     conflict_resolver: ConflictResolver | None = None,
+    resolve_after_attempts: int = 1,
 ) -> tuple[RebaseState | None, list[str], list[str]]:
     invocations: list[str] = []
     bundle = resolution_policy_bundle(candidates)
@@ -94,6 +99,7 @@ def _run_integration(
         invocations=invocations,
         resolving_agents=resolving_agents,
         tmp_path=repo_root,
+        resolve_after_attempts=resolve_after_attempts,
     )
     resolver = make_rebase_stop_resolver(
         ledger=ledger,
@@ -135,9 +141,10 @@ def test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves(
         ledger=ledger,
         candidates=("agentA", "agentB"),
         resolving_agents=("agentB",),
+        resolve_after_attempts=3,
     )
 
-    assert invocations == ["agentA", "agentA", "agentA", "agentB"]
+    assert invocations == ["agentA", "agentB", "agentA", "agentB", "agentA", "agentB"]
 
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.REBASED

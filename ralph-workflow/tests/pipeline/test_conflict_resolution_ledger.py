@@ -35,7 +35,7 @@ def test_resolver_falls_over_after_three_failures(
     _install_seams(
         monkeypatch,
         unmerged=_CONFLICTED,
-        surviving_per_round=[list(_CONFLICTED)] * 3 + [[]],
+        surviving_per_round=[list(_CONFLICTED)] * 5 + [[]],
     )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
@@ -71,7 +71,7 @@ def test_resolver_falls_over_after_three_failures(
         )
 
         assert succeeded is True
-        assert invocations == ["agentA", "agentA", "agentA", "agentB"]
+        assert invocations == ["agentA", "agentB", "agentA", "agentB", "agentA", "agentB"]
         assert session.recovery_controller is not None
         choice = choose_resolver(session.recovery_controller, ("agentA", "agentB"))
         assert choice.agent == "agentB"
@@ -83,6 +83,18 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_all_cooling_pending_state_preserves_rebase_state_then_resumes": (
         "a stop whose every resolver is cooling down ends pending; the resume is a "
         "second resolution call after the cooldown instead of a wait inside the first"
+    ),
+    "test_resolver_falls_over_after_three_failures": (
+        "each failed attempt falls over to the fallback candidate in that round, "
+        "so the three consecutive failures that demote agentA interleave with agentB"
+    ),
+    "test_changing_resolver_reaches_total_limit_instead_of_consecutive": (
+        "each failed attempt falls over to the fallback candidate in that round, "
+        "so the five attempts that reach the total limit interleave with agentB"
+    ),
+    "test_resolver_restart_mid_streak_honors_configured_limit": (
+        "each failed attempt falls over to the fallback candidate in that round, "
+        "so the remaining two failures that reach consecutive limit interleave with agentB"
     ),
     "test_false_positive_resolver_success_remains_unproductive_and_demotes": (
         "a false-positive success cools its agent down before it is invoked again, "
@@ -369,7 +381,7 @@ def test_changing_resolver_reaches_total_limit_instead_of_consecutive(
     _install_seams(
         monkeypatch,
         unmerged=_CONFLICTED,
-        surviving_per_round=[list(_CONFLICTED)] * 5 + [[]],
+        surviving_per_round=[list(_CONFLICTED)] * 9 + [[]],
     )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
@@ -419,8 +431,8 @@ def test_changing_resolver_reaches_total_limit_instead_of_consecutive(
         )
 
         assert succeeded is True
-        assert invocations[:5] == ["agentA"] * 5
-        assert invocations[5] == "agentB"
+        assert invocations == ["agentA", "agentB"] * 5
+        assert not ledger.is_available(driver_module.PHASE_RESOLUTION, "agentA")
     finally:
         reset_executors(token)
 
@@ -589,20 +601,20 @@ def test_resolver_restart_mid_streak_honors_configured_limit(
         assert ledger_2.is_available(driver_module.PHASE_RESOLUTION, "agentA")
 
         invocations_2: list[str] = []
-        resolved = False
+        agent_b_attempts = 0
 
         def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:
-            return [] if resolved else list(paths)
+            return [] if agent_b_attempts >= 2 else list(paths)
 
         monkeypatch.setattr(driver_module, "paths_with_conflict_markers", _fake_markers)
 
         def _invoke_2(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-            nonlocal resolved
+            nonlocal agent_b_attempts
             del prompt_path, round_index
             invocations_2.append(agent_name)
             if agent_name == "agentA":
                 raise RuntimeError("agentA failed again")
-            resolved = True
+            agent_b_attempts += 1
             return True
 
         session_2 = ResolutionSession(ledger=ledger_2)
@@ -621,7 +633,8 @@ def test_resolver_restart_mid_streak_honors_configured_limit(
         )
 
         assert succeeded is True
-        assert invocations_2 == ["agentA", "agentA", "agentB"]
+        assert invocations_2 == ["agentA", "agentB", "agentA", "agentB"]
+        assert not ledger_2.is_available(driver_module.PHASE_RESOLUTION, "agentA")
     finally:
         reset_executors(token)
 

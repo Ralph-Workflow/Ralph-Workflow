@@ -574,6 +574,7 @@ def test_a_successful_raw_attempt_result_uses_the_carried_recorder_facts() -> No
     recorder_facts = AttemptFacts(
         event_kinds=("output_line",),
         tool_calls=("read",),
+        artifact_valid=True,
         termination=TerminationRecord.create(TerminationIssuer.AGENT_EXIT),
     )
     deps = _deps(raw_attempt_invoke(_carried_raw_invoke(recorder_facts)))
@@ -597,7 +598,7 @@ def test_a_successful_raw_attempt_result_uses_the_carried_recorder_facts() -> No
 
 
 def test_attempt_facts_keeps_workspace_changed_override_on_carried_facts() -> None:
-    carried = AttemptFacts(event_kinds=("output_line",))
+    carried = AttemptFacts(event_kinds=("output_line",), artifact_valid=True)
     finalization = AttemptFinalization(1, False, None, True, None, None)
 
     facts = _attempt_facts(finalization, carried)

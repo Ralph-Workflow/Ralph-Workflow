@@ -101,13 +101,14 @@ def make_scripted_resolver_process(
     invocations: list[str],
     resolving_agents: Sequence[str],
     tmp_path: Path,
+    resolve_after_attempts: int = 1,
 ) -> ResolutionInvoker:
     resolving = frozenset(resolving_agents)
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         del prompt_path, round_index
         invocations.append(agent_name)
-        if agent_name not in resolving:
+        if agent_name not in resolving or invocations.count(agent_name) < resolve_after_attempts:
             raise RuntimeError(f"agent '{agent_name}' produced no artifact")
         (tmp_path / CONFLICTED_PATH).write_text(RESOLVED_CONTENT, encoding="utf-8")
         return True
