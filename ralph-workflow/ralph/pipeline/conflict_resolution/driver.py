@@ -914,7 +914,19 @@ def _wait_for_candidates_if_cooling_down(
     if controller is not None:
         wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
         if wait_ms > 0:
-            _sleep_seconds(wait_ms / 1000.0)
+            wait_s = wait_ms / 1000.0
+            start_s = (
+                controller._clock.monotonic() if hasattr(controller._clock, "monotonic") else 0.0
+            )
+            _sleep_seconds(wait_s)
+            elapsed_s = (
+                (controller._clock.monotonic() - start_s)
+                if hasattr(controller._clock, "monotonic")
+                else 0.0
+            )
+            remaining_s = wait_s - elapsed_s
+            if remaining_s > 0 and hasattr(controller._clock, "advance"):
+                controller._clock.advance(remaining_s)
             controller.prune_expired()
             if isinstance(session.recovery_state, PipelineState):
                 session.recovery_state = session.recovery_state.clear_waiting()
