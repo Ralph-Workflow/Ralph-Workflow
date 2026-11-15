@@ -18,7 +18,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_pending_merge_commit_recovery import _commit, _git
-from tests.test_retained_resolution_handoff import _fresh_git_repo, _interrupted, _make_config
+from tests.test_retained_resolution_handoff import _interrupted, _make_config
 
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
@@ -27,10 +27,10 @@ pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
 def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
-    tmp_path: Path, _git_repo_template: Path
+    tmp_path: Path,
 ) -> None:
     for operation in ["merge", "rebase"]:
-        root = _fresh_git_repo(tmp_path, _git_repo_template, operation)
+        root = tmp_path / f"repo-{operation}"
         target, feature, _main = _interrupted(root, operation)
         assert _git(root, operation, "--abort").returncode == 0
         assert _git(root, "switch", "-c", "other", f"{feature}^").returncode == 0
@@ -60,10 +60,10 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
 
 
 def test_aborted_owned_resolution_retains_landing_until_retry_completes(
-    tmp_path: Path, _git_repo_template: Path
+    tmp_path: Path,
 ) -> None:
     operation = "rebase"
-    root = _fresh_git_repo(tmp_path, _git_repo_template, operation)
+    root = tmp_path / f"repo-{operation}"
     target, feature, _moved = _interrupted(root, operation)
     assert _git(root, operation, "--abort").returncode == 0
     config = _make_config(target, enabled=False)
@@ -98,11 +98,11 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
     ],
 )
 def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     operation: str,
     seam: str,
 ) -> None:
-    root = tmp_git_repo
+    root = tmp_path / f"repo-{operation}-{seam}"
     target, _, _ = _interrupted(root, operation)
     calls: list[str] = []
 

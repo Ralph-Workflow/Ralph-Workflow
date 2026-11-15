@@ -42,12 +42,15 @@ _FABRICATED_REASONS = (
 )
 
 
-def _write_reject_artifact(workspace: FsWorkspace, reason: str) -> None:
+def _write_reject_artifact(
+    workspace: FsWorkspace, reason: str, tree_sha: str | None = None
+) -> None:
     repo_root = Path(workspace.root)
-    untrack_engine_internal_files(repo_root, is_agent_internal_path)
-    auto_seed_default_gitignore(repo_root)
-    auto_seed_default_git_exclude(repo_root)
-    tree_sha = seal_pending(repo_root, "run", 1).tree_sha
+    if tree_sha is None:
+        untrack_engine_internal_files(repo_root, is_agent_internal_path)
+        auto_seed_default_gitignore(repo_root)
+        auto_seed_default_git_exclude(repo_root)
+        tree_sha = seal_pending(repo_root, "run", 1).tree_sha
     path = repo_root / _ARTIFACT_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -124,11 +127,13 @@ def test_fabricated_reject_citation_fails_the_gate_without_rolling_back(
     workspace = FsWorkspace(tmp_git_repo)
     auto_seed_default_gitignore(tmp_git_repo)
     auto_seed_default_git_exclude(tmp_git_repo)
+    untrack_engine_internal_files(tmp_git_repo, is_agent_internal_path)
+    tree_sha = seal_pending(tmp_git_repo, "run", 1).tree_sha
     head_before = _head_sha(tmp_git_repo)
     commits_before = _commit_count(tmp_git_repo)
 
     for fabricated_reason in _FABRICATED_REASONS:
-        _write_reject_artifact(workspace, fabricated_reason)
+        _write_reject_artifact(workspace, fabricated_reason, tree_sha=tree_sha)
         result = _run_phase(workspace)
 
         assert len(result) == 1

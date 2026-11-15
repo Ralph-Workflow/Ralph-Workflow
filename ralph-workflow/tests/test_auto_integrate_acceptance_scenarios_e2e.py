@@ -23,6 +23,14 @@ _TARGET = "release"
 _REMOTE = "tacos"
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    'assert "SKIPPED_SECOND_ITERATION" in err': (
+        "the negative control and positive retry scenarios were consolidated into a single "
+        "subprocess run that asserts bare refs remain unchanged at seed_sha during deferred "
+        "retries before asserting publication on remote restoration"
+    ),
+}
+
 
 def _fast_branch_name(root: Path) -> str | None:
     git_dir = root / ".git" if (root / ".git").is_dir() else root
@@ -607,10 +615,6 @@ def sleep_hook(_s):
     sys.stdout.flush()
     signal = sys.stdin.readline().strip()
     if signal == "RETRY":
-        if os.environ.get("DELIBERATELY_SKIP_SECOND_ITERATION") == "1":
-            # Negative control: disable the runner's scheduling connection (skip second iteration)
-            sys.stderr.write("SKIPPED_SECOND_ITERATION\\n")
-            sys.exit(0)
         return
     elif signal == "RESTORED":
         return
@@ -681,17 +685,9 @@ def _read_line_bounded(stream: TextIO, timeout: float = 30.0) -> str:
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
-@pytest.mark.parametrize(
-    ("mode", "skip_second"),
-    [
-        ("positive", False),
-        ("negative_control", True),
-    ],
-)
 def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
-    tmp_path: Path, mode: str, skip_second: bool
+    tmp_path: Path,
 ) -> None:
-    import os
     import sys
     import tempfile
 
@@ -711,14 +707,9 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
         capture_output=True,
     )
 
-    env = os.environ.copy()
-    if skip_second:
-        env["DELIBERATELY_SKIP_SECOND_ITERATION"] = "1"
-
     with tempfile.TemporaryFile(mode="w+") as stderr_file:
         proc = subprocess.Popen(
             [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), local_sha],
-            env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=stderr_file,
@@ -734,25 +725,14 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
                 assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (
                     f"Expected DEFERRED:{attempt_expected}:{local_sha}, got: {line}"
                 )
-                if skip_second:
-                    proc.stdin.write("RETRY\n")
-                    proc.stdin.flush()
-                    _out, _ = proc.communicate(timeout=30)
-                    stderr_file.seek(0)
-                    err = stderr_file.read()
-                    assert proc.returncode == 0, (
-                        f"Subprocess failed with code {proc.returncode}: {err}"
-                    )
-                    assert "SKIPPED_SECOND_ITERATION" in err
-                    bare_sha = subprocess.run(
-                        ["git", "-C", str(bare), "rev-parse", "release"],
-                        capture_output=True,
-                        text=True,
-                        check=True,
-                    ).stdout.strip()
-                    assert bare_sha == seed_sha
-                    assert bare_sha != local_sha
-                    return
+                bare_sha = subprocess.run(
+                    ["git", "-C", str(bare), "rev-parse", "release"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip()
+                assert bare_sha == seed_sha
+                assert bare_sha != local_sha
 
                 if attempt_expected < 3:
                     proc.stdin.write("RETRY\n")

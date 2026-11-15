@@ -67,6 +67,18 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the merge or rebase is still asserted to fail against the same main branch; the "
         "branch name now comes from the shared immutable template metadata"
     ),
+    'assert _git(root, "switch", "-c", "feature").returncode == 0': (
+        "the same feature creation and switches to target and back to feature remain asserted "
+        "once while constructing the immutable shared diverged template instead of per run"
+    ),
+    'assert _git(root, "switch", target).returncode == 0': (
+        "the switch to target remains asserted once while constructing the immutable "
+        "shared diverged template instead of per run"
+    ),
+    'assert _git(root, "switch", "feature").returncode == 0': (
+        "the switch back to feature remains asserted once while constructing the "
+        "immutable shared diverged template instead of per run"
+    ),
 }
 
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
@@ -134,16 +146,16 @@ def _make_config(target: str, *, enabled: bool = True) -> UnifiedConfig:
     [(True, False), (False, True)],
 )
 def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
+    tmp_path: Path,
     tmp_git_repo: Path,
     *,
     enabled: bool,
     receipt_flags_lost: bool,
 ) -> None:
-    root = tmp_git_repo
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "shared.txt", "feature\n")
+    root = tmp_path / f"case-{enabled}-{receipt_flags_lost}"
+    diverged, target, feature, _main = _diverged(tmp_git_repo)
+    shutil.copytree(diverged, root, ignore=_COPY_IGNORE)
+    base = _repo(root).commit("main~1").hexsha
     write_record(
         root,
         IntegrationRecord(
@@ -154,9 +166,6 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
             integrated_feature_sha=feature,
         ),
     )
-    assert _git(root, "switch", target).returncode == 0
-    _commit(root, "shared.txt", "target\n")
-    assert _git(root, "switch", "feature").returncode == 0
     config = _make_config(target, enabled=enabled)
 
     declined = recover_incomplete_integration(
@@ -457,10 +466,20 @@ _INTERRUPTED_CACHE: dict[str, tuple[Path, str, str, str]] = {}
 _DIVERGED_CACHE: list[tuple[Path, str, str, str]] = []
 
 
-def _diverged(root: Path) -> tuple[Path, str, str, str]:
+def _diverged(root: Path | None = None) -> tuple[Path, str, str, str]:
     if not _DIVERGED_CACHE:
         d = Path(tempfile.mkdtemp(prefix="it-diverged-"))
-        shutil.copytree(root, d, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+        if root is not None and root.exists():
+            shutil.copytree(root, d, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+        else:
+            repo = Repo.init(d, initial_branch="main")
+            with repo.config_writer() as cfg:
+                cfg.set_value("user", "name", "Test User")
+                cfg.set_value("user", "email", "test@example.com")
+            readme = d / "README.md"
+            readme.write_text("test")
+            repo.index.add(["README.md"])
+            repo.index.commit("initial commit")
         _commit(d, "shared.txt", "base\n")
         assert _git(d, "switch", "-c", "feature").returncode == 0
         feature = _commit(d, "shared.txt", "feature\n")
@@ -483,7 +502,8 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
     template, target, feature, main = _INTERRUPTED_CACHE[operation]
     _close_repo(root)
     _close_repo(template)
-    shutil.rmtree(root)
+    if root.exists():
+        shutil.rmtree(root)
     shutil.copytree(template, root, ignore=_COPY_IGNORE)
     write_record(
         root,
@@ -570,11 +590,11 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
 
 @pytest.mark.parametrize("completion", ["prepared", "unrelated"])
 def test_completed_retained_rebase_lands_or_replays_stale_intent(
-    tmp_git_repo: Path, completion: str
+    tmp_path: Path, completion: str
 ) -> None:
     from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
 
-    root = tmp_git_repo
+    root = tmp_path / f"repo-{completion}"
     target, _, _ = _interrupted(root, "rebase")
     content = "main\n" if completion == "empty" else "resolved feature and main\n"
     (root / "shared.txt").write_text(content, encoding="utf-8")
@@ -608,9 +628,9 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
-    tmp_path: Path, _git_repo_template: Path, operation: str
+    tmp_path: Path, operation: str
 ) -> None:
-    root = _fresh_git_repo(tmp_path, _git_repo_template, operation)
+    root = tmp_path / f"case-{operation}"
     target, feature, main = _interrupted(root, operation)
     assert read_record(root) is not None
     assert _git(root, operation, "--abort").returncode == 0
@@ -634,14 +654,14 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
     [(False, "merge"), (True, "rebase")],
 )
 def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     legacy: bool,
     operation: str,
 ) -> None:
     from ralph.pipeline._pending_merge_commit import mark_pending_merge
 
-    root = tmp_git_repo
+    root = tmp_path / f"repo-{legacy}-{operation}"
     target, _, _ = _interrupted(root, operation)
     if not legacy and operation == "merge":
         mark_pending_merge(root, target, resolving=True)
@@ -721,7 +741,6 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
 
 
 def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
-    tmp_git_repo: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -734,7 +753,7 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
     from ralph.pipeline.events import PipelineEvent
     from ralph.policy.models import PolicyBundle
 
-    owner = tmp_git_repo
+    owner = tmp_path / "owner"
     target, _, _ = _interrupted(owner, "rebase")
     feature = tmp_path / "record-owner"
     assert (
