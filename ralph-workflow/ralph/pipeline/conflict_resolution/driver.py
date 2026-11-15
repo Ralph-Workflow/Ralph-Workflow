@@ -954,7 +954,8 @@ def _can_continue_controller_rounds(
         return False
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
     provider_fallover_pending = len(live) > 1 and any(
-        status.reason == "provider_unavailable" for _agent, status in chain_statuses
+        isinstance(status, Cooldown) and status.reason == "provider_unavailable"
+        for _agent, status in chain_statuses
     )
     return any(status.is_eligible for _agent, status in chain_statuses) or (
         wait_ms > 0 and not provider_fallover_pending
