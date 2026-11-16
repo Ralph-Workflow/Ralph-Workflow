@@ -48,6 +48,7 @@ from ralph.pipeline.auto_integrate_context import (
     refresh_outcome_is_healthy,
 )
 from ralph.pipeline.auto_integrate_record import (
+    MARK_REINTEGRATE_PENDING,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
     RecordBusyError,
@@ -289,7 +290,11 @@ def _withheld_landing(
 ) -> RebaseState:
     if record.integrated_feature_sha is None:
         reason = "recovery: malformed integrated record; verified feature SHA missing"
-    elif record.reintegrate_pending and _recorded_work_is_verifiably_landed(workspace_root, record):
+    elif (
+        record.reintegrate_pending
+        and _recorded_work_is_verifiably_landed(workspace_root, record)
+        and _target_tip_contains_recorded_work(workspace_root, record)
+    ):
         return _release_verifiably_landed_record(workspace_root, record, config)
     else:
         reason = "recovery: feature tip changed or unreadable; landing withheld"
@@ -489,9 +494,23 @@ def _recover_pending_merge_preflight(
         return recover_target_resolution(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
-    if record.integrated_feature_sha is None and _recorded_work_is_verifiably_landed(root, record):
+    if (
+        record.integrated_feature_sha is None
+        and _recorded_work_is_verifiably_landed(root, record)
+        and _target_tip_contains_recorded_work(root, record)
+    ):
         return _release_verifiably_landed_record(root, record, config)
     return None
+
+
+def _target_tip_contains_recorded_work(root: Path, record: IntegrationRecord) -> bool:
+    target_tip = _get_branch_sha(root, record.target)
+    work_sha = _read_head_sha_or_none(root)
+    if target_tip is None or work_sha is None:
+        return False
+    if target_tip == work_sha:
+        return True
+    return ancestry_state(root, work_sha, target_tip) is True
 
 
 def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -> bool:
@@ -531,6 +550,11 @@ def _release_verifiably_landed_record(
                 record_retained=True,
             ),
             refresh,
+        )
+    if record.reintegrate_pending:
+        write_record(
+            root,
+            record.with_transition(MARK_REINTEGRATE_PENDING, reintegrate_pending=False),
         )
     _clear_record(root)
     from ralph.pipeline.auto_integrate_remote_sync import reconcile_remote_publication

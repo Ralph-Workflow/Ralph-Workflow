@@ -347,8 +347,8 @@ def test_identical_repeats_spend_budget_and_advance_cycle(
         charged_actions = {action for (_sig, action) in durable.repeat_counts}
         assert "dispatch_resolver" not in charged_actions
         assert "commit" not in charged_actions
-        assert len(preserve.calls) == 2
-        assert len(_restore_invocations(git.calls)) == 2
+        assert len(preserve.calls) == 1
+        assert len(_restore_invocations(git.calls)) == 1
         assert len(warnings) == 8
     finally:
         _drop_sink(warnings)

@@ -32,6 +32,8 @@ from ralph.pipeline.integration_preservation_bundle import (
 from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs, _ledger
 
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.required_auto_integrate_e2e]
+
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_identical_pair_past_repeat_threshold_selects_different_rung": (
         "the gated repeat-threshold contract charges an identical observation/action pair "

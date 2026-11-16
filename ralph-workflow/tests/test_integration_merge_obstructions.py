@@ -155,7 +155,6 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
         AttemptState,
         DecisionContext,
         DirtAttribution,
-        EscalationRung,
         NextAction,
         decide,
     )
@@ -221,14 +220,18 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
     assert sum(durable.repeat_counts.values()) == len(trace), (
         "each repeat of the identical refusal evidence charges the durable budget once"
     )
-    assert durable.repeat_counts[(signature, trace[0].value)] == 2, (
-        "the direct action is charged exactly at the repeat threshold, never re-run past it"
+    assert durable.repeat_counts[(signature, trace[0].value)] == 1, (
+        "the direct action is charged once; repeat pressure immediately selects the next rung"
     )
-    assert trace[0] is NextAction.SAVE_AND_RESTORE
-    assert trace[1] is NextAction.SAVE_AND_RESTORE
-    assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert trace == [
+        NextAction.SAVE_AND_RESTORE,
+        NextAction.PRESERVE_VIA_TEMP_INDEX,
+        NextAction.QUARANTINE_AND_RESTORE,
+        NextAction.REBUILD_IN_FRESH_WORKTREE,
+        NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
+        NextAction.LAST_RESORT_RECOVERY,
+    ]
     assert any(action is not NextAction.SAVE_AND_RESTORE for action in trace[2:])
-    assert durable.rung is not EscalationRung.REPAIR
     assert NextAction.DISPATCH_RESOLVER not in trace
     assert NextAction.COMMIT not in trace
 

@@ -408,4 +408,4 @@ def test_planning_seam_reaches_rung6_only_as_an_explicitly_disabled_reset(
     assert outcome is not None
     assert outcome.outcome == "failed"
     assert outcome.reason == LAST_RESORT_DISABLED_NO_SIGNATURE
-    assert git.calls == []
+    assert git.calls == ["head_sha", "changed_paths", "target_sha:main"]

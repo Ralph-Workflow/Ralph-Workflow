@@ -342,8 +342,9 @@ def test_repeated_unchanged_dirty_observation_escalates_the_rung(
     third = decide_integration_verdict(tmp_path, observation=observation, ledger_path=ledger_path)
 
     assert first.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
-    assert second.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
-    assert third.ladder_rung is CleanupLadderRung.ALTERNATE_PRESERVATION
+    assert second.ladder_rung is CleanupLadderRung.ALTERNATE_PRESERVATION
+    assert second.escalation_charged is True
+    assert third.ladder_rung is CleanupLadderRung.QUARANTINE
     assert third.escalation_charged is True
 
 

@@ -35,6 +35,8 @@ from ralph.pipeline.operation_fact import OperationFact
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
+from tests._fake_git_clock import FakeClock
+from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs
 from tests._resolver_controller import make_resolver_controller
 
 
@@ -273,6 +275,9 @@ def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
         agents=(),
         invoke=invoke,
         collector=collector,
+        git=_FakePlumbing(changed=()),
+        fs=_FakeQuarantineFs(),
+        clock=FakeClock(),
     )
     record = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
     assert record.merge_commit_repair_attempts == cap
@@ -305,6 +310,9 @@ def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
             agents=("agent-a", "agent-b"),
             invoke=fresh_invoke,
             collector=fresh_collector,
+            git=_FakePlumbing(changed=()),
+            fs=_FakeQuarantineFs(),
+            clock=FakeClock(),
         )
         reloaded = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
         assert reloaded.merge_commit_repair_attempts == cap, (

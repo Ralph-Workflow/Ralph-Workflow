@@ -114,7 +114,7 @@ def test_terminal_escalation_reports_one_status_and_repeats_nothing(tmp_path: Pa
     assert len(terminal) == 1, captured
     assert critical == [], captured
     assert not any(call.startswith(_DESTRUCTIVE_GIT_CALLS) for call in git.calls), git.calls
-    assert git.calls.count("changed_paths") == 1, git.calls
+    assert git.calls.count("changed_paths") == 2, git.calls
     assert (
         ledger.read().ladder_evidence["rung:last_resort_recovery"]
         == LAST_RESORT_TERMINAL_NO_SIGNATURE
@@ -248,7 +248,7 @@ def test_diagnostic_pre_pass_starts_no_second_round_after_the_terminal_state(
     assert critical == [], captured
     assert invoked == [], captured
     assert not any(call.startswith(_DESTRUCTIVE_GIT_CALLS) for call in git.calls), git.calls
-    assert git.calls.count("changed_paths") == 1, git.calls
+    assert git.calls.count("changed_paths") == 2, git.calls
     assert (
         ledger.read().ladder_evidence["rung:last_resort_recovery"]
         == LAST_RESORT_TERMINAL_NO_SIGNATURE

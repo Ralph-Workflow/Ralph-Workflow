@@ -288,9 +288,13 @@ def test_attempt_history_still_advances_the_escalation_ladder(
 
     decide_seam_action(tmp_path, ledger_path=ledger_path)
     decide_seam_action(tmp_path, ledger_path=ledger_path)
+    decide_seam_action(tmp_path, ledger_path=ledger_path)
 
     state = _ledger_state(tmp_path)
-    assert state.repeat_counts == {(_signature(observation), "dispatch_resolver"): 2}
+    assert state.repeat_counts == {
+        (_signature(observation), "dispatch_resolver"): 1,
+        (_signature(observation), "rebuild_on_target"): 2,
+    }
     assert state.rung is EscalationRung.DISPATCH_RESOLVER
 
 

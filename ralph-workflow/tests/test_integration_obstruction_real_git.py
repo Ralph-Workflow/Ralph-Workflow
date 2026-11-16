@@ -444,7 +444,16 @@ def test_interrupted_integration_recovery_keeps_unfinished_tracked_work(tmp_git_
 
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
 
-    assert outcome is not None and outcome.last_action == "recovered"
+    assert outcome is not None and outcome.last_action == "skipped"
+    assert outcome.recovery_record_retained is False
+    assert "uncommitted tracked changes" in (outcome.last_reason or "")
+    from ralph.pipeline.auto_integrate_record import read_record
+
+    assert read_record(tmp_git_repo) is None
+    backups = _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/ralph-backup"
+    ).stdout.split()
+    assert len(backups) == 1
     assert (tmp_git_repo / "tracked.txt").read_text(encoding="utf-8") == "unfinished\n"
     assert _run(tmp_git_repo, "show", "HEAD:tracked.txt").stdout == "committed\n"
 
