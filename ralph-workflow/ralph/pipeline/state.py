@@ -193,7 +193,6 @@ def _normalize_fallover_history_for_cap(
 
 _RETIRED_REVIEW_PHASE = "development_commit_" + "cleanup"
 _RETIRED_REVIEW_FINAL_PHASE = "development_final_commit_" + "cleanup"
-_RETIRED_REVIEW_ARTIFACT = "commit_" + "cleanup"
 
 _RETIRED_PHASES: frozenset[str] = frozenset(
     {

@@ -52,11 +52,11 @@ from tests.scenarios._sixth_symptom_unstaged_gitlink import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_parity_resolver_failure_registers_in_shared_controller_and_cools_ordinary_phase": (
+    "test_parity_resolver_failure_stays_scoped_to_resolution_phase": (
         "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
         "so a resolver failure must not cool the same agent in an unrelated phase"
     ),
-    "test_parity_ordinary_phase_cooldown_blocks_resolver_launch": (
+    "test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch": (
         "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
         "so a development-phase failure must not suppress the resolver chain"
     ),
@@ -100,6 +100,7 @@ def _make_config() -> UnifiedConfig:
     )
 
 
+@pytest.mark.required_auto_integrate_e2e
 @pytest.mark.parametrize(
     ("mode", "exc_factory"),
     [
@@ -186,6 +187,7 @@ def test_parity_resolver_failure_stays_scoped_to_resolution_phase(
     )
 
 
+@pytest.mark.required_auto_integrate_e2e
 def test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch(
     tmp_path: Path,
 ) -> None:
@@ -260,6 +262,7 @@ def test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch(
     assert "agentB" not in invocations
 
 
+@pytest.mark.required_auto_integrate_e2e
 def test_parity_classification_matches_across_phases_without_outcome_rewriting(
     tmp_path: Path,
 ) -> None:

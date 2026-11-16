@@ -28,6 +28,7 @@ The default rule is **approve-unless-citable-damage**:
 ### Rejection Consequence
 
 Rejection is safe and recoverable:
+- `reject` is the shortcut for resetting every file in the pending commit: use it instead of listing every file when all of it is trash.
 - Rejecting rolls back the working tree to HEAD (or run-start baseline), discarding the harmful changes.
 - The rejected state is sealed and preserved under the proposal ref (recoverable via `git checkout <proposal-ref> -- .`).
 - The rejection reason and proposal ref are carried forward into the next developer prompt so the developer agent knows what was rejected and why.

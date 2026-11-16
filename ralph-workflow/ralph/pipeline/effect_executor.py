@@ -881,38 +881,23 @@ def _demotion_after_finalization(
     workspace_changed: bool | None,
     exc: BaseException | None = None,
 ) -> tuple[bool, str | None]:
-    from ralph.recovery.controller import is_configuration_failure
+    from ralph.recovery.agent_failure_ledger import Cooldown, Spent
+    from ralph.recovery.controller import is_configuration_failure, record_ledger_only_demotion
 
     if is_configuration_failure(exc):
         return False, None
     if controller is not None:
-        from ralph.recovery.agent_failure_ledger import Cooldown, Spent
-
         status = controller.ledger.status(phase, agent)
         demoted = not status.is_eligible
         demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
         return demoted, demotion_reason
     if ledger is not None:
-        from ralph.recovery.agent_failure_ledger import AttemptFact
-
-        outcome = ledger.record(
-            AttemptFact(
-                phase=phase,
-                agent=agent,
-                artifact_valid=False,
-                workspace_changed=workspace_changed,
-            )
+        return record_ledger_only_demotion(
+            ledger,
+            phase=phase,
+            agent=agent,
+            workspace_changed=workspace_changed,
         )
-        if outcome.demoted:
-            logger.warning(
-                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
-                agent,
-                phase,
-                outcome.consecutive_unproductive,
-                outcome.total_unproductive,
-                outcome.reason,
-            )
-        return outcome.demoted, outcome.reason
     return False, None
 
 

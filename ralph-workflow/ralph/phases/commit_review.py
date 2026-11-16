@@ -271,9 +271,6 @@ def _resolve_policy_thresholds(
             ad_obj = cast("object", getattr(phase_def, "allowed_directories", None))
             if isinstance(ad_obj, (list, tuple, set)):
                 allowed_dirs = [str(d) for d in ad_obj]
-            pp_obj = cast("object", getattr(phase_def, "protected_paths", None))
-            if isinstance(pp_obj, (list, tuple, set)):
-                protected = [str(p) for p in pp_obj]
 
     return thresholds, allowed_dirs, protected
 

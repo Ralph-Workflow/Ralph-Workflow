@@ -20,7 +20,10 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
 )
 from ralph.pipeline.attempt_result import AttemptResult
-from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller, run_agent_attempt
+from ralph.pipeline.attempt_runner import (
+    build_entry_point_recovery_controller,
+    run_agent_attempt,
+)
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
 from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (

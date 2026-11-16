@@ -83,6 +83,7 @@ __all__ = [
     "build_typed_agent_signal",
     "compute_backoff_ms",
     "is_configuration_failure",
+    "record_ledger_only_demotion",
 ]
 
 
@@ -125,6 +126,35 @@ def is_configuration_failure(
         if any(marker in msg for marker in _ENGINE_ORIGIN_MESSAGE_MARKERS):
             return True
     return reason is not None and reason in ENGINE_ORIGIN_REASONS
+
+
+def record_ledger_only_demotion(
+    ledger: AgentFailureLedger,
+    *,
+    phase: str,
+    agent: str,
+    workspace_changed: bool | None,
+) -> tuple[bool, str | None]:
+    owner = ledger.recovery_controller
+    if not isinstance(owner, RecoveryController):
+        owner = RecoveryController(
+            ledger=ledger,
+            options=RecoveryControllerOptions(
+                clock=ledger.clock,
+                agent_max_consecutive_unproductive=ledger.consecutive_limit,
+                agent_max_total_unproductive=ledger.total_limit,
+            ),
+        )
+    owner.record_attempt_fact(
+        phase,
+        agent,
+        artifact_valid=False,
+        workspace_changed=workspace_changed,
+    )
+    status = ledger.status(phase, agent)
+    demoted = not status.is_eligible
+    demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
+    return demoted, demotion_reason
 
 
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(

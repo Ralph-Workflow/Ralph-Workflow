@@ -169,6 +169,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
+    from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -662,6 +663,38 @@ def _bootstrap_resolution_session(
     return False
 
 
+def _wire_session_resources(
+    *,
+    config: UnifiedConfig,
+    session: ResolutionSession,
+    strategy_history: tuple[str, ...],
+    pipeline_deps: PipelineDeps | None,
+    invoke: ResolutionInvoker | None,
+    policy_bundle: PolicyBundle,
+    display: ParallelDisplay | None,
+    effective_scope: WorkspaceScope,
+) -> tuple[ConflictResolutionConfig, int] | None:
+    limits = config.conflict_resolution
+    round_cap = (
+        min(session.max_rounds_per_stop, limits.max_rounds_per_stop)
+        if session.max_rounds_per_stop is not None
+        else limits.max_rounds_per_stop
+    )
+    is_rotation = bool(strategy_history)
+    begin_resolution_stop(session, is_strategy_rotation=is_rotation)
+    if _bootstrap_resolution_session(
+        session,
+        policy_bundle=policy_bundle,
+        pipeline_deps=pipeline_deps,
+        config=config,
+        effective_scope=effective_scope,
+        invoke=invoke,
+        display=display,
+    ):
+        return None
+    return limits, round_cap
+
+
 def _run_rounds(
     *,
     root: Path,
@@ -687,25 +720,19 @@ def _run_rounds(
     materialize_prompt = (
         prompt_materializer if prompt_materializer is not None else materialize_round_prompt
     )
-    limits = config.conflict_resolution
-    round_cap = (
-        min(session.max_rounds_per_stop, limits.max_rounds_per_stop)
-        if session.max_rounds_per_stop is not None
-        else limits.max_rounds_per_stop
-    )
-    is_rotation = bool(strategy_history)
-    begin_resolution_stop(session, is_strategy_rotation=is_rotation)
-    blocked = _bootstrap_resolution_session(
-        session,
-        policy_bundle=policy_bundle,
-        pipeline_deps=pipeline_deps,
+    wired = _wire_session_resources(
         config=config,
-        effective_scope=effective_scope,
+        session=session,
+        strategy_history=strategy_history,
+        pipeline_deps=pipeline_deps,
         invoke=invoke,
+        policy_bundle=policy_bundle,
         display=display,
+        effective_scope=effective_scope,
     )
-    if blocked:
+    if wired is None:
         return False
+    limits, round_cap = wired
     prepared, early, decision_paths, integration_status = _prepare_conflicted_paths(
         root, stop, session, display, active_observer
     )
@@ -971,7 +998,7 @@ def _wait_for_candidates_if_cooling_down(
             if hasattr(controller._clock, "advance"):
                 controller._clock.advance(wait_s)
             else:
-                controller.clock.sleep(wait_s)
+                _sleep_seconds(wait_s)
             controller.prune_expired()
             if isinstance(session.recovery_state, PipelineState):
                 session.recovery_state = session.recovery_state.clear_waiting()

@@ -24,6 +24,7 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
 from ralph.pipeline.conflict_resolution.session import ResolutionSession, invoke_resolution_agent
+from ralph.pipeline.effect_executor import demotion_after_finalization
 from ralph.pipeline.integration_diagnostic import (
     handoff_integration_diagnostic,
     handoff_pending_merge_repair,
@@ -34,6 +35,7 @@ from ralph.policy.models import AgentsPolicy
 from ralph.project_policy import cli_integration, remediation
 from ralph.project_policy.cli_integration import LoadResult
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import (
@@ -636,6 +638,32 @@ def test_commit_message_no_activity_real_invocation_cools_and_falls_back(
         lines,
         phase="commit",
         reason=UnavailabilityReason.NO_OUTPUT_AT_START,
+        duration_ms=duration_ms,
+    )
+
+
+def test_ledger_only_demotion_emits_cooldown_decision_with_duration_and_expiry() -> None:
+    clock = FakeClock(start=0.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
+    duration_ms = 60_000
+
+    lines = _capture_cooldown_lines(
+        lambda: demotion_after_finalization(
+            None,
+            ledger,
+            phase="development",
+            agent=_PRIMARY,
+            workspace_changed=False,
+            exc=RuntimeError("unproductive attempt"),
+        )
+    )
+
+    status = ledger.status("development", _PRIMARY)
+    assert isinstance(status, Cooldown)
+    _assert_cooldown_line(
+        lines,
+        phase="development",
+        reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
         duration_ms=duration_ms,
     )
 

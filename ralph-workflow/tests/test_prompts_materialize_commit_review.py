@@ -70,6 +70,8 @@ def test_commit_review_phase_renders_prompt_successfully(tmp_path: Path) -> None
     assert "A change to source code is never rejection evidence" in rendered
     assert "approve-unless-citable-damage" in rendered
     assert "Rejection Consequence" in rendered
+    assert "`reject` is the shortcut for resetting every file in the pending commit" in rendered
+    assert "instead of listing every file when all of it is trash" in rendered
     assert "Stage 1 Evidence" in rendered
     assert "type: commit_review" in rendered
     assert "verdict: approve" in rendered
