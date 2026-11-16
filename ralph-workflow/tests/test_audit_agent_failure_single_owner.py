@@ -14,6 +14,13 @@ from ralph.testing.audit_agent_failure_single_owner import (
     is_transitional_allowed,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_transitional_rules_consolidated": (
+        "TEMPORARY_TRANSITIONAL_RULES is now empty following removal of transitional "
+        "dead_tool_surfaces rules in conflict resolution"
+    ),
+}
+
 
 def test_clean_production_code_passes() -> None:
     source = """
@@ -790,10 +797,7 @@ import ralph.pipeline._retry_progress_guard
 
 
 def test_transitional_rules_consolidated() -> None:
-    assert set(TEMPORARY_TRANSITIONAL_RULES.keys()) == {
-        "ralph/pipeline/conflict_resolution/session.py",
-        "ralph/pipeline/conflict_resolution/chain_candidates.py",
-    }
+    assert set(TEMPORARY_TRANSITIONAL_RULES.keys()) == set()
     assert not any(k.startswith("tests/") for k in TEMPORARY_TRANSITIONAL_RULES)
     assert (
         "ralph/pipeline/conflict_resolution/_driver_rounds.py" not in TEMPORARY_TRANSITIONAL_RULES

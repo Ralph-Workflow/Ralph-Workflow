@@ -62,13 +62,14 @@ agent, the `UnavailabilityReason`, the duration and the expiry
 
 ## Documented exemptions
 
-Two paths cool down something other than an agent, so they are outside
+Three paths cool down something other than an agent, so they are outside
 the agent owner by construction. They are exemptions, not gaps.
 
 | Path | Exemption | Proof |
 | --- | --- | --- |
 | MCP server restart policy (`ralph/mcp/server/_mcp_restart_policy.py`) | cools down MCP server restart attempts, not agents | `tests/test_mcp_restart_policy_default_cooldown.py` |
 | MCP explore recovery (`ralph/mcp/explore/recovery.py`) | cools down explore-tool recovery actions, not agents | `tests/test_explore_recovery.py` |
+| Auto-integrate retry backoff (`ralph/pipeline/auto_integrate_backoff.py`, catch-up backoff at `ralph/pipeline/auto_integrate_catchup.py:381`) | cools down non-agent git-operation retry attempts, not agents | `tests/test_auto_integrate_backoff_clock.py`, `tests/test_auto_integrate_catchup.py` |
 
 ## How the contract is enforced
 

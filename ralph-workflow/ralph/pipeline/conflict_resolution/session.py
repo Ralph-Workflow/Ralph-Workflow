@@ -139,7 +139,6 @@ class ResolutionSession:
     probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
     caller_provided: bool = False
     last_resolution_outcome: StopResolutionOutcome | None = None
-    dead_surface_agents: frozenset[str] = frozenset()
     inactivity_timeout_seconds: float | None = None
 
 

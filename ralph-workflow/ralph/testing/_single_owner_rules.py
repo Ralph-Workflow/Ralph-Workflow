@@ -59,18 +59,7 @@ TEMPORARY_TEST_COUNTER_READS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
-    "ralph/pipeline/conflict_resolution/session.py": frozenset(
-        {
-            "dead_tool_surfaces",
-        }
-    ),
-    "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(
-        {
-            "dead_tool_surfaces",
-        }
-    ),
-}
+TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {}
 
 _CONFLICT_RESOLUTION_PATH_PREFIX = "ralph/pipeline/conflict_resolution/"
 
