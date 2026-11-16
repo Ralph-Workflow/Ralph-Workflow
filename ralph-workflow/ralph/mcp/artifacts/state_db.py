@@ -7,8 +7,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
-from ralph.mcp.artifacts._schema_version_type_error import SchemaVersionTypeError
-
 
 class _Missing:
     __slots__ = ()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import configparser
+import os
 import tomllib
 from functools import cache
 from pathlib import Path
@@ -29,11 +30,13 @@ def _load_pyproject() -> dict[str, object]:
 
 @cache
 def _repo_python_files() -> tuple[Path, ...]:
-    return tuple(
-        path
-        for path in REPO_ROOT.rglob("*.py")
-        if not any(part.startswith(".venv") for part in path.parts) and "tmp" not in path.parts
-    )
+    files: list[Path] = []
+    for root, dirs, filenames in os.walk(REPO_ROOT):
+        dirs[:] = [d for d in dirs if not d.startswith((".venv", ".git", "tmp"))]
+        for f in filenames:
+            if f.endswith(".py"):
+                files.append(Path(root) / f)
+    return tuple(files)
 
 
 def _comment_token(line: str, marker: str) -> bool:

@@ -279,6 +279,7 @@ def _execute_single_candidate(
         RuntimeError,
         ValueError,
         TypeError,
+        KeyError,
     ) as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc

@@ -57,6 +57,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase": (
         "align outcome assertion with typed AGENT_FAILURE failure cause preserved across recovery"
     ),
+    "test_scenario_c_integration_demotion_cools_other_phases": (
+        "ruff format inlined multi-line assertion"
+    ),
 }
 
 

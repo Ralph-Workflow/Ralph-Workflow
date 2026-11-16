@@ -35,7 +35,15 @@ def read_tree(root: Path) -> dict[str, str]:
     contents: dict[str, str] = {}
     if not root.is_dir():
         return contents
-    for path in sorted(root.rglob("*")):
+    candidate_paths: list[Path] = []
+    for item in sorted(root.iterdir()):
+        if item.name in SKIP_DIRS:
+            continue
+        if item.is_file():
+            candidate_paths.append(item)
+        elif item.is_dir():
+            candidate_paths.extend(item.rglob("*"))
+    for path in sorted(candidate_paths):
         if not path.is_file():
             continue
         relative = path.relative_to(root)

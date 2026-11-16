@@ -158,7 +158,7 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
                     file_layers,
                     None,
                 )
-            except (ConfigTomlError, OSError, ValueError, TypeError, KeyError, AttributeError):
+            except (ConfigTomlError, OSError, AttributeError, KeyError, ValueError, TypeError):
                 file_path = local_path
         fix_str = f"fix {file_path} then run ralph --check-config"
         emit_config_failure_warning(
