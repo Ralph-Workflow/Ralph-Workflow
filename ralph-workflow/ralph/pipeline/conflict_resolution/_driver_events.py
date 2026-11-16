@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, assert_never, cast
+from typing import TYPE_CHECKING, Protocol, assert_never, cast
 
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 from ralph.pipeline.resolution_outcome import (
@@ -23,6 +23,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
     MonotonicClock = Callable[[], float]
+
+
+class _SessionStatusBuilder(Protocol):
+    def __call__(self, session: ResolutionSession, *, cause: str) -> IntegrationStatus: ...
 
 
 class _DriverEventsState:
@@ -97,9 +101,15 @@ def emit_success(
 
 
 def _session_progress(status_session: ResolutionSession) -> str:
-    from ralph.pipeline.conflict_resolution.driver import build_session_integration_status
+    from ralph.pipeline.conflict_resolution import driver as driver_mod
 
-    return build_session_integration_status(status_session, cause="PROGRESS").progress
+    build_fn = cast(
+        "_SessionStatusBuilder | None",
+        getattr(driver_mod, "build_session_integration_status", None),
+    )
+    if build_fn is None:
+        return "(unknown)"
+    return build_fn(status_session, cause="PROGRESS").progress
 
 
 def emit_attempt_outcome(

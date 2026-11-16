@@ -7,10 +7,10 @@ import pytest
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import resolve_conflicted_rebase
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
-from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
