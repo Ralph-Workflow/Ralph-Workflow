@@ -186,12 +186,6 @@ def _conflicted_block(root: Path, conflicted_paths: Sequence[str]) -> str:
     except (OSError, RuntimeError, ValueError, KeyError):
         kinds = {}
     eligible = _agent_prompt_sights(kinds)
-    # DELETE_MODIFY is explicitly INCLUDED in the agent prompt: it maps to
-    # AGENT_DECISION, which is inside AGENT_ELIGIBLE_SIGHTS, and invariant 11
-    # gives the agent the delete-or-keep call. Every kind that maps outside
-    # AGENT_ELIGIBLE_SIGHTS (gitlink policy, mechanical, out-of-reach) is excluded
-    # when classification is available; with no classification every listed path
-    # still appears as a generic bullet.
     delete_modify_is_agent_eligible = True
     return "\n".join(
         (
