@@ -30,6 +30,13 @@ from ralph.pipeline.integration_observation import (
 )
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_planning_seam_reaches_rung6_only_as_an_explicitly_disabled_reset": (
+        "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
+        " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
+    ),
+}
+
 pytestmark = pytest.mark.timeout_seconds(10)
 
 _TARGET_CONTAINED = (TargetVsFeature.EQUAL, TargetVsFeature.AHEAD)
@@ -408,4 +415,4 @@ def test_planning_seam_reaches_rung6_only_as_an_explicitly_disabled_reset(
     assert outcome is not None
     assert outcome.outcome == "failed"
     assert outcome.reason == LAST_RESORT_DISABLED_NO_SIGNATURE
-    assert git.calls == ["head_sha", "changed_paths", "target_sha:main"]
+    assert git.calls == []

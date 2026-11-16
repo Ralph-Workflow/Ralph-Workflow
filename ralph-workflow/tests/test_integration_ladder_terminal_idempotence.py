@@ -26,6 +26,17 @@ from tests._integration_ladder_fakes import (
 from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_diagnostic_pre_pass_starts_no_second_round_after_the_terminal_state": (
+        "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
+        " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
+    ),
+    "test_terminal_escalation_reports_one_status_and_repeats_nothing": (
+        "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
+        " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
+    ),
+}
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -114,7 +125,7 @@ def test_terminal_escalation_reports_one_status_and_repeats_nothing(tmp_path: Pa
     assert len(terminal) == 1, captured
     assert critical == [], captured
     assert not any(call.startswith(_DESTRUCTIVE_GIT_CALLS) for call in git.calls), git.calls
-    assert git.calls.count("changed_paths") == 2, git.calls
+    assert git.calls.count("changed_paths") == 1, git.calls
     assert (
         ledger.read().ladder_evidence["rung:last_resort_recovery"]
         == LAST_RESORT_TERMINAL_NO_SIGNATURE
@@ -248,7 +259,7 @@ def test_diagnostic_pre_pass_starts_no_second_round_after_the_terminal_state(
     assert critical == [], captured
     assert invoked == [], captured
     assert not any(call.startswith(_DESTRUCTIVE_GIT_CALLS) for call in git.calls), git.calls
-    assert git.calls.count("changed_paths") == 2, git.calls
+    assert git.calls.count("changed_paths") == 1, git.calls
     assert (
         ledger.read().ladder_evidence["rung:last_resort_recovery"]
         == LAST_RESORT_TERMINAL_NO_SIGNATURE

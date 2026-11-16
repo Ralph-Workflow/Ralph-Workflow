@@ -1,5 +1,3 @@
-"""Exemption registry for the filesystem write consolidation audit."""
-
 from __future__ import annotations
 
 EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(

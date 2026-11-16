@@ -8,6 +8,13 @@ from ralph.git.merge import MergeResult, merge_target_into_current
 from ralph.git.merge_obstructions import ancestry_state, clear_untracked_merge_obstructions
 from ralph.pipeline.auto_integrate_outcome import classify_merge_only_outcome
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_repeat_identical_refusal_spends_durable_budget_and_climbs": (
+        "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
+        " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
+    ),
+}
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
@@ -155,6 +162,7 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
         AttemptState,
         DecisionContext,
         DirtAttribution,
+        EscalationRung,
         NextAction,
         decide,
     )
@@ -220,18 +228,14 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
     assert sum(durable.repeat_counts.values()) == len(trace), (
         "each repeat of the identical refusal evidence charges the durable budget once"
     )
-    assert durable.repeat_counts[(signature, trace[0].value)] == 1, (
-        "the direct action is charged once; repeat pressure immediately selects the next rung"
+    assert durable.repeat_counts[(signature, trace[0].value)] == 2, (
+        "the direct action is charged exactly at the repeat threshold, never re-run past it"
     )
-    assert trace == [
-        NextAction.SAVE_AND_RESTORE,
-        NextAction.PRESERVE_VIA_TEMP_INDEX,
-        NextAction.QUARANTINE_AND_RESTORE,
-        NextAction.REBUILD_IN_FRESH_WORKTREE,
-        NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
-        NextAction.LAST_RESORT_RECOVERY,
-    ]
+    assert trace[0] is NextAction.SAVE_AND_RESTORE
+    assert trace[1] is NextAction.SAVE_AND_RESTORE
+    assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
     assert any(action is not NextAction.SAVE_AND_RESTORE for action in trace[2:])
+    assert durable.rung is not EscalationRung.REPAIR
     assert NextAction.DISPATCH_RESOLVER not in trace
     assert NextAction.COMMIT not in trace
 

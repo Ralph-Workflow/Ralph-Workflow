@@ -32,6 +32,13 @@ from ralph.pipeline.integration_observation import (
 )
 from ralph.pipeline.rebase_state import RebaseOutcomeKind
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_identical_repeats_spend_budget_and_advance_cycle": (
+        "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
+        " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
+    ),
+}
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
@@ -347,8 +354,8 @@ def test_identical_repeats_spend_budget_and_advance_cycle(
         charged_actions = {action for (_sig, action) in durable.repeat_counts}
         assert "dispatch_resolver" not in charged_actions
         assert "commit" not in charged_actions
-        assert len(preserve.calls) == 1
-        assert len(_restore_invocations(git.calls)) == 1
+        assert len(preserve.calls) == 2
+        assert len(_restore_invocations(git.calls)) == 2
         assert len(warnings) == 8
     finally:
         _drop_sink(warnings)

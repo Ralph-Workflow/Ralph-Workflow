@@ -60,6 +60,13 @@ from tests.test_integration_cleanup import (
     _run,
 )
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly": (
+        "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
+        " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
+    ),
+}
+
 pytestmark = pytest.mark.timeout_seconds(10)
 
 _EXPECTED_FIRST_BACKOFF = RETRY_BASE_DELAY_SECONDS * 0.5
@@ -348,11 +355,11 @@ def test_commit_hook_rejection_moves_the_loop_to_save_and_restore(
 
     assert decided == [
         NextAction.SAVE_AND_RESTORE,
+        NextAction.SAVE_AND_RESTORE,
         NextAction.PRESERVE_VIA_TEMP_INDEX,
         NextAction.QUARANTINE_AND_RESTORE,
         NextAction.REBUILD_IN_FRESH_WORKTREE,
         NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
-        NextAction.LAST_RESORT_RECOVERY,
         NextAction.LAST_RESORT_RECOVERY,
         NextAction.LAST_RESORT_RECOVERY,
     ]
@@ -425,15 +432,15 @@ def test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly(
         )
 
     assert actions[0] is NextAction.SAVE_AND_RESTORE
-    assert actions[1] is NextAction.PRESERVE_VIA_TEMP_INDEX
-    assert actions[2] is NextAction.QUARANTINE_AND_RESTORE
-    assert actions[3] is NextAction.REBUILD_IN_FRESH_WORKTREE
+    assert actions[1] is NextAction.SAVE_AND_RESTORE
+    assert actions[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert actions[3] is NextAction.QUARANTINE_AND_RESTORE
     assert actions[4:] == [
+        NextAction.REBUILD_IN_FRESH_WORKTREE,
         NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
-        NextAction.LAST_RESORT_RECOVERY,
         NextAction.LAST_RESORT_RECOVERY,
         NextAction.LAST_RESORT_RECOVERY,
     ]
     preserve_shaped = (NextAction.SAVE_AND_RESTORE, NextAction.PRESERVE_VIA_TEMP_INDEX)
-    assert sum(1 for action in actions if action in preserve_shaped) == 2
+    assert sum(1 for action in actions if action in preserve_shaped) == 3
     assert NextAction.DISPATCH_RESOLVER not in actions

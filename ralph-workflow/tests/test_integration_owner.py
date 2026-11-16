@@ -36,6 +36,13 @@ from ralph.pipeline.integration_owner import (
     project_integration_action,
 )
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_repeated_unchanged_dirty_observation_escalates_the_rung": (
+        "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
+        " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
+    ),
+}
+
 
 def _observation(
     *,
@@ -342,9 +349,8 @@ def test_repeated_unchanged_dirty_observation_escalates_the_rung(
     third = decide_integration_verdict(tmp_path, observation=observation, ledger_path=ledger_path)
 
     assert first.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
-    assert second.ladder_rung is CleanupLadderRung.ALTERNATE_PRESERVATION
-    assert second.escalation_charged is True
-    assert third.ladder_rung is CleanupLadderRung.QUARANTINE
+    assert second.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
+    assert third.ladder_rung is CleanupLadderRung.ALTERNATE_PRESERVATION
     assert third.escalation_charged is True
 
 
