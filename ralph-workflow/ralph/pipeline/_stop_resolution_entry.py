@@ -43,6 +43,7 @@ from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
     from ralph.config.conflict_resolution_config import ConflictResolutionConfig
+    from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
@@ -391,6 +392,79 @@ def _record_outcome_attempt(
     _record_failed_attempt(trigger, key, attempt_cause, failure_reason=failure_reason)
 
 
+def _auto_stage_resolved_paths_and_continue(trigger: StopResolutionTrigger) -> object | None:
+    if not rebase_in_progress_at(trigger.root):
+        return None
+    from ralph.git.merge import (
+        conflict_stage_entries,
+        paths_with_conflict_markers,
+        stage_paths,
+        unmerged_paths,
+    )
+    from ralph.pipeline.conflict_resolution.deterministic_resolution import (
+        _pick_and_stage_gitlinks,
+    )
+
+    unmerged = [p for p in unmerged_paths(trigger.root) if p != "<unmerged-path-query-failed>"]
+    if unmerged:
+        entries = conflict_stage_entries(trigger.root, tuple(unmerged))
+        gitlink_paths = [
+            p for p, stg in entries.items() if any(m == "160000" for m, _h in stg.values())
+        ]
+        if gitlink_paths:
+            gitlink_policy: GitlinkPolicyConfig | None = None
+            if trigger.conflict_config is not None:
+                gitlink_policy = trigger.conflict_config.gitlink_policy
+            elif trigger.config is not None:
+                gitlink_policy = trigger.config.conflict_resolution.gitlink_policy
+            _pick_and_stage_gitlinks(trigger.root, gitlink_paths, gitlink_policy)
+
+        after_gitlinks = [
+            p for p in unmerged_paths(trigger.root) if p != "<unmerged-path-query-failed>"
+        ]
+        from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
+
+        kinds = classify_conflict_kinds(trigger.root, tuple(after_gitlinks), entries)
+        stageable: list[str] = []
+        for p in after_gitlinks:
+            if kinds.get(p) is not ConflictKind.TEXT:
+                continue
+            target_path = trigger.root / p
+            if (
+                target_path.is_file()
+                and target_path.stat().st_size > 0
+                and not paths_with_conflict_markers(trigger.root, (p,))
+            ):
+                stageable.append(p)
+        if stageable:
+            stage_paths(trigger.root, tuple(stageable))
+
+    remaining = [p for p in unmerged_paths(trigger.root) if p != "<unmerged-path-query-failed>"]
+    if not remaining:
+        from ralph.git.rebase.rebase_continuation import (
+            ConflictRemainingError,
+            NoRebaseInProgressError,
+            continue_rebase_at,
+        )
+
+        try:
+            continue_rebase_at(trigger.root)
+        except NoRebaseInProgressError:
+            pass
+        except ConflictRemainingError:
+            return None
+        except Exception as exc:
+            logger.warning("attempt_stop_resolution: continue_rebase_at failed: {}", exc)
+            return None
+
+        if not [p for p in unmerged_paths(trigger.root) if p != "<unmerged-path-query-failed>"]:
+            _adopt_owned_rebase(trigger)
+            return RebaseResolutionResult(
+                ResolvedOutcome(), None, ResolutionFailureCause.NONE, None
+            )
+    return None
+
+
 def attempt_stop_resolution(
     stop_identity: str | None,
     trigger: StopResolutionTrigger,
@@ -399,6 +473,11 @@ def attempt_stop_resolution(
 
     if not isinstance(trigger, StopResolutionTrigger):
         raise TypeError("trigger must be a StopResolutionTrigger")
+
+    auto_resolved = _auto_stage_resolved_paths_and_continue(trigger)
+    if auto_resolved is not None:
+        return auto_resolved
+
     record = _gate_record(trigger)
     computed = (
         trigger.key_provider()
@@ -480,6 +559,7 @@ def _adopt_active_rebase_record(
             target=target,
             pre_feature_sha=original,
             pre_target_sha=onto,
+            resolving_rebase=True,
         )
         write_record(workspace_root, record)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:

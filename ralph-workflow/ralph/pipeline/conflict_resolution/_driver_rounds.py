@@ -121,6 +121,18 @@ def _paths_still_unresolved(
 ) -> tuple[str, ...]:
     marked = list(observer.paths_with_conflict_markers(root, conflicted))
     decisions = set(decision_paths)
+    stageable = [
+        path
+        for path in conflicted
+        if path not in marked
+        and path not in decisions
+        and observer.path_exists(root / path)
+        and not observer.is_effectively_empty(root / path)
+    ]
+    if stageable:
+        from ralph.git.merge import stage_paths
+
+        stage_paths(root, tuple(stageable))
     emptied = (
         path
         for path in conflicted
@@ -254,7 +266,7 @@ def _execute_single_candidate(
             session.last_failure_cause = ResolutionFailureCause.NONE
         else:
             _record_invoker_outcome(session, invoker_result)
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
         )
@@ -409,17 +421,23 @@ def _preferred_conflict_candidate(
 ) -> int | None:
     from ralph.recovery.controller import RecoveryController
 
-    eligible = [
-        name
-        for index, name in enumerate(candidates)
-        if index not in visited and name not in skipped
-    ]
-    if not eligible:
+    excluded = set(visited)
+    for name in skipped:
+        if name in candidates:
+            excluded.add(candidates.index(name))
+    if len(excluded) >= len(candidates):
         return None
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
-        return candidates.index(eligible[0])
-    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+        eligible = [
+            index
+            for index in range(len(candidates))
+            if index not in excluded
+        ]
+        return eligible[0] if eligible else None
+    selection = controller.preferred_agent_index(
+        PHASE_RESOLUTION, candidates, exclude_indices=excluded
+    )
     if selection.agent is not None:
         return candidates.index(selection.agent)
     return None

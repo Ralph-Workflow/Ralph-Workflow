@@ -224,7 +224,7 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
         )
 
 
-def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
+def test_scenario_c_integration_demotion_cools_other_phases(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
@@ -252,15 +252,15 @@ def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
     with _captured_logs() as other_logs:
         for phase in _OTHER_PHASES:
             selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
-            assert selection.index == 0
-            assert selection.agent == "agentA"
-            assert not any(
+            assert selection.index == 1
+            assert selection.agent == "agentB"
+            assert any(
                 skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons
             )
-            assert any(f"Phase {phase}: Selected agent agentA" in line for line in other_logs)
+            assert any(f"Phase {phase}: Selected agent agentB" in line for line in other_logs)
 
 
-def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
+def test_scenario_c_demotion_elsewhere_cools_integration(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
@@ -289,16 +289,12 @@ def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
         clock=clock,
         ledger=ledger,
         candidates=("agentA", "agentB"),
-        resolving_agents=("agentA",),
+        resolving_agents=("agentB",),
     )
 
-    assert invocations == ["agentA"]
+    assert invocations == ["agentB"]
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.REBASED
     assert outcome.fast_forwarded is True
     assert not outcome.is_intervention_required
-
-    assert not any(
-        f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs
-    )
-    assert not any("skipped agentA" in line for line in logs)
+    assert any("skipped agentA" in line for line in logs)

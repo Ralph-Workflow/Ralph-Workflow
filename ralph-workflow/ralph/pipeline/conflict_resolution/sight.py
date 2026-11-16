@@ -331,11 +331,14 @@ def _path_is_binary(root: Path, relative: str) -> bool:
 def _append_only_paths(root: Path, paths: tuple[str, ...]) -> set[str]:
     if not paths:
         return set()
-    result = run_git(
-        ("check-attr", "-z", "merge", "--", *paths),
-        cwd=root,
-        label="git-append-only-attributes",
-    )
+    try:
+        result = run_git(
+            ("check-attr", "-z", "merge", "--", *paths),
+            cwd=root,
+            label="git-append-only-attributes",
+        )
+    except Exception:
+        return set()
     if result.returncode != 0:
         return set()
     fields = result.stdout.split("\0")

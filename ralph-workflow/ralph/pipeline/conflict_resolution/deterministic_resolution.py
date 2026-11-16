@@ -6,7 +6,13 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from loguru import logger
 
-from ralph.git.merge import conflict_stage_entries
+from ralph.git.merge import (
+    ConflictStageEntries,
+    conflict_stage_entries,
+    paths_with_conflict_markers,
+    stage_paths,
+    unmerged_paths,
+)
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline.conflict_resolution.gitlink_policy import (
     GitlinkReviewRecord,
@@ -251,6 +257,75 @@ def _log_gitlink_review(record: GitlinkReviewRecord) -> None:
     )
 
 
+def _partition_deterministic_conflicts(
+    root: Path,
+    conflicted: tuple[str, ...],
+    entries: ConflictStageEntries,
+) -> tuple[list[str], list[str], list[dict[int, tuple[str, str]]], list[str]] | None:
+    kinds = classify_conflict_kinds(root, conflicted, entries)
+    gitlinks: list[str] = []
+    mode_only_paths: list[str] = []
+    mode_only_stages: list[dict[int, tuple[str, str]]] = []
+    text_paths: list[str] = []
+
+    for path in conflicted:
+        stage = entries.get(path, {})
+        modes = {m for m, _h in stage.values()}
+        if "160000" in modes:
+            gitlinks.append(path)
+        elif (
+            _CONFLICT_STAGE_OURS in stage
+            and _CONFLICT_STAGE_THEIRS in stage
+            and stage[_CONFLICT_STAGE_OURS][1] == stage[_CONFLICT_STAGE_THEIRS][1]
+            and {stage[_CONFLICT_STAGE_OURS][0], stage[_CONFLICT_STAGE_THEIRS][0]}
+            == {"100644", "100755"}
+        ):
+            mode_only_paths.append(path)
+            mode_only_stages.append(stage)
+        elif kinds.get(path) is ConflictKind.TEXT:
+            text_paths.append(path)
+        else:
+            return None
+    return gitlinks, mode_only_paths, mode_only_stages, text_paths
+
+
+def _execute_deterministic_resolution(
+    root: Path,
+    stop: RebaseStop,
+    entries: ConflictStageEntries,
+    partition: tuple[list[str], list[str], list[dict[int, tuple[str, str]]], list[str]],
+    gitlink_policy: GitlinkPolicyConfig | None,
+) -> bool:
+    gitlinks, mode_only_paths, mode_only_stages, text_paths = partition
+
+    if gitlinks and not mode_only_paths and not text_paths:
+        stages = [entries[p] for p in gitlinks]
+        return _resolve_gitlinks(root, tuple(gitlinks), stages, gitlink_policy)
+
+    if mode_only_paths and not gitlinks and not text_paths:
+        return _resolve_mode_only(root, tuple(mode_only_paths), mode_only_stages)
+
+    if gitlinks and len(_pick_and_stage_gitlinks(root, gitlinks, gitlink_policy)) != len(gitlinks):
+        return False
+
+    if mode_only_paths and not _resolve_mode_only(root, tuple(mode_only_paths), mode_only_stages):
+        return False
+
+    if text_paths:
+        stageable = [
+            p
+            for p in text_paths
+            if (root / p).is_file()
+            and (root / p).stat().st_size > 0
+            and not paths_with_conflict_markers(root, (p,))
+        ]
+        if stageable:
+            stage_paths(root, tuple(stageable))
+
+    remaining = [p for p in unmerged_paths(root) if p != "<unmerged-path-query-failed>"]
+    return not any(p in remaining for p in stop.conflicted_files)
+
+
 def try_deterministic_resolution(
     root: Path,
     stop: RebaseStop,
@@ -258,29 +333,12 @@ def try_deterministic_resolution(
 ) -> bool:
     try:
         entries = conflict_stage_entries(root, stop.conflicted_files)
-        if any(
-            _CONFLICT_STAGE_OURS not in entries.get(path, {})
-            or _CONFLICT_STAGE_THEIRS not in entries[path]
-            for path in stop.conflicted_files
-        ):
+        partition = _partition_deterministic_conflicts(root, stop.conflicted_files, entries)
+        if partition is None:
             return False
-        stages = [entries[path] for path in stop.conflicted_files]
-        if all(
-            stage[_CONFLICT_STAGE_OURS][0] == stage[_CONFLICT_STAGE_THEIRS][0] == "160000"
-            for stage in stages
-        ):
-            return _resolve_gitlinks(root, stop.conflicted_files, stages, gitlink_policy)
-        if not all(
-            stage[_CONFLICT_STAGE_OURS][1] == stage[_CONFLICT_STAGE_THEIRS][1]
-            and {
-                stage[_CONFLICT_STAGE_OURS][0],
-                stage[_CONFLICT_STAGE_THEIRS][0],
-            }
-            == {"100644", "100755"}
-            for stage in stages
-        ):
-            return False
-        return _resolve_mode_only(root, stop.conflicted_files, stages)
+        return _execute_deterministic_resolution(
+            root, stop, entries, partition, gitlink_policy
+        )
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("conflict_resolution: deterministic resolution declined: {}", exc)
         return False

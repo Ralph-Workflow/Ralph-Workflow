@@ -18,7 +18,14 @@ def git(root: Path, *args: str, check: bool = True) -> str:
         capture_output=True,
         check=False,
         timeout=5,
-        env={"HOME": str(root / ".scenario-home"), "PATH": "/usr/bin:/bin"},
+        env={
+            "HOME": str(root / ".scenario-home"),
+            "PATH": "/usr/bin:/bin",
+            "GIT_AUTHOR_NAME": "Test Author",
+            "GIT_AUTHOR_EMAIL": "author@example.com",
+            "GIT_COMMITTER_NAME": "Test Committer",
+            "GIT_COMMITTER_EMAIL": "committer@example.com",
+        },
     )
     if check and completed.returncode != 0:
         raise AssertionError(

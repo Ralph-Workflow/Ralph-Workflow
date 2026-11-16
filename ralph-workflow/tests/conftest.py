@@ -162,6 +162,110 @@ def _fake_agy_models_probe() -> Generator[None, None, None]:
         registry._default_agy_models_probe = original_probe
 
 
+_EXTRA_GUARDED_PROJECT_LOCAL_NAMES: tuple[str, ...] = (
+    "agents.toml",
+    "ralph-workflow-agents.toml",
+    "portfolio.toml",
+    "policy-portfolio.toml",
+)
+
+
+def _scan_extra_project_local_configs() -> dict[Path, str | None]:
+    repo_dir = Path(__file__).resolve().parents[1]
+    root_dir = repo_dir.parent
+    return {
+        path: _compute_file_sha256(path) if path.is_file() else None
+        for base_dir in (
+            root_dir / ".agent",
+            repo_dir / ".agent",
+            root_dir / "docs" / "ralph-workflow-policy",
+            repo_dir / "docs" / "ralph-workflow-policy",
+        )
+        for path in (base_dir / name for name in _EXTRA_GUARDED_PROJECT_LOCAL_NAMES)
+    }
+
+
+def _redirect_session_guard_constants(
+    session_config: Path,
+) -> tuple[object, Path | None, Path | None, object, Path | None, object]:
+    loader_mod = sys.modules.get("ralph.config.loader")
+    orig_global_config: Path | None = None
+    orig_global_agents: Path | None = None
+    if loader_mod is not None:
+        orig_global_config = loader_mod.GLOBAL_CONFIG_PATH
+        orig_global_agents = loader_mod.GLOBAL_AGENTS_CONFIG_PATH
+        loader_mod.GLOBAL_CONFIG_PATH = session_config / "ralph-workflow.toml"
+        loader_mod.GLOBAL_AGENTS_CONFIG_PATH = session_config / "ralph-workflow-agents.toml"
+
+    state_store_mod = sys.modules.get("ralph.skills._state_store")
+    orig_default_state: Path | None = None
+    orig_default_state_fn = None
+    if state_store_mod is not None:
+        orig_default_state = getattr(state_store_mod, "DEFAULT_STATE_PATH", None)
+        orig_default_state_fn = getattr(state_store_mod, "default_state_path", None)
+        session_capabilities = session_config / "ralph-workflow-capabilities.json"
+        state_store_mod.DEFAULT_STATE_PATH = session_capabilities
+        state_store_mod.default_state_path = lambda: session_capabilities
+    return (
+        loader_mod,
+        orig_global_config,
+        orig_global_agents,
+        state_store_mod,
+        orig_default_state,
+        orig_default_state_fn,
+    )
+
+
+def _restore_session_guard_constants(
+    saved: tuple[object, Path | None, Path | None, object, Path | None, object],
+) -> None:
+    (
+        loader_mod,
+        orig_global_config,
+        orig_global_agents,
+        state_store_mod,
+        orig_default_state,
+        orig_default_state_fn,
+    ) = saved
+    if loader_mod is not None:
+        if orig_global_config is not None:
+            loader_mod.GLOBAL_CONFIG_PATH = orig_global_config
+        if orig_global_agents is not None:
+            loader_mod.GLOBAL_AGENTS_CONFIG_PATH = orig_global_agents
+    if state_store_mod is not None:
+        if orig_default_state is not None:
+            state_store_mod.DEFAULT_STATE_PATH = orig_default_state
+        if orig_default_state_fn is not None:
+            state_store_mod.default_state_path = orig_default_state_fn
+
+
+def _collect_session_guard_violations(
+    guarded_dirs: list[Path],
+    before: dict[Path, _ConfigPathSnapshot],
+    project_local_before: dict[Path, str | None],
+    extra_local_before: dict[Path, str | None],
+) -> list[str]:
+    after = _scan_guarded_config_files(guarded_dirs)
+    violations = _diff_config_snapshots(before, after)
+    violations.extend(
+        _diff_project_local_configs(project_local_before, _scan_project_local_configs())
+    )
+    extra_local_after = _scan_extra_project_local_configs()
+    for p, b_hash in extra_local_before.items():
+        a_hash = extra_local_after.get(p)
+        if a_hash != b_hash and a_hash is not None:
+            violations.append(
+                f"PROJECT-LOCAL CONFIG {'CREATED' if b_hash is None else 'CHANGED'}: {p}"
+            )
+    for node, p in _clear_recorded_read_violations():
+        violations.append(f"READ: {p} (by {node})" if node else f"READ: {p}")
+    for node, p in _clear_recorded_write_violations():
+        violations.append(
+            f"TRANSIENT MUTATION: {p} (by {node})" if node else f"TRANSIENT MUTATION: {p}"
+        )
+    return violations
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _guard_real_config_files(
     tmp_path_factory: pytest.TempPathFactory,
@@ -172,6 +276,7 @@ def _guard_real_config_files(
     guarded_dirs = _resolve_guarded_config_dirs()
     before = _scan_guarded_config_files(guarded_dirs)
     project_local_before = _scan_project_local_configs()
+    extra_local_before = _scan_extra_project_local_configs()
     session_home = tmp_path_factory.mktemp("session-home")
     session_config = session_home / ".config"
     session_config.mkdir(parents=True)
@@ -179,9 +284,11 @@ def _guard_real_config_files(
     orig_xdg = os.environ.get("XDG_CONFIG_HOME")
     os.environ["HOME"] = str(session_home)
     os.environ["XDG_CONFIG_HOME"] = str(session_config)
+    saved_constants = _redirect_session_guard_constants(session_config)
     try:
         yield
     finally:
+        _restore_session_guard_constants(saved_constants)
         if orig_home is not None:
             os.environ["HOME"] = orig_home
         else:
@@ -190,21 +297,9 @@ def _guard_real_config_files(
             os.environ["XDG_CONFIG_HOME"] = orig_xdg
         else:
             os.environ.pop("XDG_CONFIG_HOME", None)
-        after = _scan_guarded_config_files(guarded_dirs)
-        violations = _diff_config_snapshots(before, after)
-        violations.extend(
-            _diff_project_local_configs(project_local_before, _scan_project_local_configs())
+        violations = _collect_session_guard_violations(
+            guarded_dirs, before, project_local_before, extra_local_before
         )
-        for node, p in _clear_recorded_read_violations():
-            if node:
-                violations.append(f"READ: {p} (by {node})")
-            else:
-                violations.append(f"READ: {p}")
-        for node, p in _clear_recorded_write_violations():
-            if node:
-                violations.append(f"TRANSIENT MUTATION: {p} (by {node})")
-            else:
-                violations.append(f"TRANSIENT MUTATION: {p}")
         if violations:
             msg = (
                 "Test suite touched real user configuration files in violation of isolation rules:\n"

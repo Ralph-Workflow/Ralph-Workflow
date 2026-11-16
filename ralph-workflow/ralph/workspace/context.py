@@ -71,7 +71,11 @@ class WorkspaceContext:
 def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
     from pydantic import ValidationError
 
-    from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
+    from ralph.config._toml_fallback import (
+        describe_config_failure,
+        emit_config_failure_warning,
+        load_optional_toml,
+    )
     from ralph.config.loader import (
         ConfigTomlError,
         _attribute_validation_error_to_layer,
@@ -146,7 +150,7 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
                 file_layers = [
                     (local_path, load_toml(local_path)),
                     (_global_config_path(), load_toml(_global_config_path())),
-                    (agents_path, load_toml(agents_path)),
+                    (agents_path, load_optional_toml(agents_path, kind="agents")),
                 ]
                 file_path = _attribute_validation_error_to_layer(
                     cause,
@@ -154,7 +158,7 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
                     file_layers,
                     None,
                 )
-            except (AttributeError, ValueError, TypeError, KeyError):
+            except Exception:
                 file_path = local_path
         fix_str = f"fix {file_path} then run ralph --check-config"
         emit_config_failure_warning(

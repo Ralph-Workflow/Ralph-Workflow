@@ -336,7 +336,7 @@ def _assert_never_exit_invariant() -> None:
 _assert_never_exit_invariant()
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Mapping, Sequence
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
@@ -526,6 +526,8 @@ def _attempt_cooldown_reasons(
     watchdog_cooldown = None if resumable else watchdog_unavailability_reason(exc)
     if cooldown_reason is None:
         cooldown_reason = watchdog_cooldown
+    if cooldown_reason is None and isinstance(exc, ConnectionError):
+        cooldown_reason = UnavailabilityReason.PROVIDER_UNAVAILABLE
     return cooldown_reason, watchdog_cooldown
 
 
@@ -573,6 +575,8 @@ class RecoveryController:
                 consecutive_limit=self._consecutive_unproductive_limit,
                 total_limit=self._total_unproductive_limit,
             )
+        if isinstance(self._ledger, AgentFailureLedger):
+            self._ledger.recovery_controller = self
         self._workspace_probe: WorkspaceChangeProbe | None = opts.workspace_probe
         self._dead_agent_probe_runner = opts.dead_agent_probe_runner
         self._last_verdict_record: dict[str, object] | None = None
@@ -1752,6 +1756,7 @@ class RecoveryController:
         *,
         current_index: int | None = None,
         exclude_current: bool = False,
+        exclude_indices: Collection[int] | None = None,
     ) -> AgentSelection:
         self._phase_chains[phase] = tuple(agents)
         now_ms = self._now_ms()
@@ -1767,7 +1772,10 @@ class RecoveryController:
                 cooldown_ms = max(0, status.until_ms - now_ms)
                 cooldown_reason = status.reason
 
-            avail = status.is_eligible and not (exclude_current and idx == current_index)
+            is_excluded = (exclude_current and idx == current_index) or (
+                exclude_indices is not None and idx in exclude_indices
+            )
+            avail = status.is_eligible and not is_excluded
             is_spent = status.is_spent
 
             rows.append(

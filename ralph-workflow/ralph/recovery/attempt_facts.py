@@ -121,6 +121,7 @@ class _AttemptFacts:
     subagent_activity_observed: bool | None = None
     termination: _TerminationRecord | None = None
     typed_signal: TypedSignal | None = None
+    unresolved_count: int | None = None
 
 
 def has_return_code_discrepancy(termination: _TerminationRecord | None) -> bool:

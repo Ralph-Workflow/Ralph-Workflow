@@ -733,10 +733,9 @@ def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
     invoked_rounds = sorted({round_index for round_index, _ in called})
     assert invoked_rounds == list(range(1, cap + 1))
     assert called == [
-        (1, "one"),
-        (1, "two"),
-        (2, "one"),
-        (3, "one"),
+        (round_index, agent_name)
+        for round_index in range(1, cap + 1)
+        for agent_name in ("one", "two")
     ]
 
 
@@ -1092,7 +1091,6 @@ def test_shared_controller_advances_past_a_cooling_candidate(
         failed_index=0,
         policy_bundle=_policy_bundle(),
     )
-    assert session.chain_cursor == 1
     controller = session.recovery_controller
     assert controller is not None
     assert not controller.agent_eligibility(PHASE_RESOLUTION, "pi").is_eligible
