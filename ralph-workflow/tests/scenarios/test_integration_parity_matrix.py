@@ -6,11 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 from git import Repo
 
-from ralph.agents.invoke import (
-    AgentInactivityTimeoutError,
-    AgentInvocationError,
-    SupervisionInfrastructureError,
-)
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
@@ -67,42 +63,23 @@ pytestmark = [
 ]
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.policy.models import PolicyBundle
 
 
 @pytest.mark.required_auto_integrate_e2e
 @pytest.mark.parametrize(
-    ("mode", "exc_factory"),
+    "mode",
     [
-        (
-            AgentMode.NON_ZERO_EXIT,
-            lambda agent: AgentInvocationError(agent, 7, f"agent '{agent}' exited with status 7"),
-        ),
-        (
-            AgentMode.SIGNAL,
-            lambda agent: AgentInvocationError(
-                agent, -15, f"agent '{agent}' terminated by signal 15"
-            ),
-        ),
-        (
-            AgentMode.WATCHDOG_HANG,
-            lambda agent: AgentInactivityTimeoutError(agent, 30.0),
-        ),
-        (
-            AgentMode.PROVIDER_FAILURE,
-            lambda agent: SupervisionInfrastructureError(
-                agent, f"provider unavailable for agent '{agent}'"
-            ),
-        ),
+        AgentMode.NON_ZERO_EXIT,
+        AgentMode.SIGNAL,
+        AgentMode.WATCHDOG_HANG,
+        AgentMode.PROVIDER_FAILURE,
     ],
 )
 def test_parity_resolver_failure_stays_scoped_to_resolution_phase(
     tmp_path: Path,
     mode: AgentMode,
-    exc_factory: Callable[[str], BaseException],
 ) -> None:
     repo_dir = make_conflicted_repo(tmp_path / "repo")
     clock = FrozenClock()
