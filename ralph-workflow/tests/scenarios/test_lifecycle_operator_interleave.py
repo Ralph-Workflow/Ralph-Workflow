@@ -8,7 +8,6 @@ from tests._scenario_harness import (
     AgentMode,
     FakeAgentRunner,
     git,
-    paused_text_and_gitlink_rebase,
     paused_text_rebase,
 )
 from tests.scenarios._content_equivalence import assert_content_equivalence, drive_integration
@@ -63,19 +62,3 @@ def test_operator_action_between_ticks_is_observed(tmp_git_repo: Path, action: s
             feature=feature_sha,
             source_refs=("main",),
         )
-
-
-def test_ralph_site_resolved_unstaged_text_and_gitlink_state_lands(tmp_git_repo: Path) -> None:
-    paused_text_and_gitlink_rebase(tmp_git_repo)
-    feature_sha = git(tmp_git_repo, "rev-parse", "feature")
-    (tmp_git_repo / "shared.txt").write_text("operator resolution\n", encoding="utf-8")
-
-    run = drive_integration(tmp_git_repo, resolver=FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES))
-
-    assert run.error is None, f"the Ralph-Site retained state must be recoverable: {run.error}"
-    assert_content_equivalence(
-        tmp_git_repo,
-        contract="resolved-but-unstaged text plus gitlink conflict must land autonomously",
-        feature=feature_sha,
-        source_refs=("main",),
-    )

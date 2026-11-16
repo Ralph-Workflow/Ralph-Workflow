@@ -34,7 +34,13 @@ _ELIGIBILITY_OWNER = "ralph/recovery/agent_failure_ledger.py"
 _LANDED_OWNER = "ralph/pipeline/_landed_predicate.py"
 _OPERATION_DEFINITIONS = frozenset({"operation_state", "observe_operation_snapshot"})
 _ELIGIBILITY_DEFINITIONS = frozenset({"agent_is_eligible", "is_agent_eligible"})
-_LANDED_DEFINITIONS = frozenset({"operation_landed", "resolved_stop_landed"})
+_LANDED_DEFINITIONS = frozenset(
+    {
+        "operation_landed",
+        "resolved_stop_landed",
+        "_landing_reached",
+    }
+)
 
 
 def _string_literals(node: ast.AST) -> set[str]:
@@ -125,6 +131,11 @@ def selftest() -> int:
         (
             "ralph/pipeline/land_checker.py",
             "def operation_landed(): pass\n",
+            "operation landed has a second predicate",
+        ),
+        (
+            "ralph/pipeline/land_checker.py",
+            "def _landing_reached(): pass\n",
             "operation landed has a second predicate",
         ),
     ]

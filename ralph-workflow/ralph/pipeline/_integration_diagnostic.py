@@ -385,6 +385,16 @@ def diagnose_retained_integration(
         return False
 
 
+def _terminal_for_now_key(reason: str, target_tip: str | None) -> str:
+    return f"{reason}|target_tip={target_tip or 'unreadable'}"
+
+
+def _current_target_tip(root: Path, record: IntegrationRecord) -> str | None:
+    from ralph.git.merge import branch_sha
+
+    return branch_sha(root, record.target)
+
+
 def _pre_pass_failure(
     root: Path,
     record: IntegrationRecord,
@@ -412,10 +422,12 @@ def _pre_pass_failure(
             resolution_terminal_marker,
         )
 
+        tip = _current_target_tip(root, record)
+        key = _terminal_for_now_key(reason, tip)
         marker = resolution_terminal_marker(record)
-        if marker is not None and record.repair_last_error == reason:
+        if marker is not None and record.repair_last_error == key:
             return False
-        target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
+        target_record = _bump_attempt(record, key, repair_attempt_cap=repair_attempt_cap)
         terminal_marker = ResolutionTerminalMarker(
             record.resolution_gate_key,
             "LandedProofFailed",

@@ -360,7 +360,7 @@ def test_repeat_pressure_escalates_down_cleanup_ladder() -> None:
             dirt_attribution=DirtAttribution.UNOWNED,
         )
     )
-    assert decision is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert decision is NextAction.QUARANTINE_AND_RESTORE
 
 
 def test_ambiguous_attribution_is_unknown_save_never_revert() -> None:
@@ -730,9 +730,9 @@ def test_owner_ledger_port_charges_through_real_decision_table(tmp_path: Path) -
     action = port.charge_residue_attempt(tmp_path, residue=residue)
     assert action is NextAction.SAVE_AND_RESTORE
     second = port.charge_residue_attempt(tmp_path, residue=residue)
-    assert second is NextAction.SAVE_AND_RESTORE
+    assert second is NextAction.PRESERVE_VIA_TEMP_INDEX
     third = port.charge_residue_attempt(tmp_path, residue=residue)
-    assert third is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert third is NextAction.QUARANTINE_AND_RESTORE
 
 
 def test_planning_residue_dataclass_defaults() -> None:

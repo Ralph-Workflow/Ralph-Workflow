@@ -13,6 +13,7 @@ __all__ = [
     "IntegrationPreservationBundle",
     "carry_preserved_commits",
     "preserve_integration_state",
+    "reapply_preserved_progress",
 ]
 
 
@@ -192,3 +193,59 @@ def carry_preserved_commits(
         )
         failures.append(f"{commit}: did not replay cleanly")
     return tuple(carried), tuple(failures)
+
+
+def reapply_preserved_progress(
+    root: Path,
+    bundle: IntegrationPreservationBundle,
+) -> bool:
+    restored_any = False
+    if bundle.index_copy is not None:
+        index_source = Path(bundle.index_copy)
+        if index_source.is_file():
+            index_rows = _lines(
+                root,
+                ("rev-parse", "--path-format=absolute", "--git-path", "index"),
+                "integration-preservation:reapply-index-path",
+            )
+            if index_rows:
+                try:
+                    shutil.copy2(index_source, Path(index_rows[0]))
+                    restored_any = True
+                except OSError:
+                    return False
+    diff_path = Path(bundle.work_diff)
+    if diff_path.is_file() and diff_path.stat().st_size > 0:
+        applied = run_git(
+            ("apply", "--binary", "--whitespace=nowarn", str(diff_path)),
+            cwd=root,
+            label="integration-preservation:reapply-work-diff",
+        )
+        if applied.returncode == 0:
+            restored_any = True
+        else:
+            cached = run_git(
+                ("apply", "--cached", "--binary", "--whitespace=nowarn", str(diff_path)),
+                cwd=root,
+                label="integration-preservation:reapply-work-diff-cached",
+            )
+            if cached.returncode == 0:
+                restored_any = True
+    if bundle.resolution_copy is not None:
+        resolution_source = Path(bundle.resolution_copy)
+        if resolution_source.is_dir():
+            git_dir_rows = _lines(
+                root,
+                ("rev-parse", "--absolute-git-dir"),
+                "integration-preservation:reapply-git-dir",
+            )
+            if git_dir_rows:
+                destination = Path(git_dir_rows[0]) / "rr-cache"
+                try:
+                    if destination.exists():
+                        shutil.rmtree(destination)
+                    shutil.copytree(resolution_source, destination)
+                    restored_any = True
+                except OSError:
+                    return False
+    return restored_any

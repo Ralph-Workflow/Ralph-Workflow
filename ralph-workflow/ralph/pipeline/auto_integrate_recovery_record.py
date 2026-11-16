@@ -519,17 +519,9 @@ def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -
     unmerged = observe_unmerged_paths(root)
     if not unmerged.query_ok or unmerged.paths:
         return False
-    target_sha = _get_branch_sha(root, record.target)
-    if target_sha is None:
-        return False
-    head_sha = _read_head_sha_or_none(root)
-    work_sha = record.integrated_feature_sha or head_sha
-    if work_sha is None or head_sha is None:
-        return False
-    return (
-        ancestry_state(root, work_sha, target_sha) is True
-        and ancestry_state(root, work_sha, head_sha) is True
-    )
+    from ralph.pipeline._landed_predicate import operation_landed
+
+    return operation_landed(root, record).landed
 
 
 def _read_head_sha_or_none(root: Path) -> str | None:

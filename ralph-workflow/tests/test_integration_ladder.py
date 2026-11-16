@@ -465,6 +465,7 @@ def test_run_ladder_rung_dispatches_quarantine_to_the_executor(tmp_path: Path) -
         clock=FakeClock(),
         state_dir=tmp_path / ".agent",
         paths=("src/locked.py",),
+        verify_post_condition=lambda _condition: True,
     )
     assert result.rung is CleanupLadderRung.QUARANTINE
     assert result.outcome == "succeeded"

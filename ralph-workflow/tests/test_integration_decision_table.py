@@ -312,7 +312,9 @@ def test_decide_ladder_advances_after_signature_repeats() -> None:
     assert decide(DecisionContext(observation=obs, attempts=base)) is NextAction.REPAIR
     first = base.with_attempt(obs, NextAction.REPAIR, is_unknown=False)
     assert first.rung is EscalationRung.REPAIR
-    assert decide(DecisionContext(observation=obs, attempts=first)) is NextAction.REPAIR
+    assert decide(DecisionContext(observation=obs, attempts=first)) is (
+        NextAction.DISPATCH_RESOLVER
+    )
     second = first.with_attempt(obs, NextAction.REPAIR, is_unknown=False)
     assert second.rung is EscalationRung.DISPATCH_RESOLVER
     assert decide(DecisionContext(observation=obs, attempts=second)) is (

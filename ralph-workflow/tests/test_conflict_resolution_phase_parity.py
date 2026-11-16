@@ -23,7 +23,7 @@ from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidat
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
-    classify_failed_resolution_attempt,
+    finalize_resolution_attempt_failure,
 )
 from ralph.pipeline.conflict_resolution.session import (
     invoke_resolution_agent as _orig_invoke_resolution_agent,
@@ -37,6 +37,7 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests._conflict_resolution_phase_parity_seams import (
@@ -137,31 +138,32 @@ def _ensure_parity_session_controller(
         session.ledger = controller.ledger
 
 
-_orig_classify_failed_resolution_attempt = classify_failed_resolution_attempt
+_orig_finalize_resolution_attempt_failure = finalize_resolution_attempt_failure
 
 
-def classify_failed_resolution_attempt(
+def finalize_resolution_attempt_failure(
     session: ResolutionSession | None,
     agent_name: str,
-    raw_failure: BaseException | str | None = None,
     *,
+    facts: AttemptFacts,
+    exc: BaseException | None = None,
+    outcome: object = None,
+    policy_bundle: PolicyBundle | None = None,
     candidates: Sequence[str] = (),
     failed_index: int = 0,
-    policy_bundle: PolicyBundle | None = None,
-    **kwargs: object,
 ) -> None:
     if session is not None:
         _ensure_parity_session_controller(session, _config(), policy_bundle)
-    res = _orig_classify_failed_resolution_attempt(
+    _orig_finalize_resolution_attempt_failure(
         session,
         agent_name,
-        raw_failure,
+        facts=facts,
+        exc=exc,
+        outcome=outcome,  # type: ignore[arg-type]
         candidates=candidates,
         failed_index=failed_index,
         policy_bundle=policy_bundle,
-        **kwargs,
     )
-    return res
 
 
 def run_conflict_resolution_pipeline(
@@ -1085,10 +1087,11 @@ def test_shared_controller_advances_past_a_cooling_candidate(
 ) -> None:
     _stub_canary_probe_boundary(monkeypatch)
     session = ResolutionSession()
-    classify_failed_resolution_attempt(
+    finalize_resolution_attempt_failure(
         session,
         "pi",
-        ConnectionError("provider unavailable"),
+        facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
+        exc=ConnectionError("provider unavailable"),
         candidates=("pi", "claude"),
         failed_index=0,
         policy_bundle=_policy_bundle(),

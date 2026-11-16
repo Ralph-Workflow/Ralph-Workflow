@@ -24,7 +24,6 @@ from ralph.pipeline.conflict_resolution.resolver_health import (
     choose_resolver,
     clear_resolver,
 )
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.workspace.context import WorkspaceContextError
 
 if TYPE_CHECKING:
@@ -340,7 +339,6 @@ def handoff_pending_merge_repair(
         agent,
         None,
         workspace_changed=workspace_changed,
-        outcome=ConflictAttemptOutcome.ATTEMPT_FAILED,
     )
     return invoked_ok
 

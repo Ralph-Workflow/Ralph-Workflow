@@ -38,6 +38,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_explore_perf_regression_gate.py",
     "tests/test_completed_rebase_landing_blackbox.py",
     "tests/test_interrupted_rebase_continuation_landing.py",
+    "tests/scenarios/test_integration_scenario_matrix.py",
     "tests/test_skills_install_auto_commit.py",
     "tests/project_policy/test_policy_auto_commit.py",
     "tests/test_scoped_auto_commit.py",
@@ -113,7 +114,6 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/recovery/test_canary_probe_seam_integration.py",
     "tests/agents/invoke/test_pending_subagents_turn_end.py",
     "tests/agents/invoke/test_pending_subagent_completion.py",
-    "tests/scenarios/test_auto_integrate_symptom_matrix.py",
     "tests/scenarios/test_lifecycle_relations.py",
     "tests/scenarios/test_lifecycle_work_shapes.py",
     "tests/scenarios/test_lifecycle_midflight.py",
@@ -124,6 +124,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/scenarios/test_lifecycle_publication_cleanup.py",
     "tests/scenarios/test_lifecycle_content_equivalence.py",
     "tests/scenarios/test_lifecycle_fault_injection.py",
+    "tests/scenarios/test_lifecycle_diagnose.py",
     "tests/scenarios/test_rebase_recovery_matrix.py",
     "tests/scenarios/test_last_resort_recovery.py",
 )

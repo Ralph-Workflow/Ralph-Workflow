@@ -77,8 +77,8 @@ from ralph.pipeline.conflict_resolution.session import (
     RecoveryControllerUnavailableError,
     ResolutionSession,
     begin_resolution_stop,
-    classify_failed_resolution_attempt,
     ensure_session_controller,
+    finalize_resolution_attempt_failure,
     invoke_resolution_agent,
     resolution_chain_agents,
 )
@@ -105,7 +105,7 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
 )
 from ralph.pipeline.state import PipelineState
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+from ralph.recovery.attempt_facts import AttemptFacts
 
 _ACTIVE_SESSION: list[ResolutionSession | None] = [None]
 
@@ -224,10 +224,10 @@ __all__ = [
     "ResolutionInvoker",
     "RoundAttempt",
     "_sleep_seconds",
-    "classify_failed_resolution_attempt",
     "classify_unmerged_conflicts",
     "declared_decision_paths",
     "emit_conflict_phase_line",
+    "finalize_resolution_attempt_failure",
     "invoke_resolution_agent",
     "out_of_reach_escalation_message",
     "out_of_reach_reasons",
@@ -436,6 +436,60 @@ def conflict_chain_max_retries(policy_bundle: PolicyBundle | None) -> int:
     return chain.max_retries if chain is not None else 0
 
 
+def _ensure_controller_best_effort(
+    session: ResolutionSession,
+    policy_bundle: PolicyBundle,
+    pipeline_deps: PipelineDeps | None,
+    config: UnifiedConfig,
+    display: ParallelDisplay | None,
+) -> None:
+    del display
+    try:
+        ensure_session_controller(
+            session, policy_bundle, pipeline_deps=pipeline_deps, config=config
+        )
+    except RecoveryControllerUnavailableError:
+        return
+
+
+def _bind_session_workspace(
+    session: ResolutionSession,
+    effective_scope: WorkspaceScope,
+) -> None:
+    if session.workspace is not None:
+        return
+    ws_obj: object = getattr(effective_scope, "workspace", None)
+    from ralph.workspace.protocol import Workspace
+
+    if isinstance(ws_obj, Workspace):
+        session.workspace = ws_obj
+        return
+    ws_root: object = getattr(effective_scope, "root", None)
+    from pathlib import Path
+
+    if isinstance(ws_root, Path):
+        from ralph.workspace.fs import FsWorkspace
+
+        allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
+        allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
+        session.workspace = FsWorkspace(
+            ws_root,
+            allowed_roots=allowed,
+        )
+
+
+def _bind_session_workspace_probe(session: ResolutionSession) -> None:
+    if session.workspace_probe is not None:
+        return
+    rc = session.recovery_controller
+    if rc is not None and rc.workspace_probe is not None:
+        session.workspace_probe = rc.workspace_probe
+        return
+    from ralph.workspace.probe import DefaultWorkspaceChangeProbe
+
+    session.workspace_probe = DefaultWorkspaceChangeProbe()
+
+
 def _prepare_conflicted_paths(
     root: Path,
     stop: RebaseStop | None,
@@ -623,43 +677,17 @@ def _bootstrap_resolution_session(
         from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
 
         session.probe_runner = fail_open_dead_agent_probe_runner()
-    try:
-        ensure_session_controller(
-            session, policy_bundle, pipeline_deps=pipeline_deps, config=config
-        )
-    except RecoveryControllerUnavailableError as exc:
+    _ensure_controller_best_effort(session, policy_bundle, pipeline_deps, config, display)
+    if session.recovery_controller is None:
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
-        session.exhaustion_reason = str(exc)
-        emit_conflict_phase_line(display, f"conflict resolution blocked: {exc}")
+        session.exhaustion_reason = "recovery controller unavailable"
+        emit_conflict_phase_line(
+            display, "conflict resolution blocked: recovery controller unavailable"
+        )
         return True
-    if session.workspace is None:
-        ws_obj: object = getattr(effective_scope, "workspace", None)
-        from ralph.workspace.protocol import Workspace
-
-        if isinstance(ws_obj, Workspace):
-            session.workspace = ws_obj
-        else:
-            ws_root: object = getattr(effective_scope, "root", None)
-            from pathlib import Path
-
-            if isinstance(ws_root, Path):
-                from ralph.workspace.fs import FsWorkspace
-
-                allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
-                allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
-                session.workspace = FsWorkspace(
-                    ws_root,
-                    allowed_roots=allowed,
-                )
-    if session.workspace_probe is None:
-        rc = session.recovery_controller
-        if rc is not None and rc.workspace_probe is not None:
-            session.workspace_probe = rc.workspace_probe
-        else:
-            from ralph.workspace.probe import DefaultWorkspaceChangeProbe
-
-            session.workspace_probe = DefaultWorkspaceChangeProbe()
+    _bind_session_workspace(session, effective_scope)
+    _bind_session_workspace_probe(session)
     return False
 
 
@@ -849,16 +877,24 @@ def _classify_incomplete_success(
     made_progress = attempt.probe_changed or attempt.count_dropped
     session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
     session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-    classify_failed_resolution_attempt(
+    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+
+    finalize_resolution_attempt_failure(
         session,
         attempt.agent_name,
-        None,
+        facts=AttemptFacts(
+            artifact_valid=False,
+            workspace_changed=made_progress,
+            unresolved_count=unresolved_count,
+        ),
+        outcome=(
+            ConflictAttemptOutcome.UNRESOLVED_REMAINING
+            if made_progress
+            else ConflictAttemptOutcome.STALLED_NO_PROGRESS
+        ),
         candidates=candidates,
         failed_index=attempt.candidate_offset,
         policy_bundle=policy_bundle,
-        outcome=ConflictAttemptOutcome.UNRESOLVED_REMAINING,
-        unresolved_count=unresolved_count,
-        workspace_changed=made_progress,
     )
 
 

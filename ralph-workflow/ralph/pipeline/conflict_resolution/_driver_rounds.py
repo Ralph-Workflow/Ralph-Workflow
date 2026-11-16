@@ -45,6 +45,7 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
     assert_never,
 )
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
@@ -204,34 +205,32 @@ def _handle_candidate_failure(
 ) -> None:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
+    del invoker_result
     fault = classify_attempt_fault(session.terminal_reason)
     _remember_dead_surface(session, agent_name)
     if session.terminal_reason is None:
         session.terminal_reason = (
             attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
         )
-    raw_failure: BaseException | str | None
     if isinstance(session.last_attempt_failure, BaseException):
-        outcome = ConflictAttemptOutcome.RAW
-        raw_failure = session.last_attempt_failure
+        typed_outcome = ConflictAttemptOutcome.RAW
+        exc: BaseException | None = session.last_attempt_failure
     else:
-        outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
-        raw_failure = (
-            session.last_attempt_failure if isinstance(session.last_attempt_failure, str) else None
-        )
-    _driver_mod.classify_failed_resolution_attempt(
+        typed_outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
+        exc = None
+    _driver_mod.finalize_resolution_attempt_failure(
         session,
         agent_name,
-        raw_failure,
+        facts=AttemptFacts(
+            artifact_valid=False,
+            workspace_changed=workspace_changed,
+            unresolved_count=len(session.unresolved_paths),
+        ),
+        exc=exc,
+        outcome=typed_outcome,
         candidates=candidates,
         failed_index=offset,
         policy_bundle=policy_bundle,
-        bench=(
-            session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
-            and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
-        ),
-        workspace_changed=workspace_changed,
-        outcome=outcome,
     )
     if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE

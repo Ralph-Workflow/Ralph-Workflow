@@ -24,6 +24,8 @@ from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.controller import RecoveryController
+from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -88,7 +90,12 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
-    session = ResolutionSession()
+    clock = FakeClock()
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
+    session = ResolutionSession(
+        ledger=controller.ledger,
+        recovery_controller=controller,
+    )
     called: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -497,7 +504,12 @@ def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
 ) -> None:
     _install_seams(monkeypatch)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("solo",))
-    session = ResolutionSession()
+    clock = FakeClock()
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
+    session = ResolutionSession(
+        ledger=controller.ledger,
+        recovery_controller=controller,
+    )
     calls: list[str] = []
 
     def _faulting(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -571,7 +583,12 @@ def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
-    session = ResolutionSession()
+    clock = FakeClock()
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
+    session = ResolutionSession(
+        ledger=controller.ledger,
+        recovery_controller=controller,
+    )
     calls: list[str] = []
 
     def _unavailable(agent_name: str, prompt_path: Path, round_index: int) -> bool:

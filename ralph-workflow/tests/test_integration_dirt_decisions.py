@@ -342,24 +342,21 @@ def _pressure_trace(attribution: DirtAttribution) -> list[NextAction]:
 def test_residue_repeats_climb_the_fallback_ladder() -> None:
     trace = _pressure_trace(DirtAttribution.UNOWNED)
 
-    assert trace[:2] == [NextAction.SAVE_AND_RESTORE, NextAction.SAVE_AND_RESTORE]
-    assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
-    assert trace[3] is NextAction.QUARANTINE_AND_RESTORE
-    assert trace[4] is NextAction.REBUILD_IN_FRESH_WORKTREE
-    assert trace[5] is NextAction.ADAPT_ENVIRONMENT_AND_RETRY
-    assert trace[6] is NextAction.LAST_RESORT_RECOVERY
-    assert trace[7:] == [NextAction.LAST_RESORT_RECOVERY] * 3
+    assert trace[0] is NextAction.SAVE_AND_RESTORE
+    assert trace[1] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert trace[2] is NextAction.QUARANTINE_AND_RESTORE
+    assert trace[3] is NextAction.REBUILD_IN_FRESH_WORKTREE
+    assert trace[4] is NextAction.ADAPT_ENVIRONMENT_AND_RETRY
+    assert trace[5] is NextAction.LAST_RESORT_RECOVERY
+    assert trace[6:] == [NextAction.LAST_RESORT_RECOVERY] * 4
 
 
 def test_phase_owned_repeats_climb_the_same_ladder() -> None:
     trace = _pressure_trace(DirtAttribution.PHASE_OWNED)
 
-    assert trace[:2] == [
-        NextAction.COMMIT_VIA_COMMIT_PHASE,
-        NextAction.COMMIT_VIA_COMMIT_PHASE,
-    ]
-    assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
-    assert trace[6] is NextAction.LAST_RESORT_RECOVERY
+    assert trace[0] is NextAction.COMMIT_VIA_COMMIT_PHASE
+    assert trace[1] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert trace[5] is NextAction.LAST_RESORT_RECOVERY
 
 
 def test_cleanup_ladder_never_dispatches_the_resolver_for_dirt() -> None:
@@ -461,4 +458,4 @@ def test_dirt_signature_repeat_counts_drive_the_climb() -> None:
         ),
     )
 
-    assert action is NextAction.ADAPT_ENVIRONMENT_AND_RETRY
+    assert action is NextAction.LAST_RESORT_RECOVERY

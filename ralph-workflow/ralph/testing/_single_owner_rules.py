@@ -1383,9 +1383,75 @@ def _invocation_routes_through_owner(node: ast.Call) -> bool:
     return not _owner_is_definitely_null(owner)
 
 
+def _check_forbidden_integration_classifier(
+    tree: ast.Module, rel_path: str
+) -> list[SingleOwnerViolation]:
+    violations: list[SingleOwnerViolation] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
+                violations.append(
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
+                        detail=(
+                            f"Definition of '{node.name}' is forbidden. "
+                            f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
+                        ),
+                    )
+                )
+        elif isinstance(node, ast.Call):
+            name = _call_name(node)
+            if name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
+                violations.append(
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
+                        detail=(
+                            f"Call to '{name}' is forbidden. "
+                            f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
+                        ),
+                    )
+                )
+    return violations
+
+
+def _check_agent_retry_timing_outside_shared_path(
+    tree: ast.Module, rel_path: str
+) -> list[SingleOwnerViolation]:
+    if rel_path in _SHARED_COOLDOWN_OWNER_PATHS:
+        return []
+    if rel_path.startswith("ralph/recovery/"):
+        return []
+    violations: list[SingleOwnerViolation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node)
+        if name not in _AGENT_RETRY_TIMING_OUTSIDE_SHARED_PATH:
+            continue
+        if name == "wait_before_retry" and rel_path.startswith("ralph/pipeline/auto_integrate"):
+            continue
+        if name == "compute_retry_delay" and rel_path.startswith("ralph/pipeline/auto_integrate"):
+            continue
+        violations.append(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule=_AGENT_RETRY_TIMING_RULE,
+                detail=f"Call to '{name}': {_AGENT_RETRY_TIMING_MESSAGE}",
+            )
+        )
+    return violations
+
+
 def check_agent_failure_ownership(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
     context = _build_ownership_context(tree)
     violations = _check_conflict_resolution_classification_ownership(tree, rel_path)
+    violations.extend(_check_forbidden_integration_classifier(tree, rel_path))
+    violations.extend(_check_agent_retry_timing_outside_shared_path(tree, rel_path))
     violations.extend(_check_unguarded_agent_invocation(tree, rel_path, context))
     violations.extend(_check_runner_ownership(tree, rel_path, context))
     for node in ast.walk(tree):
@@ -1511,10 +1577,55 @@ def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[Sing
 
 
 _CLASSIFIER_ENTRY_FUNCTIONS: dict[str, int] = {
-    "classify_failed_resolution_attempt": 2,
     "should_reset_tool_registry": 0,
     "bench_resolver": 2,
 }
+
+_FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES: frozenset[str] = frozenset(
+    {
+        "classify_" "failed_resolution_attempt",
+        "classify_conflict_attempt",
+        "time_agent_retry",
+        "compute_agent_retry_delay",
+    }
+)
+
+_AGENT_RETRY_TIMING_OUTSIDE_SHARED_PATH: frozenset[str] = frozenset(
+    {
+        "wait_before_retry",
+        "compute_retry_delay",
+        "time_agent_retry",
+        "compute_agent_retry_delay",
+    }
+)
+
+_SHARED_COOLDOWN_OWNER_PATHS: frozenset[str] = frozenset(
+    {
+        "ralph/recovery/controller.py",
+        "ralph/recovery/agent_failure_ledger.py",
+        "ralph/recovery/agent_unavailability_tracker.py",
+        "ralph/pipeline/auto_integrate_backoff.py",
+        "ralph/pipeline/auto_integrate_conflict_budget.py",
+        "ralph/pipeline/_auto_integrate_attempt_loop.py",
+        "ralph/testing/_single_owner_rules.py",
+        "ralph/testing/audit_agent_failure_single_owner.py",
+        "ralph/testing/audit_integration_no_legacy.py",
+    }
+)
+
+_AGENT_RETRY_TIMING_RULE = "production_agent_retry_timing_outside_shared_path"
+
+_AGENT_RETRY_TIMING_MESSAGE = (
+    "Agent-retry timing outside the shared RecoveryController cooldown path is forbidden; "
+    "use preferred_agent_index / earliest_available_wait_ms / finalize_attempt instead."
+)
+
+_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE = "production_forbidden_integration_classifier"
+
+_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE = (
+    "Integration-only agent-failure classifier is forbidden; build AttemptFacts and "
+    "finalise through RecoveryController.finalize_attempt / run_agent_attempt."
+)
 
 _FAILURE_TEXT_FIELDS: frozenset[str] = frozenset(
     {

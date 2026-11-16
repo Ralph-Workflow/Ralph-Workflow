@@ -40,6 +40,7 @@ from ralph.pipeline.integration_observation import InProgressKind
 from ralph.pipeline.integration_preservation_bundle import (
     carry_preserved_commits,
     preserve_integration_state,
+    reapply_preserved_progress,
 )
 from ralph.pipeline.ladder_effect import LadderEffect
 from ralph.pipeline.ladder_effect_kind import LadderEffectKind
@@ -446,12 +447,20 @@ def quarantine_and_restore(
                 evidence={key: value},
             )
         quarantined.append(dest)
+    progress = (
+        preserve_integration_state(root, state_dir=state_dir, target="HEAD")
+        if (Path(root) / ".git").exists()
+        else None
+    )
     if not git.restore_tree_to_head(root):
         value = "failed:restore-tree-to-head"
         _record_evidence(ledger, key, value)
         return LadderStepResult(
             rung, "failed", value, quarantined_paths=tuple(quarantined), evidence={key: value}
         )
+    if progress is not None:
+        reapply_preserved_progress(root, progress)
+        _record_evidence(ledger, "preserved:bundle", progress.manifest_path)
     value = f"succeeded:quarantined={len(quarantined)}-paths"
     _record_evidence(ledger, key, value)
     _record_evidence(ledger, "preserved:quarantine", str(quarantine_dir))
@@ -494,6 +503,11 @@ def rebuild_in_fresh_worktree(
         return LadderStepResult(rung, "failed", value, evidence={key: value})
     digest = hashlib.sha256(f"{root}-{clock.now():.0f}".encode()).hexdigest()
     fresh_path = state_dir.parent / f"fresh-worktree-{digest[:8]}"
+    progress = (
+        preserve_integration_state(root, state_dir=state_dir, target=target)
+        if (Path(root) / ".git").exists()
+        else None
+    )
     steps: tuple[tuple[str, Callable[[], bool]], ...] = (
         ("create-worktree", lambda: git.create_worktree(root, fresh_path, target)),
         (
@@ -511,6 +525,9 @@ def rebuild_in_fresh_worktree(
         value = f"failed:{step_name}"
         _record_evidence(ledger, key, value)
         return LadderStepResult(rung, "failed", value, evidence={key: value})
+    if progress is not None:
+        reapply_preserved_progress(fresh_path, progress)
+        _record_evidence(ledger, "preserved:bundle", progress.manifest_path)
     land = git.land_in_worktree(root, fresh_path, target, expected_sha=expected)
     if land == "target-moved":
         value = "failed:land:target-moved-concurrently"
@@ -969,6 +986,7 @@ def last_resort_recovery(
         _record_evidence(ledger, key, value)
         return LadderStepResult(rung, "failed", value, evidence=preconditions)
     carried, carry_failures = carry_preserved_commits(root, preservation)
+    reapply_preserved_progress(root, preservation)
     carry_record = {
         "bundle": preservation.manifest_path,
         "carried": carried,
@@ -1057,8 +1075,47 @@ def _shared_rung_result(
         f"shared:{reason}",
         evidence={"shared_rung_result": key},
         post_condition=_RUNG_POST_CONDITIONS[rung],
-        post_condition_verified=shared_outcome == "succeeded",
+        post_condition_verified=False,
     )
+
+
+def _default_post_condition_verifier(
+    *,
+    condition: RungPostCondition,
+    pre_observation: str | None,
+    post_observation: str | None,
+    pre_head: str | None,
+    post_head: str | None,
+    pre_paths: tuple[str, ...] | None,
+    post_paths: tuple[str, ...] | None,
+    landed: bool,
+    durable_copy: bool,
+) -> bool:
+    def _both_present(a: object, b: object) -> bool:
+        return a is not None and b is not None
+
+    def _head_moved() -> bool:
+        return _both_present(pre_head, post_head) and pre_head != post_head
+
+    def _first_tracked_change(*tracked: tuple[object, object]) -> bool:
+        for pre, post in tracked:
+            if _both_present(pre, post):
+                return pre != post
+        return _head_moved()
+
+    checks: dict[RungPostCondition, Callable[[], bool]] = {
+        RungPostCondition.BLOCKING_OBSERVATION_CHANGED: lambda: _first_tracked_change(
+            (pre_observation, post_observation), (pre_paths, post_paths)
+        ),
+        RungPostCondition.TIP_MOVED: _head_moved,
+        RungPostCondition.BRANCH_LANDED: lambda: landed,
+        RungPostCondition.STOP_GONE: lambda: _first_tracked_change(
+            (pre_observation, post_observation)
+        ),
+        RungPostCondition.DURABLE_COPY_CREATED: lambda: durable_copy,
+    }
+    check = checks.get(condition)
+    return check() if check is not None else False
 
 
 def _finish_rung(
@@ -1072,7 +1129,7 @@ def _finish_rung(
     condition = _RUNG_POST_CONDITIONS[rung]
     if result.outcome != "succeeded":
         final = replace(result, post_condition=condition)
-    elif verify_post_condition is None or verify_post_condition(condition):
+    elif verify_post_condition is not None and verify_post_condition(condition):
         final = replace(result, post_condition=condition, post_condition_verified=True)
     else:
         value = f"failed:post-condition:{condition.value}"
@@ -1186,6 +1243,14 @@ def run_ladder_rung(
     probe = env if env is not None else default_environment_probe()
     ladder_clock = clock if clock is not None else current_clock()
     ralph_state = state_dir if state_dir is not None else Path(root) / ".agent"
+    pre_observation = observe() if observe is not None else None
+    pre_head = plumbing.head_sha(root)
+    pre_paths = plumbing.changed_paths(root)
+    pre_target = (
+        expected_target_sha
+        if expected_target_sha is not None
+        else plumbing.target_sha(root, target)
+    )
     shared_key, shared_result = _resolve_shared_key(
         rung=rung,
         ledger=ledger,
@@ -1201,8 +1266,40 @@ def run_ladder_rung(
         shared_conflicting_paths=shared_conflicting_paths,
         expected_target_sha=expected_target_sha,
     )
+    def _production_verify(condition: RungPostCondition) -> bool:
+        post_observation = observe() if observe is not None else None
+        post_head = plumbing.head_sha(root)
+        post_paths = plumbing.changed_paths(root)
+        post_target = plumbing.target_sha(root, target)
+        tip = post_head
+        landed = bool(tip is not None and is_landed is not None and is_landed(tip))
+        if not landed and pre_target is not None and post_target is not None:
+            landed = post_target != pre_target
+        return _default_post_condition_verifier(
+            condition=condition,
+            pre_observation=pre_observation,
+            post_observation=post_observation,
+            pre_head=pre_head,
+            post_head=post_head,
+            pre_paths=pre_paths,
+            post_paths=post_paths,
+            landed=landed,
+            durable_copy=False,
+        )
+
+    active_verifier = (
+        verify_post_condition if verify_post_condition is not None else _production_verify
+    )
     if shared_result is not None:
-        return shared_result
+        if shared_result.outcome != "succeeded":
+            return shared_result
+        return _finish_rung(
+            shared_result,
+            rung=rung,
+            ledger=ledger,
+            shared_key=None,
+            verify_post_condition=active_verifier,
+        )
     result: LadderStepResult
     if rung is CleanupLadderRung.NORMAL_CLEANUP:
         value = "failed:not-owned-here"

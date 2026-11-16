@@ -143,7 +143,7 @@ def test_a_markerless_decision_demands_declared_completion(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     monkeypatch.setattr(
         driver_module,
-        "classify_failed_resolution_attempt",
+        "finalize_resolution_attempt_failure",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(driver_module, "invoke_resolution_agent", _capture)

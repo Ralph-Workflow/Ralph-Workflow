@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
     from ralph.recovery.controller import RecoveryController
 
 __all__ = [
@@ -55,20 +54,19 @@ def bench_resolver(
     agent: str,
     raw_failure: BaseException | str | None,
     *,
+    facts: AttemptFacts | None = None,
     workspace_changed: bool = False,
-    outcome: ConflictAttemptOutcome | None = None,
-    unresolved_count: int = 0,
 ) -> None:
-    del outcome, unresolved_count
     exc: BaseException | None = raw_failure if isinstance(raw_failure, BaseException) else None
-    facts = AttemptFacts(
-        artifact_valid=False,
-        workspace_changed=workspace_changed,
-    )
     controller.finalize_attempt(
         PHASE_RESOLUTION,
         agent,
-        facts=facts,
+        facts=facts
+        if facts is not None
+        else AttemptFacts(
+            artifact_valid=False,
+            workspace_changed=workspace_changed,
+        ),
         attempt_failed=True,
         exc=exc,
     )

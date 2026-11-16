@@ -45,6 +45,8 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "integration_diagnostic:gitdir": frozenset({1}),
     "integration_diagnostic:head_parents": frozenset({1}),
     "is-ancestor": frozenset({1}),
+    "landed-predicate:patch-id": frozenset({1}),
+    "landed-predicate:read": frozenset({128}),
     "operation_evidence:merge_object_resolvable": frozenset({1}),
     "operation_evidence:rebase_object_resolvable": frozenset({1}),
     "pending-merge:identity": frozenset({128}),

@@ -435,7 +435,7 @@ When auto-integrate conflict resolution runs through its configured resolver age
 
 The result of a resolution attempt is one closed type, not a tuple of loosely related values.
 
-1. **The variants**: `ralph.pipeline.resolution_outcome_type` declares `type ResolutionOutcomeType = Resolved | NeedsOperator | RetryLater | Exhausted | ConfigFailure`. Each variant lives in its own module: `resolution_outcome_resolved`, `resolution_outcome_needs_operator` (cause, paths, command), `resolution_outcome_retry_later` (exactly one of `until` or `on_change`), `resolution_outcome_exhausted` (agents) and `resolution_outcome_config_failure` (file, parse error).
+1. **The variants**: `ralph.pipeline.resolution_outcome` declares `type StopResolutionOutcome = ResolvedOutcome | WaitingOutcome | RetryLaterOutcome | NextStrategyOutcome | ConfigFailureOutcome | UnknownOutcome`. The variants are `ResolvedOutcome`, `WaitingOutcome` (external condition), `RetryLaterOutcome` (exactly one of `until` or `on_change`), `NextStrategyOutcome` (strategy), `ConfigFailureOutcome` (file, parse error), and `UnknownOutcome` (error).
 2. **Typed classification**: `ralph.pipeline.resolution_outcome_producer` classifies observed facts into the variants. A configuration failure is recognised by the typed `ConfigParseError(file, parse_error)` payload, never by matching text in a reason string.
 3. **Exhaustive consumption**: every consumer matches on the union with an exhaustive `match` whose default branch is `mypy.assert_never(...)`. A variant that no consumer handles is a type error rather than a runtime fall-through to `UNRESOLVED_CONFLICT`.
 
@@ -469,6 +469,10 @@ The failure ledger answers eligibility for every agent, and every other consumer
 3. **Projections**: `agents_now_available`, `earliest_wait_ms`, `preferred_agent_index` and the launch gate are derived from the ledger answer rather than computing eligibility independently.
 4. **Sanctioned writes**: an unavailable or spent candidate is recorded through `AgentFailureLedger.mark_unavailable(phase, agent, reason=...)` or `RecoveryController.mark_agent_unavailable(...)`. The `Spent` state is constructed by the ledger; the controller does not construct it.
 
+### One landed predicate
+
+`ralph.pipeline._landed_predicate.operation_landed(root, record)` is the only decision for whether recorded integration work has landed. It returns a `LandedDecision` from HEAD, the recorded operation facts (`integrated_feature_sha`, the pre-feature / pre-target tips, and any pending stop snapshot), and the current target tip. Recovery release, diagnostic handoff, and record-clear paths that ask whether work has landed call that function.
+
 ### Terminal states are terminal
 
 The recovery ladder is a table of states with explicit transitions and a persisted terminal marker.
@@ -476,7 +480,7 @@ The recovery ladder is a table of states with explicit transitions and a persist
 1. **Pure transition**: `ralph.pipeline.integration_ladder` exposes `decide_ladder_transition(...)` over `LadderFacts`, producing a `LadderTransition` (a `LadderState`, a `LandedVerdict` and the `LadderEffect` to apply). Git reads, record writes and escalation emission are effects, not decisions.
 2. **No enabled rung**: a state with no enabled next rung ends in `NeedsOperator` once. It names the observed HEAD, the expected facts, why each proof failed, the resume command and what is preserved. A rung that did nothing is never reported as an autonomous escalation.
 3. **Durable terminal marker**: `IntegrationRecord.resolution_terminal_marker` holds `(resolution_gate_key, "NeedsOperator", "ralph --resume")`. It is written with the terminal transition, before the terminal status is emitted, and it is cleared when `resolution_gate_key` changes.
-4. **Unchanged facts**: the terminal fingerprint covers HEAD, the target tip, the record's proof facts and `resolution_gate_key`. Unchanged facts therefore produce no additional CRITICAL line, no diagnostic retry and no resolver selection, including across a supervisor restart that discards process-local state.
+4. **Unchanged facts**: the terminal fingerprint covers HEAD, the target tip, the record's proof facts and `resolution_gate_key`. A landed-proof terminal-for-now key also includes the current target tip, so a moved target re-arms the round. Unchanged facts therefore produce no additional CRITICAL line, no diagnostic retry and no resolver selection, including across a supervisor restart that discards process-local state.
 
 ### One integration status model
 

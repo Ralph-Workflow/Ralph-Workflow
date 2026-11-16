@@ -139,15 +139,16 @@ class AttemptState:
 
     def repeat_pressure(self, *, repeat_count: int, signature_attempts: int) -> bool:
         return (
-            repeat_count >= self.repeat_threshold
+            repeat_count >= max(1, self.repeat_threshold - 1)
             and signature_attempts >= MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION
         )
 
     def should_advance(self, *, repeat_count: int, signature_attempts: int) -> bool:
         if LADDER_ORDER.index(self.rung) >= len(LADDER_ORDER) - 1:
             return False
-        return self.repeat_pressure(
-            repeat_count=repeat_count, signature_attempts=signature_attempts
+        return (
+            repeat_count >= self.repeat_threshold
+            and signature_attempts >= MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION
         )
 
     def _with_updated_repeat_counts(self, updated: RepeatCounts) -> AttemptState:
@@ -288,7 +289,13 @@ def _ladder_action_for(observation: Observation, attempts: AttemptState) -> Next
     if _is_landed(observation):
         return NextAction.LAND
     if _needs_ladder(observation) or not _is_target_moved(observation):
-        return _ladder_action_skipping_resolver(attempts.rung, observation)
+        candidate = _ladder_action_skipping_resolver(attempts.rung, observation)
+        if attempts.repeat_counts and attempts.repeat_pressure(
+            repeat_count=attempts.repeat_count_for(observation, candidate),
+            signature_attempts=attempts.signature_attempts(observation) + 1,
+        ):
+            return _ladder_action_skipping_resolver(attempts.next_rung(), observation)
+        return candidate
     return NextAction.REINTEGRATE
 
 
@@ -370,7 +377,9 @@ def _cleanup_escalation_action(
         signature_attempts=attempts.signature_attempts(observation) + 1,
     ):
         return None
-    climbed = attempts.signature_attempts(observation) - attempts.repeat_threshold
+    climbed = attempts.signature_attempts(observation) - max(
+        1, attempts.repeat_threshold - 1
+    )
     index = max(0, min(climbed, len(CLEANUP_LADDER_ORDER) - 2))
     return cleanup_action_for(CLEANUP_LADDER_ORDER[index + 1])
 

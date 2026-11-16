@@ -11,7 +11,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
-    classify_failed_resolution_attempt,
+    finalize_resolution_attempt_failure,
     invoke_resolution_agent,
 )
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.attempt_facts import AttemptFacts
 
 
 def test_a_stop_never_inherits_the_previous_stops_verdict(
@@ -138,32 +139,32 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
         lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError("provider unavailable")),
     )
     charged: list[str] = []
-    original = classify_failed_resolution_attempt
+    original = finalize_resolution_attempt_failure
 
     def _spy(
         session: ResolutionSession | None,
         agent_name: str,
-        raw_failure: BaseException | str,
         *,
+        facts: AttemptFacts,
+        exc: BaseException | None = None,
+        outcome: object = None,
         candidates: tuple[str, ...] = (),
         failed_index: int = 0,
         policy_bundle: PolicyBundle | None = None,
-        bench: bool = False,
-        **kwargs: object,
     ) -> None:
         charged.append(agent_name)
         original(
             session,
             agent_name,
-            raw_failure,
+            facts=facts,
+            exc=exc,
+            outcome=outcome,  # type: ignore[arg-type]
             candidates=candidates,
             failed_index=failed_index,
             policy_bundle=policy_bundle,
-            bench=bench,
-            **kwargs,
         )
 
-    monkeypatch.setattr(driver_module, "classify_failed_resolution_attempt", _spy)
+    monkeypatch.setattr(driver_module, "finalize_resolution_attempt_failure", _spy)
     session = ResolutionSession(max_rounds_per_stop=1)
 
     assert (

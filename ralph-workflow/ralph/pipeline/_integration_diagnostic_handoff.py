@@ -54,7 +54,6 @@ from ralph.pipeline.integration_preservation_bundle import (
     IntegrationPreservationBundle,
     preserve_integration_state,
 )
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -213,7 +212,6 @@ def _invoke_and_judge(
                 agent,
                 None,
                 workspace_changed=workspace_changed,
-                outcome=ConflictAttemptOutcome.ATTEMPT_FAILED,
             )
     return verified
 
@@ -508,9 +506,11 @@ def escalate_record_fact_outcome(
     )
     observed_head = plumbing.head_sha(root)
     target_tip = plumbing.target_sha(root, effective_target)
+    from ralph.pipeline._landed_predicate import operation_landed
+
     landed = (
         LandedVerdict.LANDED
-        if record.integrated_feature_sha is not None and target_tip == record.integrated_feature_sha
+        if operation_landed(root, record).landed
         else LandedVerdict.NOT_LANDED
     )
     state = ladder.read()

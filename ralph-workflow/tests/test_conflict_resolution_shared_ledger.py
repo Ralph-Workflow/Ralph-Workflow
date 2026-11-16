@@ -53,14 +53,25 @@ def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _deps(store: AgentUnavailabilityTracker, *, consecutive_limit: int = 1) -> PipelineDeps:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
     if isinstance(store.clock, FakeClock):
         _CURRENT_CLOCK[0] = store.clock
     context = make_display_context(console=Console(file=StringIO()))
+    ledger = AgentFailureLedger(clock=store.clock, consecutive_limit=consecutive_limit)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=store.clock,
+            ledger=ledger,
+            unavailability_store=store,
+            agent_max_consecutive_unproductive=consecutive_limit,
+        )
+    )
     return dataclasses.replace(
         make_test_pipeline_deps(context, recovery_clock=store.clock),
+        recovery_controller=controller,
         unavailability_store=store,
-        ledger=AgentFailureLedger(clock=store.clock, consecutive_limit=consecutive_limit),
+        ledger=controller.ledger,
     )
 
 

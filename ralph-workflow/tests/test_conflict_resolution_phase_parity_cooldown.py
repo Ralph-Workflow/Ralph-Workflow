@@ -229,7 +229,7 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
     )
     assert not ledger.any_eligible("rebase_conflict_resolution", candidates)
     assert not ledger.all_exhausted("rebase_conflict_resolution", candidates)
-    assert resolver_allowed(state, "main", ident, ledger=ledger, candidates=candidates)
+    assert not resolver_allowed(state, "main", ident)
 
     assert not cold_capped_escalation_due(
         ctx,
@@ -261,7 +261,7 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
         AttemptFact(phase="rebase_conflict_resolution", agent="res-1", artifact_valid=False)
     )
     assert spent_ledger.all_exhausted("rebase_conflict_resolution", candidates)
-    assert not resolver_allowed(state, "main", ident, ledger=spent_ledger, candidates=candidates)
+    assert not resolver_allowed(state, "main", ident)
     assert cold_capped_escalation_due(
         ctx,
         state,

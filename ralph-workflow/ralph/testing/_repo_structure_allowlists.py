@@ -172,7 +172,6 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "tests/recovery/_scenario_harness.py",
         "tests/recovery/test_unavailability_reason.py",
         "tests/scenarios/_content_equivalence.py",
-        "tests/scenarios/test_auto_integrate_symptom_matrix.py",
         "tests/test_analysis_loop_counter.py",
         "tests/test_no_anti_drift_recovery_invariants.py",
         "ralph/pipeline/integration_cleanup.py",

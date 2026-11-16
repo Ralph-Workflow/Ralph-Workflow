@@ -46,7 +46,6 @@ from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import _NO_RULE_FIRED_REASON
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController
-from ralph.recovery.failure_classifier import typed_outcome_reason
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -59,7 +58,6 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
-    from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.canary_probe import ProbeOutcome
@@ -73,8 +71,8 @@ __all__ = [
     "ResolutionSession",
     "ResolutionTerminationReason",
     "begin_resolution_stop",
-    "classify_failed_resolution_attempt",
     "ensure_session_controller",
+    "finalize_resolution_attempt_failure",
     "invoke_resolution_agent",
     "remember_dead_surface",
     "resolution_chain_agents",
@@ -293,75 +291,29 @@ def ensure_session_controller(
     return controller
 
 
-def _advance_conflict_chain_cursor(
-    session: ResolutionSession,
-    controller: RecoveryController,
-    candidates: Sequence[str],
-    candidates_tuple: tuple[str, ...],
-    failed_index: int,
-) -> int:
-    del session
-    selection = controller.preferred_agent_index(
-        PHASE_RESOLUTION,
-        candidates_tuple,
-        current_index=failed_index,
-        exclude_current=True,
-    )
-    if selection.agent is not None and selection.index is not None:
-        if selection.index < failed_index:
-            return failed_index
-        return selection.index
-    if candidates:
-        return controller.next_conflict_candidate(candidates, failed_index=failed_index)
-    return failed_index
-
-
-def classify_failed_resolution_attempt(
+def finalize_resolution_attempt_failure(
     session: ResolutionSession | None,
     agent_name: str,
-    raw_failure: BaseException | str | None = None,
     *,
+    facts: AttemptFacts,
+    exc: BaseException | None = None,
+    outcome: ConflictAttemptOutcome | None = None,
+    policy_bundle: PolicyBundle | None = None,
     candidates: Sequence[str] = (),
     failed_index: int = 0,
-    policy_bundle: PolicyBundle | None = None,
-    bench: bool = False,
-    workspace_changed: bool = False,
-    artifact_valid: bool = False,
-    outcome: ConflictAttemptOutcome | None = None,
-    unresolved_count: int = 0,
 ) -> None:
-    if outcome is not None and outcome != ConflictAttemptOutcome.RAW:
-        reason = typed_outcome_reason(outcome, unresolved_count)
-        logger.info(
-            "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
-            outcome.value,
-            agent_name,
-            PHASE_RESOLUTION,
-            reason,
-        )
-        if raw_failure is None:
-            raw_failure = reason
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.classifier import FailureContext
 
     controller = ensure_session_controller(session, policy_bundle)
     if session is None:
         return
-    effective_outcome = outcome
-    if not workspace_changed and outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
-        effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
-    typed_outcome = (
-        effective_outcome
-        if effective_outcome is not None and effective_outcome is not ConflictAttemptOutcome.RAW
-        else None
-    )
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
-    recovery_state: PipelineState
-    if isinstance(session.recovery_state, PipelineState):
-        recovery_state = session.recovery_state
-    else:
-        recovery_state = PipelineState(
+    recovery_state = (
+        session.recovery_state
+        if isinstance(session.recovery_state, PipelineState)
+        else PipelineState(
             phase=PHASE_RESOLUTION,
             phase_chains={
                 PHASE_RESOLUTION: AgentChainState(
@@ -371,50 +323,55 @@ def classify_failed_resolution_attempt(
                 )
             },
         )
-    handle_failure: BaseException | str = raw_failure if raw_failure is not None else ""
-    facts = session.last_attempt_result.facts if session and session.last_attempt_result else None
-    context = FailureContext(
-        phase=PHASE_RESOLUTION,
-        agent=agent_name,
-        facts=facts,
-        outcome=typed_outcome,
-        unresolved_count=unresolved_count,
     )
-    try:
-        new_state, _effects, _failure_event = controller.handle(
-            recovery_state,
-            handle_failure,
-            context,
-            workspace_changed=workspace_changed,
-            artifact_valid=artifact_valid,
+    typed_outcome = (
+        outcome if outcome is not None and outcome is not ConflictAttemptOutcome.RAW else None
+    )
+    raw_failure: BaseException | str = exc if exc is not None else ""
+    new_state, _effects, _failure_event = controller.handle(
+        recovery_state,
+        raw_failure,
+        FailureContext(
+            phase=PHASE_RESOLUTION,
+            agent=agent_name,
             facts=facts,
-        )
-    except TypeError:
-        new_state, _effects, _failure_event = controller.handle(
-            recovery_state,
-            handle_failure,
-            context,
-        )
+            outcome=typed_outcome,
+            unresolved_count=facts.unresolved_count or 0,
+        ),
+        workspace_changed=bool(facts.workspace_changed),
+        artifact_valid=bool(facts.artifact_valid),
+        facts=facts,
+    )
     session.recovery_state = new_state
-    _ = bench
-    session.last_recovery_reason = (
-        typed_outcome_reason(typed_outcome, unresolved_count)
-        if typed_outcome is not None
-        else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
-    )
-    candidates_tuple = tuple(candidates) if candidates else (agent_name,)
-    next_cursor = _advance_conflict_chain_cursor(
-        session,
-        controller,
-        candidates,
+    attempt_outcome = controller.last_attempt_outcome
+    if attempt_outcome is not None:
+        session.last_attempt_result = AttemptResult(
+            PipelineEvent.AGENT_FAILURE,
+            facts,
+            attempt_outcome,
+            ((1, attempt_outcome),),
+        )
+        if attempt_outcome.reason:
+            session.last_recovery_reason = attempt_outcome.reason
+            session.last_attempt_evidence = attempt_outcome.reason
+    if exc is not None:
+        session.last_attempt_failure = exc
+    candidates_tuple = tuple(agents)
+    selection = controller.preferred_agent_index(
+        PHASE_RESOLUTION,
         candidates_tuple,
-        failed_index,
+        current_index=failed_index,
+        exclude_current=True,
     )
+    if selection.agent is not None and selection.index is not None:
+        next_cursor = failed_index if selection.index < failed_index else selection.index
+    elif candidates:
+        next_cursor = controller.next_conflict_candidate(candidates, failed_index=failed_index)
+    else:
+        next_cursor = failed_index
     session.chain_cursor = next_cursor
     chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
-    chain_agents: list[str] = (
-        list(chain_state.agents) if chain_state is not None else list(candidates)
-    )
+    chain_agents = list(chain_state.agents) if chain_state is not None else list(candidates_tuple)
     same_candidate = chain_state is not None and chain_state.current_index == next_cursor
     next_retries = chain_state.retries if (chain_state is not None and same_candidate) else 0
     session.recovery_state = new_state.with_phase_chain(
@@ -425,34 +382,6 @@ def classify_failed_resolution_attempt(
             retries=next_retries,
         ),
     )
-    unresolved = unresolved_count if unresolved_count > 0 else len(session.unresolved_paths)
-    effective_facts = facts or AttemptFacts(
-        artifact_valid=artifact_valid,
-        workspace_changed=workspace_changed,
-        unresolved_count=unresolved,
-    )
-    attempt_outcome = controller.last_attempt_outcome
-    if attempt_outcome is None:
-        exc = raw_failure if isinstance(raw_failure, BaseException) else None
-        attempt_outcome = controller.finalize_attempt(
-            PHASE_RESOLUTION,
-            agent_name,
-            facts=effective_facts,
-            attempt_failed=True,
-            exc=exc,
-        )
-    session.last_attempt_result = AttemptResult(
-        PipelineEvent.AGENT_FAILURE,
-        effective_facts,
-        attempt_outcome,
-        ((1, attempt_outcome),),
-    )
-    session.last_attempt_evidence = (
-        typed_outcome_reason(typed_outcome, unresolved_count)
-        if typed_outcome is not None
-        else attempt_outcome.reason
-    )
-    session.last_attempt_failure = raw_failure
 
 
 def _record_session_failure_result(

@@ -281,6 +281,7 @@ def test_reset_capable_rung_creates_the_preserved_copy_before_the_reset(
         clock=FakeClock(),
         state_dir=tmp_path / ".agent",
         paths=("src/locked.py",),
+        verify_post_condition=lambda _condition: True,
     )
 
     assert result.outcome == "succeeded"

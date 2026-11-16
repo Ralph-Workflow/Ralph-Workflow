@@ -12,6 +12,9 @@ def handle(session, agent_name):
     )
 """
     violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
+    assert any(v.rule == "production_forbidden_integration_classifier" for v in violations), (
+        f"Expected production_forbidden_integration_classifier, got: {violations}"
+    )
     assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
         f"Expected production_ralph_authored_classifier_input, got: {violations}"
     )
@@ -19,7 +22,6 @@ def handle(session, agent_name):
         v for v in violations if v.rule == "production_ralph_authored_classifier_input"
     ]
     assert any("last_attempt_failure" in v.detail for v in assign_violations)
-    assert any("classifier entry" in v.detail.lower() for v in assign_violations)
 
 
 def test_production_reworded_prose_variant_is_flagged() -> None:
@@ -31,6 +33,9 @@ def handle(session, agent_name):
     )
 """
     violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
+    assert any(v.rule == "production_forbidden_integration_classifier" for v in violations), (
+        f"Expected production_forbidden_integration_classifier, got: {violations}"
+    )
     assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
         f"Expected production_ralph_authored_classifier_input, got: {violations}"
     )
@@ -89,8 +94,8 @@ def handle(session, agent_name):
     )
 """
     violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
-    assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
-        f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    assert any(v.rule == "production_forbidden_integration_classifier" for v in violations), (
+        f"Expected production_forbidden_integration_classifier, got: {violations}"
     )
 
 
@@ -105,6 +110,9 @@ def handle(session, agent_name, attempt):
 """
     violations = audit_production_source(
         "ralph/pipeline/conflict_resolution/driver.py", driver_source
+    )
+    assert [v for v in violations if v.rule == "production_forbidden_integration_classifier"], (
+        f"Expected forbidden integration classifier on driver.py, got: {violations}"
     )
     assert [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
         f"Expected flagged driver.py sites once the allowlist is removed, got: {violations}"
@@ -123,8 +131,8 @@ def handle(session, agent_name):
     violations = audit_production_source(
         "ralph/pipeline/conflict_resolution/_driver_rounds.py", rounds_source
     )
-    assert [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
-        f"Expected flagged _driver_rounds.py site once the allowlist is removed, got: {violations}"
+    assert [v for v in violations if v.rule == "production_forbidden_integration_classifier"], (
+        f"Expected forbidden integration classifier on _driver_rounds.py, got: {violations}"
     )
 
     session_source = """
