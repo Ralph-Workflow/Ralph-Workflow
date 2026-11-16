@@ -685,7 +685,7 @@ def clear_record(
         if (
             record.phase != "integrated"
             or record.integrated_feature_sha is None
-            or not operation_landed(workspace_root, record).landed
+            or not operation_landed(workspace_root, record).landed_on_target
         ):
             raise RuntimeError("owned reintegration cannot release its unfinished target landing")
     record_file = record_path(workspace_root)

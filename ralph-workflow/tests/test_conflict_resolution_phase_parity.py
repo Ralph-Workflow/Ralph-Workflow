@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 from ralph.agents.clock import Clock
 from ralph.agents.timeout_clock import FakeClock
@@ -147,7 +148,7 @@ def finalize_resolution_attempt_failure(
     *,
     facts: AttemptFacts,
     exc: BaseException | None = None,
-    outcome: object = None,
+    outcome: ConflictAttemptOutcome | None = None,
     policy_bundle: PolicyBundle | None = None,
     candidates: Sequence[str] = (),
     failed_index: int = 0,
@@ -159,7 +160,7 @@ def finalize_resolution_attempt_failure(
         agent_name,
         facts=facts,
         exc=exc,
-        outcome=outcome,  # type: ignore[arg-type]
+        outcome=outcome,
         candidates=candidates,
         failed_index=failed_index,
         policy_bundle=policy_bundle,

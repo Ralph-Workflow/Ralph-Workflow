@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.attempt_facts import AttemptFacts
+    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 
 def test_a_stop_never_inherits_the_previous_stops_verdict(
@@ -155,7 +156,7 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
         *,
         facts: AttemptFacts,
         exc: BaseException | None = None,
-        outcome: object = None,
+        outcome: ConflictAttemptOutcome | None = None,
         candidates: tuple[str, ...] = (),
         failed_index: int = 0,
         policy_bundle: PolicyBundle | None = None,
@@ -166,7 +167,7 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
             agent_name,
             facts=facts,
             exc=exc,
-            outcome=outcome,  # type: ignore[arg-type]
+            outcome=outcome,
             candidates=candidates,
             failed_index=failed_index,
             policy_bundle=policy_bundle,

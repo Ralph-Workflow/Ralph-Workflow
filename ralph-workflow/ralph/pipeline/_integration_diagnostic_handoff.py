@@ -510,7 +510,7 @@ def escalate_record_fact_outcome(
 
     landed = (
         LandedVerdict.LANDED
-        if operation_landed(root, record).landed
+        if operation_landed(root, record).landed_on_target
         else LandedVerdict.NOT_LANDED
     )
     state = ladder.read()

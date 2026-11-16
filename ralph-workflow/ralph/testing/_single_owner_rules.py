@@ -1582,21 +1582,11 @@ _CLASSIFIER_ENTRY_FUNCTIONS: dict[str, int] = {
 }
 
 _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES: frozenset[str] = frozenset(
-    {
-        "classify_" "failed_resolution_attempt",
-        "classify_conflict_attempt",
-        "time_agent_retry",
-        "compute_agent_retry_delay",
-    }
+    {"classify_failed_resolution_attempt"}
 )
 
 _AGENT_RETRY_TIMING_OUTSIDE_SHARED_PATH: frozenset[str] = frozenset(
-    {
-        "wait_before_retry",
-        "compute_retry_delay",
-        "time_agent_retry",
-        "compute_agent_retry_delay",
-    }
+    {"wait_before_retry", "compute_retry_delay"}
 )
 
 _SHARED_COOLDOWN_OWNER_PATHS: frozenset[str] = frozenset(

@@ -46,6 +46,7 @@ from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import _NO_RULE_FIRED_REASON
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController
+from ralph.recovery.failure_classifier import typed_outcome_reason
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -327,7 +328,19 @@ def finalize_resolution_attempt_failure(
     typed_outcome = (
         outcome if outcome is not None and outcome is not ConflictAttemptOutcome.RAW else None
     )
-    raw_failure: BaseException | str = exc if exc is not None else ""
+    unresolved_count = facts.unresolved_count or 0
+    typed_reason = (
+        typed_outcome_reason(typed_outcome, unresolved_count) if typed_outcome is not None else None
+    )
+    if typed_outcome is not None:
+        logger.info(
+            "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
+            typed_outcome.value,
+            agent_name,
+            PHASE_RESOLUTION,
+            typed_reason,
+        )
+    raw_failure: BaseException | str = exc if exc is not None else (typed_reason or "")
     new_state, _effects, _failure_event = controller.handle(
         recovery_state,
         raw_failure,
@@ -336,7 +349,7 @@ def finalize_resolution_attempt_failure(
             agent=agent_name,
             facts=facts,
             outcome=typed_outcome,
-            unresolved_count=facts.unresolved_count or 0,
+            unresolved_count=unresolved_count,
         ),
         workspace_changed=bool(facts.workspace_changed),
         artifact_valid=bool(facts.artifact_valid),
@@ -351,9 +364,10 @@ def finalize_resolution_attempt_failure(
             attempt_outcome,
             ((1, attempt_outcome),),
         )
-        if attempt_outcome.reason:
-            session.last_recovery_reason = attempt_outcome.reason
-            session.last_attempt_evidence = attempt_outcome.reason
+        evidence = typed_reason or attempt_outcome.reason
+        if evidence:
+            session.last_recovery_reason = evidence
+            session.last_attempt_evidence = evidence
     if exc is not None:
         session.last_attempt_failure = exc
     candidates_tuple = tuple(agents)

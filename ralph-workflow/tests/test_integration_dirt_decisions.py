@@ -32,6 +32,19 @@ from ralph.pipeline.integration_observation import (
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_residue_repeats_climb_the_fallback_ladder": (
+        "the gated repeat-threshold contract is restored: an identical observation/action pair is charged exactly repeat_threshold times before the ladder climbs, so these expectations return to the values recorded before ungated commit 0a563b84a rewrote them"
+    ),
+    "test_phase_owned_repeats_climb_the_same_ladder": (
+        "the gated repeat-threshold contract is restored: an identical observation/action pair is charged exactly repeat_threshold times before the ladder climbs, so these expectations return to the values recorded before ungated commit 0a563b84a rewrote them"
+    ),
+    "test_dirt_signature_repeat_counts_drive_the_climb": (
+        "the gated repeat-threshold contract is restored: an identical observation/action pair is charged exactly repeat_threshold times before the ladder climbs, so these expectations return to the values recorded before ungated commit 0a563b84a rewrote them"
+    ),
+}
+
+
 _ALL_SHAPES: tuple[DirtShape, ...] = tuple(DirtShape)
 _ALL_ATTRIBUTIONS: tuple[DirtAttribution, ...] = tuple(DirtAttribution)
 _ALL_KINDS: tuple[InProgressKind, ...] = tuple(InProgressKind)
@@ -342,21 +355,24 @@ def _pressure_trace(attribution: DirtAttribution) -> list[NextAction]:
 def test_residue_repeats_climb_the_fallback_ladder() -> None:
     trace = _pressure_trace(DirtAttribution.UNOWNED)
 
-    assert trace[0] is NextAction.SAVE_AND_RESTORE
-    assert trace[1] is NextAction.PRESERVE_VIA_TEMP_INDEX
-    assert trace[2] is NextAction.QUARANTINE_AND_RESTORE
-    assert trace[3] is NextAction.REBUILD_IN_FRESH_WORKTREE
-    assert trace[4] is NextAction.ADAPT_ENVIRONMENT_AND_RETRY
-    assert trace[5] is NextAction.LAST_RESORT_RECOVERY
-    assert trace[6:] == [NextAction.LAST_RESORT_RECOVERY] * 4
+    assert trace[:2] == [NextAction.SAVE_AND_RESTORE, NextAction.SAVE_AND_RESTORE]
+    assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert trace[3] is NextAction.QUARANTINE_AND_RESTORE
+    assert trace[4] is NextAction.REBUILD_IN_FRESH_WORKTREE
+    assert trace[5] is NextAction.ADAPT_ENVIRONMENT_AND_RETRY
+    assert trace[6] is NextAction.LAST_RESORT_RECOVERY
+    assert trace[7:] == [NextAction.LAST_RESORT_RECOVERY] * 3
 
 
 def test_phase_owned_repeats_climb_the_same_ladder() -> None:
     trace = _pressure_trace(DirtAttribution.PHASE_OWNED)
 
-    assert trace[0] is NextAction.COMMIT_VIA_COMMIT_PHASE
-    assert trace[1] is NextAction.PRESERVE_VIA_TEMP_INDEX
-    assert trace[5] is NextAction.LAST_RESORT_RECOVERY
+    assert trace[:2] == [
+        NextAction.COMMIT_VIA_COMMIT_PHASE,
+        NextAction.COMMIT_VIA_COMMIT_PHASE,
+    ]
+    assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert trace[6] is NextAction.LAST_RESORT_RECOVERY
 
 
 def test_cleanup_ladder_never_dispatches_the_resolver_for_dirt() -> None:
@@ -458,4 +474,4 @@ def test_dirt_signature_repeat_counts_drive_the_climb() -> None:
         ),
     )
 
-    assert action is NextAction.LAST_RESORT_RECOVERY
+    assert action is NextAction.ADAPT_ENVIRONMENT_AND_RETRY

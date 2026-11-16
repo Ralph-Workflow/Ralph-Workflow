@@ -32,6 +32,19 @@ from ralph.pipeline.integration_preservation_bundle import (
 from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs, _ledger
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_identical_pair_past_repeat_threshold_selects_different_rung": (
+        "the gated repeat-threshold contract charges an identical observation/action pair "
+        "exactly repeat_threshold times before climbing, so escalation is pinned at the "
+        "threshold instead of on the second identical pair"
+    ),
+    "test_identical_pair_past_repeat_threshold_escalates_on_ladder_rung": (
+        "the gated repeat-threshold contract charges an identical observation/action pair "
+        "exactly repeat_threshold times before climbing, so escalation is pinned at the "
+        "threshold instead of on the second identical pair"
+    ),
+}
+
 
 def _conflict_observation() -> Observation:
     return Observation(
@@ -71,7 +84,7 @@ def test_unchanged_rung_records_failed_post_condition_without_explicit_verifier(
     assert evidence.get("failed:post-condition:quarantine_and_restore") == result.reason
 
 
-def test_second_identical_observation_action_pair_selects_different_rung() -> None:
+def test_identical_pair_past_repeat_threshold_selects_different_rung() -> None:
     obs = _conflict_observation()
     attempts = AttemptState()
     first = decide(DecisionContext(observation=obs, attempts=attempts))
@@ -79,12 +92,16 @@ def test_second_identical_observation_action_pair_selects_different_rung() -> No
 
     after_first = attempts.with_attempt(obs, first, is_unknown=False)
     second = decide(DecisionContext(observation=obs, attempts=after_first))
+    assert second is first
 
-    assert second is not first
-    assert second is not NextAction.DISPATCH_RESOLVER
+    after_second = after_first.with_attempt(obs, second, is_unknown=False)
+    third = decide(DecisionContext(observation=obs, attempts=after_second))
+
+    assert third is not first
+    assert third is not NextAction.DISPATCH_RESOLVER
 
 
-def test_second_identical_pair_escalates_before_execute_on_ladder_rung() -> None:
+def test_identical_pair_past_repeat_threshold_escalates_on_ladder_rung() -> None:
     obs = Observation(
         target_vs_feature=TargetVsFeature.BEHIND,
         target_vs_remote=TargetVsRemote.EQUAL,
@@ -101,9 +118,13 @@ def test_second_identical_pair_escalates_before_execute_on_ladder_rung() -> None
 
     after_first = attempts.with_attempt(obs, first, is_unknown=False)
     second = decide(DecisionContext(observation=obs, attempts=after_first))
+    assert second is first
 
-    assert second is not NextAction.REPAIR
-    assert after_first.rung is not EscalationRung.REPAIR or second is not first
+    after_second = after_first.with_attempt(obs, second, is_unknown=False)
+    third = decide(DecisionContext(observation=obs, attempts=after_second))
+
+    assert third is not NextAction.REPAIR
+    assert after_second.rung is not EscalationRung.REPAIR
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -127,6 +148,7 @@ def _git(cwd: Path, *args: str) -> str:
     return completed.stdout
 
 
+@pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_destructive_rung_reapplies_captured_index_and_hunk_state(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
@@ -185,6 +207,7 @@ def test_destructive_rung_reapplies_captured_index_and_hunk_state(tmp_path: Path
     assert "resolved-both-sides" in staged_after
 
 
+@pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(5)
 def test_quarantine_rung_reapplies_resolved_index_after_restore(tmp_path: Path) -> None:
     from ralph.pipeline.integration_ladder import default_file_quarantine, default_git_plumbing

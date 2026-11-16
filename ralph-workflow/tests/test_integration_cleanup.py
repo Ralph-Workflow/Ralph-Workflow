@@ -42,6 +42,16 @@ _ROOT = Path("/fake/root")
 _MISSING = "<missing>"
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_repeat_pressure_escalates_down_cleanup_ladder": (
+        "the gated repeat-threshold contract is restored: an identical observation/action pair is charged exactly repeat_threshold times before the ladder climbs, so these expectations return to the values recorded before ungated commit 0a563b84a rewrote them"
+    ),
+    "test_owner_ledger_port_charges_through_real_decision_table": (
+        "the gated repeat-threshold contract is restored: an identical observation/action pair is charged exactly repeat_threshold times before the ladder climbs, so these expectations return to the values recorded before ungated commit 0a563b84a rewrote them"
+    ),
+}
+
+
 def _diff_hash(worktree: Mapping[str, str], committed: Mapping[str, str]) -> str:
     dirty = {
         path: content
@@ -360,7 +370,7 @@ def test_repeat_pressure_escalates_down_cleanup_ladder() -> None:
             dirt_attribution=DirtAttribution.UNOWNED,
         )
     )
-    assert decision is NextAction.QUARANTINE_AND_RESTORE
+    assert decision is NextAction.PRESERVE_VIA_TEMP_INDEX
 
 
 def test_ambiguous_attribution_is_unknown_save_never_revert() -> None:
@@ -730,9 +740,9 @@ def test_owner_ledger_port_charges_through_real_decision_table(tmp_path: Path) -
     action = port.charge_residue_attempt(tmp_path, residue=residue)
     assert action is NextAction.SAVE_AND_RESTORE
     second = port.charge_residue_attempt(tmp_path, residue=residue)
-    assert second is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert second is NextAction.SAVE_AND_RESTORE
     third = port.charge_residue_attempt(tmp_path, residue=residue)
-    assert third is NextAction.QUARANTINE_AND_RESTORE
+    assert third is NextAction.PRESERVE_VIA_TEMP_INDEX
 
 
 def test_planning_residue_dataclass_defaults() -> None:

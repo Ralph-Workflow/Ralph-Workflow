@@ -188,19 +188,13 @@ def run_attempt_loop(
     identity = seams.observe_conflict_identity(root, target)
     strategy_attempt = state.conflict_strategy_index == 1
     effective_ledger = resolve_failure_ledger(ledger)
-    budget_allows = seams.configured_resolver_allowed(
+    allowed = seams.configured_resolver_allowed(
         state,
         target,
         identity,
-        ledger=None,
-        candidates=(),
+        ledger=effective_ledger,
+        candidates=candidates,
     )
-    agents_spent = bool(
-        effective_ledger is not None
-        and candidates
-        and effective_ledger.all_exhausted("rebase_conflict_resolution", candidates)
-    )
-    allowed = budget_allows and not agents_spent
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
     if resolver_suppressed:
@@ -220,7 +214,6 @@ def run_attempt_loop(
     try:
         for attempt in range(MAX_INTEGRATION_ATTEMPTS):
             if attempt:
-                # Agent-free fast-forward retry delay only; agent cooldowns use RecoveryController.
                 seams.wait_before_retry(attempt, sleep=sleep, jitter=jitter)
             recovered = seams.recover_before_attempt(
                 config,

@@ -471,7 +471,7 @@ The failure ledger answers eligibility for every agent, and every other consumer
 
 ### One landed predicate
 
-`ralph.pipeline._landed_predicate.operation_landed(root, record)` is the only decision for whether recorded integration work has landed. It returns a `LandedDecision` from HEAD, the recorded operation facts (`integrated_feature_sha`, the pre-feature / pre-target tips, and any pending stop snapshot), and the current target tip. Recovery release, diagnostic handoff, and record-clear paths that ask whether work has landed call that function.
+`ralph.pipeline._landed_predicate.operation_landed(root, record)` is the only authority for whether recorded integration work has landed. It returns a `LandedDecision` from HEAD, the recorded operation facts (`integrated_feature_sha`, the pre-feature / pre-target tips, and any pending stop snapshot), and the current target tip. Recovery release, diagnostic handoff, and record-clear paths that ask whether work has landed call that function.
 
 ### Terminal states are terminal
 

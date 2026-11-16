@@ -521,7 +521,7 @@ def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -
         return False
     from ralph.pipeline._landed_predicate import operation_landed
 
-    return operation_landed(root, record).landed
+    return operation_landed(root, record).landed_on_target
 
 
 def _read_head_sha_or_none(root: Path) -> str | None:

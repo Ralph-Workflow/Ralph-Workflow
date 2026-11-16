@@ -29,6 +29,13 @@ from tests.test_integration_state_space import integration_observation_matrix
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_decide_ladder_advances_after_signature_repeats": (
+        "the gated repeat-threshold contract is restored: an identical observation/action pair is charged exactly repeat_threshold times before the ladder climbs, so these expectations return to the values recorded before ungated commit 0a563b84a rewrote them"
+    ),
+}
+
+
 _ALL_TARGET_VS_FEATURE: tuple[TargetVsFeature, ...] = tuple(TargetVsFeature)
 _ALL_TARGET_VS_REMOTE: tuple[TargetVsRemote, ...] = tuple(TargetVsRemote)
 _ALL_WORKTREE: tuple[WorktreeState, ...] = tuple(WorktreeState)
@@ -312,9 +319,7 @@ def test_decide_ladder_advances_after_signature_repeats() -> None:
     assert decide(DecisionContext(observation=obs, attempts=base)) is NextAction.REPAIR
     first = base.with_attempt(obs, NextAction.REPAIR, is_unknown=False)
     assert first.rung is EscalationRung.REPAIR
-    assert decide(DecisionContext(observation=obs, attempts=first)) is (
-        NextAction.DISPATCH_RESOLVER
-    )
+    assert decide(DecisionContext(observation=obs, attempts=first)) is NextAction.REPAIR
     second = first.with_attempt(obs, NextAction.REPAIR, is_unknown=False)
     assert second.rung is EscalationRung.DISPATCH_RESOLVER
     assert decide(DecisionContext(observation=obs, attempts=second)) is (

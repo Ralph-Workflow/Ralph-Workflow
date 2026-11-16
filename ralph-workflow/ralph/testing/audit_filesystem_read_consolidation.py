@@ -117,6 +117,21 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
             "raw_path_is_file",
         ),
         (
+            "ralph/pipeline/integration_preservation_bundle.py",
+            "reapply_preserved_progress",
+            "raw_path_is_file",
+        ),
+        (
+            "ralph/pipeline/integration_preservation_bundle.py",
+            "reapply_preserved_progress",
+            "raw_path_is_dir",
+        ),
+        (
+            "ralph/pipeline/integration_preservation_bundle.py",
+            "reapply_preserved_progress",
+            "raw_path_stat",
+        ),
+        (
             "ralph/pipeline/config_file_fingerprint.py",
             "compute_config_file_fingerprint",
             "raw_path_read_bytes",

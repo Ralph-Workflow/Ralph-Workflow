@@ -52,6 +52,12 @@ from tests.scenarios._sixth_symptom_unstaged_gitlink import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_symptom_repro_ralphsite_wt04_worktree": (
+        "The wt-04 fixture currently defers through the integration ladder before a "
+        "local fast-forward lands; assert no rebase remains in progress and accept the "
+        "durable deferred/skipped record until landing owns the recovered outcome; ruff "
+        "format wraps its unchanged remote-unreachable assertion in parentheses"
+    ),
     "test_parity_resolver_failure_stays_scoped_to_resolution_phase": (
         "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
         "so a resolver failure must not cool the same agent in an unrelated phase"
@@ -64,11 +70,6 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "Local rebase completion and remote publication are distinct outcomes; with no "
         "origin the local fast-forward lands as rebased while last_reason records the "
         "unreachable remote for recovery retry"
-    ),
-    "test_symptom_repro_ralphsite_wt04_worktree": (
-        "The wt-04 fixture currently defers through the integration ladder before a "
-        "local fast-forward lands; assert no rebase remains in progress and accept the "
-        "durable deferred/skipped record until landing owns the recovered outcome"
     ),
 }
 
@@ -594,7 +595,9 @@ def test_symptom_repro_ralphsite_wt04_worktree(
         assert outcome.fast_forwarded, (
             "Ralph-Site wt-04 must fast-forward the resolved local branch"
         )
-        assert outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
+        assert (
+            outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
+        )
         assert not rebase_in_progress(repo_dir)
 
 

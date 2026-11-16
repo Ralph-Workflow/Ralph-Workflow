@@ -30,6 +30,11 @@ class LandedDecision:
     observed_head: str | None
     expected: tuple[str, ...]
     failures: tuple[str, ...]
+    on_target: bool = False
+
+    @property
+    def landed_on_target(self) -> bool:
+        return self.landed and self.on_target
 
     def operator_status(self, preserved: str) -> str:
         return (
@@ -72,12 +77,14 @@ def operation_landed(root: Path, record: IntegrationRecord) -> LandedDecision:
     for name, proof in proofs:
         landed, detail = proof(root, record, head)
         if landed:
+            target_tip = _target_tip(root, record.target)
             return LandedDecision(
                 landed=True,
                 proof=name,
                 observed_head=head,
                 expected=expected,
                 failures=tuple(failures),
+                on_target=bool(target_tip and is_ancestor(root, head, target_tip)),
             )
         failures.append(detail)
     return LandedDecision(
@@ -125,6 +132,8 @@ def _rebased_range_proof(
     base = target_tip if target_tip and is_ancestor(root, target_tip, head) else onto
     rebased = _range_commits(root, f"{base}..{head}")
     original = _range_commits(root, f"{onto}..{feature}")
+    if not original and not rebased and target_tip and is_ancestor(root, head, target_tip):
+        return True, ""
     range_failure = _range_shape_failure(original, rebased)
     if range_failure is not None:
         return False, range_failure

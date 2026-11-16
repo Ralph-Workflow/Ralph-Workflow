@@ -71,8 +71,15 @@ _NEW_ANSWER_LABELS = (
     "repair:proposed-path",
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision": (
+        "the reviewed inventory gains the two integration-preservation reapply labels, whose "
+        "nonzero exits keep the loud default"
+    ),
+}
+
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "67002c7529a77636410e403140aa3ad05ca9a3d7c681506569e80ea861706244"
+    "6069ee23eb7898d3f34b1e9ffd9741f92980b48f271a56b9a2ca0c48c22f9894"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory replaces git-rebase:diff with the four "
@@ -80,7 +87,8 @@ _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "probe, and adds operation-snapshot:index-tree, auto-integrate:update-feature-ref, "
     "git-completion-in-place, git-append-only-attributes, git-rm-resolved, "
     "the recovery:completed-rebase-* receipt checks, pending-rebase:land-commit, and "
-    "pending-rebase:land-ref. These are "
+    "pending-rebase:land-ref, and the integration-preservation:reapply-work-diff and "
+    "integration-preservation:reapply-work-diff-cached reapply steps. These are "
     "real recovery and conflict-resolution operations whose nonzero exits must retain the "
     "loud default."
 )
