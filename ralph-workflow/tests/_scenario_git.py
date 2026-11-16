@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-__all__ = ["SCENARIO_GIT_IDENTITY_ENV", "commit_file", "git"]
+__all__ = ["SCENARIO_GIT_IDENTITY", "commit_file", "git"]
+
+SCENARIO_GIT_IDENTITY: dict[str, str] = {
+    "GIT_AUTHOR_NAME": "Test Author",
+    "GIT_AUTHOR_EMAIL": "author@example.com",
+    "GIT_COMMITTER_NAME": "Test Committer",
+    "GIT_COMMITTER_EMAIL": "committer@example.com",
+}
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -28,7 +35,7 @@ def git(root: Path, *args: str, check: bool = True) -> str:
         env={
             "HOME": str(root / ".scenario-home"),
             "PATH": "/usr/bin:/bin",
-            **SCENARIO_GIT_IDENTITY_ENV,
+            **SCENARIO_GIT_IDENTITY,
         },
     )
     if check and completed.returncode != 0:
