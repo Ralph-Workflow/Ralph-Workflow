@@ -8,6 +8,7 @@ from loguru import logger
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import RebaseOutcomeKind, resolve_conflicted_rebase
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
 from ralph.pipeline.conflict_resolution import (
     RebaseStop,
@@ -25,7 +26,6 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     ResolvedOutcome,
-    RetryLaterOutcome,
     StopResolutionOutcome,
 )
 from ralph.pipeline.run_loop import (

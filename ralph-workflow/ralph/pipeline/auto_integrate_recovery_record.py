@@ -646,16 +646,15 @@ def _recover_pending_merge(
         )
     if isinstance(resumed, (str, RetryLaterOutcome)):
         latest_record = read_record_outcome(root).record or record
-        terminal_reason = (
-            ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        raw_reason: object = (
+            resumed.terminal_reason
             if isinstance(resumed, RetryLaterOutcome)
             and resumed.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
             else None
         )
-        if not (
-            isinstance(terminal_reason, ResolutionTerminationReason) or terminal_reason is None
-        ):
-            raise RuntimeError(f"unexpected terminal_reason type: {type(terminal_reason).__name__}")
+        terminal_reason = (
+            raw_reason if isinstance(raw_reason, ResolutionTerminationReason) else None
+        )
         return _resumed_failure_outcome(
             root,
             latest_record,
