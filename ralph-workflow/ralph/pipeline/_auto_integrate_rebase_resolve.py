@@ -123,8 +123,8 @@ def resolve_conflicted_rebase(
             DeferredStopResolution,
             attempt_stop_resolution,
             production_rebase_runner,
+            resolution_gate_record,
         )
-        from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked

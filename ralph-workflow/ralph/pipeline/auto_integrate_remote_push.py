@@ -393,9 +393,11 @@ def _reconcile_in_progress_rebase(
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> _PushOutcome | None:
     if rebase_stop_resolver is not None:
-        from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+        from ralph.pipeline._stop_resolution_entry import (
+            attempt_stop_resolution,
+            resolution_gate_record,
+        )
         from ralph.pipeline.auto_integrate_record import read_record
-        from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger

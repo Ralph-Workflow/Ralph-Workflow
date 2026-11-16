@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections import OrderedDict
+from contextlib import suppress
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, TypeGuard
 
 from loguru import logger
@@ -40,10 +39,11 @@ from ralph.pipeline.resolution_outcome_producer import (
 from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ralph.agents.clock import Clock
     from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.integration_actions import AgentRunner
@@ -67,45 +67,6 @@ class DeferredStopResolution(StopResolutionBlocked):
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
 
-_PRESENTED_ROUNDS_CAP: int = 256
-
-
-class _BoundedPresentedRounds(OrderedDict[Path, str]):
-    def __init__(
-        self,
-        *args: object,
-        cap: int = _PRESENTED_ROUNDS_CAP,
-        **kwargs: object,
-    ) -> None:
-        if cap <= 0:
-            raise ValueError(f"cap must be positive, got {cap}")
-        self._cap = cap
-        super().__init__(*args, **kwargs)
-        while len(self) > self._cap:
-            self.popitem(last=False)
-
-    def __setitem__(self, key: Path, value: str) -> None:
-        super().__setitem__(key, value)
-        self.move_to_end(key)
-        while len(self) > self._cap:
-            self.popitem(last=False)
-
-
-_presented_rounds: _BoundedPresentedRounds = _BoundedPresentedRounds()
-
-
-def retained_round_is_new(root: Path, fingerprint: str) -> bool:
-    resolved = root.resolve()
-    if _presented_rounds.get(resolved) == fingerprint:
-        return False
-    _presented_rounds[resolved] = fingerprint
-    return True
-
-
-def reset_stop_resolution_presentation() -> None:
-    _presented_rounds.clear()
-
-
 def decide_resolution_attempt(facts: ResolutionGateFacts) -> ResolutionGateDecision:
     key = ResolutionAttemptKey(
         facts.stop_identity,
@@ -119,6 +80,10 @@ def decide_resolution_attempt(facts: ResolutionGateFacts) -> ResolutionGateDecis
         reason=_GATE_ACTIVE_REASON if blocked else None,
         observed_at_ms=facts.observed_at_ms,
     )
+
+
+def reset_stop_resolution_presentation() -> None:
+    return
 
 
 def _current_stop_identity(root: Path, record: IntegrationRecord) -> str | None:
@@ -152,18 +117,16 @@ def compute_resolution_attempt_key(
     stop_id = stop_identity if stop_identity is not None else _current_stop_identity(root, record)
     effective_agents = eligible_agents
     if effective_agents is None:
-        if recovery_controller is None and config is not None:
+        controller = recovery_controller
+        if controller is None and config is None:
+            from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+            controller = current_agent_effect_dependencies().recovery_controller
+        if controller is None and config is not None:
             return KeyUnavailable(
                 "recovery controller required; pass the session/pipeline_deps controller "
                 "or an explicit recovery_controller"
             )
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-
-        controller = (
-            recovery_controller
-            if recovery_controller is not None
-            else current_agent_effect_dependencies().recovery_controller
-        )
         if controller is not None:
             try:
                 candidates = (
@@ -275,10 +238,6 @@ def _is_rebase_stop_resolver(resolver: object) -> TypeGuard[RebaseStopResolver]:
     return callable(resolver)
 
 
-def _is_conflict_resolver(resolver: object) -> TypeGuard[ConflictResolver]:
-    return callable(resolver)
-
-
 class _ProductionRebaseRunner:
     def resolve_rebase(
         self,
@@ -303,38 +262,65 @@ def production_rebase_runner() -> AgentRunner:
 def _execute_trigger(trigger: StopResolutionTrigger) -> object:
     if trigger.launcher is not None:
         return trigger.launcher()
-    if trigger.name == "rebase_stop":
-        resolver = trigger.resolver
-        if _is_rebase_stop_resolver(resolver):
-            return _resolve_rebase_with_config(
-                trigger.root,
-                trigger.target,
-                resolver,
-                trigger.conflict_config,
-                trigger.agent_runner,
-                trigger.record,
-                trigger=trigger,
-            )
-        raise TypeError(f"expected callable RebaseStopResolver, got {resolver!r}")
-
-    from ralph.pipeline.auto_integrate_resolve import resolve_and_commit_with_reason
-
+    if trigger.name != "rebase_stop":
+        raise TypeError(
+            f"trigger {trigger.name!r} requires a launcher; no inline merge-stop execution exists"
+        )
     resolver = trigger.resolver
-    if _is_conflict_resolver(resolver):
-        return resolve_and_commit_with_reason(
+    if _is_rebase_stop_resolver(resolver):
+        return _resolve_rebase_with_config(
             trigger.root,
             trigger.target,
             resolver,
+            trigger.conflict_config,
+            trigger.agent_runner,
+            trigger.record,
+            trigger=trigger,
         )
-    raise TypeError(f"expected callable ConflictResolver, got {resolver!r}")
+    raise TypeError(f"expected callable RebaseStopResolver, got {resolver!r}")
 
 
 def _gate_record(trigger: StopResolutionTrigger) -> IntegrationRecord:
     if trigger.record is not None:
         return trigger.record
-    from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
-
     return resolution_gate_record(trigger.root, trigger.target)
+
+
+def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
+    record = read_record(root)
+    if record is not None:
+        return record
+    from ralph.git.rebase.rebase_continuation import (
+        RebaseContinuationError,
+        rebase_in_progress_at,
+    )
+    from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
+
+    try:
+        in_rebase = rebase_in_progress_at(root)
+    except (RebaseContinuationError, OSError, RuntimeError, ValueError):
+        in_rebase = False
+
+    if in_rebase:
+        with suppress(OSError, RuntimeError, ValueError):
+            orig_head, onto = current_rebase_identity(root)
+            return IntegrationRecord(
+                phase="integrating",
+                target=target,
+                pre_feature_sha=orig_head,
+                pre_target_sha=onto,
+                resolving_rebase=True,
+            )
+    in_merge = False
+    with suppress(OSError, RuntimeError, ValueError):
+        in_merge = merge_state(root) == MERGE_STATE_IN_PROGRESS
+    return IntegrationRecord(
+        phase="integrating",
+        target=target,
+        pre_feature_sha=_git_value(root, "rev-parse", "--verify", "HEAD") or "",
+        pre_target_sha=_git_value(root, "rev-parse", "--verify", "MERGE_HEAD"),
+        resolving_merge=in_merge,
+    )
 
 
 def _record_outcome_attempt(

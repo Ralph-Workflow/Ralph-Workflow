@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, assert_never, cast
 
-from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -16,6 +15,7 @@ from ralph.pipeline.resolution_outcome import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
+    from typing import Protocol, runtime_checkable
 
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline._integration_status import IntegrationStatus
@@ -23,6 +23,12 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
     MonotonicClock = Callable[[], float]
+
+    @runtime_checkable
+    class _PhaseLineEmitter(Protocol):
+        def __call__(
+            self, display: ParallelDisplay | None, line: str, *, channel: str = ...
+        ) -> None: ...
 
 
 class _SessionStatusBuilder(Protocol):
@@ -42,15 +48,15 @@ def reset_driver_events_state() -> None:
 
 def _emit(display: ParallelDisplay | None, line: str) -> None:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
+    from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 
-    fn = cast(
-        "Callable[[ParallelDisplay | None, str], None] | None",
-        getattr(driver_mod, "emit_conflict_phase_line", None),
+    emitter = cast(
+        "_PhaseLineEmitter | None", getattr(driver_mod, "emit_conflict_phase_line", None)
     )
-    if fn is not None:
-        fn(display, line)
+    if emitter is None:
+        emit_conflict_phase_line(display, line)
         return
-    emit_conflict_phase_line(display, line)
+    emitter(display, line)
 
 
 def announce_declared_decisions(

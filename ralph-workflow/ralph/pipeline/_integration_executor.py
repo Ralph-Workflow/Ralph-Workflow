@@ -35,8 +35,10 @@ class _LiveRebaseContinuationExecutor:
         resolver: RebaseStopResolver,
         config: ConflictResolutionConfig | None,
     ) -> StopResolutionOutcome:
-        from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
-        from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
+        from ralph.pipeline._stop_resolution_entry import (
+            attempt_stop_resolution,
+            resolution_gate_record,
+        )
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.resolution_outcome import (
             ConfigFailureOutcome,

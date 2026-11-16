@@ -173,7 +173,10 @@ def _agent_prompt_sights(kinds: Mapping[str, object]) -> dict[str, object]:
 
 
 def _conflicted_block(root: Path, conflicted_paths: Sequence[str]) -> str:
-    from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
+    from ralph.pipeline.conflict_resolution.sight import (
+        ConflictKind,
+        classify_conflict_kinds,
+    )
 
     listed = [path for path in conflicted_paths if path.strip()]
     if not listed:

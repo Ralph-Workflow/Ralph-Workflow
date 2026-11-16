@@ -307,9 +307,11 @@ def _finish_paused_rebase(
 
     if finish_resolved_rebase_stops(root, target) or resolver is None:
         return None
-    from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+    from ralph.pipeline._stop_resolution_entry import (
+        attempt_stop_resolution,
+        resolution_gate_record,
+    )
     from ralph.pipeline.auto_integrate_record import read_record
-    from ralph.pipeline.auto_integrate_resolve import resolution_gate_record
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
     result = attempt_stop_resolution(

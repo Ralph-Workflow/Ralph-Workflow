@@ -6,8 +6,6 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import (
     StopResolutionTrigger,
     attempt_stop_resolution,
-    reset_stop_resolution_presentation,
-    retained_round_is_new,
 )
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.key_unavailable import KeyUnavailable
@@ -107,20 +105,3 @@ def test_key_change_reopens_exactly_one_attempt(tmp_path: Path) -> None:
     second = attempt_stop_resolution("stop", _trigger(tmp_path, persisted, new_key, launches))
     assert isinstance(second, StopResolutionBlocked)
     assert launches == ["launched"]
-
-
-def test_retained_round_presentation_is_scoped_and_resettable() -> None:
-    reset_stop_resolution_presentation()
-    try:
-        first = Path("/virtual/workspace_a")
-        second = Path("/virtual/workspace_b")
-
-        assert retained_round_is_new(first, "sha-1") is True
-        assert retained_round_is_new(first, "sha-1") is False
-        assert retained_round_is_new(first, "sha-2") is True
-        assert retained_round_is_new(second, "sha-2") is True
-
-        reset_stop_resolution_presentation()
-        assert retained_round_is_new(first, "sha-2") is True
-    finally:
-        reset_stop_resolution_presentation()

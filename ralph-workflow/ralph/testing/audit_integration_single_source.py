@@ -28,7 +28,22 @@ def _call_name(node: ast.Call) -> str | None:
     return None
 
 
-_UNMERGED_READERS = frozenset({"ralph/git/conflict_stage_entries.py", "ralph/git/merge.py"})
+_UNMERGED_LS_FILES_READERS = frozenset(
+    {"ralph/git/conflict_stage_entries.py", "ralph/git/merge.py"}
+)
+_UNMERGED_XY_OWNER = "ralph/git/hardening.py"
+_AUDIT_MODULE = "ralph/testing/audit_integration_single_source.py"
+_XY_DEFINITION_OWNERS = frozenset({_UNMERGED_XY_OWNER, _AUDIT_MODULE})
+_SANCTIONED_XY_CONSUMERS = frozenset(
+    {
+        _UNMERGED_XY_OWNER,
+        _AUDIT_MODULE,
+        "ralph/pipeline/_porcelain_records.py",
+        "ralph/pipeline/integration_cleanup.py",
+    }
+)
+_XY_SET_NAME = "UNMERGED_PORCELAIN_XY"
+_SET_CONSTRUCTOR_NAMES = frozenset({"frozenset", "set"})
 _UNMERGED_XY_CODES: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
 _OPERATION_OWNER = "ralph/git/operation_snapshot.py"
 _ELIGIBILITY_OWNER = "ralph/recovery/agent_failure_ledger.py"
@@ -52,18 +67,51 @@ def _string_literals(node: ast.AST) -> set[str]:
     }
 
 
-def _unmerged_xy_comparisons(node: ast.expr) -> bool:
-    for comparison in ast.walk(node):
-        if not isinstance(comparison, ast.Compare):
-            continue
-        for comparator in comparison.comparators:
-            if not isinstance(comparator, ast.Constant) or not isinstance(comparator.value, str):
-                continue
-            if comparator.value in _UNMERGED_XY_CODES:
-                return True
-        if _UNMERGED_XY_CODES & _string_literals(comparison):
-            return True
+def _unmerged_xy_code_literals(node: ast.expr) -> bool:
+    return bool(_UNMERGED_XY_CODES & _string_literals(node))
+
+
+def _is_xy_set_name(node: ast.expr, xy_names: set[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in xy_names
+    if isinstance(node, ast.Attribute):
+        return node.attr == _XY_SET_NAME
     return False
+
+
+def _unmerged_xy_comparisons(node: ast.Compare, xy_names: set[str]) -> bool:
+    if any(_is_xy_set_name(comparator, xy_names) for comparator in node.comparators):
+        return True
+    return _unmerged_xy_code_literals(node)
+
+
+def _unmerged_xy_set_definition(node: ast.Assign) -> bool:
+    value = node.value
+    if isinstance(value, ast.Set):
+        return _unmerged_xy_code_literals(value)
+    if isinstance(value, ast.Call) and _is_set_constructor(value.func):
+        return _unmerged_xy_code_literals(value)
+    return False
+
+
+def _is_set_constructor(func: ast.expr) -> bool:
+    if isinstance(func, ast.Name):
+        return func.id in _SET_CONSTRUCTOR_NAMES
+    if isinstance(func, ast.Attribute):
+        return func.attr in _SET_CONSTRUCTOR_NAMES
+    return False
+
+
+def _imported_xy_aliases(tree: ast.AST) -> set[str]:
+    aliases = {_XY_SET_NAME}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.module != "ralph.git.hardening":
+                continue
+            for alias in node.names:
+                if alias.name == _XY_SET_NAME:
+                    aliases.add(alias.asname or alias.name)
+    return aliases
 
 
 def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
@@ -75,18 +123,19 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
             tree = ast.parse(source, filename=rel)
         except SyntaxError:
             continue
+        xy_names = _imported_xy_aliases(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 literals = _string_literals(node)
                 if (
-                    rel not in _UNMERGED_READERS
+                    rel not in _UNMERGED_LS_FILES_READERS
                     and "ls-files" in literals
                     and ({"-u", "--unmerged"} & literals)
                 ):
                     violations.append(
                         Violation(rel, node.lineno, "unmerged index read outside git owner")
                     )
-                if rel not in _UNMERGED_READERS and any(
+                if rel not in _UNMERGED_LS_FILES_READERS and any(
                     isinstance(value, str) and value.lstrip().startswith("--diff-filter=" + "U")
                     for value in literals
                 ):
@@ -95,8 +144,20 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
                     )
             if (
                 isinstance(node, ast.Compare)
-                and rel not in _UNMERGED_READERS
-                and _unmerged_xy_comparisons(node)
+                and rel not in _SANCTIONED_XY_CONSUMERS
+                and _unmerged_xy_comparisons(node, xy_names)
+            ):
+                violations.append(
+                    Violation(
+                        rel,
+                        node.lineno,
+                        "porcelain unmerged XY set has a second definition",
+                    )
+                )
+            if (
+                isinstance(node, ast.Assign)
+                and rel not in _XY_DEFINITION_OWNERS
+                and _unmerged_xy_set_definition(node)
             ):
                 violations.append(
                     Violation(
@@ -187,7 +248,49 @@ def selftest() -> int:
             'code = entry.xy\nif code[0] == "UU" or code[1] == "UU":\n    pass\n',
             "porcelain unmerged XY set has a second definition",
         ),
+        (
+            "ralph/pipeline/unmerged_xy_reader.py",
+            (
+                "from ralph.git.hardening import UNMERGED_PORCELAIN_XY\n"
+                "entry.xy in UNMERGED_PORCELAIN_XY\n"
+            ),
+            "porcelain unmerged XY set has a second definition",
+        ),
+        (
+            "ralph/pipeline/unmerged_xy_reader.py",
+            'UNMERGED_PORCELAIN_XY = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})\n',
+            "porcelain unmerged XY set has a second definition",
+        ),
+        (
+            "ralph/pipeline/unmerged_xy_reader.py",
+            'LOCAL_XY = frozenset({"UU", "AA"})\nentry.xy in LOCAL_XY\n',
+            "porcelain unmerged XY set has a second definition",
+        ),
     ]
+
+    sanctioned_modules = {
+        "ralph/git/hardening.py": (
+            'UNMERGED_PORCELAIN_XY = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})\n'
+        ),
+        "ralph/testing/audit_integration_single_source.py": (
+            'UNMERGED_PORCELAIN_XY = frozenset({"UU", "AA"})\n'
+            "if entry.xy in UNMERGED_PORCELAIN_XY:\n    pass\n"
+        ),
+        "ralph/pipeline/_porcelain_records.py": (
+            "from ralph.git.hardening import UNMERGED_PORCELAIN_XY\n"
+            "entry.xy in UNMERGED_PORCELAIN_XY\n"
+        ),
+        "ralph/pipeline/integration_cleanup.py": (
+            "from ralph.git.hardening import UNMERGED_PORCELAIN_XY\n"
+            "entry.xy in UNMERGED_PORCELAIN_XY\n"
+        ),
+    }
+    sanctioned_violations = audit_modules(sanctioned_modules)
+    if sanctioned_violations:
+        sys.stdout.write(
+            f"SELFTEST FAILED: sanctioned XY consumers produced violations: {sanctioned_violations}\n"
+        )
+        return 1
 
     for rel, source, expected_rule in planted_cases:
         violations = audit_modules({rel: source})

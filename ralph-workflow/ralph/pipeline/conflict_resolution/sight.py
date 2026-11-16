@@ -40,6 +40,7 @@ __all__ = [
     "out_of_reach_paths",
     "out_of_reach_reasons",
     "policy_gitlink_paths",
+    "sight_for_kind",
     "stage_mechanical_conflicts",
 ]
 
@@ -135,6 +136,20 @@ class ConflictSight(StrEnum):
 AGENT_ELIGIBLE_SIGHTS: frozenset[ConflictSight] = frozenset(
     {ConflictSight.AGENT, ConflictSight.AGENT_DECISION}
 )
+
+_SIGHT_BY_KIND: Mapping[ConflictKind, ConflictSight] = {
+    ConflictKind.TEXT: ConflictSight.AGENT,
+    ConflictKind.DELETE_MODIFY: ConflictSight.AGENT_DECISION,
+    ConflictKind.DECLARED_DECISION: ConflictSight.AGENT_DECISION,
+    ConflictKind.APPEND_ONLY: ConflictSight.MECHANICAL,
+    ConflictKind.GITLINK: ConflictSight.GITLINK_POLICY,
+    ConflictKind.BINARY: ConflictSight.OUT_OF_REACH,
+    ConflictKind.OTHER: ConflictSight.OUT_OF_REACH,
+}
+
+
+def sight_for_kind(kind: ConflictKind) -> ConflictSight:
+    return _SIGHT_BY_KIND[kind]
 
 
 def classify_conflict_kinds(

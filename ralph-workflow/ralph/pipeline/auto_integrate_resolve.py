@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import suppress
 from pathlib import Path
 from typing import assert_never
 
@@ -21,13 +20,12 @@ from ralph.git.merge import (
 )
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._pending_merge_commit import (
-    _git_value,
     mark_pending_merge,
     prepare_pending_merge,
     resume_pending_merge,
 )
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
+from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -50,45 +48,6 @@ ConflictResolver = Callable[[Path, str], StopResolutionOutcome]
 RESOLUTION_FAILED = "resolution_failed"
 MERGE_COMMIT_PENDING = "merge_commit_pending"
 _RETAINED_RESOLUTION_REASON = "conflict resolution incomplete; progress retained"
-
-
-def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
-    record = read_record(root)
-    if record is not None:
-        return record
-    from ralph.git.rebase.rebase_continuation import (
-        RebaseContinuationError,
-        rebase_in_progress_at,
-    )
-    from ralph.pipeline.conflict_resolution.rebase_loop import current_rebase_identity
-
-    try:
-        in_rebase = rebase_in_progress_at(root)
-    except (RebaseContinuationError, OSError, RuntimeError, ValueError):
-        in_rebase = False
-
-    if in_rebase:
-        with suppress(OSError, RuntimeError, ValueError):
-            orig_head, onto = current_rebase_identity(root)
-            return IntegrationRecord(
-                phase="integrating",
-                target=target,
-                pre_feature_sha=orig_head,
-                pre_target_sha=onto,
-                resolving_rebase=True,
-            )
-    from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
-
-    in_merge = False
-    with suppress(OSError, RuntimeError, ValueError):
-        in_merge = merge_state(root) == MERGE_STATE_IN_PROGRESS
-    return IntegrationRecord(
-        phase="integrating",
-        target=target,
-        pre_feature_sha=_git_value(root, "rev-parse", "--verify", "HEAD") or "",
-        pre_target_sha=_git_value(root, "rev-parse", "--verify", "MERGE_HEAD"),
-        resolving_merge=in_merge,
-    )
 
 
 def endpoint_merge_with_resolution(
@@ -132,11 +91,9 @@ def resolve_and_commit_with_reason(
     target: str,
     resolver: ConflictResolver,
 ) -> MergeResult:
-    conflicted = unmerged_paths(root)
-    if not conflicted:
-        staged_markers = staged_conflict_marker_paths(root)
-        if staged_markers:
-            conflicted = staged_markers
+    unmerged = unmerged_paths(root)
+    staged_markers = staged_conflict_marker_paths(root)
+    conflicted = [*unmerged, *staged_markers]
     retained = read_record(root)
     if retained is not None and retained.resolving_merge:
         conflicted = list(retained_merge_paths(root, tuple(conflicted)))
@@ -145,8 +102,23 @@ def resolve_and_commit_with_reason(
     refusal = _merge_scope_refusal(root, target, conflicted)
     if refusal is not None:
         return refusal
+    result = _launch_stop_resolution(root, target, resolver, tuple(conflicted))
+    if result.outcome != "success":
+        return result
+    return _commit_resolved_merge(root, conflicted, target)
+
+
+def _launch_stop_resolution(
+    root: Path,
+    target: str,
+    resolver: ConflictResolver,
+    conflicted: tuple[str, ...],
+) -> MergeResult:
     try:
-        from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+        from ralph.pipeline._stop_resolution_entry import (
+            attempt_stop_resolution,
+            resolution_gate_record,
+        )
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -171,18 +143,14 @@ def resolve_and_commit_with_reason(
         return _resolver_exception_result(resolver_exc, tuple(conflicted))
 
     if isinstance(raw_resolution, StopResolutionBlocked):
-        result = MergeResult(
+        return MergeResult(
             MERGE_COMMIT_PENDING,
             raw_resolution.reason,
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )
-    elif isinstance(raw_resolution, MergeResult):
-        result = raw_resolution
-    else:
-        raise TypeError("merge stop resolution returned an invalid result")
-    if result.outcome != "success":
-        return result
-    return _commit_resolved_merge(root, conflicted, target)
+    if isinstance(raw_resolution, MergeResult):
+        return raw_resolution
+    raise TypeError("merge stop resolution returned an invalid result")
 
 
 def _merge_scope_refusal(

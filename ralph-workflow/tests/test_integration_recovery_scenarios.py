@@ -26,6 +26,8 @@ from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
     RetryLaterOutcome,
+    is_stop_resolution_outcome,
+    stop_resolution_outcome_reason,
 )
 from ralph.policy.loader import default_dir, load_policy
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -297,6 +299,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
     assert str(agents_toml) in visible
     assert "ralph --check-config" in visible
     assert isinstance(first, str)
+    assert "ralph --check-config" in first
     assert not first.startswith("WAITING:")
     assert isinstance(second, str)
     assert second.startswith("WAITING:")
@@ -315,7 +318,9 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
     assert isinstance(third, RetryLaterOutcome)
     assert third.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert third.on_change is not None
-    assert not third.on_change.startswith("WAITING:")
+    assert is_stop_resolution_outcome(third)
+    third_reason = stop_resolution_outcome_reason(third)
+    assert not third_reason.startswith("WAITING:")
     assert len(consulted) == 2
 
 
@@ -357,10 +362,9 @@ def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
     assert isinstance(status, RetryLaterOutcome)
     assert status.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert status.on_change is not None
-    assert (
-        "spent/unavailable" in status.on_change
-        or "conflict resolution incomplete" in status.on_change
-    )
+    assert is_stop_resolution_outcome(status)
+    status_reason = stop_resolution_outcome_reason(status)
+    assert "spent/unavailable" in status_reason or "conflict resolution incomplete" in status_reason
     charged = {action: count for (_signature, action), count in ledger.read().repeat_counts.items()}
     assert charged == {NextAction.LAST_RESORT_RECOVERY.value: 1}
     assert ledger.read().global_actions_charged == 0

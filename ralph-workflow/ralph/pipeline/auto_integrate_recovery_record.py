@@ -652,6 +652,12 @@ def _recover_pending_merge(
             and resumed.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
             else None
         )
+        if raw_reason is not None and not isinstance(
+            raw_reason, ResolutionTerminationReason
+        ):
+            raise TypeError(
+                f"continuation returned an invalid terminal reason: {raw_reason!r}"
+            )
         terminal_reason = (
             raw_reason if isinstance(raw_reason, ResolutionTerminationReason) else None
         )

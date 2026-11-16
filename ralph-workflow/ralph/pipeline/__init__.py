@@ -22,8 +22,6 @@ if TYPE_CHECKING:
     from ralph.pipeline._stop_resolution_entry import (
         adopt_resolving_rebase_record,
         attempt_stop_resolution,
-        reset_stop_resolution_presentation,
-        retained_round_is_new,
     )
     from ralph.pipeline.events import Event, PipelineEvent
     from ralph.pipeline.integration_strategy import (
@@ -74,9 +72,7 @@ __all__ = [
     "integration_action",
     "integration_owner_seam",
     "reduce",
-    "reset_stop_resolution_presentation",
     "resolve_conflicted_rebase",
-    "retained_round_is_new",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
@@ -139,17 +135,9 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "escalate_record_fact_outcome",
     ),
     "reduce": ("ralph.pipeline.reducer", "reduce"),
-    "reset_stop_resolution_presentation": (
-        "ralph.pipeline._stop_resolution_entry",
-        "reset_stop_resolution_presentation",
-    ),
     "resolve_conflicted_rebase": (
         "ralph.pipeline._auto_integrate_rebase_resolve",
         "resolve_conflicted_rebase",
-    ),
-    "retained_round_is_new": (
-        "ralph.pipeline._stop_resolution_entry",
-        "retained_round_is_new",
     ),
 }
 
