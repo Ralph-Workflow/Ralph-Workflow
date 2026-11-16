@@ -35,6 +35,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "ordinary manifest modifications now surface as soft protected_overwrite evidence while "
         "still passing tripwires"
     ),
+    "test_custom_protected_paths": (
+        "the custom-protected extension point of evaluate_tripwires was dead code: every "
+        "production caller passes the built-in protected sets only, and the built-in suites "
+        "(protected git content, protected documents, manifest/lockfile, top-level directory) "
+        "already cover every criteria-required protected case; the test was deleted together "
+        "with the dead 'protected' parameter under the zero-dead-code rule"
+    ),
 }
 
 
@@ -390,20 +397,6 @@ def test_a_fixed_name_directory_stays_protected_without_source_files() -> None:
     assert len(report.hard) == 1, report.hard
     assert report.hard[0].category == "protected_deletion"
     assert report.hard[0].path == "src"
-
-
-def test_custom_protected_paths() -> None:
-    protected_rules = ["config/production.json", "licenses/*"]
-
-    mod_diff = [DiffEntry(path="config/production.json", status="M")]
-    mod_report = evaluate_tripwires(mod_diff, 10, TripwireThresholds(), protected=protected_rules)
-    assert mod_report.passed is False
-    assert mod_report.hard[0].category == "protected_overwrite"
-
-    del_diff = [DiffEntry(path="licenses/BSD.txt", status="D")]
-    del_report = evaluate_tripwires(del_diff, 10, TripwireThresholds(), protected=protected_rules)
-    assert del_report.passed is False
-    assert del_report.hard[0].category == "protected_deletion"
 
 
 def test_out_of_scope_allowed_directories() -> None:

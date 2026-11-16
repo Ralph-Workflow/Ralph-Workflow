@@ -237,10 +237,9 @@ def _resolve_diff_base(repo_root: Path) -> str:
 def _resolve_policy_thresholds(
     ctx_or_policy: object,
     phase_name: str,
-) -> tuple[TripwireThresholds, list[str] | None, list[str] | None]:
+) -> tuple[TripwireThresholds, list[str] | None]:
     thresholds = TripwireThresholds()
     allowed_dirs: list[str] | None = None
-    protected: list[str] | None = None
 
     policy: object = getattr(ctx_or_policy, "pipeline_policy", ctx_or_policy)
     if isinstance(policy, PipelinePolicy):
@@ -272,7 +271,7 @@ def _resolve_policy_thresholds(
             if isinstance(ad_obj, (list, tuple, set)):
                 allowed_dirs = [str(d) for d in ad_obj]
 
-    return thresholds, allowed_dirs, protected
+    return thresholds, allowed_dirs
 
 
 def _persist_commit_review_context_to_root(
@@ -559,7 +558,7 @@ def run_commit_review_stage1_preflight(
         logger.error("{}: {}", phase_name, detail)
         return CommitReviewGateFailed(detail=detail)
 
-    thresholds, allowed_dirs, protected = _resolve_policy_thresholds(pipeline_policy, phase_name)
+    thresholds, allowed_dirs = _resolve_policy_thresholds(pipeline_policy, phase_name)
 
     tripwire_entries = [
         e
@@ -578,7 +577,6 @@ def run_commit_review_stage1_preflight(
         tracked_count,
         thresholds,
         allowed_dirs=allowed_dirs,
-        protected=protected,
         approved_deletions=approved_deletions,
     )
 
@@ -746,9 +744,7 @@ def _surviving_unsafe_findings(
     phase_name: str,
     ctx: PhaseContext,
 ) -> tuple[Finding, ...]:
-    thresholds, allowed_dirs, protected = _resolve_policy_thresholds(
-        ctx.pipeline_policy, phase_name
-    )
+    thresholds, allowed_dirs = _resolve_policy_thresholds(ctx.pipeline_policy, phase_name)
     entries = [
         entry
         for entry in diff_entries
@@ -764,7 +760,6 @@ def _surviving_unsafe_findings(
         tracked_count,
         thresholds,
         allowed_dirs=allowed_dirs,
-        protected=protected,
     )
     return tuple(
         finding for finding in report.soft if finding.category in _UNSAFE_SURVIVAL_CATEGORIES

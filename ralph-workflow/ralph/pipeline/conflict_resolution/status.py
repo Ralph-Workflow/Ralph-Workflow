@@ -68,7 +68,7 @@ class ResolutionStatusReporter:
         emit_conflict_phase_line(
             self.display,
             f"{label} status: "
-            f"round={self.round_index}/{self.round_cap}; agent={self.agent_name or 'pending'}; "
+            f"round={min(self.round_index, self.round_cap)}/{self.round_cap}; agent={self.agent_name or 'pending'}; "
             f"last_activity_kind={kind}; last_activity_age_seconds={age}; "
             f"elapsed_seconds={max(0.0, now - self.started_at):.1f}; "
             f"unresolved_count={len(self.unresolved_paths)}",
@@ -93,6 +93,7 @@ __all__ = [
     "clear_conflict_status_bar",
     "conflict_status_bar_session",
     "emit_conflict_phase_line",
+    "phase_label",
     "push_conflict_status_bar",
     "restore_status_bar",
 ]
@@ -177,11 +178,20 @@ def _phase_label(
     phase_label_override: str | None = None,
 ) -> str:
     base = phase_label_override or (DIAGNOSIS_PHASE_LABEL if is_diagnosis else PHASE_LABEL)
+    round_index = min(round_index, round_cap)
     if replay_index is not None and replay_total is not None:
-        return f"{base} (commit {replay_index}/{replay_total}, round {round_index}/{round_cap})"
+        return (
+            f"{base} (commit {min(replay_index, replay_total)}/{replay_total}, "
+            f"round {round_index}/{round_cap})"
+        )
     if stop_index is None or stop_cap is None:
         return base
-    return f"{base} (commit {stop_index}/{stop_cap}, round {round_index}/{round_cap})"
+    return (
+        f"{base} (commit {min(stop_index, stop_cap)}/{stop_cap}, round {round_index}/{round_cap})"
+    )
+
+
+phase_label = _phase_label
 
 
 def capture_status_bar_model(display: object) -> object | None:

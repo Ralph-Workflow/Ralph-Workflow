@@ -1091,9 +1091,6 @@ def _initialize_resumed_timeboxes(
     return state
 
 
-_BASELINE_REF_NAMESPACE: Final = "refs/ralph/baselines"
-
-
 def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> PipelineState:
     if root is None or state.rollback_baseline_ref:
         return state
@@ -1104,7 +1101,7 @@ def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> Pipel
         return state
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("Failed to seal the run-start baseline: {}", exc)
-        return state.copy_with(rollback_baseline_ref=f"{_BASELINE_REF_NAMESPACE}/{run_id}")
+        return state
     if seal is None:
         return state
     logger.info("Recorded the run-start rollback baseline: {}", seal.ref)

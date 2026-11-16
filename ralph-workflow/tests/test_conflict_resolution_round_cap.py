@@ -10,6 +10,10 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.conflict_resolution.status import (
+    ResolutionStatusReporter,
+    phase_label,
+)
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.recovery.controller import RecoveryController
@@ -165,3 +169,82 @@ def test_round_cap_regression_unresolved_success_never_exceeds_cap(
     ]
     assert rendered_rounds
     assert all(round_index <= round_cap for round_index, round_cap in rendered_rounds)
+
+
+def test_phase_label_never_renders_round_index_above_cap() -> None:
+    cap = 3
+    label = phase_label(
+        round_index=cap + 1,
+        round_cap=cap,
+        stop_index=1,
+        stop_cap=cap,
+    )
+    assert f"round {cap + 1}/{cap}" not in label
+    assert f"round {cap}/{cap}" in label
+
+
+def test_phase_label_never_renders_replay_or_stop_numerators_above_caps() -> None:
+    cap = 3
+    label = phase_label(
+        round_index=cap + 1,
+        round_cap=cap,
+        stop_index=cap + 2,
+        stop_cap=cap,
+        replay_index=cap + 5,
+        replay_total=cap,
+    )
+    assert f"commit {cap + 5}/{cap}" not in label
+    assert f"commit {cap}/{cap}" in label
+    assert f"round {cap + 1}/{cap}" not in label
+    assert f"round {cap}/{cap}" in label
+
+
+def test_phase_label_none_handling_unchanged_when_indices_within_cap() -> None:
+    cap = 3
+    base = phase_label(round_index=2, round_cap=cap, stop_index=None, stop_cap=None)
+    assert base == "Rebase Conflict Resolution"
+    stop = phase_label(round_index=2, round_cap=cap, stop_index=1, stop_cap=cap)
+    assert stop == f"Rebase Conflict Resolution (commit 1/{cap}, round 2/{cap})"
+    replay = phase_label(
+        round_index=2,
+        round_cap=cap,
+        stop_index=1,
+        stop_cap=cap,
+        replay_index=2,
+        replay_total=cap,
+    )
+    assert replay == f"Rebase Conflict Resolution (commit 2/{cap}, round 2/{cap})"
+
+
+def test_reporter_observe_never_emits_round_index_above_cap() -> None:
+    cap = 3
+    display = _StatusDisplay()
+
+    class _Event:
+        diagnostic: dict[str, object]
+
+        def __init__(self) -> None:
+            self.diagnostic = {
+                "last_activity_kind": "healthy",
+                "last_activity_age_seconds": 1.0,
+            }
+
+    reporter = ResolutionStatusReporter(
+        display=display,
+        target="main",
+        round_index=cap + 1,
+        round_cap=cap,
+        stop_index=1,
+        stop_cap=cap,
+        clock=lambda: 100.0,
+        interval_seconds=30.0,
+        started_at=0.0,
+        unresolved_paths=("src/alpha.py",),
+        agent_name="one",
+    )
+    reporter.observe(_Event())
+
+    assert display.lines
+    for line in display.lines:
+        assert f"round={cap + 1}/{cap}" not in line
+        assert f"round={cap}/{cap}" in line

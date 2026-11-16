@@ -498,7 +498,6 @@ def _evaluate_hard_entry(
     norm: PurePosixPath,
     norm_str: str,
     old_mode: object,
-    custom_protected: set[str],
     protected_top_level_dirs: frozenset[str],
     *,
     deleted: bool,
@@ -521,15 +520,6 @@ def _evaluate_hard_entry(
         return Finding(
             category=category,
             message=f"Protected document {action}: {norm_str}",
-            path=norm_str,
-        )
-
-    if norm_str in custom_protected or any(fnmatchcase(norm_str, pat) for pat in custom_protected):
-        action = "deleted" if deleted else "modified or overwritten"
-        category = "protected_deletion" if deleted else "protected_overwrite"
-        return Finding(
-            category=category,
-            message=f"Protected path {action}: {norm_str}",
             path=norm_str,
         )
 
@@ -626,7 +616,6 @@ def evaluate_tripwires(
     tracked_count: int,
     thresholds: TripwireThresholds,
     allowed_dirs: Sequence[str] | set[str] | None = None,
-    protected: Sequence[str] | set[str] | None = None,
     approved_deletions: frozenset[str] | set[str] | None = None,
 ) -> TripwireReport:
     entries = list(diff_entries)
@@ -648,10 +637,6 @@ def evaluate_tripwires(
     )
     soft_findings: list[Finding] = []
 
-    custom_protected: set[str] = set()
-    if protected is not None:
-        custom_protected = {p.strip().replace("\\", "/") for p in protected}
-
     for entry in entries:
         raw_path = str(_get_entry_attr(entry, "path", ""))
         status = str(_get_entry_attr(entry, "status", ""))
@@ -670,7 +655,6 @@ def evaluate_tripwires(
             norm,
             norm_str,
             old_mode,
-            custom_protected,
             protected_dirs,
             deleted=deleted,
             content=content,
