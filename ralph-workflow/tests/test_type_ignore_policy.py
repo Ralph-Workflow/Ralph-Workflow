@@ -84,9 +84,10 @@ def test_ruff_enforces_blanket_type_ignore_rule() -> None:
 def test_repo_carries_no_inline_type_ignore_suppressions() -> None:
     offenders: list[str] = []
     for path in _repo_python_files():
-        text = path.read_text(encoding="utf-8")
-        if "# type:" not in text:
+        raw = path.read_bytes()
+        if b"# type:" not in raw:
             continue
+        text = raw.decode("utf-8")
         rel_path = str(path.relative_to(REPO_ROOT))
         for line_number, line in enumerate(text.splitlines(), start=1):
             if _comment_token(line, "# type:"):
@@ -101,9 +102,10 @@ def test_repo_carries_no_inline_type_ignore_suppressions() -> None:
 def test_repo_carries_no_inline_pyright_directives() -> None:
     offenders: list[str] = []
     for path in _repo_python_files():
-        text = path.read_text(encoding="utf-8")
-        if "# py" not in text:
+        raw = path.read_bytes()
+        if b"# py" not in raw:
             continue
+        text = raw.decode("utf-8")
         rel_path = str(path.relative_to(REPO_ROOT))
         for line_number, line in enumerate(text.splitlines(), start=1):
             if _comment_token(line, "# py" + "right:"):

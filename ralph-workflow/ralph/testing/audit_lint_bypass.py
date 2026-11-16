@@ -348,6 +348,18 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
         "pattern": "tests/**/*.py",
         "reason": "Test call sites pass boolean positional values to test fixtures and functions.",
     },
+    "BLE001": {
+        "pattern": [
+            "ralph/display/context.py",
+            "ralph/display/line_sanitizer.py",
+            "ralph/pipeline/integration_resolution.py",
+        ],
+        "reason": (
+            "Terminal escape containment invariants require except Exception in "
+            "strip_markup_safe and install_sigwinch_refresher; integration resolution "
+            "probes absorb all probe failures as unknown integration state."
+        ),
+    },
 }
 
 _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$|\s+\S)")

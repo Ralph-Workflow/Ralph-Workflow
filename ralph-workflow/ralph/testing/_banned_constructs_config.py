@@ -129,6 +129,16 @@ def _matching_banned_rules(selectors: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(matched))
 
 
+_ALLOWED_CONFIG_BYPASSES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("tests/**/*.py", "S101"),
+        ("ralph/display/context.py", "BLE001"),
+        ("ralph/display/line_sanitizer.py", "BLE001"),
+        ("ralph/pipeline/integration_resolution.py", "BLE001"),
+    }
+)
+
+
 def _config_finding(path: str, line: int, construct: str) -> Finding:
     return Finding(path, line, construct, "CONFIG-BYPASS", "CONFIG-BYPASS")
 
@@ -150,7 +160,7 @@ def _audit_pyproject(path: Path, display: str) -> list[Finding]:
                 matched_rules = [
                     rule
                     for rule in _matching_banned_rules(_selectors(value))
-                    if not (pattern == "tests/**/*.py" and rule == "S101")
+                    if (pattern, rule) not in _ALLOWED_CONFIG_BYPASSES
                 ]
                 findings.extend(
                     _config_finding(

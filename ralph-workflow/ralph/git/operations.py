@@ -625,6 +625,83 @@ def _cas_publish_or_detect_advance(
     return CommitCreationResult.created(candidate_sha)
 
 
+def _execute_create_commit(
+    repo: Repo,
+    repo_root: Path | str,
+    message: str,
+    author_name: str | None,
+    author_email: str | None,
+    expected_head: str,
+) -> CommitCreationResult:
+    message = _append_ralph_workflow_coauthor_trailer(message)
+    current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
+    if not hasattr(repo, "git_dir"):
+        if current_head_sha and current_head_sha != expected_head:
+            return CommitCreationResult.already_advanced(current_head_sha)
+        author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
+        actor = Actor(author_name, author_email)
+        commit = _run_git_operation_with_stale_lock_recovery(
+            "create_commit",
+            lambda: repo.index.commit(message, author=actor, committer=actor),
+            repo_root,
+        )
+        return CommitCreationResult.created(commit.hexsha)
+    author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
+
+    ref_name = _reattach_or_resolve_ref_name(Path(repo_root))
+
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as message_file:
+        message_file.write(message)
+        message_path = Path(message_file.name)
+    try:
+        message = _run_prepare_commit_hooks(Path(repo_root), str(repo.git_dir), message_path)
+    finally:
+        message_path.unlink(missing_ok=True)
+
+    candidate_tree_sha = _candidate_commit_tree(Path(repo_root))
+
+    if _tree_matches_head(Path(repo_root), current_head_sha, candidate_tree_sha):
+        return CommitCreationResult.already_advanced(current_head_sha)
+
+    commit_result = run_git(
+        ("commit-tree", candidate_tree_sha, "-p", expected_head),
+        cwd=Path(repo_root),
+        label="git-commit-tree",
+        options=GitRunOptions(
+            env={
+                "GIT_AUTHOR_NAME": author_name,
+                "GIT_AUTHOR_EMAIL": author_email,
+                "GIT_COMMITTER_NAME": author_name,
+                "GIT_COMMITTER_EMAIL": author_email,
+                "GIT_REFLOG_ACTION": "ralph create_commit",
+            },
+            input_data=message,
+        ),
+    )
+    if commit_result.returncode != 0:
+        _raise_git_commit_error(commit_result.stderr.strip())
+    candidate_sha = commit_result.stdout.strip()
+    result = _run_git_operation_with_stale_lock_recovery(
+        "create_commit",
+        lambda: _cas_publish_or_detect_advance(
+            Path(repo_root),
+            ref_name,
+            candidate_sha,
+            expected_head,
+            Path(repo.git_dir) / "hooks",
+            {"GIT_REFLOG_ACTION": "ralph create_commit"},
+        ),
+        repo_root,
+    )
+    if result.status is CommitCreationStatus.CREATED:
+        logger.info(
+            "Created commit {}: {}",
+            candidate_sha[:8],
+            message.splitlines()[0] if message else "(no message)",
+        )
+    return result
+
+
 def create_commit(
     repo_root: Path | str,
     message: str,
@@ -636,73 +713,14 @@ def create_commit(
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
-        message = _append_ralph_workflow_coauthor_trailer(message)
-        current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
-        if not hasattr(repo, "git_dir"):
-            if current_head_sha and current_head_sha != expected_head:
-                return CommitCreationResult.already_advanced(current_head_sha)
-            author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
-            actor = Actor(author_name, author_email)
-            commit = _run_git_operation_with_stale_lock_recovery(
-                "create_commit",
-                lambda: repo.index.commit(message, author=actor, committer=actor),
-                repo_root,
-            )
-            return CommitCreationResult.created(commit.hexsha)
-        author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
-
-        ref_name = _reattach_or_resolve_ref_name(Path(repo_root))
-
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as message_file:
-            message_file.write(message)
-            message_path = Path(message_file.name)
-        try:
-            message = _run_prepare_commit_hooks(Path(repo_root), str(repo.git_dir), message_path)
-        finally:
-            message_path.unlink(missing_ok=True)
-
-        candidate_tree_sha = _candidate_commit_tree(Path(repo_root))
-
-        if _tree_matches_head(Path(repo_root), current_head_sha, candidate_tree_sha):
-            return CommitCreationResult.already_advanced(current_head_sha)
-
-        commit_result = run_git(
-            ("commit-tree", candidate_tree_sha, "-p", expected_head),
-            cwd=Path(repo_root),
-            label="git-commit-tree",
-            options=GitRunOptions(
-                env={
-                    "GIT_AUTHOR_NAME": author_name,
-                    "GIT_AUTHOR_EMAIL": author_email,
-                    "GIT_COMMITTER_NAME": author_name,
-                    "GIT_COMMITTER_EMAIL": author_email,
-                    "GIT_REFLOG_ACTION": "ralph create_commit",
-                },
-                input_data=message,
-            ),
-        )
-        if commit_result.returncode != 0:
-            _raise_git_commit_error(commit_result.stderr.strip())
-        candidate_sha = commit_result.stdout.strip()
-        result = _run_git_operation_with_stale_lock_recovery(
-            "create_commit",
-            lambda: _cas_publish_or_detect_advance(
-                Path(repo_root),
-                ref_name,
-                candidate_sha,
-                expected_head,
-                Path(repo.git_dir) / "hooks",
-                {"GIT_REFLOG_ACTION": "ralph create_commit"},
-            ),
+        return _execute_create_commit(
+            repo,
             repo_root,
+            message,
+            author_name,
+            author_email,
+            expected_head,
         )
-        if result.status is CommitCreationStatus.CREATED:
-            logger.info(
-                "Created commit {}: {}",
-                candidate_sha[:8],
-                message.splitlines()[0] if message else "(no message)",
-            )
-        return result
     except GitOperationError:
         raise
     except (GitError, OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
@@ -781,6 +799,100 @@ def _undo_unapproved_commit(
     return restored
 
 
+def _execute_create_commit_with_hooks(
+    repo: Repo,
+    repo_root: Path | str,
+    message: str,
+    *,
+    expected_head: str,
+    expected_tree_sha: str,
+    author_name: str | None,
+    author_email: str | None,
+) -> CommitCreationResult:
+    message = _append_ralph_workflow_coauthor_trailer(message)
+    current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
+    if current_head_sha and current_head_sha != expected_head:
+        return CommitCreationResult.already_advanced(current_head_sha)
+    author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
+    ref_name = _reattach_or_resolve_ref_name(Path(repo_root))
+
+    staged_tree_sha = _candidate_commit_tree(Path(repo_root))
+    if staged_tree_sha != expected_tree_sha:
+        raise CommitTreeMismatchError(
+            f"staged tree SHA {staged_tree_sha} does not match approved tree SHA "
+            f"{expected_tree_sha}"
+        )
+    if _tree_matches_head(Path(repo_root), current_head_sha, staged_tree_sha):
+        return CommitCreationResult.already_advanced(current_head_sha)
+
+    with tempfile.TemporaryDirectory(prefix="ralph-commit-") as scratch:
+        message_path = Path(scratch) / "COMMIT_EDITMSG"
+        message_path.write_text(message, encoding="utf-8")
+        commit_result = run_git(
+            (
+                "commit",
+                "--allow-empty",
+                "--cleanup=verbatim",
+                "--no-gpg-sign",
+                "--file",
+                str(message_path),
+            ),
+            cwd=Path(repo_root),
+            label="git-commit",
+            options=GitRunOptions(
+                env={
+                    "GIT_AUTHOR_NAME": author_name,
+                    "GIT_AUTHOR_EMAIL": author_email,
+                    "GIT_COMMITTER_NAME": author_name,
+                    "GIT_COMMITTER_EMAIL": author_email,
+                    "GIT_REFLOG_ACTION": "ralph create_commit",
+                },
+            ),
+        )
+    if commit_result.returncode != 0:
+        detail = commit_result.stderr.strip() or commit_result.stdout.strip()
+        _raise_git_commit_error(detail or "git commit failed")
+
+    created_sha = _current_head_sha(Path(repo_root)) or ""
+    if not created_sha:
+        _raise_git_commit_error("git commit did not advance HEAD")
+    committed_tree_sha = _head_tree_sha(Path(repo_root), created_sha) or ""
+    parent_sha = _commit_parent_sha(Path(repo_root), created_sha)
+    if committed_tree_sha != expected_tree_sha:
+        undone = _undo_unapproved_commit(
+            Path(repo_root),
+            ref_name,
+            created_sha,
+            parent_sha,
+            expected_tree_sha,
+        )
+        if not undone:
+            raise CommitTreeMismatchError(
+                f"committed tree SHA {committed_tree_sha} does not match approved tree SHA "
+                f"{expected_tree_sha}; the unapproved commit {created_sha[:8]} could NOT be "
+                "undone and is still published - remove it manually"
+            )
+        raise CommitTreeMismatchError(
+            f"committed tree SHA {committed_tree_sha} does not match approved tree SHA "
+            f"{expected_tree_sha}"
+        )
+    if parent_sha and expected_head and parent_sha != expected_head:
+        _undo_unapproved_commit(
+            Path(repo_root),
+            ref_name,
+            created_sha,
+            parent_sha,
+            expected_tree_sha,
+        )
+        return CommitCreationResult.already_advanced(parent_sha)
+    logger.info(
+        "Created commit {}: {}",
+        created_sha[:8],
+        message.splitlines()[0] if message else "(no message)",
+    )
+    return CommitCreationResult.created(created_sha)
+
+
 def create_commit_with_hooks(
     repo_root: Path | str,
     message: str,
@@ -793,88 +905,15 @@ def create_commit_with_hooks(
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
-        message = _append_ralph_workflow_coauthor_trailer(message)
-        current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
-        if current_head_sha and current_head_sha != expected_head:
-            return CommitCreationResult.already_advanced(current_head_sha)
-        author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
-        ref_name = _reattach_or_resolve_ref_name(Path(repo_root))
-
-        staged_tree_sha = _candidate_commit_tree(Path(repo_root))
-        if staged_tree_sha != expected_tree_sha:
-            raise CommitTreeMismatchError(
-                f"staged tree SHA {staged_tree_sha} does not match approved tree SHA "
-                f"{expected_tree_sha}"
-            )
-        if _tree_matches_head(Path(repo_root), current_head_sha, staged_tree_sha):
-            return CommitCreationResult.already_advanced(current_head_sha)
-
-        with tempfile.TemporaryDirectory(prefix="ralph-commit-") as scratch:
-            message_path = Path(scratch) / "COMMIT_EDITMSG"
-            message_path.write_text(message, encoding="utf-8")
-            commit_result = run_git(
-                (
-                    "commit",
-                    "--allow-empty",
-                    "--cleanup=verbatim",
-                    "--no-gpg-sign",
-                    "--file",
-                    str(message_path),
-                ),
-                cwd=Path(repo_root),
-                label="git-commit",
-                options=GitRunOptions(
-                    env={
-                        "GIT_AUTHOR_NAME": author_name,
-                        "GIT_AUTHOR_EMAIL": author_email,
-                        "GIT_COMMITTER_NAME": author_name,
-                        "GIT_COMMITTER_EMAIL": author_email,
-                        "GIT_REFLOG_ACTION": "ralph create_commit",
-                    },
-                ),
-            )
-        if commit_result.returncode != 0:
-            detail = commit_result.stderr.strip() or commit_result.stdout.strip()
-            _raise_git_commit_error(detail or "git commit failed")
-
-        created_sha = _current_head_sha(Path(repo_root)) or ""
-        if not created_sha:
-            _raise_git_commit_error("git commit did not advance HEAD")
-        committed_tree_sha = _head_tree_sha(Path(repo_root), created_sha) or ""
-        parent_sha = _commit_parent_sha(Path(repo_root), created_sha)
-        if committed_tree_sha != expected_tree_sha:
-            undone = _undo_unapproved_commit(
-                Path(repo_root),
-                ref_name,
-                created_sha,
-                parent_sha,
-                expected_tree_sha,
-            )
-            if not undone:
-                raise CommitTreeMismatchError(
-                    f"committed tree SHA {committed_tree_sha} does not match approved tree SHA "
-                    f"{expected_tree_sha}; the unapproved commit {created_sha[:8]} could NOT be "
-                    "undone and is still published - remove it manually"
-                )
-            raise CommitTreeMismatchError(
-                f"committed tree SHA {committed_tree_sha} does not match approved tree SHA "
-                f"{expected_tree_sha}"
-            )
-        if parent_sha and expected_head and parent_sha != expected_head:
-            _undo_unapproved_commit(
-                Path(repo_root),
-                ref_name,
-                created_sha,
-                parent_sha,
-                expected_tree_sha,
-            )
-            return CommitCreationResult.already_advanced(parent_sha)
-        logger.info(
-            "Created commit {}: {}",
-            created_sha[:8],
-            message.splitlines()[0] if message else "(no message)",
+        return _execute_create_commit_with_hooks(
+            repo,
+            repo_root,
+            message,
+            expected_head=expected_head,
+            expected_tree_sha=expected_tree_sha,
+            author_name=author_name,
+            author_email=author_email,
         )
-        return CommitCreationResult.created(created_sha)
     except GitOperationError:
         raise
     except (GitError, OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:

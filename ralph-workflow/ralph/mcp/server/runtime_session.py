@@ -44,7 +44,6 @@ from ralph.mcp.protocol.session import (
     session_has_capability,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
-from ralph.mcp.server._session_payload_type_error import SessionPayloadTypeError
 from ralph.mcp.server._snapshots import read_snapshot, snapshot_dir
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 
@@ -368,7 +367,7 @@ class FileBackedSession:
 def _load_session_payload(path: Path) -> dict[str, object]:
     raw: object = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
-        raise SessionPayloadTypeError(f"{path} must encode an object")
+        raise TypeError(f"{path} must encode an object")
     return raw
 
 
@@ -410,7 +409,7 @@ def session_from_env(
         return None
     payload_obj: object = json.loads(raw)
     if not isinstance(payload_obj, dict):
-        raise SessionPayloadTypeError(f"{SESSION_ENV} must encode an object")
+        raise TypeError(f"{SESSION_ENV} must encode an object")
     payload: dict[str, object] = payload_obj
 
     capabilities_value: object = payload.get("capabilities", [])

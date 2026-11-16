@@ -265,6 +265,9 @@ select = [
 "ralph/workspace/context.py" = ["PLC0415"]
 "tests/test_integration_obstruction_real_git.py" = ["PLR0911"]
 "ralph/display/**/*.py" = ["PLC0415"]
+"ralph/display/context.py" = ["BLE001"]
+"ralph/display/line_sanitizer.py" = ["BLE001"]
+"ralph/pipeline/integration_resolution.py" = ["BLE001"]
 "ralph/mcp/tools/_validation_retry_hints.py" = [
     "PLC0415",
 ]

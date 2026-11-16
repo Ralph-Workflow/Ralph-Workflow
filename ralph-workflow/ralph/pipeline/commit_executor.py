@@ -75,6 +75,12 @@ def default_mcp_capabilities_for_phase(
     )
 
 
+def _is_legacy_create_commit_fn(
+    value: object,
+) -> TypeGuard[Callable[[str, str], CommitCreationResult]]:
+    return callable(value)
+
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import TypeGuard
@@ -228,10 +234,6 @@ def _is_create_commit_with_hooks_fn(value: object) -> TypeGuard[_CreateCommitWit
     return callable(value)
 
 
-def _is_legacy_create_commit_fn(value: object) -> TypeGuard[_LegacyCreateCommitFn]:
-    return callable(value)
-
-
 if TYPE_CHECKING:
 
     class _CreateCommitFn(Protocol):
@@ -241,13 +243,6 @@ if TYPE_CHECKING:
             message: str,
             *,
             expected_head: str,
-        ) -> CommitCreationResult: ...
-
-    class _LegacyCreateCommitFn(Protocol):
-        def __call__(
-            self,
-            repo_root: Path | str,
-            message: str,
         ) -> CommitCreationResult: ...
 
     class _CreateCommitWithHooksFn(Protocol):
@@ -345,9 +340,13 @@ def _perform_commit_creation(
             try:
                 return create_commit_fn(str(root), commit_message, expected_head=expected_head)
             except TypeError:
-                if _is_legacy_create_commit_fn(create_commit_fn):
-                    return create_commit_fn(str(root), commit_message)
-                raise
+                pass
+            raw_fn: object = create_commit_fn
+            if _is_legacy_create_commit_fn(raw_fn):
+                return raw_fn(str(root), commit_message)
+            return CommitCreationResult(
+                CommitCreationStatus.FAILED, error="unsupported commit function"
+            )
         create_with_hooks = repair_opts.get("create_commit_with_hooks_fn")
         hook_committer: _CreateCommitWithHooksFn = (
             create_with_hooks
