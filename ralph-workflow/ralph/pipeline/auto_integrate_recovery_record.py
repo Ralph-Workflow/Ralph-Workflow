@@ -652,6 +652,10 @@ def _recover_pending_merge(
             and resumed.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
             else None
         )
+        if not (
+            isinstance(terminal_reason, ResolutionTerminationReason) or terminal_reason is None
+        ):
+            raise RuntimeError(f"unexpected terminal_reason type: {type(terminal_reason).__name__}")
         return _resumed_failure_outcome(
             root,
             latest_record,

@@ -410,7 +410,7 @@ def continue_retained_resolution(
     if (record.resolving_merge or merge_state(root) == MERGE_STATE_IN_PROGRESS) and merge_state(
         root
     ) == MERGE_STATE_IN_PROGRESS:
-        failure = _continue_merge_resolution(
+        failure: str | RetryLaterOutcome | None = _continue_merge_resolution(
             root,
             record,
             target,

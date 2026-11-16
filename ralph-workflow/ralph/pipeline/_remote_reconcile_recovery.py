@@ -128,6 +128,13 @@ def _continue_target_reconciliation(
         continued = _continue_target_record(
             owner, root, record, config, conflict_resolver, rebase_stop_resolver
         )
+        if isinstance(continued, RetryLaterOutcome):
+            retry_later_reason = continued.on_change or (
+                f"retry after {continued.until}"
+                if continued.until is not None
+                else "resolution deferred; record retained"
+            )
+            return _retained(record, retry_later_reason)
         if (
             isinstance(continued, str)
             or branch_sha(owner, record.target) != continued.integrated_feature_sha
@@ -203,7 +210,7 @@ def _continue_target_record(
     config: UnifiedConfig | None,
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
-) -> IntegrationRecord | str:
+) -> IntegrationRecord | str | RetryLaterOutcome:
     if not (
         record.resolving_rebase or record.resolving_merge or record.rebase_continue_pending
     ) and (rebase_in_progress_at(owner) or merge_state(owner) == MERGE_STATE_IN_PROGRESS):
