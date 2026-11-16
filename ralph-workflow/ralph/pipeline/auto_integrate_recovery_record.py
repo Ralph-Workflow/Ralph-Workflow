@@ -448,9 +448,7 @@ def _recover_unresolved_integrating(
             retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
             record_retained=True,
         )
-    if _retained_resolution_is_stale(root, record) and _recorded_identity_moved(
-        root, record
-    ):
+    if _retained_resolution_is_stale(root, record) and _recorded_identity_moved(root, record):
         return _replay_stale_resolution(
             root,
             record,
