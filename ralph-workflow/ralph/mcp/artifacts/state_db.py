@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING, Final, cast
 
+from ralph.mcp.artifacts._schema_version_type_error import SchemaVersionTypeError
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
