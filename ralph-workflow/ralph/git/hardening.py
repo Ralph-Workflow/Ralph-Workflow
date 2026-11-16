@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from pathlib import Path
 
 PINNED_CONFIG_ARGS: tuple[str, ...] = (
     "-c",
@@ -35,9 +34,7 @@ GIT_DIR_ENV_KEYS: frozenset[str] = frozenset(
     {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"}
 )
 
-UNMERGED_PORCELAIN_XY: frozenset[str] = frozenset(
-    {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}
-)
+UNMERGED_PORCELAIN_XY: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
 
 _MIN_PORCELAIN_PIECE_LEN: int = 3
 

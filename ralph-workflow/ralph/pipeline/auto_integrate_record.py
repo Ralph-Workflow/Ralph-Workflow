@@ -169,6 +169,7 @@ class IntegrationRecord(RalphBaseModel):
             waiting_notification_key=None,
         )
 
+
 _LEGACY_GLOBAL_EVIDENCE_KEYS: frozenset[str] = frozenset({"for-each-ref", "ls-files"})
 
 

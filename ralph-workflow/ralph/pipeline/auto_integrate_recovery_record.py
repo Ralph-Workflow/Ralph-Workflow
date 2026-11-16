@@ -23,7 +23,6 @@ from ralph.pipeline._integration_continuation import (
     compute_continuation_retry_gate_key,
     reset_continuation_gate_state,
 )
-from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline._integration_continuation import (
     continue_retained_resolution as _continue_retained_resolution,
 )
@@ -42,6 +41,7 @@ from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline._recovery_fast_forward_landing import (
     _record_skip,
 )
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline._terminal_emitter import critical
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
@@ -146,7 +146,7 @@ def continue_retained_resolution(
     config_path: Path | None = None,
     force_retry: bool = False,
     stop_identity: str | None = None,
-) -> IntegrationRecord | str:
+) -> IntegrationRecord | str | RetryLaterOutcome:
     completed_head = _completed_rebase_receipt_head(root, record)
     if completed_head is not None:
         completed = record.with_completion_advanced(completed_head)
@@ -647,12 +647,11 @@ def _recover_pending_merge(
     if isinstance(resumed, (str, RetryLaterOutcome)):
         latest_record = read_record_outcome(root).record or record
         terminal_reason = (
-            resumed.terminal_reason
+            ResolutionTerminationReason.CANDIDATE_EXHAUSTED
             if isinstance(resumed, RetryLaterOutcome)
             and resumed.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
             else None
         )
-        assert isinstance(terminal_reason, ResolutionTerminationReason) or terminal_reason is None
         return _resumed_failure_outcome(
             root,
             latest_record,

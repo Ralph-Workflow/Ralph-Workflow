@@ -76,12 +76,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the reviewed inventory gains the two integration-preservation reapply labels, whose "
         "nonzero exits keep the loud default, and drops the retired "
         "recovery:recorded-identity-status probe, which disappeared with the dirty-tree half "
-        "of the recorded-identity check"
+        "of the recorded-identity check; it also drops the hardening:porcelain-z probe, "
+        "which disappeared with the unmerged-path helpers retired from ralph.git.hardening"
     ),
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "3b7a665070551481578e38c7d49ee5bf236132dc3f4752cc9a13c3a54d6d7db0"
+    "a3f73fa478282b2337a89bef567569035e04b3423e2ea91cbf6cf6443ee44ba6"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory replaces git-rebase:diff with the four "
@@ -92,7 +93,8 @@ _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "pending-rebase:land-ref, and the integration-preservation:reapply-work-diff and "
     "integration-preservation:reapply-work-diff-cached reapply steps. It also removes the "
     "retired recovery:recorded-identity-status probe, which disappeared with the "
-    "dirty-tree half of the recorded-identity check. These are "
+    "dirty-tree half of the recorded-identity check, and the hardening:porcelain-z probe, "
+    "which disappeared with the unmerged-path helpers retired from ralph.git.hardening. These are "
     "real recovery and conflict-resolution operations whose nonzero exits must retain the "
     "loud default."
 )

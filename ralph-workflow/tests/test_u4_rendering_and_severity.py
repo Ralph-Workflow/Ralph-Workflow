@@ -49,7 +49,9 @@ def test_declared_decision_status_builds_progress_via_single_status_model() -> N
     assert status.progress == "done=2; remaining=1"
 
 
-def test_declared_decision_announcement_renders_each_path_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_declared_decision_announcement_renders_each_path_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     emitted: list[str] = []
     status = build_integration_status(
         cause="DECLARED_DECISION",

@@ -151,8 +151,8 @@ def _probe_porcelain(
     root: Path,
     probe: Callable[[Path], tuple[bool, str]],
 ) -> tuple[ProbeOutcome, str]:
-    from ralph.pipeline._porcelain_records import porcelain_unmerged_paths
     from ralph.git.merge import UNMERGED_PATH_QUERY_FAILED, observe_unmerged_paths
+    from ralph.pipeline._porcelain_records import porcelain_unmerged_paths
 
     try:
         readable, porcelain_output = probe(root)

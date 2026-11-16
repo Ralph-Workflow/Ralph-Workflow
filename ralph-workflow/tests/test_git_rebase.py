@@ -42,6 +42,15 @@ from ralph.git.rebase.rebase_state_machine import (
 )
 from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_subprocess_executor_emits_process_manager_events": (
+        "get_conflicted_files now reads unmerged paths through the single git owner "
+        "observe_unmerged_paths, whose process label is git-unmerged-paths; the retired "
+        "hardening:porcelain-z helper no longer exists, and the full process lifecycle is "
+        "still asserted"
+    ),
+}
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -439,7 +448,7 @@ def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) ->
             get_process_manager().shutdown_all(grace_period_s=0)
         reset_process_manager()
 
-    _assert_full_lifecycle(events, "hardening:porcelain-z")
+    _assert_full_lifecycle(events, "git-unmerged-paths")
 
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:

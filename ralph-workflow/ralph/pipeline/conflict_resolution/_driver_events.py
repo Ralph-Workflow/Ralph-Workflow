@@ -97,15 +97,9 @@ def emit_success(
 
 
 def _session_progress(status_session: ResolutionSession) -> str:
-    from ralph.pipeline.conflict_resolution import driver as driver_mod
+    from ralph.pipeline.conflict_resolution.driver import build_session_integration_status
 
-    build_fn = cast(
-        "Callable[..., IntegrationStatus] | None",
-        getattr(driver_mod, "build_session_integration_status", None),
-    )
-    if build_fn is None:
-        return "(unknown)"
-    return build_fn(status_session, cause="PROGRESS").progress
+    return build_session_integration_status(status_session, cause="PROGRESS").progress
 
 
 def emit_attempt_outcome(

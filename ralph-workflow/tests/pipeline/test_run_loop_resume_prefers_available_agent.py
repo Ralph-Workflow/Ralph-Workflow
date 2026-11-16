@@ -11,15 +11,14 @@ from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import auto_integrate_resolve, run_loop
-from ralph.pipeline._resolved_outcome import ResolvedOutcome
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.integration_resolution import (
     RECOVERABLE,
     RESOLVED,
     IntegrationResolutionVerdict,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry

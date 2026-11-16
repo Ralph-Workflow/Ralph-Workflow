@@ -787,11 +787,7 @@ def selftest() -> int:
         ),
         (
             "ralph/pipeline/planted_tuple_protocol.py",
-            (
-                "class RebaseResolutionResult:\n"
-                "    def __len__(self) -> int:\n"
-                "        return 3\n"
-            ),
+            "class RebaseResolutionResult:\n    def __len__(self) -> int:\n        return 3\n",
             "resolution result retains legacy tuple vocabulary",
         ),
         (

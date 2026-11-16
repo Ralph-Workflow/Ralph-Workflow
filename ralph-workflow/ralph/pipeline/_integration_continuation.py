@@ -160,7 +160,7 @@ def _continue_rebase_resolution(
     config_path: Path | None,
     force_retry: bool,
     stop_identity: str | None,
-) -> str | RetryLaterOutcome:
+) -> str | RetryLaterOutcome | None:
     matches = active_operation_matches(root, record)
     if not matches:
         return "active rebase identity differs from retained ownership; operator work preserved"
@@ -251,12 +251,12 @@ def _rebase_failure_transport(
     stop_identity: str | None,
     result: StopResolutionOutcome,
     chain_agents: tuple[str, ...],
-) -> str | RetryLaterOutcome:
+) -> str | RetryLaterOutcome | None:
     failure_reason = _continuation_outcome_reason(result, record.last_failure_cause.value)
     outcome = _rebase_failure_outcome(result)
     match outcome:
         case ResolvedOutcome():
-            return failure_reason
+            return None
         case NextStrategyOutcome(strategy=strategy):
             from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
 
@@ -284,13 +284,10 @@ def _rebase_failure_transport(
                 ),
                 NextAction.LAST_RESORT_RECOVERY.value,
             )
-            msg = (
-                on_change
-                or (
-                    failure_reason
-                    if "spent/unavailable" in failure_reason
-                    else f"all resolver agents are spent/unavailable; {failure_reason}"
-                )
+            msg = on_change or (
+                failure_reason
+                if "spent/unavailable" in failure_reason
+                else f"all resolver agents are spent/unavailable; {failure_reason}"
             )
             return RetryLaterOutcome(
                 on_change=msg,
@@ -429,7 +426,7 @@ def continue_retained_resolution(
         if failure is not None:
             return failure
     elif (record.resolving_rebase or rebase_in_progress_at(root)) and rebase_in_progress_at(root):
-        failure = _continue_rebase_resolution(
+        rebase_failure = _continue_rebase_resolution(
             root,
             record,
             target,
@@ -442,8 +439,8 @@ def continue_retained_resolution(
             force_retry=force_retry,
             stop_identity=stop_identity,
         )
-        if failure is not None:
-            return failure
+        if rebase_failure is not None:
+            return rebase_failure
     return _promote_completed_resolution(root, record)
 
 

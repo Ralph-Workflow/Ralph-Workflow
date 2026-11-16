@@ -21,7 +21,6 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
-from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,

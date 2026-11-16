@@ -234,10 +234,8 @@ def detect_planning_residue(
             sorted(
                 path
                 for path in observed_unmerged.paths
-                if path not in after_tracked
-                and not path.startswith(_PERMITTED_ARTIFACT_PREFIX)
-                or path in after_tracked
-                and after_tracked[path] in UNMERGED_PORCELAIN_XY
+                if (path not in after_tracked and not path.startswith(_PERMITTED_ARTIFACT_PREFIX))
+                or (path in after_tracked and after_tracked[path] in UNMERGED_PORCELAIN_XY)
             )
         )
     if not (

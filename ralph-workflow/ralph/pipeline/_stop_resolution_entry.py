@@ -136,22 +136,6 @@ def _current_stop_identity(root: Path, record: IntegrationRecord) -> str | None:
     return record.resolving_stop_sha or record.pre_target_sha or record.pre_feature_sha
 
 
-def _controller_for_key(
-    recovery_controller: RecoveryController | None,
-    config: UnifiedConfig | None,
-) -> RecoveryController | KeyUnavailable | None:
-    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-
-    if recovery_controller is not None:
-        return recovery_controller
-    if config is None:
-        return current_agent_effect_dependencies().recovery_controller
-    return KeyUnavailable(
-        "recovery controller required; pass the session/pipeline_deps controller "
-        "or an explicit recovery_controller"
-    )
-
-
 def compute_resolution_attempt_key(
     root: Path,
     record: IntegrationRecord,
@@ -168,9 +152,18 @@ def compute_resolution_attempt_key(
     stop_id = stop_identity if stop_identity is not None else _current_stop_identity(root, record)
     effective_agents = eligible_agents
     if effective_agents is None:
-        controller = _controller_for_key(recovery_controller, config)
-        if isinstance(controller, KeyUnavailable):
-            return controller
+        if recovery_controller is None and config is not None:
+            return KeyUnavailable(
+                "recovery controller required; pass the session/pipeline_deps controller "
+                "or an explicit recovery_controller"
+            )
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        controller = (
+            recovery_controller
+            if recovery_controller is not None
+            else current_agent_effect_dependencies().recovery_controller
+        )
         if controller is not None:
             try:
                 candidates = (

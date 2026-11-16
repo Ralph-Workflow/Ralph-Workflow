@@ -29,9 +29,7 @@ def _call_name(node: ast.Call) -> str | None:
 
 
 _UNMERGED_READERS = frozenset({"ralph/git/conflict_stage_entries.py", "ralph/git/merge.py"})
-_UNMERGED_XY_CODES: frozenset[str] = frozenset(
-    {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}
-)
+_UNMERGED_XY_CODES: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
 _OPERATION_OWNER = "ralph/git/operation_snapshot.py"
 _ELIGIBILITY_OWNER = "ralph/recovery/agent_failure_ledger.py"
 _LANDED_OWNER = "ralph/pipeline/_landed_predicate.py"
@@ -59,9 +57,7 @@ def _unmerged_xy_comparisons(node: ast.expr) -> bool:
         if not isinstance(comparison, ast.Compare):
             continue
         for comparator in comparison.comparators:
-            if not isinstance(comparator, ast.Constant) or not isinstance(
-                comparator.value, str
-            ):
+            if not isinstance(comparator, ast.Constant) or not isinstance(comparator.value, str):
                 continue
             if comparator.value in _UNMERGED_XY_CODES:
                 return True
@@ -90,13 +86,9 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
                     violations.append(
                         Violation(rel, node.lineno, "unmerged index read outside git owner")
                     )
-                if (
-                    rel not in _UNMERGED_READERS
-                    and any(
-                        isinstance(value, str)
-                        and value.lstrip().startswith("--diff-filter=" + "U")
-                        for value in literals
-                    )
+                if rel not in _UNMERGED_READERS and any(
+                    isinstance(value, str) and value.lstrip().startswith("--diff-filter=" + "U")
+                    for value in literals
                 ):
                     violations.append(
                         Violation(rel, node.lineno, "unmerged index read outside git owner")

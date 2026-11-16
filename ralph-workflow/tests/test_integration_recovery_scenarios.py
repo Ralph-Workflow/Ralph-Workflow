@@ -17,11 +17,16 @@ from ralph.pipeline.auto_integrate_recovery_record import (
     continue_retained_resolution,
     reset_continuation_gate_state,
 )
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.integration_diagnostic import handoff_integration_diagnostic
 from ralph.pipeline.operation_evidence import identity_fingerprint
-from ralph.pipeline.resolution_outcome import ConfigFailureOutcome, NextStrategyOutcome
+from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
+    NextStrategyOutcome,
+    RetryLaterOutcome,
+)
 from ralph.policy.loader import default_dir, load_policy
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
@@ -31,13 +36,19 @@ from tests._integration_ladder_fakes import _seed_terminal_rungs
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_spent_resolver_chain_records_exhaustion_and_escalates_once": (
-        "ruff format collapsed the multi-line assertion into a single line without altering any assertion logic"
+        "ruff format collapsed the multi-line assertion into a single line without altering any assertion logic; "
+        "the exhausted first continuation is read as the typed RetryLaterOutcome carrying "
+        "CANDIDATE_EXHAUSTED that replaced the ExhaustedResolutionFailure string, and the "
+        "terminal reason is now asserted as well as the spent/unavailable message"
     ),
     "test_unrelated_head_rejected_once_and_further_ticks_are_silent": (
         "bounded silent tick iterations from 2 to 1 while continuing to assert that subsequent ticks are completely silent and invoke no agents"
     ),
     "test_config_corrupt_agents_toml_surfaces_file_and_check_config": (
-        "verify corrupt config with load_toml so ConfigFailureOutcome is returned on syntax error"
+        "verify corrupt config with load_toml so ConfigFailureOutcome is returned on syntax error; "
+        "the post-repair continuation is read as the typed RetryLaterOutcome carrying "
+        "CANDIDATE_EXHAUSTED that replaced the ExhaustedResolutionFailure string, and the "
+        "terminal reason is now asserted as well as the non-WAITING message"
     ),
 }
 
@@ -301,8 +312,10 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
         stop_identity=stop,
     )
 
-    assert isinstance(third, str)
-    assert not third.startswith("WAITING:")
+    assert isinstance(third, RetryLaterOutcome)
+    assert third.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert third.on_change is not None
+    assert not third.on_change.startswith("WAITING:")
     assert len(consulted) == 2
 
 
@@ -341,8 +354,13 @@ def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
         stop_identity=stop,
     )
 
-    assert isinstance(status, str)
-    assert "spent/unavailable" in status or "conflict resolution incomplete" in status
+    assert isinstance(status, RetryLaterOutcome)
+    assert status.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert status.on_change is not None
+    assert (
+        "spent/unavailable" in status.on_change
+        or "conflict resolution incomplete" in status.on_change
+    )
     charged = {action: count for (_signature, action), count in ledger.read().repeat_counts.items()}
     assert charged == {NextAction.LAST_RESORT_RECOVERY.value: 1}
     assert ledger.read().global_actions_charged == 0

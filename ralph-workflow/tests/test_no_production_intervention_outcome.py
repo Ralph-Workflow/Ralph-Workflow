@@ -56,19 +56,19 @@ _RETIRED_DISPLAY_KEYS: Final = frozenset(
 )
 
 _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
-    ("pipeline/auto_integrate_transition.py", 202): (
+    ("pipeline/auto_integrate_transition.py", 204): (
         "RAISE_DIAGNOSTIC_INTERVENTION = Transition(",
         "retired transition definition kept ONLY as a legacy-payload parsing input",
     ),
-    ("pipeline/auto_integrate_transition.py", 203): (
+    ("pipeline/auto_integrate_transition.py", 205): (
         '"RAISE_DIAGNOSTIC_INTERVENTION"',
         "retired transition definition kept ONLY as a legacy-payload parsing input",
     ),
-    ("pipeline/auto_integrate_transition.py", 247): (
+    ("pipeline/auto_integrate_transition.py", 249): (
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "registration of the retired transition into the closed Transition.ALL set",
     ),
-    ("pipeline/auto_integrate_transition.py", 287): (
+    ("pipeline/auto_integrate_transition.py", 289): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ export of the retired transition name",
     ),
@@ -76,7 +76,7 @@ _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "import of the retired transition name for re-export via __all__ (legacy parsing surface)",
     ),
-    ("pipeline/auto_integrate_record.py", 760): (
+    ("pipeline/auto_integrate_record.py", 762): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ re-export of the retired transition name (parsing surface)",
     ),

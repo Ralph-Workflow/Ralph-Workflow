@@ -19,10 +19,10 @@ from ralph.pipeline._integration_action import (
 from ralph.pipeline._integration_continuation import (
     _legacy_completed_rebase,
     active_operation_matches,
-    continue_retained_resolution,
 )
 from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline._target_reconciliation_handoff import finish_target_substep
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
@@ -230,14 +230,16 @@ def _continue_target_record(
             if isinstance(started, str):
                 return started
             record = started
-    kind = classify_git_operation(record)
-    return (
-        resume_pending_rebase(owner, record)
-        if kind is GitOperationKind.AWAITING_CONTINUE
-        else continue_retained_resolution(
-            owner, record, config, conflict_resolver, rebase_stop_resolver
-        )
+    if classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE:
+        return resume_pending_rebase(owner, record)
+    from ralph.pipeline.auto_integrate_recovery_record import continue_retained_resolution
+
+    continued = continue_retained_resolution(
+        owner, record, config, conflict_resolver, rebase_stop_resolver
     )
+    if isinstance(continued, RetryLaterOutcome):
+        return continued.on_change or "target reconciliation retained for retry"
+    return continued
 
 
 _REENTRY_ACTIONS: frozenset[IntegrationAction] = frozenset(
