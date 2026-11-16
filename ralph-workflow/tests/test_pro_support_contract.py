@@ -709,17 +709,18 @@ def test_section_7_heartbeat_adopts_late_marker(
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
     monkeypatch.setattr(runner_module, "create_initial_state", lambda *_a, **_kw: state_in)
-    monkeypatch.setattr(
-        run_loop_module,
-        "_build_recovery_controller",
-        lambda _state, _pp, _cfg: (
+
+    def late_recovery_controller_factory(
+        _state: object, _pp: object, _cfg: object
+    ) -> tuple[MagicMock, int]:
+        return (
             MagicMock(
                 spec=RecoveryController,
                 event_bus=MagicMock(subscribe=lambda _cb: lambda: None),
             ),
             1,
-        ),
-    )
+        )
+
     ctx = make_display_context()
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kw: ctx)
     display = ParallelDisplay(workspace_root=tmp_path, display_context=ctx, is_quiet=True)
@@ -764,5 +765,10 @@ def test_section_7_heartbeat_adopts_late_marker(
         return _SynchronousLateWatcher()
 
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = run_loop_module.run(config, initial_state=state_in, pro_hooks=hooks)
+    exit_code = run_loop_module.run(
+        config,
+        initial_state=state_in,
+        pro_hooks=hooks,
+        recovery_controller_factory=late_recovery_controller_factory,
+    )
     assert exit_code == 0

@@ -157,6 +157,14 @@ _CARRIED_SUFFIXES: Final[frozenset[str]] = frozenset(
 )
 _TAG_NUMBER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+")
 _TAG_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+_TRANSPORT_EXCEPTIONS: Final = (
+    OSError,
+    RuntimeError,
+    ValueError,
+    KeyError,
+    UpstreamTransportError,
+    httpx.HTTPError,
+)
 
 
 @dataclass(frozen=True)
@@ -189,7 +197,7 @@ def maybe_update_universal_skills(
 ) -> UpdateOutcome:
     try:
         return _run_update(enabled=enabled, now=now, http=http)
-    except (OSError, RuntimeError, ValueError, KeyError):
+    except _TRANSPORT_EXCEPTIONS:
         return UpdateOutcome(
             status="failed",
             error="unexpected-error",
@@ -481,14 +489,7 @@ def _parse_release_tag(body: bytes) -> tuple[str | None, str | None]:
 def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | None, str | None]:
     try:
         status, body = http(source.api_url, REQUEST_TIMEOUT_SECONDS)
-    except (
-        httpx.HTTPError,
-        UpstreamTransportError,
-        OSError,
-        RuntimeError,
-        ValueError,
-        KeyError,
-    ) as exc:
+    except _TRANSPORT_EXCEPTIONS as exc:
         return (None, _transport_error_reason(exc, "release-api"))
     if status == HTTP_NOT_FOUND:
         return (None, NO_RELEASE_ERROR)
@@ -503,14 +504,7 @@ def _load_release_payload(
     archive_url = source.archive_url_template.format(tag=tag)
     try:
         status, body = http(archive_url, REQUEST_TIMEOUT_SECONDS)
-    except (
-        httpx.HTTPError,
-        UpstreamTransportError,
-        OSError,
-        RuntimeError,
-        ValueError,
-        KeyError,
-    ) as exc:
+    except _TRANSPORT_EXCEPTIONS as exc:
         return (None, _transport_error_reason(exc, "archive"))
     if status != HTTP_OK:
         return (None, f"archive-status-{status}")

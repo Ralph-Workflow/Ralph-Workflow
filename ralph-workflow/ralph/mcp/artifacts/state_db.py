@@ -55,10 +55,6 @@ def _coerce_hmac(row: object) -> str | None:
     return None
 
 
-class SchemaVersionTypeError(TypeError, RuntimeError):
-    pass
-
-
 class RunStateDB:
     def __init__(self, workspace_root: Path) -> None:
         db_path = workspace_root / DB_RELPATH
@@ -71,9 +67,7 @@ class RunStateDB:
             raise RuntimeError("SQLite PRAGMA user_version returned no version")
         version_value: object = version_row[0]
         if not isinstance(version_value, int):
-            raise SchemaVersionTypeError(
-                "SQLite PRAGMA user_version returned a non-integer version"
-            )
+            raise RuntimeError("SQLite PRAGMA user_version returned a non-integer version")
         if version_value < _INITIAL_SCHEMA_VERSION:
             self._conn.executescript(_SCHEMA)
         if version_value < _SCHEMA_VERSION:
