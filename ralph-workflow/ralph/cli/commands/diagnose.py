@@ -184,7 +184,6 @@ def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
     )
     _emit_simple_table(display, "Terminal / colour", rows)
     if ctx.console.color_system is None:
-
         display = _as_parallel_display(display)
         display.emit_status(
             "Warning: colour system is unset; this means the Console was built with "
@@ -263,7 +262,6 @@ def _check_capability_state(*, display: object) -> bool:
 
 def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...]]) -> None:
     from rich.table import Table
-
 
     display = _as_parallel_display(display)
     table = Table(title=title)

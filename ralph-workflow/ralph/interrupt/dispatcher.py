@@ -180,7 +180,7 @@ def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]
     _kill_records(records)
 
 
-class ClockTypeError(TypeError, RuntimeError):
+class _ClockTypeError(TypeError, RuntimeError):
     pass
 
 
@@ -204,7 +204,7 @@ class InterruptDispatcher:
         if self.poll_interval_s <= 0:
             raise RuntimeError(f"poll_interval_s must be positive (got {self.poll_interval_s})")
         if not isinstance(self.clock(), float):
-            raise ClockTypeError(
+            raise _ClockTypeError(
                 f"clock() must return a float (got {type(self.clock()).__name__})"
             )
 

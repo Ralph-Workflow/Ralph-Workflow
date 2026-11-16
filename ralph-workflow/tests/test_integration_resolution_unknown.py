@@ -35,7 +35,15 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 
 
-class _ProbeError(Exception):
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_ProbeError": (
+        "_ProbeError inherits from RuntimeError to match typed probe failure contracts "
+        "enforced by the BLE001 exception ban"
+    ),
+}
+
+
+class _ProbeError(RuntimeError):
     pass
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
 
 from git import GitError
 from loguru import logger
@@ -228,6 +228,10 @@ def _is_create_commit_with_hooks_fn(value: object) -> TypeGuard[_CreateCommitWit
     return callable(value)
 
 
+def _is_legacy_create_commit_fn(value: object) -> TypeGuard[_LegacyCreateCommitFn]:
+    return callable(value)
+
+
 if TYPE_CHECKING:
 
     class _CreateCommitFn(Protocol):
@@ -237,6 +241,13 @@ if TYPE_CHECKING:
             message: str,
             *,
             expected_head: str,
+        ) -> CommitCreationResult: ...
+
+    class _LegacyCreateCommitFn(Protocol):
+        def __call__(
+            self,
+            repo_root: Path | str,
+            message: str,
         ) -> CommitCreationResult: ...
 
     class _CreateCommitWithHooksFn(Protocol):
@@ -334,7 +345,9 @@ def _perform_commit_creation(
             try:
                 return create_commit_fn(str(root), commit_message, expected_head=expected_head)
             except TypeError:
-                return cast("Callable[[Path | str, str], CommitCreationResult]", create_commit_fn)(str(root), commit_message)
+                if _is_legacy_create_commit_fn(create_commit_fn):
+                    return create_commit_fn(str(root), commit_message)
+                raise
         create_with_hooks = repair_opts.get("create_commit_with_hooks_fn")
         hook_committer: _CreateCommitWithHooksFn = (
             create_with_hooks
@@ -422,6 +435,7 @@ def _validated_commit_payload(
         )
         raise ValueError("commit message artifact is invalid")
     return payload
+
 
 def execute_commit_effect(
     effect: CommitEffect,

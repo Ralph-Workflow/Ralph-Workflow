@@ -71,7 +71,7 @@ class RunStateDB:
             raise RuntimeError("SQLite PRAGMA user_version returned no version")
         version_value: object = version_row[0]
         if not isinstance(version_value, int):
-            raise RuntimeError("SQLite PRAGMA user_version returned a non-integer version")
+            raise TypeError("SQLite PRAGMA user_version returned a non-integer version")
         if version_value < _INITIAL_SCHEMA_VERSION:
             self._conn.executescript(_SCHEMA)
         if version_value < _SCHEMA_VERSION:

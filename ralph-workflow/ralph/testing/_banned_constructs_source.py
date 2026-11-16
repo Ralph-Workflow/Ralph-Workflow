@@ -545,7 +545,7 @@ class _SourceAuditor(ast.NodeVisitor):
         if self._is_all_mutation(node):
             self.add(node, "__all__ mutation", "ALL-MUTATION")
         if self._print_is_banned(qualified):
-            self.add(node, "print in library code", "PRINT", "T201")
+            self.add(node, "print in library code", "PRINT")
         if _is_production(self.unit.label) and qualified == "time.sleep":
             self.add(node, "time.sleep in production code", "SLEEP")
         if self._is_dunder_dict_mutation(node):

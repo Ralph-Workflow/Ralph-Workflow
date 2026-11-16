@@ -85,7 +85,9 @@ def reconcile_target_onto_remote(
             if not outcome.acquired or (
                 owner != repo_root and retained_integration_reason(owner) is not None
             ):
-                return ReconciliationOutcome(reconciled=False, reason=outcome.describe("target worktree busy; reconciliation will retry"),
+                return ReconciliationOutcome(
+                    reconciled=False,
+                    reason=outcome.describe("target worktree busy; reconciliation will retry"),
                 )
             checked_owner, pre_target_sha, reason = _reconciliation_preconditions(
                 repo_root,
@@ -95,7 +97,9 @@ def reconcile_target_onto_remote(
                 expected_owner=owner,
             )
             if reason is not None or checked_owner != owner or pre_target_sha is None:
-                return ReconciliationOutcome(reconciled=False, reason=reason or f"target '{target}' changed owner before reconciliation",
+                return ReconciliationOutcome(
+                    reconciled=False,
+                    reason=reason or f"target '{target}' changed owner before reconciliation",
                 )
             return _reconcile_owned_target(
                 repo_root,
@@ -141,7 +145,9 @@ def _reconcile_owned_target(
     try:
         write_record(repo_root, record)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} deferred: recovery record unavailable: {exc}"
+        return ReconciliationOutcome(
+            reconciled=False,
+            reason=f"reconciliation of {target} deferred: recovery record unavailable: {exc}",
         )
     try:
         outcome = rebase_onto(f"{remote}/{target}", repo_root=owner)
@@ -222,14 +228,18 @@ def _resolve_owned_reconciliation(
             if rebase_in_progress(owner):
                 abort_rebase_discarding_progress(owner)
             clear_record(repo_root)
-        return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} "
+        return ReconciliationOutcome(
+            reconciled=False,
+            reason=f"reconciliation of {target} with {remote}/{target} "
             f"{CLEAN_ABORTED_RECONCILIATION_CONFLICT} {detail}",
             cleanly_aborted=True,
         )
     current = read_record(repo_root)
     if current is not None and current.resolution_gate_key is not None:
         write_record(repo_root, current.with_resolution_gate_key(None))
-    return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
+    return ReconciliationOutcome(
+        reconciled=False,
+        reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
     )
 
 
@@ -359,7 +369,9 @@ def _clear_successful_reconciliation_record(
         else:
             clear_record(repo_root)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: "
+        return ReconciliationOutcome(
+            reconciled=False,
+            reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: "
             f"record cleanup failed: {exc}",
         )
     return ReconciliationOutcome(reconciled=True, reason="")
@@ -476,19 +488,24 @@ def _reconcile_in_temporary_workspace(
                 cwd=primary_root,
                 label="reconciliation:prune-failed-temp-worktree",
             )
-        return ReconciliationOutcome(reconciled=False, reason=f"target '{target}' could not allocate reconciliation workspace: "
+        return ReconciliationOutcome(
+            reconciled=False,
+            reason=f"target '{target}' could not allocate reconciliation workspace: "
             f"{add_res.stderr.strip() or add_res.stdout.strip()}",
         )
 
     try:
         with integration_transaction(temp_dir) as outcome:
             if not outcome.acquired:
-                return ReconciliationOutcome(reconciled=False, reason=outcome.describe("target worktree busy; reconciliation will retry"),
+                return ReconciliationOutcome(
+                    reconciled=False,
+                    reason=outcome.describe("target worktree busy; reconciliation will retry"),
                 )
 
             wt_target_sha = branch_sha(temp_dir, target)
             if wt_target_sha is None or wt_target_sha != pre_target_sha:
-                return ReconciliationOutcome(reconciled=False, reason=f"target '{target}' changed before reconciliation"
+                return ReconciliationOutcome(
+                    reconciled=False, reason=f"target '{target}' changed before reconciliation"
                 )
 
             return _reconcile_owned_target(
@@ -516,13 +533,17 @@ def _reconcile_unowned_target(
     try:
         primary_root = find_main_worktree_root(repo_root)
     except (OSError, RuntimeError, ValueError, KeyError):
-        return ReconciliationOutcome(reconciled=False, reason=f"target '{target}' is unavailable for reconciliation")
+        return ReconciliationOutcome(
+            reconciled=False, reason=f"target '{target}' is unavailable for reconciliation"
+        )
 
     pre_target_sha, remote_target_sha, reason = _unowned_target_preconditions(
         primary_root, target, remote
     )
     if reason is not None or pre_target_sha is None or remote_target_sha is None:
-        return ReconciliationOutcome(reconciled=False, reason=reason or f"target '{target}' is unavailable for reconciliation"
+        return ReconciliationOutcome(
+            reconciled=False,
+            reason=reason or f"target '{target}' is unavailable for reconciliation",
         )
 
     if pre_target_sha == remote_target_sha:
@@ -583,11 +604,15 @@ def _abort_restore_or_retain_record(
         if rebase_in_progress(owner):
             abort_rebase_discarding_progress(owner)
         if rebase_in_progress(owner) and not is_temporary:
-            return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
+            return ReconciliationOutcome(
+                reconciled=False,
+                reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
             )
         if branch_sha(owner, target) != pre_target_sha:
             if not is_temporary:
-                return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
+                return ReconciliationOutcome(
+                    reconciled=False,
+                    reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
                     "target moved during reconciliation",
                 )
             with contextlib.suppress(Exception):
@@ -598,7 +623,9 @@ def _abort_restore_or_retain_record(
                 )
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         if not is_temporary:
-            return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
+            return ReconciliationOutcome(
+                reconciled=False,
+                reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
                 f"restore failed: {exc}",
             )
     try:
@@ -609,10 +636,14 @@ def _abort_restore_or_retain_record(
             clear_record(repo_root)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         if not is_temporary:
-            return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
+            return ReconciliationOutcome(
+                reconciled=False,
+                reason=f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}; "
                 f"record cleanup failed: {exc}",
             )
-    return ReconciliationOutcome(reconciled=False, reason=f"reconciliation of {target} with {remote}/{target} "
+    return ReconciliationOutcome(
+        reconciled=False,
+        reason=f"reconciliation of {target} with {remote}/{target} "
         f"{CLEAN_ABORTED_RECONCILIATION_CONFLICT} {detail}",
         cleanly_aborted=True,
     )

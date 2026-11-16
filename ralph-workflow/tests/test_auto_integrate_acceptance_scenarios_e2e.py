@@ -110,7 +110,7 @@ def _write_remote_url(repo_root: Path, remote_name: str, url: str) -> bool:
         repo = _repo(repo_root)
         with repo.config_writer() as config:
             config.set_value(f'remote "{remote_name}"', "url", url)
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return False
     return True
 

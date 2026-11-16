@@ -96,13 +96,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
         "pattern": "tests/**/*.py",
         "reason": ("Test __str__ / __repr__ helpers are documented inline."),
     },
-    "ANN401": {
-        "pattern": ["tests/**/*.py", "ralph/visual/**/*.py"],
-        "reason": (
-            "Tests sometimes use Any for fixture dict shapes; visual capture "
-            "adapters accept untyped renderer payloads at their boundary."
-        ),
-    },
     "RUF043": {
         "pattern": "tests/**/*.py",
         "reason": "Tests retain literal regular expressions as executable fixtures.",
@@ -157,10 +150,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/project_policy/remediation.py",
             "ralph/prompts/__init__.py",
             "ralph/agents/execution_state/_helpers.py",
-            "ralph/agents/catalog.py",
-            "ralph/agents/registry.py",
-            "ralph/agents/parsers/_event_classification.py",
-            "ralph/agents/parsers/content_channel.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/tools/_validation_retry_hints.py",
@@ -231,7 +220,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/agents/builtin_spec.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
-            "tests/test_integration_obstruction_real_git.py",
         ],
         "reason": (
             "Short-circuit contract validation and transport/capture state "

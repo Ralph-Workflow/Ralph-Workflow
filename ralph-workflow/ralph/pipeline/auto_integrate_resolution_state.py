@@ -71,7 +71,11 @@ def evaluate_integration_containment(
     try:
         if rebase_in_progress(root) or merge_state(root) == MERGE_STATE_IN_PROGRESS:
             return ContainmentVerdict(
-                contained=False, target=target_name, feature_sha=feature_sha, target_sha=None, evidence="integration operation in flight"
+                contained=False,
+                target=target_name,
+                feature_sha=feature_sha,
+                target_sha=None,
+                evidence="integration operation in flight",
             )
         head = feature_sha or get_head_sha(root)
         target_sha = branch_sha(root, target_name)
@@ -79,7 +83,11 @@ def evaluate_integration_containment(
     except (GitError, OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_integrate: containment query on '{}' failed: {}", target_name, exc)
         return ContainmentVerdict(
-            contained=False, target=target_name, feature_sha=feature_sha, target_sha=None, evidence=f"git could not answer ancestry: {exc}"
+            contained=False,
+            target=target_name,
+            feature_sha=feature_sha,
+            target_sha=None,
+            evidence=f"git could not answer ancestry: {exc}",
         )
     return ContainmentVerdict(
         answer is True,

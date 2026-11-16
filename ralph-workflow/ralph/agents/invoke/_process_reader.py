@@ -1054,10 +1054,7 @@ class ProcessLineReader:
             _raise_on_relay_health_error(self, _agent_command_name(raw_config))
         if verdict != WatchdogVerdict.FIRE:
             return None
-        if (
-            self._policy.idle_timeout_seconds is None
-            and self._policy.max_session_seconds is None
-        ):
+        if self._policy.idle_timeout_seconds is None and self._policy.max_session_seconds is None:
             return None
         fire_reason = watchdog.last_fire_reason
         if fire_reason is None:

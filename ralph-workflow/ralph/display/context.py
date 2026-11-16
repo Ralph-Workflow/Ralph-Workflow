@@ -437,7 +437,7 @@ def install_sigwinch_refresher(
             ctx_holder[0] = refreshed
             if on_refresh is not None:
                 on_refresh(refreshed)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             return
         finally:
             refresh_in_progress = False

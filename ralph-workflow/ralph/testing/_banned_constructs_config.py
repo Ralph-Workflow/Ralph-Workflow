@@ -41,7 +41,6 @@ _BANNED_RUFF_RULES = frozenset(
         "S403",
         "S602",
         "S604",
-        "T201",
         "TC006",
     ]
 )

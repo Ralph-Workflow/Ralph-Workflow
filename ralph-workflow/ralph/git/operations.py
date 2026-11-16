@@ -6,7 +6,7 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -61,6 +61,10 @@ _REFLOG_DEST_PARTS = 2
 _RALPH_WORKFLOW_COAUTHOR_TRAILER = "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
 _HEX_SHA_LENGTH = 40
 _PACKED_REF_PARTS = 2
+
+
+def _raise_git_commit_error(detail: str) -> NoReturn:
+    raise GitOperationError("create_commit", detail)
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -678,7 +682,7 @@ def create_commit(
             ),
         )
         if commit_result.returncode != 0:
-            raise GitOperationError("create_commit", commit_result.stderr.strip())
+            _raise_git_commit_error(commit_result.stderr.strip())
         candidate_sha = commit_result.stdout.strip()
         result = _run_git_operation_with_stale_lock_recovery(
             "create_commit",
@@ -831,11 +835,11 @@ def create_commit_with_hooks(
             )
         if commit_result.returncode != 0:
             detail = commit_result.stderr.strip() or commit_result.stdout.strip()
-            raise GitOperationError("create_commit", detail or "git commit failed")
+            _raise_git_commit_error(detail or "git commit failed")
 
         created_sha = _current_head_sha(Path(repo_root)) or ""
         if not created_sha:
-            raise GitOperationError("create_commit", "git commit did not advance HEAD")
+            _raise_git_commit_error("git commit did not advance HEAD")
         committed_tree_sha = _head_tree_sha(Path(repo_root), created_sha) or ""
         parent_sha = _commit_parent_sha(Path(repo_root), created_sha)
         if committed_tree_sha != expected_tree_sha:

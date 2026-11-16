@@ -56,7 +56,13 @@ def operation_landed(root: Path, record: IntegrationRecord) -> LandedDecision:
     expected = expected_landed_facts(record)
     head = _read(root, "rev-parse", "--verify", "HEAD")
     if head is None:
-        return LandedDecision(landed=False, proof="none", observed_head=None, expected=expected, failures=("HEAD is unreadable",))
+        return LandedDecision(
+            landed=False,
+            proof="none",
+            observed_head=None,
+            expected=expected,
+            failures=("HEAD is unreadable",),
+        )
     failures: list[str] = []
     proofs = (
         ("advanced integrated_feature_sha", _advanced_completion_proof),
@@ -66,9 +72,17 @@ def operation_landed(root: Path, record: IntegrationRecord) -> LandedDecision:
     for name, proof in proofs:
         landed, detail = proof(root, record, head)
         if landed:
-            return LandedDecision(landed=True, proof=name, observed_head=head, expected=expected, failures=tuple(failures))
+            return LandedDecision(
+                landed=True,
+                proof=name,
+                observed_head=head,
+                expected=expected,
+                failures=tuple(failures),
+            )
         failures.append(detail)
-    return LandedDecision(landed=False, proof="none", observed_head=head, expected=expected, failures=tuple(failures))
+    return LandedDecision(
+        landed=False, proof="none", observed_head=head, expected=expected, failures=tuple(failures)
+    )
 
 
 def _advanced_completion_proof(

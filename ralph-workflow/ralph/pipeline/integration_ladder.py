@@ -184,9 +184,17 @@ def _next_enabled_rung(
 def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
     _ = facts.clock_now
     if facts.landed is LandedVerdict.LANDED:
-        transition = LadderTransition(LadderState.LANDED, terminal=False, reason="landed", next_rung=None, effects=())
+        transition = LadderTransition(
+            LadderState.LANDED, terminal=False, reason="landed", next_rung=None, effects=()
+        )
     elif facts.terminal_for_attempt:
-        transition = LadderTransition(LadderState.NEEDS_OPERATOR, terminal=True, reason=facts.reason, next_rung=None, effects=())
+        transition = LadderTransition(
+            LadderState.NEEDS_OPERATOR,
+            terminal=True,
+            reason=facts.reason,
+            next_rung=None,
+            effects=(),
+        )
     elif facts.rung is None:
         transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
     elif facts.outcome is None:
@@ -206,7 +214,11 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
             transition = _needs_operator_transition(facts.reason)
         elif facts.outcome == "waiting" or facts.reason.startswith("autonomous-transition:"):
             transition = LadderTransition(
-                _RUNG_STATES[facts.rung], terminal=False, reason=facts.reason, next_rung=facts.rung, effects=()
+                _RUNG_STATES[facts.rung],
+                terminal=False,
+                reason=facts.reason,
+                next_rung=facts.rung,
+                effects=(),
             )
         elif next_rung is None:
             transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
@@ -226,7 +238,9 @@ def _needs_operator_transition(reason: str) -> LadderTransition:
         LadderEffect(LadderEffectKind.EMIT_TERMINAL),
         LadderEffect(LadderEffectKind.RECORD_TERMINAL_MARKER),
     )
-    return LadderTransition(LadderState.NEEDS_OPERATOR, terminal=True, reason=reason, next_rung=None, effects=effects)
+    return LadderTransition(
+        LadderState.NEEDS_OPERATOR, terminal=True, reason=reason, next_rung=None, effects=effects
+    )
 
 
 def ladder_facts_fingerprint(

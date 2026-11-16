@@ -485,12 +485,12 @@ _INVARIANTS: tuple[
         qualname="strip_markup_safe",
         present=(
             "Text.from_markup(text)",
-            "except Exception:",
+            "except (MarkupError, ValueError, TypeError):",
             "strip_terminal_control(plain)",
         ),
         absent=(
-            "except ValueError",
-            "except (ValueError",
+            "except ValueError:",
+            "except (ValueError):",
         ),
     ),
     Invariant(
@@ -679,7 +679,11 @@ _INVARIANTS: tuple[
     FunctionBodyInvariant(
         rel_path="display/context.py",
         qualname="install_sigwinch_refresher",
-        present=("refresh_in_progress", "except Exception:", "signal.SIG_DFL"),
+        present=(
+            "refresh_in_progress",
+            "except (OSError, RuntimeError, ValueError, TypeError, AttributeError):",
+            "signal.SIG_DFL",
+        ),
     ),
 )
 
