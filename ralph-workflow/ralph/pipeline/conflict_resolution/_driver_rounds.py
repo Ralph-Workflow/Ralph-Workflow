@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution._driver_events import (
     emit_attempt_outcome as _emit_attempt_outcome,
@@ -266,7 +267,7 @@ def _execute_single_candidate(
             session.last_failure_cause = ResolutionFailureCause.NONE
         else:
             _record_invoker_outcome(session, invoker_result)
-    except Exception as exc:
+    except (AgentInvocationError, OSError, RuntimeError, ValueError) as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
         )
@@ -421,23 +422,17 @@ def _preferred_conflict_candidate(
 ) -> int | None:
     from ralph.recovery.controller import RecoveryController
 
-    excluded = set(visited)
-    for name in skipped:
-        if name in candidates:
-            excluded.add(candidates.index(name))
-    if len(excluded) >= len(candidates):
+    eligible = [
+        name
+        for index, name in enumerate(candidates)
+        if index not in visited and name not in skipped
+    ]
+    if not eligible:
         return None
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
-        eligible = [
-            index
-            for index in range(len(candidates))
-            if index not in excluded
-        ]
-        return eligible[0] if eligible else None
-    selection = controller.preferred_agent_index(
-        PHASE_RESOLUTION, candidates, exclude_indices=excluded
-    )
+        return candidates.index(eligible[0])
+    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
     return None

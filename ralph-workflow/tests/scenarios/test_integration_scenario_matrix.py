@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
-from git import Repo
+from git import GitCommandError, Repo
 
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
@@ -34,7 +35,6 @@ from tests.pipeline._auto_integrate_agent_failure_fixtures import (
     TARGET,
     FakeAgentMode,
     FrozenClock,
-    failure_exception_for_mode,
     make_conflicted_repo,
     make_rebase_stop_resolver,
     make_scripted_resolver_process,
@@ -48,13 +48,15 @@ from tests.scenarios._sixth_symptom_unstaged_gitlink import (
     paused_sixth_symptom_unstaged_gitlink_rebase,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.timeout_seconds(20),
 ]
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
 
 @dataclass(frozen=True)
@@ -74,11 +76,6 @@ def _make_config() -> UnifiedConfig:
             }
         }
     )
-
-
-# ==============================================================================
-# Parity Acceptance: Ordinary Phase vs Conflict Resolution
-# ==============================================================================
 
 
 @pytest.mark.parametrize(
@@ -109,7 +106,7 @@ def _make_config() -> UnifiedConfig:
 def test_parity_resolver_failure_registers_in_shared_controller_and_cools_ordinary_phase(
     tmp_path: Path,
     mode: AgentMode,
-    exc_factory: Any,
+    exc_factory: Callable[[str], BaseException],
 ) -> None:
     repo_dir = make_conflicted_repo(tmp_path / "repo")
     clock = FrozenClock()
@@ -131,9 +128,7 @@ def test_parity_resolver_failure_registers_in_shared_controller_and_cools_ordina
     session = ResolutionSession(ledger=ledger)
     session.recovery_controller = None
 
-    stop = None
-
-    def _resolver(root: Path, target: str, stop_item: Any) -> bool:
+    def _resolver(root: Path, target: str, stop_item: RebaseStop) -> bool:
         return run_rebase_conflict_resolution_pipeline(
             root=root,
             target=target,
@@ -209,7 +204,7 @@ def test_parity_ordinary_phase_cooldown_blocks_resolver_launch(
     session = ResolutionSession(ledger=ledger)
     session.recovery_controller = None
 
-    def _resolver(root: Path, target: str, stop_item: Any) -> bool:
+    def _resolver(root: Path, target: str, stop_item: RebaseStop) -> bool:
         return run_rebase_conflict_resolution_pipeline(
             root=root,
             target=target,
@@ -277,11 +272,6 @@ def test_parity_classification_matches_across_phases_without_outcome_rewriting(
     assert outcome_res.reason != "stalled_no_progress", (
         "Conflict resolution must not rewrite unresolved remaining into stalled_no_progress"
     )
-
-
-# ==============================================================================
-# Initial Scenario Matrix Cells for Symptoms
-# ==============================================================================
 
 
 def test_symptom_1_corrupted_agents_toml_falls_back_and_proceeds(
@@ -378,10 +368,8 @@ def test_symptom_3_completed_rebase_advances_record_and_promotes(
 ) -> None:
     repo_dir = make_conflicted_repo(tmp_path / "repo")
     repo = Repo(repo_dir)
-    try:
+    with contextlib.suppress(GitCommandError):
         repo.git.rebase("main")
-    except Exception:
-        pass
     (repo_dir / CONFLICTED_PATH).write_text("clean resolution\n", encoding="utf-8")
     repo.git.add(CONFLICTED_PATH)
     repo.git.rebase("--continue", env={"GIT_EDITOR": "true"})
@@ -567,11 +555,6 @@ def test_symptom_repro_ralphsite_wt04_worktree(
     assert not rebase_in_progress(repo_dir)
 
 
-# ==============================================================================
-# Parametrization Axes Across the Fault Matrix
-# ==============================================================================
-
-
 @pytest.mark.parametrize(
     ("agent_behavior", "git_exit_code", "expected"),
     [
@@ -666,7 +649,9 @@ def test_matrix_axis_repo_state_x_ledger_content(
     clock = FrozenClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
     if ledger_content == "spent_chain":
-        ledger.record(AttemptFact(phase="rebase_conflict_resolution", agent="agentA", artifact_valid=False))
+        ledger.record(
+            AttemptFact(phase="rebase_conflict_resolution", agent="agentA", artifact_valid=False)
+        )
 
     invocations: list[str] = []
     candidates = ("agentA", "agentB")
@@ -674,7 +659,9 @@ def test_matrix_axis_repo_state_x_ledger_content(
         invocations=invocations,
         resolving_agents=("agentB",),
         tmp_path=repo_dir,
-        mode=FakeAgentMode.EDITS_NEVER_STAGES if repo_state == "unstaged_edits" else FakeAgentMode.EDITS_AND_STAGES,
+        mode=FakeAgentMode.EDITS_NEVER_STAGES
+        if repo_state == "unstaged_edits"
+        else FakeAgentMode.EDITS_AND_STAGES,
     )
     bundle = resolution_policy_bundle(candidates)
     resolver = make_rebase_stop_resolver(
@@ -805,7 +792,6 @@ def test_matrix_axis_supervisor_restart(
     finally:
         reset_executors(token)
 
-    # Simulate supervisor restart: in-memory state is wiped, only durable record remains
     fresh_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
     fresh_invocations: list[str] = []
     fresh_invoke = make_scripted_resolver_process(
@@ -844,11 +830,6 @@ def test_matrix_axis_supervisor_restart(
     assert fresh_invocations == [], (
         "After supervisor restart, previously completed rebase must not redo stops"
     )
-
-
-# ==============================================================================
-# Large Work Scenario Skeleton
-# ==============================================================================
 
 
 def test_large_work_scenario_many_conflicts_no_budget_exhaustion(

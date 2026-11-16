@@ -20,7 +20,7 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
 )
 from ralph.pipeline.attempt_result import AttemptResult
-from ralph.pipeline.attempt_runner import run_agent_attempt
+from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller, run_agent_attempt
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
 from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -38,10 +38,12 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import _NO_RULE_FIRED_REASON
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController
+from ralph.recovery.failure_classifier import typed_outcome_reason
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -53,6 +55,7 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
+    from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.canary_probe import ProbeOutcome
@@ -203,7 +206,6 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    del policy_bundle, config
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         controller = session.recovery_controller
         session.ledger = controller.ledger
@@ -216,32 +218,70 @@ def ensure_session_controller(
             session.ledger = controller.ledger
             session.unavailability_store = controller.unavailability_store
         return controller
+    store = (
+        pipeline_deps.unavailability_store
+        if pipeline_deps is not None and pipeline_deps.unavailability_store is not None
+        else (session.unavailability_store if session is not None else None)
+    )
+    if session is not None:
+        session.unavailability_store = store
     ledger = (
         session.ledger
         if session is not None and session.ledger is not None
         else (pipeline_deps.ledger if pipeline_deps is not None else None)
     )
-    if ledger is not None:
-        controller_candidate = getattr(ledger, "recovery_controller", None)
-        if isinstance(controller_candidate, RecoveryController):
-            if session is not None:
-                session.recovery_controller = controller_candidate
-                session.ledger = controller_candidate.ledger
-                session.unavailability_store = controller_candidate.unavailability_store
-            return controller_candidate
-    from ralph.pipeline import effect_executor as _eff_mod
+    if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
+        clock = pipeline_deps.recovery_clock
+    elif isinstance(ledger, AgentFailureLedger):
+        clock = ledger.clock
+    elif isinstance(store, AgentUnavailabilityTracker):
+        clock = store.clock
+    else:
+        from ralph.agents.system_clock import SystemClock
 
-    active_deps = _eff_mod.current_agent_effect_dependencies().pipeline_deps
-    if active_deps is not None and isinstance(active_deps.recovery_controller, RecoveryController):
-        controller = active_deps.recovery_controller
-        if session is not None:
-            session.recovery_controller = controller
-            session.ledger = controller.ledger
-            session.unavailability_store = controller.unavailability_store
-        return controller
-    raise RecoveryControllerUnavailableError(
-        "conflict resolution requires a shared RecoveryController from pipeline_deps"
+        clock = SystemClock()
+    deps = AttemptRunnerDeps(
+        clock=clock,
+        invoke=effect_attempt_invoke(_effect_executor_module.execute_agent_effect),
+        probe_runner=session.probe_runner if session is not None else None,
+        workspace_probe=session.workspace_probe if session is not None else None,
+        connectivity=None,
     )
+    controller = build_entry_point_recovery_controller(
+        AgentEntryPoint.CONFLICT_RESOLUTION,
+        config=config,
+        policy_bundle=policy_bundle,
+        deps=deps,
+        ledger=ledger,
+        unavailability_store=store,
+    )
+    if session is not None:
+        session.recovery_controller = controller
+        session.unavailability_store = controller.unavailability_store
+        session.ledger = controller.ledger
+    return controller
+
+
+def _advance_conflict_chain_cursor(
+    session: ResolutionSession,
+    controller: RecoveryController,
+    candidates: Sequence[str],
+    candidates_tuple: tuple[str, ...],
+    failed_index: int,
+) -> int:
+    selection = controller.preferred_agent_index(
+        PHASE_RESOLUTION,
+        candidates_tuple,
+        current_index=failed_index,
+        exclude_current=True,
+    )
+    if selection.agent is not None and selection.index is not None:
+        if selection.index < failed_index:
+            return failed_index
+        return selection.index
+    if candidates:
+        return controller.next_conflict_candidate(candidates, failed_index=failed_index)
+    return failed_index
 
 
 def classify_failed_resolution_attempt(
@@ -258,33 +298,101 @@ def classify_failed_resolution_attempt(
     outcome: ConflictAttemptOutcome | None = None,
     unresolved_count: int = 0,
 ) -> None:
-    del candidates, failed_index, bench, outcome
+    if outcome is not None and outcome != ConflictAttemptOutcome.RAW:
+        reason = typed_outcome_reason(outcome, unresolved_count)
+        logger.info(
+            "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
+            outcome.value,
+            agent_name,
+            PHASE_RESOLUTION,
+            reason,
+        )
+        if raw_failure is None:
+            raw_failure = reason
+    from ralph.pipeline.state import PipelineState
+    from ralph.recovery.classifier import FailureContext
+
     controller = ensure_session_controller(session, policy_bundle)
     if session is None:
         return
-    exc = raw_failure if isinstance(raw_failure, BaseException) else None
-    unresolved = unresolved_count if unresolved_count > 0 else len(session.unresolved_paths)
-    facts = AttemptFacts(
-        artifact_valid=artifact_valid,
-        workspace_changed=workspace_changed,
-        unresolved_count=unresolved,
+    effective_outcome = outcome
+    if not workspace_changed and outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
+        effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
+    typed_outcome = (
+        effective_outcome
+        if effective_outcome is not None and effective_outcome is not ConflictAttemptOutcome.RAW
+        else None
     )
-    attempt_outcome = controller.finalize_attempt(
-        PHASE_RESOLUTION,
-        agent_name,
+    agents = list(candidates) if candidates else [agent_name]
+    bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
+    recovery_state: PipelineState
+    if isinstance(session.recovery_state, PipelineState):
+        recovery_state = session.recovery_state
+    else:
+        recovery_state = PipelineState(
+            phase=PHASE_RESOLUTION,
+            phase_chains={
+                PHASE_RESOLUTION: AgentChainState(
+                    agents=agents,
+                    current_index=bounded_index,
+                    retries=0,
+                )
+            },
+        )
+    handle_failure: BaseException | str = raw_failure if raw_failure is not None else ""
+    facts = session.last_attempt_result.facts if session and session.last_attempt_result else None
+    context = FailureContext(
+        phase=PHASE_RESOLUTION,
+        agent=agent_name,
         facts=facts,
-        attempt_failed=True,
-        exc=exc,
+        outcome=typed_outcome,
+        unresolved_count=unresolved_count,
     )
-    session.last_attempt_result = AttemptResult(
-        PipelineEvent.AGENT_FAILURE,
-        facts,
-        attempt_outcome,
-        ((1, attempt_outcome),),
+    try:
+        new_state, _effects, _failure_event = controller.handle(
+            recovery_state,
+            handle_failure,
+            context,
+            workspace_changed=workspace_changed,
+            artifact_valid=artifact_valid,
+            facts=facts,
+        )
+    except TypeError:
+        new_state, _effects, _failure_event = controller.handle(
+            recovery_state,
+            handle_failure,
+            context,
+        )
+    session.recovery_state = new_state
+    _ = bench
+    session.last_recovery_reason = (
+        typed_outcome_reason(typed_outcome, unresolved_count)
+        if typed_outcome is not None
+        else (controller.last_attempt_outcome.reason if controller.last_attempt_outcome else None)
     )
-    session.last_recovery_reason = attempt_outcome.reason
-    session.last_attempt_evidence = attempt_outcome.reason
-    session.last_attempt_failure = raw_failure
+    candidates_tuple = tuple(candidates) if candidates else (agent_name,)
+    next_cursor = _advance_conflict_chain_cursor(
+        session,
+        controller,
+        candidates,
+        candidates_tuple,
+        failed_index,
+    )
+    session.chain_cursor = next_cursor
+    chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
+    chain_agents: list[str] = (
+        list(chain_state.agents) if chain_state is not None else list(candidates)
+    )
+    same_candidate = chain_state is not None and chain_state.current_index == next_cursor
+    next_retries = chain_state.retries if (chain_state is not None and same_candidate) else 0
+    session.recovery_state = new_state.with_phase_chain(
+        PHASE_RESOLUTION,
+        AgentChainState(
+            agents=chain_agents,
+            current_index=min(next_cursor, max(len(chain_agents) - 1, 0)),
+            retries=next_retries,
+        ),
+    )
 
 
 def _record_session_failure_result(
@@ -295,11 +403,7 @@ def _record_session_failure_result(
 ) -> None:
     if session is None:
         return
-    facts = AttemptFacts(
-        artifact_valid=False,
-        workspace_changed=False,
-        unresolved_count=len(session.unresolved_paths),
-    )
+    facts = AttemptFacts(artifact_valid=False, workspace_changed=False)
     outcome = controller.last_attempt_outcome
     if outcome is None:
         outcome = controller.finalize_attempt(

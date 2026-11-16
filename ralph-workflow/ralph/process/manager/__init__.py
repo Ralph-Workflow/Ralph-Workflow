@@ -260,6 +260,7 @@ _set_defaults(
 )
 
 default_sync_process_factory = _default_sync_process_factory
+SubprocessError = subprocess.SubprocessError
 
 __all__ = [
     "AsyncProcessLike",
@@ -285,6 +286,7 @@ __all__ = [
     "PtySpawnOptions",
     "SpawnOptions",
     "StallIntegrator",
+    "SubprocessError",
     "SuspicionClock",
     "SyncProcessFactory",
     "SyncProcessLike",

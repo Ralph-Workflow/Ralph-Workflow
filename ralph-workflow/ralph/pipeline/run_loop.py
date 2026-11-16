@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, cast
 
-from git.exc import InvalidGitRepositoryError, NoSuchPathError
+from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
 from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
@@ -856,7 +856,7 @@ def run_auto_integrate_recovery_preamble(
             recovery_controller=recovery_controller,
             force_retry=force_retry,
         )
-    except (OSError, RuntimeError, ValueError, KeyError) as recover_exc:
+    except (GitError, TypeError, OSError, RuntimeError, ValueError, KeyError) as recover_exc:
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
         return None
     if recovered is not None:
@@ -906,7 +906,15 @@ def _run_startup_integration(
             ),
             display=ctx.active_display,
         )
-    except (OSError, RuntimeError, ValueError, KeyError) as startup_exc:
+    except (
+        GitError,
+        AttributeError,
+        TypeError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as startup_exc:
         logger.warning("startup auto-integrate failed: {}", startup_exc)
         return None
     with suppress(Exception):

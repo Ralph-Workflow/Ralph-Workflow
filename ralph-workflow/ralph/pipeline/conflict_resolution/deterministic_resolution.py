@@ -257,6 +257,9 @@ def _log_gitlink_review(record: GitlinkReviewRecord) -> None:
     )
 
 
+_UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
+
+
 def _partition_deterministic_conflicts(
     root: Path,
     conflicted: tuple[str, ...],
@@ -298,6 +301,9 @@ def _execute_deterministic_resolution(
 ) -> bool:
     gitlinks, mode_only_paths, mode_only_stages, text_paths = partition
 
+    if not gitlinks and not mode_only_paths:
+        return False
+
     if gitlinks and not mode_only_paths and not text_paths:
         stages = [entries[p] for p in gitlinks]
         return _resolve_gitlinks(root, tuple(gitlinks), stages, gitlink_policy)
@@ -322,8 +328,10 @@ def _execute_deterministic_resolution(
         if stageable:
             stage_paths(root, tuple(stageable))
 
-    remaining = [p for p in unmerged_paths(root) if p != "<unmerged-path-query-failed>"]
-    return not any(p in remaining for p in stop.conflicted_files)
+    remaining = unmerged_paths(root)
+    return _UNMERGED_QUERY_FAILED not in remaining and not any(
+        p in remaining for p in stop.conflicted_files
+    )
 
 
 def try_deterministic_resolution(
@@ -336,9 +344,7 @@ def try_deterministic_resolution(
         partition = _partition_deterministic_conflicts(root, stop.conflicted_files, entries)
         if partition is None:
             return False
-        return _execute_deterministic_resolution(
-            root, stop, entries, partition, gitlink_policy
-        )
+        return _execute_deterministic_resolution(root, stop, entries, partition, gitlink_policy)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("conflict_resolution: deterministic resolution declined: {}", exc)
         return False

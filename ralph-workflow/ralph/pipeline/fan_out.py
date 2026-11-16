@@ -562,8 +562,9 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
     root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
     if root_task is None:
         raise RuntimeError("root_task is None")
-    teardown_fn = _install(loop, root_task, bridge)
+    teardown_fn: Callable[[], None] | None = None
     try:
+        teardown_fn = _install(loop, root_task, bridge)
         session_mcp_plan, session_drain = build_session_mcp_plan_for_phase(
             effect=ctx.effect,
             policy_bundle=ctx.policy_bundle,

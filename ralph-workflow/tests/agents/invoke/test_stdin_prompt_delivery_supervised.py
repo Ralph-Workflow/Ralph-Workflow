@@ -37,7 +37,15 @@ def _drive(cmd: list[str], ctx: AgentRunCtx) -> tuple[bool, BaseException | None
         try:
             for _line in run_subprocess_and_read_lines(cmd, ctx):
                 pass
-        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
+        except (
+            AgentInvocationError,
+            KeyboardInterrupt,
+            SystemExit,
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+        ) as exc:
             outcome.append(exc)
         else:
             outcome.append(None)

@@ -103,5 +103,6 @@ def paused_sixth_symptom_unstaged_gitlink_rebase(root: Path) -> tuple[str, str, 
     if not rebase_in_progress(root):
         raise AssertionError("fixture did not pause in a conflicted rebase")
     from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
+
     adopt_active_rebase_record(root, "main")
     return _gitlink_stage_shas(root, _GITLINK_PATH)

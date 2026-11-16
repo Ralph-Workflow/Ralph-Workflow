@@ -261,37 +261,17 @@ def _project_eligibility(
     now_ms: int,
 ) -> AgentStatus:
     entries = snapshot.get("entries")
-    if not isinstance(entries, Mapping):
+    raw = entries.get(f"{phase}:{agent}") if isinstance(entries, Mapping) else None
+    if not isinstance(raw, Mapping):
         return Eligible()
-    raw = entries.get(f"{phase}:{agent}")
-    if isinstance(raw, Mapping):
-        status = _projected_status(
-            is_spent=bool(raw.get("is_spent")),
-            spent_reason=_optional_str(raw.get("spent_reason")),
-            cooldown_until_ms=_optional_int(raw.get("cooldown_until_ms")),
-            cooldown_reason=_optional_str(raw.get("cooldown_reason")),
-            unavailable_reason=_optional_str(raw.get("unavailable_reason")),
-            now_ms=now_ms,
-        )
-        if not status.is_eligible:
-            return status
-
-    for key, other_raw in entries.items():
-        if isinstance(key, str) and isinstance(other_raw, Mapping):
-            parts = key.split(":", 1)
-            if len(parts) == 2 and parts[1] == agent and parts[0] != phase:
-                status = _projected_status(
-                    is_spent=bool(other_raw.get("is_spent")),
-                    spent_reason=_optional_str(other_raw.get("spent_reason")),
-                    cooldown_until_ms=_optional_int(other_raw.get("cooldown_until_ms")),
-                    cooldown_reason=_optional_str(other_raw.get("cooldown_reason")),
-                    unavailable_reason=_optional_str(other_raw.get("unavailable_reason")),
-                    now_ms=now_ms,
-                )
-                if not status.is_eligible:
-                    return status
-
-    return Eligible()
+    return _projected_status(
+        is_spent=bool(raw.get("is_spent")),
+        spent_reason=_optional_str(raw.get("spent_reason")),
+        cooldown_until_ms=_optional_int(raw.get("cooldown_until_ms")),
+        cooldown_reason=_optional_str(raw.get("cooldown_reason")),
+        unavailable_reason=_optional_str(raw.get("unavailable_reason")),
+        now_ms=now_ms,
+    )
 
 
 def project_eligibility(
@@ -357,7 +337,6 @@ class AgentFailureLedger:
         "_entries",
         "_lock",
         "_max_cooldown_seconds",
-        "_recovery_controller",
         "_total_limit",
     )
 
@@ -396,17 +375,8 @@ class AgentFailureLedger:
         self._base_cooldown_seconds: float = base_cooldown_seconds
         self._max_cooldown_seconds: float = max_cooldown_seconds
         self._backoff_factor: float = backoff_factor
-        self._recovery_controller: object | None = None
         self._lock = threading.Lock()
         self._entries: dict[tuple[str, str], _LedgerEntry] = {}
-
-    @property
-    def recovery_controller(self) -> object | None:
-        return self._recovery_controller
-
-    @recovery_controller.setter
-    def recovery_controller(self, controller: object) -> None:
-        self._recovery_controller = controller
 
     @property
     def clock(self) -> Clock:
@@ -456,34 +426,22 @@ class AgentFailureLedger:
 
     def _status_locked(self, phase: str, agent: str, now_ms: int) -> AgentStatus:
         entry = self._entries.get((phase, agent))
-        if entry is not None:
-            self._sync_cooldown_expiry(entry, now_ms)
-            status = _projected_status(
-                is_spent=entry.is_spent,
-                spent_reason=entry.spent_reason or _SPENT_REASON_TOTAL,
-                cooldown_until_ms=entry.cooldown_until_ms,
-                cooldown_reason=entry.cooldown_reason,
-                unavailable_reason=entry.unavailable_reason,
-                now_ms=now_ms,
-            )
-            if not status.is_eligible:
-                return status
+        if entry is None:
+            return Eligible()
 
-        for (p, a), other in self._entries.items():
-            if a == agent and p != phase:
-                self._sync_cooldown_expiry(other, now_ms)
-                status = _projected_status(
-                    is_spent=other.is_spent,
-                    spent_reason=other.spent_reason or _SPENT_REASON_TOTAL,
-                    cooldown_until_ms=other.cooldown_until_ms,
-                    cooldown_reason=other.cooldown_reason,
-                    unavailable_reason=other.unavailable_reason,
-                    now_ms=now_ms,
-                )
-                if not status.is_eligible:
-                    return status
+        if entry.is_spent:
+            return Spent(reason=entry.spent_reason or _SPENT_REASON_TOTAL)
 
-        return Eligible()
+        self._sync_cooldown_expiry(entry, now_ms)
+
+        return _projected_status(
+            is_spent=False,
+            spent_reason=None,
+            cooldown_until_ms=entry.cooldown_until_ms,
+            cooldown_reason=entry.cooldown_reason,
+            unavailable_reason=entry.unavailable_reason,
+            now_ms=now_ms,
+        )
 
     def status(self, phase: str, agent: str) -> AgentStatus:
         with self._lock:

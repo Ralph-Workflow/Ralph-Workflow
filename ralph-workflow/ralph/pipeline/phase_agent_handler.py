@@ -12,6 +12,7 @@ from loguru import logger
 from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.chain import ChainManager
 from ralph.agents.completion_signals import evaluate_completion, graded_phase_verdict
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
 from ralph.display.line_sanitizer import strip_terminal_control
@@ -131,7 +132,15 @@ def _phase_event_after_agent_run(
         events = _hp(effect, ctx)
     except KeyboardInterrupt:
         raise
-    except (OSError, RuntimeError, ValueError, KeyError, SystemExit) as exc:
+    except (
+        AgentInvocationError,
+        McpServerError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        SystemExit,
+    ) as exc:
         if isinstance(exc, McpServerError):
             logger.warning(
                 "Phase handler McpServerError in phase={phase}: "

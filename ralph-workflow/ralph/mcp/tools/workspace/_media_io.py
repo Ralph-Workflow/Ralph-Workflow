@@ -177,7 +177,7 @@ def _load_persisted_registry_entry(
 ) -> dict[str, str] | None:
     path = media_registry_path()
     with contextlib.suppress(
-        OSError, RuntimeError, ValueError, KeyError, AttributeError, json.JSONDecodeError
+        OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, json.JSONDecodeError
     ):
         data: dict[str, object] = json.loads(workspace.read(path))
         raw_artifacts = data.get("artifacts", [])

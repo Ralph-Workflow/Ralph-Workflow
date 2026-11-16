@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     )
     from ralph.pipeline._runner_session import apply_session_capture
     from ralph.pipeline._stop_resolution_entry import (
+        adopt_resolving_rebase_record,
         attempt_stop_resolution,
         reset_stop_resolution_presentation,
         retained_round_is_new,
@@ -63,6 +64,7 @@ __all__ = [
     "StrategyDecision",
     "StrategyTransition",
     "StrategyTransitionGuard",
+    "adopt_resolving_rebase_record",
     "apply_session_capture",
     "attempt_stop_resolution",
     "build_integration_status",
@@ -115,6 +117,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "StrategyTransitionGuard",
     ),
     "apply_session_capture": ("ralph.pipeline._runner_session", "apply_session_capture"),
+    "adopt_resolving_rebase_record": (
+        "ralph.pipeline._stop_resolution_entry",
+        "adopt_resolving_rebase_record",
+    ),
     "attempt_stop_resolution": (
         "ralph.pipeline._stop_resolution_entry",
         "attempt_stop_resolution",

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.agents.system_clock import SystemClock
@@ -2293,7 +2294,7 @@ def _run_pipeline_step(
         return _with_phase_step_timing(next_state, _phase_timer)
     except KeyboardInterrupt:
         raise
-    except (OSError, RuntimeError, ValueError, KeyError, SystemExit) as exc:
+    except (AgentInvocationError, OSError, RuntimeError, ValueError, KeyError, SystemExit) as exc:
         _phase_outcome = "crashed"
         logger.exception(
             "Pipeline step crashed in phase={phase}: {err}",

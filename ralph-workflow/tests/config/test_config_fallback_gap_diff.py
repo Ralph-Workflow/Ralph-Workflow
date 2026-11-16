@@ -75,7 +75,6 @@ def test_warn_format_on_startup_and_workspace_reload(
     original_bytes = bad_agents.read_bytes()
     scope = WorkspaceScope(repo)
 
-    # 1. Startup load path
     reset_fallback_warning_registry()
     records, sink_id = _capture_warnings()
     try:
@@ -89,7 +88,6 @@ def test_warn_format_on_startup_and_workspace_reload(
     _assert_warn_contents(matching[0], bad_agents)
     assert bad_agents.read_bytes() == original_bytes
 
-    # 2. Workspace context reload path
     reset_fallback_warning_registry()
     records, sink_id = _capture_warnings()
     try:
@@ -108,7 +106,6 @@ def test_warn_format_on_check_config_and_diagnose(
 ) -> None:
     _repo, bad_agents = _setup_corrupt_global_agents(monkeypatch, tmp_path)
 
-    # 3. --check-config load path
     reset_fallback_warning_registry()
     console = Console(file=io.StringIO(), force_terminal=False)
     display_ctx = make_display_context(console=console)
@@ -129,7 +126,6 @@ def test_warn_format_on_check_config_and_diagnose(
     assert len(matching) == 1
     _assert_warn_contents(matching[0], bad_agents)
 
-    # 4. diagnose load path
     reset_fallback_warning_registry()
     console = Console(file=io.StringIO(), force_terminal=False)
     display_ctx = make_display_context(console=console)
@@ -161,7 +157,6 @@ def test_warn_deduplication_and_invalidation(
     reset_fallback_warning_registry()
     records, sink_id = _capture_warnings()
     try:
-        # First load emits 1 warning
         with workspace_context(repo):
             pass
         first_count = sum(
@@ -169,7 +164,6 @@ def test_warn_deduplication_and_invalidation(
         )
         assert first_count == 1
 
-        # Second load of unchanged file collapses (no new warning)
         with workspace_context(repo):
             pass
         second_count = sum(
@@ -177,7 +171,6 @@ def test_warn_deduplication_and_invalidation(
         )
         assert second_count == 1
 
-        # File content changed -> warns again
         local_pipeline.write_text("[phases\ninvalid syntax = 2\n", encoding="utf-8")
         with workspace_context(repo):
             pass
@@ -186,7 +179,6 @@ def test_warn_deduplication_and_invalidation(
         )
         assert third_count == 2
 
-        # Reset registry (simulating fresh process) -> warns again
         reset_fallback_warning_registry()
         with workspace_context(repo):
             pass
@@ -227,7 +219,6 @@ def test_all_project_local_layers_fallback(monkeypatch: pytest.MonkeyPatch, tmp_
     finally:
         logger.remove(sink_id)
 
-    # Every file fell back to default, none was overwritten on disk
     for name, (path, _) in local_files.items():
         assert path.read_bytes() == payloads[name]
         matching = [r for r in records if str(path) in r and "using built-in default" in r]
@@ -286,7 +277,6 @@ def test_auto_integrate_resolver_proceeds_on_corrupt_agents_toml(
     assert len(launched) == 1
     from ralph.config.models import UnifiedConfig
 
-    # Resolver proceeded with default configuration, did not decline
     launched_cfg = launched[0]["config"]
     assert isinstance(launched_cfg, UnifiedConfig)
     assert launched_cfg.agents == {}
@@ -315,7 +305,6 @@ def test_workspace_context_attribute_validation_with_corrupt_agents(
 def test_session_guard_redirects_import_time_constants() -> None:
     from ralph.config import loader as config_loader
 
-    # GLOBAL_CONFIG_PATH and GLOBAL_AGENTS_CONFIG_PATH must never point to the real user home
     global_cfg = str(config_loader.GLOBAL_CONFIG_PATH)
     global_agents = str(config_loader.GLOBAL_AGENTS_CONFIG_PATH)
 

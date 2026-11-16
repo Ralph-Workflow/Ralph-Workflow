@@ -19,6 +19,7 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.conflict_resolution._conflict_classification import ConflictClassification
 from ralph.pipeline.conflict_resolution._kind import ConflictKind
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
+from ralph.process.manager import SubprocessError
 
 __all__ = [
     "AGENT_ELIGIBLE_SIGHTS",
@@ -337,7 +338,7 @@ def _append_only_paths(root: Path, paths: tuple[str, ...]) -> set[str]:
             cwd=root,
             label="git-append-only-attributes",
         )
-    except Exception:
+    except (SubprocessError, OSError, RuntimeError, ValueError):
         return set()
     if result.returncode != 0:
         return set()

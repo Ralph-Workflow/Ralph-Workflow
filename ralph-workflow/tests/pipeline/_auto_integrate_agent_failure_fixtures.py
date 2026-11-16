@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -20,6 +20,7 @@ from ralph.pipeline.conflict_resolution import run_rebase_conflict_resolution_pi
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models import AgentChainConfig
+from tests._scenario_agent_mode import AgentMode
 
 if TYPE_CHECKING:
     import threading
@@ -39,18 +40,10 @@ TARGET = "main"
 
 RESOLVED_CONTENT = "resolved by the resolver\n"
 
-CONFLICT_MARKER_CONTENT = (
-    "<<<<<<< HEAD\n"
-    "target side\n"
-    "=======\n"
-    "feature side\n"
-    ">>>>>>> feature\n"
-)
+CONFLICT_MARKER_CONTENT = "<<<<<<< HEAD\ntarget side\n=======\nfeature side\n>>>>>>> feature\n"
 
 pytestmark = pytest.mark.subprocess_e2e
 
-
-from tests._scenario_agent_mode import AgentMode
 
 FakeAgentMode = AgentMode
 
@@ -194,10 +187,7 @@ def make_scripted_resolver_process(
         elif mode is not None:
             active_mode = coerce_fake_mode(mode)
 
-        unmerged = [
-            p for p in unmerged_paths(tmp_path)
-            if p != "<unmerged-path-query-failed>"
-        ]
+        unmerged = [p for p in unmerged_paths(tmp_path) if p != "<unmerged-path-query-failed>"]
         target_paths = [p for p in unmerged if (tmp_path / p).is_file()]
         if not target_paths:
             target_paths = [CONFLICTED_PATH]
@@ -299,14 +289,10 @@ def make_fake_mode_agent_runner(
                     )
                     return True
                 if m is AgentMode.EDITS_NEVER_STAGES:
-                    (self.tmp_path / CONFLICTED_PATH).write_text(
-                        RESOLVED_CONTENT, encoding="utf-8"
-                    )
+                    (self.tmp_path / CONFLICTED_PATH).write_text(RESOLVED_CONTENT, encoding="utf-8")
                     return True
                 if m is AgentMode.EDITS_AND_STAGES:
-                    (self.tmp_path / CONFLICTED_PATH).write_text(
-                        RESOLVED_CONTENT, encoding="utf-8"
-                    )
+                    (self.tmp_path / CONFLICTED_PATH).write_text(RESOLVED_CONTENT, encoding="utf-8")
                     repo = Repo(self.tmp_path)
                     repo.index.add([CONFLICTED_PATH])
                     return True

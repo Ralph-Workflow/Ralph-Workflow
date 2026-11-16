@@ -15,6 +15,7 @@ from loguru import logger
 
 import ralph.agents.invoke as agents_invoke
 from ralph.agents.invoke import (
+    AgentInvocationError,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
 )
@@ -182,7 +183,7 @@ def run_canary_probe(
             trusted_parent=trusted_parent,
             started=started,
         )
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (AgentInvocationError, OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("probe_internal_error", started, error=_error_text(exc))
 
 
@@ -316,7 +317,7 @@ def _prepare_probe(
             extra_env,
             timeout_s,
         )
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("options_build_failed", started, error=_error_text(exc))
     try:
         prompt_file = _write_prompt(workspace_path)
@@ -411,7 +412,14 @@ def _invoke_with_timeout(
     def _run() -> None:
         try:
             finished.append(_run_probe_attempt(invoke, config, prepared, general))
-        except (OSError, RuntimeError, ValueError, KeyError) as exc:
+        except (
+            AgentInvocationError,
+            TypeError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+        ) as exc:
             captured.append(exc)
 
     thread = threading.Thread(target=_run, name="ralph-canary-probe", daemon=True)
