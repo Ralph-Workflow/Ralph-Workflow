@@ -147,6 +147,16 @@ def _make_config() -> UnifiedConfig:
     )
 
 
+def _init_repo(tmp_path: Path) -> Path:
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    repo = Repo.init(repo_dir, initial_branch="main")
+    with repo.config_writer() as config:
+        config.set_value("user", "name", "Test User")
+        config.set_value("user", "email", "test@example.com")
+    return repo_dir
+
+
 @pytest.mark.required_auto_integrate_e2e
 @pytest.mark.parametrize(
     ("mode", "exc_factory"),

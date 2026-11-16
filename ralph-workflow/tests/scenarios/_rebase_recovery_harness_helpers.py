@@ -4,27 +4,21 @@ import json
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
 
-from ralph.pipeline.events import PipelineEvent
-from tests._scenario_agent_mode import AgentMode
 from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
+from tests.scenarios._fake_agent_runner import FakeAgentRunner
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.agents.timeout_clock import FakeClock
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.conflict_resolution import RebaseStop
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from tests._scenario_display import ScenarioDisplay
-    from tests.scenarios._outcome_ledger import OutcomeLedger
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -40,106 +34,6 @@ __all__ = [
     "shared_executor_seam",
     "supervisor_restart",
 ]
-
-
-@dataclass
-class FakeAgentRunner:
-    mode: AgentMode
-    launches: int = 0
-    launch_times: list[float] = field(default_factory=list)
-    completed_stops: list[str] = field(default_factory=list)
-    clock: FakeClock | None = None
-    fail_at_launch: int | None = None
-
-    def resolve_rebase(
-        self,
-        root: Path,
-        target: str,
-        resolver: object,
-        *,
-        session: ResolutionSession | None = None,
-    ) -> bool:
-        from ralph.pipeline.integration_actions import default_agent_runner
-
-        effective_resolver = resolver if callable(resolver) else self
-        return default_agent_runner().resolve_rebase(
-            root, target, effective_resolver, session=session
-        )
-
-    def handle_agent_effect(self, effect: object, *args: object, **kwargs: object) -> object:
-        self.launches += 1
-        self.launch_times.append(self.clock.monotonic() if self.clock is not None else 0.0)
-        workspace_scope = kwargs.get("workspace_scope")
-        if workspace_scope is None and len(args) > 2:
-            workspace_scope = args[2]
-        root = getattr(workspace_scope, "root", Path.cwd())
-
-        if self.mode is AgentMode.PROVIDER_FAILURE:
-            raise ConnectionError("agent provider unavailable")
-        if self.mode is AgentMode.WATCHDOG_HANG:
-            raise TimeoutError("agent idle watchdog fired")
-        if self.mode is AgentMode.NON_ZERO_EXIT:
-            raise RuntimeError("agent exited with status 7")
-        if self.mode is AgentMode.SIGNAL:
-            raise RuntimeError("agent terminated by signal 15")
-        if self.mode is AgentMode.INVALID_RESULT:
-            return PipelineEvent.AGENT_FAILURE
-        if self.mode is AgentMode.LEAVES_MARKER:
-            return PipelineEvent.AGENT_SUCCESS
-
-        from ralph.git.merge import unmerged_paths
-
-        unmerged = unmerged_paths(root)
-        for relative in unmerged:
-            path = root / relative
-            if path.is_file():
-                if relative == "shared.txt" and (root / "series.txt").exists():
-                    path.write_text("target value\n", encoding="utf-8")
-                else:
-                    path.write_text("resolved by scenario agent\n", encoding="utf-8")
-        if self.mode is AgentMode.EDITS_AND_STAGES and unmerged:
-            git(root, "add", "--", *unmerged)
-        return PipelineEvent.AGENT_SUCCESS
-
-    def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
-        stop_identity: str | None = None
-        if self.fail_at_launch is not None:
-            stop_identity = git(root, "rev-parse", "REBASE_HEAD")
-            if stop_identity in self.completed_stops:
-                raise AssertionError("a completed stop must never be presented to the agent again")
-            if self.fail_at_launch == (self.launches + 1):
-                self.launches += 1
-                self.launch_times.append(self.clock.monotonic() if self.clock is not None else 0.0)
-                raise ConnectionError("agent provider unavailable partway through finite work")
-        from ralph.agents.system_clock import SystemClock
-        from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-        from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
-        from ralph.workspace.scope import WorkspaceScope
-
-        injected = current_agent_effect_dependencies().agent_runner
-        if injected is None:
-            raise RuntimeError("scenario agent runner dependency unavailable")
-        deps = AttemptRunnerDeps(
-            clock=self.clock or SystemClock(),
-            invoke=injected,
-            probe_runner=None,
-            workspace_probe=None,
-            connectivity=None,
-        )
-        event = deps.invoke(
-            InvokeAgentEffect(
-                agent_name="scenario-rebase-resolver",
-                phase="rebase_conflict_resolution",
-                prompt_file="prompt.md",
-            ),
-            workspace_scope=WorkspaceScope(root),
-        )
-        if event == PipelineEvent.AGENT_FAILURE:
-            return False
-        if stop_identity is not None:
-            self.completed_stops.append(stop_identity)
-        return True
 
 
 @contextmanager
@@ -280,6 +174,9 @@ def paused_partial_out_of_reach_rebase(root: Path) -> tuple[str, str, str]:
     s1, s2, s3 = entries.get(1, ""), entries.get(2, ""), entries.get(3, "")
     if not (s1 and s2 and s3):
         raise AssertionError(f"expected three gitlink stages for vendor/link, got {(s1, s2, s3)}")
+    from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
+
+    adopt_active_rebase_record(root, "main")
     return (s1, s2, s3)
 
 
@@ -309,46 +206,6 @@ def supervisor_restart(root: Path) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise TypeError("restart probe returned a non-object payload")
     return payload
-
-
-EMPTY_OUTCOME_LEDGER: str = "{}"
-
-
-def record_outcome(
-    ledger: OutcomeLedger,
-    head: str,
-    target: str,
-    anchors: tuple[str, ...],
-    trees: tuple[str, ...],
-) -> str:
-    verdict = key_landed_outcome(head, target, anchors, trees)
-    ledger.put("landed-verdict", verdict)
-    return verdict
-
-
-def key_landed_outcome(
-    head: str, target: str, anchors: tuple[str, ...], trees: tuple[str, ...]
-) -> str:
-    anchor_ancestors = ", ".join(anchors)
-    tree_matches = ", ".join(trees)
-    if (
-        head == target
-        or any(anchor == head for anchor in anchors)
-        or any(tree == head for tree in trees)
-    ):
-        return "landed"
-    return f"not-landed head={head} target={target} anchors=({anchor_ancestors}) trees=({tree_matches})"
-
-
-def outcome_entry(ledger: OutcomeLedger, key: str) -> str:
-    return ledger.read(key)
-
-
-def driver_session_outcome(session: ResolutionSession) -> str:
-    outcome = getattr(session, "last_resolution_outcome", None)
-    if outcome is None:
-        raise AssertionError("resolution session has no terminal outcome recorded")
-    return type(outcome).__name__
 
 
 def paused_three_commit_first_stop_rebase(root: Path) -> None:

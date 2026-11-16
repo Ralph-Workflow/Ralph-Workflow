@@ -19,9 +19,9 @@ from tests._scenario_display import ScenarioDisplay
 from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
 from tests._scenario_result import ScenarioResult
+from tests.scenarios._fake_agent_runner import FakeAgentRunner
 from tests.scenarios._paused_rebase_fixtures import paused_text_rebase
 from tests.scenarios._rebase_recovery_harness_helpers import (
-    FakeAgentRunner,
     capture_operator_lines,
     empty_resolution_stop_snapshot,
     paused_partial_out_of_reach_rebase,
@@ -109,6 +109,9 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
 
     target_before = git(root, "rev-parse", "main")
     stages = paused_partial_out_of_reach_rebase(root)
+    from ralph.pipeline.auto_integrate_record import clear_record
+
+    clear_record(root)
     feature_sha = git(root, "rev-parse", "feature")
     policy = load_policy(default_dir())
     controller = RecoveryController(options=RecoveryControllerOptions())
@@ -453,7 +456,7 @@ def run_three_commit_rebase_landed_anchor_chain(root: Path) -> ScenarioResult:
 
 def run_empty_resolution_stop_landed_by_tree(root: Path) -> ScenarioResult:
     resolved_tree, stop_anchor, pre_rebase_head = empty_resolution_stop_snapshot(root)
-    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, resolve_shared_txt_with_target=True)
     with shared_executor_seam(runner), capture_operator_lines() as lines:
         _force_retry_stop(root, "scenario-five-symptom-empty-resolution", runner)
     head = git(root, "rev-parse", "HEAD")
@@ -485,7 +488,7 @@ def run_empty_resolution_stop_landed_by_tree(root: Path) -> ScenarioResult:
 
 def run_empty_resolution_stop_anchor_ancestry(root: Path) -> ScenarioResult:
     empty_resolution_stop_snapshot(root)
-    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, resolve_shared_txt_with_target=True)
     with shared_executor_seam(runner), capture_operator_lines() as lines:
         _force_retry_stop(root, "scenario-five-symptom-empty-resolution-ancestry", runner)
     head = git(root, "rev-parse", "HEAD")
